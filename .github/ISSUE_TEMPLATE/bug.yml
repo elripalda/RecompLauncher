@@ -1,0 +1,31 @@
+name: Something broke
+description: A problem with RecompLauncher itself.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version
+      description: Settings > About shows it.
+      placeholder: 0.5 Beta 1
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in the launcher?
+      options: [Home and Discover, Installing and updates, Playing a game, Big Picture mode, Saves and cloud saves, Account and signing in, Settings, Something else]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Screenshots or a clip help a lot.
+    validations:
+      required: true
+  - type: input
+    id: pc
+    attributes:
+      label: Your PC
+      placeholder: Windows 11, RTX 3070, Ryzen 5 5600X

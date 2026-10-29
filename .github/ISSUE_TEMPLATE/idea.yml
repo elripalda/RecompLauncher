@@ -1,0 +1,11 @@
+name: An idea
+description: Something you'd add or change.
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you add or change?
+      description: And why it would help.
+    validations:
+      required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord
+    url: https://discord.gg/FUzqGM2cvf
+    about: Chat about the beta, get help with a game, or share an idea.
+  - name: A problem with a game itself
+    url: https://recomplauncher.com
+    about: If a recomp crashes or looks wrong, report it to that game's developer on its own GitHub page.
