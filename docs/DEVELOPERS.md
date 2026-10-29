@@ -126,7 +126,7 @@ Every game the launcher starts also gets these, whether it has a `recomplauncher
 | | |
 | --- | --- |
 | `RECOMPLAUNCHER` | `1` |
-| `RECOMPLAUNCHER_VERSION` | The launcher's version, like `0.5.0-beta.1` |
+| `RECOMPLAUNCHER_VERSION` | The launcher's version, like `0.75.0-beta.1` |
 | `RECOMPLAUNCHER_MODE` | `bigpicture` when Play was pressed in Big Picture mode, else `desktop` |
 | `RECOMPLAUNCHER_PAD` | The controller plugged in: `xbox` or `playstation` |
 
