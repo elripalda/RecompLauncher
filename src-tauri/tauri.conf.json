@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RecompLauncher",
+  "version": "0.75.0-beta.14",
+  "identifier": "com.recomplauncher.app",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "RecompLauncher",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "decorations": false,
+        "center": true,
+        "backgroundColor": "#0B1220",
+        "label": "main",
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' https: data: blob: asset: http://asset.localhost rlimg: http://rlimg.localhost http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://tauri.localhost tauri://localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$PICTURE/RecompLauncher/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "appimage",
+      "deb"
+    ],
+    "publisher": "Ripalda",
+    "homepage": "https://recomplauncher.com",
+    "category": "Game",
+    "shortDescription": "One home for PC recomps",
+    "longDescription": "RecompLauncher finds, installs, updates and starts PC recomps from each developer's own GitHub. No game files are included: every game needs your own copy.",
+    "copyright": "RecompLauncher is free software under the GPL-3.0. No game content is included.",
+    "license": "GPL-3.0-or-later",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}

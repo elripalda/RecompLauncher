@@ -1,0 +1,57 @@
+{
+  "looks": [
+    {
+      "id": "sharp",
+      "name": "Sharp",
+      "blurb": "Brings out texture detail without halos.",
+      "fx": "RL_Sharp.fx",
+      "technique": "RL_Sharp",
+      "amount": { "Sharpness": [0.3, 1.0], "Detail": [0.15, 0.6] },
+      "fixed": {}
+    },
+    {
+      "id": "vivid",
+      "name": "Vivid",
+      "blurb": "Richer color and a little more contrast.",
+      "fx": "RL_Vivid.fx",
+      "technique": "RL_Vivid",
+      "amount": { "Vibrance": [0.12, 0.55], "Contrast": [0.06, 0.38], "Blacks": [0.0, 0.035] },
+      "fixed": {}
+    },
+    {
+      "id": "film",
+      "name": "Film",
+      "blurb": "Graded color, fine grain and a soft vignette.",
+      "fx": "RL_Film.fx",
+      "technique": "RL_Film",
+      "amount": { "Tone": [0.3, 1.0], "Grain": [0.008, 0.045], "Vignette": [0.12, 0.5] },
+      "fixed": { "GrainSize": 1.5 }
+    },
+    {
+      "id": "crt",
+      "name": "CRT",
+      "blurb": "A curved tube TV, with soft scanlines and glow.",
+      "fx": "RL_CRT.fx",
+      "technique": "RL_CRT",
+      "lines": true,
+      "amount": { "Curvature": [0.2, 0.85], "Scanlines": [0.45, 0.95], "Mask": [0.2, 0.7], "Glow": [0.2, 0.5], "Vignette": [0.12, 0.4] },
+      "fixed": { "Beam": 0.6, "Sharpness": 0.45, "MaskType": 1, "Corner": 0.45, "Brightness": 1.0 }
+    },
+    {
+      "id": "pvm",
+      "name": "Studio monitor",
+      "blurb": "A flat, sharp broadcast monitor with crisp scanlines.",
+      "fx": "RL_CRT.fx",
+      "technique": "RL_CRT",
+      "lines": true,
+      "amount": { "Scanlines": [0.55, 1.0], "Mask": [0.15, 0.55], "Beam": [0.3, 0.08], "Glow": [0.06, 0.18] },
+      "fixed": { "Curvature": 0.0, "Sharpness": 0.8, "MaskType": 0, "Vignette": 0.0, "Corner": 0.1, "Brightness": 1.0 }
+    }
+  ],
+  "lines": {
+    "nes": 240, "snes": 224, "genesis": 224, "megadrive": 224, "n64": 240, "ps1": 240, "psx": 240, "saturn": 240,
+    "dreamcast": 480, "ps2": 480, "gc": 480, "gamecube": 480, "wii": 480, "xbox": 480,
+    "x360": 720, "ps3": 720, "gba": 160, "nds": 192
+  },
+  "default_lines": 480
+}

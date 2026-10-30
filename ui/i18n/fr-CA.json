@@ -1,0 +1,16 @@
+{
+ "Game settings": "Paramètres du jeu",
+ "Get Visual C++": "Obtenir Visual C++",
+ "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "Il cherche vos fichiers de jeu dans {folder}, qui n’existe plus. Choisissez le dossier de votre copie du jeu et il démarrera de là la prochaine fois.",
+ "No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.": "Rien ne correspond. Désactivez « Easy Setup » pour voir le reste.",
+ "Only the icons and your pinned games' covers. The button at the bottom of the sidebar does the same.": "Seulement les icônes et les pochettes de vos jeux épinglés. Le bouton en bas de la barre latérale fait la même chose.",
+ "Puzzle": "Casse-tête",
+ "Shows the game you're playing on your Discord profile, with its cover and play time.": "Affiche le jeu en cours sur votre profil Discord, avec sa pochette et votre temps de jeu.",
+ "Smaller fits more on a big screen; larger is easier to read from the couch or on a handheld.": "Plus petit affiche plus de choses sur un grand écran; plus grand se lit plus facilement depuis le divan ou sur une console portable.",
+ "That ROM isn't the USA version, which this recomp needs.": "Cette ROM n’est pas la version américaine dont cette recomp a besoin.",
+ "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Cette image disque est illisible : elle est peut-être incomplète, compressée ou ce n’est pas un disque Xbox. Utilisez une .iso complète et non compressée de votre disque.",
+ "Windows couldn't load a file it needs: a DLL that's missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.": "Windows n’a pas pu charger un fichier dont il a besoin : une DLL manquante ou trop ancienne. Installez le dernier Microsoft Visual C++ Redistributable (x64), gardez Windows à jour, puis rejouez.",
+ "Your graphics driver couldn't start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.": "Votre pilote graphique n’a pas pu lancer OpenGL pour lui. Changez {setting} dans ses paramètres du jeu, ou mettez à jour votre pilote graphique, puis rejouez.",
+ "Your graphics driver couldn't start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.": "Votre pilote graphique n’a pas pu lancer OpenGL pour lui. Mettez à jour votre pilote graphique NVIDIA, AMD ou Intel, puis rejouez.",
+ "Your recomp's folder, with its program and recomplauncher.json. It shows in your Library as a local build; the launcher never updates, moves or deletes it.": "Le dossier de votre recomp, avec son programme et son recomplauncher.json. Il apparaît dans votre bibliothèque comme build local; le lanceur ne le met jamais à jour, ne le déplace jamais et ne le supprime jamais."
+}

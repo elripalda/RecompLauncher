@@ -1,0 +1,66 @@
+[package]
+name = "recomplauncher"
+version = "0.75.0-beta.14"
+description = "RecompLauncher: one home for PC recomps"
+authors = ["Ripalda"]
+license = "GPL-3.0-or-later"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "recomplauncher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+cc = "1"
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "gzip"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "process"] }
+futures-util = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
+sevenz-rust = "0.6"
+unrar = "0.5"
+flate2 = "1"
+tar = "0.4"
+dirs = "5"
+thiserror = "1"
+tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+fs2 = "0.4"
+crc32fast = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+discord-rich-presence = "1"
+regex-lite = "0.1"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+
+[target.'cfg(windows)'.dependencies]
+gilrs = { version = "0.11", default-features = false, features = ["xinput"] }
+xcap = { version = "0.9", features = ["image", "wgc"] }
+hidapi = { version = "2", default-features = false, features = ["windows-native"] }
+webview2-com = "0.39"
+windows-core = "0.62"
+
+[target.'cfg(not(windows))'.dependencies]
+gilrs = "0.11"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+# Debug builds without debug info for the libraries (much smaller and faster to link).
+[profile.dev.package."*"]
+debug = false

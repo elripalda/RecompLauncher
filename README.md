@@ -18,7 +18,7 @@ the launcher sets it up.
   runs for other players.
 - **Install and update in one click,** straight from the developer's own GitHub release. Every
   download is checked against GitHub's checksum.
-- **Easy setup:** point it at your disc image or game folder and it does the rest, for the recomps
+- **Easy Setup:** point it at your disc image or game folder and it does the rest, for the recomps
   that support it.
 - **Versions:** games with more than one recomp show once, and you can switch between versions or
   keep a few side by side.
@@ -71,6 +71,12 @@ If a game crashes, send the log from the crash screen. Every one helps.
 Add a `recomplauncher.json` to your release and players get one-click setup, your settings inside
 the launcher, and Big Picture mode support. The guide is in [docs/DEVELOPERS.md](docs/DEVELOPERS.md),
 with examples in [docs/examples](docs/examples).
+
+## Source code
+
+The full source of the launcher is here: the Rust core in `src-tauri/` and the window in `ui/`. You
+can read exactly what it does, or build it yourself with the steps in
+[docs/BUILDING.md](docs/BUILDING.md). It's licensed under the GPL v3 ([LICENSE](LICENSE)).
 
 ## About
 

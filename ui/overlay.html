@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RecompLauncher quick menu</title>
+<link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+<div class="stage" id="stage">
+  <aside class="panel" data-t aria-label="Quick menu">
+    <div class="top"><svg width="34" height="34" viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="og" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#og)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg><span class="brand">RecompLauncher</span><span class="clock" id="clock"></span></div>
+    <div class="game"><div><span class="name" id="name" data-t>Your game</span><span class="sub" id="sub"></span></div></div>
+    <nav class="items" data-t aria-label="Quick menu actions">
+      <button type="button" data-a="resume" data-t><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.8v14.4a.8.8 0 0 0 1.2.7l11.5-7.2a.8.8 0 0 0 0-1.4L8.2 4.1A.8.8 0 0 0 7 4.8z" fill="currentColor"/></svg>Resume</button>
+      <button type="button" data-a="screenshot" data-t><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6l1.5-2h5L16 6"/><circle cx="12" cy="13" r="3.5"/></svg>Take a screenshot<span class="tag">F12 · View + RB</span></button>
+      <button type="button" data-a="launcher" data-t><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>Screenshots and library<span class="tag" id="shots"></span></button>
+      <button type="button" data-a="close" class="danger" data-t><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>Close game</button>
+    </nav>
+    <div class="grow"></div>
+    <p class="note" data-t>Hold View (Create on PlayStation), or press Ctrl+F12, to open this menu.</p>
+    <div class="hints"><span data-t><b>A</b>Select</span><span data-t><b>B</b>Back to game</span></div>
+  </aside>
+</div>
+<script src="i18n.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>
