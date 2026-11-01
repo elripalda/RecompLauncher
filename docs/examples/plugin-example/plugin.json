@@ -1,0 +1,13 @@
+{
+  "id": "example-notes",
+  "name": "Game Notes",
+  "version": "1.0.0",
+  "author": "RecompLauncher",
+  "description": "Keep notes for each game: settings that worked, where you left off, anything.",
+  "icon": "icon.svg",
+  "page": { "title": "Game Notes", "entry": "index.html", "icon": "icon.svg" },
+  "menu": [{ "id": "note", "label": "Write a Note" }],
+  "permissions": ["library.read", "network"],
+  "sites": ["example.com"],
+  "min_launcher": "0.90.0-beta.4"
+}

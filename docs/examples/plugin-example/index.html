@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Game Notes</title>
+<link rel="stylesheet" href="style.css">
+<script src="/_sdk/rl.js"></script>
+</head>
+<body>
+<header>
+  <h1>Game Notes</h1>
+  <p>Notes for each game in your Library, kept by this plugin.</p>
+</header>
+<main>
+  <section class="list" id="games" aria-label="Your games"></section>
+  <section class="editor" id="editor" hidden>
+    <h2 id="title"></h2>
+    <textarea id="note" rows="12" placeholder="Settings that worked, where you left off…"></textarea>
+    <div class="row"><button id="save" class="main">Save</button><button id="open">Open Game Page</button></div>
+  </section>
+</main>
+<footer>
+  <button id="ping">Check example.com</button>
+  <button id="check">Check the Wall</button>
+  <span id="out"></span>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

@@ -562,7 +562,6 @@ pub fn env_name_ok(k: &str) -> bool {
         && !matches!(k.to_ascii_uppercase().as_str(), "PATH" | "PATHEXT" | "SYSTEMROOT" | "WINDIR" | "COMSPEC" | "LD_PRELOAD" | "LD_LIBRARY_PATH" | "HOME" | "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP")
 }
 
-/// Fills in {install}, {documents}, {local}, {config}, {home}, {game} and {pad}.
 thread_local! {
     /// Filling in for a Windows program that runs through Proton or Wine on Linux: the player's copy
     /// is given the way Windows programs name it there (Z:\run\media\...).
@@ -591,6 +590,7 @@ impl Drop for WineFill {
     }
 }
 
+/// Fills in {install}, {documents}, {local}, {config}, {home}, {game} and {pad}.
 pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     if !t.contains('{') {
         return t.to_string();
@@ -1145,11 +1145,17 @@ fn link_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 /// Whether this is the player's copy the game wants. Err says why not.
+/// A copy packed in an archive (.7z, .zip, .rar) for a game that doesn't read archives itself:
+/// its kind.
+pub fn packed(g: &GameCopy, p: &Path) -> Option<String> {
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    (p.is_file() && ["7z", "zip", "rar"].contains(&ext.as_str()) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!(".{ext}"))).then_some(ext)
+}
+
 pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     let folder = p.is_dir();
-    // A game packed in an archive: it has to be unpacked first, unless the game takes archives.
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    if !folder && ["7z", "zip", "rar"].contains(&ext.as_str()) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!(".{ext}")) {
+    // A game packed in an archive: unpacked first (set_game_copy does that for .7z and .zip).
+    if let Some(ext) = packed(g, p) {
         return Err(format!("That's a compressed file (.{ext}). Unpack it first with 7-Zip or Windows, then pick the game file inside it."));
     }
     let kind_ok = match g.kind.as_str() {
@@ -1278,6 +1284,11 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn windows_games_through_proton_get_windows_paths() {
+        assert_eq!(wine_path("/home/deck/Games/AC6/disc.iso"), r"Z:\home\deck\Games\AC6\disc.iso");
+    }
+
     #[test]
     fn settings_file_under_another_name() {
         let d = std::env::temp_dir().join(format!("rl-near-{}", std::process::id()));

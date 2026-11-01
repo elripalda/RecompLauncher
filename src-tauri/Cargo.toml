@@ -1,6 +1,6 @@
 [package]
 name = "recomplauncher"
-version = "0.90.0-beta.3.1"
+version = "0.90.0-beta.4"
 description = "RecompLauncher: one home for PC recomps"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
@@ -27,6 +27,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util
 futures-util = "0.3"
 sha2 = "0.10"
 hex = "0.4"
+base64 = "0.22"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 sevenz-rust = "0.6"
 unrar = "0.5"

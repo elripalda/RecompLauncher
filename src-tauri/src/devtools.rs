@@ -73,7 +73,7 @@ pub fn add_any(st: State<'_, App>, path: String) -> Res<Installed> {
 }
 
 /// `tag`: "local" for a developer's build, "own" for a game the player added themselves.
-fn add_folder(st: &State<'_, App>, path: String, exe_pick: Option<PathBuf>, tag: &str) -> Res<Installed> {
+pub(crate) fn add_folder(st: &App, path: String, exe_pick: Option<PathBuf>, tag: &str) -> Res<Installed> {
     let dir = PathBuf::from(&path);
     if !dir.is_dir() {
         return Err(Error::Msg("That folder isn't there.".into()));

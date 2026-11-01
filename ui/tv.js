@@ -14,6 +14,12 @@
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
   const TABS = [['home', N_('Home')], ['library', N_('Library')], ['achievements', N_('Achievements')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['settings', N_('Settings')]];
+  // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
+  const tvTabs = () => {
+    const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
+    const rank = (k) => (k === 'settings' ? 999 : order.indexOf(k) >= 0 ? order.indexOf(k) : 100 + TABS.findIndex((x) => x[0] === k));
+    return TABS.filter(([k]) => k === 'settings' || k === 'home' || k === 'library' || !hide.has(k)).sort((a, b) => rank(a[0]) - rank(b[0]));
+  };
   const SX = 96; // the side margin, in stage pixels
   const MARK = '<svg viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="tvm" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#tvm)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
   const ICON = {
@@ -399,7 +405,7 @@
   const tabOf = () => (['about', 'saves', 'storage'].includes(TV.view) ? 'settings' : GAMEVIEWS.includes(TV.view) ? TV.from || 'home' : TV.view);
   const clock = () => new Date().toLocaleTimeString(curLocale(), { hour: 'numeric', minute: '2-digit' });
   const bar = () => `<header class="tv-bar"><div class="tv-brand">${MARK}<img class="tv-wm" src="img/${document.body.classList.contains('light') ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher"></div>
-    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${TABS.map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
+    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
     <div class="tv-status"><span class="tv-clock" id="tv-clock">${clock()}</span></div></header>`;
   // The game page has a Back pill instead of the sections.
   const gameBar = () => `<header class="tv-bar"><button type="button" class="tv-back" data-f data-key="back" data-tvact="back">${glyph('b', 'tv-keyg')}<span>${esc(t('Back'))}</span></button><span></span>
@@ -2111,7 +2117,7 @@
   }
 
   function tab(step) {
-    const order = TABS.map((x) => x[0]);
+    const order = tvTabs().map((x) => x[0]);
     const i = order.indexOf(tabOf());
     switchTo(order[(i + step + order.length) % order.length], step > 0 ? 'right' : 'left');
   }

@@ -237,6 +237,7 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<
 /// Returns the folders those programs were given on their command lines (TotK's setup starts its
 /// builder with `--dest C:\Games\TOTK`): where the player told it to put the game.
 fn wait_for_rest(dir: &Path) -> Vec<String> {
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut said: Vec<String> = Vec::new();
     #[cfg(windows)]
     {
@@ -584,6 +585,7 @@ pub fn uninstaller_for(_dir: &Path) -> Option<String> {
 }
 
 /// The entry whose install folder (or icon, or uninstaller) is the game's folder.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn pick_uninstaller(list: &[Value], dir: &Path) -> Option<String> {
     let norm = |s: &str| s.trim().trim_matches('"').split(',').next().unwrap_or("").replace('/', "\\").trim_end_matches('\\').to_lowercase();
     let want = norm(&dir.to_string_lossy());

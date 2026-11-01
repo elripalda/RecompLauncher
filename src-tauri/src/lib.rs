@@ -24,7 +24,9 @@ pub mod media;
 pub mod mods;
 pub mod pads;
 pub mod own_setup;
+pub mod ghinfo;
 pub mod ping;
+pub mod plugins;
 pub mod push;
 pub mod profile;
 pub mod proton;
@@ -155,7 +157,7 @@ async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>
     }
 }
 
-async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
+async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
     let report = |p: Progress| {
         let _ = app.emit("install", p);
     };
@@ -189,9 +191,29 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if !runs_here(&entry, os) && !linux_new {
         return Err(Error::Msg(format!("This recomp has no {os_name} version yet.")));
     }
-    let asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
+    let mut asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
         .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
         .clone();
+    // Several builds that fit this PC equally (one per region, say): the one the player picked, the
+    // one most like what they had, or they're asked.
+    let choices = if linux_new { assets::choices(&linux_files, os, arch, None) } else { assets::choices(&rel.assets, os, arch, pattern) };
+    if choices.len() > 1 {
+        let had = st.lib.lock().unwrap().installed.get(id).map(|g| g.asset.clone()).filter(|a| !a.is_empty());
+        match (file.as_deref(), had) {
+            (Some(f), _) => {
+                asset = choices.iter().find(|a| a.name == f).map(|a| (*a).clone()).ok_or_else(|| Error::Msg(format!("{f} isn't in this release.")))?;
+            }
+            (None, Some(h)) => {
+                if let Some(a) = assets::most_like(&choices, &h) {
+                    asset = a.clone();
+                }
+            }
+            (None, None) => {
+                let names: Vec<&str> = choices.iter().map(|a| a.name.as_str()).collect();
+                return Err(Error::Msg(format!("PICK_BUILD|{}", names.join("|"))));
+            }
+        }
+    }
 
     let (lib_dir, keep, backup_first, prev) = {
         let l = st.lib.lock().unwrap();
@@ -238,6 +260,14 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // The settings the player picked on the game's page, put back after the update's files.
     let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.repo, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
+    // Another build of it picked (one region for another): a single-file build it had goes, so the
+    // new one is the one that starts.
+    if let Some(p) = prev.as_ref().filter(|p| !p.asset.is_empty() && p.asset != asset.name) {
+        let low = p.asset.to_lowercase();
+        if low.ends_with(".appimage") || low.ends_with(".exe") {
+            let _ = std::fs::remove_file(target.join(&p.asset));
+        }
+    }
     report(Progress::new(id, "unpack", 0, 0));
     let (file, t2, staging) = (got.file.clone(), target.clone(), home.join(".staging").join(folder_name(id)));
     let what = asset.name.clone();
@@ -426,7 +456,7 @@ fn human(b: u64) -> String {
 }
 
 #[tauri::command]
-async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, tag: Option<String>) -> Res<()> {
+async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, tag: Option<String>, file: Option<String>) -> Res<()> {
     if st.moving.lock().unwrap().contains(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
@@ -442,7 +472,7 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let st = app2.state::<App>();
-        let r = do_install(&app2, &st, &id, dir, tag.filter(|t| !t.is_empty()), cancel).await;
+        let r = do_install(&app2, &st, &id, dir, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), cancel).await;
         st.jobs.lock().unwrap().remove(&id);
         match r {
             Ok(()) => {}
@@ -457,6 +487,21 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         }
     });
     Ok(())
+}
+
+/// The builds of a recomp's newest release that fit this PC, when there's more than one (one per
+/// region, say), and the one installed now.
+#[tauri::command]
+async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
+    let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
+    let entry = catalog::app(&cat, &id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
+    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, str_of(&entry, "repo"), false).await?.data)?;
+    let have = st.lib.lock().unwrap().installed.get(&id).map(|g| (g.tag.clone(), g.asset.clone())).unwrap_or_default();
+    let rel = rels.iter().find(|r| r.tag_name == have.0).or_else(|| catalog::latest(&rels)).ok_or_else(|| Error::Msg("It has no releases yet.".into()))?;
+    let os = os_for(&st, &entry, &id);
+    let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
+    let names: Vec<String> = assets::choices(&rel.assets, os, assets::arch_now(), pattern).iter().map(|a| a.name.clone()).collect();
+    Ok(json!({"tag": rel.tag_name, "builds": names, "current": have.1}))
 }
 
 #[tauri::command(async)]
@@ -1967,61 +2012,171 @@ fn cached_catalog(st: &App) -> Value {
     catalog::with_mine(&st.dir, cat)
 }
 
-/// Add a recomp by its GitHub link. One the catalog already lists is that one; another becomes the
-/// player's own entry, with what its repo says about itself, once its releases have a version for
-/// this PC. Returns { id, known }.
+/// What a GitHub repo is, read before it's added: the catalog's entry when it has one; else the
+/// game and console its description, topics and README point at, a catalog game it looks like, and
+/// art from SteamGridDB when the player gave their key.
 #[tauri::command]
-async fn add_github(st: State<'_, App>, link: String) -> Res<Value> {
+async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String>) -> Res<Value> {
     let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub link. It looks like github.com/owner/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
-    let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
-    if let Some(a) = cat.get("apps").and_then(Value::as_array).and_then(|l| l.iter().find(|a| same(a))) {
-        return Ok(json!({"id": str_of(a, "id"), "known": true, "name": str_of(a, "name")}));
+    let apps = cat.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
+    if let Some(a) = apps.iter().find(|a| str_of(a, "repo").eq_ignore_ascii_case(&repo)) {
+        return Ok(json!({"repo": repo, "known": {"id": str_of(a, "id"), "name": str_of(a, "name")}}));
     }
-    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, &repo, true).await.map_err(|_| Error::Msg("Couldn't read that repo's releases. Check the link, and that it's public.".into()))?.data).unwrap_or_default();
+    let os = github_os(&st, &repo).await?;
+    let get = |url: String, raw: bool| {
+        let mut r = st.http.get(url).timeout(std::time::Duration::from_secs(10));
+        if raw {
+            r = r.header("Accept", "application/vnd.github.raw");
+        }
+        r.send()
+    };
+    let (info, readme) = tokio::join!(get(format!("https://api.github.com/repos/{repo}"), false), get(format!("https://api.github.com/repos/{repo}/readme"), true));
+    let info: Value = match info {
+        Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
+        _ => Value::Null,
+    };
+    let readme = match readme {
+        Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
+        _ => String::new(),
+    };
+    let desc = str_of(&info, "description").to_string();
+    let topics: Vec<String> = info.get("topics").and_then(Value::as_array).map(|l| l.iter().filter_map(|t| t.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let game = ghinfo::game_of(&desc, &readme);
+    let origin = ghinfo::console_of(&topics, &desc, &readme);
+    // A catalog game with the same name: likely the same game, maybe another recomp of it.
+    let similar = game.as_ref().and_then(|g| {
+        let want = ghinfo::norm(g);
+        apps.iter().find(|a| {
+            let (gn, nn) = (ghinfo::norm(str_of(a, "game")), ghinfo::norm(str_of(a, "name")));
+            want.len() >= 3 && (gn == want || nn == want || (want.len() >= 6 && (nn.contains(&want) || (!gn.is_empty() && want.contains(&gn) && gn.len() >= 6))))
+        })
+    });
+    let mut art = json!({"covers": [], "heroes": [], "logos": []});
+    let mut art_error = String::new();
+    if let (Some(k), Some(g)) = (sgdb_key.as_deref().map(str::trim).filter(|k| !k.is_empty()), game.as_ref()) {
+        match ghinfo::art(&st.http, k, g).await {
+            Ok(a) => art = a,
+            Err(e) => art_error = e,
+        }
+    }
+    Ok(json!({
+        "repo": repo,
+        "known": Value::Null,
+        "os": os,
+        "name": game.clone().unwrap_or_else(|| catalog::name_from_repo(&repo)),
+        "game": game.unwrap_or_default(),
+        "origin": origin,
+        "blurb": desc,
+        "similar": similar.map(|a| json!({"id": str_of(a, "id"), "name": str_of(a, "name")})),
+        "art": art,
+        "art_error": art_error,
+        "hero_default": format!("https://opengraph.githubassets.com/1/{repo}"),
+    }))
+}
+
+/// Art for a game from SteamGridDB, with the player's key.
+#[tauri::command]
+async fn github_art(st: State<'_, App>, game: String, sgdb_key: String) -> Res<Value> {
+    ghinfo::art(&st.http, sgdb_key.trim(), &game).await.map_err(Error::Msg)
+}
+
+/// The system its releases have a version for: this PC's, or Windows through Proton.
+async fn github_os(st: &App, repo: &str) -> Res<&'static str> {
+    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, repo, true).await.map_err(|_| Error::Msg("Couldn't read that repo's releases. Check the link, and that it's public.".into()))?.data).unwrap_or_default();
     if rels.is_empty() {
         return Err(Error::Msg("That repo hasn't put out a release yet, so there's nothing to install.".into()));
     }
     let (here, arch) = (assets::os_now(), assets::arch_now());
     let proton = here == "linux" && st.lib.lock().unwrap().settings.proton;
     let has = |os: &str| rels.iter().any(|r| !r.draft && assets::pick(&r.assets, os, arch, None).is_some());
-    let os = if has(here) {
-        here
+    if has(here) {
+        Ok(here)
     } else if proton && has("windows") {
-        "windows"
+        Ok("windows")
     } else {
         let name = match here {
             "windows" => "Windows",
             "macos" => "Mac",
             _ => "Linux",
         };
-        return Err(Error::Msg(format!("Its releases have no {name} version.")));
-    };
+        Err(Error::Msg(format!("Its releases have no {name} version.")))
+    }
+}
+
+/// What the player can set on a game they added themselves.
+const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero", "logo"];
+
+/// Add a recomp by its GitHub link. One the catalog already lists is that one; another becomes the
+/// player's own entry, with what its repo says about itself and what the player set (`info`: name,
+/// game, origin, cover, hero, logo), once its releases have a version for this PC. Returns
+/// { id, known, name }.
+#[tauri::command]
+async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub link. It looks like github.com/owner/name.".into()))?;
+    let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
+    let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
+    if let Some(a) = cat.get("apps").and_then(Value::as_array).and_then(|l| l.iter().find(|a| same(a))) {
+        return Ok(json!({"id": str_of(a, "id"), "known": true, "name": str_of(a, "name")}));
+    }
+    let os = github_os(&st, &repo).await?;
+    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, &repo, false).await?.data).unwrap_or_default();
     // What the repo says about itself, when GitHub answers (it's fine without).
-    let info: Value = match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
+    let meta: Value = match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
         Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
         _ => Value::Null,
     };
     let owner = repo.split('/').next().unwrap_or("").to_string();
     let id: String = format!("gh-{}", repo.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
     let newest = rels.iter().find(|r| !r.draft);
-    let entry = json!({
+    let mut entry = json!({
         "id": id,
         "name": catalog::name_from_repo(&repo),
         "repo": repo,
         "author": owner,
-        "blurb": str_of(&info, "description"),
+        "blurb": str_of(&meta, "description"),
         "systems": [os],
         "hero": format!("https://opengraph.githubassets.com/1/{repo}"),
         "released": newest.and_then(|r| r.published_at.clone()).unwrap_or_default(),
-        "stars": info.get("stargazers_count").cloned().unwrap_or(Value::Null),
+        "stars": meta.get("stargazers_count").cloned().unwrap_or(Value::Null),
         "custom": true,
     });
+    if let Some(i) = info.as_ref().and_then(Value::as_object) {
+        set_mine_fields(&mut entry, i);
+    }
     let mut list = catalog::mine(&st.dir);
     list.retain(|e| str_of(e, "id") != id);
     list.push(entry.clone());
     catalog::save_mine(&st.dir, &list)?;
     Ok(json!({"id": id, "known": false, "name": str_of(&entry, "name")}))
+}
+
+fn set_mine_fields(entry: &mut Value, i: &serde_json::Map<String, Value>) {
+    for k in MINE_FIELDS {
+        if let Some(v) = i.get(*k).and_then(Value::as_str) {
+            let v: String = v.trim().chars().take(if *k == "blurb" { 600 } else { 300 }).collect();
+            // Pictures from the web only (https), or none.
+            if ["cover", "hero", "logo"].contains(k) && !(v.is_empty() || v.starts_with("https://")) {
+                continue;
+            }
+            if v.is_empty() && *k == "name" {
+                continue;
+            }
+            entry[*k] = Value::String(v);
+        }
+    }
+}
+
+/// Edit Game Info: the player changes a game they added themselves.
+#[tauri::command(async)]
+fn update_mine(st: State<'_, App>, id: String, info: Value) -> Res<()> {
+    let mut list = catalog::mine(&st.dir);
+    let e = list.iter_mut().find(|e| str_of(e, "id") == id).ok_or_else(|| Error::Msg("Only games you added yourself can be changed.".into()))?;
+    if let Some(i) = info.as_object() {
+        set_mine_fields(e, i);
+    }
+    catalog::save_mine(&st.dir, &list)?;
+    Ok(())
 }
 
 /// Take a recomp the player added by its link back out (when it isn't installed).
@@ -2158,13 +2313,70 @@ fn set_update_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
     Ok(())
 }
 
+/// A copy picked as a .7z or .zip: unpacked into a folder beside it (as "Extract here" would), or
+/// into the launcher's own folder when that one can't be written to. The game inside it.
+fn unpack_copy(st: &App, need: &profile::GameCopy, file: &Path) -> Result<PathBuf, String> {
+    let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "game".into());
+    let beside = file.parent().map(|d| d.join(&stem)).filter(|t| std::fs::create_dir_all(t).is_ok());
+    let target = beside.unwrap_or_else(|| st.dir.join("game-copies").join(&stem));
+    // Unpacked before: used as it is.
+    if let Some(found) = copy_in(need, &target) {
+        return Ok(found);
+    }
+    let staging = st.dir.join("cache").join("unpack-copy");
+    install::unpack(file, &target, &staging).map_err(|e| format!("Couldn't unpack it: {e}"))?;
+    copy_in(need, &target).ok_or_else(|| format!("It's unpacked in {}, but the game isn't in it. Pick the game's file or folder from there.", target.display()))
+}
+
+/// The game in an unpacked folder: the folder itself or one inside it, or its biggest file that
+/// passes the copy's checks.
+fn copy_in(need: &profile::GameCopy, dir: &Path) -> Option<PathBuf> {
+    if !dir.is_dir() || std::fs::read_dir(dir).map(|mut d| d.next().is_none()).unwrap_or(true) {
+        return None;
+    }
+    let junk = ["txt", "nfo", "md", "url", "sfv", "jpg", "jpeg", "png", "html", "pdf", "lnk", "exe", "dll"];
+    let mut level = vec![dir.to_path_buf()];
+    let mut best: Option<(u64, PathBuf)> = None;
+    for _ in 0..4 {
+        let mut next = vec![];
+        for d in &level {
+            if need.kind != "iso" && profile::check_copy(need, d).is_ok() {
+                return Some(d.clone());
+            }
+            for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    next.push(p);
+                } else if need.kind != "folder" {
+                    let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    if junk.contains(&ext.as_str()) || profile::packed(need, &p).is_some() || profile::check_copy(need, &p).is_err() {
+                        continue;
+                    }
+                    let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+                    if best.as_ref().map(|(s, _)| size > *s).unwrap_or(true) {
+                        best = Some((size, p));
+                    }
+                }
+            }
+        }
+        if best.is_some() {
+            break;
+        }
+        level = next;
+    }
+    best.map(|(_, p)| p)
+}
+
 /// The player picked their copy of the game.
 #[tauri::command(async)]
 fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
-    let copy = PathBuf::from(&path);
+    let mut copy = PathBuf::from(&path);
     if let Some(need) = &p.game {
+        if matches!(profile::packed(need, &copy).as_deref(), Some("7z" | "zip")) {
+            copy = unpack_copy(&st, need, &copy).map_err(Error::Msg)?;
+        }
         profile::check_copy(need, &copy).map_err(Error::Msg)?;
     }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
@@ -2832,16 +3044,17 @@ fn linux_entry(v: &Value) -> Option<Value> {
 }
 
 /// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0 < 0.5.1: a beta comes before its release.
-fn version_key(s: &str) -> (u64, u64, u64, u64, u64) {
+fn version_key(s: &str) -> (u64, u64, u64, u64, u64, u64) {
     let s = s.trim().trim_start_matches(['v', 'V']);
     let (core, pre) = s.split_once('-').unwrap_or((s, ""));
     let mut n = core.split('.').map(|p| p.trim().parse::<u64>().unwrap_or(0));
     let (a, b, c) = (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0));
     if pre.is_empty() {
-        return (a, b, c, 1, 0);
+        return (a, b, c, 1, 0, 0);
     }
-    let num = pre.rsplit(|ch: char| !ch.is_ascii_digit()).find(|p| !p.is_empty()).and_then(|p| p.parse().ok()).unwrap_or(0);
-    (a, b, c, 0, num)
+    // beta.3.1: 3, then 1.
+    let mut nums = pre.split(|ch: char| !ch.is_ascii_digit()).filter(|p| !p.is_empty()).map(|p| p.parse::<u64>().unwrap_or(0));
+    (a, b, c, 0, nums.next().unwrap_or(0), nums.next().unwrap_or(0))
 }
 
 /// A game's releases that have a version for this PC, newest first: for going back to an older
@@ -4124,6 +4337,11 @@ pub fn run() {
                 responder.respond(resp.unwrap_or_else(|_| tauri::http::Response::new(Vec::new())));
             });
         })
+        // Plugins' pages and files: rlplug://localhost/<plugin>/<file> (see plugins.rs).
+        .register_uri_scheme_protocol("rlplug", |ctx, req| {
+            let st = ctx.app_handle().state::<App>();
+            plugins::serve(&st.dir, req.uri().path())
+        })
         .setup(|app| {
             // Asked to close, and none was running: nothing to do.
             if std::env::args().any(|a| a == "--quit") {
@@ -4280,6 +4498,24 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             add_github,
+            github_lookup,
+            github_art,
+            update_mine,
+            release_builds,
+            plugins::plugin_inspect,
+            plugins::plugin_install,
+            plugins::plugin_list,
+            plugins::plugin_enable,
+            plugins::plugin_all_off,
+            plugins::plugin_uninstall,
+            plugins::plugin_allow_site,
+            plugins::plugin_forget_site,
+            plugins::plugin_fetch,
+            plugins::plugin_store_get,
+            plugins::plugin_store_set,
+            plugins::plugin_library,
+            plugins::plugin_add_folder,
+            plugins::plugin_install_zip,
             locate_game,
             forget_game,
             remove_github,
@@ -4354,6 +4590,8 @@ mod tests {
         assert!(version_key("0.90.0-beta.1") > version_key("0.75.0-beta.23"));
         assert!(version_key("0.90.0-beta.1") > version_key("0.9.0-beta.1"));
         assert!(version_key("0.9.0-beta.1") < version_key("0.75.0-beta.23"));
+        assert!(version_key("0.90.0-beta.3.1") > version_key("0.90.0-beta.3"));
+        assert!(version_key("0.90.0-beta.4") > version_key("0.90.0-beta.3.1"));
     }
 
     #[test]

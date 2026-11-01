@@ -1407,3 +1407,40 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 .dl-row.link:hover{background:rgba(244,248,252,.04)}
 .badge.tr.miss{background:#F5B83D;color:#1a1204}
 .modal p.mono{font:12.5px ui-monospace,Consolas,monospace;color:var(--dim);overflow-wrap:anywhere}
+/* Settings → Sidebar: each section with its icon, arrows to move it and a switch. */
+.side-row{padding:10px 0}
+.side-row .k b{display:flex;align-items:center;gap:12px}
+.side-ic{display:inline-flex;width:20px;color:var(--dim)}
+.side-row .acts{gap:6px}
+.side-row .icon-btn:disabled{opacity:.3;pointer-events:none}
+.switch:disabled{opacity:.45;cursor:default}
+/* Plugins: a plugin's page fills the main area; its sidebar and Settings entries. */
+.plug-page{position:absolute;inset:0;display:flex}
+.plug-frame{flex:1;width:100%;height:100%;border:0;background:transparent;color-scheme:normal}
+.nav .plug-ic{display:inline-block;width:20px;height:20px;min-width:20px;object-fit:contain;flex:none}
+.plug-row{align-items:flex-start}
+.plug-row .k{flex:1}
+.plug-ic-big{width:44px;height:44px;border-radius:12px;background:var(--fill2);display:grid;place-items:center;flex:none;color:var(--muted)}
+.plug-ic-big .plug-ic,.plug-ic-big svg{width:26px;height:26px}
+.plug-perms{margin:8px 0 0;padding-left:18px;font-size:13px;color:var(--dim);display:grid;gap:3px}
+.modal .plug-perms{color:var(--muted);font-size:14px}
+.plug-sites{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:12.5px;color:var(--dim)}
+.plug-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border-radius:99px;background:var(--fill2);color:var(--muted)}
+.chip-x{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;color:var(--dim)}
+.chip-x:hover{background:var(--fill3);color:var(--ink)}
+.plug-ask-h{display:flex;align-items:center;gap:10px;margin-bottom:6px;color:var(--muted);font-size:14px}
+.plug-ask-h .plug-ic,.plug-ask-h svg{width:22px;height:22px}
+.acts.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.acts.grid3 .btn{white-space:normal;height:auto;min-height:42px;padding:8px 10px;line-height:1.2;text-align:center}
+.modal .path{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere;color:var(--muted)}
+/* Add From GitHub → Check the Details, and Edit Game Info. */
+.gi{display:grid;grid-template-columns:132px minmax(0,1fr);gap:18px;align-items:start;margin:4px 0 14px}
+.gi-cover{width:132px;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:var(--fill2) var(--hero) center/cover no-repeat;display:grid;place-items:center;box-shadow:0 0 0 1px var(--line2)}
+.gi-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.gi-cover span{font:800 28px Figtree,sans-serif;color:var(--dim)}
+.gi-fields{display:grid;gap:10px}
+.gi-fields label{display:grid;gap:4px;font-size:12.5px;color:var(--dim)}
+.gi-fields .field{width:100%}
+.gi-art{margin-bottom:10px}
+.gi-hint{margin:0 0 12px;font-size:13px}
+.gi-sim{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:12px;background:var(--fill2);margin-bottom:12px;font-size:13.5px}
