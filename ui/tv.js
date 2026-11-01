@@ -909,6 +909,7 @@
       ${hints([['A', t('Select')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
   }
   function pageDiscover() {
+    wantCounts();
     const g = TV.genre || '';
     const apps = pool();
     const genres = Object.keys(GENRES).filter((x) => apps.some((a) => a.genre === x));
@@ -934,7 +935,7 @@
 
   function pageDownloads() {
     const act = Object.keys(S.jobs), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
-    const item = (id, inner, k, extra = '') => { const a = byId(id) || { id, name: (S.library[id] || {}).name || id }; return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
+    const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
     const ups = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]);
     const items = act.map((id) => item(id, '', 'd:' + id, progress(id))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
@@ -1099,7 +1100,8 @@
   }
 
   function pageGame(id) {
-    const a = byId(id) || (S.library[id] ? { id, name: S.library[id].name, systems: [S.os] } : null);
+    wantCounts();
+    const a = byId(id) || (S.library[id] ? libApp(S.library[id]) : null);
     if (!a) return pageHome();
     const g = S.library[id];
     const shots = g ? S.shots[id] : null;

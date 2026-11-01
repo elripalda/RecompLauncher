@@ -107,6 +107,10 @@ async fn answer(app: &AppHandle, r: reqwest::Response) -> Res<Value> {
         forget(app);
         return Err(Error::Msg("You were signed out. Sign in again to use cloud saves.".into()));
     }
+    // The site having trouble (blocked, busy, down): the same as no connection, so it's quiet.
+    if crate::net::trouble_status(code) {
+        return Err(Error::Net("Can't reach recomplauncher.com right now.".into()));
+    }
     if code >= 400 || v.get("ok") == Some(&Value::Bool(false)) {
         let why = v.get("error").and_then(Value::as_str).map(String::from).unwrap_or_else(|| format!("The website didn't answer properly ({code}). Try again in a moment."));
         return Err(Error::Msg(why));
@@ -121,18 +125,20 @@ fn net(e: reqwest::Error) -> Error {
 async fn get(app: &AppHandle, q: &[(&str, &str)]) -> Res<Value> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    let r = st.http.get(api()).query(q).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str()).timeout(std::time::Duration::from_secs(15)).send().await.map_err(net)?;
+    let url = api();
+    let r = crate::net::send(st.http.get(&url).query(q).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str()).timeout(crate::net::QUICK), &url, true).await?;
     answer(app, r).await
 }
 
 async fn post(app: &AppHandle, a_: &str, body: Value, token: bool) -> Res<Value> {
     let st = app.state::<App>();
-    let mut req = st.http.post(api()).query(&[("a", a_)]).json(&body).timeout(std::time::Duration::from_secs(20));
+    let url = api();
+    let mut req = st.http.post(&url).query(&[("a", a_)]).json(&body).timeout(crate::net::QUICK);
     if token {
         let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
         req = req.bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
     }
-    answer(app, req.send().await.map_err(net)?).await
+    answer(app, crate::net::send(req, &url, true).await?).await
 }
 
 // ---------- signing in ----------
@@ -225,12 +231,8 @@ pub async fn account_state(app: AppHandle, fresh: bool) -> Res<Value> {
     if !fresh {
         return Ok(json!({"signedIn": true, "user": a.user}));
     }
-    // A slow or briefly blocked answer gets one more try before the account shows as offline.
-    let mut r = get(&app, &[("a", "me")]).await;
-    if matches!(r, Err(Error::Net(_)) | Err(Error::Msg(_))) && signed_in(&st.dir) {
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        r = get(&app, &[("a", "me")]).await;
-    }
+    // No answer: the account shows as offline, and the site is asked again later (see net.rs).
+    let r = get(&app, &[("a", "me")]).await;
     let why = match &r {
         Err(e) => e.to_string(),
         Ok(_) => String::new(),
@@ -315,17 +317,16 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let body = tokio::fs::read(&path).await?;
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let (made, played) = (man.made.to_string(), man.played.to_string());
-    let r = st
+    let url = api();
+    let req = st
         .http
-        .put(api())
+        .put(&url)
         .query(&[("a", "save-put"), ("game", id), ("hash", &man.hash), ("made", &made), ("played", &played), ("device", &man.device)])
         .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
         .header("Content-Type", "application/zip")
         .body(body)
-        .timeout(std::time::Duration::from_secs(300))
-        .send()
-        .await
-        .map_err(net)?;
+        .timeout(std::time::Duration::from_secs(300));
+    let r = crate::net::send(req, &url, true).await?;
     answer(app, r).await?;
     let mut s = saves::state(&st.dir, id);
     s.synced_hash = man.hash;
@@ -336,19 +337,55 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     Ok(())
 }
 
-/// Copies that didn't get up before (offline, or not signed in yet).
+/// Copies that didn't get up before (offline, or not signed in yet), one after another. Any that
+/// still don't make it are tried again once the site can be asked again (see net.rs).
 pub async fn upload_pending(app: &AppHandle) {
     let st = app.state::<App>();
-    if !signed_in(&st.dir) {
+    if !signed_in(&st.dir) || crate::net::resting(&api(), false) {
         return;
     }
     let ids: Vec<String> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).map(|g| g.id.clone()).collect();
+    let mut no_answer = false;
     for id in ids {
         let s = saves::state(&st.dir, &id);
         if let Some(name) = s.pending {
-            let _ = upload(app, &id, &name).await;
+            match upload(app, &id, &name).await {
+                Ok(()) => {}
+                // The site isn't answering: the rest wait, and go when it does.
+                Err(Error::Net(_)) => {
+                    no_answer = true;
+                    break;
+                }
+                // Refused for this one (full, or the copy is gone): it waits for the next launch,
+                // and the others still go.
+                Err(_) => continue,
+            }
         }
     }
+    if no_answer {
+        retry_pending_later(app);
+    } else {
+        RETRIES.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+static RETRY_PLANNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RETRIES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Pending copies tried again once the site can be asked again, later each time (30 seconds,
+/// doubling up to an hour, plus a random part); only after the site didn't answer.
+fn retry_pending_later(app: &AppHandle) {
+    if RETRY_PLANNED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let n = RETRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst).min(7);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let wait = crate::net::wait_left(&api()).max((30u64 << n).min(3600));
+        tokio::time::sleep(crate::net::spread(wait, 0.3)).await;
+        RETRY_PLANNED.store(false, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(upload_pending(&app)).await;
+    });
 }
 
 /// After a session (and from "Back up now"): a new copy if anything changed, sent up when cloud
@@ -368,6 +405,9 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
                 let mut s = saves::state(&st.dir, id);
                 s.pending = Some(l.name.clone());
                 saves::set_state(&st.dir, id, &s);
+                if matches!(e, Error::Net(_)) {
+                    retry_pending_later(app);
+                }
                 let _ = app.emit("toast", format!("Your save for {} is backed up on this PC. It goes to the cloud next time: {e}", g.name));
             }
         }
@@ -379,15 +419,14 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
 async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    let r = st
+    let url = api();
+    let req = st
         .http
-        .get(api())
+        .get(&url)
         .query(&[("a", "save-get"), ("game", id), ("v", &c.v)])
         .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
-        .timeout(std::time::Duration::from_secs(300))
-        .send()
-        .await
-        .map_err(net)?;
+        .timeout(std::time::Duration::from_secs(300));
+    let r = crate::net::send(req, &url, true).await?;
     if r.status().as_u16() != 200 {
         answer(app, r).await?;
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
@@ -678,14 +717,18 @@ pub async fn inbox_done(app: AppHandle, id: i64, result: String) -> Res<()> {
     Ok(())
 }
 
-/// Every minute and a half while signed in: anything sent from the website goes to the window
-/// (which installs it), with a notification when the window is out of sight.
+/// How often a signed-in launcher looks for games sent from the website.
+const INBOX_EVERY: u64 = 15 * 60;
+
+/// When the launcher opens, then every fifteen minutes or so while signed in: anything sent from
+/// the website goes to the window (which installs it), with a notification when the window is out
+/// of sight. Not asked while the site is resting after trouble.
 pub fn watch_inbox(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut told: std::collections::HashSet<i64> = Default::default();
-        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        tokio::time::sleep(crate::net::spread(8, 1.0)).await;
         loop {
-            if signed_in(&app.state::<App>().dir) {
+            if signed_in(&app.state::<App>().dir) && !crate::net::resting(&api(), false) {
                 if let Ok(v) = inbox(app.clone()).await {
                     let items: Vec<Value> = v.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
                     let fresh: Vec<Value> = items.into_iter().filter(|i| i.get("id").and_then(Value::as_i64).map(|id| told.insert(id)).unwrap_or(false)).collect();
@@ -701,7 +744,7 @@ pub fn watch_inbox(app: AppHandle) {
                     }
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(90)).await;
+            tokio::time::sleep(crate::net::spread(INBOX_EVERY, 0.2)).await;
         }
     });
 }

@@ -50,7 +50,8 @@ pub async fn get(http: &reqwest::Client, dir: &Path, url: &str) -> Option<Vec<u8
     if let Ok(b) = tokio::fs::read(&file).await {
         return Some(b);
     }
-    let r = http.get(url).timeout(std::time::Duration::from_secs(30)).send().await.ok()?;
+    // A site that's resting after trouble isn't asked: the picture shows next time.
+    let r = crate::net::send_picture(http.get(url).timeout(std::time::Duration::from_secs(30)), url).await?;
     if !r.status().is_success() {
         return None;
     }

@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "Hij gebruikt weer de eigen instellingen van de launcher.",
  "Pick the program that starts the game.": "Kies het programma dat de game start.",
  "Pick your game files, or choose It Asks for Them.": "Kies je gamebestanden, of kies „De game vraagt er zelf om”.",
- "Saved. Press Play to start it your way.": "Opgeslagen. Druk op Spelen om hem op jouw manier te starten."
+ "Saved. Press Play to start it your way.": "Opgeslagen. Druk op Spelen om hem op jouw manier te starten.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "recomplauncher.com is nu niet bereikbaar, dus dit is de lijst die op je pc is opgeslagen.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "recomplauncher.com is nu niet bereikbaar. Probeer het zo nog eens."
 }

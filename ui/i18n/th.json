@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "กลับไปใช้การตั้งค่าของตัวเปิดเกมเอง",
  "Pick the program that starts the game.": "เลือกโปรแกรมที่เปิดเกม",
  "Pick your game files, or choose It Asks for Them.": "เลือกไฟล์เกมของคุณ หรือเลือก “เกมจะถามเอง”",
- "Saved. Press Play to start it your way.": "บันทึกแล้ว กดเล่นเพื่อเริ่มตามแบบของคุณ"
+ "Saved. Press Play to start it your way.": "บันทึกแล้ว กดเล่นเพื่อเริ่มตามแบบของคุณ",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "ตอนนี้เชื่อมต่อ recomplauncher.com ไม่ได้ จึงแสดงรายการที่บันทึกไว้ใน PC ของคุณ",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "ตอนนี้เชื่อมต่อ recomplauncher.com ไม่ได้ ลองอีกครั้งในอีกสักครู่"
 }

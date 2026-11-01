@@ -9,12 +9,22 @@ use crate::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
-/// recomplauncher.com, or RL_API for testing against a local copy of the site.
+/// The server everything is read from (see net.rs, where its address lives).
 pub fn base() -> String {
-    std::env::var("RL_API").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "https://recomplauncher.com".into()).trim_end_matches('/').to_string()
+    crate::net::base()
 }
+
+/// How long the list and each recomp's release info are used before asking again.
+pub const LIST_FRESH: u64 = 6 * 3600;
+/// How long what players say about each recomp is used before asking again.
+pub const COUNTS_FRESH: u64 = 3600;
+
+/// The list has been asked for once since the launcher opened: after that it comes from disk,
+/// whatever its age, until the player presses Refresh.
+static LIST_ASKED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Release {
@@ -63,38 +73,87 @@ fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
-async fn get_json(http: &reqwest::Client, url: &str) -> Result<Value, Error> {
-    let r = http.get(url).timeout(Duration::from_secs(20)).send().await?;
+async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool) -> Result<Value, Error> {
+    let r = crate::net::send(http.get(url).timeout(wait), url, player).await?;
     if !r.status().is_success() {
-        return Err(Error::Msg(format!("recomplauncher.com answered {}", r.status().as_u16())));
+        return Err(Error::Net(format!("recomplauncher.com answered {}", r.status().as_u16())));
     }
-    Ok(r.json::<Value>().await?)
-}
-
-/// Ask the site, or fall back to the copy on disk. A copy younger than `fresh` seconds is used
-/// without asking.
-async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, check: fn(&Value) -> bool) -> Result<Fetched, Error> {
-    if let (Some(age), Some(v)) = (age_of(&file), load(&file)) {
-        if age < fresh && check(&v) {
-            return Ok(Fetched { data: v, offline: false, age });
+    match r.json::<Value>().await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            crate::net::bad_answer(url);
+            Err(e.into())
         }
     }
-    match get_json(http, url).await {
+}
+
+/// The copy on disk, if there's one that looks right, with how old it is.
+fn on_disk(file: &Path, check: fn(&Value) -> bool) -> Option<Fetched> {
+    let v = load(file).filter(check)?;
+    Some(Fetched { data: v, offline: crate::net::offline(), age: age_of(file).unwrap_or(0) })
+}
+
+/// The copy on disk when it's younger than `fresh` seconds; otherwise the site is asked, and the
+/// copy on disk (any age) is used when it can't be reached. A site that's resting isn't asked.
+async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wait: Duration, player: bool, check: fn(&Value) -> bool) -> Result<Fetched, Error> {
+    let have = on_disk(&file, check);
+    if let Some(h) = &have {
+        if h.age < fresh || crate::net::resting(url, player) {
+            return Ok(Fetched { data: h.data.clone(), offline: h.age >= fresh, age: h.age });
+        }
+    }
+    match get_json(http, url, wait, player).await {
         Ok(v) if check(&v) => {
             save(&file, &v);
             Ok(Fetched { data: v, offline: false, age: 0 })
         }
-        Ok(_) => Err(Error::Msg("recomplauncher.com sent something unexpected".into())),
-        Err(e) => match load(&file) {
-            Some(v) => Ok(Fetched { data: v, offline: true, age: age_of(&file).unwrap_or(0) }),
+        Ok(_) => {
+            crate::net::bad_answer(url);
+            have.map(|h| Fetched { offline: true, ..h }).ok_or_else(|| Error::Net("recomplauncher.com sent something unexpected".into()))
+        }
+        Err(e) => match have {
+            Some(h) => Ok(Fetched { offline: true, ..h }),
             None => Err(e),
         },
     }
 }
 
+fn list_file(dir: &Path) -> PathBuf {
+    dir.join("cache/pc-catalog.json")
+}
+
+fn list_ok(v: &Value) -> bool {
+    v.get("apps").map(Value::is_array).unwrap_or(false)
+}
+
+/// The list. `force`: the player pressed Refresh. Otherwise it's asked for once per launch, and
+/// only when the copy on disk is more than six hours old; everything after that reads the disk.
 pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<Fetched, Error> {
-    let fresh = if force { 0 } else { 300 };
-    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), dir.join("cache/pc-catalog.json"), fresh, |v| v.get("apps").map(Value::is_array).unwrap_or(false)).await?;
+    if !force && LIST_ASKED.load(Ordering::Relaxed) {
+        if let Some(f) = on_disk(&list_file(dir), list_ok) {
+            return Ok(Fetched { data: with_mine(dir, f.data), ..f });
+        }
+    }
+    LIST_ASKED.store(true, Ordering::Relaxed);
+    let fresh = if force { 0 } else { LIST_FRESH };
+    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), list_file(dir), fresh, crate::net::LONGER, force, list_ok).await?;
+    f.data = with_mine(dir, f.data);
+    Ok(f)
+}
+
+/// For the window as it opens: the copy on disk straight away (None when there isn't one), and
+/// whether it's old enough to be asked for again in the background.
+pub fn catalog_now(dir: &Path) -> Option<(Fetched, bool)> {
+    let f = on_disk(&list_file(dir), list_ok)?;
+    // Decided once per launch: after this, the list is only asked for again by Refresh or a push.
+    let stale = f.age >= LIST_FRESH && !LIST_ASKED.swap(true, Ordering::Relaxed);
+    Some((Fetched { data: with_mine(dir, f.data), ..f }, stale))
+}
+
+/// The list asked for again in the background (not the player's doing).
+pub async fn catalog_refresh(http: &reqwest::Client, dir: &Path) -> Result<Fetched, Error> {
+    LIST_ASKED.store(true, Ordering::Relaxed);
+    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), list_file(dir), 0, crate::net::LONGER, false, list_ok).await?;
     f.data = with_mine(dir, f.data);
     Ok(f)
 }
@@ -177,8 +236,8 @@ pub fn name_from_repo(repo: &str) -> String {
 
 /// What players say about each recomp, in counts: { id: { runs, issues, broken } }.
 pub async fn report_counts(http: &reqwest::Client, dir: &Path, force: bool) -> Result<Fetched, Error> {
-    let fresh = if force { 0 } else { 900 };
-    cached(http, &format!("{}/api/pc.php?a=counts", base()), dir.join("cache/pc-counts.json"), fresh, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
+    let fresh = if force { 0 } else { COUNTS_FRESH };
+    cached(http, &format!("{}/api/pc.php?a=counts", base()), dir.join("cache/pc-counts.json"), fresh, crate::net::QUICK, force, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
 }
 
 /// One recomp's player reports: the counts and the newest reports, with the PC each was played on.
@@ -186,8 +245,8 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
         return Err(Error::Msg("That isn't a recomp.".into()));
     }
-    let fresh = if force { 0 } else { 600 };
-    cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
+    let fresh = if force { 0 } else { COUNTS_FRESH };
+    cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
 }
 
 fn repo_ok(repo: &str) -> bool {
@@ -196,13 +255,46 @@ fn repo_ok(repo: &str) -> bool {
     ok(it.next()) && ok(it.next()) && it.next().is_none()
 }
 
+fn releases_file(dir: &Path, repo: &str) -> PathBuf {
+    dir.join("cache/releases").join(format!("{}.json", repo.replace('/', "__")))
+}
+
+fn releases_url(repo: &str) -> String {
+    format!("{}/api/gh.php?repo={}", base(), repo)
+}
+
+/// A recomp's releases. Used from disk while younger than six hours. `force`: the player asked
+/// for it now (installing, updating, adding a repo).
 pub async fn releases(http: &reqwest::Client, dir: &Path, repo: &str, force: bool) -> Result<Fetched, Error> {
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    let file = dir.join("cache/releases").join(format!("{}.json", repo.replace('/', "__")));
-    let url = format!("{}/api/gh.php?repo={}", base(), repo);
-    cached(http, &url, file, if force { 0 } else { 600 }, Value::is_array).await
+    cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { LIST_FRESH }, crate::net::QUICK, force, Value::is_array).await
+}
+
+/// For installing or updating: the player's doing, but a copy from the last `secs` seconds (an
+/// update that was just found) is used rather than asking again.
+pub async fn releases_within(http: &reqwest::Client, dir: &Path, repo: &str, secs: u64) -> Result<Fetched, Error> {
+    if !repo_ok(repo) {
+        return Err(Error::Msg("That isn't a GitHub repo".into()));
+    }
+    cached(http, &releases_url(repo), releases_file(dir, repo), secs, crate::net::QUICK, true, Value::is_array).await
+}
+
+/// A recomp's releases as kept on disk (any age), without asking anyone.
+pub fn releases_on_disk(dir: &Path, repo: &str) -> Option<Fetched> {
+    if !repo_ok(repo) {
+        return None;
+    }
+    on_disk(&releases_file(dir, repo), Value::is_array)
+}
+
+/// Asked again in the background (not the player's doing): a push about a new release.
+pub async fn releases_refresh(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
+    if !repo_ok(repo) {
+        return Err(Error::Msg("That isn't a GitHub repo".into()));
+    }
+    cached(http, &releases_url(repo), releases_file(dir, repo), 0, crate::net::QUICK, false, Value::is_array).await
 }
 
 /// The newest release to install: not a draft, and not a pre-release unless that's all there is.
@@ -270,7 +362,7 @@ pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
     if done {
         return false;
     }
-    load(&dir.join("cache/pc-catalog.json"))
+    load(&list_file(dir))
         .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
         .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
         .unwrap_or(false)

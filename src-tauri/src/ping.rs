@@ -3,6 +3,8 @@
 //! once on this PC (never tied to the account), the launcher's version, the system, Desktop or Big
 //! Picture mode, whether someone is signed in, and the recomp being played. No names, no paths.
 //! Settings > General > "Share anonymous usage stats" turns it all off. Every error is dropped.
+//! The heartbeat is every half hour at the most often (the website can ask for less often, never
+//! more), and nothing is sent while the site is resting after trouble.
 
 use crate::App;
 use serde_json::{json, Value};
@@ -12,7 +14,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
-const DEFAULT_NEXT: u64 = 300;
+/// Seconds between heartbeats: half an hour, or longer if the website asks.
+const DEFAULT_NEXT: u64 = 1800;
+const MAX_NEXT: u64 = 86_400;
 
 fn url() -> String {
     format!("{}/api/launcher-ping.php", crate::catalog::base())
@@ -108,11 +112,12 @@ async fn post(app: &AppHandle, b: Value) {
     if !on(&st) {
         return;
     }
-    let r = st.http.post(url()).json(&b).timeout(std::time::Duration::from_secs(10)).send().await;
+    let u = url();
+    let r = crate::net::send(st.http.post(&u).json(&b).timeout(crate::net::QUICK), &u, false).await;
     if let Ok(r) = r {
         if let Ok(v) = r.json::<Value>().await {
             if let Some(n) = v.get("next").and_then(Value::as_u64) {
-                NEXT.store(n.clamp(60, 86_400), Ordering::Relaxed);
+                NEXT.store(n.clamp(DEFAULT_NEXT, MAX_NEXT), Ordering::Relaxed);
             }
         }
     }
@@ -147,7 +152,7 @@ pub fn usage_open(app: AppHandle, mode: String) {
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(NEXT.load(Ordering::Relaxed))).await;
+            tokio::time::sleep(crate::net::spread(NEXT.load(Ordering::Relaxed), 0.1)).await;
             let st = app2.state::<App>();
             let mut b = body(&st, "heartbeat");
             now_playing(&st, &mut b);

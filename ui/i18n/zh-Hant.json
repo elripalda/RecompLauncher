@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "它會重新使用啟動器本身的設定。",
  "Pick the program that starts the game.": "請選擇啟動遊戲的程式。",
  "Pick your game files, or choose It Asks for Them.": "請選擇您的遊戲檔案，或選擇「遊戲會自己詢問」。",
- "Saved. Press Play to start it your way.": "已儲存。按「開始遊戲」以您的方式啟動。"
+ "Saved. Press Play to start it your way.": "已儲存。按「開始遊戲」以您的方式啟動。",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "暫時無法連線到 recomplauncher.com，以下是儲存在你電腦上的清單。",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "暫時無法連線到 recomplauncher.com，請稍後再試。"
 }

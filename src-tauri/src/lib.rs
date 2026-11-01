@@ -22,6 +22,7 @@ pub mod looks;
 pub mod manage;
 pub mod media;
 pub mod mods;
+pub mod net;
 pub mod pads;
 pub mod own_setup;
 pub mod ghinfo;
@@ -174,7 +175,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
     trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
-    let rels: Vec<Release> = serde_json::from_value(getting_ready(catalog::releases(&st.http, &st.dir, &repo, true), &cancel).await?.data)?;
+    let rels: Vec<Release> = serde_json::from_value(getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?;
     trail::note(format!("Install {id}: {} releases", rels.len()));
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
@@ -981,7 +982,7 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
 }
 
 /// After a fresh catalog: tell the player about new recomps for games they own.
-fn note_new_apps(app: &AppHandle, st: &App, cat: &Value) {
+pub(crate) fn note_new_apps(app: &AppHandle, st: &App, cat: &Value) {
     // The player's own (added by link) aren't news.
     let ids: Vec<String> = cat.get("apps").and_then(Value::as_array).map(|a| a.iter().filter(|x| !x.get("custom").and_then(Value::as_bool).unwrap_or(false)).filter_map(|x| x.get("id")?.as_str().map(str::to_string)).collect()).unwrap_or_default();
     if ids.is_empty() {
@@ -1109,7 +1110,7 @@ async fn fetch_bytes(http: &reqwest::Client, url: &str) -> Vec<u8> {
         return vec![];
     }
     let full = if url.starts_with("http") { url.to_string() } else { format!("{}{}", catalog::base(), url) };
-    match http.get(full).send().await {
+    match net::send(http.get(&full).timeout(net::LONGER), &full, true).await {
         Ok(r) if r.status().is_success() => r.bytes().await.map(|b| b.to_vec()).unwrap_or_default(),
         _ => vec![],
     }
@@ -3517,8 +3518,34 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
 
 // ---------- the catalog ----------
 
+/// Whether the server is resting after trouble (the window shows "Offline" while it is).
+#[tauri::command]
+fn net_state() -> Value {
+    json!({ "offline": net::offline() })
+}
+
+/// The list for the window. Without `force`, the copy on disk comes back at once (the window never
+/// waits on the network for it) and, when it's more than six hours old, a new one is asked for in
+/// the background and sent as "catalog-fresh". `force`: the player pressed Refresh.
 #[tauri::command]
 async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<catalog::Fetched> {
+    if !force {
+        if let Some((f, stale)) = catalog::catalog_now(&st.dir) {
+            if stale {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let st = app.state::<App>();
+                    if let Ok(f) = catalog::catalog_refresh(&st.http, &st.dir).await {
+                        if !f.offline {
+                            note_new_apps(&app, &st, &f.data);
+                            let _ = app.emit("catalog-fresh", ());
+                        }
+                    }
+                });
+            }
+            return Ok(f);
+        }
+    }
     let f = catalog::catalog(&st.http, &st.dir, force).await?;
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
@@ -3526,20 +3553,52 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     Ok(f)
 }
 
+/// A recomp's releases for its page. Without `force`, the copy on disk comes back at once and,
+/// when it's more than six hours old, a new one is asked for in the background and announced as
+/// "releases-fresh". With nothing on disk, it's asked for now.
 #[tauri::command]
-async fn get_releases(st: State<'_, App>, repo: String, force: bool) -> Res<catalog::Fetched> {
+async fn get_releases(app: AppHandle, st: State<'_, App>, repo: String, force: bool) -> Res<catalog::Fetched> {
+    if !force {
+        if let Some(f) = catalog::releases_on_disk(&st.dir, &repo) {
+            if f.age >= catalog::LIST_FRESH && !net::resting(&format!("{}/api/gh.php", catalog::base()), false) {
+                let (app, repo) = (app.clone(), repo.clone());
+                tauri::async_runtime::spawn(async move {
+                    let st = app.state::<App>();
+                    if matches!(catalog::releases(&st.http, &st.dir, &repo, false).await, Ok(f) if !f.offline) {
+                        let _ = app.emit("releases-fresh", json!({ "repo": repo }));
+                    }
+                });
+            }
+            return Ok(f);
+        }
+    }
     catalog::releases(&st.http, &st.dir, &repo, force).await
 }
 
 /// Installed games with a newer release than the one installed: id -> the new tag.
+/// Release info comes from disk while it's younger than six hours, so this only asks the site
+/// for games whose info is older (one at a time). `force`: the player pressed Check for Updates.
 #[tauri::command]
-async fn check_updates(st: State<'_, App>) -> Res<HashMap<String, String>> {
+async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<String, String>> {
+    let force = force.unwrap_or(false);
     let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    // The list says which version is newest: a game already on it needs no question to the site.
+    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
+    let same = |a: &str, b: &str| {
+        let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).to_ascii_lowercase();
+        !a.trim().is_empty() && n(a) == n(b)
+    };
     let mut out = HashMap::new();
     let (mut asked, mut failed) = (0, 0);
     for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
         asked += 1;
-        let Ok(f) = catalog::releases(&st.http, &st.dir, &g.repo, false).await else {
+        let listed = catalog::app(&cat, &g.id).map(|a| str_of(a, "version").to_string()).unwrap_or_default();
+        let on_disk = if !force && same(&listed, &g.tag) { catalog::releases_on_disk(&st.dir, &g.repo) } else { None };
+        let got = match on_disk {
+            Some(f) => Ok(f),
+            None => catalog::releases(&st.http, &st.dir, &g.repo, force).await,
+        };
+        let Ok(f) = got else {
             failed += 1;
             continue;
         };
@@ -3586,23 +3645,47 @@ fn version_from_files(g: &Installed, rels: &[Release]) -> Option<String> {
         .map(|(_, r)| r.tag_name.clone())
 }
 
-/// A newer RecompLauncher, from recomplauncher.com/launcher/version.json.
-/// What's in launcher/version.json now: for "What's new" after an update.
-#[tauri::command]
-async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
+/// How often a running launcher looks for a newer RecompLauncher.
+pub(crate) const LAUNCHER_CHECK_EVERY: u64 = 6 * 3600;
+
+/// launcher/version.json, kept on disk. A copy younger than `max_age` seconds is used as it is;
+/// otherwise the site is asked, and the copy on disk is used when it can't be reached.
+pub(crate) async fn version_json(st: &App, max_age: u64, player: bool) -> Option<Value> {
+    let file = st.dir.join("cache/version.json");
+    let disk = || std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(Value::is_object);
+    let age = std::fs::metadata(&file).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|d| d.as_secs());
+    if age.map(|a| a < max_age).unwrap_or(false) {
+        if let Some(v) = disk() {
+            return Some(v);
+        }
+    }
     let url = format!("{}/launcher/version.json", catalog::base());
-    let r = st.http.get(url).timeout(std::time::Duration::from_secs(10)).send().await.map_err(|e| Error::Net(e.to_string()))?;
-    Ok(if r.status().is_success() { r.json().await.unwrap_or(Value::Null) } else { Value::Null })
+    match net::send(st.http.get(&url).timeout(net::QUICK), &url, player).await {
+        Ok(r) if r.status().is_success() => match r.json::<Value>().await {
+            Ok(v) if v.is_object() => {
+                let _ = std::fs::create_dir_all(st.dir.join("cache"));
+                let _ = std::fs::write(&file, serde_json::to_vec(&v).unwrap_or_default());
+                Some(v)
+            }
+            _ => {
+                net::bad_answer(&url);
+                disk()
+            }
+        },
+        _ => disk(),
+    }
 }
 
+/// What's in launcher/version.json: for "What's new" after an update.
 #[tauri::command]
-async fn launcher_update(st: State<'_, App>) -> Res<Option<Value>> {
-    let url = format!("{}/launcher/version.json", catalog::base());
-    let Ok(r) = st.http.get(url).timeout(std::time::Duration::from_secs(10)).send().await else { return Ok(None) };
-    if !r.status().is_success() {
-        return Ok(None);
-    }
-    let v: Value = r.json().await.unwrap_or(Value::Null);
+async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
+    Ok(version_json(&st, LAUNCHER_CHECK_EVERY, false).await.unwrap_or(Value::Null))
+}
+
+/// A newer RecompLauncher, if there is one. Read from the copy on disk when it's younger than
+/// `max_age` seconds.
+pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
+    let v = version_json(st, max_age, player).await?;
     // Linux has its own build (an AppImage), listed under "linux". A list without one has no
     // update for Linux yet.
     let v = if cfg!(windows) { v } else { linux_entry(&v).unwrap_or(Value::Null) };
@@ -3613,7 +3696,15 @@ async fn launcher_update(st: State<'_, App>) -> Res<Option<Value>> {
     if !min.is_empty() && version_key(env!("CARGO_PKG_VERSION")) < version_key(&min) && v.is_object() {
         v["required"] = Value::Bool(true);
     }
-    Ok((!newest.is_empty() && version_key(&newest) > version_key(env!("CARGO_PKG_VERSION"))).then_some(v))
+    (!newest.is_empty() && version_key(&newest) > version_key(env!("CARGO_PKG_VERSION"))).then_some(v)
+}
+
+/// The window asks as it opens (an answer from the last hour is reused, so opening it again and
+/// again doesn't ask again), and with `force` when the player presses Check for Updates.
+#[tauri::command]
+async fn launcher_update(st: State<'_, App>, force: Option<bool>) -> Res<Option<Value>> {
+    let force = force.unwrap_or(false);
+    Ok(newer_launcher(&st, if force { 0 } else { 3600 }, force).await)
 }
 
 /// version.json's Linux build as an entry of its own: its version (or the shared one), url and sha256.
@@ -3683,19 +3774,30 @@ async fn versions(st: State<'_, App>, id: String) -> Res<Vec<Version>> {
 }
 
 /// Recomps the catalog lists without a version for this system: does their latest release have
-/// one after all? id -> true for the ones that do.
+/// one after all? id -> true for the ones that do. Answered from the release info on disk (any
+/// age); only recomps never looked at before are asked for, a few per launch, one at a time.
 #[tauri::command]
 async fn build_check(st: State<'_, App>, ids: Vec<String>) -> Res<HashMap<String, bool>> {
+    const NEW_PER_LAUNCH: usize = 5;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let (os, arch) = (assets::os_now(), assets::arch_now());
     let mut out = HashMap::new();
+    let mut asked = 0;
     for id in ids.into_iter().take(80) {
         let Some(entry) = catalog::app(&cat, &id) else { continue };
         let repo = str_of(entry, "repo");
         if repo.is_empty() {
             continue;
         }
-        let Ok(f) = catalog::releases(&st.http, &st.dir, repo, false).await else { continue };
+        let f = match catalog::releases_on_disk(&st.dir, repo) {
+            Some(f) => f,
+            None if asked < NEW_PER_LAUNCH && !net::offline() => {
+                asked += 1;
+                let Ok(f) = catalog::releases(&st.http, &st.dir, repo, false).await else { continue };
+                f
+            }
+            None => continue,
+        };
         let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
         let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
         if let Some(r) = catalog::latest(&rels) {
@@ -3724,8 +3826,9 @@ async fn news(st: State<'_, App>) -> Res<Vec<News>> {
     let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
     let cutoff = chrono::Utc::now() - chrono::Duration::days(60);
     let mut out = vec![];
+    // From the release info on disk only (the update check keeps it current).
     for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
-        let Ok(f) = catalog::releases(&st.http, &st.dir, &g.repo, false).await else { continue };
+        let Some(f) = catalog::releases_on_disk(&st.dir, &g.repo) else { continue };
         let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
         for r in rels.iter().filter(|r| !r.draft).take(3) {
             let date = r.published_at.clone().unwrap_or_default();
@@ -4067,7 +4170,8 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
         form.push(("name[]".into(), "launcher-trail.txt".into()));
         form.push(("text[]".into(), t));
     }
-    let r = st.http.post(format!("{}/api/logs.php", catalog::base())).form(&form).timeout(std::time::Duration::from_secs(30)).send().await?;
+    let url = format!("{}/api/logs.php", catalog::base());
+    let r = net::send(st.http.post(&url).form(&form).timeout(net::TRANSFER), &url, true).await?;
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
         Ok(str_of(&v, "message").to_string())
@@ -4245,7 +4349,8 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
             form.push(("text[]".into(), tail));
         }
     }
-    let r = st.http.post(format!("{}/api/logs.php", catalog::base())).form(&form).timeout(std::time::Duration::from_secs(30)).send().await?;
+    let url = format!("{}/api/logs.php", catalog::base());
+    let r = net::send(st.http.post(&url).form(&form).timeout(net::TRANSFER), &url, true).await?;
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
         Ok("Sent. Thanks for testing.".into())
@@ -4258,14 +4363,13 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
 /// place of this one on Linux. Anything else opens the download page.
 #[tauri::command]
 async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
-    let url = format!("{}/launcher/version.json", catalog::base());
-    let v: Value = st.http.get(url).timeout(std::time::Duration::from_secs(15)).send().await?.json().await?;
-    let page = format!("{}/download", catalog::base());
+    let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
+    let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.
     let appimage = if cfg!(target_os = "linux") { std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()) } else { None };
     let v = if cfg!(windows) { v } else { linux_entry(&v).unwrap_or(Value::Null) };
     let file_url = str_of(&v, "url").to_string();
-    let ok_host = file_url.starts_with("https://github.com/") || file_url.starts_with("https://recomplauncher.com/") || file_url.starts_with(&format!("{}/", catalog::base().trim_end_matches('/')));
+    let ok_host = file_url.starts_with("https://github.com/") || file_url.starts_with(&format!("{}/", net::SITE)) || file_url.starts_with(&format!("{}/", catalog::base().trim_end_matches('/')));
     if !(cfg!(windows) || appimage.is_some()) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
@@ -4970,9 +5074,10 @@ pub fn run() {
                 portable_remap(&dir);
             }
             trail::start(&dir);
+            net::init(app.handle());
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
-                .connect_timeout(std::time::Duration::from_secs(15))
+                .connect_timeout(std::time::Duration::from_secs(8))
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
@@ -5060,16 +5165,16 @@ pub fn run() {
             }
             // Games sent from the website, while signed in.
             cloud::watch_inbox(app.handle().clone());
-            // A new RecompLauncher: looked for every five minutes while it runs (it may stay by the
-            // clock), so a new build shows up soon after it's published.
+            // A new RecompLauncher: the window looks as it opens; after that, every six hours or so
+            // while it runs (it may stay by the clock). A push brings news of a new build sooner.
             {
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     let mut told = String::new();
                     loop {
-                        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                        tokio::time::sleep(net::spread(LAUNCHER_CHECK_EVERY, 0.1)).await;
                         let st = h.state::<App>();
-                        if let Ok(Some(v)) = launcher_update(st).await {
+                        if let Some(v) = newer_launcher(&st, 0, false).await {
                             let ver = str_of(&v, "version").to_string();
                             if ver != told {
                                 told = ver.clone();
@@ -5094,6 +5199,13 @@ pub fn run() {
             if let Some(root) = ingame::shots_dir("x").parent() {
                 let _ = std::fs::create_dir_all(root);
                 let _ = app.asset_protocol_scope().allow_directory(root, true);
+            }
+            // Covers and backgrounds the player picked, wherever the launcher keeps its data (the
+            // portable data folder too, which the usual app data rule doesn't reach).
+            {
+                let covers = app.state::<App>().dir.join("covers");
+                let _ = std::fs::create_dir_all(&covers);
+                let _ = app.asset_protocol_scope().allow_directory(&covers, true);
             }
             let handle = app.handle().clone();
             match play {
@@ -5153,7 +5265,7 @@ pub fn run() {
             forget_game,
             remove_github,
             take_setup_asked,
-            get_state, get_catalog, get_releases, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,

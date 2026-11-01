@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "Она снова использует настройку самого лаунчера.",
  "Pick the program that starts the game.": "Выберите программу, которая запускает игру.",
  "Pick your game files, or choose It Asks for Them.": "Выберите ваши файлы игры или вариант «Она сама их спросит».",
- "Saved. Press Play to start it your way.": "Сохранено. Нажмите «Играть», чтобы запустить её по-вашему."
+ "Saved. Press Play to start it your way.": "Сохранено. Нажмите «Играть», чтобы запустить её по-вашему.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "Сейчас не удаётся связаться с recomplauncher.com, поэтому показан список, сохранённый на вашем ПК.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "Сейчас не удаётся связаться с recomplauncher.com. Попробуйте чуть позже."
 }

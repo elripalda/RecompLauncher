@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "Nó lại dùng thiết lập riêng của trình khởi chạy.",
  "Pick the program that starts the game.": "Hãy chọn chương trình khởi động trò chơi.",
  "Pick your game files, or choose It Asks for Them.": "Hãy chọn tệp game của bạn, hoặc chọn “Trò chơi tự hỏi”.",
- "Saved. Press Play to start it your way.": "Đã lưu. Nhấn Chơi để khởi động theo cách của bạn."
+ "Saved. Press Play to start it your way.": "Đã lưu. Nhấn Chơi để khởi động theo cách của bạn.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "Hiện không kết nối được recomplauncher.com, nên đây là danh sách đã lưu trên PC của bạn.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "Hiện không kết nối được recomplauncher.com. Hãy thử lại sau ít phút."
 }

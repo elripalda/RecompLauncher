@@ -1,6 +1,6 @@
 //! What the launcher tells recomplauncher.com, when "Share usage and diagnostics" is on (Settings,
 //! General): the PC it runs on, once a day; game sessions, games that close right after starting,
-//! and installs that fail. And "How did it run?" reports, which the player sends themselves. Each
+//! and installs that fail, sent together every ten minutes or so rather than one by one. And "How did it run?" reports, which the player sends themselves. Each
 //! launcher has a random install ID; a signed-in launcher sends its account token too.
 //! recompstore.com/privacy says all of this.
 
@@ -128,7 +128,7 @@ fn token(dir: &Path) -> Option<String> {
 }
 
 async fn post(st: &App, a: &str, body: Value) -> Res<Value> {
-    let mut req = st.http.post(api()).query(&[("a", a)]).json(&body).timeout(std::time::Duration::from_secs(20));
+    let mut req = st.http.post(api()).query(&[("a", a)]).json(&body).timeout(crate::net::QUICK);
     // Only a player's own report carries their account (it shows under their name). Usage and
     // diagnostics never do: "No names", as Settings says.
     if a == "report" {
@@ -136,7 +136,8 @@ async fn post(st: &App, a: &str, body: Value) -> Res<Value> {
             req = req.header("X-RL-Token", t);
         }
     }
-    let r = req.send().await.map_err(|e| Error::Net(e.to_string()))?;
+    let url = api();
+    let r = crate::net::send(req, &url, a == "report").await?;
     let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if code >= 400 {
@@ -197,7 +198,24 @@ fn pending_file(st: &App) -> std::path::PathBuf {
     st.dir.join("cache/events.json")
 }
 
-/// Something worth knowing happened: sent now, or kept for later (up to 200).
+/// A send of what's waiting is planned.
+static FLUSH_PLANNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// What's waiting goes in one go, ten to fifteen minutes after the first of it (or with the next
+/// launch's hello, whichever is first).
+fn plan_flush(app: &AppHandle) {
+    if FLUSH_PLANNED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(crate::net::spread(600, 0.5)).await;
+        FLUSH_PLANNED.store(false, std::sync::atomic::Ordering::SeqCst);
+        let _ = send_pending(&app.state::<App>()).await;
+    });
+}
+
+/// Something worth knowing happened: kept, and sent with others a little later (up to 200 kept).
 pub async fn event(app: &AppHandle, e: Event) {
     let st = app.state::<App>();
     if !sharing(&st) {
@@ -212,7 +230,7 @@ pub async fn event(app: &AppHandle, e: Event) {
     }
     let _ = std::fs::create_dir_all(st.dir.join("cache"));
     let _ = std::fs::write(&f, serde_json::to_vec(&list).unwrap_or_default());
-    let _ = send_pending(&st).await;
+    plan_flush(app);
 }
 
 async fn send_pending(st: &App) -> Res<()> {

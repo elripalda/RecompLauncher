@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "Yeniden başlatıcının kendi kurulumunu kullanır.",
  "Pick the program that starts the game.": "Oyunu başlatan programı seçin.",
  "Pick your game files, or choose It Asks for Them.": "Oyun dosyalarınızı seçin ya da “Oyun kendisi ister” seçeneğini işaretleyin.",
- "Saved. Press Play to start it your way.": "Kaydedildi. Kendi kurduğunuz şekilde başlatmak için Oyna'ya basın."
+ "Saved. Press Play to start it your way.": "Kaydedildi. Kendi kurduğunuz şekilde başlatmak için Oyna'ya basın.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "Şu anda recomplauncher.com'a ulaşılamıyor, bu yüzden bu PC'nde kayıtlı liste.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "Şu anda recomplauncher.com'a ulaşılamıyor. Biraz sonra tekrar dene."
 }

@@ -8,11 +8,10 @@ const tvOn = () => document.body.classList.contains('tv-on');
 
 // ---------- updates ----------
 T.event.listen('launcher-update', ({ payload: v }) => { if (v && v.version) { S.launcherUpd = v; renderSide(); if (S.view === 'downloads') render(true); } if (v && v.version && v.version !== LL.told) { LL.told = v.version; updateToast(v); } });
-// Pushed by the website the moment it happens: a recomp's new release (its releases were just
-// looked at again), or a changed list.
+// Pushed by the website: a recomp's new release (its releases were just looked at again). A changed
+// list comes as 'catalog-fresh' (app.js).
 T.event.listen('push', ({ payload: p }) => {
   if (p && p.type === 'game') checkUpdates();
-  else if (p && p.type === 'catalog') loadCatalog(true).then(() => render(true)).catch(() => {});
 });
 // The download, then the installer's own small window; RecompLauncher opens again after.
 let updBox = null;
@@ -235,7 +234,7 @@ setTimeout(async () => {
 }, 15000);
 setTimeout(() => { statsMode = tvOn() ? 'tv' : 'desk'; invoke('usage_open', { mode: statsMode }).catch(() => {}); }, 2500);
 setTimeout(whatsNew, 3000);
+// Betas: when the launcher opens and when the account changes.
 setTimeout(loadBetas, 4000);
-setInterval(loadBetas, 30 * 60 * 1000);
 T.event.listen('account', () => setTimeout(loadBetas, 1500));
 window.askRun = askRun;

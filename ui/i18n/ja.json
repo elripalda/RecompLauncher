@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "ランチャー独自のセットアップに戻ります。",
  "Pick the program that starts the game.": "ゲームを起動するプログラムを選んでください。",
  "Pick your game files, or choose It Asks for Them.": "ゲームファイルを選ぶか、「ゲームが自分で尋ねる」を選んでください。",
- "Saved. Press Play to start it your way.": "保存しました。プレイを押すと、セットアップしたとおりに起動します。"
+ "Saved. Press Play to start it your way.": "保存しました。プレイを押すと、セットアップしたとおりに起動します。",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "現在 recomplauncher.com に接続できないため、PC に保存されたリストを表示しています。",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "現在 recomplauncher.com に接続できません。しばらくしてからもう一度お試しください。"
 }

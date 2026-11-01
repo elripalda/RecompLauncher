@@ -2,16 +2,17 @@
 //! ("push": an https address that streams server-sent events, an ntfy.sh topic's /sse for one),
 //! and the launcher keeps listening to it while it runs. A message there only says "look now":
 //!
-//! - "launcher" (or anything not understood): the launcher reads version.json again and, if
+//! - "launcher": the launcher reads version.json again and, if
 //!   there's a newer RecompLauncher, says so the same way as its own checks.
 //! - "game <id>" (or JSON {"type":"game","id":...}): a recomp put out a release; launchers that
 //!   have it installed look at its releases again and show the update.
-//! - "catalog": the list changed; the window reloads it.
+//! - "catalog": the list changed; it's read again and the window shows the new one.
 //!
 //! Nothing in a message is trusted beyond that: what to install and its checksum still come from
-//! recomplauncher.com. Looks are spread over a few seconds so every launcher doesn't ask at once,
-//! and there's at most one of each kind a minute, whatever arrives. "Look for updates when the
-//! launcher opens" off in Settings turns the listening off too.
+//! recomplauncher.com. A push reaches every open launcher at once, so each one waits a random time
+//! of up to fifteen minutes before it looks, and acts on each kind (and each game) at most once
+//! every six hours, whatever arrives. Anything not understood is ignored. Nothing is asked while the site is resting after
+//! trouble. "Look for updates when the launcher opens" off in Settings turns the listening off too.
 
 use crate::App;
 use serde_json::{json, Value};
@@ -49,25 +50,28 @@ fn read(data: &str) -> Option<Push> {
     if let Some(v) = v {
         let kind = v.get("type").and_then(Value::as_str).unwrap_or("");
         let id = v.get("id").and_then(Value::as_str).unwrap_or("").trim();
-        return Some(match kind {
-            "game" if !id.is_empty() => Push::Game(id.to_string()),
-            "catalog" => Push::Catalog,
-            _ => Push::Launcher,
-        });
+        return match kind {
+            "game" if !id.is_empty() => Some(Push::Game(id.to_string())),
+            "catalog" => Some(Push::Catalog),
+            "launcher" => Some(Push::Launcher),
+            _ => None,
+        };
     }
     let mut w = text.split_whitespace();
-    Some(match (w.next().unwrap_or("").to_ascii_lowercase().as_str(), w.next()) {
-        ("game", Some(id)) => Push::Game(id.to_string()),
-        ("catalog", _) => Push::Catalog,
-        _ => Push::Launcher,
-    })
+    match (w.next().unwrap_or("").to_ascii_lowercase().as_str(), w.next()) {
+        ("game", Some(id)) => Some(Push::Game(id.to_string())),
+        ("catalog", _) => Some(Push::Catalog),
+        ("launcher", _) => Some(Push::Launcher),
+        // Anything else asks for nothing.
+        _ => None,
+    }
 }
 
-/// The channel version.json names, if any (https only).
+/// The channel version.json names, if any (https only). The copy on disk is used when there is
+/// one (any age): reconnecting doesn't ask the site.
 async fn channel(app: &AppHandle) -> Option<String> {
     let st = app.state::<App>();
-    let url = format!("{}/launcher/version.json", crate::catalog::base());
-    let v: Value = st.http.get(url).timeout(Duration::from_secs(15)).send().await.ok()?.json().await.ok()?;
+    let v = crate::version_json(&st, u64::MAX, false).await?;
     v.get("push").and_then(Value::as_str).map(str::trim).filter(|u| u.starts_with("https://")).map(String::from)
 }
 
@@ -75,9 +79,19 @@ fn on(app: &AppHandle) -> bool {
     app.state::<App>().lib.lock().unwrap().settings.check_updates
 }
 
-/// A few seconds, different on every PC, so a push doesn't bring every launcher at once.
+/// Up to fifteen minutes, different on every PC, so a push doesn't bring every launcher at once.
 fn spread() -> Duration {
-    Duration::from_millis(500 + (crate::usage::rand_byte() as u64) * 80)
+    Duration::from_secs_f64(5.0 + 895.0 * crate::net::random())
+}
+
+/// A few seconds to a minute, for reconnecting to the channel.
+fn little() -> Duration {
+    Duration::from_secs_f64(2.0 + 58.0 * crate::net::random())
+}
+
+/// How long one kind of push (one game's, for a game) is ignored after it's been acted on.
+fn quiet_for(_: &Push) -> Duration {
+    Duration::from_secs(6 * 3600)
 }
 
 async fn act(app: AppHandle, p: Push) {
@@ -85,7 +99,7 @@ async fn act(app: AppHandle, p: Push) {
     match p {
         Push::Launcher => {
             let st = app.state::<App>();
-            if let Ok(Some(v)) = crate::launcher_update(st).await {
+            if let Some(v) = crate::newer_launcher(&st, 0, false).await {
                 let ver = v.get("version").and_then(Value::as_str).unwrap_or("").to_string();
                 let hidden = app.get_webview_window("main").map(|w| !w.is_visible().unwrap_or(true)).unwrap_or(true);
                 if hidden {
@@ -98,12 +112,20 @@ async fn act(app: AppHandle, p: Push) {
             let st = app.state::<App>();
             let g = st.lib.lock().unwrap().installed.get(&id).cloned();
             let Some(g) = g.filter(|g| !g.repo.is_empty() && !g.local) else { return };
-            // Its releases looked at again now, past the usual ten-minute cache.
-            let _ = crate::catalog::releases(&st.http, &st.dir, &g.repo, true).await;
+            // Its releases looked at again now, past the usual six-hour copy.
+            if crate::catalog::releases_refresh(&st.http, &st.dir, &g.repo).await.map(|f| f.offline).unwrap_or(true) {
+                return;
+            }
             let _ = app.emit("push", json!({"type": "game", "id": id}));
         }
         Push::Catalog => {
-            let _ = app.emit("push", json!({"type": "catalog"}));
+            let st = app.state::<App>();
+            if let Ok(f) = crate::catalog::catalog_refresh(&st.http, &st.dir).await {
+                if !f.offline {
+                    crate::note_new_apps(&app, &st, &f.data);
+                    let _ = app.emit("catalog-fresh", ());
+                }
+            }
         }
     }
 }
@@ -141,8 +163,11 @@ pub fn start(app: AppHandle) {
                             Push::Game(id) => format!("game {id}"),
                             Push::Catalog => "catalog".to_string(),
                         };
-                        if last.get(&key).map(|t| t.elapsed() < Duration::from_secs(60)).unwrap_or(false) {
+                        if last.get(&key).map(|t| t.elapsed() < quiet_for(&p)).unwrap_or(false) {
                             continue;
+                        }
+                        if last.len() > 200 {
+                            last.retain(|_, t| t.elapsed() < Duration::from_secs(6 * 3600));
                         }
                         last.insert(key, Instant::now());
                         tauri::async_runtime::spawn(act(app.clone(), p));
@@ -156,7 +181,7 @@ pub fn start(app: AppHandle) {
                 }
             }
             wait = if began.elapsed() > Duration::from_secs(120) { 5 } else { (wait * 2).min(600) };
-            tokio::time::sleep(Duration::from_secs(wait) + spread()).await;
+            tokio::time::sleep(Duration::from_secs(wait) + little()).await;
         }
     });
 }
@@ -174,6 +199,8 @@ mod tests {
         assert_eq!(read(r#"{"event":"message","message":"{\"type\":\"catalog\"}"}"#), Some(Push::Catalog));
         assert_eq!(read(r#"{"type":"game","id":"botw-native"}"#), Some(Push::Game("botw-native".into())));
         assert_eq!(read("launcher"), Some(Push::Launcher));
+        assert_eq!(read("hello there"), None);
+        assert_eq!(read(r#"{"type":"whatever"}"#), None);
         assert_eq!(read(""), None);
     }
 }

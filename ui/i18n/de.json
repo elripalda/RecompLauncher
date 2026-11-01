@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "Es nutzt wieder die Einrichtung des Launchers.",
  "Pick the program that starts the game.": "Wähl das Programm, das das Spiel startet.",
  "Pick your game files, or choose It Asks for Them.": "Wähl deine Spieldateien oder nimm „Es fragt selbst danach“.",
- "Saved. Press Play to start it your way.": "Gespeichert. Drück auf Spielen, um es auf deine Art zu starten."
+ "Saved. Press Play to start it your way.": "Gespeichert. Drück auf Spielen, um es auf deine Art zu starten.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "recomplauncher.com ist gerade nicht erreichbar, daher siehst du die auf deinem PC gespeicherte Liste.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "recomplauncher.com ist gerade nicht erreichbar. Versuch es gleich noch mal."
 }

@@ -52,7 +52,7 @@ The website's game page has a button that sends a recomp to one of your signed-i
 lists PCs whose system the recomp has a build for.
 
 - Website (cookie): `GET ?a=send-pcs&game=ID` → the PCs that can run it; `POST ?a=send {game, device}`.
-- Launcher (token): `GET ?a=inbox` every 90 seconds → `items: [{id, game, name, sent}]`. The
+- Launcher (token): `GET ?a=inbox` when it opens, then about every 15 minutes → `items: [{id, game, name, sent}]`. The
   launcher installs each one (with a notification when its window is hidden), then
   `POST ?a=inbox-done {id, result}` with `installing`, `installed` or `no`. Sends older than 30
   days are dropped.
@@ -84,7 +84,8 @@ accounts are turned off on the website, and are rate limited per IP.
   pads, games, bigpicture}`: once a day.
 - `POST ?a=events {install, events: [{kind, at, game, version, secs, code, detail}]}`: `session`
   (30 s or more), `crash` (closed in under 15 s with an error code), `install`, `update`, `error`,
-  `uninstall`. Kept on the PC in `cache/events.json` until they get through (200 at most).
+  `uninstall`. Kept on the PC in `cache/events.json` and sent together 10 to 15 minutes after the
+  first one (or with the next hello), 200 at most.
 
 Hello and events only go when "Share usage and diagnostics" is on (Settings, General; on by default,
 and in first-time setup). The admin page shows them on its Players and Problems tabs.
@@ -92,6 +93,30 @@ and in first-time setup). The admin page shows them on its Players and Problems 
 ## RecompLauncher's own updates
 
 `GET /launcher/version.json` → `{version, notes, url, sha256, size, date}`. The launcher checks on
-start and every 6 hours, downloads `url`, checks `sha256`, and runs the installer with `/P /R`
+start (reusing an answer from the last hour) and about every 6 hours, downloads `url`, checks `sha256`, and runs the installer with `/P /R`
 (quiet, then opens again). `notes` (Markdown) shows once as What's new. The admin page's Updates
 tab uploads an installer to `/launcher/` and publishes version.json.
+
+## How often the launcher asks
+
+Everything the launcher asks this server goes to one address, `API_BASE` in `src-tauri/src/net.rs`.
+
+- `pc-catalog.json`: kept on disk. Asked for when the launcher opens if the copy is more than 6
+  hours old (in the background; the window shows the copy on disk straight away), when the player
+  presses Refresh, or after a `catalog` push.
+- `api/gh.php?repo=`: kept on disk for 6 hours per repo. Asked for when the player opens a game's
+  page, installs or updates, and on start for installed games whose copy is older than 6 hours.
+- `api/pc.php?a=counts` and `a=feedback`: only when a page that shows them opens, kept for 1 hour.
+- `launcher/version.json`: on start (an answer from the last hour is reused), then about every
+  6 hours, or after a `launcher` push.
+- `api/launcher-ping.php`: on open, then every 30 minutes at the most often. A `next` (seconds) in
+  the answer can make it less often, never more.
+- `api/launcher.php`: the inbox about every 15 minutes while signed in; events in batches; cloud
+  saves before and after play.
+- Pushes: each launcher waits a random time of up to 15 minutes before acting on one, and acts on
+  each kind at most every 30 minutes (the list, every hour).
+
+When the server doesn't answer, times out, or answers 403, 408, 429 or 5xx, the launcher stops
+asking it for 30 seconds, then 1, 2, 4 minutes and so on up to an hour, each with a random part, and
+works from its copies on disk meanwhile (the window shows "Offline"). `Retry-After` on a 429 or 503
+is respected. Requests have short timeouts (10 seconds, 20 for the list).

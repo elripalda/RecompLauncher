@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "تعود لاستخدام إعداد المشغّل نفسه.",
  "Pick the program that starts the game.": "اختر البرنامج الذي يشغّل اللعبة.",
  "Pick your game files, or choose It Asks for Them.": "اختر ملفات اللعبة لديك، أو اختر «اللعبة تطلبها بنفسها».",
- "Saved. Press Play to start it your way.": "تم الحفظ. اضغط «تشغيل» لتشغيلها بطريقتك."
+ "Saved. Press Play to start it your way.": "تم الحفظ. اضغط «تشغيل» لتشغيلها بطريقتك.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "لا يمكن الوصول إلى recomplauncher.com الآن، لذا هذه هي القائمة المحفوظة على جهازك.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "لا يمكن الوصول إلى recomplauncher.com الآن. حاول مرة أخرى بعد قليل."
 }

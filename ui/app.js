@@ -173,7 +173,11 @@ async function checkLauncher(btn) {
   box.append(el);
   const t0 = Date.now();
   let v = null, bad = false;
-  try { v = await invoke('launcher_update'); } catch { bad = true; }
+  // Asks the site once a minute at most; a second press within it reads the answer just given.
+  const ask = Date.now() - (S.selfCheckedAt || 0) >= 60e3;
+  if (ask) S.selfCheckedAt = Date.now();
+  try { v = await invoke('launcher_update', { force: ask }); } catch { bad = true; }
+  if (!v && offNow()) bad = true;
   await new Promise((r) => setTimeout(r, Math.max(0, 900 - (Date.now() - t0))));
   if (btn) btn.disabled = false;
   if (v) { el.remove(); return updateToast(v); }
@@ -673,6 +677,12 @@ function newsSection() {
       <span class="in"><span class="kick">${esc(x.name)}</span><b>${esc(x.title)}</b><small>${esc(date(x.date))}${x.have ? ' · ' + esc(t('Installed')) : S.updates[x.id] === x.tag ? ' · ' + esc(t('Ready to update')) : ''}</small><span class="p">${esc(notesLine(x.notes) || t('No notes for this one.'))}</span></span></button>`; }).join('')}</div></section>`;
 }
 
+// The "Offline" mark: the list is the copy on disk because the site couldn't be reached, or the
+// site is resting after trouble (the launcher waits a while before asking it again).
+const offNow = () => !!(S.offline || S.netOff);
+T.event.listen('net', ({ payload }) => { S.netOff = !!(payload && payload.offline); const o = $('#offline'); if (o) o.hidden = !offNow(); });
+invoke('net_state').then((n) => { S.netOff = !!(n && n.offline); const o = $('#offline'); if (o) o.hidden = !offNow(); }).catch(() => {});
+
 // ---------- pages ----------
 function offlineNote() {
   return S.offline ? `<div class="offline"><span style="width:8px;height:8px;border-radius:50%;background:var(--warn);flex:none"></span>${esc(t('You\'re offline, so this is the list as it was the last time the launcher could reach it.'))}</div>` : '';
@@ -801,6 +811,7 @@ function discoverList() {
 }
 
 function pageDiscover() {
+  wantCounts();
   if (!S.cat) return `<div class="loading">${esc(t('Loading…'))}</div>`;
   const f = S.find, apps = visible();
   const genres = Object.keys(GENRES).filter((k) => apps.some((a) => a.genre === k));
@@ -936,8 +947,9 @@ function libraryGrid() {
 
 
 function pageGame(id) {
+  wantCounts();
   let a = byId(id);
-  if (!a && S.library[id]) a = { id, name: S.library[id].name, repo: S.library[id].repo, systems: [S.os] };
+  if (!a && S.library[id]) a = libApp(S.library[id]);
   if (!a) return S.cat ? `<div class="page"><div class="empty"><h2>${esc(t('This recomp isn\'t listed anymore'))}</h2><button type="button" class="btn" data-go="discover">${esc(t('Back to Discover'))}</button></div></div>` : `<div class="loading">${esc(t('Loading…'))}</div>`;
   const inst = S.library[id];
   if (S.mods[id] === undefined) loadMods(id);
@@ -1063,6 +1075,14 @@ function gameTabs(a) {
 }
 // ---------- how it runs, by the players' word ----------
 const RUN_WORD = { runs: N_('Plays great'), issues: N_('Has problems'), broken: N_('Won\'t run') };
+// What players say about each recomp: asked for when a page that shows it opens, at most once an
+// hour (the core keeps it on disk for an hour too).
+const COUNTS = { at: 0 };
+function wantCounts() {
+  if (Date.now() - COUNTS.at < 3600e3) return;
+  COUNTS.at = Date.now();
+  setTimeout(() => loadCounts(), 0);
+}
 async function loadCounts(force) {
   try { S.runCounts = (await invoke('report_counts', { force: !!force })) || {}; } catch { S.runCounts = S.runCounts || {}; }
   if (S.view === 'game') refreshGame();
@@ -1187,7 +1207,7 @@ function gameBody(a) {
 }
 // Switching tabs redraws only the part below them: the banner and cover stay where they are.
 function showTab(k) {
-  const id = S.arg, a = byId(id) || (S.library[id] && { id, name: S.library[id].name, repo: S.library[id].repo, systems: [S.os] });
+  const id = S.arg, a = byId(id) || (S.library[id] && libApp(S.library[id]));
   S.tab = k;
   const body = $('#g-body');
   if (!a || !body) return render(true);
@@ -1216,7 +1236,7 @@ async function loadSetup(id) {
 // A game page's data changed: redraw its tabs and body, not its banner.
 function refreshGame() {
   if (S.view !== 'game' || !$('#g-body') || ($('.gp') && $('.gp').dataset.gp !== S.arg)) return render(true);
-  const id = S.arg, a = byId(id) || (S.library[id] && { id, name: S.library[id].name, repo: S.library[id].repo, systems: [S.os] });
+  const id = S.arg, a = byId(id) || (S.library[id] && libApp(S.library[id]));
   if (!a) { $('.gp').dataset.gp = ''; return render(true); }
   const tabs = gameTabs(a);
   const have = $$('.tabs-in button').map((b) => b.dataset.tab + (b.querySelector('.tab-beta') ? '+' : '')).join();
@@ -2212,8 +2232,8 @@ function render(keepScroll) {
   if (typing) { if (typing.id === 'dq') S.q = typing.v; else S.lq = typing.v; }
   const gp = $('.gp', main);
   // A plugin's page keeps running while the rest of the window is redrawn.
-  if (v.startsWith('plug:') && !S.anim && main.dataset.v === v) { renderSide(); paintIsland(); $('#offline').hidden = !S.offline; return; }
-  if (keepScroll && v === 'game' && !S.anim && gp && gp.dataset.gp === S.arg) { refreshGame(); renderSide(); paintIsland(); $('#offline').hidden = !S.offline; fitTitles(main); return; }
+  if (v.startsWith('plug:') && !S.anim && main.dataset.v === v) { renderSide(); paintIsland(); $('#offline').hidden = !offNow(); return; }
+  if (keepScroll && v === 'game' && !S.anim && gp && gp.dataset.gp === S.arg) { refreshGame(); renderSide(); paintIsland(); $('#offline').hidden = !offNow(); fitTitles(main); return; }
   const html = v === 'discover' ? pageDiscover() : v === 'library' ? pageLibrary() : v === 'achievements' ? pageAchievements() : v === 'game' ? pageGame(S.arg) : v === 'downloads' ? pageDownloads() : v === 'settings' ? pageSettings() : v === 'shots' ? pageShots() : v === 'saves' && window.pageSaves ? window.pageSaves() : v.startsWith('plug:') && window.pagePlugin ? window.pagePlugin(v.slice(5)) : pageHome();
   // Going to a page draws it fresh, with its entrance. Anything else (the same page with new
   // data) is patched in place, so nothing on screen flickers.
@@ -2235,7 +2255,7 @@ function render(keepScroll) {
   }
   renderSide();
   paintIsland();
-  $('#offline').hidden = !S.offline;
+  $('#offline').hidden = !offNow();
   evenGrids(main);
   layoutShelves(main);
   fitTitles(main);
@@ -2541,19 +2561,25 @@ async function loadCatalog(force) {
     S.cat = Object.assign({ apps: [], origins: [] }, r.data);
     S.offline = !!r.offline;
     S.owned = ownedHere(S.owned);
-    // Keep every cover and banner on disk, so scrolling never waits and offline still looks right.
-    const urls = uniq(S.cat.apps.flatMap((a) => [a.cover, a.hero, a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
-    invoke('prefetch_images', { urls }).catch(() => {});
+    // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
+    // as it's shown (and is kept from then on).
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [a.cover, a.hero, a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    if (urls.length) invoke('prefetch_images', { urls }).catch(() => {});
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
     const ask = S.cat.apps.filter((a) => a.repo && !a.soon && !(a.systems || []).length && !(a.assets && Object.keys(a.assets).length)).map((a) => a.id);
     if (ask.length) invoke('build_check', { ids: ask }).then((b) => { S.builds = Object.assign({}, S.builds, b); if (Object.values(b).some(Boolean)) { render(true); if (window.tvRefresh) window.tvRefresh(); } }).catch(() => {});
   } catch (e) {
+    // No list on disk and the site can't be reached: the Library still works, and the "Offline"
+    // mark says why Discover is empty. No popup.
     if (!S.cat) S.cat = { apps: [], origins: [] };
     S.offline = true;
-    fail(e);
   }
 }
+// A newer list came in the background (it was more than six hours old, or the site said it changed).
+T.event.listen('catalog-fresh', () => loadCatalog(false).then(() => render(true)).catch(() => {}));
+// A recomp's releases came in fresh in the background.
+T.event.listen('releases-fresh', ({ payload }) => { const repo = payload && payload.repo; if (repo && S.rels[repo] && !S.rels[repo].loading) { delete S.rels[repo]; loadRels(repo); } });
 
 async function loadRels(repo, force) {
   if (!repo || (S.rels[repo] && S.rels[repo].loading)) return;
@@ -2569,7 +2595,7 @@ async function loadRels(repo, force) {
 }
 
 async function checkUpdates(loud) {
-  try { S.updates = await invoke('check_updates'); } catch (e) { if (loud) fail(e); return false; }
+  try { S.updates = await invoke('check_updates', { force: !!loud }); } catch (e) { if (loud) fail(e); return false; }
   renderSide();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
   if (S.view === 'downloads') render(true);
@@ -3551,20 +3577,17 @@ function viewShot(i, list = shotList()) {
 }
 
 // A newer RecompLauncher: one click downloads it, checks it and runs its installer.
-// A new RecompLauncher, announced while the launcher is open: looked for when it opens and when the
-// window comes back into view (at most once a minute); the core looks every 5 minutes as well
-// ('launcher-update' in more.js). Each new version is announced once.
-const LL = { at: 0, told: '' };
-async function lookForLauncher(now) {
-  if (!now && (S.away || Date.now() - LL.at < 60000)) return;
-  LL.at = Date.now();
+// A new RecompLauncher, announced while the launcher is open: looked for when it opens (an answer
+// from the last hour is reused); after that the core looks every six hours or so, and sooner when
+// the website pushes a new build ('launcher-update' in more.js). Each new version is announced once.
+const LL = { told: '' };
+async function lookForLauncher() {
   let v = null;
-  try { v = await invoke('launcher_update'); } catch { return; }
+  try { v = await invoke('launcher_update', { force: false }); } catch { return; }
   if (v && v.version) S.launcherUpd = v;
   if (v && v.version && v.version !== LL.told) { LL.told = v.version; updateToast(v); }
   renderSide();
 }
-window.addEventListener('focus', () => lookForLauncher(false));
 
 // A version too old to keep up (older than the list's "min"): a window, once each time the
 // launcher opens, instead of a toast that goes away.
@@ -4308,7 +4331,14 @@ async function act(el, e) {
     case 'dev-starter': try { const f = await invoke('dev_starter', { id }); toast(tf('Made {file}. Fill it in, then press Check again.', { file: baseName(f) })); delete S.dev[id]; return devCheck(id, true); } catch (err) { return fail(err); }
     case 'dev-file': return invoke('open_folder', { id }).catch(fail);
     case 'dev-remove': try { await invoke('uninstall', { id, deleteFiles: false }); delete S.library[id]; delete S.dev[id]; toast(t('Taken out of your Library. Your folder is still there.')); return go('library'); } catch (err) { return fail(err); }
-    case 'refresh': toast(t('Getting the newest list…')); await loadCatalog(true); await loadOwned(); loadEasy(); S.rels = {}; toast(t('Discover is up to date.')); return render(true);
+    case 'refresh': {
+      // Once a minute at most: the list is the same a moment later.
+      if (Date.now() - (S.refreshedAt || 0) < 60e3) { toast(t('Discover is up to date.')); return; }
+      S.refreshedAt = Date.now();
+      toast(t('Getting the newest list…')); await loadCatalog(true); await loadOwned(); loadEasy(); S.rels = {};
+      toast(offNow() ? t('Can\'t reach recomplauncher.com right now, so this is the list saved on your PC.') : t('Discover is up to date.'));
+      return render(true);
+    }
     case 'tvsize': return saveSettings({ tv_size: el.dataset.k });
     case 'shots-folder': return invoke('open_shots', { id }).catch(fail);
     case 'shot-g': return viewShot(Number(el.dataset.i), (S.shots[id] || []).map((p) => ({ path: p, game: (S.library[id] || {}).name })));
@@ -4342,9 +4372,12 @@ async function act(el, e) {
     case 'skip-backup': return invoke('skip_backup').catch(() => {});
     case 'check-upd': {
       el.disabled = true;
-      const ok = await checkUpdates(true);
+      // Once a minute at most asks the site; a second press within it reads what was just found.
+      const fresh = Date.now() - (S.updCheckedAt || 0) >= 60e3;
+      if (fresh) S.updCheckedAt = Date.now();
+      const ok = await checkUpdates(fresh);
       el.disabled = false;
-      if (ok && !Object.keys(S.updates || {}).length) toast(t('Everything is up to date.'));
+      if (ok && !Object.keys(S.updates || {}).length) toast(offNow() ? t('Can\'t reach recomplauncher.com right now. Try again in a bit.') : t('Everything is up to date.'));
       return render(true);
     }
     case 'lib-remove': {
@@ -4686,7 +4719,7 @@ T.event.listen('tray', ({ payload: p }) => {
   go(view);
 });
 // Out of sight (minimized, or closed to the clock): animations and timers rest until it's back.
-T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.classList.toggle('away', S.away); if (!S.away) lookForLauncher(false); });
+T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.classList.toggle('away', S.away); });
 T.event.listen('new-recomp', () => loadOwned().then(() => render(true)));
 T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetLooks(p.id); if (S.view === 'game' && S.arg === p.id) loadShots(p.id); });
 
@@ -4699,7 +4732,6 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   render();
   trayWords();
   await loadCatalog(false);
-  loadCounts();
   await loadOwned();
   await loadEasy(true);
   // No connection and nothing saved from before: the Library still works.
@@ -4708,14 +4740,15 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if ((S.settings.ui || {}).start_page === 'library' && S.view === 'home' && Object.keys(S.library).length) S.view = 'library';
   S.anim = 'enter';
   render(true);
-  if (S.settings.check_updates !== false) checkUpdates();
+  // Update check first (it keeps the release info on disk current), then the news reads from it.
+  const upd = S.settings.check_updates !== false ? checkUpdates() : Promise.resolve();
   applyLighter();
   // Handheld or not is worked out in the background when the launcher starts.
   setTimeout(() => invoke('is_handheld').then((h) => { S.handheld = !!h; applyLighter(); if (S.view === 'settings') render(); }).catch(() => {}), 3000);
   invoke('pc_check').then((pc) => { S.pc = pc; if (S.view === 'settings') render(true); }).catch(() => {});
   loadLibs();
-  lookForLauncher(true);
-  loadNews();
+  lookForLauncher();
+  upd.finally(() => loadNews());
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
   if (!S.settings.setup_done && window.firstRun) window.firstRun();

@@ -1832,5 +1832,7 @@
  "It uses the launcher's own setup again.": "Kembali memakai penyiapan bawaan launcher.",
  "Pick the program that starts the game.": "Pilih program yang menjalankan game.",
  "Pick your game files, or choose It Asks for Them.": "Pilih file game-mu, atau pilih “Game memintanya sendiri”.",
- "Saved. Press Play to start it your way.": "Tersimpan. Tekan Main untuk memulai dengan caramu."
+ "Saved. Press Play to start it your way.": "Tersimpan. Tekan Main untuk memulai dengan caramu.",
+ "Can't reach recomplauncher.com right now, so this is the list saved on your PC.": "recomplauncher.com tidak bisa dijangkau sekarang, jadi ini daftar yang tersimpan di PC-mu.",
+ "Can't reach recomplauncher.com right now. Try again in a bit.": "recomplauncher.com tidak bisa dijangkau sekarang. Coba lagi sebentar lagi."
 }
