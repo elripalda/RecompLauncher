@@ -37,6 +37,24 @@ fn name_of(dir: &Path, raw: Option<&Value>) -> String {
     })
 }
 
+/// The game a folder is a recomp of: its recomplauncher.json says, or its README does
+/// ("a recompilation of …"), or its own name does ("Some Game Recomp"). Empty when it can't tell.
+fn game_in(dir: &Path, raw: Option<&Value>, name: &str) -> String {
+    if let Some(g) = raw.and_then(|v| v.get("game")).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        return g.to_string();
+    }
+    let readme = ["README.md", "readme.md", "README.txt", "readme.txt", "README"]
+        .iter()
+        .find_map(|f| std::fs::read(dir.join(f)).ok())
+        .map(|b| String::from_utf8_lossy(&b[..b.len().min(20_000)]).to_string())
+        .unwrap_or_default();
+    let folder = name.replace([' ', '_'], "-");
+    crate::ghinfo::game_candidates(&folder, "", &readme)
+        .into_iter()
+        .find(|g| crate::ghinfo::norm(g) != crate::ghinfo::norm(name))
+        .unwrap_or_default()
+}
+
 fn read_raw(dir: &Path) -> Option<Value> {
     std::fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
 }
@@ -81,6 +99,7 @@ pub(crate) fn add_folder(st: &App, path: String, exe_pick: Option<PathBuf>, tag:
     let raw = read_raw(&dir);
     let prof = raw.as_ref().and_then(|v| serde_json::from_value::<profile::Profile>(v.clone()).ok());
     let name = name_of(&dir, raw.as_ref());
+    let game = game_in(&dir, raw.as_ref(), &name);
     let exe = exe_pick.filter(|e| dir.join(e).is_file()).or_else(|| program_in(&dir, prof.as_ref(), &name));
     let mut l = st.lib.lock().unwrap();
     // The same folder added again: the entry it already has.
@@ -97,6 +116,7 @@ pub(crate) fn add_folder(st: &App, path: String, exe_pick: Option<PathBuf>, tag:
     let g = Installed {
         id: id.clone(),
         name,
+        game,
         repo: prof.as_ref().map(|p| p.repo.clone()).unwrap_or_default(),
         tag: tag.into(),
         version: String::new(),

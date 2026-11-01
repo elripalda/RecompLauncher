@@ -817,3 +817,9 @@ body.light .tv-ach-ok{color:#8a6400}
 .tv-kb-hints{display:flex;gap:24px;margin:-4px 0 16px;font-size:19px;color:var(--tvsoft,#a9c1d4)}
 .tv-kb-hints span{display:flex;align-items:center;gap:8px}
 .tv-kb-hints .glyph{width:30px;height:30px}
+/* Beta 6: only the focused game's glow is drawn, and big soft glows are blurred small and scaled
+   up. Lighter for the Steam Deck. */
+.tv-cell .aura{display:none}
+.tv-cell:has(.tv-poster.f) .aura{display:block;animation:tvAura .3s ease}
+@keyframes tvAura{from{opacity:0;transform:scale(.9)}to{opacity:.75;transform:scale(1.04)}}
+body.playing .tv-stage *{animation-play-state:paused!important}

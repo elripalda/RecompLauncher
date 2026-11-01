@@ -1502,3 +1502,29 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 .plug-where b { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
 .plug-ph { display: grid; place-items: center; color: var(--muted); }
 .plug-ph .plug-ic { width: 28px; height: 28px; }
+#gi-origin + .drop{display:flex;width:100%;justify-content:space-between;height:44px;font-weight:500;font-size:14px}
+
+.gi-cover[data-x="choose"], .gi-hero[data-x="choose"] { cursor: pointer; transition: filter .15s; }
+.gi-cover[data-x="choose"]:hover, .gi-hero[data-x="choose"]:hover { filter: brightness(1.12); }
+
+.plug-dl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--dim)}
+.plug-dl span{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+
+/* ===== Beta 6: lighter drawing =========================================================
+   Blurs are the costliest thing to draw, on the Steam Deck and Linux most of all. A tile's glow
+   is only drawn while it's pointed at; big soft backgrounds are blurred small and scaled up (the
+   same look for a fraction of the work); wide tiles show their art without a blur; and nothing
+   reacts to the pointer while the page scrolls. */
+.tile .glow{display:none}
+.tile:hover .glow,.tile:focus-within .glow,.tile.on .glow{display:block;animation:glowIn .35s var(--ease)}
+@keyframes glowIn{from{opacity:0;transform:scale(.9)}to{opacity:.55;transform:scale(1)}}
+.poster.wide .wbg{filter:none;transform:none;inset:-4%;width:108%;height:108%}
+.gp-amb img{inset:auto;left:-120px;top:-120px;width:calc((100% + 240px) / 6);height:calc((100% + 240px) / 6);transform:scale(6);transform-origin:0 0;filter:blur(15px) saturate(1.5)}
+body.scrolling .tile,body.scrolling .shelf .track>*,body.scrolling .card a,body.scrolling .dl-row{pointer-events:none}
+/* Big grids: tiles out of view aren't drawn at all until they scroll in. */
+#main .grid>.tile{content-visibility:auto;contain-intrinsic-size:auto 320px}
+/* While a game runs, nothing in the launcher moves. */
+body.playing *,body.playing *::before,body.playing *::after{animation-play-state:paused!important}
+
+.plug-tab{height:min(70vh,720px);border-radius:var(--r);overflow:hidden;border:1px solid var(--line);background:var(--card)}
+.plug-tab iframe{width:100%;height:100%;border:0;display:block;background:transparent}

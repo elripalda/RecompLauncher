@@ -84,8 +84,56 @@ pub fn clean_tokio(c: &mut tokio::process::Command) {
     }
 }
 
+/// The launcher's own start on Linux, before any window: when Steam starts it (a Steam shortcut,
+/// Gaming Mode on a Steam Deck), Steam hands it Steam's own libraries and overlay, which the
+/// launcher's web view can crash on, so it starts itself again without them; and under Gaming
+/// Mode's compositor the web view draws with a renderer that works there.
+#[cfg(target_os = "linux")]
+pub fn prepare_start() {
+    let var = |k: &str| std::env::var(k).unwrap_or_default();
+    let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
+    let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
+    if (gamescope || from_steam) && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if std::env::var_os("RL_STEAM_CLEAN").is_some() {
+        return;
+    }
+    let (preload, libs) = (var("LD_PRELOAD"), var("LD_LIBRARY_PATH"));
+    let keep_pre = steam_free(&preload, ' ', &["gameoverlayrenderer"]);
+    let keep_lib = steam_free(&libs, ':', &["steam-runtime", "ubuntu12_32", "ubuntu12_64", "/steamrt", "pressure-vessel"]);
+    if keep_pre == preload && keep_lib == libs {
+        return;
+    }
+    for (k, v) in [("LD_PRELOAD", keep_pre), ("LD_LIBRARY_PATH", keep_lib)] {
+        if v.is_empty() {
+            std::env::remove_var(k);
+        } else {
+            std::env::set_var(k, v);
+        }
+    }
+    std::env::set_var("RL_STEAM_CLEAN", "1");
+    if let Ok(exe) = std::env::current_exe() {
+        use std::os::unix::process::CommandExt;
+        // Only returns when it couldn't start again; then it carries on as it is.
+        let _ = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
+    }
+}
+
+/// A list of paths (or preloads) without Steam's own entries.
+pub fn steam_free(list: &str, sep: char, drop: &[&str]) -> String {
+    let sep_s = sep.to_string();
+    list.split([sep, if sep == ' ' { ':' } else { sep }]).filter(|e| !e.is_empty() && !drop.iter().any(|d| e.contains(d))).collect::<Vec<_>>().join(&sep_s)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn steam_entries_are_taken_out() {
+        assert_eq!(super::steam_free("/tmp/.mount_x/usr/lib:/home/deck/.steam/root/ubuntu12_32/steam-runtime/lib:/usr/lib", ':', &["steam-runtime", "ubuntu12_32"]), "/tmp/.mount_x/usr/lib:/usr/lib");
+        assert_eq!(super::steam_free("/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so", ' ', &["gameoverlayrenderer"]), "");
+        assert_eq!(super::steam_free("/usr/lib", ':', &["steam-runtime"]), "/usr/lib");
+    }
     use super::*;
     use std::collections::HashMap;
 

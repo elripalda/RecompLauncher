@@ -300,7 +300,7 @@ function applyCover(a, id) {
 }
 const byId = (id) => applyCover(index().ids.get(id), id);
 // A game in the Library the catalog doesn't have (added by the player, a local build).
-const libApp = (g) => byId(g.id) || { id: g.id, name: ((S.settings.ui || {}).names || {})[g.id] || g.name, repo: g.repo, systems: [S.os], cover: g.cover_file ? 'local:' + g.cover_file : '', hero: g.hero_file ? 'local:' + g.hero_file : '' };
+const libApp = (g) => byId(g.id) || { id: g.id, name: ((S.settings.ui || {}).names || {})[g.id] || ((S.settings.ui || {}).game_names && g.game) || g.name, game: g.game || '', repo: g.repo, systems: [S.os], cover: g.cover_file ? 'local:' + g.cover_file : '', hero: g.hero_file ? 'local:' + g.hero_file : '' };
 // The developer behind a recomp, when they have an account: { slug, name, verified, avatar }.
 const devOf = (a) => (a && a.dev ? index().devs.get(a.dev) || null : null);
 // The signed-in account's developer page, when it's a verified developer. The website can say so
@@ -1057,7 +1057,7 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')], ['updates', t('Updates')]]).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Looks')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : []);
+  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')], ['updates', t('Updates')]]).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Looks')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
   if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
   return tabs;
 }
@@ -1128,6 +1128,7 @@ function gameBody(a) {
   const id = a.id, inst = S.library[id];
   gameTabs(a);
   let body = '';
+  if (String(S.tab).startsWith('plug-') && window.pluginTabBody) return window.pluginTabBody(S.tab, id) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const stats = inst
@@ -1847,7 +1848,7 @@ function pageDownloads() {
     return `<div class="dl-now">${img}<div class="mid"><div class="dl-top"><b>${esc(a.name)}</b><span class="tag cy">${esc(j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New'))}</span></div>${progress(id)}</div><button type="button" class="btn" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button></div>`; }).join('');
   const self = S.launcherUpd ? `<div class="dl-row"><img class="self" src="img/mark.svg" alt=""><div class="mid"><b>RecompLauncher</b><span>${esc(tf('{from} → {to}', { from: verName(S.version), to: verName(S.launcherUpd.version) }))}</span></div><button type="button" class="btn main sm" data-act="self-update">${DOWN}${esc(t('Update'))}</button></div>` : '';
   const upRows = self + ups.map((id) => { const [a, img] = art(id);
-    return `<div class="dl-row">${img}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
+    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${img}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
   const failRows = fails.map((r) => { const [a, img] = art(r.id);
     return `<div class="dl-row bad">${img}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div><button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   const ui = S.settings.ui || {};
@@ -2434,7 +2435,10 @@ function toggleSide() {
   const settle = () => {
     side.classList.remove('sliding');
     document.body.classList.remove('sliding');
-    const before = spots($$('.grid > .tile, .shelf .track > *', main), main);
+    // Only the games in view glide; the rest just take their new places.
+    const box = main.getBoundingClientRect();
+    const inView = $$('.grid > .tile, .shelf .track > *', main).filter((el) => { const r = el.getBoundingClientRect(); return r.bottom > box.top - 200 && r.top < box.bottom + 200; });
+    const before = spots(inView, main);
     evenGrids(main);
     layoutShelves(main);
     fitTitles(main);
@@ -2518,6 +2522,7 @@ async function refreshState() {
   const st = await invoke('get_state');
   Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, library: st.library || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
   S.running = new Set(st.running || []);
+  document.body.classList.toggle('playing', S.running.size > 0);
   S.missing = new Set(st.missing || []);
   for (const id of Object.keys(S.library)) byId(id);
   // The core's list of jobs is the truth: one it no longer has is over (unless it was only just
@@ -3552,11 +3557,20 @@ window.addEventListener('focus', () => lookForLauncher(false));
 // A version too old to keep up (older than the list's "min"): a window, once each time the
 // launcher opens, instead of a toast that goes away.
 let requiredShown = false;
+// Several betas behind (or a whole version): worth a window, not just a toast. Fixes from the
+// betas in between are what most crash reports from old versions turn out to need.
+function farBehind(cur, next) {
+  const p = (x) => { const m = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?/.exec(String(x || '')); return m ? [+m[1], +m[2], +m[3], m[4] == null ? Infinity : +m[4]] : null; };
+  const a = p(cur), b = p(next);
+  if (!a || !b) return false;
+  if (a[0] !== b[0] || a[1] !== b[1]) return true;
+  return a[3] !== Infinity && b[3] !== Infinity && b[3] - a[3] >= 2;
+}
 function updateToast(v) {
-  if (v && v.required && !requiredShown) {
+  if (v && (v.required || farBehind(S.version, v.version)) && !requiredShown) {
     requiredShown = true;
-    modal(`<h2>${esc(t('Time to Update'))}</h2><p>${esc(tf('This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.', { version: verName(v.version) }))}</p>
-      <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Update now'))}</button></div>`, (x, close) => { close(); if (x.dataset.x === 'yes') selfUpdate(); }, t('Time to Update'));
+    modal(`<h2>${esc(t('Time to Update'))}</h2><p>${esc(v.required ? tf('This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.', { version: verName(v.version) }) : tf('You\'re a few updates behind. {version} has fixes for crashes and setup problems people ran into on this one. It only takes a moment.', { version: verName(v.version) }))}</p>
+      <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Update now'))}</button></div>`, (x, close) => { close(); if (x.dataset.x === 'yes') selfUpdate(); }, t('Time to Update'));
     return;
   }
   toast(tf('RecompLauncher {version} is out.', { version: verName(v.version) }), false, `${esc(tf('RecompLauncher {version} is out.', { version: verName(v.version) }))} <a href="#" data-act="self-update">${esc(t('Update now'))}</a>`, 20000);
@@ -3750,7 +3764,7 @@ async function crashModal(p) {
     <p>${sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
-    <div class="acts ${fix ? 'grid2' : 'grid3'}"><button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button><button type="button" class="btn" data-x="trouble">${esc(t('Troubleshoot'))}</button><button type="button" class="btn${fix ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>
+    <div class="acts ${fix ? 'grid2' : 'grid3'}"><button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button><button type="button" class="btn${!fix && p.secs < 5 ? ' main' : ''}" data-x="trouble">${esc(t('Troubleshoot'))}</button><button type="button" class="btn${fix || p.secs < 5 ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>
       ${sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Look'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : dll ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : a ? `<button type="button" class="btn" data-x="report">${esc(t('Report on GitHub'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`}<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button></div>`, async (x, close) => {
     if (x.dataset.x === 'copy') { try { await navigator.clipboard.writeText(details); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); } }
     if (x.dataset.x === 'folder') invoke('open_folder', { id: p.id }).catch(fail);
@@ -3840,29 +3854,22 @@ function gameInfoModal({ link, info, id }) {
   if (link && !cur.hero) cur.hero = info.hero_default || '';
   const sim = info.similar ? `<div class="gi-sim"><span>${esc(tf('This looks like {name}, which is already in Discover.', { name: info.similar.name }))}</span><button type="button" class="btn sm" data-x="similar">${esc(t('See It'))}</button></div>` : '';
   const m = modal(`<h2>${esc(link ? t('Check the Details') : t('Edit Game Info'))}</h2>${sim}
-    <div class="gi"><div class="gi-cover" id="gi-cover"></div>
+    <div class="gi"><div class="gi-cover" id="gi-cover"${key ? ' data-x="choose" title="' + esc(t('Choose Art…')) + '"' : ''}></div>
       <div class="gi-fields">
         <label><span>${esc(t('Name'))}</span><input class="field" id="gi-name" value="${esc(cur.name)}" maxlength="120" spellcheck="false"></label>
         <label><span>${esc(t('Game'))}</span><input class="field" id="gi-game" value="${esc(cur.game)}" maxlength="120" spellcheck="false" placeholder="${esc(t('The game it\'s a recomp of'))}"></label>
-        <label><span>${esc(t('Console'))}</span><select class="field" id="gi-origin">${consoleOptions(cur.origin)}</select></label>
+        <label><span>${esc(t('Console'))}</span><select class="field sel" id="gi-origin" aria-label="${esc(t('Console'))}">${consoleOptions(cur.origin)}</select></label>
       </div></div>
-    <div class="gi-hero" id="gi-hero" aria-label="${esc(t('Background'))}"></div>
-    ${key ? `<div class="acts grid2 gi-art"><button type="button" class="btn sm" data-x="find">${esc(t('Find Art'))}</button><button type="button" class="btn sm" data-x="choose">${esc(t('Choose Art…'))}</button></div>`
+    <div class="gi-hero" id="gi-hero" aria-label="${esc(t('Background'))}"${key ? ' data-x="choose" title="' + esc(t('Choose Art…')) + '"' : ''}></div>
+    ${key ? `<p class="muted gi-hint" id="gi-status">${esc(t('Art follows the Game name. Click the cover or background to pick others.'))}</p>`
       : `<p class="muted gi-hint">${esc(t('Add your own SteamGridDB key in Settings → Games and folders to get covers and backgrounds.'))}</p>`}
     <p class="err" id="gi-err" hidden>${esc(info.art_error || '')}</p>
-    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(link ? t('Add to Library') : t('Save'))}</button></div>`, async (x, close) => {
+    <div class="acts ${key ? 'grid3' : 'grid2'}"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button>${key ? `<button type="button" class="btn" data-x="choose">${esc(t('Choose Art…'))}</button>` : ''}<button type="button" class="btn main" data-x="yes">${esc(link ? t('Add to Library') : t('Save'))}</button></div>`, async (x, close) => {
     const err = $('#gi-err', m);
     const read = () => { cur.name = $('#gi-name', m).value.trim(); cur.game = $('#gi-game', m).value.trim(); cur.origin = $('#gi-origin', m).value; };
     switch (x.dataset.x) {
       case 'similar': close(); return go('game', info.similar.id);
-      case 'choose': return artPicker(art, cur, () => paint());
-      case 'find': {
-        read();
-        x.disabled = true; err.hidden = true;
-        try { take(await invoke('github_art', { game: cur.game || cur.name, sgdbKey: key }), true); paint(); if (!art.covers.length) { err.textContent = t('SteamGridDB has no art under that name. Try the game\'s full name.'); err.hidden = false; } } catch (e) { err.textContent = String(e && e.message ? e.message : e); err.hidden = false; }
-        x.disabled = false;
-        return;
-      }
+      case 'choose': if (!art.covers.length && !art.heroes.length) return; return artPicker(art, cur, () => paint());
       case 'yes': {
         read();
         if (!cur.name) return $('#gi-name', m).focus();
@@ -3894,6 +3901,22 @@ function gameInfoModal({ link, info, id }) {
     hero.hidden = !cur.hero;
     for (const b of $$('[data-x="choose"]', m)) b.disabled = !art.covers.length && !art.heroes.length;
   }
+  // Art follows the Game name: a new name finds its art on its own (with a SteamGridDB key).
+  let looked = (cur.game || cur.name).trim().toLowerCase();
+  const refind = async () => {
+    const g = ($('#gi-game', m).value.trim() || $('#gi-name', m).value.trim());
+    if (!key || !g || g.toLowerCase() === looked) return;
+    looked = g.toLowerCase();
+    const err = $('#gi-err', m), st = $('#gi-status', m);
+    err.hidden = true; st.textContent = t('Finding art…');
+    try {
+      take(await invoke('github_art', { game: g, sgdbKey: key }), true);
+      paint();
+      if (!art.covers.length) { err.textContent = t('SteamGridDB has no art under that name. Try the game\'s full name.'); err.hidden = false; }
+    } catch (e) { err.textContent = String(e && e.message ? e.message : e); err.hidden = false; }
+    st.textContent = t('Art follows the Game name. Click the cover or background to pick others.');
+  };
+  $('#gi-game', m).addEventListener('change', refind);
   paint();
   const e = $('#gi-err', m); e.hidden = !info.art_error;
   $('#gi-name', m).focus();
@@ -3908,10 +3931,14 @@ const TS_FIX = {
   vcredist: [N_('Get It'), () => invoke('open_url', { url: 'https://aka.ms/vs/17/release/vc_redist.x64.exe' })],
   copy: [N_('Pick Your Copy'), (id) => setupModal(id)],
   move: [N_('Move…'), (id) => moveModal(id)],
+  files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
   clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
 };
 // What Troubleshoot can say (from troubleshoot in lib.rs), so they get translated.
 const TS_TEXT = [
+  N_('Its folder\'s path has letters some games can\'t read'),
+  N_('Many recomps can\'t open files in a folder whose path has accents or letters outside English. Move it to a folder with plain letters, like C:\\Recomp Library.'),
+  N_('It says something it needs is missing'),
   N_('How it closed last time'),
   N_('Code {code}'),
   N_('A Look (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
@@ -4387,7 +4414,14 @@ document.addEventListener('input', (e) => {
 });
 $('#isl').addEventListener('click', () => go('downloads'));
 // Past the top of a page, the window's buttons get a bar behind them.
-$('#main').addEventListener('scroll', () => { const s = $('#main').scrollTop > 10; const bar = $('.topbar'); if (bar.classList.contains('solid') !== s) bar.classList.toggle('solid', s); }, { passive: true });
+$('#main').addEventListener('scroll', () => {
+  const s = $('#main').scrollTop > 10; const bar = $('.topbar'); if (bar.classList.contains('solid') !== s) bar.classList.toggle('solid', s);
+  // While it scrolls, tiles passing under the pointer don't light up (that redraw is what made
+  // scrolling stutter); they do again a moment after it stops.
+  if (!document.body.classList.contains('scrolling')) document.body.classList.add('scrolling');
+  clearTimeout(scrollEnd.t); scrollEnd.t = setTimeout(scrollEnd, 140);
+}, { passive: true });
+function scrollEnd() { document.body.classList.remove('scrolling'); }
 $('#collapse').addEventListener('click', toggleSide);
 let mqTimer;
 document.addEventListener('input', (e) => {
@@ -4497,7 +4531,7 @@ T.event.listen('install', ({ payload: p }) => {
 });
 
 T.event.listen('game', ({ payload: p }) => {
-  if (p.state === 'running') S.running.add(p.id);
+  if (p.state === 'running') { S.running.add(p.id); document.body.classList.add('playing'); }
   else {
     S.running.delete(p.id);
     // 0xC000013A: its console window was closed, which is how some games are quit.

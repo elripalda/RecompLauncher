@@ -306,12 +306,9 @@ pub fn steam_running() -> bool {
     }
 }
 
+#[cfg(windows)]
 fn steam_exe(steam: &Path) -> PathBuf {
-    if cfg!(windows) {
-        steam.join("steam.exe")
-    } else {
-        PathBuf::from("steam")
-    }
+    steam.join("steam.exe")
 }
 
 /// Steam can't be closed and opened again from here: the launcher was started by Steam (closing
@@ -361,19 +358,47 @@ fn started_by_steam() -> bool {
 }
 
 /// Ask Steam to close, and wait (up to 30 s) until it has.
+/// On Linux, how to talk to Steam itself: its own command (the Steam Deck, most installs), the
+/// Flatpak, or failing both its steam:// link. The link alone can land in another program (a
+/// software center) on some desktops, and then Steam never closes.
+#[cfg(not(windows))]
+fn steam_cmd(steam: &Path, args: &[&str], link: &str) -> std::process::Command {
+    let flatpak = steam.to_string_lossy().contains("/.var/app/com.valvesoftware.Steam");
+    let on_path = |name: &str| std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file())).unwrap_or(false);
+    let mut c = if flatpak && on_path("flatpak") {
+        let mut c = std::process::Command::new("flatpak");
+        c.args(["run", "com.valvesoftware.Steam"]).args(args);
+        c
+    } else if on_path("steam") {
+        let mut c = std::process::Command::new("steam");
+        c.args(args);
+        c
+    } else {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(link);
+        c
+    };
+    crate::sysenv::clean_std(&mut c);
+    // Its own process group: Steam keeps running when the launcher closes.
+    use std::os::unix::process::CommandExt;
+    c.process_group(0);
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    c
+}
+
 pub async fn close_steam(steam: &Path) -> Result<(), Error> {
     if !steam_running() {
         return Ok(());
     }
-    // On Linux Steam may not be on the PATH (Flatpak, some immutable distros): its steam:// link
-    // works for every kind of install.
-    let mut c = if cfg!(windows) { std::process::Command::new(steam_exe(steam)) } else { std::process::Command::new("xdg-open") };
-    crate::sysenv::clean_std(&mut c);
-    if cfg!(windows) {
+    #[cfg(windows)]
+    let mut c = {
+        let mut c = std::process::Command::new(steam_exe(steam));
+        crate::sysenv::clean_std(&mut c);
         c.arg("-shutdown");
-    } else {
-        c.arg("steam://exit");
-    }
+        c
+    };
+    #[cfg(not(windows))]
+    let mut c = steam_cmd(steam, &["-shutdown"], "steam://exit");
     if let Ok(mut ch) = c.spawn() {
         std::thread::spawn(move || {
             let _ = ch.wait();
@@ -391,11 +416,14 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
 }
 
 pub fn start_steam(steam: &Path) {
-    let mut c = if cfg!(windows) { std::process::Command::new(steam_exe(steam)) } else { std::process::Command::new("xdg-open") };
-    crate::sysenv::clean_std(&mut c);
-    if !cfg!(windows) {
-        c.arg("steam://open/main");
-    }
+    #[cfg(windows)]
+    let mut c = {
+        let mut c = std::process::Command::new(steam_exe(steam));
+        crate::sysenv::clean_std(&mut c);
+        c
+    };
+    #[cfg(not(windows))]
+    let mut c = steam_cmd(steam, &[], "steam://open/main");
     if let Ok(mut ch) = c.spawn() {
         std::thread::spawn(move || {
             let _ = ch.wait();

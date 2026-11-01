@@ -363,7 +363,7 @@ pub fn extract(archive: &Path, to: &Path) -> Result<(), Error> {
     let mut head = [0u8; 8];
     std::fs::File::open(archive)?.read_exact(&mut head).map_err(|_| Error::Msg("The download was empty.".into()))?;
     std::fs::create_dir_all(to)?;
-    let bad = |e: String| Error::Msg(format!("Couldn't unpack the mod: {e}"));
+    let bad = |e: String| Error::Msg(format!("Couldn't unpack it: {e}"));
     let mut left = UNPACK_MAX;
     if head.starts_with(b"PK") {
         let mut z = zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(|e| bad(e.to_string()))?;

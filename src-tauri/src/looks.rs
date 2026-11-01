@@ -655,6 +655,13 @@ pub fn prepare(data: &Path, id: &str, exe: &Path, look: &LookDef, amount: u8, li
         run.env.push(("VK_LOADER_LAYERS_ENABLE".into(), add("VK_LOADER_LAYERS_ENABLE", LAYER, ',')));
         run.env.push(("DISABLE_VK_LAYER_reshade_1".into(), "1".into()));
     }
+    crate::trail::note(format!(
+        "Look for {id}: {} through {:?}, ReShade in {} ({})",
+        look.id,
+        api,
+        base.display(),
+        run.placed.as_ref().map(|p| format!("placed {}", p.display())).unwrap_or_else(|| "as a layer".into())
+    ));
     Ok(run)
 }
 

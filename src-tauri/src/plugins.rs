@@ -69,6 +69,13 @@ pub struct Manifest {
     pub sites: Vec<String>,
     #[serde(default)]
     pub min_launcher: String,
+    /// A tab on each game's page, showing this page for that game (with "library.read").
+    #[serde(default)]
+    pub game_tab: Option<Page>,
+    /// It has settings: Settings → Plugins shows a Settings button that opens its page with a
+    /// `settings` event.
+    #[serde(default)]
+    pub settings: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -165,7 +172,7 @@ pub fn check(m: &mut Manifest) -> Result<(), String> {
     if !net {
         m.sites.clear();
     }
-    for f in [Some(&m.icon), m.page.as_ref().map(|p| &p.entry), m.page.as_ref().map(|p| &p.icon)].into_iter().flatten() {
+    for f in [Some(&m.icon), m.page.as_ref().map(|p| &p.entry), m.page.as_ref().map(|p| &p.icon), m.game_tab.as_ref().map(|p| &p.entry)].into_iter().flatten() {
         if !f.is_empty() && !good_rel(f) {
             return Err(format!("\"{f}\" isn't a file inside the plugin."));
         }
@@ -177,6 +184,18 @@ pub fn check(m: &mut Manifest) -> Result<(), String> {
     }
     if !m.menu.is_empty() && m.page.is_none() {
         return Err("Its menu items need a page to open.".into());
+    }
+    if m.settings && m.page.is_none() {
+        return Err("Its settings need a page to open.".into());
+    }
+    if let Some(t) = m.game_tab.as_mut() {
+        if !m.permissions.iter().any(|p| p == "library.read") {
+            return Err("A tab on game pages needs the library.read permission.".into());
+        }
+        t.title = t.title.trim().chars().take(24).collect();
+        if t.title.is_empty() {
+            t.title = m.name.chars().take(24).collect();
+        }
     }
     Ok(())
 }
@@ -534,6 +553,26 @@ pub fn plugin_add_folder(st: State<'_, App>, id: String, folder: String, name: O
     Ok(g)
 }
 
+/// What's in an installed game's folder (or a folder inside it), one level: names, sizes, folders.
+/// With "library.read". Nothing is read from inside the files.
+#[tauri::command(async)]
+pub fn plugin_game_files(st: State<'_, App>, id: String, game: String, sub: Option<String>) -> Res<Value> {
+    let _ = allowed(&st.dir, &id, "library.read")?;
+    let g = st.lib.lock().unwrap().installed.get(&game).cloned().ok_or_else(|| Error::Msg("That game isn't installed.".into()))?;
+    let dir = g.path.join(sub_folder(sub.as_deref().unwrap_or(""))?);
+    let mut out = vec![];
+    for e in std::fs::read_dir(&dir).map_err(|_| Error::Msg("That folder isn't there.".into()))?.flatten().take(2000) {
+        let md = e.metadata().ok();
+        out.push(json!({
+            "name": e.file_name().to_string_lossy(),
+            "folder": md.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+            "size": md.as_ref().filter(|m| m.is_file()).map(|m| m.len()).unwrap_or(0),
+            "modified": md.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0),
+        }));
+    }
+    Ok(Value::Array(out))
+}
+
 /// A folder inside a game's folder a plugin may unpack into: plain names only, up to four deep.
 fn sub_folder(into: &str) -> Res<PathBuf> {
     let mut p = PathBuf::new();
@@ -613,8 +652,8 @@ async fn install_zip(
     };
     let file_name = u.path_segments().and_then(|s| s.last()).filter(|s| !s.is_empty()).unwrap_or("download.zip").to_string();
     let low = file_name.to_lowercase();
-    if !(low.ends_with(".zip") || low.ends_with(".7z")) {
-        return Err(Error::Msg("Plugins can install .zip and .7z files only.".into()));
+    if !(low.ends_with(".zip") || low.ends_with(".7z") || low.ends_with(".rar")) {
+        return Err(Error::Msg("Plugins can install .zip, .7z and .rar files only.".into()));
     }
     let dl_dir = st.dir.join("cache").join("plugin-downloads");
     // Where the file really is, after the site's redirects (each one checked).
@@ -622,7 +661,11 @@ async fn install_zip(
     let (_, at) = send(&st.dir, m, &client, reqwest::Method::GET, u, None).await?;
     let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: at.to_string() };
     let report = |p: crate::install::Progress| tell(p.phase, p.done, p.total, p.speed, None);
-    let got = crate::install::download(&client, &asset, &dl_dir, job, cancel, &report).await?;
+    // Big files from a site that sends parts come down in pieces at once.
+    let got = match crate::install::download_split(&client, &asset.browser_download_url, &asset.name, &dl_dir, job, cancel.clone(), &report).await? {
+        Some(g) => g,
+        None => crate::install::download(&client, &asset, &dl_dir, job, cancel, &report).await?,
+    };
     tell("unpack", 0, 0, 0, None);
     let staging = st.dir.join("cache").join("plugin-unpack");
     let file = got.file.clone();
@@ -674,9 +717,15 @@ pub const SDK: &str = r#"(() => {
   });
   const call = (method, args) => new Promise((ok, no) => { const k = ++n; wait.set(k, [ok, no]); parent.postMessage({ rl: 1, n: k, call: method, args: args || {} }, '*'); });
   window.rl = Object.freeze({
-    library: Object.freeze({ list: () => call('library.list'), addFolder: (folder, name) => call('library.addFolder', { folder, name }) }),
+    library: Object.freeze({ list: () => call('library.list'), addFolder: (folder, name) => call('library.addFolder', { folder, name }), files: (game, sub) => call('library.files', { game, sub: sub || '' }) }),
     net: Object.freeze({ fetch: (url, o) => call('net.fetch', Object.assign({ url }, o || {})) }),
-    install: Object.freeze({ zip: (url, name, o) => call('install.zip', { url, name, headers: (o && o.headers) || null, game: (o && o.game) || null, into: (o && o.into) || null }) }),
+    install: Object.freeze({
+      zip: (url, name, o) => call('install.zip', { url, name, headers: (o && o.headers) || null, game: (o && o.game) || null, into: (o && o.into) || null }),
+      prefs: () => call('install.prefs'),
+      chooseFolder: () => call('install.chooseFolder'),
+      setAsk: (ask) => call('install.setAsk', { ask: !!ask }),
+    }),
+    openUrl: (url) => call('openUrl', { url: String(url) }),
     storage: Object.freeze({ get: (key) => call('storage.get', { key }), set: (key, value) => call('storage.set', { key, value }), all: () => call('storage.all') }),
     notify: (title, body) => call('notify', { title, body }),
     toast: (text) => call('toast', { text }),

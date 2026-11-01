@@ -42,6 +42,149 @@ pub struct Downloaded {
     pub verified: bool,
 }
 
+/// A big file from a site that sends parts of files: downloaded in four pieces at once, which is
+/// much faster from sites that hold each connection to a set speed. `None` when the site doesn't
+/// send parts or the file is small: then it's downloaded the usual way.
+pub async fn download_split(
+    http: &reqwest::Client,
+    url: &str,
+    name: &str,
+    dir: &Path,
+    id: &str,
+    cancel: Arc<AtomicBool>,
+    report: &(dyn Fn(Progress) + Send + Sync),
+) -> Result<Option<Downloaded>, Error> {
+    use std::sync::atomic::AtomicU64;
+    const PIECES: u64 = 4;
+    // Does it send parts, and how big is it? One byte asked for says both.
+    let probe = http.get(url).header(reqwest::header::RANGE, "bytes=0-0").timeout(Duration::from_secs(30)).send().await;
+    let Ok(probe) = probe else { return Ok(None) };
+    if probe.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+        return Ok(None);
+    }
+    let total = probe
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit('/').next())
+        .and_then(|n| n.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    drop(probe);
+    if total < 48 << 20 {
+        return Ok(None);
+    }
+    fs::create_dir_all(dir)?;
+    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.+".contains(c) { c } else { '_' }).collect();
+    let file = dir.join(&safe);
+    let part = dir.join(format!("{safe}.split.part"));
+    {
+        let f = std::fs::File::create(&part)?;
+        f.set_len(total)?;
+    }
+    let done = Arc::new(AtomicU64::new(0));
+    let step = total.div_ceil(PIECES);
+    let mut tasks = vec![];
+    for i in 0..PIECES {
+        let (from, to) = (i * step, ((i + 1) * step).min(total));
+        if from >= to {
+            continue;
+        }
+        let (http, url, part, done, cancel) = (http.clone(), url.to_string(), part.clone(), done.clone(), cancel.clone());
+        tasks.push(tokio::spawn(async move {
+            use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+            let mut at = from;
+            let mut tries = 0u32;
+            while at < to {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(Error::Cancelled);
+                }
+                tries += 1;
+                let r = http.get(&url).header(reqwest::header::RANGE, format!("bytes={at}-{}", to - 1)).timeout(Duration::from_secs(60 * 60 * 6)).send().await;
+                let r = match r {
+                    Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
+                    Ok(r) if tries >= 4 => return Err(Error::Msg(answered(r.status().as_u16(), &url, &url.rsplit('/').next().unwrap_or("the file").to_string()))),
+                    Err(e) if tries >= 4 => return Err(e.into()),
+                    _ => {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        continue;
+                    }
+                };
+                let mut out = tokio::fs::OpenOptions::new().write(true).open(&part).await?;
+                out.seek(std::io::SeekFrom::Start(at)).await?;
+                let mut stream = r.bytes_stream();
+                loop {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(Error::Cancelled);
+                    }
+                    match tokio::time::timeout(Duration::from_secs(40), stream.next()).await {
+                        Ok(Some(Ok(b))) => {
+                            let n = (b.len() as u64).min(to - at);
+                            out.write_all(&b[..n as usize]).await?;
+                            at += n;
+                            done.fetch_add(n, Ordering::Relaxed);
+                            if at >= to {
+                                break;
+                            }
+                        }
+                        // Ended early or stalled: ask again from where it got to.
+                        _ => break,
+                    }
+                }
+                out.flush().await?;
+                if at < to && tries >= 6 {
+                    return Err(Error::Msg(format!("The download of {} stopped. Try again.", url.rsplit('/').next().unwrap_or("the file"))));
+                }
+            }
+            Ok::<(), Error>(())
+        }));
+    }
+    // Progress while the pieces come in.
+    let (mut mark, mut mark_bytes, mut speed) = (Instant::now(), 0u64, 0u64);
+    let all = futures_util::future::try_join_all(tasks.into_iter().map(|t| async move { t.await.map_err(|e| Error::Msg(e.to_string()))? }));
+    tokio::pin!(all);
+    let res = loop {
+        tokio::select! {
+            r = &mut all => break r,
+            _ = tokio::time::sleep(Duration::from_millis(400)) => {
+                let d = done.load(Ordering::Relaxed);
+                if mark.elapsed() >= Duration::from_secs(1) {
+                    speed = ((d - mark_bytes) as f64 / mark.elapsed().as_secs_f64()) as u64;
+                    mark = Instant::now();
+                    mark_bytes = d;
+                }
+                let mut p = Progress::new(id, "download", d, total);
+                p.speed = speed;
+                report(p);
+            }
+        }
+    };
+    if let Err(e) = res {
+        cancel.store(true, Ordering::Relaxed);
+        let _ = fs::remove_file(&part);
+        return Err(e);
+    }
+    report(Progress::new(id, "verify", total, total));
+    let p2 = part.clone();
+    let sha256 = tokio::task::spawn_blocking(move || -> Result<String, Error> {
+        let mut h = Sha256::new();
+        let mut f = std::fs::File::open(&p2)?;
+        let mut buf = vec![0u8; 1 << 20];
+        loop {
+            let n = std::io::Read::read(&mut f, &mut buf)?;
+            if n == 0 {
+                break;
+            }
+            h.update(&buf[..n]);
+        }
+        Ok(hex::encode(h.finalize()))
+    })
+    .await
+    .map_err(|e| Error::Msg(e.to_string()))??;
+    let _ = fs::remove_file(&file);
+    fs::rename(&part, &file)?;
+    Ok(Some(Downloaded { file, sha256, verified: false }))
+}
+
 /// Download `asset` into `dir`, reporting progress, then check it against GitHub's checksum.
 pub async fn download(
     http: &reqwest::Client,
@@ -100,7 +243,7 @@ pub async fn download(
                 Ok(r) => break r,
                 Err(_) if started.elapsed() < Duration::from_secs(30) => continue,
                 Err(_) if tries < 4 => continue 'attempt,
-                Err(_) => return Err(Error::Msg("GitHub isn't answering right now. Try again in a minute; the download carries on from where it got to.".into())),
+                Err(_) => return Err(Error::Msg(format!("{} isn't answering right now. Try again in a minute; the download carries on from where it got to.", site_of(&asset.browser_download_url)))),
             }
         };
         let r = match r {
@@ -124,7 +267,7 @@ pub async fn download(
             if out.is_none() {
                 let _ = tokio::fs::remove_file(&part).await;
             }
-            return Err(Error::Msg(format!("GitHub answered {} for {}", r.status().as_u16(), asset.name)));
+            return Err(Error::Msg(answered(r.status().as_u16(), &asset.browser_download_url, &asset.name)));
         }
         let resumed = done > 0 && r.status() == reqwest::StatusCode::PARTIAL_CONTENT;
         if !resumed {
@@ -330,6 +473,27 @@ fn overlay(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 /// Unpack (or place) the downloaded file into `target`. Returns the files it put there, relative.
+/// A site's own name, not the server it handed the file to (files3.eu.example.com: example.com).
+pub fn site_of(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.split('.').rev().take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(".")))
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "The site".into())
+}
+
+/// What a download site's error means, naming the site it came from.
+pub fn answered(code: u16, url: &str, file: &str) -> String {
+    let site = site_of(url);
+    match code {
+        401 | 403 => format!("{site} won't send {file} (error {code}). It may need you signed in, or it isn't shared."),
+        404 | 410 => format!("{site} doesn't have {file} anymore (error {code})."),
+        429 => format!("{site} is getting too many downloads right now (error {code}). Try again in a few minutes."),
+        500..=599 => format!("{site} had a problem sending {file} (error {code}). That's on their side; try again in a bit."),
+        _ => format!("{site} answered {code} for {file}."),
+    }
+}
+
 pub fn unpack(file: &Path, target: &Path, staging: &Path) -> Result<Vec<PathBuf>, Error> {
     unpack_with(file, target, staging, true)
 }
@@ -342,7 +506,8 @@ pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<Pa
 
 fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
     let name = file.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
-    let k = kind(&name).ok_or_else(|| Error::Msg(format!("{name} isn't a kind of file the launcher can install")))?;
+    // A .rar (a plugin's download, a mod): unpacked the way mods are, then put in place below.
+    let k = if name.to_lowercase().ends_with(".rar") { "rar" } else { kind(&name).ok_or_else(|| Error::Msg(format!("{name} isn't a kind of file the launcher can install")))? };
     // Windows Security and Search look at a fresh download first and can hold it for a moment.
     for _ in 0..20 {
         match fs::File::open(file) {
@@ -355,6 +520,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     match k {
         "zip" => unzip(file, staging)?,
         "7z" => un7z(file, staging)?,
+        "rar" => crate::gamebanana::extract(file, staging)?,
         "tar.gz" => untar(file, staging, false)?,
         "tar.xz" => untar(file, staging, true)?,
         "appimage" | "exe" => {
@@ -616,7 +782,8 @@ mod tests {
     use std::io::Write as _;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("rl-test-{name}-{}", std::process::id()));
+        // The same folder each run (cleared first), so test runs don't pile up in the temp folder.
+        let d = std::env::temp_dir().join(format!("rl-test-{name}"));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -776,5 +943,15 @@ mod tests {
         assert_eq!(tokens("BotWRecomp"), vec!["bot", "w", "recomp"]);
         assert_eq!(tokens("MaddenNFL08-Recompiled"), vec!["madden", "nfl08", "recompiled"]);
         assert_eq!(tokens("OCTRNitro"), vec!["octr", "nitro"]);
+    }
+}
+
+#[cfg(test)]
+mod answer_tests {
+    #[test]
+    fn errors_name_the_site() {
+        let m = super::answered(500, "https://files3.eu.example.com/1/items/x/Pack.zip", "Pack.zip");
+        assert!(m.starts_with("example.com had a problem"), "{m}");
+        assert!(super::answered(404, "https://github.com/a/b/releases/download/v1/x.zip", "x.zip").starts_with("github.com doesn't have"));
     }
 }

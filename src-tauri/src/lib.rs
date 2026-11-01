@@ -35,6 +35,7 @@ pub mod sysenv;
 pub mod roms;
 pub mod saves;
 pub mod shortcuts;
+pub mod trail;
 pub mod tray;
 pub mod usage;
 pub mod win;
@@ -142,6 +143,7 @@ fn backups_dir(g: &Installed) -> PathBuf {
 async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>, cancel: &AtomicBool) -> Result<T, Error> {
     tokio::pin!(f);
     let start = Instant::now();
+    let mut told = false;
     loop {
         tokio::select! {
             r = &mut f => return r,
@@ -149,7 +151,12 @@ async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>
                 if cancel.load(Ordering::Relaxed) {
                     return Err(Error::Cancelled);
                 }
+                if !told && start.elapsed() > std::time::Duration::from_secs(10) {
+                    told = true;
+                    trail::note("Getting ready: still waiting for the website after 10 s");
+                }
                 if start.elapsed() > std::time::Duration::from_secs(60) {
+                    trail::note("Getting ready: gave up after 60 s");
                     return Err(Error::Msg("recomplauncher.com or GitHub didn't answer in time. Try again in a moment.".into()));
                 }
             }
@@ -162,10 +169,13 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         let _ = app.emit("install", p);
     };
     report(Progress::new(id, "prepare", 0, 0));
+    trail::note(format!("Install {id}: getting ready{}", tag.as_deref().map(|t| format!(" ({t})")).unwrap_or_default()));
     let cat = getting_ready(catalog::catalog(&st.http, &st.dir, false), &cancel).await?.data;
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
+    trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
     let rels: Vec<Release> = serde_json::from_value(getting_ready(catalog::releases(&st.http, &st.dir, &repo, true), &cancel).await?.data)?;
+    trail::note(format!("Install {id}: {} releases", rels.len()));
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
     // A version the player picked (an older one, to go back to), or the newest.
@@ -330,6 +340,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let rec = Installed {
         id: id.into(),
         name: str_of(&entry, "name").into(),
+        game: String::new(),
         repo,
         tag: rel.tag_name.clone(),
         version: str_of(&entry, "version").into(),
@@ -475,11 +486,13 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         let r = do_install(&app2, &st, &id, dir, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), cancel).await;
         st.jobs.lock().unwrap().remove(&id);
         match r {
-            Ok(()) => {}
+            Ok(()) => trail::note(format!("Install {id}: done")),
             Err(Error::Cancelled) => {
+                trail::note(format!("Install {id}: cancelled"));
                 let _ = app2.emit("install", Progress::new(&id, "cancelled", 0, 0));
             }
             Err(e) => {
+                trail::note(format!("Install {id}: {e}"));
                 let mut p = Progress::new(&id, "error", 0, 0);
                 p.msg = Some(e.to_string());
                 let _ = app2.emit("install", p);
@@ -1121,11 +1134,13 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
         if let Some(why) = shortcuts::cant_restart_steam() {
             return Err(Error::Msg(why.into()));
         }
-        shortcuts::close_steam(&steam).await?;
+        trail::note(format!("Add to Steam ({id}): closing Steam"));
+        shortcuts::close_steam(&steam).await.inspect_err(|e| trail::note(format!("Add to Steam: {e}")))?;
     }
     let icon = g.exe.as_ref().map(|e| g.path.join(e).to_string_lossy().to_string()).unwrap_or_default();
     let name = Some(str_of(&a, "game").trim().to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| g.name.clone());
     let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art)?;
+    trail::note(format!("Add to Steam ({id}): written for {n} account(s)"));
     if was_running {
         shortcuts::start_steam(&steam);
     }
@@ -1158,9 +1173,11 @@ async fn launcher_to_steam(st: State<'_, App>, restart: bool) -> Res<String> {
         if let Some(why) = shortcuts::cant_restart_steam() {
             return Err(Error::Msg(why.into()));
         }
-        shortcuts::close_steam(&steam).await?;
+        trail::note("Add to Steam (launcher): closing Steam");
+        shortcuts::close_steam(&steam).await.inspect_err(|e| trail::note(format!("Add to Steam: {e}")))?;
     }
     let n = shortcuts::launcher_to_steam(&steam, &art)?;
+    trail::note(format!("Add to Steam (launcher): written for {n} account(s)"));
     if was_running {
         shortcuts::start_steam(&steam);
     }
@@ -1399,7 +1416,11 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         }
     }
     note_run(&st, id, &g, &exe, &args, &cwd, prof.as_ref(), look_run.is_some());
+    trail::note(format!("Play {id}: {}{}", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), if look_run.is_some() { " with a Look" } else { "" }));
     let spawned = cmd.spawn();
+    if let Err(e) = &spawned {
+        trail::note(format!("Play {id}: didn't start: {e}"));
+    }
     if spawned.is_err() {
         if let Some(p) = look_run.as_ref().and_then(|r| r.placed.as_ref()) {
             looks::finish(&st.dir, id, p);
@@ -2122,7 +2143,8 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         "repo": repo,
         "known": Value::Null,
         "os": os,
-        "name": game.clone().unwrap_or_else(|| catalog::name_from_repo(&repo)),
+        // The project's own name; the game it's a recomp of goes in "game" (Show Game Names uses it).
+        "name": catalog::name_from_repo(&repo),
         "game": game.unwrap_or_default(),
         "origin": origin,
         "blurb": desc,
@@ -2791,6 +2813,10 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         return Ok(out);
     }
     out.push(check("ok", "Its folder is there", g.path.display().to_string(), ""));
+    // Letters outside English in the path: many recomps on Windows can't open files there.
+    if cfg!(windows) && !g.path.to_string_lossy().is_ascii() {
+        out.push(check("warn", "Its folder's path has letters some games can't read", "Many recomps can't open files in a folder whose path has accents or letters outside English. Move it to a folder with plain letters, like C:\\Recomp Library.", "move"));
+    }
     // The program it starts.
     let prof = profile_of(&st, &id, &g);
     let exe = prof
@@ -2884,6 +2910,15 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     }
     // What it printed last time.
     if let Ok(text) = std::fs::read_to_string(game_output_path(&st.dir, &id)) {
+        // It said it's missing something (its game files, most often).
+        let missing = text.lines().rev().take(80).find(|l| {
+            let l = l.to_lowercase();
+            l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing")
+        });
+        if let Some(line) = missing {
+            let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
+            out.push(check("bad", "It says something it needs is missing", line.trim().chars().take(300).collect::<String>(), if needs_copy { "copy" } else { "files" }));
+        }
         let tail: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
         let tail = tail[tail.len().saturating_sub(12)..].join("\n");
         if !tail.is_empty() {
@@ -3714,6 +3749,10 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
         form.push(("name[]".into(), "launcher-details.txt".into()));
         form.push(("text[]".into(), run));
     }
+    if let Some(t) = trail::tail(24_000) {
+        form.push(("name[]".into(), "launcher-trail.txt".into()));
+        form.push(("text[]".into(), t));
+    }
     let r = st.http.post(format!("{}/api/logs.php", catalog::base())).form(&form).timeout(std::time::Duration::from_secs(30)).send().await?;
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
@@ -3876,6 +3915,10 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
         }
         form.push(("name[]".into(), "launcher-and-pc.txt".into()));
         form.push(("text[]".into(), txt));
+        if let Some(t) = trail::tail(24_000) {
+            form.push(("name[]".into(), "launcher-trail.txt".into()));
+            form.push(("text[]".into(), t));
+        }
     }
     if let Some(g) = &game {
         if let Some(run) = last_run(&st.dir, &g.id) {
@@ -4504,6 +4547,8 @@ fn wait_for_play(args: &[String]) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    sysenv::prepare_start();
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
         return;
     }
@@ -4610,11 +4655,24 @@ pub fn run() {
             if portable.is_some() {
                 portable_remap(&dir);
             }
+            trail::start(&dir);
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
                 .connect_timeout(std::time::Duration::from_secs(15))
                 .build()?;
-            let lib = Library::load(&dir);
+            #[allow(unused_mut)]
+            let mut lib = Library::load(&dir);
+            // On Linux, Windows-only recomps play through Proton once Proton is found: turned on
+            // for the player the first time (they can turn it off in Settings → General).
+            #[cfg(target_os = "linux")]
+            if !lib.settings.proton_auto {
+                lib.settings.proton_auto = true;
+                if !lib.settings.proton && proton::runner().is_some() {
+                    lib.settings.proton = true;
+                    trail::note("Proton found: Windows recomps play through it");
+                }
+                let _ = lib.save(&dir);
+            }
             // Big Picture at start only once setup is done: the first-run setup is always in a window.
             let tv = (lib.settings.start_in_tv || std::env::args().any(|a| a == "--bigpicture")) && lib.settings.setup_done;
             // ReShade left in a game's folder by a start that didn't finish (the launcher closed
@@ -4773,6 +4831,7 @@ pub fn run() {
             plugins::plugin_library,
             plugins::plugin_add_folder,
             plugins::plugin_install_zip,
+            plugins::plugin_game_files,
             locate_game,
             forget_game,
             remove_github,

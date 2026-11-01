@@ -74,9 +74,21 @@ window.pluginMenu = (gameId) => {
 // What a plugin page is waiting to hear once it's ready (a menu item picked before it was open).
 const plugPending = {};
 function plugSend(id, msg) {
-  const f = $$('iframe.plug-frame').find((x) => x.dataset.id === id);
-  if (f && f.contentWindow) f.contentWindow.postMessage(Object.assign({ rl: 1 }, msg), '*');
+  for (const f of $$('iframe.plug-frame').filter((x) => x.dataset.id === id)) if (f.contentWindow) f.contentWindow.postMessage(Object.assign({ rl: 1 }, msg), '*');
 }
+// A plugin's tab on a game's page: its page for that game (it reads the game from #game=…).
+window.pluginTabs = (gameId) => (S.library[gameId] ? plugOn().map((p) => p.manifest).filter((m) => m.game_tab && plugCan(m, 'library.read')).map((m) => ['plug-' + m.id, m.game_tab.title || m.name]) : []);
+window.pluginTabBody = (tab, gameId) => {
+  const m = plugOn().map((p) => p.manifest).find((x) => 'plug-' + x.id === tab && x.game_tab);
+  if (!m) return `<div class="empty"><p>${esc(t('This plugin is off.'))}</p></div>`;
+  return `<div class="plug-tab"><iframe class="plug-frame" data-id="${esc(m.id)}" title="${esc(m.game_tab.title || m.name)}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" src="${esc(plugUrl(m.id, m.game_tab.entry || 'index.html') + '#game=' + encodeURIComponent(gameId))}"></iframe></div>`;
+};
+// Games starting and closing, for plugins that can see the Library (while their page is open).
+T.event.listen('game', ({ payload: p }) => {
+  const g = S.library[p.id];
+  const data = { id: p.id, name: g ? ((libApp(g) || {}).name || g.name) : p.id, state: p.state, code: p.code == null ? null : p.code, secs: p.secs || 0 };
+  for (const m of plugOn().map((x) => x.manifest)) if (plugCan(m, 'library.read')) plugSend(m.id, { event: 'game', data });
+});
 async function plugMenuPicked(gameId, key) {
   const [pid, item] = key.split('\n');
   const m = plugMan(pid);
@@ -122,6 +134,8 @@ function plugAsk(build) {
   plugAsking = next.catch(() => {});
   return next;
 }
+const plugNoAsk = (id) => !!(((S.settings.ui || {}).plug_noask || {})[id]);
+const plugPrefs = (m) => ({ folder: ((S.settings.ui || {}).plug_dirs || {})[m.id] || S.settings.library_dir || '', ask: !plugNoAsk(m.id) });
 const plugHead = (m) => `<div class="plug-ask-h">${plugIcon(m, m.icon)}<b>${esc(m.name)}</b></div>`;
 
 function askSite(m, host) {
@@ -183,13 +197,15 @@ const PLUG_CALLS = {
     // default Recomp Library. The player can change it right here.
     const dirs = (S.settings.ui || {}).plug_dirs || {};
     let dir = game ? '' : (dirs[m.id] || S.settings.library_dir || '');
-    let ans;
-    for (;;) {
+    // The player can let a plugin download without asking each time (Settings → Plugins).
+    let ans = plugNoAsk(m.id) ? 'yes' : '';
+    while (!ans) {
       ans = await plugAsk(() => ({
       html: `${plugHead(m)}<h2>${esc(tf('Download and install {name}?', { name }))}</h2><p>${esc(game ? (into ? tf('{plugin} wants to download {file} from {site} and add it to {game}, in its {folder} folder.', { plugin: m.name, file, site: host, game: gname, folder: into }) : tf('{plugin} wants to download {file} from {site} and add it to {game}\'s folder.', { plugin: m.name, file, site: host, game: gname })) : tf('{plugin} wants to download {file} from {site} and add it to your Library.', { plugin: m.name, file, site: host }))}</p>${game ? '' : `<div class="plug-where"><div><span class="muted">${esc(t('It goes in'))}</span><b>${esc(dir)}</b></div><button type="button" class="btn sm" data-x="where">${esc(t('Change…'))}</button></div>`}<p class="muted">${esc(t('Only say yes if you trust this plugin and where the file comes from.'))}</p>`,
       buttons: [['no', t('Cancel')], ['yes', t('Download and Install'), true]],
       }));
-      if (ans !== 'where') break;
+      if (ans === 'where') ans = '';
+      else break;
       const p = await pickFile({ title: t('Where it goes'), directory: true, defaultPath: dir || undefined }).catch(() => null);
       const picked = p && (typeof p === 'string' ? p : p.path);
       if (picked) { dir = picked; await saveUi({ plug_dirs: Object.assign({}, dirs, { [m.id]: picked }) }, true); }
@@ -203,6 +219,47 @@ const PLUG_CALLS = {
     await refreshState();
     toast(game ? tf('{name} is added to {game}.', { name, game: gname }) : tf('{name} is in your Library.', { name: g.name }));
     return { id: g.id, name: game ? name : g.name };
+  },
+  'install.prefs': (m) => plugPrefs(m),
+  'install.chooseFolder': async (m) => {
+    if (!plugCan(m, 'install')) throw new Error(t('It didn\'t ask for permission to do that.'));
+    const dirs = (S.settings.ui || {}).plug_dirs || {};
+    const p = await pickFile({ title: tf('Where {name}\'s downloads go', { name: m.name }), directory: true, defaultPath: dirs[m.id] || S.settings.library_dir || undefined }).catch(() => null);
+    const picked = p && (typeof p === 'string' ? p : p.path);
+    if (picked) await saveUi({ plug_dirs: Object.assign({}, dirs, { [m.id]: picked }) }, true);
+    return plugPrefs(m);
+  },
+  'install.setAsk': async (m, a) => {
+    if (!plugCan(m, 'install')) throw new Error(t('It didn\'t ask for permission to do that.'));
+    const off = Object.assign({}, (S.settings.ui || {}).plug_noask || {});
+    if (a.ask) delete off[m.id];
+    else if (!off[m.id]) {
+      const ans = await plugAsk(() => ({
+        html: `${plugHead(m)}<h2>${esc(tf('Let {name} download without asking?', { name: m.name }))}</h2><p>${esc(t('Its downloads start right away and go to the folder you picked. They still show in Downloads, where you can cancel them, and you can turn asking back on in Settings → Plugins.'))}</p>`,
+        buttons: [['no', t('Keep Asking')], ['yes', t('Don\'t Ask'), true]],
+      }));
+      if (ans !== 'yes') return plugPrefs(m);
+      off[m.id] = true;
+    }
+    await saveUi({ plug_noask: off }, true);
+    return plugPrefs(m);
+  },
+  // A page in the player's browser: right away for the sites it lists, after asking for others.
+  openUrl: async (m, a) => {
+    let u;
+    try { u = new URL(String(a.url || '')); } catch (e) { throw new Error(t('That isn\'t an address.')); }
+    if (!/^https?:$/.test(u.protocol)) throw new Error(t('That isn\'t an address.'));
+    const listed = (m.sites || []).some((s) => (s.startsWith('*.') ? u.hostname === s.slice(2) || u.hostname.endsWith(s.slice(1)) : u.hostname === s));
+    if (!listed) {
+      const ans = await plugAsk(() => ({ html: `${plugHead(m)}<h2>${esc(tf('Open {site} in your browser?', { site: u.hostname }))}</h2><p class="path">${esc(u.href)}</p>`, buttons: [['no', t('Cancel')], ['yes', t('Open'), true]] }));
+      if (ans !== 'yes') throw new Error(t('You said no.'));
+    }
+    await invoke('open_url', { url: u.href });
+    return true;
+  },
+  'library.files': (m, a) => {
+    if (!plugCan(m, 'library.read')) throw new Error(t('It didn\'t ask for permission to do that.'));
+    return invoke('plugin_game_files', { id: m.id, game: String(a.game || ''), sub: a.sub ? String(a.sub) : null });
   },
   'storage.get': async (m, a) => { const all = await invoke('plugin_store_get', { id: m.id }); return all[String(a.key)] ?? null; },
   'storage.all': (m) => invoke('plugin_store_get', { id: m.id }),
@@ -253,8 +310,8 @@ window.pluginSettings = (group, row, sw) => {
     const by = [m.version && tf('Version {v}', { v: m.version }), m.author && tf('by {name}', { name: m.author })].filter(Boolean).join(' · ');
     const sites = (p.sites || []).map((h) => `<span class="plug-chip">${esc(h)}<button type="button" class="chip-x" data-act="plug-forget" data-id="${esc(m.id)}" data-k="${esc(h)}" aria-label="${esc(tf('Stop always allowing {site}', { site: h }))}">×</button></span>`).join('');
     return `<div class="set-row plug-row"><div class="plug-ic-big">${plugIcon(m, m.icon)}</div><div class="k"><b>${esc(m.name)}</b><span>${esc(by)}</span>${m.description ? `<span>${esc(m.description)}</span>` : ''}
-        <ul class="plug-perms">${permLines(m).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${sites ? `<div class="plug-sites"><span>${esc(t('Always allowed:'))}</span>${sites}</div>` : ''}</div>
-      <span class="acts">${m.page && p.enabled && !S.plugins.all_off ? `<button type="button" class="btn sm" data-go="plug:${esc(m.id)}">${esc(t('Open'))}</button>` : ''}
+        <ul class="plug-perms">${permLines(m).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${sites ? `<div class="plug-sites"><span>${esc(t('Always allowed:'))}</span>${sites}</div>` : ''}${plugCan(m, 'install') ? `<div class="plug-dl"><span>${esc(tf('Downloads go to {folder}', { folder: plugPrefs(m).folder }))}</span><button type="button" class="btn sm" data-act="plug-dir" data-id="${esc(m.id)}">${esc(t('Change…'))}</button><button type="button" class="btn sm" data-act="plug-ask" data-id="${esc(m.id)}">${esc(plugNoAsk(m.id) ? t('Ask Before Each Download') : t('Don\'t Ask Each Time'))}</button></div>` : ''}</div>
+      <span class="acts">${m.settings && p.enabled && !S.plugins.all_off ? `<button type="button" class="btn sm" data-act="plug-settings" data-id="${esc(m.id)}">${esc(t('Settings'))}</button>` : ''}${m.page && p.enabled && !S.plugins.all_off ? `<button type="button" class="btn sm" data-go="plug:${esc(m.id)}">${esc(t('Open'))}</button>` : ''}
         <button type="button" class="icon-btn" data-act="plug-remove" data-id="${esc(m.id)}" aria-label="${esc(tf('Uninstall {name}', { name: m.name }))}" title="${esc(t('Uninstall'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
         <button type="button" class="switch" role="switch" aria-checked="${!!p.enabled}" aria-label="${esc(tf('Turn on {name}', { name: m.name }))}" data-act="plug-enable" data-id="${esc(m.id)}"></button></span></div>`;
   }).join('');
@@ -313,6 +370,9 @@ document.addEventListener('click', async (e) => {
       case 'plug-enable': { const p = S.plugins.plugins.find((x) => x.manifest.id === id); await invoke('plugin_enable', { id, on: !(p && p.enabled) }); return loadPlugins(); }
       case 'plug-alloff': await invoke('plugin_all_off', { off: !S.plugins.all_off }); return loadPlugins();
       case 'plug-forget': await invoke('plugin_forget_site', { id, host: el.dataset.k }); return loadPlugins();
+      case 'plug-settings': { const msg = { event: 'settings', data: {} }; if (S.view === 'plug:' + id) return plugSend(id, msg); plugPending[id] = msg; return go('plug:' + id); }
+      case 'plug-dir': { const m = plugMan(id); if (m) await PLUG_CALLS['install.chooseFolder'](m); return render(true); }
+      case 'plug-ask': { const m = plugMan(id); if (m) await PLUG_CALLS['install.setAsk'](m, { ask: plugNoAsk(id) }).catch(() => null); return render(true); }
       case 'plug-menu': return plugMenuPicked(id, el.dataset.k);
     }
   } catch (err) { fail(err); }

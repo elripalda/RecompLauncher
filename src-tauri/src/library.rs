@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 pub struct Installed {
     pub id: String,
     pub name: String,
+    /// The game a folder the player added is a recomp of, when the launcher could tell (its
+    /// recomplauncher.json, or its README). Show Game Names uses it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub game: String,
     #[serde(default)]
     pub repo: String,
     /// The release's tag, which is what updates compare.
@@ -163,6 +167,10 @@ pub struct Settings {
     /// On Linux: recomps with only a Windows version install that and play through Proton.
     #[serde(default)]
     pub proton: bool,
+    /// Proton was turned on for the player once, when the launcher found it (Beta 6). After that
+    /// it stays however they set it.
+    #[serde(default)]
+    pub proton_auto: bool,
     /// The "still running by the clock" notification has shown once.
     #[serde(default)]
     pub tray_told: bool,
@@ -218,6 +226,7 @@ impl Default for Settings {
             setup_done: false,
             close_to_tray: true,
             proton: false,
+            proton_auto: false,
             tray_told: false,
             share_usage: false,
             share_stats: false,

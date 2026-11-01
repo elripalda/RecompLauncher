@@ -44,6 +44,8 @@ my-plugin.rlplugin
 | `menu` | Up to 8 items for a game's right-click menu. Picking one opens the plugin's page and sends it a `menu` event. Needs a `page`. |
 | `permissions` | What it may do (below). Keeping its own settings needs no permission. |
 | `sites` | The sites it connects to: host names only, like `example.com`, or `*.example.com` for its subdomains too. Required with `network` or `install`. |
+| `game_tab` | `{ "title": "Notes", "entry": "game.html" }`: a tab on every installed game's page showing that page, with `#game=<id>` on its address. Needs `library.read`. |
+| `settings` | `true` adds a Settings button for it in Settings → Plugins. It opens your page and sends a `settings` event. Needs a `page`. |
 
 ## Permissions
 
@@ -52,7 +54,7 @@ my-plugin.rlplugin
 | `library.read` | See the games in your Library | Names, folders, play time. |
 | `library.add` | Add folders to your Library | Asks the player each time. |
 | `network` | Connect to the listed sites | Asks the player the first time for each site. They can allow it once or always. |
-| `install` | Download and install add-ons from the listed sites | Mods, texture packs and other add-ons. Asks the player each time, naming the file, the site and where it goes. Shows in Downloads, where the player can cancel it. `.zip` and `.7z` only. |
+| `install` | Download and install add-ons from the listed sites | Mods, texture packs and other add-ons. Asks the player each time, naming the file, the site and where it goes. Shows in Downloads, where the player can cancel it. `.zip`, `.7z` and `.rar`, unpacked for the player. |
 | `notify` | Show notifications in the launcher | |
 
 ## Talking to the launcher
@@ -68,6 +70,7 @@ That gives the page an `rl` object. Every call returns a promise:
 ```js
 await rl.library.list();                     // [{ id, name, version, folder, repo, played_secs, last_played }]
 await rl.library.addFolder(folder, name);     // asks the player; { id, name }
+await rl.library.files(gameId, 'mods');       // what's in a game's folder (or a folder in it): [{ name, folder, size, modified }]
 await rl.net.fetch('https://example.com/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
                                               // { status, headers, body } (body as text; pass binary: true for base64)
 await rl.install.zip('https://example.com/files/hd-textures.zip', 'HD Textures', { game: id, into: 'mods' });
@@ -78,6 +81,10 @@ await rl.install.zip(url, 'HD Textures', { game: id, headers: { Cookie: 'session
                                               // with headers, for a site the player signed in to through your page
 await rl.install.zip(url, 'Toolkit');         // without game: unpacked into a folder of its own and added to the Library
                                               // (the player sees where and can pick another folder)
+await rl.install.prefs();                     // { folder, ask }: where downloads go, and whether the player is asked first
+await rl.install.chooseFolder();              // the player picks the folder (the launcher's own window)
+await rl.install.setAsk(false);               // stop asking first (the launcher asks the player to confirm)
+await rl.openUrl('https://example.com/page'); // in the player's browser; asks first for sites you don't list
 await rl.storage.get('key');                  // anything JSON, up to 1 MB per plugin
 await rl.storage.set('key', { any: 'value' }); // set to null to remove it
 await rl.storage.all();
@@ -87,6 +94,8 @@ await rl.openGame(id);                        // a game's page (needs library.re
 await rl.info();                              // { launcher, os, language, theme }
 
 rl.on('menu', ({ item, game }) => { /* game: { id, name, folder? } */ });
+rl.on('game', ({ id, name, state, code, secs }) => { /* a game started ('running') or closed; needs library.read */ });
+rl.on('settings', () => { /* the player pressed Settings for your plugin in Settings → Plugins */ });
 rl.on('progress', ({ name, phase, done, total, speed }) => { /* your rl.install.zip downloads */ });
                                               // phase: prepare, download, verify, unpack, done, error, cancelled
 ```
