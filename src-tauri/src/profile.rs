@@ -563,6 +563,34 @@ pub fn env_name_ok(k: &str) -> bool {
 }
 
 /// Fills in {install}, {documents}, {local}, {config}, {home}, {game} and {pad}.
+thread_local! {
+    /// Filling in for a Windows program that runs through Proton or Wine on Linux: the player's copy
+    /// is given the way Windows programs name it there (Z:\run\media\...).
+    static WINE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A Linux path as a Windows program running under Proton or Wine reads it.
+pub fn wine_path(p: &str) -> String {
+    if p.starts_with('/') {
+        format!("Z:{}", p.replace('/', "\\"))
+    } else {
+        p.to_string()
+    }
+}
+
+/// While it's alive, filling in is for a Windows program under Proton (when `on`).
+struct WineFill(bool);
+impl WineFill {
+    fn new(on: bool) -> Self {
+        WineFill(WINE.with(|w| w.replace(on)))
+    }
+}
+impl Drop for WineFill {
+    fn drop(&mut self) {
+        WINE.with(|w| w.set(self.0));
+    }
+}
+
 pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     if !t.contains('{') {
         return t.to_string();
@@ -574,7 +602,7 @@ pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
         .replace("{local}", &s(dirs::data_local_dir()))
         .replace("{config}", &s(dirs::config_dir()))
         .replace("{home}", &s(dirs::home_dir()))
-        .replace("{game}", &game.map(|g| g.to_string_lossy().to_string()).unwrap_or_default())
+        .replace("{game}", &game.map(|g| { let s = g.to_string_lossy().to_string(); if WINE.with(|w| w.get()) { wine_path(&s) } else { s } }).unwrap_or_default())
 }
 
 /// The first place that applies.
@@ -776,7 +804,14 @@ impl Profile {
     }
 
     /// Before the game starts: its settings files get what it needs and where the player's copy is.
+    /// Its program is a Windows one that plays through Proton here (on Linux).
+    pub fn through_proton(&self, install: &Path) -> bool {
+        !cfg!(windows)
+            && self.start.as_ref().and_then(|s| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file())).map(|e| e.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false)).unwrap_or(false)
+    }
+
     pub fn prepare(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
+        let _w = WineFill::new(self.through_proton(install));
         for c in &self.config {
             // A path put into a TOML or JSON string: forward slashes, so the backslashes aren't escapes.
             let fill = |v: &str, install: &Path, game: Option<&Path>| {
@@ -886,10 +921,12 @@ impl Profile {
     }
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
+        let _w = WineFill::new(self.through_proton(install));
         self.start.as_ref().map(|s| s.env.iter().filter(|(k, _)| env_name_ok(k)).map(|(k, v)| (k.clone(), fill(v, install, game))).collect()).unwrap_or_default()
     }
 
     pub fn command(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Option<(PathBuf, Vec<String>)> {
+        let _w = WineFill::new(self.through_proton(install));
         let s = self.start.as_ref()?;
         let exe = s.program.iter().map(|p| install.join(p)).find(|p| p.is_file())?;
         let mut args: Vec<String> = s.args.iter().map(|a| fill(a, install, game)).collect();
@@ -1099,12 +1136,7 @@ fn xdvdfs_has(path: &Path, name: &str) -> bool {
 fn link_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let out = std::process::Command::new("cmd").arg("/c").arg("mklink").arg("/J").arg(to).arg(from).creation_flags(0x0800_0000).output()?;
-        if !out.status.success() || !to.exists() {
-            return Err(std::io::Error::other(format!("Couldn't link {} into the game's folder.", from.display())));
-        }
-        Ok(())
+        crate::win::junction(from, to).map_err(|e| std::io::Error::other(format!("Couldn't link {} into the game's folder: {e}", from.display())))
     }
     #[cfg(not(windows))]
     {

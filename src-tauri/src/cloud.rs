@@ -84,6 +84,7 @@ fn store(dir: &Path, a: Option<&Account>) {
         }
         None => {
             let _ = std::fs::remove_file(file(dir));
+            crate::secret::forget();
         }
     }
 }

@@ -73,13 +73,25 @@ pub struct PcInfo {
 
 #[cfg(windows)]
 fn read_pc() -> PcInfo {
-    use std::os::windows::process::CommandExt;
-    const PS: &str = r#"$o=@{};$os=Get-CimInstance Win32_OperatingSystem;$dv=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue).DisplayVersion;$o.osver=(($os.Caption -replace '^Microsoft ','')+' '+$dv+' ('+$os.BuildNumber+')').Trim();$o.ram_gb=[int][math]::Round($os.TotalVisibleMemorySize/1MB);$c=Get-CimInstance Win32_Processor|Select-Object -First 1;$o.cpu=($c.Name -replace '\s+',' ').Trim();$o.cores=[int]$c.NumberOfLogicalProcessors;$g=@(Get-CimInstance Win32_VideoController|Where-Object{$_.Name -notmatch 'Basic Display|Remote|Virtual|Parsec|Meta|Mirage|DisplayLink'});$m=($g|Where-Object{$_.Name -match 'NVIDIA'}|Select-Object -First 1);if(-not $m){$m=($g|Where-Object{$_.Name -match 'Radeon RX|Arc'}|Select-Object -First 1)};if(-not $m){$m=$g|Select-Object -First 1};$o.gpu=[string]$m.Name;$o.gpu_driver=[string]$m.DriverVersion;$o|ConvertTo-Json -Compress"#;
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", PS])
-        .creation_flags(0x0800_0000)
-        .output();
-    out.ok().and_then(|o| serde_json::from_slice::<PcInfo>(&o.stdout).ok()).unwrap_or_default()
+    use crate::win;
+    // The card games run on: not a remote-desktop or virtual one; NVIDIA, then a Radeon RX or Arc, then the first.
+    let skip = ["basic display", "remote", "virtual", "parsec", "meta", "mirage", "displaylink"];
+    let cards: Vec<(String, String)> = win::gpus().into_iter().filter(|(n, _)| !skip.iter().any(|s| n.to_lowercase().contains(s))).collect();
+    let card = cards
+        .iter()
+        .find(|(n, _)| n.contains("NVIDIA"))
+        .or_else(|| cards.iter().find(|(n, _)| n.contains("Radeon RX") || n.contains("Arc")))
+        .or_else(|| cards.first())
+        .cloned()
+        .unwrap_or_default();
+    PcInfo {
+        osver: win::os_name(),
+        cpu: win::cpu_name(),
+        cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(0),
+        ram_gb: win::ram_gb(),
+        gpu: card.0,
+        gpu_driver: card.1,
+    }
 }
 
 #[cfg(not(windows))]

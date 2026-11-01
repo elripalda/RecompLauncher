@@ -143,14 +143,32 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     g.setup.as_ref().map(|s| g.path.join(s)).filter(|p| p.is_file())
 }
 
+/// A setup that's running: started as usual, or with administrator rights after Windows' prompt.
+pub enum Started {
+    Child(std::process::Child),
+    #[cfg(windows)]
+    Admin(crate::win::Elevated),
+}
+
+impl Started {
+    /// Waits for it to close: its exit code.
+    pub fn wait(self) -> Option<i32> {
+        match self {
+            Started::Child(mut c) => c.wait().ok().and_then(|s| s.code()),
+            #[cfg(windows)]
+            Started::Admin(e) => e.wait(),
+        }
+    }
+}
+
 /// Starts a program the way double-clicking it would: an installer that asks for administrator
 /// rights gets Windows' prompt instead of failing.
-pub fn spawn(p: &Path) -> std::io::Result<std::process::Child> {
+pub fn spawn(p: &Path) -> std::io::Result<Started> {
     spawn_with(p, None)
 }
 
 /// `copy`: the player's copy of the game, handed to the setup as if dropped on it.
-pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<std::process::Child> {
+pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
     let dir = p.parent().map(Path::to_path_buf).unwrap_or_default();
     let mut c = std::process::Command::new(p);
     crate::sysenv::clean_std(&mut c);
@@ -158,14 +176,13 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<std::process
         c.arg(x);
     }
     match c.current_dir(&dir).spawn() {
+        Ok(child) => Ok(Started::Child(child)),
         #[cfg(windows)]
         Err(e) if e.raw_os_error() == Some(740) => {
-            use std::os::windows::process::CommandExt;
-            let q = |s: &Path| s.to_string_lossy().replace('\'', "''");
-            let script = format!("$p = Start-Process -FilePath '{}' -WorkingDirectory '{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode", q(p), q(&dir));
-            std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(0x0800_0000).spawn()
+            let args = copy.map(|x| format!("\"{}\"", x.display())).unwrap_or_default();
+            crate::win::run_as_admin(p, &args, &dir).map(Started::Admin)
         }
-        r => r,
+        Err(e) => Err(e),
     }
 }
 
@@ -184,7 +201,7 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<
     }
     let since = SystemTime::now();
     let shown = setup.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let mut child = match spawn_with(setup, copy) {
+    let child = match spawn_with(setup, copy) {
         Ok(c) => c,
         Err(e) => {
             OPEN.lock().unwrap().retain(|x| x != id);
@@ -201,7 +218,7 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<
     let (app, id, name) = (app.clone(), id.to_string(), g.name.clone());
     let folder = g.path.clone();
     std::thread::spawn(move || {
-        let code = child.wait().ok().and_then(|s| s.code());
+        let code = child.wait();
         // A setup that's only a starter (TotK-Setup.exe opens its Python window and quits): the
         // setup isn't over until every program from the download it started has closed too.
         let places = wait_for_rest(&folder);
@@ -248,14 +265,19 @@ fn wait_for_rest(dir: &Path) -> Vec<String> {
 /// The programs running from inside `dir`: how many, and their command lines.
 #[cfg(windows)]
 fn running_from(dir: &Path) -> (usize, Vec<String>) {
-    use std::os::windows::process::CommandExt;
-    let d = dir.to_string_lossy().trim_end_matches('\\').replace('\'', "''");
-    let script = format!("[Console]::OutputEncoding = [Text.Encoding]::UTF8; $d = '{d}\\'; $p = @(Get-CimInstance Win32_Process | Where-Object {{ $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, [StringComparison]::OrdinalIgnoreCase) }}); $p.Count; $p | ForEach-Object {{ [string]$_.CommandLine }}");
-    let Ok(o) = std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(0x0800_0000).output() else { return (0, vec![]) };
-    let text = String::from_utf8_lossy(&o.stdout).to_string();
-    let mut lines = text.lines();
-    let n = lines.next().and_then(|l| l.trim().parse().ok()).unwrap_or(0);
-    (n, lines.map(str::to_string).collect())
+    let d = dir.to_string_lossy().trim_end_matches('\\').to_lowercase() + "\\";
+    let mine = std::process::id();
+    let mut lines = vec![];
+    for (pid, _) in crate::win::processes() {
+        if pid == mine || pid == 0 {
+            continue;
+        }
+        let inside = crate::win::process_file(pid).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false);
+        if inside {
+            lines.push(crate::win::command_line(pid).unwrap_or_default());
+        }
+    }
+    (lines.len(), lines)
 }
 
 /// The Windows paths in a command line (`C:\x`, quoted or not, also after `--dest=`).
@@ -497,35 +519,50 @@ fn want_of(names: &[&str]) -> Vec<String> {
 /// entry in Settings > Apps, then older shortcuts.
 #[cfg(windows)]
 fn installed_elsewhere(names: &[&str], since: SystemTime, ours: &Path, then: Option<&Path>) -> Option<(PathBuf, String)> {
-    use std::os::windows::process::CommandExt;
-    const PS: &str = r#"$ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [Text.Encoding]::UTF8
-$o = @()
-foreach ($k in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*') {
-  Get-ItemProperty $k | Where-Object { $_.DisplayName } | ForEach-Object { $o += [pscustomobject]@{ k = 'app'; n = [string]$_.DisplayName; p = [string]$_.InstallLocation; i = [string]$_.DisplayIcon; u = [string]$_.UninstallString } }
-}
-$w = New-Object -ComObject WScript.Shell
-foreach ($d in [Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonPrograms')) {
-  if (-not $d) { continue }
-  Get-ChildItem -LiteralPath $d -Filter *.lnk -Recurse -Depth 2 | ForEach-Object {
-    $s = $w.CreateShortcut($_.FullName)
-    $o += [pscustomobject]@{ k = 'lnk'; n = $_.BaseName; p = [string]$s.TargetPath; a = [string]$s.Arguments; t = [int64](($_.LastWriteTimeUtc - [datetime]'1970-01-01').TotalSeconds) }
-  }
-}
-ConvertTo-Json -InputObject @($o) -Compress"#;
-    let file = std::env::temp_dir().join("recomplauncher-find-install.ps1");
-    // A BOM so Windows PowerShell reads the script as UTF-8.
-    std::fs::write(&file, [&[0xEF, 0xBB, 0xBF][..], PS.as_bytes()].concat()).ok()?;
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(&file)
-        .creation_flags(0x0800_0000)
-        .output()
-        .ok()?;
-    let _ = std::fs::remove_file(&file);
-    let text = String::from_utf8_lossy(&out.stdout);
-    let list: Vec<Value> = serde_json::from_str(text.trim().trim_start_matches('\u{feff}')).ok()?;
+    let mut list = installed_apps();
+    // Shortcuts on the desktops and in the Start menu, two folders deep.
+    let env = |k: &str| std::env::var(k).ok().map(PathBuf::from);
+    let places = [
+        dirs::desktop_dir(),
+        env("PUBLIC").map(|p| p.join("Desktop")),
+        env("APPDATA").map(|p| p.join(r"Microsoft\Windows\Start Menu\Programs")),
+        env("ProgramData").map(|p| p.join(r"Microsoft\Windows\Start Menu\Programs")),
+    ];
+    let mut files = vec![];
+    fn walk(d: &Path, depth: u32, out: &mut Vec<PathBuf>) {
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() && depth < 2 {
+                walk(&p, depth + 1, out);
+            } else if p.extension().map(|x| x.eq_ignore_ascii_case("lnk")).unwrap_or(false) {
+                out.push(p);
+            }
+        }
+    }
+    for d in places.into_iter().flatten() {
+        walk(&d, 0, &mut files);
+    }
+    for (f, target, args) in crate::win::read_shortcuts(files) {
+        let t = std::fs::metadata(&f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let n = f.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        list.push(json!({"k": "lnk", "n": n, "p": target.to_string_lossy(), "a": args, "t": t}));
+    }
     pick(&list, names, since, ours, then)
+}
+
+/// The apps in Settings > Apps (Windows' list of installed programs).
+#[cfg(windows)]
+fn installed_apps() -> Vec<Value> {
+    use crate::win::{reg_str, reg_subkeys, HKCU, HKLM};
+    let mut o = vec![];
+    for (root, key) in [(HKCU, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"), (HKLM, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"), (HKLM, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")] {
+        for sub in reg_subkeys(root, key) {
+            let k = format!(r"{key}\{sub}");
+            let v = |name: &str| reg_str(root, &k, name).unwrap_or_default();
+            o.push(json!({"k": "app", "n": v("DisplayName"), "p": v("InstallLocation"), "i": v("DisplayIcon"), "u": v("UninstallString")}));
+        }
+    }
+    o
 }
 
 #[cfg(not(windows))]
@@ -537,23 +574,7 @@ fn installed_elsewhere(_names: &[&str], _since: SystemTime, _ours: &Path, _then:
 /// the game's program): the command to run, as Windows keeps it.
 #[cfg(windows)]
 pub fn uninstaller_for(dir: &Path) -> Option<String> {
-    use std::os::windows::process::CommandExt;
-    const PS: &str = r#"$o = @()
-foreach ($k in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*') {
-  Get-ItemProperty $k -ErrorAction SilentlyContinue | Where-Object { $_.UninstallString } | ForEach-Object { $o += [pscustomobject]@{ p = [string]$_.InstallLocation; i = [string]$_.DisplayIcon; u = [string]$_.UninstallString } }
-}
-ConvertTo-Json -InputObject @($o) -Compress"#;
-    let file = std::env::temp_dir().join("recomplauncher-find-uninstall.ps1");
-    std::fs::write(&file, [&[0xEF, 0xBB, 0xBF][..], PS.as_bytes()].concat()).ok()?;
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(&file)
-        .creation_flags(0x0800_0000)
-        .output()
-        .ok()?;
-    let _ = std::fs::remove_file(&file);
-    let text = String::from_utf8_lossy(&out.stdout);
-    let list: Vec<Value> = serde_json::from_str(text.trim().trim_start_matches('\u{feff}')).ok()?;
+    let list: Vec<Value> = installed_apps().into_iter().filter(|v| !v["u"].as_str().unwrap_or("").is_empty()).collect();
     pick_uninstaller(&list, dir)
 }
 
@@ -589,7 +610,15 @@ pub fn run_uninstaller(cmd: &str) -> std::io::Result<()> {
     {
         use std::os::windows::process::CommandExt;
         // As Windows keeps it: a quoted program with its options, or MsiExec /X{...}.
-        std::process::Command::new("cmd").raw_arg(format!("/C \"{cmd}\"")).creation_flags(0x0800_0000).spawn()?;
+        let (prog, args) = crate::win::split_command(cmd);
+        let dir = Path::new(&prog).parent().filter(|d| d.is_dir()).map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+        match std::process::Command::new(&prog).raw_arg(&args).current_dir(&dir).spawn() {
+            Ok(_) => {}
+            Err(e) if e.raw_os_error() == Some(740) => {
+                crate::win::run_as_admin(Path::new(&prog), &args, &dir)?;
+            }
+            Err(e) => return Err(e),
+        }
     }
     #[cfg(not(windows))]
     let _ = cmd;

@@ -265,14 +265,6 @@ pub struct PcCheck {
     pub build_tools: Option<bool>,
 }
 
-#[cfg(windows)]
-fn quiet(cmd: &str) -> std::process::Command {
-    use std::os::windows::process::CommandExt;
-    let mut c = std::process::Command::new(cmd);
-    c.creation_flags(0x0800_0000); // no console window
-    c
-}
-
 pub fn pc_check() -> PcCheck {
     let mut c = PcCheck { cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), ..Default::default() };
     #[cfg(target_arch = "x86_64")]
@@ -282,21 +274,10 @@ pub fn pc_check() -> PcCheck {
     }
     #[cfg(windows)]
     {
-        let out = quiet("reg").args(["query", r"HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64", "/v", "Installed"]).output();
-        c.vcredist = Some(out.map(|o| String::from_utf8_lossy(&o.stdout).contains("0x1")).unwrap_or(false));
+        c.vcredist = Some(crate::win::has_vcredist());
         let sys = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
         c.vulkan = Some(Path::new(&sys).join("System32").join("vulkan-1.dll").is_file());
-        // vswhere, which every Visual Studio and Build Tools install puts in the same place.
-        let pf = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| r"C:\Program Files (x86)".into());
-        let vswhere = Path::new(&pf).join(r"Microsoft Visual Studio\Installer\vswhere.exe");
-        c.build_tools = Some(
-            vswhere.is_file()
-                && quiet(&vswhere.to_string_lossy())
-                    .args(["-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"])
-                    .output()
-                    .map(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
-                    .unwrap_or(false),
-        );
+        c.build_tools = Some(crate::win::has_build_tools());
     }
     #[cfg(target_os = "linux")]
     {

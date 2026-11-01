@@ -19,20 +19,6 @@ fn safe_name(s: &str) -> String {
 
 // ---------- desktop ----------
 
-#[cfg(windows)]
-fn powershell(script: &str) -> Result<(), Error> {
-    use std::os::windows::process::CommandExt;
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
-        .creation_flags(0x0800_0000)
-        .output()?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(Error::Msg(format!("Windows couldn't make the shortcut: {}", String::from_utf8_lossy(&out.stderr).trim())))
-    }
-}
-
 /// A shortcut on the desktop that plays the game. `icon` is the game's program, for its icon.
 /// With `direct`, the shortcut starts that program itself (with those arguments), the way a front
 /// end like RetroBat or Playnite expects; without it, it goes through the launcher (`--play`).
@@ -47,14 +33,10 @@ pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Optio
     #[cfg(windows)]
     {
         let lnk = desk.join(format!("{}.lnk", safe_name(name)));
-        let q = |p: &Path| p.to_string_lossy().replace('\'', "''");
-        let icon_line = icon.map(|i| format!("$s.IconLocation='{},0';", q(i))).unwrap_or_default();
         let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
-        let what = if direct.is_some() { format!("Play {}", name.replace('\'', "''")) } else { format!("Play {} with RecompLauncher", name.replace('\'', "''")) };
-        powershell(&format!(
-            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='{}';$s.WorkingDirectory='{}';{}$s.Description='{}';$s.Save()",
-            q(&lnk), q(&target), args.replace('\'', "''"), q(&dir), icon_line, what
-        ))?;
+        let description = if direct.is_some() { format!("Play {name}") } else { format!("Play {name} with RecompLauncher") };
+        crate::win::make_shortcut(crate::win::Shortcut { file: lnk.clone(), target: target.clone(), args, dir, icon: icon.map(Path::to_path_buf), description })
+            .map_err(|e| Error::Msg(format!("Windows couldn't make the shortcut: {e}")))?;
         Ok(lnk)
     }
     #[cfg(not(windows))]
@@ -273,16 +255,10 @@ pub fn add_shortcut(old: Option<&[u8]>, name: &str, exe: &str, start_dir: &str, 
 pub fn steam_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        if let Ok(o) = std::process::Command::new("reg").args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"]).creation_flags(0x0800_0000).output() {
-            let s = String::from_utf8_lossy(&o.stdout);
-            if let Some(line) = s.lines().find(|l| l.contains("SteamPath")) {
-                if let Some(p) = line.split("REG_SZ").nth(1) {
-                    let p = PathBuf::from(p.trim().replace('/', "\\"));
-                    if p.join("userdata").is_dir() {
-                        return Some(p);
-                    }
-                }
+        if let Some(p) = crate::win::reg_str(crate::win::HKCU, r"Software\Valve\Steam", "SteamPath") {
+            let p = PathBuf::from(p.trim().replace('/', "\\"));
+            if p.join("userdata").is_dir() {
+                return Some(p);
             }
         }
         let p = PathBuf::from(r"C:\Program Files (x86)\Steam");
@@ -309,13 +285,7 @@ pub fn steam_users(steam: &Path) -> Vec<PathBuf> {
 pub fn steam_running() -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq steam.exe", "/NH"])
-            .creation_flags(0x0800_0000)
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("steam.exe"))
-            .unwrap_or(false)
+        crate::win::is_running("steam.exe")
     }
     #[cfg(not(windows))]
     {

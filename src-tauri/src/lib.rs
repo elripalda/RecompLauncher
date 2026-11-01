@@ -35,6 +35,7 @@ pub mod saves;
 pub mod shortcuts;
 pub mod tray;
 pub mod usage;
+pub mod win;
 
 use catalog::Release;
 use install::Progress;
@@ -1268,7 +1269,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         return Err(Error::Msg(format!("{name} is already open. Close it (or wait for it to finish closing), then press Play.")));
     }
-    // A Python or PowerShell script starts through its interpreter.
+    // A Python script starts through its interpreter.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     let mut cmd = match ext.as_str() {
         "py" if cfg!(windows) => {
@@ -1279,11 +1280,6 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         "py" => {
             let mut c = tokio::process::Command::new("python3");
             c.arg(&exe);
-            c
-        }
-        "ps1" => {
-            let mut c = tokio::process::Command::new("powershell");
-            c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(&exe);
             c
         }
         // A Windows program on Linux: through Proton (or Wine).
@@ -1867,41 +1863,49 @@ struct LooksInfo {
     shot: Option<String>,
 }
 
+/// Data the program carries compressed (see build.rs), as text again.
+pub fn unpack(z: &[u8]) -> String {
+    use std::io::Read;
+    let mut s = String::new();
+    let _ = flate2::read::DeflateDecoder::new(z).read_to_string(&mut s);
+    s
+}
+
 /// The window's own data files, for when it can't read them itself (a strict content policy):
 /// the looks and each language's text.
-const UI_LANGS: &[(&str, &str)] = &[
-    ("ar", include_str!("../../ui/i18n/ar.json")),
-    ("de", include_str!("../../ui/i18n/de.json")),
-    ("en-GB", include_str!("../../ui/i18n/en-GB.json")),
-    ("es-419", include_str!("../../ui/i18n/es-419.json")),
-    ("es", include_str!("../../ui/i18n/es.json")),
-    ("fr-CA", include_str!("../../ui/i18n/fr-CA.json")),
-    ("fr", include_str!("../../ui/i18n/fr.json")),
-    ("id", include_str!("../../ui/i18n/id.json")),
-    ("it", include_str!("../../ui/i18n/it.json")),
-    ("ja", include_str!("../../ui/i18n/ja.json")),
-    ("ko", include_str!("../../ui/i18n/ko.json")),
-    ("nl", include_str!("../../ui/i18n/nl.json")),
-    ("pl", include_str!("../../ui/i18n/pl.json")),
-    ("pt-BR", include_str!("../../ui/i18n/pt-BR.json")),
-    ("pt", include_str!("../../ui/i18n/pt.json")),
-    ("ru", include_str!("../../ui/i18n/ru.json")),
-    ("th", include_str!("../../ui/i18n/th.json")),
-    ("tr", include_str!("../../ui/i18n/tr.json")),
-    ("uk", include_str!("../../ui/i18n/uk.json")),
-    ("vi", include_str!("../../ui/i18n/vi.json")),
-    ("zh-Hans", include_str!("../../ui/i18n/zh-Hans.json")),
-    ("zh-Hant", include_str!("../../ui/i18n/zh-Hant.json")),
+const UI_LANGS: &[(&str, &[u8])] = &[
+    ("ar", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-ar.json.z"))),
+    ("de", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-de.json.z"))),
+    ("en-GB", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-en-GB.json.z"))),
+    ("es-419", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-es-419.json.z"))),
+    ("es", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-es.json.z"))),
+    ("fr-CA", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-fr-CA.json.z"))),
+    ("fr", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-fr.json.z"))),
+    ("id", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-id.json.z"))),
+    ("it", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-it.json.z"))),
+    ("ja", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-ja.json.z"))),
+    ("ko", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-ko.json.z"))),
+    ("nl", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-nl.json.z"))),
+    ("pl", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-pl.json.z"))),
+    ("pt-BR", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-pt-BR.json.z"))),
+    ("pt", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-pt.json.z"))),
+    ("ru", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-ru.json.z"))),
+    ("th", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-th.json.z"))),
+    ("tr", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-tr.json.z"))),
+    ("uk", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-uk.json.z"))),
+    ("vi", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-vi.json.z"))),
+    ("zh-Hans", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-zh-Hans.json.z"))),
+    ("zh-Hant", include_bytes!(concat!(env!("OUT_DIR"), "/i18n-zh-Hant.json.z"))),
 ];
 
 #[tauri::command(async)]
 fn ui_data(name: String) -> Res<Value> {
     let text = if name == "looks" {
-        looks::LOOKS_JSON
+        looks::LOOKS_JSON.to_string()
     } else {
-        UI_LANGS.iter().find(|(c, _)| *c == name).map(|(_, t)| *t).ok_or_else(|| Error::Msg("Unknown file.".into()))?
+        UI_LANGS.iter().find(|(c, _)| *c == name).map(|(_, t)| unpack(t)).ok_or_else(|| Error::Msg("Unknown file.".into()))?
     };
-    serde_json::from_str(text).map_err(|e| Error::Msg(e.to_string()))
+    serde_json::from_str(&text).map_err(|e| Error::Msg(e.to_string()))
 }
 
 #[tauri::command(async)]
@@ -2475,22 +2479,13 @@ fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
 fn already_open(exe: &Path) -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         let Some(name) = exe.file_name().map(|n| n.to_string_lossy().to_string()) else { return false };
         // Names too common to be sure it's this game.
         let low = name.to_lowercase();
         if !low.ends_with(".exe") || ["launcher.exe", "game.exe", "start.exe", "main.exe", "setup.exe", "play.exe", "run.exe"].contains(&low.as_str()) {
             return false;
         }
-        let out = std::process::Command::new("tasklist")
-            .args(["/FI", &format!("IMAGENAME eq {name}"), "/NH", "/FO", "CSV"])
-            .creation_flags(0x0800_0000)
-            .output();
-        if let Ok(o) = out {
-            let text = String::from_utf8_lossy(&o.stdout).to_lowercase();
-            return text.contains(&format!("\"{}\"", name.to_lowercase()));
-        }
-        false
+        win::is_running(&name)
     }
     #[cfg(not(windows))]
     {
@@ -3739,10 +3734,8 @@ fn away(w: &tauri::Window, now: bool) {
 fn open_app_control() -> Res<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let ok = std::process::Command::new("explorer.exe").arg("windowsdefender://appbrowser").creation_flags(0x0800_0000).spawn().is_ok();
-        if !ok {
-            let _ = std::process::Command::new("explorer.exe").arg("ms-settings:windowsdefender").creation_flags(0x0800_0000).spawn();
+        if tauri_plugin_opener::open_url("windowsdefender://appbrowser", None::<&str>).is_err() {
+            let _ = tauri_plugin_opener::open_url("ms-settings:windowsdefender", None::<&str>);
         }
     }
     Ok(())

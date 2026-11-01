@@ -55,7 +55,7 @@ fn rel(p: &str) -> Option<PathBuf> {
 static BUILT_IN: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
 
 fn built_in() -> &'static Value {
-    BUILT_IN.get_or_init(|| serde_json::from_str(include_str!("../boot/boot-profiles.json")).unwrap_or(Value::Null))
+    BUILT_IN.get_or_init(|| serde_json::from_str(&crate::unpack(include_bytes!(concat!(env!("OUT_DIR"), "/boot-profiles.json.z")))).unwrap_or(Value::Null))
 }
 
 /// The shipped profiles, for the window (the game page's "Before you play").

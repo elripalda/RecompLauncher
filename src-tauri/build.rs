@@ -1,4 +1,5 @@
 fn main() {
+    pack();
     // Cross-building for Windows with MinGW: unrar's C++ is built without a C++ library, so
     // libstdc++ goes in statically (the program needs no MinGW DLLs), with the Windows libraries
     // unrar names in #pragma comment, which MinGW doesn't read.
@@ -49,4 +50,26 @@ fn unrar_src() -> Option<std::path::PathBuf> {
         let d = r.path().join("unrar_sys-0.5.8/vendor/unrar");
         d.join("isnt.cpp").is_file().then_some(d)
     })
+}
+
+/// The data the program carries (the shipped game profiles, each language's text), stored
+/// compressed: a smaller program.
+fn pack() {
+    use std::io::Write;
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let mut files = vec![("boot/boot-profiles.json".to_string(), "boot-profiles.json.z".to_string())];
+    for e in std::fs::read_dir("../ui/i18n").unwrap().flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if n.ends_with(".json") {
+            files.push((format!("../ui/i18n/{n}"), format!("i18n-{n}.z")));
+        }
+    }
+    for (from, to) in files {
+        println!("cargo:rerun-if-changed={from}");
+        let data = std::fs::read(&from).unwrap();
+        let mut z = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::best());
+        z.write_all(&data).unwrap();
+        std::fs::write(out.join(to), z.finish().unwrap()).unwrap();
+    }
+    println!("cargo:rerun-if-changed=../ui/i18n");
 }

@@ -1,6 +1,6 @@
 [package]
 name = "recomplauncher"
-version = "0.90.0-beta.3"
+version = "0.90.0-beta.3.1"
 description = "RecompLauncher: one home for PC recomps"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 cc = "1"
+flate2 = "1"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
@@ -51,6 +52,7 @@ xcap = { version = "0.9", features = ["image", "wgc"] }
 hidapi = { version = "2", default-features = false, features = ["windows-native"] }
 webview2-com = "0.39"
 windows-core = "0.62"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
 
 [target.'cfg(not(windows))'.dependencies]
 gilrs = "0.11"

@@ -166,6 +166,26 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
 }
 
 /// The build for this PC, or None when the release has none.
+/// Builds of one release that are equally good for this PC and differ only in what they're for (one
+/// per region, say: Game-JP and Game-US). The player picks; one alone needs no choice.
+pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
+    let pool: Vec<&Asset> = match pattern.filter(|p| !p.trim().is_empty()) {
+        Some(p) => assets.iter().filter(|a| wild(p, &a.name)).collect(),
+        None => assets.iter().collect(),
+    };
+    let best = pool.iter().map(|a| score(&a.name, os, arch)).max().unwrap_or(i32::MIN);
+    if best <= 0 {
+        return vec![];
+    }
+    pool.into_iter().filter(|a| score(&a.name, os, arch) == best).collect()
+}
+
+/// Of `list`, the one most like `before` (the build the player had): same words but the version.
+pub fn most_like<'a>(list: &[&'a Asset], before: &str) -> Option<&'a Asset> {
+    let had = words(before);
+    list.iter().copied().max_by_key(|a| words(&a.name).iter().filter(|w| had.contains(w) && !w.chars().all(|c| c.is_ascii_digit() || c == '.')).count())
+}
+
 pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Option<&'a Asset> {
     if let Some(p) = pattern.filter(|p| !p.trim().is_empty()) {
         let best = assets

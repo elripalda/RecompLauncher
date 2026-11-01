@@ -61,12 +61,8 @@ fn os_version() -> String {
     V.get_or_init(|| {
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
-            // "Microsoft Windows [Version 10.0.22631.4602]" -> 10.0.22631
-            let out = std::process::Command::new("cmd").args(["/c", "ver"]).creation_flags(0x0800_0000).output().ok();
-            let s = out.map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
-            let v: String = s.split(|c: char| !(c.is_ascii_digit() || c == '.')).filter(|p| p.matches('.').count() >= 2).next().unwrap_or("").to_string();
-            v.split('.').take(3).collect::<Vec<_>>().join(".")
+            // 10.0.22631
+            crate::win::os_version()
         }
         #[cfg(not(windows))]
         {

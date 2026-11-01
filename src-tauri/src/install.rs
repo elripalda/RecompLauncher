@@ -272,25 +272,57 @@ fn root(dir: &Path) -> PathBuf {
     }
 }
 
+/// A file operation that Windows can refuse for a few seconds (access denied, or in use) while an
+/// antivirus looks at a file that was just unpacked: tried again for up to about ten seconds.
+fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut last = None;
+    for i in 0..20 {
+        match op() {
+            Ok(v) => return Ok(v),
+            Err(e) if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied => {
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(if i < 4 { 250 } else { 600 }));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| io::Error::other("busy")))
+}
+
+/// What to tell the player when a file can't be put in place.
+fn denied(e: io::Error, what: &Path) -> io::Error {
+    if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied {
+        io::Error::new(
+            e.kind(),
+            format!(
+                "Windows wouldn't let the launcher write {}. Close the game if it's running, check that your antivirus isn't holding the folder, or pick a library folder outside Program Files, then try again.",
+                what.display()
+            ),
+        )
+    } else {
+        e
+    }
+}
+
 /// Move everything in `from` into `to`, replacing files of the same name and leaving the rest
 /// (saves, settings, the game files people added) alone.
 fn overlay(from: &Path, to: &Path) -> io::Result<()> {
-    fs::create_dir_all(to)?;
+    patient(|| fs::create_dir_all(to)).map_err(|e| denied(e, to))?;
     for e in fs::read_dir(from)? {
         let e = e?;
         let src = e.path();
         let dest = to.join(e.file_name());
         if src.is_dir() {
             if dest.is_file() {
-                fs::remove_file(&dest)?;
+                patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
             }
             overlay(&src, &dest)?;
         } else {
             if dest.is_dir() {
-                fs::remove_dir_all(&dest)?;
+                patient(|| fs::remove_dir_all(&dest)).map_err(|e| denied(e, &dest))?;
             }
-            if fs::rename(&src, &dest).is_err() {
-                fs::copy(&src, &dest)?;
+            if patient(|| fs::rename(&src, &dest)).is_err() {
+                patient(|| fs::copy(&src, &dest)).map_err(|e| denied(e, &dest))?;
             }
         }
     }
