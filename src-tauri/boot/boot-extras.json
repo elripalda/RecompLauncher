@@ -15,5 +15,15 @@
    "how": "env",
    "env": "MP_DISC"
   }
+ },
+ "tenkaichi3decomp": {
+  "makes": [
+   "gamedata/disc/SLUS_216.78"
+  ]
+ },
+ "dbz-bt4-tag-team-decomp": {
+  "makes": [
+   "gamedata/disc"
+  ]
  }
 }

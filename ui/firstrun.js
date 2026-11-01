@@ -3,7 +3,7 @@
 // or controller.
 (() => {
   'use strict';
-  const STEPS = ['lang', 'welcome', 'play', 'games', 'library', 'choices', 'account', 'done'];
+  const STEPS = ['lang', 'welcome', 'play', 'games', 'library', 'choices', 'data', 'account', 'done'];
   const O = { el: null, step: 0, scanning: false, scanned: false, dir: 1 };
   const LOGO = '<svg viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="oobg" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#oobg)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
   const ICON = {
@@ -83,7 +83,8 @@
         const info = (S.libs || []).find((l) => l.path === lib);
         return `<h1>${esc(t('Where should games go?'))}</h1><p class="oob-lead">${esc(t('Recomps install here. You can add more places, on other drives, in Settings.'))}</p>
           <div class="oob-box"><div class="oob-dir big">${ICON.folder}<span title="${esc(lib)}">${esc(lib)}</span><button type="button" class="btn sm" data-o="lib">${esc(t('Change'))}</button></div>
-          ${info && info.free ? `<p class="oob-free">${esc(tf('{free} free on this drive', { free: fmtB(info.free) }))}</p>` : ''}</div>`;
+          ${info && info.free ? `<p class="oob-free">${esc(tf('{free} free on this drive', { free: fmtB(info.free) }))}</p>` : ''}</div>
+          <div class="oob-deck"><div><b>${esc(t('Already have recomps?'))}</b><span>${esc(t('Bring in the ones you installed yourself, with Quiver Launcher or in Steam. They keep updating from here, where they are.'))}</span></div><button type="button" class="btn" data-o="adopt">${esc(t('Bring Your Recomps'))}</button></div>`;
       }
       case 'choices':
         return `<h1>${esc(t('A few choices'))}</h1><p class="oob-lead">${esc(t('All of these are in Settings later.'))}</p>
@@ -92,8 +93,16 @@
             ${sw('backup_before_update', t('Back up your saves'), t('Before every update, so you can always go back.'))}
             ${sw('notify', t('Notifications'), t('When updates are ready, and when a game you own gets a recomp.'))}
             ${sw('discord', t('Discord'), t('Shows the game you\'re playing on your profile.'))}
-            ${sw('share_usage', t('Share usage and diagnostics'), t('Your PC\'s parts and what went wrong when a game crashes. It helps fix problems faster.'))}
           </div>`;
+      case 'data': {
+        // Off unless the player turns them on.
+        const sw2 = (k, label, sub) => `<div class="oob-row"><div class="k"><b>${esc(label)}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!S.settings[k]}" aria-label="${esc(label)}" data-o="sw" data-k="${k}"></button></div>`;
+        return `<h1>${esc(t('Help Improve RecompLauncher?'))}</h1><p class="oob-lead">${esc(t('Both are off unless you turn them on. You can change this any time in Settings.'))}</p>
+          <div class="oob-box rows">
+            ${sw2('share_usage', t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. No names, no files.'))}
+            ${sw2('share_stats', t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'))}
+          </div><p class="oob-free"><a href="#" data-o="what">${esc(t('What\'s sent'))}</a></p>`;
+      }
       case 'account': {
         const a = S.account || {};
         if (a.signedIn) {
@@ -108,7 +117,7 @@
       default: {
         const found = games();
         return `<div class="oob-logo big done">${LOGO}</div><h1>${esc(t('You\'re all set'))}</h1>
-          <p class="oob-lead">${esc(found.length ? tn(found.length, 'One of your games has a recomp. It\'s waiting on Home.', '{n} of your games have recomps. They\'re waiting on Home.') : t('Find something to play in Discover.'))}</p>${found.length ? covers(found) : ''}`;
+          <p class="oob-lead">${esc(found.length ? tn(found.length, 'One of your games has a recomp. It\'s in your Library, ready to install.', '{n} of your games have recomps. They\'re in your Library, ready to install.') : t('Find something to play in Discover.'))}</p>${found.length ? covers(found) : ''}`;
       }
     }
   }
@@ -134,7 +143,7 @@
 
   async function scan() {
     O.scanning = true; draw();
-    try { S.roms = await invoke('scan_roms'); S.owned = await invoke('rom_matches'); } catch (e) { fail(e); }
+    try { S.roms = await invoke('scan_roms'); S.owned = await invoke('rom_matches'); if (window.addOwned) await window.addOwned(); } catch (e) { fail(e); }
     O.scanning = false; O.scanned = true;
     draw();
     render(true);
@@ -192,6 +201,8 @@
         return save({ [k]: on });
       }
       case 'acc': return window.signIn && window.signIn(b.dataset.v === 'new');
+      case 'adopt': return window.adoptAct && window.adoptAct('adopt', b);
+      case 'what': e.preventDefault(); return invoke('open_url', { url: 'https://recompstore.com/privacy#launcher' }).catch(fail);
       case 'back': return go(-1);
       case 'next': return go(1);
       case 'finish': return finish();
@@ -210,7 +221,7 @@
   async function finish() {
     if (O.finishing) return;
     O.finishing = true;
-    await save({ setup_done: true, asked_location: true });
+    await save({ setup_done: true, asked_location: true, data_asked: true });
     if (!O.el) return;
     O.el.classList.add('out');
     const tv = !!S.settings.start_in_tv;

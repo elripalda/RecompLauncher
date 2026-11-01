@@ -25,6 +25,7 @@
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>',
     user: '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    close: '<path d="m6 6 12 12M18 6 6 18"/>',
     shot: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6l1.5-2h5L16 6"/><circle cx="12" cy="13" r="3.5"/>',
     puzzle: '<path d="M9 4h4v2.5a1.5 1.5 0 0 0 3 0V4h4v6h-2.5a1.5 1.5 0 0 0 0 3H20v7h-6v-2.5a1.5 1.5 0 0 0-3 0V20H4v-6h2.5a1.5 1.5 0 0 0 0-3H4V4z"/>',
     more: '<circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/>',
@@ -220,7 +221,7 @@
       const b = $('.tv-boot', root);
       if (!b || !TV.on) return;
       b.classList.add('out');
-      setTimeout(() => { if (!TV.on) return; TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); }, 420);
+      setTimeout(() => { if (!TV.on) return; TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
     }, 3100);
   }
 
@@ -342,6 +343,38 @@
     else items.push({ label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) }, { label: t('Close'), icon: 'chevL', run: () => {} });
     sheet(tf('Set up {name}', { name: a.name }), items.filter(Boolean), 'sreq', head);
   }
+  // A game whose folder isn't there (app.js missingModal), as a sheet for the controller.
+  window.tvMissing = (id) => {
+    if (!TV.on) return false;
+    const g = S.library[id];
+    if (!g) return true;
+    const a = libAppOf(id);
+    const head = `<h3>${esc(tf('Can\'t Find {name}', { name: a.name }))}</h3><p class="tv-sh-p">${esc(t('Its folder isn\'t where it was. If it\'s on a drive that isn\'t connected, connect it and try again.'))}</p><p class="tv-sh-p" dir="ltr">${esc(g.path)}</p>`;
+    sheet('', [
+      { label: t('Try Again'), icon: 'refresh', run: async () => { await refreshState(); draw(true); if (S.missing.has(id)) window.tvMissing(id); else playGame(id); } },
+      { label: t('Find Its Folder…'), icon: 'folder', run: async () => {
+        const p = await pickFile({ title: tf('Where {name} is now', { name: a.name }), directory: true }).catch(fail);
+        if (!p) return;
+        try { S.library[id] = await invoke('locate_game', { id, path: typeof p === 'string' ? p : p.path }); await refreshState(); draw(true); toast(tf('Found {name}.', { name: a.name })); } catch (e) { fail(e); }
+      } },
+      { label: t('Remove from Library'), icon: 'bin', run: async () => { try { await invoke('forget_game', { id }); await refreshState(); draw(true); } catch (e) { fail(e); } } },
+    ], '', head);
+    return true;
+  };
+  // Sharing, asked once of players who had the launcher before it was asked (app.js askData).
+  window.tvAskData = () => {
+    if (!TV.on) return false;
+    if (TV.booting || TV.flying || !stage() || TV.sheet) { setTimeout(() => window.tvAskData(), 400); return true; }
+    if (S.settings.data_asked) return true;
+    const set = async (u, s) => { await saveSettings({ data_asked: true, share_usage: u, share_stats: s }, true); };
+    const head = `<h3>${esc(t('Help Improve RecompLauncher?'))}</h3><p class="tv-sh-p">${esc(t('RecompLauncher can send a little information to help fix problems and see what players use. Nothing is sent unless you say so, and you can change this any time in Settings.'))}</p>`;
+    sheet('', [
+      { label: t('Don\'t Share'), sub: t('Nothing is sent'), icon: 'close', run: () => set(false, false) },
+      { label: t('Share Anonymous Stats'), sub: t('When the launcher is open and which recomps are played, under a random ID'), icon: 'check', run: () => set(false, true) },
+      { label: t('Share Both'), sub: t('Also your PC\'s parts and what went wrong when a game crashes. No names, no files.'), icon: 'check', run: () => set(true, true) },
+    ], 'tv-ask', head);
+    return true;
+  };
   window.tvSetupReq = (id) => {
     if (!TV.on) return false;
     if (TV.booting || TV.flying || !stage()) { setTimeout(() => window.tvSetupReq(id), 300); return true; }
@@ -848,10 +881,12 @@
     const type = (c) => { if (TV.dq.length < 40) { TV.dq += c; changed(); } };
     const items = KEYS.map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
       .concat([{ label: t('Space'), cls: 'key wide', run: () => type(' ') }, { label: t('Delete'), cls: 'key wide', icon: 'erase', run: () => { TV.dq = TV.dq.slice(0, -1); changed(); } }, { label: t('Clear'), cls: 'key wide', run: () => { TV.dq = ''; changed(); } }, { label: t('Done'), cls: 'key wide done', icon: 'check', run: () => { TV.sheet.keep = false; closeSheet(); } }]);
-    const head = `<h3>${esc(t('Search'))}</h3><div class="tv-kb-field">${svg('search', 26)}<span id="tv-kbq"></span><span id="tv-kbph" class="ph">${esc(t('Type a game\'s name'))}</span><i class="caret"></i></div>`;
+    const head = `<h3>${esc(t('Search'))}</h3><div class="tv-kb-field">${svg('search', 26)}<span id="tv-kbq"></span><span id="tv-kbph" class="ph">${esc(t('Type a game\'s name'))}</span><i class="caret"></i></div><div class="tv-kb-hints"><span>${glyph('y')}${esc(t('Space'))}</span><span>${glyph('x')}${esc(t('Delete'))}</span></div>`;
     sheet(t('Search'), items, 'kb', head);
     TV.sheet.keep = true;
     TV.sheet.kb = { type, del: () => { TV.dq = TV.dq.slice(0, -1); changed(); } };
+    // Like a console's keyboard: Y types a space, X deletes.
+    TV.sheet.keys = (b) => { if (b === 'y') { type(' '); sfx('move'); return true; } if (b === 'x') { TV.sheet.kb.del(); sfx('move'); return true; } return false; };
     TV.sheet.onClose = () => { clearTimeout(later); TV.gridShown = {}; TV.focusKey = 'g:@search'; draw(true); setScroll(0, true); };
     show();
   }
@@ -1752,7 +1787,8 @@
       for (const e of $$('[data-key]', old)) e.removeAttribute('data-key');
       if (anim === 'thru') old.after(fresh); else old.before(fresh);
     } else if (old) old.replaceWith(fresh); else root.prepend(fresh);
-    keepers.forEach((k) => { k.style.animation = 'none'; fresh.append(k); });
+    // Moved over without playing their way in again (a sheet would slide in on every redraw).
+    keepers.forEach((k) => { k.style.animation = 'none'; k.classList.add('kept'); fresh.append(k); });
     fit();
     fitAll();
     TV.swap = false;

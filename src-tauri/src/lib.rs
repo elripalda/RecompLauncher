@@ -28,6 +28,7 @@ pub mod ping;
 pub mod push;
 pub mod profile;
 pub mod proton;
+pub mod secret;
 pub mod sysenv;
 pub mod roms;
 pub mod saves;
@@ -133,15 +134,35 @@ fn backups_dir(g: &Installed) -> PathBuf {
 
 // ---------- installing ----------
 
+/// "Getting ready": asking the website for the list and the recomp's releases. Cancel works while it
+/// waits, and it never waits more than a minute.
+async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>, cancel: &AtomicBool) -> Result<T, Error> {
+    tokio::pin!(f);
+    let start = Instant::now();
+    loop {
+        tokio::select! {
+            r = &mut f => return r,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(Error::Cancelled);
+                }
+                if start.elapsed() > std::time::Duration::from_secs(60) {
+                    return Err(Error::Msg("recomplauncher.com or GitHub didn't answer in time. Try again in a moment.".into()));
+                }
+            }
+        }
+    }
+}
+
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
     let report = |p: Progress| {
         let _ = app.emit("install", p);
     };
     report(Progress::new(id, "prepare", 0, 0));
-    let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
+    let cat = getting_ready(catalog::catalog(&st.http, &st.dir, false), &cancel).await?.data;
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
-    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, &repo, true).await?.data)?;
+    let rels: Vec<Release> = serde_json::from_value(getting_ready(catalog::releases(&st.http, &st.dir, &repo, true), &cancel).await?.data)?;
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
     // A version the player picked (an older one, to go back to), or the newest.
@@ -159,10 +180,15 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     // The list says which systems a recomp is for: one that isn't for this one isn't installed, even
     // when its release has a file that looks like it could be.
-    if !runs_here(&entry, os) {
+    // A Linux build the list doesn't know about yet (the developer just added one): the release
+    // itself says so.
+    // Only a file that says it's for Linux counts.
+    let linux_files: Vec<_> = rel.assets.iter().filter(|a| { let n = a.name.to_lowercase(); n.contains("linux") || n.ends_with(".appimage") }).cloned().collect();
+    let linux_new = os == "linux" && !runs_here(&entry, os) && assets::pick(&linux_files, "linux", arch, None).is_some();
+    if !runs_here(&entry, os) && !linux_new {
         return Err(Error::Msg(format!("This recomp has no {os_name} version yet.")));
     }
-    let asset = assets::pick(&rel.assets, os, arch, pattern)
+    let asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
         .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
         .clone();
 
@@ -302,6 +328,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         found_saves: prev.as_ref().map(|p| p.found_saves.clone()).unwrap_or_default(),
         save_place: prev.as_ref().and_then(|p| p.save_place.clone()),
         cover_file: prev.as_ref().and_then(|p| p.cover_file.clone()),
+        hero_file: prev.as_ref().and_then(|p| p.hero_file.clone()),
         setup,
         setup_done,
         setup_checked: true,
@@ -2168,7 +2195,6 @@ fn set_game_setting(st: State<'_, App>, id: String, setting: String, choice: usi
 /// A profile's button: open a folder, or clear one (the shader cache).
 #[tauri::command(async)]
 fn game_action(app: AppHandle, st: State<'_, App>, id: String, action: String) -> Res<String> {
-    use tauri_plugin_opener::OpenerExt;
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     let a = p.actions.iter().find(|a| a.id == action).ok_or_else(|| Error::Msg("That isn't one of its buttons.".into()))?;
@@ -2193,7 +2219,7 @@ fn game_action(app: AppHandle, st: State<'_, App>, id: String, action: String) -
     }
     let dir = resolve(&a.open).ok_or_else(|| Error::Msg("That folder couldn't be found.".into()))?;
     std::fs::create_dir_all(&dir)?;
-    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| Error::Msg(e.to_string()))?;
+    open_thing(&app, &dir.to_string_lossy(), false)?;
     Ok(String::new())
 }
 
@@ -2565,8 +2591,14 @@ async fn copy_screenshot(path: String) -> Res<()> {
 
 #[tauri::command(async)]
 fn show_screenshot(app: AppHandle, path: String) -> Res<()> {
-    use tauri_plugin_opener::OpenerExt;
-    app.opener().reveal_item_in_dir(shot_ok(&path)?).map_err(|e| Error::Msg(e.to_string()))
+    let p = shot_ok(&path)?;
+    #[cfg(target_os = "linux")]
+    return open_thing(&app, &p.parent().unwrap_or(&p).to_string_lossy(), false);
+    #[cfg(not(target_os = "linux"))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener().reveal_item_in_dir(p).map_err(|e| Error::Msg(e.to_string()))
+    }
 }
 
 #[tauri::command(async)]
@@ -2592,11 +2624,10 @@ fn screenshots(st: State<'_, App>, id: String) -> Vec<String> {
 
 #[tauri::command(async)]
 fn open_shots(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
-    use tauri_plugin_opener::OpenerExt;
     let name = st.lib.lock().unwrap().installed.get(&id).map(|g| g.name.clone()).unwrap_or_default();
     let d = ingame::shots_dir(&name);
     std::fs::create_dir_all(&d)?;
-    app.opener().open_path(d.to_string_lossy(), None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+    open_thing(&app, &d.to_string_lossy(), false)
 }
 
 /// From the quick menu: "resume", "screenshot", "close" (the game), "launcher" (show the window).
@@ -2655,6 +2686,7 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
 
 #[tauri::command(async)]
 fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Option<String>) -> Res<()> {
+    #[cfg(not(target_os = "linux"))]
     use tauri_plugin_opener::OpenerExt;
     let p = {
         let l = st.lib.lock().unwrap();
@@ -2672,6 +2704,9 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
                     return Err(Error::Msg("That folder isn't one of the launcher's.".into()));
                 }
                 if p.is_file() {
+                    #[cfg(target_os = "linux")]
+                    return open_thing(&app, &p.parent().unwrap_or(&p).to_string_lossy(), false);
+                    #[cfg(not(target_os = "linux"))]
                     return app.opener().reveal_item_in_dir(&p).map_err(|e| Error::Msg(e.to_string()));
                 }
                 p
@@ -2680,7 +2715,7 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
         }
     };
     std::fs::create_dir_all(&p)?;
-    app.opener().open_path(p.to_string_lossy(), None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+    open_thing(&app, &p.to_string_lossy(), false)
 }
 
 // ---------- the catalog ----------
@@ -3175,7 +3210,6 @@ async fn mod_remove(st: State<'_, App>, id: String, full: String) -> Res<()> {
 
 #[tauri::command]
 async fn open_mods(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
-    use tauri_plugin_opener::OpenerExt;
     let dir = match mod_source(&st, &id).await {
         Ok((_, dir)) => dir,
         Err(_) => {
@@ -3184,7 +3218,7 @@ async fn open_mods(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
         }
     };
     std::fs::create_dir_all(&dir)?;
-    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+    open_thing(&app, &dir.to_string_lossy(), false)
 }
 
 // ---------- reports and the launcher's own updates ----------
@@ -3427,8 +3461,7 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     let file_url = str_of(&v, "url").to_string();
     let ok_host = file_url.starts_with("https://github.com/") || file_url.starts_with("https://recomplauncher.com/") || file_url.starts_with(&format!("{}/", catalog::base().trim_end_matches('/')));
     if !(cfg!(windows) || appimage.is_some()) || file_url.is_empty() || !ok_host {
-        use tauri_plugin_opener::OpenerExt;
-        return app.opener().open_url(page, None::<&str>).map_err(|e| Error::Msg(e.to_string()));
+        return open_thing(&app, &page, true);
     }
     let mut r = st.http.get(&file_url).timeout(std::time::Duration::from_secs(900)).send().await?;
     if !r.status().is_success() {
@@ -3495,11 +3528,10 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
 
 #[tauri::command(async)]
 fn get_state(st: State<'_, App>) -> Value {
-    let mut l = st.lib.lock().unwrap();
+    let l = st.lib.lock().unwrap();
     let moving = st.moving.lock().unwrap().clone();
-    if moving.is_empty() && l.forget_missing() {
-        let _ = l.save(&st.dir);
-    }
+    // Games whose folder isn't there right now stay in the Library, marked missing.
+    let missing: Vec<String> = l.missing().into_iter().filter(|id| !moving.contains(id)).collect();
     let running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
     let jobs: Vec<String> = st.jobs.lock().unwrap().keys().cloned().collect();
     json!({
@@ -3516,6 +3548,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "pictures": ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string()),
         "deck": shortcuts::is_steam_deck(),
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
+        "missing": missing,
         // Run as an AppImage: its bundled GStreamer libraries don't match the PC's own plugins, and
         // the web view hangs the moment it opens a sound. The page then plays none.
         "appimage": cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some(),
@@ -3561,6 +3594,9 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
                 setup_done: old.setup_done,
                 tray_told: old.tray_told,
                 menu_tips: old.menu_tips,
+                share_usage: old.share_usage,
+                share_stats: old.share_stats,
+                data_asked: old.data_asked,
                 ui: Value::Object(keep),
                 ..Settings::default()
             };
@@ -3602,10 +3638,46 @@ pub static HANDHELD: AtomicBool = AtomicBool::new(false);
 
 /// The player's own cover for a game: a copy of their picture in the launcher's covers folder (a
 /// new name each time, so the window shows the new one), or None to go back to the usual cover.
+/// A missing game found again: its folder is now `path` (moved, or on a drive with a new letter).
+/// The folder has to hold the game's program, when the launcher knows which one it is.
 #[tauri::command(async)]
-fn set_cover(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
+fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
+    let to = PathBuf::from(&path);
+    if !to.is_dir() {
+        return Err(Error::Msg("Pick the game's folder.".into()));
+    }
+    let g = {
+        let mut l = st.lib.lock().unwrap();
+        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
+        if let Some(exe) = g.exe.as_ref().filter(|e| !e.as_os_str().is_empty() && e.is_relative()) {
+            if !to.join(exe).is_file() {
+                return Err(Error::Msg(format!("That folder doesn't have {}. Pick the folder {} is in.", exe.display(), g.name)));
+            }
+        }
+        g.path = to;
+        g.clone()
+    };
+    st.save();
+    Ok(g)
+}
+
+/// Takes a game out of the Library without touching any files (its folder is gone anyway).
+#[tauri::command(async)]
+fn forget_game(st: State<'_, App>, id: String) -> Res<()> {
+    st.lib.lock().unwrap().installed.remove(&id);
+    st.save();
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn set_cover(st: State<'_, App>, id: String, path: Option<String>, hero: Option<bool>) -> Res<Installed> {
     let dir = st.dir.join("covers");
-    let old = st.lib.lock().unwrap().installed.get(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?.cover_file.clone();
+    let hero = hero.unwrap_or(false);
+    let old = {
+        let l = st.lib.lock().unwrap();
+        let g = l.installed.get(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        if hero { g.hero_file.clone() } else { g.cover_file.clone() }
+    };
     let new = match path.filter(|p| !p.trim().is_empty()) {
         Some(p) => {
             let src = PathBuf::from(p);
@@ -3617,7 +3689,7 @@ fn set_cover(st: State<'_, App>, id: String, path: Option<String>) -> Res<Instal
                 return Err(Error::Msg("That picture is too big (30 MB at most).".into()));
             }
             std::fs::create_dir_all(&dir)?;
-            let to = dir.join(format!("{}-{}.{ext}", library::folder_name(&id), now()));
+            let to = dir.join(format!("{}-{}{}.{ext}", library::folder_name(&id), if hero { "hero-" } else { "" }, now()));
             std::fs::copy(&src, &to)?;
             Some(to)
         }
@@ -3629,7 +3701,11 @@ fn set_cover(st: State<'_, App>, id: String, path: Option<String>) -> Res<Instal
     let g = {
         let mut l = st.lib.lock().unwrap();
         let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-        g.cover_file = new;
+        if hero {
+            g.hero_file = new;
+        } else {
+            g.cover_file = new;
+        }
         g.clone()
     };
     st.save();
@@ -3672,13 +3748,39 @@ fn open_app_control() -> Res<()> {
     Ok(())
 }
 
+/// Opens a web address or a folder the system's way. On Linux the opener (xdg-open, and the browser
+/// or file manager it starts) gets the PC's own environment, not the AppImage's, or it can fail
+/// quietly and nothing opens.
+pub fn open_thing(app: &AppHandle, target: &str, url: bool) -> Res<()> {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (app, url);
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(target).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        sysenv::clean_std(&mut c);
+        let mut child = c.spawn().map_err(|e| Error::Msg(format!("Couldn't open it: {e}")))?;
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        if url {
+            app.opener().open_url(target, None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+        } else {
+            app.opener().open_path(target, None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+        }
+    }
+}
+
 #[tauri::command(async)]
 fn open_url(app: AppHandle, url: String) -> Res<()> {
-    use tauri_plugin_opener::OpenerExt;
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(Error::Msg("Not a web address".into()));
     }
-    app.opener().open_url(url, None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+    open_thing(&app, &url, true)
 }
 
 /// A shortcut, Steam or the tray asked to play a recomp that still needs setting up: the launcher
@@ -4185,6 +4287,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             add_github,
+            locate_game,
+            forget_game,
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
@@ -4195,7 +4299,7 @@ pub fn run() {
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open,
-            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, usage::usage_hello, usage::usage_event, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
+            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
         .expect("RecompLauncher couldn't start")

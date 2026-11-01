@@ -128,6 +128,15 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
             g.setup_done = false;
         }
     }
+    // Its setup ran, but what it makes isn't there (closed early, or the disc wasn't picked): it
+    // hasn't finished, so it opens again instead of the game starting only to quit.
+    if g.setup_done && g.setup.is_some() && crate::boot::of(&st.dir, id).and_then(|b| b.not_made(&g.path)).is_some() {
+        if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
+            r.setup_done = false;
+        }
+        st.save();
+        g.setup_done = false;
+    }
     if g.setup_done {
         return None;
     }

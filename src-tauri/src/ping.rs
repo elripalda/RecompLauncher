@@ -27,7 +27,8 @@ static OPENED: AtomicBool = AtomicBool::new(false);
 static PLAYING: Mutex<Option<HashMap<String, (String, std::time::Instant)>>> = Mutex::new(None);
 
 fn on(st: &App) -> bool {
-    st.lib.lock().unwrap().settings.share_stats
+    let s = &st.lib.lock().unwrap().settings;
+    s.data_asked && s.share_stats
 }
 
 fn uuid() -> String {
@@ -42,7 +43,7 @@ fn uuid() -> String {
 }
 
 /// The random ID for these stats: made once, kept in the data folder.
-fn install(dir: &Path) -> String {
+pub fn install(dir: &Path) -> String {
     let f = dir.join("stats.id");
     if let Ok(s) = std::fs::read_to_string(&f) {
         let s = s.trim().to_string();

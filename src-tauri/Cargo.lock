@@ -4326,7 +4326,7 @@ checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 
 [[package]]
 name = "recomplauncher"
-version = "0.90.0-beta.2"
+version = "0.90.0-beta.3"
 dependencies = [
  "arboard",
  "cc",

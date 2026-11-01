@@ -9,12 +9,12 @@ use std::sync::OnceLock;
 /// Variables an AppImage sets for itself: gone for the programs it starts.
 const OWN: [&str; 5] = ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "APPIMAGE_EXTRACT_AND_RUN"];
 /// Lists of folders an AppImage adds its own to: those taken back out.
-const LISTS: [&str; 16] = [
+const LISTS: [&str; 17] = [
     "LD_LIBRARY_PATH", "LD_PRELOAD", "PATH", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "GSETTINGS_SCHEMA_DIR", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_SYSTEM_PATH_1_0",
-    "GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GIO_MODULE_DIR", "GDK_PIXBUF_MODULE_FILE", "GTK_PATH", "QT_PLUGIN_PATH", "PYTHONPATH", "PERLLIB",
+    "GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GIO_MODULE_DIR", "GDK_PIXBUF_MODULE_FILE", "GTK_PATH", "QT_PLUGIN_PATH", "PYTHONPATH", "PERLLIB", "GI_TYPELIB_PATH",
 ];
 /// Single paths an AppImage points into itself: gone when they do.
-const SINGLE: [&str; 4] = ["PYTHONHOME", "GTK_EXE_PREFIX", "GTK_DATA_PREFIX", "GST_PLUGIN_SCANNER"];
+const SINGLE: [&str; 5] = ["PYTHONHOME", "GTK_EXE_PREFIX", "GTK_DATA_PREFIX", "GST_PLUGIN_SCANNER", "GTK_IM_MODULE_FILE"];
 
 /// One change to make: a variable set to a value, or taken away.
 type Change = (&'static str, Option<OsString>);

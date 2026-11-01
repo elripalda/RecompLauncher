@@ -30,6 +30,10 @@ pub struct Boot {
     /// folder and puts the release's files in it.
     #[serde(default)]
     pub clone: bool,
+    /// What the game's own setup makes inside its folder (files or folders). Until they're all
+    /// there, the setup hasn't finished, whatever happened before.
+    #[serde(default)]
+    pub makes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -114,6 +118,11 @@ pub fn raw(entry: &Value) -> Option<Value> {
 impl Boot {
     pub fn from_entry(entry: &Value) -> Option<Boot> {
         raw(entry).and_then(|b| serde_json::from_value(b).ok())
+    }
+
+    /// The first of the things its setup makes that isn't in `dir` yet.
+    pub fn not_made(&self, dir: &Path) -> Option<String> {
+        self.makes.iter().find(|m| rel(m).map(|p| !dir.join(p).exists()).unwrap_or(false)).cloned()
     }
 
     /// The program to start, when it's there in this folder.
@@ -202,6 +211,19 @@ mod tests {
         assert_eq!(b.then_name().as_deref(), Some("totk.exe"));
         assert_eq!(b.setup_near(&d.join("TotK-Setup")), Some(PathBuf::from("TotK-Setup.exe")));
         assert_eq!(b.setup_near(&d), Some(PathBuf::from("TotK-Setup/TotK-Setup.exe")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_setup_that_made_nothing_isnt_done() {
+        let e: Value = serde_json::from_str(r#"{"id":"tenkaichi3decomp","boot":{"kind":"portable","start":"Tenkaichi3Decomp.exe","setup":"Tenkaichi3Decomp-setup.exe"}}"#).unwrap();
+        let b = Boot::from_entry(&e).unwrap();
+        let d = std::env::temp_dir().join(format!("rl-made-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("gamedata/disc")).unwrap();
+        assert_eq!(b.not_made(&d).as_deref(), Some("gamedata/disc/SLUS_216.78"));
+        std::fs::write(d.join("gamedata/disc/SLUS_216.78"), b"x").unwrap();
+        assert!(b.not_made(&d).is_none());
         let _ = std::fs::remove_dir_all(&d);
     }
 

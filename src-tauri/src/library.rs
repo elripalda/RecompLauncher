@@ -87,6 +87,9 @@ pub struct Installed {
     /// A picture the player picked for its cover (a copy in the launcher's covers folder).
     #[serde(default)]
     pub cover_file: Option<PathBuf>,
+    /// The player's own picture behind the game's page (a wide one), in the launcher's covers folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hero_file: Option<PathBuf>,
     /// A program that has to run once before the game: the release's own installer, or a
     /// first-time setup beside the game. Relative to `path`.
     #[serde(default)]
@@ -163,12 +166,16 @@ pub struct Settings {
     /// The "still running by the clock" notification has shown once.
     #[serde(default)]
     pub tray_told: bool,
-    /// Send usage and diagnostics to recomplauncher.com (usage.rs).
-    #[serde(default = "yes")]
+    /// Send usage and diagnostics to recomplauncher.com (usage.rs). Off until the player says yes.
+    #[serde(default)]
     pub share_usage: bool,
-    /// Anonymous usage stats for recomplauncher.com's dashboard (ping.rs).
-    #[serde(default = "yes")]
+    /// Anonymous usage stats for recomplauncher.com's dashboard (ping.rs). Off until the player says yes.
+    #[serde(default)]
     pub share_stats: bool,
+    /// The player has been asked about both (first-run setup, or once after updating). Nothing is
+    /// sent before that, whatever the two switches say.
+    #[serde(default)]
+    pub data_asked: bool,
     /// The quick menu over games (holding View, Ctrl+F12). Off: the launcher leaves controllers
     /// and the keyboard alone while a game runs.
     #[serde(default = "yes")]
@@ -212,8 +219,9 @@ impl Default for Settings {
             close_to_tray: true,
             proton: false,
             tray_told: false,
-            share_usage: true,
-            share_stats: true,
+            share_usage: false,
+            share_stats: false,
+            data_asked: false,
             notify: true,
             backup_before_update: true,
             tv_size: String::new(),
@@ -281,17 +289,70 @@ pub fn shared_folder(p: &Path, libs: &[PathBuf]) -> bool {
 impl Library {
     pub fn load(dir: &Path) -> Library {
         let p = dir.join("library.json");
-        match std::fs::read(&p) {
+        let mut l = match std::fs::read(&p) {
             Ok(b) => match serde_json::from_slice(&b) {
                 Ok(l) => l,
                 Err(_) => {
-                    // Keep a broken file for a look later rather than losing it.
+                    // A file this launcher can't read whole: everything in it that it can read is
+                    // kept (each game on its own), and the file itself is kept for a look later.
+                    let got = serde_json::from_slice::<Value>(&b).map(|v| Library::lenient(&v)).unwrap_or_default();
                     let _ = std::fs::rename(&p, dir.join("library.broken.json"));
-                    Library::default()
+                    got
                 }
             },
             Err(_) => Library::default(),
+        };
+        // A library an older launcher set aside as broken (and then started empty): its games come
+        // back, those that aren't here already.
+        let broken = dir.join("library.broken.json");
+        if let Some(v) = std::fs::read(&broken).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+            let old = Library::lenient(&v);
+            let mut back = 0;
+            for (id, g) in old.installed {
+                if !l.installed.contains_key(&id) {
+                    l.installed.insert(id, g);
+                    back += 1;
+                }
+            }
+            if back > 0 && !l.settings.setup_done && old.settings.setup_done {
+                l.settings = old.settings;
+            }
+            let _ = std::fs::rename(&broken, dir.join("library.recovered.json"));
+            let _ = l.save(dir);
         }
+        l
+    }
+
+    /// As much of a library file as can be read: every game that reads on its own, and each
+    /// setting that does.
+    pub fn lenient(v: &Value) -> Library {
+        let mut l = Library::default();
+        if let Some(m) = v.get("installed").and_then(Value::as_object) {
+            for (id, g) in m {
+                if let Ok(g) = serde_json::from_value::<Installed>(g.clone()) {
+                    l.installed.insert(id.clone(), g);
+                }
+            }
+        }
+        if let Some(s) = v.get("settings").and_then(Value::as_object) {
+            let mut have = serde_json::to_value(&l.settings).unwrap_or(Value::Null);
+            for (k, val) in s {
+                let mut next = have.clone();
+                next[k] = val.clone();
+                if serde_json::from_value::<Settings>(next.clone()).is_ok() {
+                    have = next;
+                }
+            }
+            if let Ok(s) = serde_json::from_value::<Settings>(have) {
+                l.settings = s;
+            }
+        }
+        let field = |k: &str| v.get(k).cloned().unwrap_or(Value::Null);
+        l.roms = serde_json::from_value(field("roms")).unwrap_or_default();
+        l.seen_apps = serde_json::from_value(field("seen_apps")).unwrap_or_default();
+        l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
+        l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
+        l
     }
 
     pub fn save(&self, dir: &Path) -> std::io::Result<()> {
@@ -301,11 +362,10 @@ impl Library {
         std::fs::rename(tmp, dir.join("library.json"))
     }
 
-    /// Games whose folder was deleted outside the launcher no longer count as installed.
-    pub fn forget_missing(&mut self) -> bool {
-        let before = self.installed.len();
-        self.installed.retain(|_, g| g.path.is_dir());
-        before != self.installed.len()
+    /// Games whose folder can't be found right now: deleted, or on a drive that isn't connected.
+    /// They stay in the Library, shown as missing, until the player finds them or takes them out.
+    pub fn missing(&self) -> Vec<String> {
+        self.installed.values().filter(|g| !g.path.is_dir()).map(|g| g.id.clone()).collect()
     }
 }
 
@@ -342,6 +402,30 @@ mod tests {
         std::fs::write(d.join("library.json"), b"{broken").unwrap();
         assert!(Library::load(&d).installed.is_empty());
         assert!(d.join("library.broken.json").is_file());
+    }
+
+    #[test]
+    fn a_bad_entry_never_takes_the_whole_library() {
+        let d = std::env::temp_dir().join(format!("rl-lib2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        // One game with a field of the wrong kind, one fine, and a setting of the wrong kind.
+        let f = br#"{"installed":{"a":{"id":"a","name":"A","tag":"v1","path":"/x/a","played_secs":"lots"},"b":{"id":"b","name":"B","tag":"v2","path":"/x/b"}},"settings":{"library_dir":"/lib","notify":"yes","setup_done":true}}"#;
+        std::fs::write(d.join("library.json"), f).unwrap();
+        let l = Library::load(&d);
+        assert_eq!(l.installed.len(), 1);
+        assert_eq!(l.installed["b"].tag, "v2");
+        assert_eq!(l.settings.library_dir, PathBuf::from("/lib"));
+        assert!(l.settings.setup_done);
+        // Set aside by an older launcher, which then started empty: the games come back.
+        std::fs::write(d.join("library.json"), br#"{"installed":{}}"#).unwrap();
+        std::fs::write(d.join("library.broken.json"), br#"{"installed":{"c":{"id":"c","name":"C","tag":"v3","path":"/x/c"}},"settings":{"library_dir":"/lib","setup_done":true}}"#).unwrap();
+        let l = Library::load(&d);
+        assert_eq!(l.installed["c"].tag, "v3");
+        assert!(l.settings.setup_done);
+        assert!(!d.join("library.broken.json").exists() && d.join("library.recovered.json").is_file());
+        assert_eq!(Library::load(&d).installed.len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

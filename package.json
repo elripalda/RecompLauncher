@@ -1,6 +1,6 @@
 {
   "name": "recomplauncher",
-  "version": "0.90.0-beta.2",
+  "version": "0.90.0-beta.3",
   "private": true,
   "description": "One home for PC recomps: find, install, update and play them from each developer's own GitHub.",
   "license": "GPL-3.0-or-later",

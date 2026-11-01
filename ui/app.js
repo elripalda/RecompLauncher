@@ -294,11 +294,13 @@ function applyCover(a, id) {
   if (nm) { if (a._name === undefined) a._name = a.name; a.name = nm; } else if (a._name !== undefined) { a.name = a._name; delete a._name; }
   const c = (S.library[id] || {}).cover_file;
   if (c) { if (a._cov === undefined) a._cov = a.cover || ''; a.cover = 'local:' + c; } else if (a._cov !== undefined) { a.cover = a._cov; delete a._cov; }
+  const h = (S.library[id] || {}).hero_file;
+  if (h) { if (a._hero === undefined) a._hero = a.hero || ''; a.hero = 'local:' + h; } else if (a._hero !== undefined) { a.hero = a._hero; delete a._hero; }
   return a;
 }
 const byId = (id) => applyCover(index().ids.get(id), id);
 // A game in the Library the catalog doesn't have (added by the player, a local build).
-const libApp = (g) => byId(g.id) || { id: g.id, name: ((S.settings.ui || {}).names || {})[g.id] || g.name, repo: g.repo, systems: [S.os], cover: g.cover_file ? 'local:' + g.cover_file : '' };
+const libApp = (g) => byId(g.id) || { id: g.id, name: ((S.settings.ui || {}).names || {})[g.id] || g.name, repo: g.repo, systems: [S.os], cover: g.cover_file ? 'local:' + g.cover_file : '', hero: g.hero_file ? 'local:' + g.hero_file : '' };
 // The developer behind a recomp, when they have an account: { slug, name, verified, avatar }.
 const devOf = (a) => (a && a.dev ? index().devs.get(a.dev) || null : null);
 // The signed-in account's developer page, when it's a verified developer. The website can say so
@@ -431,11 +433,13 @@ function status(a) {
 function poster(a, mine, inst, wide) {
   const st = status(a), job = S.jobs[a.id];
   const own = !S.library[a.id] && S.owned[a.id];
-  const badge = st === 'update' ? `<span class="badge tr">${esc(t('Update'))}</span>`
+  const badge = S.missing && S.missing.has(a.id) ? `<span class="badge tr miss">${esc(t('Missing'))}</span>`
+    : st === 'update' ? `<span class="badge tr">${esc(t('Update'))}</span>`
     : st === 'running' ? `<span class="badge tr">${esc(t('Playing'))}</span>`
       : st === 'soon' ? `<span class="badge tr soon">${esc(t('Soon'))}</span>`
         : st === 'installed' && !mine ? `<span class="badge tl">${esc(t('Installed'))}</span>`
-          : own ? `<span class="badge tl">${esc(t('You have it'))}</span>` : '';
+          : !S.library[a.id] && isSaved(a.id) && !mine ? `<span class="badge tl lib">${esc(t('In Library'))}</span>`
+            : own ? `<span class="badge tl">${esc(t('You have it'))}</span>` : '';
   const lb = S.library[a.id] && S.library[a.id].local ? `<span class="badge tl dev">${esc(S.library[a.id].tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '';
   const easy = needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="badge easy setupreq">${WRENCH.replace(/18/g, '13')}${esc(t('Setup Required'))}</span>`
     : !S.library[a.id] && S.easy.has(a.id) && !a.soon ? `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '';
@@ -457,9 +461,12 @@ function tile(a, opts = {}) {
   const sub = opts.sub != null ? opts.sub : a.game ? `${DISC_S}<span>${esc(a.game)}</span>` : `<span>${esc(originName(a.origin))}</span>`;
   const vt = (devOf(a) || {}).verified;
   const quick = opts.quick && S.library[a.id] && !S.jobs[a.id];
+  // Not in the Library yet: add it from the cover; added: install from the cover.
+  const qadd = !quick && !opts.mine && !S.library[a.id] && !S.jobs[a.id] && status(a) === 'get';
+  const qsaved = qadd && isSaved(a.id);
   return `<div class="tile${opts.on ? ' on' : ''}" data-id="${esc(a.id)}">${cov ? `<span class="glow" style="background-image:url('${cssUrl(cov)}')"></span>` : ''}
     <button type="button" class="tile-b" data-act="${opts.act || 'open'}" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${poster(a, opts.mine, opts.inst, opts.wide)}${vt ? '<span class="trow">' : ''}<span class="t"${shortName(a.name) !== a.name ? ` data-short="${esc(shortName(a.name))}" data-full="${esc(a.name)}"` : ''} title="${esc(a.name)}">${esc(a.name)}</span>${vt ? `${TICK(15)}</span>` : ''}<span class="s">${sub}</span></button>
-    ${quick ? `<span class="qpw"><button type="button" class="qp" data-act="${S.running.has(a.id) ? 'resume' : 'play'}" data-id="${esc(a.id)}" aria-label="${esc(tf('Play {name}', { name: a.name }))}" title="${esc(t('Play'))}">${PLAY}</button></span>` : ''}</div>`;
+    ${quick ? `<span class="qpw"><button type="button" class="qp" data-act="${S.running.has(a.id) ? 'resume' : 'play'}" data-id="${esc(a.id)}" aria-label="${esc(tf('Play {name}', { name: a.name }))}" title="${esc(t('Play'))}">${PLAY}</button></span>` : ''}${qadd ? `<span class="qpw"><button type="button" class="qp${qsaved ? '' : ' add'}" data-act="${qsaved ? 'install' : 'addlib'}" data-id="${esc(a.id)}" aria-label="${esc(qsaved ? tf('Install {name}', { name: a.name }) : tf('Add {name} to your Library', { name: a.name }))}" title="${esc(qsaved ? t('Install') : t('Add to Library'))}">${qsaved ? DOWN : PLUS}</button></span>` : ''}</div>`;
 }
 
 const pct = (j) => (j && j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0);
@@ -559,6 +566,9 @@ function readyRows(a) {
     fix: su.update_copy || su.update_optional ? '' : `<button type="button" class="btn sm main" data-act="setupdate" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` });
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (a.origin === 'x360') rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : t('Xbox 360 recomps need a processor from 2013 or later'), fix: '' });
+  // A recomp whose own setup builds it on this PC (from a clone of its repo).
+  const builds = !!((a.boot && a.boot.clone) || ((S.bootBuiltin || {})[id] || {}).clone);
+  if (builds && pc.build_tools != null) rows.push({ k: t('C++ build tools'), v: pc.build_tools, d: pc.build_tools ? t('Installed') : t('Its setup builds the game on your PC with Visual Studio\'s free C++ build tools'), fix: pc.build_tools ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://visualstudio.microsoft.com/visual-cpp-build-tools/">${esc(t('Get them'))}</button>` });
   if (pc.vcredist != null) rows.push({ k: t('Visual C++ runtime'), v: pc.vcredist, d: pc.vcredist ? t('Installed') : t('Almost every Windows recomp needs it'), fix: pc.vcredist ? '' : `<button type="button" class="btn sm main" data-act="vcredist">${esc(t('Get it'))}</button>` });
   if (!g && a.size) {
     const lib = (S.libs || []).find((l) => l.default);
@@ -875,7 +885,7 @@ function pageLibrary() {
   if (!total) {
     return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(t('Your recomps, kept up to date from each developer\'s own GitHub.'))}</p></div></div>
       <div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>
-      <h2>${esc(t('Nothing installed yet'))}</h2><p>${esc(t('Pick a recomp in Discover and install it. It shows up here, ready to play.'))}</p><div class="acts"><button type="button" class="btn" data-act="adopt">${esc(t('Add games you have'))}</button><button type="button" class="btn main" data-go="discover">${esc(t('Discover recomps'))}</button>${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}</div></div></div>`;
+      <h2>${esc(t('Nothing installed yet'))}</h2><p>${esc(t('Pick a recomp in Discover and install it. It shows up here, ready to play.'))}</p><div class="acts"><button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button><button type="button" class="btn main" data-go="discover">${esc(t('Discover recomps'))}</button>${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}</div></div></div>`;
   }
   const n = Object.keys(S.updates).filter((id) => S.library[id]).length;
   const setup = Object.values(S.library).filter((g) => S.easy.has(g.id) && !g.game_copy).length;
@@ -885,7 +895,7 @@ function pageLibrary() {
   const consoleSel = origins.length > 1 ? `<label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="liborigin">${[['', t('Any')], ...origins.map((o) => [o, originName(o)])].map(([k, nm]) => `<option value="${esc(k)}"${(S.lib.origin || '') === k ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>` : '';
   return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one for versions, launch options and more.', '{n} games. Right-click one for versions, launch options and more.'))}</p></div>
       <div class="dctl"><label class="smallsearch"><span class="sr">${esc(t('Search your games'))}</span>${SEARCH.replace('width="20" height="20"', 'width="16" height="16"')}<input id="lq" type="search" placeholder="${esc(t('Search your games'))}" value="${esc(S.lq)}" autocomplete="off" spellcheck="false"></label>
-      <button type="button" class="btn" data-act="adopt">${esc(t('Add games you have'))}</button>
+      <button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button>
       <button type="button" class="btn" data-act="gh-add">${GITHUB_S}${esc(t('Add From GitHub'))}</button>
       ${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}
       ${consoleSel}<label class="pill-sel">${esc(t('Sort'))}<select class="sel" data-act="libsort"><option value="played"${S.lib.sort === 'played' ? ' selected' : ''}>${esc(t('Recently played'))}</option><option value="time"${S.lib.sort === 'time' ? ' selected' : ''}>${esc(t('Most played'))}</option><option value="az"${S.lib.sort === 'az' ? ' selected' : ''}>${esc(t('A to Z'))}</option></select></label></div></div>
@@ -1841,7 +1851,8 @@ function pageDownloads() {
   const ui = S.settings.ui || {};
   const shown = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
   const histRows = shown.slice(0, 40).map((h) => { const [a, img] = art(h.id); const inst = S.library[h.id];
-    return `<div class="dl-row">${img}<div class="mid"><b>${esc(a.name || h.name)}</b><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}${h.verified ? ' · ' + esc(t('Checksum matched')) : ''}</span></div>
+    // The row opens the game's page; Play is its own button.
+    return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${img}<div class="mid"><b>${esc(a.name || h.name)}</b><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}${h.verified ? ' · ' + esc(t('Checksum matched')) : ''}</span></div>
       <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(agoCap(h.when))}</span>
       ${inst ? `<button type="button" class="icon-btn" data-act="play" data-id="${esc(h.id)}" aria-label="${esc(tf('Play {name}', { name: a.name || h.name }))}" title="${esc(t('Play'))}">${PLAY}</button>` : '<span class="icon-btn" aria-hidden="true"></span>'}</div>`; }).join('');
   const nothing = !act.length && !ups.length && !self && !fails.length && !shown.length;
@@ -2001,14 +2012,16 @@ function pageSettings() {
   let body = '';
   switch (sec) {
     case 'general':
+      if (!S.ids && !S.idsAsked) { S.idsAsked = true; invoke('data_ids').then((ids) => { S.ids = ids; if (S.view === 'settings') render(true); }).catch(() => {}); }
       body = group(t('Language'), row(t('Language'), t('The launcher and its quick menu over your games.'), `<select class="sel" data-act="lang" aria-label="${esc(t('Language'))}">${[['auto', tf('Same as your computer ({lang})', { lang: (LANGS.find((x) => x[0] === systemLang()) || ['', 'English (US)'])[1] })]].concat(LANGS).map(([c, n]) => `<option value="${c}"${(ui.lang || 'auto') === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`))
         + group(t('Discover'), row(t('Refresh Discover'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
           + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps'))))
         + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.'), sw('proton', st.proton, t('Play Windows recomps with Proton')))) : '')
         + group(t('Notifications and sharing'), row(t('Notifications'), S.os === 'windows' ? t('A Windows notification when a new recomp comes out for a game you own.') : t('A notification when a new recomp comes out for a game you own.'), sw('notify', st.notify, t('Notifications')))
           + row(t('Discord status'), t('Shows the game you\'re playing on your Discord profile, with its cover and play time.'), sw('discord', st.discord !== false, t('Discord status')))
-          + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.share_usage !== false, t('Share usage and diagnostics'))}</span>`)
-          + row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('share_stats', st.share_stats !== false, t('Share anonymous usage stats'))))
+          + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
+          + row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('share_stats', st.data_asked && st.share_stats, t('Share anonymous usage stats')))
+          + row(t('Your IDs'), S.ids ? tf('Diagnostics {a} · Stats {b}. Quote them to have what was sent removed. A reset starts new ones.', { a: S.ids.usage.slice(0, 8), b: S.ids.stats.slice(0, 8) }) : t('Quote them to have what was sent removed. A reset starts new ones.'), `<span class="set-ctl2"><button type="button" class="btn" data-act="copy-ids">${esc(t('Copy'))}</button><button type="button" class="btn" data-act="reset-ids">${esc(t('Reset'))}</button></span>`))
         + (S.os === 'windows' ? group(t('When you close the window'), row(t('Keep running by the clock'), t('Closing the window leaves RecompLauncher by the clock, ready to start a game. Right-click its icon to quit.'), sw('close_to_tray', st.close_to_tray !== false, t('Keep running by the clock')))) : '');
       break;
     case 'report':
@@ -2167,6 +2180,17 @@ function morphNode(o, n) {
     o.selectedIndex = i < 0 ? 0 : i;
   }
 }
+function scrollAnchor(main) {
+  const mr = main.getBoundingClientRect();
+  for (const el of $$('.tile[data-id], .dl-row[data-id]', main)) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > mr.top + 60 && r.top < mr.bottom && r.width) {
+      const id = el.dataset.id;
+      return { id, n: $$(`[data-id="${CSS.escape(id)}"]`, main).indexOf(el), y: r.top };
+    }
+  }
+  return null;
+}
 function render(keepScroll) {
   const main = $('#main'), top = main.scrollTop;
   const v = S.view;
@@ -2178,10 +2202,14 @@ function render(keepScroll) {
   const html = v === 'discover' ? pageDiscover() : v === 'library' ? pageLibrary() : v === 'achievements' ? pageAchievements() : v === 'game' ? pageGame(S.arg) : v === 'downloads' ? pageDownloads() : v === 'settings' ? pageSettings() : v === 'shots' ? pageShots() : v === 'saves' && window.pageSaves ? window.pageSaves() : pageHome();
   // Going to a page draws it fresh, with its entrance. Anything else (the same page with new
   // data) is patched in place, so nothing on screen flickers.
+  // Redrawing the same page: whatever was at the top of the view stays there, even when something
+  // above it came or went (a row, a badge, a banner).
+  const anchor = keepScroll && !S.anim && main.dataset.v === v ? scrollAnchor(main) : null;
   if (S.anim || main.dataset.v !== v) main.innerHTML = html;
   else morph(main, html);
   main.dataset.v = v;
   if (keepScroll) main.scrollTop = top;
+  if (anchor) { const el = $$(`[data-id="${CSS.escape(anchor.id)}"]`, main)[anchor.n]; if (el) main.scrollTop += el.getBoundingClientRect().top - anchor.y; }
   if (S.anim) {
     main.classList.remove('enter', 'enter-game', 'enter-soft', 'enter-back');
     void main.offsetWidth;
@@ -2450,6 +2478,7 @@ async function refreshState() {
   const st = await invoke('get_state');
   Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, library: st.library || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
   S.running = new Set(st.running || []);
+  S.missing = new Set(st.missing || []);
   for (const id of Object.keys(S.library)) byId(id);
   // The core's list of jobs is the truth: one it no longer has is over (unless it was only just
   // started here), and one that just ended here isn't brought back by an answer sent a moment before.
@@ -2946,11 +2975,12 @@ function gameMenu(id) {
   const pinned = pins().includes(id);
   return [
     ...(first ? [first] : []),
+    ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
     ...(g && S.updates[id] ? [{ act: 'install', id, label: t('Update'), icon: 'down' }] : []),
     ...(S.view !== 'game' || S.arg !== id ? [{ act: 'open', id, label: t('Game page'), icon: 'page' }] : []),
     { act: 'pin', id, label: pinned ? t('Unpin from the sidebar') : t('Pin to the sidebar'), icon: 'pin' },
     ...(g ? [{ act: 'fav', id, label: favs().includes(id) ? t('Remove from Favorites') : t('Add to Favorites'), icon: 'star' }] : []),
-    ...(!g && isSaved(id) ? [{ act: 'install', id, label: t('Install'), icon: 'down' }, { act: 'unsave', id, label: t('Remove from Library'), icon: 'bin' }] : []),
+    ...(!g && isSaved(id) ? [{ act: 'unsave', id, label: t('Remove from Library'), icon: 'bin' }] : []),
     ...(g ? ['-',
       { act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update },
       { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
@@ -2960,6 +2990,8 @@ function gameMenu(id) {
       { act: 'rename', id, label: t('Rename…'), icon: 'page' },
       { act: 'cover', id, label: g.cover_file ? t('Change Cover…') : t('Set a Cover…'), icon: 'shot' },
       ...(g.cover_file ? [{ act: 'cover-reset', id, label: t('Use the Usual Cover'), icon: 'shot' }] : []),
+      { act: 'hero', id, label: g.hero_file ? t('Change Background…') : t('Set a Background…'), icon: 'shot' },
+      ...(g.hero_file ? [{ act: 'hero-reset', id, label: t('Use the Usual Background'), icon: 'shot' }] : []),
       ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }] : []),
       ...(looksHere() ? [{ act: 'looks', id, label: t('Looks'), icon: 'look' }] : []),
       ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
@@ -3066,6 +3098,47 @@ async function startInstall(id, dir, tag) {
 const STARTING = new Set();
 // What a Setup Required recomp needs before it plays: its developer's steps, the README, and a way
 // to say it's done (then Play is back).
+// A game whose folder can't be found: on a drive that isn't connected, moved, or deleted. It stays
+// in the Library until the player finds it or takes it out.
+function missingModal(id) {
+  const g = S.library[id];
+  if (!g) return;
+  const a = libApp(g);
+  if (window.tvMissing && window.tvMissing(id)) return;
+  modal(`<h2>${esc(tf('Can\'t Find {name}', { name: a.name }))}</h2>
+    <p>${esc(t('Its folder isn\'t where it was:'))}</p><p class="mono" dir="ltr">${esc(g.path)}</p>
+    <p>${esc(t('If it\'s on a drive that isn\'t connected, connect it and press Try Again. If you moved it, show the launcher where it is now.'))}</p>
+    <div class="acts grid2"><button type="button" class="btn" data-x="forget">${esc(t('Remove from Library'))}</button><button type="button" class="btn" data-x="again">${esc(t('Try Again'))}</button><button type="button" class="btn span2 main" data-x="locate">${esc(t('Find Its Folder…'))}</button></div>`, async (x, close) => {
+    if (x.dataset.x === 'again') { await refreshState(); close(); render(true); if (S.missing.has(id)) { toast(t('Still not there.'), true); missingModal(id); } return; }
+    if (x.dataset.x === 'forget') { close(); try { await invoke('forget_game', { id }); await refreshState(); render(true); } catch (e) { fail(e); } return; }
+    if (x.dataset.x === 'locate') {
+      const p = await pickFile({ title: tf('Where {name} is now', { name: a.name }), directory: true }).catch(fail);
+      if (!p) return;
+      try { S.library[id] = await invoke('locate_game', { id, path: typeof p === 'string' ? p : p.path }); close(); await refreshState(); render(true); toast(tf('Found {name}.', { name: a.name })); } catch (e) { fail(e); }
+    }
+  }, t('Missing'));
+}
+window.missingModal = missingModal;
+
+// Players who had RecompLauncher before sharing was asked about: asked once, both off unless they
+// say yes. Big Picture mode asks with a sheet of its own (tv.js).
+function askData() {
+  if (S.settings.data_asked || !S.settings.setup_done) return;
+  if (document.body.classList.contains('tv-on') && window.tvAskData) return window.tvAskData();
+  const pick = { share_usage: false, share_stats: false };
+  const swr = (k, b, s) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${esc(s)}</span></div><button type="button" class="switch" role="switch" aria-checked="false" aria-label="${esc(b)}" data-x="sw" data-k="${k}"></button></div>`;
+  modal(`<h2>${esc(t('Help Improve RecompLauncher?'))}</h2>
+    <p>${esc(t('RecompLauncher can send a little information to help fix problems and see what players use. Both are off unless you turn them on, and you can change this any time in Settings.'))}</p>
+    <div class="set-rows">${swr('share_usage', t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. No names, no files.'))}
+    ${swr('share_stats', t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'))}</div>
+    <div class="acts grid2"><button type="button" class="btn" data-x="what">${esc(t('What\'s sent'))}</button><button type="button" class="btn main" data-x="save">${esc(t('Save'))}</button></div>`, async (x, close) => {
+    if (x.dataset.x === 'sw') { const k = x.dataset.k; pick[k] = !pick[k]; x.setAttribute('aria-checked', String(pick[k])); }
+    if (x.dataset.x === 'what') invoke('open_url', { url: 'https://recompstore.com/privacy#launcher' }).catch(fail);
+    if (x.dataset.x === 'save') { close(); await saveSettings(Object.assign({ data_asked: true }, pick), true); if (S.view === 'settings') render(true); }
+  }, t('Help Improve RecompLauncher?'));
+}
+window.askData = askData;
+
 function setupReqModal(id) {
   // In Big Picture mode it's a sheet made for the controller.
   if (window.tvSetupReq && window.tvSetupReq(id)) return;
@@ -3094,6 +3167,7 @@ function setupReqModal(id) {
 }
 
 async function playGame(id, program) {
+  if (S.missing && S.missing.has(id)) return missingModal(id);
   if (needsSetup(byId(id)) && !setupDone(id)) return setupReqModal(id);
   // A second press while this one is still on its way (saving a look, the cloud check, ReShade)
   // does nothing.
@@ -3434,9 +3508,17 @@ async function loadShots(id) {
 async function scanRoms() {
   if (!(S.settings.rom_dirs || []).length) { S.roms = []; S.owned = {}; render(true); return; }
   toast(t('Looking through your folders…'));
-  try { S.roms = await invoke('scan_roms'); await loadOwned(); toast(tn(S.roms.length, 'Found 1 game file.', 'Found {n} game files.') + ' ' + tf('{n} have recomps.', { n: Object.keys(S.owned).length })); } catch (e) { fail(e); }
+  try { S.roms = await invoke('scan_roms'); await loadOwned(); const added = await addOwned(); toast(tn(S.roms.length, 'Found 1 game file.', 'Found {n} game files.') + ' ' + (added ? tn(added, '1 recomp went into your Library.', '{n} recomps went into your Library.') : tf('{n} have recomps.', { n: Object.keys(S.owned).length }))); } catch (e) { fail(e); }
   render(true);
 }
+// Recomps for games the scan found go into the Library (not installed yet), ready for Easy Setup.
+async function addOwned() {
+  const s = saved(), now = Math.floor(Date.now() / 1000);
+  const add = Object.keys(S.owned || {}).filter((id) => !S.library[id] && !s[id] && byId(id) && !byId(id).soon && forOS(byId(id)));
+  if (add.length) await saveUi({ saved: Object.assign({}, s, Object.fromEntries(add.map((id) => [id, now]))) }, true);
+  return add.length;
+}
+window.addOwned = addOwned;
 
 // Catalog games the launcher sets up itself (copy and settings).
 async function loadEasy(quiet) {
@@ -3543,7 +3625,7 @@ async function crashModal(p) {
   const sac = [-1058471934, 3236495362].includes(Number(p.code)) || /blocked by (?:smart app control|your organization|app control)/i.test(said);
   // The release has a program for each version of the game, and this one isn't for the player's.
   const otherBuild = /use the build that matches|recompiled from a different version of the game executable/i.test(said);
-  const wrongCopy = /wrong rom|rom is not supported|cartridge id at|bad n64 magic|validation failed|isn't the (?:pal|ntsc|usa|us|european|japanese|japan|europe)\b|failed validation|re-dump|verify your file matches|hash mismatch|doesn't match any known|not a supported (?:dump|rom|version)|unsupported (?:rom|dump|version|revision)|wrong (?:region|revision)|bad dump|country byte|rejected: .{0,40}expected|region mismatch|sha1 [0-9a-f]{6,}.{0,30}another release|another release of (?:the|this) game/i.test(said);
+  const wrongCopy = /wrong rom|rom is not supported|rom (?:file )?is truncated|truncated or invalid|invalid rom|cartridge id at|bad n64 magic|validation failed|isn't the (?:pal|ntsc|usa|us|european|japanese|japan|europe)\b|failed validation|re-dump|verify your file matches|hash mismatch|doesn't match any known|not a supported (?:dump|rom|version)|unsupported (?:rom|dump|version|revision)|wrong (?:region|revision)|bad dump|country byte|rejected: .{0,40}expected|region mismatch|sha1 [0-9a-f]{6,}.{0,30}another release|another release of (?:the|this) game/i.test(said);
   // It says to run its own setup first: offer the setup program that came with it.
   let setupExe = '';
   if (/run (?:the |its )?setup|setup to unpack|setup first/i.test(said)) {
@@ -3797,6 +3879,14 @@ async function act(el, e) {
       byId(id); toast(t('Cover changed.')); return render(true);
     }
     case 'cover-reset': try { S.library[id] = await invoke('set_cover', { id, path: null }); } catch (err) { return fail(err); } byId(id); return render(true);
+    case 'hero': {
+      // A wide picture behind the game's page.
+      const p = await pickFile({ title: t('A picture for the background'), directory: false, multiple: false, filters: [{ name: t('Pictures'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }] }).catch(fail);
+      if (!p) return;
+      try { S.library[id] = await invoke('set_cover', { id, path: typeof p === 'string' ? p : p.path, hero: true }); } catch (err) { return fail(err); }
+      byId(id); toast(t('Background changed.')); return render(true);
+    }
+    case 'hero-reset': try { S.library[id] = await invoke('set_cover', { id, path: null, hero: true }); } catch (err) { return fail(err); } byId(id); return render(true);
     case 'start-page': { await saveUi({ start_page: el.dataset.k || '' }); return render(true); }
     case 'theme': { const k = el.dataset.k; await saveUi({ theme: k === 'light' ? 'light' : '', oled: k === 'oled' }); return render(true); }
     case 'skip-backup': return invoke('skip_backup').catch(() => {});
@@ -3842,11 +3932,22 @@ async function act(el, e) {
     }
     case 'uninstall': return confirmUninstall(id);
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
+    case 'copy-ids': {
+      const ids = S.ids || await invoke('data_ids');
+      try { await navigator.clipboard.writeText(`Diagnostics ID: ${ids.usage}\nStats ID: ${ids.stats}`); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); }
+      return;
+    }
+    case 'reset-ids': {
+      try { S.ids = await invoke('reset_ids'); toast(t('New IDs made')); render(true); } catch (e) { fail(e); }
+      return;
+    }
     case 'toggle': {
       const k = el.dataset.k;
       // Not set yet: on for handhelds, off otherwise; a press sets the opposite of what shows.
       if (k === 'minimize_playing' || k === 'lighter') { const now = S.settings[k] == null ? !!S.handheld : !!S.settings[k]; await saveSettings({ [k]: !now }); applyLighter(); return; }
       if (k === 'hide_ai' && S.view === 'discover') { saveSettings({ hide_ai: !S.settings.hide_ai }, true); return updateDiscover(); }
+      // Sharing: what shows is what's sent (nothing before the player was asked).
+      if (k === 'share_usage' || k === 'share_stats') return saveSettings({ [k]: !(S.settings.data_asked && S.settings[k]), data_asked: true });
       return saveSettings({ [k]: !S.settings[k] });
     }
     case 'libdir': {
@@ -4160,6 +4261,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && (S.settings.start_in_tv || S.bigArg)) window.startTV();
+  else setTimeout(askData, 800);
   // A shortcut asked to play a recomp that still needs setting up: its Set Up window.
   invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
 })();

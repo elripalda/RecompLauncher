@@ -30,6 +30,23 @@ pub fn install_id(dir: &Path) -> String {
     id
 }
 
+/// The two random IDs (usage and diagnostics; anonymous stats), as Settings shows them so a player
+/// can quote one when asking for its data to be removed.
+#[tauri::command(async)]
+pub fn data_ids(app: AppHandle) -> Value {
+    let dir = app.state::<App>().dir.clone();
+    json!({"usage": install_id(&dir), "stats": crate::ping::install(&dir)})
+}
+
+/// New IDs: whatever was sent before can't be tied to what's sent from now on.
+#[tauri::command(async)]
+pub fn reset_ids(app: AppHandle) -> Value {
+    let dir = app.state::<App>().dir.clone();
+    let _ = std::fs::remove_file(dir.join("install.id"));
+    let _ = std::fs::remove_file(dir.join("stats.id"));
+    data_ids(app)
+}
+
 pub fn rand_byte() -> u8 {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
@@ -90,11 +107,12 @@ pub fn pc_info(dir: &Path) -> PcInfo {
 }
 
 fn sharing(st: &App) -> bool {
-    st.lib.lock().unwrap().settings.share_usage
+    let s = &st.lib.lock().unwrap().settings;
+    s.data_asked && s.share_usage
 }
 
 fn token(dir: &Path) -> Option<String> {
-    std::fs::read(dir.join("account.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.get("token").and_then(Value::as_str).map(String::from)).filter(|t| !t.is_empty())
+    crate::cloud::token(dir)
 }
 
 async fn post(st: &App, a: &str, body: Value) -> Res<Value> {

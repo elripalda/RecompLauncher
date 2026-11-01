@@ -319,7 +319,9 @@ pub fn steam_running() -> bool {
     }
     #[cfg(not(windows))]
     {
-        std::process::Command::new("pgrep").args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false)
+        let mut c = std::process::Command::new("pgrep");
+        crate::sysenv::clean_std(&mut c);
+        c.args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false)
     }
 }
 
@@ -336,9 +338,20 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
     if !steam_running() {
         return Ok(());
     }
-    let mut c = std::process::Command::new(steam_exe(steam));
+    // On Linux Steam may not be on the PATH (Flatpak, some immutable distros): its steam:// link
+    // works for every kind of install.
+    let mut c = if cfg!(windows) { std::process::Command::new(steam_exe(steam)) } else { std::process::Command::new("xdg-open") };
     crate::sysenv::clean_std(&mut c);
-    let _ = c.arg("-shutdown").spawn();
+    if cfg!(windows) {
+        c.arg("-shutdown");
+    } else {
+        c.arg("steam://exit");
+    }
+    if let Ok(mut ch) = c.spawn() {
+        std::thread::spawn(move || {
+            let _ = ch.wait();
+        });
+    }
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if !steam_running() {
@@ -351,9 +364,16 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
 }
 
 pub fn start_steam(steam: &Path) {
-    let mut c = std::process::Command::new(steam_exe(steam));
+    let mut c = if cfg!(windows) { std::process::Command::new(steam_exe(steam)) } else { std::process::Command::new("xdg-open") };
     crate::sysenv::clean_std(&mut c);
-    let _ = c.spawn();
+    if !cfg!(windows) {
+        c.arg("steam://open/main");
+    }
+    if let Ok(mut ch) = c.spawn() {
+        std::thread::spawn(move || {
+            let _ = ch.wait();
+        });
+    }
 }
 
 /// Write the game into every Steam account's shortcuts and art folder. `art` is (suffix, bytes,

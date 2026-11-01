@@ -39,10 +39,14 @@ pub struct User {
     pub dev: Option<serde_json::Value>,
 }
 
-/// account.json in the app's data folder.
+/// account.json in the app's data folder. The token is kept sealed (secret.rs): `sealed` holds it
+/// and `token` stays empty. A file from before that still has it plain, and is sealed on first read.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct Account {
+    #[serde(default)]
     token: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    sealed: String,
     user: User,
 }
 
@@ -51,13 +55,32 @@ fn file(dir: &Path) -> PathBuf {
 }
 
 fn load(dir: &Path) -> Option<Account> {
-    std::fs::read(file(dir)).ok().and_then(|b| serde_json::from_slice::<Account>(&b).ok()).filter(|a| !a.token.is_empty())
+    let mut a = std::fs::read(file(dir)).ok().and_then(|b| serde_json::from_slice::<Account>(&b).ok())?;
+    if !a.sealed.is_empty() {
+        a.token = crate::secret::open(&a.sealed)?;
+    } else if !a.token.is_empty() {
+        // Kept plain by an older launcher: sealed now.
+        store(dir, Some(&a));
+    }
+    Some(a).filter(|a| !a.token.is_empty())
+}
+
+/// This PC's sign-in token, when signed in.
+pub fn token(dir: &Path) -> Option<String> {
+    load(dir).map(|a| a.token)
 }
 
 fn store(dir: &Path, a: Option<&Account>) {
     match a {
         Some(a) => {
-            let _ = std::fs::write(file(dir), serde_json::to_vec_pretty(a).unwrap_or_default());
+            let mut keep = a.clone();
+            if let Some(s) = crate::secret::seal(&a.token) {
+                keep.sealed = s;
+                keep.token = String::new();
+            } else {
+                keep.sealed = String::new();
+            }
+            let _ = crate::secret::write_private(&file(dir), &serde_json::to_vec_pretty(&keep).unwrap_or_default());
         }
         None => {
             let _ = std::fs::remove_file(file(dir));
@@ -174,7 +197,7 @@ pub async fn account_poll(app: AppHandle) -> Res<Value> {
             return Err(Error::Msg("The website didn't answer properly. Try again in a moment.".into()));
         }
         let st = app.state::<App>();
-        store(&st.dir, Some(&Account { token, user: user.clone() }));
+        store(&st.dir, Some(&Account { token, user: user.clone(), ..Default::default() }));
         *LINK.lock().unwrap() = None;
         let _ = app.emit("account", json!({"signedIn": true, "user": user}));
         // Anything that was waiting to go up.
@@ -214,7 +237,7 @@ pub async fn account_state(app: AppHandle, fresh: bool) -> Res<Value> {
     match r {
         Ok(v) => {
             let user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
-            store(&st.dir, Some(&Account { token: a.token, user: user.clone() }));
+            store(&st.dir, Some(&Account { token: a.token, user: user.clone(), ..Default::default() }));
             Ok(json!({"signedIn": true, "user": user, "used": v.pointer("/saves/used"), "quota": v.pointer("/saves/quota")}))
         }
         Err(Error::Net(_)) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
@@ -624,7 +647,6 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
 
 #[tauri::command]
 pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
-    use tauri_plugin_opener::OpenerExt;
     let st = app.state::<App>();
     let g = game(&st, &id)?;
     let p = spots_of(&st, &id, &g)
@@ -633,7 +655,7 @@ pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
         .map(|p| if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) })
         .find(|p| p.is_dir())
         .ok_or_else(|| Error::Msg("Its save folder isn't there yet. Play once first.".into()))?;
-    app.opener().open_path(p.to_string_lossy(), None::<&str>).map_err(|e| Error::Msg(e.to_string()))
+    crate::open_thing(&app, &p.to_string_lossy(), false)
 }
 
 // ---------- (0.9.1) games sent from the website, and betas ----------

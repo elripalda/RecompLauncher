@@ -261,6 +261,8 @@ pub struct PcCheck {
     pub avx: bool,
     pub avx2: bool,
     pub cores: usize,
+    /// Visual Studio's C++ build tools (with CMake), for recomps that build themselves on the PC.
+    pub build_tools: Option<bool>,
 }
 
 #[cfg(windows)]
@@ -284,6 +286,17 @@ pub fn pc_check() -> PcCheck {
         c.vcredist = Some(out.map(|o| String::from_utf8_lossy(&o.stdout).contains("0x1")).unwrap_or(false));
         let sys = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
         c.vulkan = Some(Path::new(&sys).join("System32").join("vulkan-1.dll").is_file());
+        // vswhere, which every Visual Studio and Build Tools install puts in the same place.
+        let pf = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| r"C:\Program Files (x86)".into());
+        let vswhere = Path::new(&pf).join(r"Microsoft Visual Studio\Installer\vswhere.exe");
+        c.build_tools = Some(
+            vswhere.is_file()
+                && quiet(&vswhere.to_string_lossy())
+                    .args(["-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"])
+                    .output()
+                    .map(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+                    .unwrap_or(false),
+        );
     }
     #[cfg(target_os = "linux")]
     {

@@ -1,6 +1,6 @@
 'use strict';
-// The page's scrollbar: thin, over the page, below the window buttons, and only there while you
-// scroll (or point at it or drag it). It fades away when you stop.
+// The page's scrollbar: thin, over the page, below the window buttons. Always there, faint, so you
+// can see there's more; brighter while you scroll, point at it or drag it.
 (() => {
   const main = document.getElementById('main');
   const wrap = main && main.parentElement;

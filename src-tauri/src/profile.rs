@@ -1115,6 +1115,11 @@ fn link_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 /// Whether this is the player's copy the game wants. Err says why not.
 pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     let folder = p.is_dir();
+    // A game packed in an archive: it has to be unpacked first, unless the game takes archives.
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !folder && ["7z", "zip", "rar"].contains(&ext.as_str()) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!(".{ext}")) {
+        return Err(format!("That's a compressed file (.{ext}). Unpack it first with 7-Zip or Windows, then pick the game file inside it."));
+    }
     let kind_ok = match g.kind.as_str() {
         "folder" => folder,
         "iso_or_folder" => folder || p.is_file(),
