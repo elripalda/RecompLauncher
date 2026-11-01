@@ -115,10 +115,11 @@ function askSite(m, host) {
 
 // ---------- requests from plugin pages ----------
 
-async function plugFetch(m, a) {
-  const args = { id: m.id, url: String(a.url || ''), method: a.method || null, headers: a.headers || null, body: a.body == null ? null : String(a.body), binary: !!a.binary };
-  for (let tries = 0; tries < 2; tries++) {
-    try { return await invoke('plugin_fetch', args); } catch (e) {
+// A plugin request, asking the player about each site it reaches that they haven't been asked about
+// (a site's own download server after a redirect, say).
+async function withSites(m, cmd, args) {
+  for (let tries = 0; tries < 4; tries++) {
+    try { return await invoke(cmd, args); } catch (e) {
       const msg = String(e && e.message ? e.message : e);
       if (!msg.startsWith('ASK_SITE|')) throw e;
       const host = msg.slice(9);
@@ -128,6 +129,9 @@ async function plugFetch(m, a) {
     }
   }
   throw new Error('Not allowed.');
+}
+function plugFetch(m, a) {
+  return withSites(m, 'plugin_fetch', { id: m.id, url: String(a.url || ''), method: a.method || null, headers: a.headers || null, body: a.body == null ? null : String(a.body), binary: !!a.binary });
 }
 
 let plugToastAt = 0;
@@ -160,7 +164,7 @@ const PLUG_CALLS = {
     if (ans !== 'yes') throw new Error(t('You said no.'));
     await invoke('plugin_allow_site', { id: m.id, host, always: false });
     toast(tf('Downloading {name}…', { name }));
-    const g = await invoke('plugin_install_zip', { id: m.id, url, name });
+    const g = await withSites(m, 'plugin_install_zip', { id: m.id, url, name });
     await refreshState();
     toast(tf('{name} is in your Library.', { name: g.name }));
     return { id: g.id, name: g.name };

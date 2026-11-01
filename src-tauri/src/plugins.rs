@@ -388,6 +388,66 @@ pub fn plugin_forget_site(st: State<'_, App>, id: String, host: String) -> Res<(
     Ok(())
 }
 
+/// A client for a plugin's requests: the headers it set on every request, and no following of
+/// redirects by itself: `send` follows them, step by step, only to sites the plugin lists. The
+/// launcher's own client and sign-in are never used.
+fn client_for(headers: &BTreeMap<String, String>) -> Res<reqwest::Client> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    let mut h = HeaderMap::new();
+    for (k, v) in headers {
+        // Cookies and where a request comes from are the launcher's to say.
+        if ["cookie", "host", "origin", "referer", "content-length"].contains(&k.to_lowercase().as_str()) {
+            continue;
+        }
+        if let (Ok(n), Ok(v)) = (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(v)) {
+            h.insert(n, v);
+        }
+    }
+    reqwest::Client::builder()
+        .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
+        .default_headers(h)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| Error::Msg(e.to_string()))
+}
+
+/// Where a redirect may go: https, a site the plugin lists, and one the player allowed, or a
+/// subdomain of one they allowed (a site's own download servers).
+fn check_redirect(dir: &Path, m: &Manifest, u: reqwest::Url) -> Res<reqwest::Url> {
+    let host = u.host_str().unwrap_or("").to_lowercase();
+    if u.scheme() != "https" || !m.sites.iter().any(|s| site_matches(s, &host)) {
+        return Err(Error::Msg(format!("The site sent {} somewhere it didn't list ({host}), so the launcher stopped there.", m.name)));
+    }
+    let allowed_hosts: Vec<String> = load(dir).plugins.get(&m.id).map(|e| e.sites.clone()).unwrap_or_default().into_iter().chain(ONCE.lock().unwrap().as_ref().map(|o| o.iter().filter(|(p, _)| p == &m.id).map(|(_, h)| h.clone()).collect::<Vec<_>>()).unwrap_or_default()).collect();
+    if allowed_hosts.iter().any(|a| &host == a || host.ends_with(&format!(".{a}"))) {
+        return Ok(u);
+    }
+    Err(Error::Msg(format!("ASK_SITE|{host}")))
+}
+
+/// Sends a plugin's request, following redirects by hand (up to 10) so each step is checked.
+/// The answer and the address it came from.
+async fn send(dir: &Path, m: &Manifest, client: &reqwest::Client, mut method: reqwest::Method, mut u: reqwest::Url, mut body: Option<String>) -> Res<(reqwest::Response, reqwest::Url)> {
+    for _ in 0..10 {
+        let mut rq = client.request(method.clone(), u.clone()).timeout(std::time::Duration::from_secs(60));
+        if let Some(b) = &body {
+            rq = rq.body(b.clone());
+        }
+        let r = rq.send().await.map_err(|e| Error::Msg(format!("Couldn't reach the site: {e}")))?;
+        if !r.status().is_redirection() {
+            return Ok((r, u));
+        }
+        let Some(next) = r.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).and_then(|l| u.join(l).ok()) else { return Ok((r, u)) };
+        u = check_redirect(dir, m, next)?;
+        if matches!(r.status().as_u16(), 301..=303) {
+            method = reqwest::Method::GET;
+            body = None;
+        }
+    }
+    Err(Error::Msg("The site kept sending the request elsewhere.".into()))
+}
+
 /// A request a plugin makes to a site it lists (the launcher makes it for the plugin). The answer
 /// as text, or as base64 when `binary`.
 #[tauri::command]
@@ -402,18 +462,8 @@ pub async fn plugin_fetch(st: State<'_, App>, id: String, url: String, method: O
         "HEAD" => reqwest::Method::HEAD,
         _ => return Err(Error::Msg("That kind of request isn't allowed.".into())),
     };
-    let mut rq = st.http.request(method, u).timeout(std::time::Duration::from_secs(60));
-    for (k, v) in headers.unwrap_or_default() {
-        // Cookies and where the request comes from are the launcher's to set.
-        if ["cookie", "host", "origin", "referer"].contains(&k.to_lowercase().as_str()) {
-            continue;
-        }
-        rq = rq.header(k, v);
-    }
-    if let Some(b) = body {
-        rq = rq.body(b);
-    }
-    let r = rq.send().await.map_err(|e| Error::Msg(format!("Couldn't reach the site: {e}")))?;
+    let client = client_for(&headers.unwrap_or_default())?;
+    let (r, _) = send(&st.dir, &m, &client, method, u, body).await?;
     let status = r.status().as_u16();
     let hs: BTreeMap<String, String> = r.headers().iter().filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), v.to_string()))).collect();
     let bytes = r.bytes().await.map_err(|e| Error::Msg(e.to_string()))?;
@@ -501,14 +551,17 @@ pub async fn plugin_install_zip(app: AppHandle, st: State<'_, App>, id: String, 
     let job = format!("plugin-{}", crate::library::folder_name(&name).to_lowercase());
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let dl_dir = st.dir.join("cache").join("plugin-downloads");
-    let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: u.to_string() };
+    // Where the file really is, after the site's redirects (each one checked).
+    let client = client_for(&BTreeMap::new())?;
+    let (_, at) = send(&st.dir, &m, &client, reqwest::Method::GET, u, None).await?;
+    let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: at.to_string() };
     let report = {
         let app = app.clone();
         move |p: crate::install::Progress| {
             let _ = app.emit("plugin-progress", &p);
         }
     };
-    let got = crate::install::download(&st.http, &asset, &dl_dir, &job, cancel, &report).await?;
+    let got = crate::install::download(&client, &asset, &dl_dir, &job, cancel, &report).await?;
     let lib_dir = st.lib.lock().unwrap().settings.library_dir.clone();
     let mut target = lib_dir.join(crate::library::folder_name(&name));
     let mut n = 2;
@@ -668,6 +721,26 @@ mod tests {
         assert!(site_matches("*.example.com", "a.example.com"));
         assert!(site_matches("*.example.com", "example.com"));
         assert!(!site_matches("*.example.com", "example.com.evil.net"));
+    }
+
+    #[test]
+    fn redirects_stay_on_the_sites_a_plugin_lists() {
+        let d = std::env::temp_dir().join(format!("rl-plug-r-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut man = m();
+        check(&mut man).unwrap();
+        let mut s = Saved::default();
+        s.plugins.insert("example-tools".into(), Entry { enabled: true, sites: vec!["example.com".into()], installed_at: 1 });
+        store(&d, &s);
+        let u = |x: &str| reqwest::Url::parse(x).unwrap();
+        assert!(check_redirect(&d, &man, u("https://example.com/b")).is_ok());
+        // The site's own servers (a subdomain of one the player allowed, and listed).
+        assert!(check_redirect(&d, &man, u("https://dl1.cdn.example.com/f.zip")).is_ok());
+        // Somewhere it didn't list, or not https.
+        assert!(check_redirect(&d, &man, u("https://evil.net/f.zip")).unwrap_err().to_string().contains("didn't list"));
+        assert!(check_redirect(&d, &man, u("http://example.com/f.zip")).is_err());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

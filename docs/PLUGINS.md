@@ -88,6 +88,7 @@ When the player says no, or something fails, the promise rejects with an `Error`
 ## The rules a plugin page runs under
 
 - It runs in a sandboxed frame with an origin of its own. It can't reach the launcher's page, its settings, the player's sign-in or their files.
+- Requests and downloads go only to the sites you listed, redirects included. Cookies and the launcher's own sign-in never go along.
 - It can load its own files only. `fetch`, `XMLHttpRequest`, WebSockets, outside images and scripts are all blocked. Use `rl.net.fetch` for the sites you listed.
 - No pop-up windows, `alert` or new tabs.
 - The player can turn every plugin off at once in Settings → Plugins.
