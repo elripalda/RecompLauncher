@@ -55,6 +55,9 @@ pub struct Spot {
 /// Where a game's saves are, best first: the developer's file, the catalog, what was noticed while
 /// it ran, else its own folder.
 pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
+    if let Some(t) = g.save_place.as_ref().filter(|t| !t.trim().is_empty()) {
+        return vec![Spot { template: t.trim().to_string(), from: "player" }];
+    }
     let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
     for (v, from) in [(dev, "developer"), (catalog, "catalog"), (&g.found_saves[..], "found")] {
         let s = list(v, from);
@@ -140,9 +143,10 @@ pub struct Entry {
 /// Every save file under a folder. Gives up (false) on a folder far too big to be a save place:
 /// more than WALK_MAX entries, or longer than WALK_SECS to look through (a slow or network drive).
 /// Links aren't followed, so a folder that links back into itself can't loop forever.
-fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<String>) -> bool {
+fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<String>, budget: u64, secs: u64) -> bool {
     let start = std::time::Instant::now();
     let mut seen = 0usize;
+    let mut total = 0u64;
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
@@ -150,7 +154,7 @@ fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<St
                 return true;
             }
             seen += 1;
-            if seen > WALK_MAX || (seen % 256 == 0 && start.elapsed().as_secs() > WALK_SECS) {
+            if seen > WALK_MAX || total > budget || (seen % 256 == 0 && start.elapsed().as_secs() > secs) {
                 return false;
             }
             if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
@@ -168,6 +172,7 @@ fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<St
             let Ok(rel) = p.strip_prefix(root) else { continue };
             let rel = rel.to_string_lossy().replace('\\', "/");
             if is_save_file(&name, m.len()) && !release.contains(&rel.to_lowercase()) {
+                total += m.len();
                 out.push((rel, p, m.len()));
             }
         }
@@ -202,9 +207,15 @@ pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
         } else if p.is_dir() {
             // The game's own folder: only what the release didn't put there.
             let rel_of_install = s.template.starts_with("{install}");
-            if !walk(&p, &mut found, if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none }) {
-                if let Ok(mut o) = OVERSIZE.lock() {
-                    o.push(s.template.clone());
+            // A guess (the game's folder, or a place it was seen writing to) gives up as soon as
+            // it's too big to be saves, rather than looking through gigabytes of game data.
+            let guess = s.from == "game" || s.from == "found";
+            let (budget, secs) = if guess { (GAME_FOLDER_MAX, 6) } else { (SPOT_MAX, WALK_SECS) };
+            if !walk(&p, &mut found, if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none }, budget, secs) {
+                if s.from != "game" {
+                    if let Ok(mut o) = OVERSIZE.lock() {
+                        o.push(s.template.clone());
+                    }
                 }
                 found.clear();
             }

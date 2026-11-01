@@ -1,7 +1,8 @@
 # What the launcher asks recomplauncher.com
 
 Accounts, cloud saves, sending games to a PC, betas, reports and usage, and the launcher's own
-updates. The launcher side is `src-tauri/src/cloud.rs`, `saves.rs` and `usage.rs`.
+updates. The website side is `api/launcher.php`, `activate.php` and `admin/inc/rl_cloud.php`; the
+launcher side is `src-tauri/src/cloud.rs`, `saves.rs` and `usage.rs`.
 
 ## Signing a PC in
 
@@ -60,7 +61,7 @@ lists PCs whose system the recomp has a build for.
 
 A beta is a recomp's test builds from its own GitHub releases: the newest pre-release, or one
 release by tag. Access is `open` (anyone signed in joins), `request` (the admin lets them in) or
-`invite` (only people the admin adds).
+`invite` (only people the admin adds). The admin page is `admin/launcher.php`, Betas tab.
 
 - Launcher (token): `GET ?a=betas` → `betas: [{id, app, name, title, notes, channel, tag, access,
   status, systems}]`, where `status` is `in`, `asked` or empty. `POST ?a=beta-join {id}` →
@@ -86,10 +87,11 @@ accounts are turned off on the website, and are rate limited per IP.
   `uninstall`. Kept on the PC in `cache/events.json` until they get through (200 at most).
 
 Hello and events only go when "Share usage and diagnostics" is on (Settings, General; on by default,
-and in first-time setup).
+and in first-time setup). The admin page shows them on its Players and Problems tabs.
 
 ## RecompLauncher's own updates
 
 `GET /launcher/version.json` → `{version, notes, url, sha256, size, date}`. The launcher checks on
 start and every 6 hours, downloads `url`, checks `sha256`, and runs the installer with `/P /R`
-(quiet, then opens again). `notes` (Markdown) shows once as What's new.
+(quiet, then opens again). `notes` (Markdown) shows once as What's new. The admin page's Updates
+tab uploads an installer to `/launcher/` and publishes version.json.

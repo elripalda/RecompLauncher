@@ -84,8 +84,8 @@ async fn answer(app: &AppHandle, r: reqwest::Response) -> Res<Value> {
         return Err(Error::Msg("You were signed out. Sign in again to use cloud saves.".into()));
     }
     if code >= 400 || v.get("ok") == Some(&Value::Bool(false)) {
-        let why = v.get("error").and_then(Value::as_str).unwrap_or("The website didn't answer properly. Try again in a moment.");
-        return Err(Error::Msg(why.into()));
+        let why = v.get("error").and_then(Value::as_str).map(String::from).unwrap_or_else(|| format!("The website didn't answer properly ({code}). Try again in a moment."));
+        return Err(Error::Msg(why));
     }
     Ok(v)
 }
@@ -97,7 +97,7 @@ fn net(e: reqwest::Error) -> Error {
 async fn get(app: &AppHandle, q: &[(&str, &str)]) -> Res<Value> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    let r = st.http.get(api()).query(q).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str()).timeout(std::time::Duration::from_secs(8)).send().await.map_err(net)?;
+    let r = st.http.get(api()).query(q).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str()).timeout(std::time::Duration::from_secs(15)).send().await.map_err(net)?;
     answer(app, r).await
 }
 
@@ -201,15 +201,25 @@ pub async fn account_state(app: AppHandle, fresh: bool) -> Res<Value> {
     if !fresh {
         return Ok(json!({"signedIn": true, "user": a.user}));
     }
-    match get(&app, &[("a", "me")]).await {
+    // A slow or briefly blocked answer gets one more try before the account shows as offline.
+    let mut r = get(&app, &[("a", "me")]).await;
+    if matches!(r, Err(Error::Net(_)) | Err(Error::Msg(_))) && signed_in(&st.dir) {
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        r = get(&app, &[("a", "me")]).await;
+    }
+    let why = match &r {
+        Err(e) => e.to_string(),
+        Ok(_) => String::new(),
+    };
+    match r {
         Ok(v) => {
             let user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
             store(&st.dir, Some(&Account { token: a.token, user: user.clone() }));
             Ok(json!({"signedIn": true, "user": user, "used": v.pointer("/saves/used"), "quota": v.pointer("/saves/quota")}))
         }
-        Err(Error::Net(_)) => Ok(json!({"signedIn": true, "user": a.user, "offline": true})),
+        Err(Error::Net(_)) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
         Err(e) if !signed_in(&st.dir) => Err(e),
-        Err(_) => Ok(json!({"signedIn": true, "user": a.user, "offline": true})),
+        Err(_) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
     }
 }
 
@@ -586,6 +596,27 @@ pub fn saves_forget_found(st: State<'_, App>, id: String) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
     let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     g.found_saves.clear();
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// The player's own answer to where the game saves (a folder they picked), or None to go back to
+/// what the launcher works out.
+#[tauri::command(async)]
+pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.save_place = match path.filter(|p| !p.trim().is_empty()) {
+        Some(p) => {
+            let p = PathBuf::from(p);
+            if !p.is_dir() {
+                return Err(Error::Msg("That folder couldn't be found.".into()));
+            }
+            Some(saves::templatize(&p, &g.path))
+        }
+        None => None,
+    };
     let g = g.clone();
     let _ = l.save(&st.dir);
     Ok(g)

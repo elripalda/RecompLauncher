@@ -55,6 +55,25 @@ fn program_in(dir: &Path, p: Option<&profile::Profile>, name: &str) -> Option<Pa
 /// build. The folder is never moved, updated or deleted by the launcher.
 #[tauri::command(async)]
 pub fn dev_add(st: State<'_, App>, path: String) -> Res<Installed> {
+    add_folder(&st, path, None, "local")
+}
+
+/// Any game the player has that the launcher doesn't know (Add Games You Have, Add It Anyway):
+/// a folder, or a program in one. Added the same way as a local build: it plays, keeps time and
+/// can go to Steam, but nothing updates it.
+#[tauri::command(async)]
+pub fn add_any(st: State<'_, App>, path: String) -> Res<Installed> {
+    let p = PathBuf::from(&path);
+    if p.is_file() {
+        let dir = p.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
+        let rel = p.file_name().map(PathBuf::from);
+        return add_folder(&st, dir.to_string_lossy().to_string(), rel, "own");
+    }
+    add_folder(&st, path, None, "own")
+}
+
+/// `tag`: "local" for a developer's build, "own" for a game the player added themselves.
+fn add_folder(st: &State<'_, App>, path: String, exe_pick: Option<PathBuf>, tag: &str) -> Res<Installed> {
     let dir = PathBuf::from(&path);
     if !dir.is_dir() {
         return Err(Error::Msg("That folder isn't there.".into()));
@@ -62,13 +81,13 @@ pub fn dev_add(st: State<'_, App>, path: String) -> Res<Installed> {
     let raw = read_raw(&dir);
     let prof = raw.as_ref().and_then(|v| serde_json::from_value::<profile::Profile>(v.clone()).ok());
     let name = name_of(&dir, raw.as_ref());
-    let exe = program_in(&dir, prof.as_ref(), &name);
+    let exe = exe_pick.filter(|e| dir.join(e).is_file()).or_else(|| program_in(&dir, prof.as_ref(), &name));
     let mut l = st.lib.lock().unwrap();
     // The same folder added again: the entry it already has.
     if let Some(g) = l.installed.values().find(|g| g.local && g.path == dir) {
         return Ok(g.clone());
     }
-    let base = format!("local-{}", slug(&name));
+    let base = format!("{}-{}", if tag == "own" { "own" } else { "local" }, slug(&name));
     let mut id = base.clone();
     let mut n = 2;
     while l.installed.contains_key(&id) {
@@ -79,7 +98,7 @@ pub fn dev_add(st: State<'_, App>, path: String) -> Res<Installed> {
         id: id.clone(),
         name,
         repo: prof.as_ref().map(|p| p.repo.clone()).unwrap_or_default(),
-        tag: "local".into(),
+        tag: tag.into(),
         version: String::new(),
         path: dir,
         exe,

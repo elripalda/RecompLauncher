@@ -41,7 +41,12 @@ T.event.listen('overlay-open', async ({ payload: p }) => {
   fit();
   requestAnimationFrame(() => stage.classList.add('in'));
 });
-T.event.listen('pad', ({ payload }) => press(typeof payload === 'string' ? payload : payload.b));
+// Controller presses meant for this menu only, and only while it's showing: the launcher's own
+// window gets presses too, and a hidden menu must never act on them (a press of A in Big Picture
+// mode would otherwise pick "Screenshots and library" here).
+const ownWin = T.webviewWindow && T.webviewWindow.getCurrentWebviewWindow && T.webviewWindow.getCurrentWebviewWindow();
+const ownListen = ownWin && typeof ownWin.listen === 'function' ? ownWin.listen.bind(ownWin) : T.event.listen;
+ownListen('pad', ({ payload }) => { if (stage.classList.contains('in')) press(typeof payload === 'string' ? payload : payload.b); });
 document.addEventListener('keydown', (e) => {
   const m = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'a', ' ': 'a', Escape: 'b' }[e.key];
   if (m) { e.preventDefault(); press(m); }

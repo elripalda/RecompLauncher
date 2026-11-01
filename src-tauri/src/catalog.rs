@@ -94,7 +94,85 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, ch
 
 pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<Fetched, Error> {
     let fresh = if force { 0 } else { 300 };
-    cached(http, &format!("{}/pc-catalog.json", base()), dir.join("cache/pc-catalog.json"), fresh, |v| v.get("apps").map(Value::is_array).unwrap_or(false)).await
+    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), dir.join("cache/pc-catalog.json"), fresh, |v| v.get("apps").map(Value::is_array).unwrap_or(false)).await?;
+    f.data = with_mine(dir, f.data);
+    Ok(f)
+}
+
+// ---------- recomps the player added by their GitHub link ----------
+
+fn mine_file(dir: &Path) -> PathBuf {
+    dir.join("my-recomps.json")
+}
+
+/// The recomps the player added themselves, as catalog entries.
+pub fn mine(dir: &Path) -> Vec<Value> {
+    std::fs::read(mine_file(dir)).ok().and_then(|b| serde_json::from_slice::<Vec<Value>>(&b).ok()).unwrap_or_default()
+}
+
+pub fn save_mine(dir: &Path, list: &[Value]) -> std::io::Result<()> {
+    std::fs::write(mine_file(dir), serde_json::to_vec_pretty(list).unwrap_or_default())
+}
+
+/// The catalog with the player's own recomps added after it (one the catalog has since listed
+/// itself, by the same repo, stays the catalog's).
+pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
+    let list = mine(dir);
+    if list.is_empty() {
+        return cat;
+    }
+    if !cat.is_object() {
+        cat = serde_json::json!({ "apps": [] });
+    }
+    if !cat.get("apps").map(Value::is_array).unwrap_or(false) {
+        cat["apps"] = Value::Array(vec![]);
+    }
+    let apps = cat["apps"].as_array_mut().unwrap();
+    for e in list {
+        let repo = e.get("repo").and_then(Value::as_str).unwrap_or("").to_lowercase();
+        let id = e.get("id").and_then(Value::as_str).unwrap_or("");
+        let listed = apps.iter().any(|a| a.get("id").and_then(Value::as_str) == Some(id) || (!repo.is_empty() && a.get("repo").and_then(Value::as_str).map(|r| r.to_lowercase()) == Some(repo.clone())));
+        if !listed {
+            apps.push(e);
+        }
+    }
+    cat
+}
+
+/// owner/repo from a GitHub link (or "owner/repo" itself).
+pub fn repo_from_link(s: &str) -> Option<String> {
+    let s = s.trim().trim_end_matches('/');
+    let s = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://")).unwrap_or(s);
+    let s = s.strip_prefix("www.").unwrap_or(s);
+    // Only GitHub: another site's link (its host has a dot) isn't one.
+    let rest = match s.strip_prefix("github.com/") {
+        Some(r) => r,
+        None if s.split('/').next().map(|h| h.contains('.')).unwrap_or(false) => return None,
+        None => s,
+    };
+    let mut parts = rest.split(['/', '?', '#']).filter(|p| !p.is_empty());
+    let (o, r) = (parts.next()?, parts.next()?);
+    let r = r.strip_suffix(".git").unwrap_or(r);
+    let repo = format!("{o}/{r}");
+    repo_ok(&repo).then_some(repo)
+}
+
+/// A repo's name as a game's: "burnout3-pc" -> "Burnout3 PC".
+pub fn name_from_repo(repo: &str) -> String {
+    let r = repo.rsplit('/').next().unwrap_or(repo);
+    r.split(['-', '_', '.'])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let lw = w.to_lowercase();
+            if matches!(lw.as_str(), "pc" | "hd" | "ps2" | "ps3" | "n64" | "gc" | "wii" | "xbox" | "x360") {
+                lw.to_uppercase()
+            } else {
+                let mut c = w.chars();
+                c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// What players say about each recomp, in counts: { id: { runs, issues, broken } }.
@@ -132,6 +210,20 @@ pub fn latest(rels: &[Release]) -> Option<&Release> {
     rels.iter().find(|r| !r.draft && !r.prerelease).or_else(|| rels.iter().find(|r| !r.draft))
 }
 
+/// The release to update an installed one to: the newest stable one, or for a player on a
+/// pre-release, the newest of all. Never one older than what they have (a beta of the next
+/// version is newer than the last stable one).
+pub fn latest_for<'a>(rels: &'a [Release], installed: &str) -> Option<&'a Release> {
+    let cur = rels.iter().find(|r| r.tag_name == installed);
+    let pick = if cur.map(|r| r.prerelease).unwrap_or(false) { rels.iter().find(|r| !r.draft) } else { latest(rels) }?;
+    if let (Some(c), Some(new), Some(old)) = (cur, pick.published_at.as_deref(), cur.and_then(|r| r.published_at.as_deref())) {
+        if new < old {
+            return Some(c);
+        }
+    }
+    Some(pick)
+}
+
 /// One app's entry in the catalog, by id.
 pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
     cat.get("apps")?.as_array()?.iter().find(|a| a.get("id").and_then(Value::as_str) == Some(id))
@@ -139,6 +231,17 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn github_links() {
+        assert_eq!(super::repo_from_link("https://github.com/danielgomesvieira2000/burnout3-pc").as_deref(), Some("danielgomesvieira2000/burnout3-pc"));
+        assert_eq!(super::repo_from_link("github.com/a/b.git").as_deref(), Some("a/b"));
+        assert_eq!(super::repo_from_link("https://github.com/a/b/releases/tag/v1").as_deref(), Some("a/b"));
+        assert_eq!(super::repo_from_link("a/b").as_deref(), Some("a/b"));
+        assert_eq!(super::repo_from_link("https://gitlab.com/a/b"), None);
+        assert_eq!(super::name_from_repo("x/burnout3-pc"), "Burnout3 PC");
+        assert_eq!(super::name_from_repo("x/gt3_revisited"), "Gt3 Revisited");
+    }
+
     use super::*;
 
     #[test]
@@ -158,4 +261,17 @@ mod tests {
         assert_eq!(latest(&[r("v2", true, false)]).unwrap().tag_name, "v2");
         assert!(latest(&[r("v2", false, true)]).is_none());
     }
+}
+
+/// A recomp that needs things on the PC before it plays (Python, build tools, a long first build),
+/// going by the copy of the list on disk: true until the player has said it's set up.
+pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
+    let done = ui.get("setup_ok").and_then(|o| o.get(id)).and_then(Value::as_bool).unwrap_or(false);
+    if done {
+        return false;
+    }
+    load(&dir.join("cache/pc-catalog.json"))
+        .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
+        .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
+        .unwrap_or(false)
 }

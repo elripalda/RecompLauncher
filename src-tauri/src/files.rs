@@ -157,11 +157,13 @@ pub fn list(path: &Path) -> Listing {
     Listing { path: path.to_path_buf(), parent, entries, denied: false, more }
 }
 
-/// Windows' hidden and system files ($Recycle.Bin, pagefile.sys).
+/// Windows' system files ($Recycle.Bin, pagefile.sys, System Volume Information). Folders that are
+/// only hidden (AppData, ProgramData) stay: emulators and games keep their files there.
 #[cfg(windows)]
 fn hidden(e: &std::fs::DirEntry) -> bool {
     use std::os::windows::fs::MetadataExt;
-    e.metadata().map(|m| m.file_attributes() & (0x2 | 0x4) != 0).unwrap_or(false)
+    let name = e.file_name().to_string_lossy().to_string();
+    name.starts_with('$') || e.metadata().map(|m| m.file_attributes() & 0x4 != 0).unwrap_or(false)
 }
 #[cfg(not(windows))]
 fn hidden(_e: &std::fs::DirEntry) -> bool {

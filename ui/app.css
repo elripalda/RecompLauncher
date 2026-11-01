@@ -219,6 +219,10 @@ body.oled .slide::after{background:linear-gradient(90deg,#000 0%,rgba(0,0,0,.65)
 .slide.on .sl-in>*:nth-child(2){animation-delay:.06s}.slide.on .sl-in>*:nth-child(3){animation-delay:.12s}.slide.on .sl-in>*:nth-child(4){animation-delay:.18s}.slide.on .sl-in>*:nth-child(5){animation-delay:.24s}
 .kick{font:700 11.5px Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan)}
 .sl-in h2{font-size:clamp(30px,3.3vw,50px)}
+.sl-logo{height:clamp(64px,9vw,130px);display:flex;align-items:flex-end;min-width:0}
+.sl-logo img{display:block;max-height:100%;max-width:min(440px,100%);width:auto;height:auto;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 4px 18px rgba(0,0,0,.55))}
+.sl-logo h2{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.sl-logo.fail{height:auto}.sl-logo.fail img{display:none}.sl-logo.fail h2{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;white-space:normal}
 .sl-in p{margin:0;color:#cfd6e0;font-size:15.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sl-in .acts{margin-top:8px}
 .sl-cover{position:absolute;z-index:1;right:48px;bottom:46px;width:clamp(150px,13vw,210px);aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:var(--card2);box-shadow:0 30px 60px -20px rgba(0,0,0,.9),inset 0 0 0 1px rgba(244,248,252,.12)}
@@ -559,7 +563,7 @@ body.oled .gp-amb img.ld{opacity:.26}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 @media (max-width:1240px){.g-body{grid-template-columns:minmax(0,1fr) 300px}.news-grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:1060px){.g-body{grid-template-columns:1fr}.gp-top{flex-wrap:wrap}.gp-cover{width:150px}.sl-cover{display:none}.sl-in{right:48px}.page{padding-left:28px;padding-right:28px}.su-in{grid-template-columns:1fr}.su-stage{min-height:300px;border-right:0;border-bottom:1px solid var(--line)}}
+@media (max-width:1060px){.sl-logo{height:80px}.g-body{grid-template-columns:1fr}.gp-top{flex-wrap:wrap}.gp-cover{width:150px}.sl-cover{display:none}.sl-in{right:48px}.page{padding-left:28px;padding-right:28px}.su-in{grid-template-columns:1fr}.su-stage{min-height:300px;border-right:0;border-bottom:1px solid var(--line)}}
 body.tv-on .island{left:50%}
 .tile-b:focus-visible{outline:none}
 .tile-b:focus-visible .poster{box-shadow:0 0 0 3px var(--cyan),0 22px 40px -18px rgba(0,0,0,.9)}
@@ -1252,3 +1256,147 @@ body.sliding .island{transition:none}
 /* Downloads: its tabs, and Clear history across from them. */
 .dl-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:-10px 0 -6px}
 .dl-bar .tabs{margin:0}
+
+/* Lighter Launcher (Settings, While Playing): nothing animates or blurs. */
+body.lighter *, body.lighter *::before, body.lighter *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--cyan); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link-btn:hover { opacity: .85; }
+.home-search{display:block;margin:0 auto 22px}.home-search input{height:46px}
+.chip.main{background:var(--cyan);color:#06121A;border-color:var(--cyan);margin-left:auto}
+/* The Library's tile size slider, bottom right. */
+#llist .grid{grid-template-columns:repeat(auto-fill,minmax(calc(var(--tile,168) * 1px),1fr))}
+#llist .tile .t{font-size:calc(min(18, max(12.5, var(--tile,168) / 11.5)) * 1px)}
+.tile-size{position:fixed;right:22px;bottom:18px;z-index:20;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line2);color:var(--muted);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.tile-size input{width:120px;accent-color:var(--cyan)}
+body.tv-on .tile-size{display:none}
+/* Light theme (Settings, Appearance). Pictures with text over them (the Home slider, a game's
+   header) keep their dark look so the words stay readable. */
+body.light{--bg:#F3F5F8;--bg2:#E9EDF2;--side:#EDF0F4;--card:#FFFFFF;--card2:#F4F6F9;--card3:#E8ECF1;
+  --ink:#0E1626;--muted:#4A5568;--dim:#6B7688;--cyan:#0B9E97;--blue:#2A6AA5;
+  --line:rgba(14,22,38,.08);--line2:rgba(14,22,38,.14);--line3:rgba(14,22,38,.24);
+  --fill:rgba(14,22,38,.035);--fill2:rgba(14,22,38,.06);--fill3:rgba(14,22,38,.1);color-scheme:light}
+body.light .slide, body.light .gp-hero, body.light .sl-in, body.light .gp-amb{--ink:#F4F8FC;--muted:#C9D2DE;--dim:#AAB4C4;--cyan:#34F2E8;--line2:rgba(244,248,252,.14);--fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065)}
+body.light .menu, body.light .modal, body.light .toast{box-shadow:0 12px 40px rgba(14,22,38,.18)}
+body.light .chip.on{color:#fff}
+body.light .btn.main, body.light .chip.main{color:#fff}
+body.light .topbar.solid{background:rgba(243,245,248,.85)}
+body.light .scrim{background:rgba(14,22,38,.35)}
+body.light .poster, body.light .tile-size{box-shadow:0 4px 16px rgba(14,22,38,.10)}
+body.light .slide .btn.main, body.light .gp-hero .btn.main{color:#06121A}
+body.light .slide{--bg:#0B1220;--bg2:#08101c}
+body.light .btn.glass{background:rgba(255,255,255,.75);color:var(--ink);border-color:var(--line2)}
+body.light .btn.glass:hover{background:#fff}
+body.light .slide .btn.glass{background:rgba(8,14,26,.82);color:#F4F8FC;border-color:rgba(244,248,252,.14)}
+body.light .modal{box-shadow:0 30px 80px -20px rgba(14,22,38,.35)}
+body.light .gp-hero .btn.glass{background:rgba(8,14,26,.82);color:#F4F8FC;border-color:rgba(244,248,252,.14)}
+body.light .blurb{color:var(--muted)}
+body.light .md, body.light .about-game p, body.light .logbox{color:var(--ink)}
+body.light .offline-pill, body.light .offline, body.light .slot .tag.wait{color:#8a5a00}
+body.light .toast.bad, body.light .su-err, body.light .mono{color:#b42318}
+
+/* Covers Only (Settings, Appearance): just the covers, no names under them. */
+body.nonames .tile .t,body.nonames .tile .s,body.nonames .tile .trow{display:none}
+
+/* A cover placeholder only shimmers while there is no picture; under a picture it would repaint for nothing. */
+.ph:has(~ img),img ~ .ph{animation:none!important}
+
+/* Setup Required: yellow, so it reads as "do this first" next to the cyan Play. */
+.btn.main.warn{background:#f5c518;border-color:#f5c518;color:#1a1400;box-shadow:0 10px 30px -10px rgba(245,197,24,.55)}
+.btn.main.warn:hover{background:#ffd43b;border-color:#ffd43b;box-shadow:0 14px 34px -10px rgba(245,197,24,.7)}
+.btn.warn-o{color:#f5c518;border-color:rgba(245,197,24,.55)}
+.btn.warn-o:hover{background:rgba(245,197,24,.12)}
+.badge.easy.setupreq{border-color:rgba(245,197,24,.55)}
+.badge.easy.setupreq svg{color:#f5c518}
+.setup-steps{margin:4px 0 14px;padding-left:22px;display:grid;gap:8px;line-height:1.45}
+.setup-steps li::marker{color:#f5c518;font-weight:700}
+body.light .btn.main.warn{color:#1a1400}
+.badge.easy.setupreq{background:#f5c518;color:#1a1400;border-color:#f5c518;backdrop-filter:none}
+.badge.easy.setupreq svg{color:#1a1400}
+.btn.main.warn svg{color:#1a1400}
+.btn.main.warn:focus-visible,.btn.warn-o:focus-visible{outline:2px solid #ffd43b;outline-offset:2px}
+.btn.warn-o{border:1px solid rgba(245,197,24,.55);background:rgba(245,197,24,.06)}
+.btn.warn-o svg{color:#f5c518}
+body.light .btn.warn-o{color:#7a5a00;border-color:#d9a900;background:rgba(245,197,24,.14)}
+body.light .btn.warn-o svg{color:#9a7200}
+body.light .btn.warn-o:hover{background:rgba(245,197,24,.24)}
+body.light .setup-steps li::marker{color:#b38900}
+
+/* A game's tags under its title: small pills that open Discover with that tag. */
+.gp-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.tagpill{height:26px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);background:var(--fill2);color:var(--ink);font:600 12px Figtree,sans-serif;cursor:pointer;transition:background .15s,border-color .15s}
+.tagpill:hover{background:var(--fill3);border-color:color-mix(in srgb,var(--cyan) 45%,var(--line2))}
+.tagpill:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.chips.tagchips{margin:0 0 4px}
+.chips.tagchips .chip svg{width:12px;height:12px;margin-left:4px;vertical-align:-1px}
+/* About the game (IGDB): the same card as the others, with its facts and a small score. */
+.about-game.igdb .facts{margin:4px 0 2px}
+.about-game.igdb .facts dd{overflow-wrap:normal;word-break:normal;hyphens:manual;max-width:68%}
+.score-b{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--dim)}
+.score-b b{display:inline-grid;place-items:center;min-width:34px;height:26px;padding:0 6px;border-radius:8px;background:var(--fill2);border:1px solid var(--line2);color:var(--ink);font-size:13px;font-weight:800}
+
+/* The cover size control: the slider, and a button showing the Library's view (covers or wide). */
+.tile-size{padding:6px 6px 6px 14px}
+.ts-view{width:32px;height:32px;border-radius:999px;display:grid;place-items:center;border:0;background:var(--fill2);color:var(--ink);cursor:pointer;transition:background .15s}
+.ts-view:hover{background:var(--fill3)}
+.ts-view:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+/* Wide tiles: the game's art blurred and dark, its logo in the middle. */
+#llist.wide .grid{grid-template-columns:repeat(auto-fill,minmax(calc(var(--tile,168) * 1.7px),1fr))}
+.poster.wide{aspect-ratio:2/1;isolation:isolate}
+.poster.wide .wbg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(10px) saturate(1.15);transform:translateZ(0)}
+.poster.wide .wshade{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 50%,rgba(6,10,20,.25),rgba(6,10,20,.72)),linear-gradient(180deg,rgba(6,10,20,0) 40%,rgba(6,10,20,.55))}
+.poster.wide .wlogo{position:absolute;left:12%;right:12%;top:16%;bottom:16%;width:76%;height:68%;object-fit:contain;filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+.poster.wide .wname{position:absolute;inset:0;display:grid;place-items:center;padding:12px 18px;text-align:center;font:800 semi-expanded clamp(15px, calc(var(--tile,168) * .11px), 26px)/1.1 Archivo,sans-serif;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6);text-wrap:balance}
+.poster.wide .ph{background:var(--card2)}
+
+/* Lists that scroll inside a dropdown or panel use the launcher's own thin scrollbar, not the system's. */
+.dropmenu,.menu,.modal,.fb-list,.fb-side{scrollbar-width:auto}
+.dropmenu::-webkit-scrollbar,.menu::-webkit-scrollbar{width:10px}
+.dropmenu::-webkit-scrollbar-button,.menu::-webkit-scrollbar-button,::-webkit-scrollbar-button{display:none;width:0;height:0}
+.dropmenu::-webkit-scrollbar-thumb{background:rgba(244,248,252,.16);border:3px solid transparent;background-clip:padding-box;border-radius:8px}
+.dropmenu::-webkit-scrollbar-thumb:hover{background-color:rgba(244,248,252,.28)}
+body.light .dropmenu::-webkit-scrollbar-thumb{background-color:rgba(14,22,38,.18)}
+/* Wide tiles: the hover glow and the play button sit on the wide tile itself. */
+#llist.wide .qpw,#llist.wide .tile .glow{aspect-ratio:2/1}
+#llist.wide .tile .glow{left:4%;right:4%;top:6%}
+/* The cover size control stays at the bottom right, over the covers. */
+.tile-size{z-index:120}
+#llist{padding-bottom:72px}
+
+/* Achievements (coming soon): gold only for the pill, the trophy and the main button's edge. */
+.ach{--gold:#f2c14e;max-width:1080px}
+.ach-h{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ach-pill{height:26px;padding:0 11px;border-radius:999px;display:inline-flex;align-items:center;font-size:12px;font-weight:700;letter-spacing:.02em;color:#1d1503;background:var(--gold)}
+.ach-lead{max-width:62ch;margin-top:8px}
+.ach-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:26px}
+@media (max-width:900px){.ach-cards{grid-template-columns:minmax(0,1fr)}}
+.ach-card{position:relative;padding:22px 22px 20px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:10px;min-width:0;opacity:.72;cursor:default;user-select:none}
+.ach-card::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,transparent 30%,color-mix(in srgb,var(--bg) 55%,transparent));pointer-events:none}
+.ach-card b{font:700 semi-expanded 17px/1.2 Archivo,sans-serif}
+.ach-card p{margin:0;color:var(--dim);font-size:14px;line-height:1.5;filter:blur(.4px)}
+.ach-ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fill2);color:var(--ink)}
+.ach-lock{position:absolute;top:16px;right:16px;color:var(--dim)}
+.ach-prev{margin-top:28px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.ach-prev-k{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.ach-toast{display:flex;align-items:center;gap:14px;padding:12px 18px 12px 12px;border-radius:16px;background:var(--card2);border:1px solid color-mix(in srgb,var(--gold) 35%,var(--line2));box-shadow:0 18px 40px -18px rgba(0,0,0,.6);pointer-events:none}
+.ach-toast-ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:#1d1503;background:var(--gold)}
+.ach-toast-t{display:flex;flex-direction:column;gap:2px}
+.ach-toast-t b{font-size:14.5px}
+.ach-toast-t small{font-size:12.5px;color:var(--dim)}
+.ach-acts{margin-top:30px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.ach-acts .acts{display:flex;gap:10px}
+.ach-ok{margin:0;font-size:14px;color:var(--ink)}
+.ach-btn{box-shadow:none}
+body.light .ach-card::after{background:linear-gradient(180deg,transparent 30%,rgba(243,245,248,.55))}
+.ach-ok{margin:10px 0 0;color:var(--gold);font-weight:600}
+body.light .ach-ok{color:#8a6400}
+.ach .head{align-items:flex-start}
+.ach-acts{margin:4px 0 0;flex-direction:row;align-items:center}
+
+/* the small Beta mark next to a setting's name */
+.set-row .k b .tab-beta{margin-left:8px;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--cyan);background:rgba(52,242,232,.12);vertical-align:2px}
+
+/* Add From GitHub */
+.modal .err{margin:8px 0 0;color:var(--bad);font-size:13.5px}
+.btn svg{flex:none}
+button.choice{width:100%;text-align:left;color:inherit;font:inherit}
+button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}

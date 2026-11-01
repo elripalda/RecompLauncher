@@ -72,52 +72,114 @@ pub async fn download(
             have += n as u64;
         }
     }
-    let mut req = http.get(&asset.browser_download_url).timeout(Duration::from_secs(60 * 60 * 6));
-    if have > 0 {
-        req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
-    }
-    let r = req.send().await?;
-    if !r.status().is_success() {
-        let _ = tokio::fs::remove_file(&part).await;
-        return Err(Error::Msg(format!("GitHub answered {} for {}", r.status().as_u16(), asset.name)));
-    }
-    let resumed = have > 0 && r.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-    if !resumed {
-        hash = Sha256::new();
-        have = 0;
-    }
-    let total = r.content_length().map(|n| n + have).unwrap_or(asset.size);
-    use tokio::io::AsyncWriteExt;
-    let mut out = if resumed {
-        tokio::fs::OpenOptions::new().append(true).open(&part).await?
-    } else {
-        tokio::fs::File::create(&part).await?
-    };
+    // GitHub sometimes accepts the connection and then sends nothing. Waiting for the answer and for
+    // each piece is limited, cancelling works while it waits, and a download that stalls part way
+    // carries on from where it got to, a few times, before it gives up.
+    let cancelled = || cancel.load(Ordering::Relaxed);
+    let mut out: Option<tokio::fs::File> = None;
     let mut done = have;
-    let mut stream = r.bytes_stream();
-    let (mut last, mut mark, mut mark_bytes, mut speed) = (Instant::now() - Duration::from_secs(1), Instant::now(), done, 0u64);
-    while let Some(chunk) = stream.next().await {
-        if cancel.load(Ordering::Relaxed) {
-            drop(out);
-            let _ = tokio::fs::remove_file(&part).await;
-            return Err(Error::Cancelled);
+    let mut total;
+    let mut tries = 0u32;
+    use tokio::io::AsyncWriteExt;
+    'attempt: loop {
+        tries += 1;
+        let mut req = http.get(&asset.browser_download_url).timeout(Duration::from_secs(60 * 60 * 6));
+        if done > 0 {
+            req = req.header(reqwest::header::RANGE, format!("bytes={done}-"));
         }
-        let chunk = chunk?;
-        hash.update(&chunk);
-        out.write_all(&chunk).await?;
-        done += chunk.len() as u64;
-        if mark.elapsed() >= Duration::from_millis(800) {
-            speed = ((done - mark_bytes) as f64 / mark.elapsed().as_secs_f64()) as u64;
-            mark = Instant::now();
-            mark_bytes = done;
+        let send = req.send();
+        tokio::pin!(send);
+        let started = Instant::now();
+        let r = loop {
+            if cancelled() {
+                drop(out);
+                let _ = tokio::fs::remove_file(&part).await;
+                return Err(Error::Cancelled);
+            }
+            match tokio::time::timeout(Duration::from_millis(500), &mut send).await {
+                Ok(r) => break r,
+                Err(_) if started.elapsed() < Duration::from_secs(30) => continue,
+                Err(_) if tries < 4 => continue 'attempt,
+                Err(_) => return Err(Error::Msg("GitHub isn't answering right now. Try again in a minute; the download carries on from where it got to.".into())),
+            }
+        };
+        let r = match r {
+            Ok(r) => r,
+            Err(e) if tries < 4 && (e.is_timeout() || e.is_connect() || e.is_request()) => {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        };
+        if !r.status().is_success() {
+            if r.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                done = 0;
+                hash = Sha256::new();
+                out = None;
+                let _ = tokio::fs::remove_file(&part).await;
+                if tries < 4 {
+                    continue;
+                }
+            }
+            if out.is_none() {
+                let _ = tokio::fs::remove_file(&part).await;
+            }
+            return Err(Error::Msg(format!("GitHub answered {} for {}", r.status().as_u16(), asset.name)));
         }
-        if last.elapsed() >= Duration::from_millis(150) {
-            last = Instant::now();
-            let mut p = Progress::new(id, "download", done, total);
-            p.speed = speed;
-            report(p);
+        let resumed = done > 0 && r.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        if !resumed {
+            hash = Sha256::new();
+            done = 0;
+            out = None;
+        }
+        total = r.content_length().map(|n| n + done).unwrap_or(asset.size);
+        if out.is_none() {
+            out = Some(if resumed { tokio::fs::OpenOptions::new().append(true).open(&part).await? } else { tokio::fs::File::create(&part).await? });
+        }
+        let f = out.as_mut().unwrap();
+        let mut stream = r.bytes_stream();
+        let (mut last, mut mark, mut mark_bytes, mut speed) = (Instant::now() - Duration::from_secs(1), Instant::now(), done, 0u64);
+        let mut quiet = Instant::now();
+        loop {
+            if cancelled() {
+                break 'attempt;
+            }
+            let next = match tokio::time::timeout(Duration::from_millis(500), stream.next()).await {
+                Ok(n) => n,
+                Err(_) if quiet.elapsed() < Duration::from_secs(40) => continue,
+                // Nothing for 40 seconds: ask again from where it got to.
+                Err(_) if tries < 6 => { f.flush().await?; continue 'attempt; }
+                Err(_) => return Err(Error::Msg(format!("The download of {} stopped. Press Install again; it carries on from where it got to.", asset.name))),
+            };
+            let Some(chunk) = next else { break 'attempt };
+            let chunk = match chunk {
+                Ok(c) => c,
+                Err(_) if tries < 6 => { f.flush().await?; tokio::time::sleep(Duration::from_secs(2)).await; continue 'attempt; }
+                Err(e) => return Err(e.into()),
+            };
+            quiet = Instant::now();
+            hash.update(&chunk);
+            f.write_all(&chunk).await?;
+            done += chunk.len() as u64;
+            if mark.elapsed() >= Duration::from_millis(800) {
+                speed = ((done - mark_bytes) as f64 / mark.elapsed().as_secs_f64()) as u64;
+                mark = Instant::now();
+                mark_bytes = done;
+            }
+            if last.elapsed() >= Duration::from_millis(150) {
+                last = Instant::now();
+                let mut p = Progress::new(id, "download", done, total);
+                p.speed = speed;
+                report(p);
+            }
         }
     }
+    if cancelled() {
+        drop(out);
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(Error::Cancelled);
+    }
+    let Some(mut out) = out else { return Err(Error::Msg(format!("The download of {} didn't start. Try again.", asset.name))) };
     out.flush().await?;
     drop(out);
     report(Progress::new(id, "verify", done, total));
@@ -335,7 +397,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 4;
+pub const EXE_RULES: u8 = 7;
 
 /// A Windows script a release can start the game with (a .bat or .cmd).
 pub fn is_script(p: &Path) -> bool {

@@ -27,6 +27,10 @@ pub struct RomFile {
 
 const N64: [&str; 3] = ["z64", "n64", "v64"];
 const DISC: [&str; 6] = ["iso", "gcm", "rvz", "wbfs", "ciso", "chd"];
+/// Cartridge ROMs and game files of the other consoles recomps come from (NES, Game Boy, DS, 3DS,
+/// Switch, Virtual Boy, Genesis, 32X, Game Gear, Master System, SNES, Amiga). Matched to a recomp by
+/// name; which console is left open, as their ids in the catalog vary.
+const CART: [&str; 27] = ["nes", "fds", "unf", "gb", "gbc", "gba", "nds", "3ds", "cci", "cia", "cxi", "vb", "vboy", "md", "gen", "smd", "32x", "gg", "sms", "sfc", "smc", "adf", "hdf", "ipf", "lha", "xci", "nsp"];
 
 fn n64_header(p: &Path) -> Option<(String, String)> {
     let mut f = fs::File::open(p).ok()?;
@@ -63,8 +67,41 @@ fn system_for(ext: &str) -> &'static str {
         "gcm" | "rvz" => "gc",
         "wbfs" => "wii",
         "xex" => "x360",
+        // Cartridges say by their file type which console they're for.
+        "nes" | "fds" | "unf" => "nes",
+        "gb" => "gb",
+        "gbc" => "gbc",
+        "gba" => "gba",
+        "nds" => "ds",
+        "3ds" | "cci" | "cia" | "cxi" => "3ds",
+        "vb" | "vboy" => "vb",
+        "md" | "gen" | "smd" => "genesis",
+        "32x" => "s32x",
+        "gg" => "gg",
+        "sms" => "sms",
+        "sfc" | "smc" => "snes",
+        "adf" | "hdf" | "ipf" | "lha" => "amiga",
+        "xci" | "nsp" => "switch",
         _ => "",
     }
+}
+
+/// Consoles whose games come on cartridges (or as cartridge files): a disc image is never one of theirs.
+const CART_ORIGINS: [&str; 13] = ["n64", "snes", "nes", "gb", "gbc", "gba", "ds", "3ds", "vb", "genesis", "s32x", "switch", "amiga"];
+
+/// Can this file be a game for that console? The same console, or one that plays its games
+/// (Game Boy and Game Boy Color), or a disc image of unknown kind for a console that uses discs.
+fn fits(rom: &RomFile, origin: &str) -> bool {
+    if origin.is_empty() || origin == "other" || origin == "arcade" {
+        return true;
+    }
+    // Files found before the launcher told cartridges apart: their type says it now.
+    let ext = rom.path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    let sys = if rom.system.is_empty() { system_for(&ext) } else { rom.system.as_str() };
+    if sys.is_empty() {
+        return !CART_ORIGINS.contains(&origin);
+    }
+    sys == origin || matches!((sys, origin), ("gb", "gbc") | ("gbc", "gb"))
 }
 
 /// One file: a ROM, a disc image, or an Xbox 360 game's default.xex (which stands for its folder).
@@ -75,6 +112,8 @@ pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
         let (title, region) = n64_header(p).unwrap_or((stem.clone(), String::new()));
         Some(RomFile { path: p.to_path_buf(), system: "n64".into(), title, region, size })
     } else if DISC.contains(&ext.as_str()) && size > 50 * 1024 * 1024 {
+        Some(RomFile { path: p.to_path_buf(), system: system_for(&ext).into(), title: stem, region: String::new(), size })
+    } else if CART.contains(&ext.as_str()) && size >= 8 * 1024 {
         Some(RomFile { path: p.to_path_buf(), system: system_for(&ext).into(), title: stem, region: String::new(), size })
     } else if ext == "xex" && stem.eq_ignore_ascii_case("default") {
         // An extracted Xbox 360 game: the folder's name is the game's.
@@ -152,7 +191,10 @@ fn matches(game: &str, rom: &RomFile) -> bool {
     }
     let have = words(&rom.title);
     let file = rom.path.file_stem().and_then(|s| s.to_str()).map(words).unwrap_or_default();
-    let all = |pool: &[String]| want.iter().all(|w| pool.iter().any(|h| h == w || (w.len() > 4 && h.starts_with(w.as_str()))));
+    let hit = |w: &String, h: &String| h == w || (w.len() > 4 && h.starts_with(w.as_str()) && h.len() - w.len() <= 2);
+    // Every word of the game's name is in the file's, and at least half of the file's words are
+    // the game's: "Tony Hawk's Pro Skater 3" isn't "Skate 3", though it has both words in it.
+    let all = |pool: &[String]| !pool.is_empty() && want.iter().all(|w| pool.iter().any(|h| hit(w, h))) && pool.iter().filter(|h| want.iter().any(|w| hit(w, h))).count() * 2 >= pool.len();
     all(&have) || all(&file)
 }
 
@@ -169,7 +211,7 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
         }
         let pick = roms
             .iter()
-            .filter(|r| r.system.is_empty() || origin.is_empty() || r.system == origin)
+            .filter(|r| fits(r, origin))
             .filter(|r| matches(game, r))
             // A US dump first: most recomps are built against it.
             .max_by_key(|r| (r.region == "US") as u8);
@@ -217,6 +259,21 @@ mod tests {
         r.sort_by(|x, y| x.title.cmp(&y.title));
         let t: Vec<(&str, &str)> = r.iter().map(|x| (x.title.as_str(), x.region.as_str())).collect();
         assert_eq!(t, vec![("Banjo-Kazooie", "Europe"), ("SUPER MARIO 64", "Japan"), ("ZELDA MAJORA'S MASK", "US")]);
+    }
+
+    #[test]
+    fn keeps_consoles_and_whole_names_apart() {
+        let f = |name: &str, ext: &str| RomFile { path: PathBuf::from(format!("{name}.{ext}")), system: system_for(ext).into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        // A Game Boy Advance game isn't the PlayStation one with the same start to its name.
+        assert!(!fits(&f("Driver 2 Advanced", "gba"), "ps1"));
+        assert!(fits(&f("Driver 2 Advanced", "gba"), "gba"));
+        // A disc image isn't a cartridge game, and Game Boy and Game Boy Color go together.
+        assert!(!fits(&f("Mario Kart 64", "iso"), "n64"));
+        assert!(fits(&f("Link's Awakening DX", "gb"), "gbc"));
+        // Every word of the game, and the file mostly the game's name.
+        assert!(!matches("Skate 3", &f("Tony Hawk's Pro Skater 3", "gba")));
+        assert!(matches("Skate 3", &f("Skate 3 (USA)", "iso")));
+        assert!(matches("The Legend of Zelda: Majora's Mask", &f("Legend of Zelda, The - Majora's Mask (USA)", "z64")));
     }
 
     #[test]

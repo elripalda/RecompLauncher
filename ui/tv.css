@@ -6,7 +6,7 @@ body.tv-on #app{visibility:hidden}
 #tv.mouse-off{cursor:none}
 .scrim{z-index:200}
 .toasts{z-index:210}
-.tv-stage{--tvbg:#0B1220;--tvrgb:11,18,32;--tvrgb2:20,31,51;--tvcard:#141f33;--sx:96px;position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden;font:500 22px/1.45 Figtree,system-ui,sans-serif;color:#F4F8FC;background:var(--tvbg)}
+.tv-stage{--tvbg:#0B1220;--tvrgb:11,18,32;--tvrgb2:20,31,51;--tvcard:#141f33;--sx:96px;position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden;font:500 22px/1.45 Figtree,system-ui,sans-serif;color:var(--tvink,#F4F8FC);background:var(--tvbg)}
 .tv-stage button{font:inherit;color:inherit}
 
 /* backdrop */
@@ -23,38 +23,38 @@ body.tv-on #app{visibility:hidden}
 .tv-bar{position:absolute;left:var(--sx);right:var(--sx);top:34px;height:76px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;z-index:6}
 .tv-brand{display:flex;align-items:center;gap:14px;font:700 semi-expanded 26px Archivo,sans-serif;letter-spacing:-.01em;justify-self:start;white-space:nowrap}
 .tv-brand svg{width:44px;height:44px}
-.tv-nav{display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:rgba(var(--tvrgb2),.6);border:1px solid rgba(244,248,252,.1);backdrop-filter:blur(16px)}
-.tv-tab{height:54px;padding:0 26px;border-radius:999px;display:flex;align-items:center;font-weight:600;font-size:21px;color:#c9d3e0;border:0;background:transparent;transition:background .25s,color .25s,box-shadow .2s}
-.tv-tab.on{color:var(--tvbg);background:#F4F8FC;font-weight:700}
-.tv-status{justify-self:end;display:flex;align-items:center;gap:22px;color:#dbe5ee}
+.tv-nav{display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:rgba(var(--tvrgb2),.6);border:1px solid rgba(var(--tvinkrgb,244,248,252),.1);backdrop-filter:blur(16px)}
+.tv-tab{height:54px;padding:0 26px;border-radius:999px;display:flex;align-items:center;font-weight:600;font-size:21px;color:var(--tvsoft,#c9d3e0);border:0;background:transparent;transition:background .25s,color .25s,box-shadow .2s}
+.tv-tab.on{color:var(--tvbg);background:var(--tvink,#F4F8FC);font-weight:700}
+.tv-status{justify-self:end;display:flex;align-items:center;gap:22px;color:var(--tvsoft,#dbe5ee)}
 .tv-clock{font-size:22px;font-weight:600}
-.tv-padico{display:grid;place-items:center;color:#a7b3c4}
-.tv-back{height:58px;padding:0 26px 0 12px;border-radius:999px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:21px;background:rgba(var(--tvrgb),.55);border:1px solid rgba(244,248,252,.16);justify-self:start;backdrop-filter:blur(16px)}
+.tv-padico{display:grid;place-items:center;color:var(--tvmuted,#a7b3c4)}
+.tv-back{height:58px;padding:0 26px 0 12px;border-radius:999px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:21px;background:rgba(var(--tvrgb),.55);border:1px solid rgba(var(--tvinkrgb,244,248,252),.16);justify-self:start;backdrop-filter:blur(16px)}
 
 /* the region */
 .tv-region{position:absolute;left:0;right:0;top:124px;bottom:92px;overflow:hidden;z-index:2;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 26px,#000 calc(100% - 30px),transparent 100%);mask-image:linear-gradient(180deg,transparent 0,#000 26px,#000 calc(100% - 30px),transparent 100%)}
 .tv-scroll{position:relative;padding:30px var(--sx) 90px;transition:transform .5s cubic-bezier(.2,.8,.2,1);will-change:transform}
 
 /* the hints */
-.tv-hints{position:absolute;left:0;right:0;bottom:0;height:92px;padding:0 var(--sx);display:flex;align-items:center;gap:40px;border-top:1px solid rgba(244,248,252,.08);background:rgba(var(--tvrgb),.86);backdrop-filter:blur(14px);font-size:20px;font-weight:600;color:#dbe5ee;z-index:6}
+.tv-hints{position:absolute;left:0;right:0;bottom:0;height:92px;padding:0 var(--sx);display:flex;align-items:center;gap:40px;border-top:1px solid rgba(var(--tvinkrgb,244,248,252),.08);background:rgba(var(--tvrgb),.86);backdrop-filter:blur(14px);font-size:20px;font-weight:600;color:var(--tvsoft,#dbe5ee);z-index:6}
 .tv-hints span{display:flex;align-items:center;gap:12px;white-space:nowrap}
-.tv-hints .end{margin-left:auto;color:#8f9cb0}
+.tv-hints .end{margin-left:auto;color:var(--tvdim,#8f9cb0)}
 .tv-hints em{font-style:normal;color:#6f7d90;margin:0 -6px}
 
 /* button icons, in the controller's own shapes */
 .glyph{display:inline-block;flex:none;width:36px;height:36px;background:currentColor;-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat}
-.tv-hints .glyph{width:38px;height:38px;color:#F4F8FC}
-.tv-hints .end .glyph{color:#8f9cb0}
+.tv-hints .glyph{width:38px;height:38px;color:var(--tvink,#F4F8FC)}
+.tv-hints .end .glyph{color:var(--tvdim,#8f9cb0)}
 .tv-keyg{width:40px;height:40px}
-.tv-bumpg{width:44px;height:44px;color:#8f9cb0;margin:0 6px}
+.tv-bumpg{width:44px;height:44px;color:var(--tvdim,#8f9cb0);margin:0 6px}
 
 /* focus: a white ring, a soft cyan glow, a little lift */
 .tv-stage [data-f]{outline:none;transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s,background .2s,color .2s}
-.tv-stage [data-f].f{box-shadow:0 0 0 4px #F4F8FC,0 18px 44px rgba(0,0,0,.5),0 0 34px rgba(52,242,232,.42)!important}
+.tv-stage [data-f].f{box-shadow:0 0 0 4px var(--tvink,#F4F8FC),0 18px 44px rgba(0,0,0,.5),0 0 34px rgba(52,242,232,.42)!important}
 .tv-card.f,.tv-poster.f,.tv-shot.f{transform:scale(1.06)}
 .tv-btn.f,.tv-back.f,.tv-chip.f{transform:scale(1.04)}
-.tv-tab.f{box-shadow:0 0 0 3px #F4F8FC,0 0 0 6px rgba(52,242,232,.6)!important}
-.tv-item.f{background:rgba(244,248,252,.12);transform:translateX(6px)}
+.tv-tab.f{box-shadow:0 0 0 3px var(--tvink,#F4F8FC),0 0 0 6px rgba(52,242,232,.6)!important}
+.tv-item.f{background:rgba(var(--tvinkrgb,244,248,252),.12);transform:translateX(6px)}
 
 /* home: the hero, then rows */
 .tv-hero{min-height:calc(var(--H,1080px) - 124px - 92px - 380px);max-width:1160px;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-bottom:28px;transition:opacity .35s}
@@ -62,9 +62,9 @@ body.tv-on #app{visibility:hidden}
 .tv-hero.swap>*:nth-child(2){animation-delay:.03s}.tv-hero.swap>*:nth-child(3){animation-delay:.06s}.tv-hero.swap>*:nth-child(4){animation-delay:.09s}
 .tv-kick{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#34F2E8}
 .tv-h1{margin:0;font:800 semi-expanded 84px/1.02 Archivo,sans-serif;letter-spacing:-.03em;white-space:nowrap;overflow:hidden}
-.tv-meta{margin:0;font-size:24px;color:#c9d3e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-meta{margin:0;font-size:24px;color:var(--tvsoft,#c9d3e0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tv-acts{display:flex;align-items:center;gap:16px;margin-top:10px}
-.tv-btn{height:74px;padding:0 30px 0 22px;border-radius:22px;display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:23px;color:#F4F8FC;background:rgba(var(--tvrgb),.6);border:1.5px solid rgba(244,248,252,.18);white-space:nowrap;flex:none;backdrop-filter:blur(14px)}
+.tv-btn{height:74px;padding:0 30px 0 22px;border-radius:22px;display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:23px;color:var(--tvink,#F4F8FC);background:rgba(var(--tvrgb),.6);border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.18);white-space:nowrap;flex:none;backdrop-filter:blur(14px)}
 .tv-btn small{font-size:18px;font-weight:600;opacity:.7;margin-left:4px}
 .tv-btn.main{color:var(--tvbg);background:linear-gradient(180deg,#34F2E8,#377BB6);border:0;padding-right:38px;font-size:25px;font-weight:800}
 .tv-btn.main .glyph{color:var(--tvbg)}
@@ -75,7 +75,7 @@ body.tv-on #app{visibility:hidden}
 
 .tv-sec{margin-top:6px}
 .tv-sec h3,.tv-block h3,.tv-subh{margin:0;font:700 semi-expanded 27px Archivo,sans-serif;letter-spacing:-.01em}
-.tv-block h3 small{font:500 19px Figtree,sans-serif;color:#8f9cb0;margin-left:10px}
+.tv-block h3 small{font:500 19px Figtree,sans-serif;color:var(--tvdim,#8f9cb0);margin-left:10px}
 .tv-rowview{margin:0 calc(-1 * var(--sx));padding:18px var(--sx) 30px;overflow:hidden}
 .tv-row{position:relative;display:flex;gap:26px;width:max-content;transition:transform .45s cubic-bezier(.2,.8,.2,1)}
 
@@ -84,16 +84,16 @@ body.tv-on #app{visibility:hidden}
 .tv-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .tv-card .cap{position:absolute;left:0;right:0;bottom:0;padding:44px 22px 18px;display:flex;flex-direction:column;gap:2px;background:linear-gradient(180deg,transparent,rgba(var(--tvrgb),.92))}
 .tv-card .cap b{font-size:22px;font-weight:700;white-space:nowrap;overflow:hidden;display:block}
-.tv-card .cap span{font-size:17px;color:#c9d3e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-card .cap span{font-size:17px;color:var(--tvsoft,#c9d3e0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tv-cell{display:flex;flex-direction:column;gap:10px;min-width:0}
 .tv-row .tv-cell{width:212px;flex:none}
 .tv-poster{position:relative;width:100%;aspect-ratio:2/3;border-radius:20px;overflow:hidden;padding:0;border:0;background:var(--tvcard)}
 .tv-poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.tv-stage .ph{position:absolute;inset:0;display:grid;place-items:center;padding:16px;text-align:center;font-weight:700;color:#8f9cb0;font-size:18px}
+.tv-stage .ph{position:absolute;inset:0;display:grid;place-items:center;padding:16px;text-align:center;font-weight:700;color:var(--tvdim,#8f9cb0);font-size:18px}
 .tv-name{font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;display:block;padding-left:2px}
-.tv-sub{font-size:16px;color:#8f9cb0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-6px;padding-left:2px}
+.tv-sub{font-size:16px;color:var(--tvdim,#8f9cb0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-6px;padding-left:2px}
 .tv-badge{position:absolute;top:12px;right:12px;padding:5px 12px;border-radius:999px;font-size:15px;font-weight:700;color:var(--tvbg);background:#34F2E8}
-.tv-badge.left{left:12px;right:auto;color:#F4F8FC;background:rgba(var(--tvrgb),.7);backdrop-filter:blur(10px)}
+.tv-badge.left{left:12px;right:auto;color:var(--tvink,#F4F8FC);background:rgba(var(--tvrgb),.7);backdrop-filter:blur(10px)}
 .tv-badge.soon{background:#f5b83d}
 .tv-pbar{position:absolute;left:12px;right:12px;bottom:12px;height:6px;border-radius:6px;background:rgba(var(--tvrgb),.6);overflow:hidden}
 .tv-pbar i{display:block;height:100%;background:#34F2E8}
@@ -106,15 +106,15 @@ body.tv-on #app{visibility:hidden}
 /* grid pages */
 .tv-head{margin:0 0 22px}
 .tv-head h2{margin:0;font:800 semi-expanded 56px/1.1 Archivo,sans-serif;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tv-head p{margin:6px 0 0;font-size:21px;color:#a7b3c4}
+.tv-head p{margin:6px 0 0;font-size:21px;color:var(--tvmuted,#a7b3c4)}
 .tv-grid{display:grid;gap:34px 30px;padding:6px 0 10px}
 .tv-gridwrap.swap .tv-cell{animation:tv-pop .42s cubic-bezier(.2,.8,.2,1) both}
 .tv-gridwrap.swap .tv-cell:nth-child(2){animation-delay:.03s}.tv-gridwrap.swap .tv-cell:nth-child(3){animation-delay:.06s}.tv-gridwrap.swap .tv-cell:nth-child(4){animation-delay:.09s}.tv-gridwrap.swap .tv-cell:nth-child(5){animation-delay:.12s}.tv-gridwrap.swap .tv-cell:nth-child(6){animation-delay:.15s}.tv-gridwrap.swap .tv-cell:nth-child(7){animation-delay:.18s}.tv-gridwrap.swap .tv-cell:nth-child(n+8){animation-delay:.21s}
-.tv-empty{font-size:22px;color:#a7b3c4;margin:10px 0}
+.tv-empty{font-size:22px;color:var(--tvmuted,#a7b3c4);margin:10px 0}
 .tv-rowview.chips{padding-top:6px;padding-bottom:22px}
 .tv-chips{gap:10px}
-.tv-chip-pill{position:absolute;left:0;top:0;height:56px;width:0;border-radius:999px;background:#F4F8FC;transition:transform .38s cubic-bezier(.2,.8,.2,1),width .38s cubic-bezier(.2,.8,.2,1);pointer-events:none}
-.tv-chip{position:relative;z-index:1;height:56px;padding:0 24px;border-radius:999px;display:inline-flex;align-items:center;gap:10px;font-weight:600;font-size:20px;color:#c9d3e0;border:1.5px solid rgba(244,248,252,.16);background:transparent;transition:color .3s,border-color .3s}
+.tv-chip-pill{position:absolute;left:0;top:0;height:56px;width:0;border-radius:999px;background:var(--tvink,#F4F8FC);transition:transform .38s cubic-bezier(.2,.8,.2,1),width .38s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.tv-chip{position:relative;z-index:1;height:56px;padding:0 24px;border-radius:999px;display:inline-flex;align-items:center;gap:10px;font-weight:600;font-size:20px;color:var(--tvsoft,#c9d3e0);border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.16);background:transparent;transition:color .3s,border-color .3s}
 .tv-chip.on{color:var(--tvbg);border-color:transparent}
 .tv-chip .cat-ico{width:22px;height:22px}
 .tv-grid.shots .tv-shot{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;padding:0;border:0;background:var(--tvcard)}
@@ -124,46 +124,46 @@ body.tv-on #app{visibility:hidden}
 .tv-game{display:grid;grid-template-columns:minmax(0,1fr) 600px;gap:72px;align-items:start;padding-top:calc(var(--H,1080px) * .16)}
 .tv-g-main{min-width:0;display:flex;flex-direction:column;gap:14px}
 .tv-g-chips{display:flex;gap:10px;flex-wrap:wrap}
-.tv-g-chips span{padding:6px 16px;border-radius:999px;font-size:17px;font-weight:600;background:rgba(var(--tvrgb),.55);border:1px solid rgba(244,248,252,.16);backdrop-filter:blur(10px)}
-.tv-g-chips span:first-child{background:#F4F8FC;color:var(--tvbg);border-color:transparent}
+.tv-g-chips span{padding:6px 16px;border-radius:999px;font-size:17px;font-weight:600;background:rgba(var(--tvrgb),.55);border:1px solid rgba(var(--tvinkrgb,244,248,252),.16);backdrop-filter:blur(10px)}
+.tv-g-chips span:first-child{background:var(--tvink,#F4F8FC);color:var(--tvbg);border-color:transparent}
 .tv-block{margin-top:30px;display:flex;flex-direction:column;gap:14px}
-.tv-about{margin:0;font-size:21px;line-height:1.6;color:#d5dce6;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;max-width:1100px}
+.tv-about{margin:0;font-size:21px;line-height:1.6;color:var(--tvsoft,#d5dce6);display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;max-width:1100px}
 .tv-src{margin:0;font-size:16px;color:#7d8aa0}
 .tv-shots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
 .tv-shots button{padding:0;border:0;aspect-ratio:16/9;border-radius:16px;overflow:hidden;background:var(--tvcard)}
 .tv-shots img{width:100%;height:100%;object-fit:cover;display:block}
-.tv-panel{position:sticky;top:0;padding:30px 34px;border-radius:28px;background:rgba(11,18,32,.74);border:1px solid rgba(244,248,252,.14);box-shadow:0 30px 70px rgba(0,0,0,.45);backdrop-filter:blur(20px)}
+.tv-panel{position:sticky;top:0;padding:30px 34px;border-radius:28px;background:rgba(11,18,32,.74);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);box-shadow:0 30px 70px rgba(0,0,0,.45);backdrop-filter:blur(20px)}
 .tv-panel h2{margin:0 0 6px;font:700 semi-expanded 28px Archivo,sans-serif}
 .tv-panel dl{margin:0;display:flex;flex-direction:column}
-.tv-panel dl div{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:15px 0;border-bottom:1px solid rgba(244,248,252,.1);min-height:64px}
+.tv-panel dl div{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:15px 0;border-bottom:1px solid rgba(var(--tvinkrgb,244,248,252),.1);min-height:64px}
 .tv-panel dl div:last-child{border-bottom:0;padding-bottom:0}
-.tv-panel dt{font-size:19px;color:#a7b3c4;flex:none}
+.tv-panel dt{font-size:19px;color:var(--tvmuted,#a7b3c4);flex:none}
 .tv-panel dd{margin:0;font-size:19px;font-weight:600;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tv-panel .mark{width:34px;height:34px}
 
 /* lists: downloads, settings, mods */
 .tv-list{display:flex;flex-direction:column;gap:12px;max-width:1300px}
-.tv-item{display:flex;align-items:center;gap:22px;min-height:88px;padding:14px 26px;border-radius:22px;background:rgba(244,248,252,.06);border:1px solid rgba(244,248,252,.12);text-align:left;font-weight:600;font-size:22px;width:100%}
+.tv-item{display:flex;align-items:center;gap:22px;min-height:88px;padding:14px 26px;border-radius:22px;background:rgba(var(--tvinkrgb,244,248,252),.06);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12);text-align:left;font-weight:600;font-size:22px;width:100%}
 .tv-item img,.tv-item .ph{position:static;width:58px;height:86px;border-radius:12px;object-fit:cover;flex:none;background:var(--tvcard)}
 .tv-item .sq{width:64px;height:64px}
 .tv-item .wide{width:114px;height:64px}
 .tv-item .k{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
-.tv-item .k small{font:500 17px Figtree,sans-serif;color:#a7b3c4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-item .k small{font:500 17px Figtree,sans-serif;color:var(--tvmuted,#a7b3c4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tv-item .switch{width:62px;height:34px;pointer-events:none;flex:none}
 .tv-item .switch::after{width:28px;height:28px}
 .tv-item .switch[aria-checked=true]::after{transform:translateX(28px)}
 .tv-item .prog{width:420px;flex:none}
-.tv-item svg{flex:none;color:#a7b3c4}
+.tv-item svg{flex:none;color:var(--tvmuted,#a7b3c4)}
 .tv-subh{margin:26px 0 14px!important}
 .tv-seg{display:flex;gap:4px;padding:5px;border-radius:999px;background:rgba(var(--tvrgb),.5);flex:none}
-.tv-seg span{padding:8px 16px;border-radius:999px;font-size:17px;color:#a7b3c4;transition:background .25s,color .25s}
-.tv-seg span.on{background:#F4F8FC;color:var(--tvbg)}
+.tv-seg span{padding:8px 16px;border-radius:999px;font-size:17px;color:var(--tvmuted,#a7b3c4);transition:background .25s,color .25s}
+.tv-seg span.on{background:var(--tvink,#F4F8FC);color:var(--tvbg)}
 .tv-pill{flex:none;padding:8px 18px;border-radius:999px;font-size:17px;font-weight:700;color:var(--tvbg);background:linear-gradient(180deg,#34F2E8,#377BB6)}
-.tv-pill.on{color:#F4F8FC;background:rgba(244,248,252,.12)}
+.tv-pill.on{color:var(--tvink,#F4F8FC);background:rgba(var(--tvinkrgb,244,248,252),.12)}
 
 /* the sheet: a short list from the side */
 .tv-sheet{position:absolute;inset:0;z-index:20;background:rgba(2,4,8,.55);display:flex;justify-content:flex-end;animation:tv-fade .2s ease both}
-.tv-sheet-in{width:660px;height:100%;padding:130px 48px 60px;background:linear-gradient(180deg,#0e1729,#0b1220);border-left:1px solid rgba(244,248,252,.12);display:flex;flex-direction:column;gap:12px;animation:tv-sheet .32s cubic-bezier(.2,.8,.2,1) both;box-shadow:-30px 0 80px rgba(0,0,0,.5)}
+.tv-sheet-in{width:660px;height:100%;padding:130px 48px 60px;background:linear-gradient(180deg,#0e1729,#0b1220);border-left:1px solid rgba(var(--tvinkrgb,244,248,252),.12);display:flex;flex-direction:column;gap:12px;animation:tv-sheet .32s cubic-bezier(.2,.8,.2,1) both;box-shadow:-30px 0 80px rgba(0,0,0,.5)}
 .tv-sheet-in{overflow-y:auto;scrollbar-width:none}
 .tv-sheet-in>*{flex:none}
 .tv-sheet-in h3{margin:0 0 12px;font:700 semi-expanded 30px Archivo,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -174,11 +174,11 @@ body.tv-on #app{visibility:hidden}
 .tv-viewer{position:absolute;inset:0;z-index:20;background:rgba(2,4,8,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;animation:tv-fade .25s ease both}
 .tv-viewer.out{animation:tv-fade .2s ease reverse both}
 .tv-viewer img{max-width:calc(100% - 200px);max-height:calc(100% - 220px);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:tv-pop .35s cubic-bezier(.2,.8,.2,1) both}
-.tv-viewer-bar{display:flex;align-items:center;gap:60px;font-size:21px;color:#c9d3e0}
-.tv-viewer-bar b{color:#F4F8FC}
+.tv-viewer-bar{display:flex;align-items:center;gap:60px;font-size:21px;color:var(--tvsoft,#c9d3e0)}
+.tv-viewer-bar b{color:var(--tvink,#F4F8FC)}
 .tv-hints-inline{display:flex;gap:30px}
 .tv-hints-inline span{display:flex;align-items:center;gap:10px}
-.tv-hints-inline .glyph{color:#F4F8FC}
+.tv-hints-inline .glyph{color:var(--tvink,#F4F8FC)}
 
 /* opening a game: the tile grows to fill the screen */
 .tv-zoom{position:fixed;z-index:150;overflow:hidden;border-radius:22px;pointer-events:none;box-shadow:0 30px 80px rgba(0,0,0,.6);transition:left .32s cubic-bezier(.3,.7,.2,1),top .32s cubic-bezier(.3,.7,.2,1),width .32s cubic-bezier(.3,.7,.2,1),height .32s cubic-bezier(.3,.7,.2,1),border-radius .32s}
@@ -224,10 +224,10 @@ body.tv-on #app{visibility:hidden}
 .tv-boot .word{height:58px;width:auto;opacity:0;animation:rl-fade .9s ease 1s forwards}
 .tv-boot .word span{background:linear-gradient(180deg,#34F2E8,#377BB6);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tv-boot .load{position:absolute;left:0;right:0;top:77.4%;z-index:1;display:flex;flex-direction:column;align-items:center;gap:22px;opacity:0;animation:rl-fade .5s ease 1.5s forwards}
-.tv-boot .load div:first-child{display:flex;align-items:center;gap:14px;font-size:22px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#a9c1d4}
+.tv-boot .load div:first-child{display:flex;align-items:center;gap:14px;font-size:22px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tvsoft,#a9c1d4)}
 .tv-boot .load i{display:inline-block;width:7px;height:7px;border-radius:4px;background:#34F2E8;margin-left:8px;animation:rl-dot 1.2s ease-in-out infinite}
 .tv-boot .load i:nth-child(2){animation-delay:.15s}.tv-boot .load i:nth-child(3){animation-delay:.3s}
-.tv-boot .bar{width:280px;height:4px;border-radius:4px;background:rgba(244,248,252,.1);overflow:hidden}
+.tv-boot .bar{width:280px;height:4px;border-radius:4px;background:rgba(var(--tvinkrgb,244,248,252),.1);overflow:hidden}
 .tv-boot .bar i{display:block;width:100%;height:100%;margin:0;background:linear-gradient(90deg,#34F2E8,#377BB6);transform-origin:0 50%;animation:rl-bar 1.1s cubic-bezier(.65,0,.35,1) 1.6s both!important;border-radius:0}
 @media (prefers-reduced-motion:reduce){.tv-boot *{animation-duration:.01s!important;animation-delay:0s!important}}
 .tv-boot .aurora{position:absolute;inset:0;overflow:hidden;opacity:0;animation:rl-fade 1.6s ease .1s forwards}
@@ -247,8 +247,8 @@ body.tv-on .toast{max-width:760px;font-size:19px;padding:16px 24px;border-radius
 body.tv-on .modal{font-size:18px}
 /* a game's own settings */
 .tv-item.off{opacity:.45}
-.tv-cycle{display:flex;align-items:center;gap:10px;flex:none;padding:6px 8px;border-radius:999px;background:rgba(var(--tvrgb),.5);color:#a7b3c4}
-.tv-cycle b{min-width:150px;text-align:center;color:#F4F8FC;font-size:19px;font-weight:700}
+.tv-cycle{display:flex;align-items:center;gap:10px;flex:none;padding:6px 8px;border-radius:999px;background:rgba(var(--tvrgb),.5);color:var(--tvmuted,#a7b3c4)}
+.tv-cycle b{min-width:150px;text-align:center;color:var(--tvink,#F4F8FC);font-size:19px;font-weight:700}
 .tv-item.f .tv-cycle{color:#34F2E8}
 .tv-cycle b.bump{animation:tv-pop .25s cubic-bezier(.2,.8,.2,1)}
 
@@ -259,23 +259,23 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-cell .aura{position:absolute;z-index:0;left:6%;right:6%;top:4%;aspect-ratio:2/3;border-radius:30px;background-size:cover;background-position:center;filter:blur(34px) saturate(1.7);opacity:0;transform:scale(.9);transition:opacity .35s cubic-bezier(.2,.8,.2,1),transform .35s cubic-bezier(.2,.8,.2,1);pointer-events:none}
 .tv-cell:has(.tv-poster.f) .aura{opacity:.75;transform:scale(1.04)}
 .tv-cell .tv-poster{position:relative;z-index:1}
-.tv-stage .tv-poster.f{box-shadow:0 0 0 4px #F4F8FC,0 24px 50px rgba(0,0,0,.6)!important}
-.tv-based{display:flex;align-items:center;gap:10px;color:#c9d3e0;font-size:23px}
-.tv-based svg{color:#8f9cb0;flex:none}
-.tv-based b{color:#F4F8FC;font-weight:600}
+.tv-stage .tv-poster.f{box-shadow:0 0 0 4px var(--tvink,#F4F8FC),0 24px 50px rgba(0,0,0,.6)!important}
+.tv-based{display:flex;align-items:center;gap:10px;color:var(--tvsoft,#c9d3e0);font-size:23px}
+.tv-based svg{color:var(--tvdim,#8f9cb0);flex:none}
+.tv-based b{color:var(--tvink,#F4F8FC);font-weight:600}
 .tv-easy{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:12px;font-size:18px;font-weight:700;color:#34F2E8;background:rgba(52,242,232,.1);border:1px solid rgba(52,242,232,.3)}
 /* a game's settings: the list, and the one in focus shown large beside it */
 .tv-setwrap{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:56px;align-items:start}
-.tv-setpanel{position:relative;transition:transform .5s cubic-bezier(.2,.8,.2,1);padding:44px 48px;border-radius:32px;background:rgba(var(--tvrgb2),.72);border:1px solid rgba(244,248,252,.1);backdrop-filter:blur(20px);min-height:420px;display:flex;flex-direction:column;gap:18px}
+.tv-setpanel{position:relative;transition:transform .5s cubic-bezier(.2,.8,.2,1);padding:44px 48px;border-radius:32px;background:rgba(var(--tvrgb2),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.1);backdrop-filter:blur(20px);min-height:420px;display:flex;flex-direction:column;gap:18px}
 .tv-setpanel .k{font-size:17px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#34F2E8}
 .tv-setpanel h3{font:700 semi-expanded 44px/1.1 Archivo,sans-serif;margin:0;letter-spacing:-.02em}
-.tv-setpanel .val{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:10px;padding:18px 22px;border-radius:22px;background:rgba(244,248,252,.06)}
+.tv-setpanel .val{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:10px;padding:18px 22px;border-radius:22px;background:rgba(var(--tvinkrgb,244,248,252),.06)}
 .tv-setpanel .val b{font:700 semi-expanded 36px Archivo,sans-serif;text-align:center;flex:1}
-.tv-setpanel .val svg{color:#8f9cb0}
+.tv-setpanel .val svg{color:var(--tvdim,#8f9cb0)}
 .tv-setpanel .dots{display:flex;justify-content:center;gap:10px}
-.tv-setpanel .dots i{width:12px;height:12px;border-radius:50%;background:rgba(244,248,252,.2);transition:background .2s,transform .2s}
+.tv-setpanel .dots i{width:12px;height:12px;border-radius:50%;background:rgba(var(--tvinkrgb,244,248,252),.2);transition:background .2s,transform .2s}
 .tv-setpanel .dots i.on{background:#34F2E8;transform:scale(1.2)}
-.tv-setpanel p{margin:0;color:#c9d3e0;font-size:22px;line-height:1.5}
+.tv-setpanel p{margin:0;color:var(--tvsoft,#c9d3e0);font-size:22px;line-height:1.5}
 .tv-lkprev{aspect-ratio:16/9;border-radius:20px;overflow:hidden;background:#000;box-shadow:0 24px 50px -24px rgba(0,0,0,.8)}
 .tv-lkprev canvas{display:block;width:100%;height:100%}
 .tv-setpanel.swap>*{animation:tv-soft .2s ease-out both}
@@ -284,11 +284,11 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 /* setting a game up, full screen */
 .tv-setup{position:absolute;inset:0;z-index:40;background:var(--tvbg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;animation:tv-fade .4s ease both}
 .tv-setup .glow{position:absolute;width:1100px;height:1100px;border-radius:50%;background-size:cover;background-position:center;filter:blur(140px) saturate(1.6);opacity:.3;pointer-events:none}
-.tv-setup .bigdisc{position:relative;width:400px;height:400px;border-radius:50%;background:conic-gradient(from 30deg,#8fa3ba,#eef3f8,#9db0c6,#d9e3ee,#7f95ad,#eef3f8,#8fa3ba);box-shadow:0 40px 110px -30px rgba(0,0,0,.9)}
+.tv-setup .bigdisc{position:relative;width:400px;height:400px;border-radius:50%;background:conic-gradient(from 30deg,var(--tvsoft,#8fa3ba),var(--tvsoft,#eef3f8),#9db0c6,var(--tvsoft,#d9e3ee),#7f95ad,var(--tvsoft,#eef3f8),var(--tvsoft,#8fa3ba));box-shadow:0 40px 110px -30px rgba(0,0,0,.9)}
 .tv-setup .bigdisc .lab{position:absolute;inset:15%;border-radius:50%;overflow:hidden;background:var(--tvcard)}
 .tv-setup .bigdisc .lab img{width:100%;height:100%;object-fit:cover}
 .tv-setup .bigdisc .hole{position:absolute;inset:43%;border-radius:50%;background:var(--tvbg);box-shadow:0 0 0 10px rgba(220,230,240,.5)}
-.tv-setup .bigdisc.ghost{background:none;box-shadow:none;border:3px dashed rgba(244,248,252,.22)}
+.tv-setup .bigdisc.ghost{background:none;box-shadow:none;border:3px dashed rgba(var(--tvinkrgb,244,248,252),.22)}
 .tv-setup .bigdisc.ghost .lab,.tv-setup .bigdisc.ghost .hole{display:none}
 .tv-setup .bigdisc.in{animation:tv-discin 1s cubic-bezier(.2,.8,.2,1) both}
 .tv-setup .bigdisc.spin{animation:tv-spin 1.5s linear infinite}
@@ -296,32 +296,32 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 @keyframes tv-spin{to{transform:rotate(360deg)}}
 .tv-setup .tt{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;max-width:1300px}
 .tv-setup .tt h2{font:700 semi-expanded 56px/1.1 Archivo,sans-serif;margin:0;letter-spacing:-.02em}
-.tv-setup .tt p{margin:0;color:#c9d3e0;font-size:24px}
+.tv-setup .tt p{margin:0;color:var(--tvsoft,#c9d3e0);font-size:24px}
 .tv-setup .pct{font:700 semi-expanded 88px/1 Archivo,sans-serif;letter-spacing:-.04em}
 .tv-setup .track{position:relative;display:grid;gap:24px;width:1300px}
 .tv-setup .tk{display:flex;flex-direction:column;gap:12px;text-align:left}
-.tv-setup .tk i{display:block;height:6px;border-radius:3px;background:rgba(244,248,252,.12);overflow:hidden}
+.tv-setup .tk i{display:block;height:6px;border-radius:3px;background:rgba(var(--tvinkrgb,244,248,252),.12);overflow:hidden}
 .tv-setup .tk i u{display:block;height:100%;background:#34F2E8;transition:width .2s linear}
-.tv-setup .tk b{font-size:22px}.tv-setup .tk span{font-size:18px;color:#8f9cb0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tv-setup .tk.w b{color:#8f9cb0}
+.tv-setup .tk b{font-size:22px}.tv-setup .tk span{font-size:18px;color:var(--tvdim,#8f9cb0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-setup .tk.w b{color:var(--tvdim,#8f9cb0)}
 .tv-setup .opts{position:relative;display:grid;gap:18px;width:1000px}
 .tv-setup .opts .tv-item{min-height:96px}
 .tv-setup .two{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;width:760px}
 .tv-setup .two .tv-btn{justify-content:center;height:84px;font-size:26px}
 .tv-setup .ok{display:inline-flex;align-items:center;gap:10px;height:48px;padding:0 20px;border-radius:24px;background:rgba(52,242,232,.12);color:#34F2E8;font-weight:700;font-size:20px}
-.tv-setup .ok.plain{background:rgba(244,248,252,.08);color:#c9d3e0}
+.tv-setup .ok.plain{background:rgba(var(--tvinkrgb,244,248,252),.08);color:var(--tvsoft,#c9d3e0)}
 .tv-cell .tv-name,.tv-cell .tv-sub{position:relative;z-index:1}
 /* the file browser */
 .tv-browse{z-index:60;background:var(--tvbg);flex-direction:column;justify-content:stretch}
 .tb-in{flex:1;min-height:0;display:grid;grid-template-columns:520px minmax(0,1fr);gap:56px;padding:90px 120px 0;animation:tv-in .35s cubic-bezier(.2,.8,.2,1) both}
 .tb-side{overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:10px;padding:6px 6px 40px}
 .tb-side::-webkit-scrollbar,.tb-list::-webkit-scrollbar{display:none}
-.tb-side h4{margin:18px 0 4px 6px;font:700 17px Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8f9cb0}
+.tb-side h4{margin:18px 0 4px 6px;font:700 17px Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--tvdim,#8f9cb0)}
 .tb-side h4:first-child{margin-top:0}
 .tb-side .tv-item.on{background:rgba(52,242,232,.1);box-shadow:inset 0 0 0 2px rgba(52,242,232,.35)}
 .tb-main{min-width:0;display:flex;flex-direction:column;gap:14px}
 .tb-head h2{margin:0;font:700 semi-expanded 46px/1.1 Archivo,sans-serif;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tb-head p{margin:10px 0 6px;color:#9fb0c4;font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-head p{margin:10px 0 6px;color:var(--tvsoft,#9fb0c4);font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tb-list{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:10px;padding:6px 6px 60px}
 .tb-list .tv-item.has svg{color:#34F2E8}
 .tb-game{color:#34F2E8!important;font-weight:700}
@@ -334,40 +334,40 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-wm{height:24px;width:auto;display:block}
 /* 0.8: Settings in groups */
 .tv-setlist{gap:10px}
-.tv-lh{margin:26px 0 2px 8px;font:700 18px Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8f9cb0}
+.tv-lh{margin:26px 0 2px 8px;font:700 18px Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--tvdim,#8f9cb0)}
 .tv-lh:first-child{margin-top:0}
 .tv-setpanel .val.solo{justify-content:center}
 /* 0.9: signing in from the couch */
 .tv-signin .tv-sheet-in{width:min(1100px,90%)}
 .tv-signin-two{display:grid;grid-template-columns:300px 1fr;gap:44px;align-items:center;margin:10px 0 26px}
 .tv-qr svg{display:block;width:300px;height:300px;border-radius:22px}
-.tv-signin p{margin:0 0 18px;color:#c9d3e0;font-size:24px;line-height:1.45}
+.tv-signin p{margin:0 0 18px;color:var(--tvsoft,#c9d3e0);font-size:24px;line-height:1.45}
 .tv-code{font:800 semi-expanded 64px/1 Archivo,monospace;letter-spacing:.12em;color:#34F2E8;margin:0 0 22px}
-.tv-wait{color:#8f9cb0!important;font-size:21px!important}
+.tv-wait{color:var(--tvdim,#8f9cb0)!important;font-size:21px!important}
 .tv-padguide{display:flex;flex-direction:column;gap:8px}
-.tv-padguide>div{display:flex;align-items:center;gap:20px;padding:8px 12px;border-radius:18px;background:rgba(244,248,252,.05)}
-.tv-padguide .pg-k{flex:none;display:flex;align-items:center;justify-content:center;gap:4px;min-width:130px;height:50px;border-radius:14px;background:rgba(244,248,252,.08)}
-.tv-padguide .pg-k .glyph{width:38px;height:38px;color:#F4F8FC}
-.tv-padguide .pg-k em{font-style:normal;color:#8f9cb0;font-weight:700;font-size:18px}
-.tv-padguide .pg-k small{font-size:14px;font-weight:700;color:#8f9cb0;text-transform:uppercase;letter-spacing:.08em;margin-right:6px}
+.tv-padguide>div{display:flex;align-items:center;gap:20px;padding:8px 12px;border-radius:18px;background:rgba(var(--tvinkrgb,244,248,252),.05)}
+.tv-padguide .pg-k{flex:none;display:flex;align-items:center;justify-content:center;gap:4px;min-width:130px;height:50px;border-radius:14px;background:rgba(var(--tvinkrgb,244,248,252),.08)}
+.tv-padguide .pg-k .glyph{width:38px;height:38px;color:var(--tvink,#F4F8FC)}
+.tv-padguide .pg-k em{font-style:normal;color:var(--tvdim,#8f9cb0);font-weight:700;font-size:18px}
+.tv-padguide .pg-k small{font-size:14px;font-weight:700;color:var(--tvdim,#8f9cb0);text-transform:uppercase;letter-spacing:.08em;margin-right:6px}
 .tv-padguide .pg-t{display:flex;flex-direction:column;gap:2px}
 .tv-padguide .pg-t b{font-size:22px}
-.tv-padguide .pg-t small{color:#c9d3e0;font-size:16px;line-height:1.35}
-.tv-devtext{margin:6px 0 10px;font-size:20px;line-height:1.55;color:#d5dce6;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.tv-padguide .pg-t small{color:var(--tvsoft,#c9d3e0);font-size:16px;line-height:1.35}
+.tv-devtext{margin:6px 0 10px;font-size:20px;line-height:1.55;color:var(--tvsoft,#d5dce6);display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
 .tv-checks{position:static;padding:10px 30px;max-width:1100px;box-shadow:none;background:rgba(11,18,32,.5)}
-.tv-checks dt{display:flex;flex-direction:column;gap:3px;color:#F4F8FC;font-weight:600;flex:1;min-width:0}
-.tv-checks dt small{font-size:16px;font-weight:500;color:#a7b3c4;line-height:1.35;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tv-checks dt{display:flex;flex-direction:column;gap:3px;color:var(--tvink,#F4F8FC);font-weight:600;flex:1;min-width:0}
+.tv-checks dt small{font-size:16px;font-weight:500;color:var(--tvmuted,#a7b3c4);line-height:1.35;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .tv-checks dl div{min-height:74px}
 .tv-checks.f{border-color:rgba(52,242,232,.8);box-shadow:0 0 0 3px rgba(52,242,232,.25)}
-.tv-vers{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:5px;padding:5px 11px 5px 9px;border-radius:999px;font-size:15px;font-weight:700;color:#F4F8FC;background:rgba(var(--tvrgb),.72);backdrop-filter:blur(10px);border:1px solid rgba(244,248,252,.16)}
+.tv-vers{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:5px;padding:5px 11px 5px 9px;border-radius:999px;font-size:15px;font-weight:700;color:var(--tvink,#F4F8FC);background:rgba(var(--tvrgb),.72);backdrop-filter:blur(10px);border:1px solid rgba(var(--tvinkrgb,244,248,252),.16)}
 .tv-vers svg{color:#34F2E8}
 .tv-versheet .tv-item .k small{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.35}
-.tv-runs{display:flex;flex-direction:column;gap:10px;margin:14px 0 6px;padding:16px 18px;border-radius:20px;background:rgba(244,248,252,.05)}
-.tv-runs .k{font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8f9cb0}
+.tv-runs{display:flex;flex-direction:column;gap:10px;margin:14px 0 6px;padding:16px 18px;border-radius:20px;background:rgba(var(--tvinkrgb,244,248,252),.05)}
+.tv-runs .k{font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--tvdim,#8f9cb0)}
 .tv-runs-l{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
 .tv-runs-l b{font-size:22px;color:#3ddc97}
-.tv-runs-l small{font-size:17px;color:#a7b3c4}
-.tv-runs.none b{font-size:19px;color:#c9d3e0}
+.tv-runs-l small{font-size:17px;color:var(--tvmuted,#a7b3c4)}
+.tv-runs.none b{font-size:19px;color:var(--tvsoft,#c9d3e0)}
 .tv-runs .rbar{height:12px}
 .tv-g-chips span{display:inline-flex;align-items:center;gap:8px}
 .tv-dev-pic{width:26px;height:26px;border-radius:50%;object-fit:cover;margin-left:-8px}
@@ -396,3 +396,416 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 
 /* A small beta mark on the game page's settings button (the launcher's own game settings). */
 .tv-btn .tv-beta-s{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}
+
+/* Light theme in Big Picture mode too. */
+body.light #tv{background:#F3F5F8}
+body.light .tv-stage{--tvdim:#5B6678;--tvsoft:#2E3A4D;--tvbg:#F3F5F8;--tvrgb:243,245,248;--tvrgb2:226,231,238;--tvcard:#FFFFFF;--tvink:#0E1626;--tvmuted:#4A5568;--tvinkrgb:14,22,38}
+
+/* Library View: Cover Flow. One row of game cases: the one you're on faces you, the rest stand
+   turned to either side and step back. Each case has a spine, a sheen across its cover and a soft
+   shadow on the floor under it. */
+.tv-flow{position:relative;height:760px;margin-top:-4px;perspective:2000px;perspective-origin:50% 40%}
+.tv-flow-row{position:absolute;left:50%;top:10px;width:0;height:600px;transform-style:preserve-3d;transform:none!important}
+.tv-fcase{position:absolute;left:-206px;top:6px;width:412px;height:590px;padding:0;border:0;border-radius:10px 14px 14px 10px;background:var(--tvcard);transform-style:preserve-3d;
+  transition:transform .55s cubic-bezier(.2,.8,.2,1),opacity .35s,filter .35s;box-shadow:none!important;outline:0!important;will-change:transform}
+.tv-flow.still .tv-fcase{transition:none}
+.tv-fcase img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.tv-fcase .ph{border-radius:inherit}
+/* the case's spine on the left, and light falling across the cover */
+.tv-fcase::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;
+  background:linear-gradient(90deg,rgba(0,0,0,.45) 0,rgba(0,0,0,.18) 3%,rgba(255,255,255,.14) 4.2%,transparent 7%),linear-gradient(115deg,rgba(255,255,255,.2) 0%,rgba(255,255,255,.05) 30%,transparent 46%)}
+/* its shadow on the floor */
+.tv-fcase::after{content:"";position:absolute;left:6%;right:6%;bottom:-34px;height:36px;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.55),transparent);filter:blur(6px);transform:translateZ(-1px);pointer-events:none}
+.tv-fcase:not(.f){filter:brightness(.62) saturate(.9)}
+.tv-fcase.f{filter:none}
+.tv-fcase.f .ring{position:absolute;inset:-8px;border-radius:18px 22px 22px 18px;border:4px solid #34F2E8;box-shadow:0 0 34px rgba(52,242,232,.45);pointer-events:none;z-index:3}
+.tv-flow-cap{position:absolute;left:0;right:0;bottom:0;text-align:center;display:flex;flex-direction:column;gap:4px}
+.tv-flow-cap b{font-size:34px;font-weight:800}
+.tv-flow-cap span{font-size:20px;color:var(--tvdim,#8f9cb0)}
+/* Opening a game from Cover Flow: the case turns and comes forward into its page. */
+.tv-flow.leaving .tv-fcase:not(.open){opacity:0!important;transition:opacity .25s!important}
+
+/* Chips stay on one line, however long the word gets in a language. */
+.tv-chip{white-space:nowrap;flex:none}
+
+/* About */
+div.tv-about{display:grid;max-width:none;overflow:visible;-webkit-line-clamp:none;line-height:1.5;font-size:inherit;grid-template-columns:minmax(0,1fr) auto;gap:100px;align-items:center;margin-top:30px;padding:10px 12px 20px}
+.tv-about-l svg{width:96px;height:96px}
+.tv-about-wm{display:block;height:40px;margin:20px 0 6px}
+.tv-about-l p{max-width:760px;font-size:22px;color:var(--tvmuted,#a7b3c4);margin:0 0 16px}
+.tv-about-l p.v{font-size:20px;color:var(--tvdim,#8f9cb0)}
+.tv-about-l p.by{font-size:26px;font-weight:700;color:var(--tvink,#F4F8FC);margin:28px 0 36px}
+.tv-qrs{display:flex;gap:40px}
+.tv-qrs figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:16px;width:280px;text-align:center}
+.tv-qrs img{width:240px;height:240px;border-radius:20px;padding:14px;background:#fff;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.tv-qrs figcaption{display:flex;flex-direction:column;gap:4px}
+.tv-qrs b{font-size:22px}
+.tv-qrs span{font-size:17px;color:var(--tvdim,#8f9cb0)}
+
+/* Light theme: the panels on a game's page and the setup lists go light too. */
+body.light .tv-panel, body.light .tv-checks{background:rgba(255,255,255,.86);box-shadow:0 20px 50px rgba(14,22,38,.12)}
+body.light .tv-sheet-in{background:linear-gradient(180deg,#FFFFFF,#F3F5F8)}
+body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px #0B9E97,0 18px 44px rgba(14,22,38,.18),0 0 34px rgba(11,158,151,.3)!important}
+body.light .tv-stage .tv-poster.f{box-shadow:0 0 0 4px #0B9E97,0 24px 50px rgba(14,22,38,.2)!important}
+body.light .tv-fcase:not(.f){filter:brightness(.92) saturate(.9);opacity:.92}
+/* The page's entrance animation moves things with transforms; the cases keep their own places
+   and fade in instead. */
+.tv-stage[class*=tvx-] .tv-flow-row>*{animation:tv-fade .42s ease backwards!important}
+body.light .tv-kick, body.light .tv-stage .kick{color:#0B9E97}
+/* Covers with a little depth: a thin light edge, a sheen across the top, and a soft shadow. */
+.tv-poster{box-shadow:0 18px 34px -16px rgba(0,0,0,.65),0 0 0 1px rgba(var(--tvinkrgb,244,248,252),.08)}
+.tv-poster::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
+  background:linear-gradient(160deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.04) 28%,transparent 45%),linear-gradient(0deg,rgba(0,0,0,.18),transparent 30%);box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.tv-poster .tv-badge{z-index:2}
+body.light .tv-poster{box-shadow:0 16px 30px -16px rgba(14,22,38,.35),0 0 0 1px rgba(14,22,38,.06)}
+
+/* ---------- Big Picture, Beta 17 ---------- */
+/* Each game's own colours, from its cover: an accent and a deep shade. They glide from one game to
+   the next. */
+@property --acc{syntax:'<color>';inherits:true;initial-value:#34F2E8}
+@property --accd{syntax:'<color>';inherits:true;initial-value:#0B1220}
+#tv{--acc:#34F2E8;--accd:#0B1220;--accink:#08101C;transition:--acc .8s ease,--accd .8s ease}
+body.light #tv{--acc:#0B9E97;--accd:#E6EBF1;--accink:#FFFFFF}
+body.oled #tv{background:#000;--accd:#000}
+body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,16,20;--tvcard:#0d1016}
+
+/* Pages: the new one comes in over the old, which goes once it's covered. */
+.tv-stage{background:transparent;z-index:1}
+.tv-stage.leaving{z-index:0;pointer-events:none}
+.tv-stage.leaving>.tv-bar,.tv-stage.leaving>.tv-hints,.tv-stage.leaving>.tv-sheet{visibility:hidden}
+.tv-stage.leaving>.tv-region{animation:tv-leave .22s ease forwards}
+@keyframes tv-leave{to{opacity:0}}
+.tv-stage[class*=tvx-]>.tv-bar,.tv-stage[class*=tvx-]>.tv-hints{animation:none}
+.tvx-boot>.tv-bar,.tvx-boot>.tv-hints{animation:tv-in .6s cubic-bezier(.2,.8,.2,1) backwards}
+
+/* The backdrop: the art blurred soft, lights in the game's colour, and its shade over it all. */
+.tv-full{background:var(--tvbg)}
+.tv-full>img,.tv-full>.tv-glow{z-index:0}
+.tv-full>img{transition:opacity .32s ease}
+.tv-full>img.gone,.tv-full>.tv-glow.gone{z-index:1}
+.tv-full>img.in,.tv-full>.tv-glow.in{animation:tv-fade .35s ease both}
+.tv-full>.tv-glow.gone{opacity:0;transition:opacity .35s ease}
+.tv-bokeh{display:none}
+.tv-full::after{z-index:2}
+.tv-full.home::after,.tv-full.game::after,.tv-full.flowbg::after{background:linear-gradient(90deg,color-mix(in srgb,var(--accd) 93%,transparent) 0%,color-mix(in srgb,var(--accd) 70%,transparent) 38%,color-mix(in srgb,var(--accd) 14%,transparent) 74%),linear-gradient(180deg,color-mix(in srgb,var(--accd) 70%,transparent) 0%,transparent 22%,transparent 40%,color-mix(in srgb,var(--accd) 88%,transparent) 70%,var(--accd) 100%)}
+.tv-full.flowbg::after{background:linear-gradient(180deg,color-mix(in srgb,var(--accd) 72%,transparent) 0%,color-mix(in srgb,var(--accd) 40%,transparent) 40%,color-mix(in srgb,var(--accd) 92%,transparent) 78%,var(--accd) 100%)}
+.tv-hints{background:color-mix(in srgb,var(--accd) 86%,transparent)}
+
+/* The accent where it shows: the line over a title, the main button, the focus glow. */
+.tv-kick,body.light .tv-kick,body.light .tv-stage .kick{color:var(--acc)}
+.tv-btn.main{background:linear-gradient(180deg,color-mix(in oklab,var(--acc),white 10%),color-mix(in oklab,var(--acc),black 24%));color:var(--accink)}
+.tv-btn.main .glyph{color:var(--accink)}
+.tv-stage [data-f].f{box-shadow:0 0 0 4px var(--tvink,#F4F8FC),0 18px 44px rgba(0,0,0,.5),0 0 34px color-mix(in srgb,var(--acc) 45%,transparent)!important}
+body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--acc),0 18px 44px rgba(14,22,38,.18),0 0 30px color-mix(in srgb,var(--acc) 30%,transparent)!important}
+.tv-badge,.tv-pbar i{background:var(--acc);color:var(--accink)}
+.tv-sheet-in{background:linear-gradient(180deg,color-mix(in srgb,var(--accd) 60%,#0e1729),#0b1220)}
+body.oled .tv-sheet-in{background:#05070a}
+body.light .tv-sheet-in{background:linear-gradient(180deg,#FFFFFF,#F3F5F8)}
+
+/* A game's logo in place of its name. */
+.tv-logo{display:block;height:min(220px,calc(var(--H,1080px) * .2));width:auto;max-width:min(960px,100%);object-fit:contain;object-position:left bottom;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55));margin:2px 0 4px}
+body.light .tv-logo{filter:drop-shadow(0 6px 18px rgba(14,22,38,.22))}
+.tv-g-main .tv-logo{height:190px}
+.tv-fake{cursor:pointer}
+
+/* The sections' pill slides from tab to tab. */
+.tv-nav{position:relative}
+.tv-tab-pill{position:absolute;left:0;top:6px;height:54px;width:0;border-radius:999px;background:var(--tvink,#F4F8FC);transition:transform .42s cubic-bezier(.3,.8,.2,1),width .42s cubic-bezier(.3,.8,.2,1);pointer-events:none;z-index:0}
+.tv-tab{position:relative;z-index:1}
+.tv-tab.on{background:transparent;transition:color .3s ease}
+
+/* Home: the hero over a dock of your games, the rest of Home a press of down away. */
+.tv-home1{position:relative;height:calc(var(--H,1080px) - 246px);display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:48px;box-sizing:border-box}
+.tv-home1 .tv-hero{min-height:0;flex:1;padding-bottom:26px}
+.tv-dock h3{margin:0;font:700 semi-expanded 22px Archivo,sans-serif;letter-spacing:.01em;color:var(--tvsoft,#c9d3e0)}
+.tv-dock .tv-rowview{padding-top:62px;padding-bottom:16px;margin-top:-42px}
+.tv-dockrow{gap:var(--dg,22px);align-items:flex-end}
+.tv-dk{position:relative;flex:none;width:var(--dw,190px);aspect-ratio:2/3;border-radius:16px;overflow:hidden;padding:0;border:0;background:var(--tvcard);transform-origin:50% 100%;box-shadow:0 18px 30px -16px rgba(0,0,0,.75),0 0 0 1px rgba(var(--tvinkrgb,244,248,252),.08);transition:transform .32s cubic-bezier(.2,.8,.2,1),filter .3s!important}
+.tv-dk img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tv-dk .ph{position:absolute;inset:0;display:grid;place-items:center;padding:10px;text-align:center;font-weight:700;font-size:17px}
+.tv-dk::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.03) 30%,transparent 46%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.tv-dk:not(.f){filter:brightness(.74) saturate(.9)}
+.tv-dk.f{transform:translateY(-12px) scale(1.1)}
+.tv-dk .tv-badge{top:8px;right:8px;font-size:13px;padding:3px 9px}
+.tv-dock.sorting .tv-dk:not(.moving){filter:brightness(.55) saturate(.7)}
+.tv-dk.moving{transform:translateY(-20px) scale(1.12)}
+.tv-dk .tv-mv{position:absolute;left:0;right:0;bottom:10px;z-index:2;display:flex;justify-content:space-between;padding:0 4px;color:#fff;filter:drop-shadow(0 2px 6px rgba(0,0,0,.9));animation:tv-nudge 1.2s ease-in-out infinite}
+@keyframes tv-nudge{50%{transform:scaleX(1.12)}}
+.tv-down{position:absolute;left:50%;bottom:8px;margin-left:-17px;color:var(--tvmuted,#a7b3c4);transition:opacity .3s;animation:tv-bob 2.2s ease-in-out infinite}
+@keyframes tv-bob{50%{transform:translateY(7px)}}
+body.lighter .tv-down,body.lighter .tv-dk .tv-mv{animation:none}
+
+/* Library: no heading (the tab says it). */
+.tv-region.libreg .tv-scroll{padding-top:36px}
+.tv-region.flowreg .tv-scroll{padding-top:0;padding-bottom:0}
+
+/* Cover Flow, as Porpoise lays it out: each game a block of tinted glass with real thickness (slices
+   stacked behind its face), a rim round its edge, the cover set into it, and its reflection on the
+   floor. The one in front glows. Drawn each frame from where the view is along the row. */
+.tv-flow{height:calc(var(--H,1080px) - 216px);margin:0;perspective:1500px;perspective-origin:50% 56%}
+.tv-flow-row{top:calc((var(--H,1080px) - 216px - 474px - 170px) / 2)}
+.tv-stage .tv-flow-row .tv-fcase{left:-173px;top:0;width:346px;height:474px;padding:0;border:0;background:none;border-radius:0}
+.tv-stage .tv-flow-row .tv-fcase[data-f],body .tv-stage .tv-flow-row .tv-fcase[data-f]{transition:none!important;filter:none!important;box-shadow:none!important;transform-style:preserve-3d;will-change:transform}
+.tv-fcase .bx{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .12s linear}
+.tv-fcase .plate{position:absolute;inset:0;border-radius:18px;opacity:var(--al,1)}
+.tv-fcase .plate{background:#1E57A8;border:1.5px solid #4C9BE6;outline:1px solid transparent}
+.tv-fcase.f .plate{border:2px solid #9DF3EE;box-shadow:0 0 30px 4px color-mix(in srgb,var(--acc) 55%,transparent)}
+.tv-fcase .front{position:absolute;inset:8px;border-radius:11px;overflow:hidden;background:#16328F}
+.tv-fcase .front>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tv-fcase .front .ph{display:grid;place-items:center;padding:20px;text-align:center;font:800 26px/1.15 Archivo,sans-serif;color:#fff}
+.tv-fcase .shade{position:absolute;inset:0;z-index:2;background:#03060c;opacity:var(--dim,0);pointer-events:none}
+.tv-fcase .refl{position:absolute;left:8px;right:8px;top:calc(100% + 16px);height:85%;border-radius:10px;overflow:hidden;transform:scaleY(-1);opacity:calc(var(--al,1) * .3);pointer-events:none;-webkit-mask-image:linear-gradient(to bottom,transparent 64%,#000);mask-image:linear-gradient(to bottom,transparent 64%,#000)}
+.tv-fcase .refl img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.9) saturate(.8)}
+.tv-fcase .refl::after{content:"";position:absolute;inset:0;background:rgba(150,180,255,.25)}
+.tv-fcase .tv-badge{z-index:4}
+body.light .tv-fcase .plate{background:#e6eff7;border-color:#7fb3d8}
+body.light .tv-fcase.f .plate{border-color:#0B9E97;box-shadow:0 0 34px 4px rgba(11,158,151,.35)}
+body.light .tv-fcase .shade{background:#dde3ea}
+.tv-flow-floor{display:none}
+.tv-flow-cap{top:calc((var(--H,1080px) - 216px - 474px - 170px) / 2 + 474px + 92px);bottom:auto}
+.tv-stage[class*=tvx-] .tv-flow-row>*{animation:none!important}
+.tv-stage.tvx-in .tv-flow,.tv-stage.tvx-left .tv-flow,.tv-stage.tvx-right .tv-flow,.tv-stage.tvx-back .tv-flow,.tv-stage.tvx-boot .tv-flow{animation:tv-flowin .5s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes tv-flowin{from{opacity:0;transform:scale(.96)}}
+.tv-flow.leaving .tv-flow-row,.tv-flow.leaving .tv-flow-cap{animation:tv-leave .3s ease forwards}
+.tv-flow-cap.swap>*{animation:tv-soft .28s ease both}
+
+/* Opening a game: the case turning over, or the tile growing, into its page. */
+
+/* Sheets: a game's cover and name on top; the risky choice in red. */
+.tv-sh-head{display:flex;align-items:center;gap:22px;margin:0 0 14px;flex:none}
+.tv-sh-head img{width:86px;height:122px;object-fit:cover;border-radius:12px;box-shadow:0 12px 26px rgba(0,0,0,.45);flex:none}
+.tv-sh-head div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tv-sh-head b{font:700 semi-expanded 28px/1.15 Archivo,sans-serif;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tv-sh-head span{font-size:18px;color:var(--tvdim,#8f9cb0)}
+.tv-sh-gap{flex:none;width:100%;margin:4px 0;border:0;border-top:1px solid rgba(var(--tvinkrgb,244,248,252),.1)}
+.tv-gsheet .tv-sheet-in{padding-top:104px;gap:10px}
+.tv-gsheet .tv-item{min-height:74px;padding:10px 22px}
+.tv-item.danger,.tv-item.danger svg{color:#ff8f8f}
+body.light .tv-item.danger,body.light .tv-item.danger svg{color:#c62828}
+
+/* Storage and Saves */
+.tv-stor img,.tv-stor .ph{width:58px;height:84px}
+.tv-stor-r{display:flex;flex-direction:column;align-items:flex-end;gap:8px;width:280px;flex:none}
+.tv-stor-r b{font-size:23px;font-weight:700}
+.tv-stor-r small{font-size:17px;color:var(--tvmuted,#a7b3c4)}
+.tv-stor-r i{display:block;width:100%;height:8px;border-radius:99px;background:rgba(var(--tvinkrgb,244,248,252),.12);overflow:hidden}
+.tv-stor-r i em{display:block;height:100%;border-radius:inherit;background:var(--acc)}
+.tv-note{margin:6px 4px 10px;font-size:19px;color:var(--tvdim,#8f9cb0);max-width:1300px}
+.tv-now{font-style:normal;font-size:15px;font-weight:700;color:var(--acc);margin-left:10px}
+.tv-path{overflow-wrap:anywhere}
+.tv-item>svg:last-child{margin-left:auto}
+.tv-stage .mark.ok{background:#2FD27A;color:#04210F}
+
+/* Home's row as wide pictures (Settings, Home Row). */
+.tv-dk.wide{aspect-ratio:16/9;border-radius:18px}
+.tv-dk.wide .cap{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:28px 16px 12px;font-weight:700;font-size:19px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff}
+.tv-dk.wide.f{transform:translateY(-8px) scale(1.06)}
+/* Just the covers (Settings, Game Names). */
+.tv-stage.nonames .tv-name,.tv-stage.nonames .tv-sub{display:none}
+.tv-stage.nonames .tv-cell{gap:0}
+/* The other covers step back while one opens. */
+/* Handhelds and Lighter Launcher: nothing blurred behind the bar, buttons and hints. */
+body.lighter .tv-stage *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+body.lighter #tv{transition:none}
+
+.tv-home1 .tv-hero{gap:12px}
+
+/* A soft shadow on the floor under each box, lying flat so it turns with the box. */
+.tv-flow.leaving .tv-flow-row{animation:tv-leave .32s ease forwards}
+
+/* Home: room above the row for the cover you're on to lift into. */
+.tv-dock .tv-rowview{padding-top:56px;margin-top:-4px}
+.tv-logo{height:min(176px,calc(var(--H,1080px) * .163))}
+
+/* A dimmed page (a game's settings, saves, mods): the hints go dark with it. */
+.tv-full.dim~.tv-hints{background:rgba(var(--tvrgb),.9)}
+
+/* The launcher's own backdrop, under every page. Aurora: slow light in the launcher's colours.
+   Grid: a floor of light running to the horizon. Drift: specks of light floating by. The colours
+   of the game you're on glow at the edges of Home and the Library. */
+.tv-ambient{position:fixed;inset:0;z-index:0;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%,#12203a 0%,#0B1220 55%,#070b14 100%);pointer-events:none}
+body.oled .tv-ambient{background:#000}
+body.light .tv-ambient{background:radial-gradient(120% 90% at 50% 0%,#ffffff 0%,#eef2f7 55%,#e2e8f0 100%)}
+.tv-ambient i{position:absolute;display:block}
+.tv-ambient.m-aurora .a1{left:-20%;top:-30%;width:80%;height:90%;background:radial-gradient(closest-side,rgba(55,123,182,.38),transparent);animation:tv-au1 28s ease-in-out infinite alternate}
+.tv-ambient.m-aurora .a2{right:-25%;top:-10%;width:85%;height:95%;background:radial-gradient(closest-side,rgba(52,242,232,.16),transparent);animation:tv-au2 34s ease-in-out infinite alternate}
+.tv-ambient.m-aurora .a3{left:15%;bottom:-45%;width:90%;height:85%;background:radial-gradient(closest-side,rgba(80,70,200,.22),transparent);animation:tv-au3 40s ease-in-out infinite alternate}
+@keyframes tv-au1{to{transform:translate(18%,14%) scale(1.15)}}
+@keyframes tv-au2{to{transform:translate(-16%,18%) scale(.9)}}
+@keyframes tv-au3{to{transform:translate(10%,-16%) scale(1.2)}}
+.tv-ambient.m-grid .sky{inset:0;background:linear-gradient(180deg,#070b16 0%,#101a36 46%,#1d1446 58%,#070b14 100%)}
+.tv-ambient.m-grid .sun{left:50%;top:58%;width:90vw;height:46vh;transform:translate(-50%,-100%);background:radial-gradient(50% 100% at 50% 100%,rgba(52,242,232,.28),rgba(55,123,182,.12) 45%,transparent 75%)}
+.tv-ambient.m-grid .floor{left:-50%;right:-50%;top:58%;height:90%;transform-origin:50% 0;transform:perspective(420px) rotateX(64deg);background-image:linear-gradient(rgba(52,242,232,.42) 2px,transparent 2px),linear-gradient(90deg,rgba(55,123,182,.45) 2px,transparent 2px);background-size:90px 90px;-webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 30%,#000 100%);mask-image:linear-gradient(180deg,transparent 0%,#000 30%,#000 100%);animation:tv-grid 2.4s linear infinite}
+@keyframes tv-grid{to{background-position:0 90px,0 0}}
+body.light .tv-ambient.m-grid .sky{background:linear-gradient(180deg,#f7f9fc,#e7eef7 58%,#dfe6f0)}
+.tv-ambient.m-drift .d1,.tv-ambient.m-drift .d2,.tv-ambient.m-drift .d3{inset:-50%;background-repeat:repeat}
+.tv-ambient.m-drift .d1{background-image:radial-gradient(circle,rgba(52,242,232,.55) 0 1.5px,transparent 2.5px);background-size:140px 140px;animation:tv-drift 70s linear infinite}
+.tv-ambient.m-drift .d2{background-image:radial-gradient(circle,rgba(160,190,255,.4) 0 2.5px,transparent 4px);background-size:230px 230px;background-position:60px 90px;animation:tv-drift 110s linear infinite}
+.tv-ambient.m-drift .d3{inset:0;background:radial-gradient(70% 60% at 70% 20%,rgba(55,123,182,.3),transparent 70%),radial-gradient(60% 50% at 15% 90%,rgba(52,242,232,.12),transparent 70%)}
+@keyframes tv-drift{to{transform:translate(25%,-25%)}}
+body.light .tv-ambient.m-drift .d1{background-image:radial-gradient(circle,rgba(11,158,151,.5) 0 1.5px,transparent 2.5px)}
+body.light .tv-ambient.m-drift .d2{background-image:radial-gradient(circle,rgba(55,123,182,.35) 0 2.5px,transparent 4px)}
+body.lighter .tv-ambient i{animation:none!important}
+/* Pages over it are see-through; the game you're on lights the edges. */
+.tv-full.amb{background:transparent}
+.tv-full.amb::after{background:radial-gradient(55% 60% at 88% 12%,color-mix(in srgb,var(--acc) 20%,transparent),transparent 72%),radial-gradient(50% 55% at 6% 100%,color-mix(in srgb,var(--acc) 14%,transparent),transparent 72%),linear-gradient(180deg,transparent 60%,color-mix(in srgb,var(--tvbg) 55%,transparent))}
+.tv-full.amb~.tv-hints{background:rgba(var(--tvrgb),.82)}
+#tv{background:#070b14}
+
+/* Going into Big Picture mode and out of it: a fade to dark over the launcher while the window
+   changes size. */
+#tv.tv-cover{animation:tv-fade .24s ease both}
+#tv.tv-cover.out{animation:tv-cover-out .22s ease both}
+#tv.tv-cover.out>*{opacity:0;transition:opacity .2s}
+@keyframes tv-cover-out{from{background:#070b14}to{background:#070b14}}
+
+/* Cover Flow: the name big under the row, and the game's colours glowing behind it. */
+.tv-flow-cap b{font:800 semi-expanded 46px/1.1 Archivo,sans-serif;letter-spacing:-.01em}
+.tv-flow-cap span{font-size:26px;color:var(--tvsoft,#c9d3e0)}
+.tv-flow::before{content:"";position:absolute;left:50%;top:calc((var(--H,1080px) - 216px - 474px - 170px) / 2 + 237px);width:1500px;height:900px;transform:translate(-50%,-50%);pointer-events:none;background:radial-gradient(closest-side,color-mix(in srgb,var(--acc) 34%,transparent),color-mix(in srgb,var(--acc) 12%,transparent) 55%,transparent);transition:opacity .4s}
+/* The game you're on lights Home and the Library more strongly. */
+.tv-full.amb::after{background:radial-gradient(60% 65% at 85% 20%,color-mix(in srgb,var(--acc) 34%,transparent),transparent 72%),radial-gradient(55% 60% at 10% 95%,color-mix(in srgb,var(--acc) 24%,transparent),transparent 72%),radial-gradient(40% 40% at 50% 60%,color-mix(in srgb,var(--acc) 10%,transparent),transparent 75%),linear-gradient(180deg,transparent 62%,color-mix(in srgb,var(--tvbg) 50%,transparent))}
+/* Nothing blurred behind the bar, buttons, chips and hints: solid colours draw far faster. */
+.tv-stage *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.tv-nav{background:rgba(var(--tvrgb2),.9)}
+.tv-btn{background:rgba(var(--tvrgb),.82)}
+.tv-hints{background:rgba(var(--tvrgb),.92)}
+.tv-ambient i{will-change:transform}
+
+.tv-heart{display:inline-flex;align-items:center;gap:8px}
+.tv-qrs{gap:32px}
+.tv-qrs figure{width:250px}
+.tv-qrs img{width:210px;height:210px}
+
+/* Cover Flow: bigger blocks with solid sides. Nothing is drawn over the block that doesn't move with it. */
+.tv-stage .tv-flow-row .tv-fcase::before,.tv-stage .tv-flow-row .tv-fcase::after{content:none!important;display:none!important}
+.tv-stage .tv-flow-row .tv-fcase{left:-196px;width:392px;height:538px;--dp:30px}
+.tv-flow-row{top:calc((var(--H,1080px) - 216px - 538px - 170px) / 2)}
+.tv-flow-cap{top:calc((var(--H,1080px) - 216px - 538px - 170px) / 2 + 538px + 78px)}
+.tv-fcase .plate{border-radius:12px}
+.tv-fcase .front{inset:7px;border-radius:7px}
+.tv-fcase .wl{position:absolute;opacity:var(--al,1);background:#1F57A6;-webkit-backface-visibility:visible;backface-visibility:visible}
+.tv-fcase .wl.l{left:0;top:6px;bottom:6px;width:var(--dp);transform-origin:0 50%;transform:rotateY(90deg);background:linear-gradient(90deg,#3A86D8,#1C4E96)}
+.tv-fcase .wl.r{right:0;top:6px;bottom:6px;width:var(--dp);transform-origin:100% 50%;transform:rotateY(-90deg);background:linear-gradient(270deg,#3A86D8,#1C4E96)}
+.tv-fcase .wl.t{top:0;left:6px;right:6px;height:var(--dp);transform-origin:50% 0;transform:rotateX(-90deg);background:linear-gradient(180deg,#4B97E6,#2563B4)}
+.tv-fcase .wl.b{bottom:0;left:6px;right:6px;height:var(--dp);transform-origin:50% 100%;transform:rotateX(90deg);background:linear-gradient(0deg,#173F7C,#123264)}
+.tv-fcase .wl.k{inset:0;border-radius:12px;transform:translateZ(calc(var(--dp) * -1));background:#123264}
+.tv-fcase .refl{left:7px;right:7px}
+body.light .tv-fcase .wl{background:#c9dcec}
+.tv-stage .tv-flow-row .tv-fcase{--dp:36px}
+.tv-fcase .bx{transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.tv-fcase.f .bx{transform:rotateY(-9deg) rotateX(-4deg)}
+.tv-fcase .refl{top:calc(100% + 12px);height:120px;opacity:calc(var(--al,1) * .28);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 100%);mask-image:linear-gradient(to bottom,transparent 0%,#000 100%)}
+.tv-fcase .refl img{object-position:50% 100%}
+.tv-flow-row{top:calc((var(--H,1080px) - 216px - 538px - 200px) / 2)}
+.tv-flow-cap{top:calc((var(--H,1080px) - 216px - 538px - 200px) / 2 + 538px + 124px)}
+.tv-fcase.f .bx[style*=rotate]{transition:transform .08s linear}
+.tv-fcase .refl{height:96px}
+/* Flying into and out of a game: the camera does all the moving, so nothing else animates meanwhile. */
+.tv-stage.tvx-thru *,.tv-stage.tvx-thru>*,.tv-stage.tvx-thruback *,.tv-stage.tvx-thruback>*{animation:none!important}
+.tv-stage.leaving{z-index:1}
+.tv-stage .ph{animation:none!important}
+body.light .tv-stage .tv-flow-row .tv-fcase{opacity:1!important}
+
+/* Setup Required: yellow, so it reads as "do this first" next to Play. */
+.tv-btn.main.warn,body .tv-stage .tv-btn.main.warn{background:linear-gradient(180deg,#ffd43b,#f5c518);color:#1a1400;box-shadow:0 14px 34px -12px rgba(245,197,24,.6)}
+.tv-btn.main.warn .glyph,.tv-btn.main.warn svg{color:#1a1400}
+.tv-btn.warn-o{color:#f5c518;border:2px solid rgba(245,197,24,.6);background:rgba(245,197,24,.08)}
+.tv-btn.warn-o svg{color:#f5c518}
+.tv-stage .tv-btn.warn-o.f{background:rgba(245,197,24,.18)}
+.tv-badge.sreq{display:inline-flex;align-items:center;gap:6px;left:12px;right:auto;background:#f5c518;color:#1a1400}
+.tv-dk .tv-badge.sreq{left:8px;font-size:12px}
+.tv-easy.sreq{color:#f5c518;background:rgba(245,197,24,.1);border-color:rgba(245,197,24,.4)}
+.tv-sheet.sreq .tv-sheet-in{width:760px}
+.tv-sheet.sreq h3{white-space:normal}
+.tv-sreq-p{margin:0;font-size:21px;line-height:1.45;color:var(--tvink,#F4F8FC)}
+.tv-sreq-p.dim{opacity:.7}
+.tv-sreq-steps{margin:6px 0 14px;padding-left:30px;display:grid;gap:10px;font-size:21px;line-height:1.45}
+.tv-sreq-steps li::marker{color:#f5c518;font-weight:800}
+.tv-sheet .tv-item.warn{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.45)}
+.tv-sheet .tv-item.warn svg{color:#f5c518}
+body.light .tv-btn.warn-o{color:#7a5a00;border-color:#d9a900;background:rgba(245,197,24,.16)}
+body.light .tv-btn.warn-o svg,body.light .tv-easy.sreq{color:#7a5a00}
+body.light .tv-sreq-steps li::marker{color:#b38900}
+body.light .tv-sheet .tv-item.warn svg{color:#9a7200}
+/* The cover the camera flies through when a game opens from Cover Flow: a flat picture, cheap to grow. */
+.tv-thru-card{position:fixed;z-index:150;pointer-events:none;border-radius:8px;overflow:hidden;background:#0b1220;box-shadow:0 30px 80px rgba(0,0,0,.5);transform-origin:50% 50%;will-change:transform,opacity}
+.tv-thru-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+/* Discover: Search and Sort & Filter sit first among the chips. */
+.tv-chip.tool{gap:10px}
+.tv-chip.tool svg{opacity:.85}
+.tv-chip.act{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--acc) 70%,transparent)}
+.tv-chip-n{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--acc);color:var(--accink);font-size:15px;font-weight:800;margin-left:4px}
+/* The on-screen keyboard for searching: six keys to a row, the wide ones two to a row. */
+.tv-sheet.kb .tv-sheet-in{width:820px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;align-content:start}
+.tv-sheet.kb .tv-sheet-in>:not(.tv-item){grid-column:1/-1}
+.tv-sheet.kb .tv-item.key{justify-content:center;gap:10px;min-height:0;height:66px;padding:0 10px;font-size:25px;font-weight:700}
+.tv-sheet.kb .tv-item.key .k{flex:none;text-align:center}
+.tv-sheet.kb .tv-item.key.wide{grid-column:span 3;font-size:21px}
+.tv-sheet.kb .tv-item.key.done{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.tv-kb-field{display:flex;align-items:center;gap:14px;height:76px;padding:0 22px;margin-bottom:8px;border-radius:16px;background:rgba(var(--tvrgb2),.9);border:2px solid color-mix(in srgb,var(--acc) 55%,transparent);font-size:30px;font-weight:700;overflow:hidden;white-space:nowrap}
+.tv-kb-field svg{flex:none;opacity:.7}
+.tv-kb-field .ph{opacity:.45;font-weight:500}
+.tv-kb-field .caret{width:3px;height:36px;background:var(--acc);border-radius:2px;animation:tv-caret 1s steps(1) infinite}
+@keyframes tv-caret{50%{opacity:0}}
+
+/* A game's tags under its buttons: small pills you can open Discover with. */
+.tv-acts.tv-tags{gap:10px;margin-top:-6px;flex-wrap:wrap}
+.tv-tag{height:42px;padding:0 18px;border-radius:12px;border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.16);background:rgba(var(--tvinkrgb,244,248,252),.05);color:var(--tvsoft,#c9d3e0);font:600 18px Figtree,system-ui,sans-serif}
+.tv-stage .tv-tag.f{color:var(--tvink,#F4F8FC);background:rgba(var(--tvinkrgb,244,248,252),.12)}
+/* About the game (IGDB). */
+.tv-igdb{display:flex;flex-direction:column;gap:14px}
+.tv-igdb .tv-about{margin:0}
+.tv-igdb dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 28px}
+.tv-igdb dl div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.tv-igdb dt{font-size:16px;color:var(--tvdim,#8f9cb0)}
+.tv-igdb dd{margin:0;font-size:19px;font-weight:600;overflow-wrap:normal;word-break:normal}
+.tv-igdb .tv-src{margin:0}
+.tv-score{display:inline-flex;align-items:center;gap:10px;margin-left:14px;font-size:16px;font-weight:600;color:var(--tvdim,#8f9cb0);vertical-align:middle}
+.tv-score b{display:inline-grid;place-items:center;min-width:44px;height:34px;padding:0 8px;border-radius:10px;background:rgba(var(--tvinkrgb,244,248,252),.1);color:var(--tvink,#F4F8FC);font-size:18px;font-weight:800}
+.tv-sec[data-sec="like"]{margin-top:34px}
+.tv-panel.tv-igdb{position:static;padding:26px 30px;box-shadow:none}
+.tv-panel.tv-igdb dl div{flex-direction:column;justify-content:flex-start;align-items:flex-start;padding:0;border:0;min-height:0}
+.tv-fcase.f .bx{transform:none}
+
+/* Tags, reworked: quiet pills like the ones above the title, a little apart from the buttons. */
+.tv-acts.tv-tags{gap:10px;margin-top:22px}
+.tv-tag{height:38px;padding:0 18px;border-radius:999px;border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);background:rgba(var(--tvrgb),.55);color:var(--tvsoft,#c9d3e0);font:600 17px Figtree,system-ui,sans-serif;letter-spacing:.01em;box-shadow:none}
+.tv-stage .tv-tag.f{background:var(--tvink,#F4F8FC);color:var(--tvbg);border-color:transparent;transform:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 60%,transparent)!important}
+body.light .tv-tag{background:rgba(255,255,255,.7);color:#334155}
+
+/* Achievements (coming soon). */
+.tv-ach{--gold:#f2c14e;position:relative;max-width:1500px}
+.tv-ach-pill{position:absolute;top:14px;right:0;height:40px;padding:0 18px;border-radius:999px;display:inline-flex;align-items:center;font-size:18px;font-weight:800;color:#1d1503;background:var(--gold)}
+.tv-ach-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:20px}
+.tv-ach-card{position:relative;padding:30px 30px 28px;border-radius:26px;background:rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12);display:flex;flex-direction:column;gap:12px;opacity:.75}
+.tv-ach-card b{font:700 semi-expanded 24px/1.2 Archivo,sans-serif}
+.tv-ach-card p{margin:0;font-size:19px;line-height:1.45;color:var(--tvsoft,#c9d3e0)}
+.tv-ach-card .ic{width:58px;height:58px;border-radius:16px;display:grid;place-items:center;background:rgba(var(--tvinkrgb,244,248,252),.08)}
+.tv-ach-card .lock{position:absolute;top:24px;right:24px;color:var(--tvdim,#8f9cb0)}
+.tv-ach-toast{display:inline-flex;align-items:center;gap:18px;margin-top:30px;padding:16px 24px 16px 16px;border-radius:22px;background:rgba(var(--tvrgb2),.92);border:1px solid color-mix(in srgb,var(--gold) 40%,transparent)}
+.tv-ach-toast .ic{width:60px;height:60px;border-radius:16px;display:grid;place-items:center;color:#1d1503;background:var(--gold)}
+.tv-ach-toast .tx{display:flex;flex-direction:column;gap:4px}
+.tv-ach-toast b{font-size:22px}
+.tv-ach-toast small{font-size:17px;color:var(--tvdim,#8f9cb0)}
+.tv-ach-toast em{margin-left:18px;font-style:normal;font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--tvdim,#8f9cb0)}
+.tv-ach-ok{margin:24px 0 0;font-size:20px}
+.tv-ach .tv-acts{margin-top:26px}
+.tv-ach-ok{margin:-6px 0 4px;color:var(--gold);font-weight:600}
+body.light .tv-ach-ok{color:#8a6400}
+
+/* Big Picture setup: why an update file was turned down */
+.tv-setup .tt p.err{color:#ffc2c2}
+
+/* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
+.tb-in{grid-template-rows:minmax(0,1fr)}
+.tb-side,.tb-main{min-height:0}
+.tb-side,.tb-list{overflow-x:hidden;padding-left:12px;padding-right:16px;margin-left:-12px;margin-right:-16px}
+.tb-side{padding-top:10px}
+.tb-in .tv-item.f{transform:translateX(4px)}
+/* the Options menu (Y): a column over the right edge */
+.tb-menu{position:absolute;top:90px;right:120px;max-height:calc(100% - 210px);overflow:hidden;width:520px;display:flex;flex-direction:column;gap:10px;padding:26px 22px;border-radius:28px;background:var(--tvbg2,#121a26);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);box-shadow:0 30px 80px rgba(0,0,0,.6);z-index:5;animation:tv-in .25s cubic-bezier(.2,.8,.2,1) both}
+.tb-menu h3{margin:0 0 6px;font:700 30px/1.15 Archivo,sans-serif}
+.tb-menu p{margin:0 0 10px;color:var(--tvsoft,#9fb0c4);font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-busy{color:#34F2E8!important}

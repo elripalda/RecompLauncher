@@ -251,6 +251,45 @@ pub fn detect(exe: &Path) -> Api {
     }
 }
 
+// A game that can draw with either Direct3D or Vulkan gets ReShade both ways in at first. When
+// that crashes it right at the start (some graphics drivers present Vulkan through Direct3D, and
+// ReShade then sees both), the next start tries Vulkan alone, then Direct3D alone, and the way that
+// works is kept for that game.
+
+fn route_file(data: &Path, id: &str) -> PathBuf {
+    data.join("looks").join(id).join("route.txt")
+}
+
+/// The way in for this start, and the name of the route tried (for a game that can go either way).
+pub fn route_for(data: &Path, id: &str, api: Api) -> (Api, Option<&'static str>) {
+    if api != Api::Both {
+        return (api, None);
+    }
+    match std::fs::read_to_string(route_file(data, id)).unwrap_or_default().trim() {
+        "layer" => (Api::Vulkan, Some("layer")),
+        "proxy" => (Api::Dxgi, Some("proxy")),
+        _ => (Api::Both, Some("both")),
+    }
+}
+
+/// After a game with a look closes: one that went down within seconds tries the next way in.
+pub fn after_run(data: &Path, id: &str, route: &str, secs: u64, code: Option<i32>) {
+    let crashed = secs < 20 && code.map(|c| c != 0).unwrap_or(false);
+    if !crashed {
+        return;
+    }
+    let next = match route {
+        "both" => "layer",
+        "layer" => "proxy",
+        _ => "both",
+    };
+    let f = route_file(data, id);
+    if let Some(d) = f.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(f, next);
+}
+
 /// 64-bit (true), 32-bit (false), or unknown (None).
 pub fn is_64bit(exe: &Path) -> Option<bool> {
     use std::io::Read;
@@ -619,6 +658,78 @@ pub fn prepare(data: &Path, id: &str, exe: &Path, look: &LookDef, amount: u8, li
     Ok(run)
 }
 
+// ---------- Linux: vkBasalt ----------
+//
+// On Linux the same effects run through vkBasalt, a Vulkan layer most distros package. It reads
+// ReShade effects but not ReShade presets, so each game gets its own copy of the look's effect
+// with the player's amount written in as the settings' starting values.
+
+/// Where Vulkan looks for layers that are on by default, in the order the loader reads them.
+fn implicit_layer_dirs() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = vec![];
+    if let Some(d) = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| dirs::home_dir().map(|h| h.join(".local/share"))) {
+        v.push(d.join("vulkan/implicit_layer.d"));
+    }
+    for d in std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into()).split(':').filter(|d| !d.is_empty()) {
+        v.push(Path::new(d).join("vulkan/implicit_layer.d"));
+    }
+    for d in ["/etc/vulkan/implicit_layer.d", "/usr/share/vulkan/implicit_layer.d", "/usr/local/share/vulkan/implicit_layer.d", "/usr/lib/extensions/vulkan/vkBasalt/share/vulkan/implicit_layer.d"] {
+        v.push(PathBuf::from(d));
+    }
+    v
+}
+
+/// Is vkBasalt installed?
+pub fn vkbasalt_installed() -> bool {
+    implicit_layer_dirs().iter().any(|d| {
+        std::fs::read_dir(d).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().to_lowercase().contains("vkbasalt"))
+    })
+}
+
+/// An effect with the look's settings written in as their starting values (and the number of
+/// lines for the CRT look).
+pub fn bake(fx: &str, values: &BTreeMap<String, f32>, lines: Option<u32>) -> String {
+    let mut out = fx.to_string();
+    for (k, v) in values {
+        let re = regex_lite::Regex::new(&format!(r"(?s)(uniform\s+(float|int)\s+{}\s*<.*?>\s*=\s*)([^;]+)(;)", regex_lite::escape(k))).unwrap();
+        out = re
+            .replace(&out, |c: &regex_lite::Captures| {
+                let val = if &c[2] == "int" { format!("{}", v.round() as i32) } else { format!("{v:.6}") };
+                format!("{}{}{}", &c[1], val, &c[4])
+            })
+            .into_owned();
+    }
+    match lines {
+        Some(n) => format!("#define RL_LINES {n}\n{out}"),
+        None => out,
+    }
+}
+
+/// Get a game ready to start with a look through vkBasalt: the effect, its settings and
+/// vkBasalt's own settings file, all in the launcher's folder. Nothing goes into the game's folder.
+pub fn prepare_vkbasalt(data: &Path, id: &str, look: &LookDef, amount: u8, lines: u32) -> Result<Run, String> {
+    let dir = data.join("looks").join(id).join("vkbasalt");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for (name, text) in SHADERS {
+        if *name == look.fx {
+            write_if_changed(&dir.join(name), &bake(text, &values(look, amount), look.lines.then_some(lines))).map_err(|e| e.to_string())?;
+        } else if name.ends_with(".fxh") {
+            write_if_changed(&dir.join(name), text).map_err(|e| e.to_string())?;
+        }
+    }
+    let p = |x: &Path| x.display().to_string();
+    let conf = format!(
+        "# Written by RecompLauncher for the {} look. It's written again when the game starts.\neffects = rl\nrl = {}\nreshadeIncludePath = {}\nreshadeTexturePath = {}\ndepthCapture = off\ntoggleKey = Home\nenableOnLaunch = True\n",
+        look.name,
+        p(&dir.join(&look.fx)),
+        p(&dir),
+        p(&dir)
+    );
+    let file = dir.join("vkBasalt.conf");
+    write_if_changed(&file, &conf).map_err(|e| e.to_string())?;
+    Ok(Run { env: vec![("ENABLE_VKBASALT".into(), "1".into()), ("VKBASALT_CONFIG_FILE".into(), p(&file))], placed: None })
+}
+
 /// After the game closes: take ReShade back out of its folder. A file that's still in use is
 /// tried again for a few seconds; whatever's left is tidied when the launcher next opens, or the
 /// game next starts.
@@ -684,6 +795,43 @@ mod tests {
         assert_eq!(lines_for("n64"), 240);
         assert_eq!(lines_for("N64"), 240);
         assert_eq!(lines_for("something"), 480);
+    }
+
+    #[test]
+    fn a_crashing_look_tries_the_next_way_in() {
+        let d = tmp("route");
+        assert_eq!(route_for(&d, "g", Api::Dxgi), (Api::Dxgi, None));
+        assert_eq!(route_for(&d, "g", Api::Both), (Api::Both, Some("both")));
+        after_run(&d, "g", "both", 120, Some(1)); // played a while: nothing changes
+        assert_eq!(route_for(&d, "g", Api::Both).1, Some("both"));
+        after_run(&d, "g", "both", 5, Some(-2147483645));
+        assert_eq!(route_for(&d, "g", Api::Both), (Api::Vulkan, Some("layer")));
+        after_run(&d, "g", "layer", 3, Some(-1073741819));
+        assert_eq!(route_for(&d, "g", Api::Both), (Api::Dxgi, Some("proxy")));
+        after_run(&d, "g", "proxy", 300, Some(0));
+        assert_eq!(route_for(&d, "g", Api::Both).1, Some("proxy"));
+    }
+
+    #[test]
+    fn baked_for_vkbasalt() {
+        let fx = "uniform float Curvature <\n\tui_type = \"slider\";\n> = 0.5;\nuniform int MaskType < ui_min = 0; > = 2;\nuniform float Other < > = 1.0;\n";
+        let mut v = BTreeMap::new();
+        v.insert("Curvature".to_string(), 0.25f32);
+        v.insert("MaskType".to_string(), 1.0f32);
+        let out = bake(fx, &v, Some(240));
+        assert!(out.starts_with("#define RL_LINES 240\n"));
+        assert!(out.contains("> = 0.250000;"), "{out}");
+        assert!(out.contains("ui_min = 0; > = 1;"), "{out}");
+        assert!(out.contains("Other < > = 1.0;"));
+        // Every built-in look bakes without losing its technique.
+        for l in &defs().looks {
+            let text = SHADERS.iter().find(|(n, _)| *n == l.fx).unwrap().1;
+            let b = bake(text, &values(l, 60), l.lines.then_some(224));
+            assert!(b.contains(&format!("technique {}", l.technique)));
+            for k in values(l, 60).keys() {
+                assert!(text.contains(&format!(" {k} ")) || text.contains(&format!(" {k}<")) || text.contains(&format!(" {k}\n")), "{} has no {k}", l.fx);
+            }
+        }
     }
 
     #[test]

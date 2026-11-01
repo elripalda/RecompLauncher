@@ -34,37 +34,68 @@ fn powershell(script: &str) -> Result<(), Error> {
 }
 
 /// A shortcut on the desktop that plays the game. `icon` is the game's program, for its icon.
-pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>) -> Result<PathBuf, Error> {
+/// With `direct`, the shortcut starts that program itself (with those arguments), the way a front
+/// end like RetroBat or Playnite expects; without it, it goes through the launcher (`--play`).
+pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Option<(&Path, &[String])>) -> Result<PathBuf, Error> {
     let desk = dirs::desktop_dir().or_else(|| dirs::home_dir().map(|h| h.join("Desktop"))).ok_or_else(|| Error::Msg("Couldn't find your desktop folder.".into()))?;
-    let exe = launcher_exe();
+    // On Linux an AppImage runs from a folder that's gone once it closes: the shortcut starts the AppImage.
+    let launcher = start_path();
+    let (target, args): (PathBuf, String) = match direct {
+        Some((exe, a)) => (exe.to_path_buf(), a.iter().map(|x| quote_arg(x)).collect::<Vec<_>>().join(" ")),
+        None => (launcher.clone(), format!("--play {id}")),
+    };
     #[cfg(windows)]
     {
         let lnk = desk.join(format!("{}.lnk", safe_name(name)));
         let q = |p: &Path| p.to_string_lossy().replace('\'', "''");
         let icon_line = icon.map(|i| format!("$s.IconLocation='{},0';", q(i))).unwrap_or_default();
-        let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+        let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
+        let what = if direct.is_some() { format!("Play {}", name.replace('\'', "''")) } else { format!("Play {} with RecompLauncher", name.replace('\'', "''")) };
         powershell(&format!(
-            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='--play {}';$s.WorkingDirectory='{}';{}$s.Description='Play {} with RecompLauncher';$s.Save()",
-            q(&lnk), q(&exe), id, q(&dir), icon_line, name.replace('\'', "''")
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='{}';$s.WorkingDirectory='{}';{}$s.Description='{}';$s.Save()",
+            q(&lnk), q(&target), args.replace('\'', "''"), q(&dir), icon_line, what
         ))?;
         Ok(lnk)
     }
     #[cfg(not(windows))]
     {
-        let file = desk.join(format!("{}.desktop", safe_name(name).replace(' ', "-")));
+        let file_name = format!("{}.desktop", safe_name(name).replace(' ', "-"));
+        let file = desk.join(&file_name);
+        let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
+        // A program isn't an icon on Linux: only a picture is used, else the usual games icon.
+        let icon = icon
+            .filter(|i| matches!(i.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref(), Some("png" | "svg" | "xpm" | "ico")))
+            .map(|i| i.display().to_string())
+            .unwrap_or_else(|| "applications-games".into());
         let body = format!(
-            "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{}\" --play {id}\nIcon={}\nCategories=Game;\nTerminal=false\n",
-            exe.display(),
-            icon.map(|i| i.display().to_string()).unwrap_or_else(|| "applications-games".into())
+            "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{}\" {}\nPath={}\nIcon={icon}\nCategories=Game;\nTerminal=false\n",
+            target.display(),
+            args,
+            dir.display(),
         );
         fs::create_dir_all(&desk)?;
-        fs::write(&file, body)?;
+        fs::write(&file, &body)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&file, fs::Permissions::from_mode(0o755))?;
         }
+        // The same shortcut in the applications menu, where launchers and Steam's Add a Game look.
+        if let Some(apps) = dirs::data_dir().map(|d| d.join("applications")) {
+            if fs::create_dir_all(&apps).is_ok() {
+                let _ = fs::write(apps.join(&file_name), &body);
+            }
+        }
         Ok(file)
+    }
+}
+
+/// One argument as it goes on a shortcut's command line: in quotes when it has spaces.
+fn quote_arg(a: &str) -> String {
+    if a.is_empty() || a.contains([' ', '\t']) {
+        format!("\"{}\"", a.replace('"', "\\\""))
+    } else {
+        a.to_string()
     }
 }
 
@@ -305,7 +336,9 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
     if !steam_running() {
         return Ok(());
     }
-    let _ = std::process::Command::new(steam_exe(steam)).arg("-shutdown").spawn();
+    let mut c = std::process::Command::new(steam_exe(steam));
+    crate::sysenv::clean_std(&mut c);
+    let _ = c.arg("-shutdown").spawn();
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if !steam_running() {
@@ -318,7 +351,9 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
 }
 
 pub fn start_steam(steam: &Path) {
-    let _ = std::process::Command::new(steam_exe(steam)).spawn();
+    let mut c = std::process::Command::new(steam_exe(steam));
+    crate::sysenv::clean_std(&mut c);
+    let _ = c.spawn();
 }
 
 /// Write the game into every Steam account's shortcuts and art folder. `art` is (suffix, bytes,
@@ -346,6 +381,12 @@ pub fn is_steam_deck() -> bool {
     }
     let read = |f: &str| fs::read_to_string(format!("/sys/devices/virtual/dmi/id/{f}")).unwrap_or_default().trim().to_lowercase();
     matches!(read("product_name").as_str(), "jupiter" | "galileo") || read("board_vendor") == "valve"
+}
+
+/// A handheld PC: a Steam Deck, or one of the handheld chips (ROG Ally, Legion Go, MSI Claw A8).
+pub fn is_handheld(cpu: &str) -> bool {
+    let c = cpu.to_lowercase();
+    is_steam_deck() || c.contains("custom apu 0405") || c.contains("custom apu 0932") || c.contains(" z1") || c.contains(" z2")
 }
 
 fn write_entry(steam: &Path, name: &str, launch: &str, icon: &str, art: &[(&str, Vec<u8>, &str)]) -> Result<usize, Error> {

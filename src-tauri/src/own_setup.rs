@@ -53,12 +53,34 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
                 g.exe = None;
             }
         }
+        // A game whose installer builds it (its profile names the program it makes): a program in
+        // the download that isn't that one is a tool, not the game, so the setup runs first.
+        let mut redo = false;
+        if let Some(want) = boot.as_ref().and_then(|b| b.then_start()).and_then(|t| t.file_name().map(|n| n.to_string_lossy().to_lowercase())) {
+            let wrong = |e: &PathBuf| e.file_name().map(|n| n.to_string_lossy().to_lowercase() != want).unwrap_or(true);
+            if g.exe.as_ref().map(|e| wrong(e) || !g.path.join(e).is_file()).unwrap_or(false) || (g.exe.is_none() && g.setup_done) {
+                // Left on a tool from the download (an older launcher's guess): the game it built,
+                // if it can be found, else its setup again (which picks up where it got to).
+                let since = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.installed_at);
+                let near: Vec<PathBuf> = [Some(g.path.clone()), g.path.parent().map(Path::to_path_buf)].into_iter().flatten().collect();
+                match find_built(&want, since, &near) {
+                    Some(p) => g.exe = Some(p),
+                    None => {
+                        g.exe = None;
+                        redo = true;
+                    }
+                }
+            }
+        }
         let inside = g.exe.clone().filter(|e| !e.is_absolute());
         let setup = match &boot {
             Some(b) if !b.is_installer() => b.setup_in(&g.path),
-            _ => install::find_setup(&g.path, os, inside.as_deref()),
+            Some(b) => b.setup_near(&g.path).or_else(|| install::find_setup(&g.path, os, inside.as_deref())),
+            None => install::find_setup(&g.path, os, inside.as_deref()),
         };
-        if !g.setup_checked {
+        if redo {
+            g.setup_done = false;
+        } else if !g.setup_checked {
             // Played for a while already: its setup ran then. A game that only ever closed right
             // away probably needed it.
             g.setup_done = setup.is_some() && g.played_secs >= 120 && inside.is_some();
@@ -82,6 +104,30 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         }
         st.save();
     }
+    // Set up, but the game it builds wasn't found then (the setup was still going, say): looked
+    // for again, and when it's nowhere, its setup opens again to finish.
+    if g.setup_done && g.exe.is_none() {
+        if let Some(want) = crate::boot::of(&st.dir, id).and_then(|b| b.then_name()) {
+            let since = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.installed_at);
+            let mut near: Vec<PathBuf> = [Some(g.path.clone()), g.path.parent().map(Path::to_path_buf)].into_iter().flatten().collect();
+            near.extend(player_places(st));
+            let found = find_built(&want, since, &near);
+            {
+                let mut l = st.lib.lock().unwrap();
+                if let Some(r) = l.installed.get_mut(id) {
+                    match &found {
+                        Some(p) => r.exe = Some(p.clone()),
+                        None => r.setup_done = false,
+                    }
+                }
+            }
+            st.save();
+            if found.is_some() {
+                return None;
+            }
+            g.setup_done = false;
+        }
+    }
     if g.setup_done {
         return None;
     }
@@ -91,8 +137,18 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
 /// Starts a program the way double-clicking it would: an installer that asks for administrator
 /// rights gets Windows' prompt instead of failing.
 pub fn spawn(p: &Path) -> std::io::Result<std::process::Child> {
+    spawn_with(p, None)
+}
+
+/// `copy`: the player's copy of the game, handed to the setup as if dropped on it.
+pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<std::process::Child> {
     let dir = p.parent().map(Path::to_path_buf).unwrap_or_default();
-    match std::process::Command::new(p).current_dir(&dir).spawn() {
+    let mut c = std::process::Command::new(p);
+    crate::sysenv::clean_std(&mut c);
+    if let Some(x) = copy {
+        c.arg(x);
+    }
+    match c.current_dir(&dir).spawn() {
         #[cfg(windows)]
         Err(e) if e.raw_os_error() == Some(740) => {
             use std::os::windows::process::CommandExt;
@@ -109,7 +165,7 @@ fn tell(app: &AppHandle, id: &str, name: &str, state: &str) {
 }
 
 /// Runs the setup and, once it closes, finds the game.
-pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path) -> Res<()> {
+pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<&Path>) -> Res<()> {
     {
         let mut o = OPEN.lock().unwrap();
         if o.iter().any(|x| x == id) {
@@ -119,7 +175,7 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path) -> Res<()> {
     }
     let since = SystemTime::now();
     let shown = setup.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let mut child = match spawn(setup) {
+    let mut child = match spawn_with(setup, copy) {
         Ok(c) => c,
         Err(e) => {
             OPEN.lock().unwrap().retain(|x| x != id);
@@ -134,9 +190,13 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path) -> Res<()> {
         }
     }
     let (app, id, name) = (app.clone(), id.to_string(), g.name.clone());
+    let folder = g.path.clone();
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|s| s.code());
-        let state = finish(&app, &id, code, since);
+        // A setup that's only a starter (TotK-Setup.exe opens its Python window and quits): the
+        // setup isn't over until every program from the download it started has closed too.
+        let places = wait_for_rest(&folder);
+        let state = finish(&app, &id, code, since, &places);
         OPEN.lock().unwrap().retain(|x| x != &id);
         if from_bp {
             crate::show_main(&app);
@@ -146,16 +206,148 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path) -> Res<()> {
     Ok(())
 }
 
+/// Waits while any program from `dir` (the game's download) is still running: what a setup that
+/// only starts another program goes on doing after its own program has quit. Windows only.
+/// Returns the folders those programs were given on their command lines (TotK's setup starts its
+/// builder with `--dest C:\Games\TOTK`): where the player told it to put the game.
+fn wait_for_rest(dir: &Path) -> Vec<String> {
+    let mut said: Vec<String> = Vec::new();
+    #[cfg(windows)]
+    {
+        // A moment for what it started to show up.
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        loop {
+            let (n, lines) = running_from(dir);
+            for l in lines {
+                for a in paths_in(&l) {
+                    if !said.contains(&a) {
+                        said.push(a);
+                    }
+                }
+            }
+            if n == 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(4));
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = dir;
+    said
+}
+
+/// The programs running from inside `dir`: how many, and their command lines.
+#[cfg(windows)]
+fn running_from(dir: &Path) -> (usize, Vec<String>) {
+    use std::os::windows::process::CommandExt;
+    let d = dir.to_string_lossy().trim_end_matches('\\').replace('\'', "''");
+    let script = format!("[Console]::OutputEncoding = [Text.Encoding]::UTF8; $d = '{d}\\'; $p = @(Get-CimInstance Win32_Process | Where-Object {{ $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, [StringComparison]::OrdinalIgnoreCase) }}); $p.Count; $p | ForEach-Object {{ [string]$_.CommandLine }}");
+    let Ok(o) = std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(0x0800_0000).output() else { return (0, vec![]) };
+    let text = String::from_utf8_lossy(&o.stdout).to_string();
+    let mut lines = text.lines();
+    let n = lines.next().and_then(|l| l.trim().parse().ok()).unwrap_or(0);
+    (n, lines.map(str::to_string).collect())
+}
+
+/// The Windows paths in a command line (`C:\x`, quoted or not, also after `--dest=`).
+fn paths_in(line: &str) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut quoted = false;
+    for c in line.chars() {
+        match c {
+            '"' => quoted = !quoted,
+            ' ' | '\t' if !quoted => {
+                if !cur.is_empty() {
+                    args.push(std::mem::take(&mut cur));
+                }
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        args.push(cur);
+    }
+    args.into_iter()
+        .skip(1)
+        .map(|a| a.rsplit_once('=').map(|(_, v)| v.to_string()).unwrap_or(a))
+        .filter(|a| {
+            let b = a.as_bytes();
+            b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
+        })
+        .collect()
+}
+
+/// Games in the Library waiting for the program their installer builds (TotK's totk.exe), found in
+/// `dir` (a folder the player picked) a few folders down: from now on Play starts it from there.
+/// Returns (game, folder, program) for each one found.
+pub fn attach_built(st: &App, dir: &Path) -> Vec<(String, PathBuf, PathBuf)> {
+    let waiting: Vec<(String, String)> = {
+        let l = st.lib.lock().unwrap();
+        l.installed
+            .values()
+            .filter(|g| !g.local && !g.exe.as_ref().map(|e| g.path.join(e).is_file()).unwrap_or(false))
+            .filter_map(|g| crate::boot::of(&st.dir, &g.id).and_then(|b| b.then_name()).map(|w| (g.id.clone(), w)))
+            .collect()
+    };
+    let mut out = vec![];
+    for (id, want) in waiting {
+        let mut stack = vec![(dir.to_path_buf(), 0usize)];
+        let mut hit: Option<PathBuf> = None;
+        while let Some((d, depth)) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let Ok(t) = e.file_type() else { continue };
+                let n = e.file_name().to_string_lossy().to_lowercase();
+                if t.is_dir() && depth < 3 && !n.starts_with('.') {
+                    stack.push((e.path(), depth + 1));
+                } else if t.is_file() && n == want {
+                    hit = Some(e.path());
+                }
+            }
+            if hit.is_some() {
+                break;
+            }
+        }
+        if let Some(p) = hit {
+            {
+                let mut l = st.lib.lock().unwrap();
+                if let Some(r) = l.installed.get_mut(&id) {
+                    r.exe = Some(p.clone());
+                    r.setup_done = true;
+                }
+            }
+            st.save();
+            let folder = p.parent().map(Path::to_path_buf).unwrap_or_default();
+            out.push((id, folder, p));
+        }
+    }
+    out
+}
+
+/// Where the player keeps games: their Recomp Library folders and the ROM folders they added.
+fn player_places(st: &App) -> Vec<PathBuf> {
+    let l = st.lib.lock().unwrap();
+    let s = &l.settings;
+    let mut v = vec![s.library_dir.clone()];
+    v.extend(s.library_dirs.iter().cloned());
+    v.extend(s.rom_dirs.iter().cloned());
+    v.into_iter().filter(|p| !p.as_os_str().is_empty()).collect()
+}
+
 /// After the setup: "done" (the game is there to play), "lost" (it finished, but the game wasn't
 /// found: the player picks its program) or "cancelled" (it didn't finish; the next Play opens it
 /// again).
-fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime) -> &'static str {
+fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said: &[String]) -> &'static str {
     let st = app.state::<App>();
     let Some(mut g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return "cancelled" };
     let os = crate::assets::os_now();
     let n = names(&g);
     let nr: Vec<&str> = n.iter().map(String::as_str).collect();
-    let usable = |g: &Installed| g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e)).unwrap_or(false);
+    let want = crate::boot::of(&st.dir, id).and_then(|b| b.then_start()).and_then(|t| t.file_name().map(|n| n.to_string_lossy().to_lowercase()));
+    let usable = |g: &Installed| {
+        g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e)).unwrap_or(false)
+            && want.as_ref().map(|w| g.exe.as_ref().and_then(|e| e.file_name()).map(|n| n.to_string_lossy().to_lowercase() == *w).unwrap_or(false)).unwrap_or(true)
+    };
     let installer = g.exe.as_ref().map(|e| e.is_absolute()).unwrap_or(true);
     if !usable(&g) {
         g.exe = install::find_exe(&g.path, os, &nr);
@@ -170,6 +362,33 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime) -> &'
             }
         }
     }
+    // An installer that builds the game in a folder the player picked, with no shortcut or entry in
+    // Windows' apps: the program it names is looked for where it may have gone.
+    if !usable(&g) {
+        if let Some(w) = want.as_deref() {
+            // First where the setup was told to put it, then the game's folder, the player's
+            // library and ROM folders.
+            let mut near: Vec<PathBuf> = Vec::new();
+            for a in said {
+                let p = PathBuf::from(a);
+                if p.is_dir() {
+                    near.push(p);
+                } else if let Some(d) = p.parent().filter(|d| d.is_dir()) {
+                    near.push(d.to_path_buf());
+                }
+            }
+            near.extend([Some(g.path.clone()), g.path.parent().map(Path::to_path_buf)].into_iter().flatten());
+            near.extend(player_places(&st));
+            if let Some(p) = find_built(w, since, &near) {
+                g.exe = Some(p);
+            }
+        }
+    }
+    // A program that isn't the one the game's profile names is a tool from the download, never
+    // the game: rather than start it, the player is asked to pick the game.
+    if want.is_some() && !usable(&g) {
+        g.exe = None;
+    }
     let found = usable(&g);
     let state = if found { "done" } else if code == Some(0) { "lost" } else { "cancelled" };
     {
@@ -182,6 +401,61 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime) -> &'
     }
     st.save();
     state
+}
+
+/// The program a game's installer builds (its profile's `then_start`, like `totk.exe`), made since
+/// `since`, wherever the player told the installer to put it: looked for under the game's folder,
+/// its library, the player's usual folders and the top of each drive. Time- and size-limited.
+pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<PathBuf> {
+    let want = file.to_lowercase();
+    let since = since.checked_sub(std::time::Duration::from_secs(120)).unwrap_or(since);
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(12);
+    let mut roots: Vec<(PathBuf, usize)> = near.iter().map(|p| (p.clone(), 4)).collect();
+    for q in crate::files::quick() {
+        roots.push((q.path, 3));
+    }
+    let drives = crate::files::drives();
+    // Program Files, which the drive-wide look skips: a couple of folders down.
+    for d in &drives {
+        for pf in ["Program Files", "Program Files (x86)"] {
+            roots.push((d.path.join(pf), 2));
+        }
+    }
+    for d in drives {
+        roots.push((d.path, 3));
+    }
+    let skip = ["windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information", "appdata", "node_modules", ".git"];
+    let mut seen = std::collections::HashSet::new();
+    let mut looked = 0usize;
+    let mut best: Option<(SystemTime, PathBuf)> = None;
+    for (root, depth) in roots {
+        let mut stack = vec![(root, 0usize)];
+        while let Some((dir, d)) = stack.pop() {
+            if std::time::Instant::now() > until || looked > 400_000 {
+                return best.map(|b| b.1);
+            }
+            let key = dir.to_string_lossy().to_lowercase();
+            if !seen.insert(key) {
+                continue;
+            }
+            for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                looked += 1;
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                let Ok(ft) = e.file_type() else { continue };
+                if ft.is_dir() {
+                    if d < depth && !skip.contains(&name.as_str()) && !name.starts_with('.') {
+                        stack.push((e.path(), d + 1));
+                    }
+                } else if name == want {
+                    let made = e.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                    if made >= since && best.as_ref().map(|b| made > b.0).unwrap_or(true) {
+                        best = Some((made, e.path()));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|b| b.1)
 }
 
 /// Name words that say nothing about which game it is.
@@ -248,6 +522,69 @@ ConvertTo-Json -InputObject @($o) -Compress"#;
 #[cfg(not(windows))]
 fn installed_elsewhere(_names: &[&str], _since: SystemTime, _ours: &Path, _then: Option<&Path>) -> Option<(PathBuf, String)> {
     None
+}
+
+/// The uninstaller Windows lists for a game an installer put in `dir` (its install folder holds
+/// the game's program): the command to run, as Windows keeps it.
+#[cfg(windows)]
+pub fn uninstaller_for(dir: &Path) -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const PS: &str = r#"$o = @()
+foreach ($k in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*') {
+  Get-ItemProperty $k -ErrorAction SilentlyContinue | Where-Object { $_.UninstallString } | ForEach-Object { $o += [pscustomobject]@{ p = [string]$_.InstallLocation; i = [string]$_.DisplayIcon; u = [string]$_.UninstallString } }
+}
+ConvertTo-Json -InputObject @($o) -Compress"#;
+    let file = std::env::temp_dir().join("recomplauncher-find-uninstall.ps1");
+    std::fs::write(&file, [&[0xEF, 0xBB, 0xBF][..], PS.as_bytes()].concat()).ok()?;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&file)
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()?;
+    let _ = std::fs::remove_file(&file);
+    let text = String::from_utf8_lossy(&out.stdout);
+    let list: Vec<Value> = serde_json::from_str(text.trim().trim_start_matches('\u{feff}')).ok()?;
+    pick_uninstaller(&list, dir)
+}
+
+#[cfg(not(windows))]
+pub fn uninstaller_for(_dir: &Path) -> Option<String> {
+    None
+}
+
+/// The entry whose install folder (or icon, or uninstaller) is the game's folder.
+fn pick_uninstaller(list: &[Value], dir: &Path) -> Option<String> {
+    let norm = |s: &str| s.trim().trim_matches('"').split(',').next().unwrap_or("").replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let want = norm(&dir.to_string_lossy());
+    if want.len() < 4 {
+        return None;
+    }
+    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    list.iter()
+        .find(|v| {
+            let loc = norm(&s(v, "p"));
+            let in_dir = |f: &str| {
+                let f = norm(f);
+                f.rsplit_once('\\').map(|(d, _)| d == want).unwrap_or(false)
+            };
+            (!loc.is_empty() && loc == want) || in_dir(&s(v, "i")) || in_dir(&s(v, "u"))
+        })
+        .map(|v| s(v, "u"))
+        .filter(|u| !u.trim().is_empty())
+}
+
+/// Starts a game's own uninstaller (what Windows lists for it); the player goes through its window.
+pub fn run_uninstaller(cmd: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // As Windows keeps it: a quoted program with its options, or MsiExec /X{...}.
+        std::process::Command::new("cmd").raw_arg(format!("/C \"{cmd}\"")).creation_flags(0x0800_0000).spawn()?;
+    }
+    #[cfg(not(windows))]
+    let _ = cmd;
+    Ok(())
 }
 
 /// The game among Windows' apps and shortcuts (see installed_elsewhere).
@@ -357,5 +694,17 @@ mod tests {
         assert_eq!(exe, game.join("dist/madden08.exe"));
         assert_eq!(args, "--render_target_path_d3d12=rov");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod place_tests {
+    use super::*;
+
+    #[test]
+    fn finds_the_folder_a_setup_was_told() {
+        let l = r#""C:\Downloads\TotK-Setup\python\python.exe" -m installer --base "D:\Dumps\TotK base.xci" --update D:\Dumps\upd.nsp --lang en --dest "E:\My Games\TOTK" --flag=F:\x"#;
+        assert_eq!(paths_in(l), vec!["D:\\Dumps\\TotK base.xci", "D:\\Dumps\\upd.nsp", "E:\\My Games\\TOTK", "F:\\x"]);
+        assert!(paths_in("pythonw.exe -m installer.gui").is_empty());
     }
 }

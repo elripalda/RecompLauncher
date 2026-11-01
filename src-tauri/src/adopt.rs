@@ -279,6 +279,13 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
     let p = PathBuf::from(&path);
     let os = crate::assets::os_now();
     let mut out = vec![];
+    // Games in the Library waiting for the program their own installer built (it put the game in a
+    // folder the launcher didn't know): found in the folder picked, they're connected to it.
+    let look = if p.is_dir() { p.clone() } else { p.parent().map(Path::to_path_buf).unwrap_or_default() };
+    for (id, folder, exe) in crate::own_setup::attach_built(&st, &look) {
+        let name = st.lib.lock().unwrap().installed.get(&id).map(|g| g.name.clone()).unwrap_or_default();
+        out.push(Found { id, name, path: folder, exe: exe.file_name().map(PathBuf::from), tag: String::new(), from: "linked".into(), have: true });
+    }
     let quiver = if is_quiver(&p) { Some(p.clone()) } else { p.parent().filter(|d| is_quiver(d)).map(Path::to_path_buf) };
     if let Some(root) = quiver {
         for (name, repo, path, tag, exe) in quiver_apps(&root) {
@@ -314,9 +321,10 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
                 let name = sd.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 let Some(exe) = install::find_exe(&sd, os, &[&name]) else { continue };
                 let stem = exe.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                if let Some(id) = guess(&cat, &read_repo(&sd), &[&name, &stem]) {
-                    many.push(Found { id, name, path: sd, exe: Some(exe), tag: String::new(), from: "folder".into(), have: false });
-                }
+                // Ones it can't name come too (id empty): the player says which game, or adds it anyway.
+                let id = guess(&cat, &read_repo(&sd), &[&name, &stem]).unwrap_or_default();
+                let rel = exe.strip_prefix(&sd).map(Path::to_path_buf).unwrap_or(exe);
+                many.push(Found { id, name, path: sd, exe: Some(rel), tag: String::new(), from: "folder".into(), have: false });
             }
             if !many.is_empty() {
                 let have: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
@@ -328,14 +336,22 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
         let stem = exe.as_ref().and_then(|e| e.file_stem()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let id = guess(&cat, &read_repo(&p), &[&folder, &stem]).unwrap_or_default();
         if exe.is_none() {
+            if !out.is_empty() {
+                return Ok(out);
+            }
             return Err(Error::Msg("There's no program in that folder.".into()));
         }
-        out.push(Found { id, name: folder, path: p, exe, tag: String::new(), from: "folder".into(), have: false });
+        if !out.iter().any(|f| f.path == p) {
+            out.push(Found { id, name: folder, path: p, exe, tag: String::new(), from: "folder".into(), have: false });
+        }
     } else {
         return Err(Error::Msg("That isn't there.".into()));
     }
     let have: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    let linked: Vec<PathBuf> = out.iter().filter(|f| f.from == "linked").map(|f| f.path.clone()).collect();
     mark(&mut out, &have);
+    // Connected just now: shown as in the Library, once.
+    out.retain(|f| f.from == "linked" || !linked.contains(&f.path));
     Ok(out)
 }
 
@@ -354,11 +370,18 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let os = crate::assets::os_now();
     let mut added = vec![];
+    // Ones the launcher doesn't know: added as the player's own games (they play, but don't update).
+    let mut unknown = vec![];
     {
         let mut l = st.lib.lock().unwrap();
         let libs = l.settings.all_libraries();
         for it in items {
-            let Some(entry) = catalog::app(&cat, &it.id) else { continue };
+            let Some(entry) = catalog::app(&cat, &it.id) else {
+                if !crate::library::shared_folder(&it.path, &libs) {
+                    unknown.push(it);
+                }
+                continue;
+            };
             if l.installed.get(&it.id).map(|g| !g.local).unwrap_or(false) || !it.path.is_dir() || crate::library::shared_folder(&it.path, &libs) {
                 continue;
             }
@@ -385,6 +408,15 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
         }
     }
     st.save();
+    for it in unknown {
+        let path = match &it.exe {
+            Some(e) if it.path.join(e).is_file() => it.path.join(e),
+            _ => it.path.clone(),
+        };
+        if let Ok(g) = crate::devtools::add_any(st.clone(), path.to_string_lossy().to_string()) {
+            added.push(g);
+        }
+    }
     Ok(added)
 }
 

@@ -157,6 +157,11 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("linux", "zip") => 8,
         _ => 4,
     };
+    // A game's server (for playing online) comes with some releases: the game itself comes first,
+    // and the server only when it's all there is.
+    if w.iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv")) {
+        s = (s - 60).max(1);
+    }
     s
 }
 
@@ -186,6 +191,16 @@ mod tests {
 
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: format!("https://x/{n}") }
+    }
+
+    #[test]
+    fn the_game_before_its_server() {
+        let r = [a("ttt2-server-0.1.7-windows-amd64.zip"), a("ttt2-0.1.7-windows-amd64.zip")];
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "ttt2-0.1.7-windows-amd64.zip");
+        let r2 = [a("ttt2-0.1.7-windows-amd64.zip"), a("ttt2-server-0.1.7-windows-amd64.zip")];
+        assert_eq!(pick(&r2, "windows", "x64", None).unwrap().name, "ttt2-0.1.7-windows-amd64.zip");
+        let only = [a("ttt2-server-0.1.7-windows-amd64.zip")];
+        assert!(pick(&only, "windows", "x64", None).is_some());
     }
 
     #[test]

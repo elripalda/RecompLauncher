@@ -148,7 +148,8 @@ pub fn toggle_overlay(app: &AppHandle) {
 }
 
 /// F12 and Ctrl+F12, only while a game runs, so they never get in the way otherwise.
-pub fn set_hotkeys(app: &AppHandle, on: bool) {
+/// `menu`: Ctrl+F12 opens the quick menu too (the player can turn the quick menu off).
+pub fn set_hotkeys(app: &AppHandle, on: bool, menu: bool) {
     use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
@@ -156,13 +157,16 @@ pub fn set_hotkeys(app: &AppHandle, on: bool) {
         return;
     }
     let shot = Shortcut::new(None, Code::F12);
-    let menu = Shortcut::new(Some(Modifiers::CONTROL), Code::F12);
+    let menu_key = Shortcut::new(Some(Modifiers::CONTROL), Code::F12);
     let _ = gs.on_shortcut(shot, |app, _, e| {
         if e.state() == ShortcutState::Pressed {
             take_screenshot(app);
         }
     });
-    let _ = gs.on_shortcut(menu, |app, _, e| {
+    if !menu {
+        return;
+    }
+    let _ = gs.on_shortcut(menu_key, |app, _, e| {
         if e.state() == ShortcutState::Pressed {
             toggle_overlay(app);
         }

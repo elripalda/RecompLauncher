@@ -111,6 +111,141 @@ pub struct GameCopy {
     /// used to recognise this game among the player's copies, only to check the one they pick.
     #[serde(skip)]
     pub generic: bool,
+    /// The game's own setup takes the copy (drag the ISO onto install.bat): the launcher asks for
+    /// it first and hands it to the setup, instead of placing it anywhere.
+    #[serde(skip)]
+    pub for_setup: bool,
+    /// What the folder the game reads must hold once the copy is there (`default.xex`, `Media`).
+    #[serde(skip)]
+    pub contains: Vec<String>,
+    /// A second file it needs beside the copy: the game's update (a title update package, say).
+    #[serde(default)]
+    pub update: Option<Extra>,
+}
+
+fn sha256_file(p: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut f = std::fs::File::open(p)?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(hex::encode(h.finalize()))
+}
+
+/// A file the game needs along with the player's copy, like its update, and where it goes.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Extra {
+    /// A folder inside the game's folder it goes in (`game/Content`).
+    #[serde(default)]
+    pub into: String,
+    /// Said when asking for it.
+    #[serde(default)]
+    pub label: String,
+    /// "file", "folder" or "file or folder".
+    #[serde(default)]
+    pub accepts: String,
+    /// The game plays without it.
+    #[serde(default)]
+    pub optional: bool,
+    /// The name it must have there (it's put in under this name).
+    #[serde(default)]
+    pub name: String,
+    /// The one known file: checked when it's picked.
+    #[serde(default)]
+    pub sha256: String,
+}
+
+impl Extra {
+    fn dir(&self, install: &Path) -> Option<PathBuf> {
+        let into = self.into.trim().replace('\\', "/");
+        let into = into.trim_matches('/');
+        if into.is_empty() || into.contains(':') || into.split('/').any(|c| c == "..") {
+            return None;
+        }
+        Some(if into == "." { install.to_path_buf() } else { install.join(into) })
+    }
+
+    pub fn wants_folder(&self) -> bool {
+        self.accepts.to_ascii_lowercase().contains("folder")
+    }
+
+    pub fn wants_file(&self) -> bool {
+        let a = self.accepts.to_ascii_lowercase();
+        a.is_empty() || a.contains("file")
+    }
+
+    /// Whether this is the file asked for. Err says why not.
+    pub fn check(&self, p: &Path) -> Result<(), String> {
+        if p.is_dir() {
+            if !self.wants_folder() {
+                return Err("It needs the update's file, not a folder.".into());
+            }
+            return Ok(());
+        }
+        if !p.is_file() {
+            return Err("That file isn't there anymore.".into());
+        }
+        if !self.wants_file() {
+            return Err("It needs the update's folder, not a file.".into());
+        }
+        let sha = self.sha256.trim().to_ascii_lowercase();
+        if !sha.is_empty() {
+            let got = sha256_file(p).map_err(|e| format!("Couldn't read it: {e}"))?;
+            if got != sha {
+                return Err("That isn't the update this recomp needs. Use the one its page names, unchanged.".into());
+            }
+            return Ok(());
+        }
+        let name = self.name.trim();
+        if !name.is_empty() && !p.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(name)).unwrap_or(false) {
+            return Err(format!("That isn't the update this recomp needs. Its file is named {name}."));
+        }
+        Ok(())
+    }
+
+    /// Already where the game reads it (put there by the player).
+    pub fn in_place(&self, install: &Path) -> Option<PathBuf> {
+        let dir = self.dir(install)?;
+        let name = self.name.trim();
+        if !name.is_empty() {
+            let p = dir.join(name);
+            return p.exists().then_some(p);
+        }
+        std::fs::read_dir(&dir).ok()?.flatten().next().map(|_| dir)
+    }
+
+    /// Puts it where the game reads it: a file as a hard link (or a copy on another drive), a
+    /// folder's contents the same way. What's already there stays.
+    pub fn place(&self, install: &Path, from: &Path) -> std::io::Result<()> {
+        let Some(dir) = self.dir(install) else { return Ok(()) };
+        if dir == from {
+            return Ok(());
+        }
+        std::fs::create_dir_all(&dir)?;
+        let items: Vec<PathBuf> = if from.is_dir() { std::fs::read_dir(from)?.flatten().map(|e| e.path()).collect() } else { vec![from.to_path_buf()] };
+        let single = !from.is_dir();
+        for f in items {
+            let Some(n) = f.file_name() else { continue };
+            let name = self.name.trim();
+            let to = if single && !name.is_empty() && !name.contains(['/', '\\']) { dir.join(name) } else { dir.join(n) };
+            if to.symlink_metadata().is_ok() {
+                continue;
+            }
+            if f.is_dir() {
+                link_dir(&f, &to)?;
+            } else if std::fs::hard_link(&f, &to).is_err() {
+                std::fs::copy(&f, &to)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn iso() -> String {
@@ -132,6 +267,12 @@ pub struct Check {
     /// An N64 ROM's region: the country letters it may have (`E` for USA).
     #[serde(default)]
     pub n64_region: String,
+    /// An N64 ROM's game: the two letters of its cartridge ID (`GE` for GoldenEye 007).
+    #[serde(default)]
+    pub n64_id: String,
+    /// An N64 ROM's revision (1 for a v1.1 release), when the recomp reads one revision only.
+    #[serde(default)]
+    pub n64_rev: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -248,9 +389,18 @@ pub fn from_boot(b: &Value) -> Option<Profile> {
         return None;
     }
     let start = s(b, "start");
+    // `files.how: "env"`: the copy reaches the game through an environment variable it reads
+    // (`files.env`, e.g. STRIKERS_DATA), a disc image or a folder alike.
+    let mut env = BTreeMap::new();
+    if let Some(f) = b.get("files").filter(|f| s(f, "how") == "env") {
+        let name = s(f, "env");
+        if env_name_ok(&name) {
+            env.insert(name, "{game}".to_string());
+        }
+    }
     Some(Profile {
         format: 1,
-        start: copy.as_ref().map(|(_, args)| Start { program: vec![start], args: args.clone(), env: BTreeMap::new() }),
+        start: copy.as_ref().map(|(_, args)| Start { program: vec![start], args: args.clone(), env: env.clone() }),
         game: copy.map(|(g, _)| g),
         config,
         settings,
@@ -293,7 +443,7 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
     let f = b.get("files")?;
     let how = s(f, "how");
     let start = s(b, "start");
-    if start.is_empty() || !matches!(how.as_str(), "flag" | "folder") {
+    if start.is_empty() || !matches!(how.as_str(), "flag" | "folder" | "setup" | "env") {
         return None;
     }
     let flag = s(f, "flag");
@@ -303,8 +453,14 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
         return None;
     }
     let accepts = s(f, "accepts").to_ascii_lowercase();
+    let contains_early: Vec<String> = f.get("contains").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_ascii_lowercase).collect()).unwrap_or_default();
     let extract = match s(f, "extract").as_str() {
         x @ ("xdvdfs" | "iso9660") => x.to_string(),
+        // A recomp that reads the disc's files from a folder and takes the disc image too, without
+        // saying how to unpack it: an Xbox or Xbox 360 disc (it has default.xbe or default.xex) is
+        // unpacked like one, so the folder ends up with the files the game reads, not the image.
+        _ if how == "folder" && accepts.contains("iso") && accepts.contains("folder") && contains_early.iter().any(|c| c == "default.xbe" || c == "default.xex") => "xdvdfs".to_string(),
+        _ if how == "folder" && accepts.contains("iso") && accepts.contains("folder") && contains_early.iter().any(|c| c == "system.cnf") => "iso9660".to_string(),
         _ => String::new(),
     };
     let kind = if !extract.is_empty() || (accepts.contains("iso") && accepts.contains("folder")) {
@@ -323,6 +479,15 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
     let what = s(f, "what");
     // A disc image the game reads as it is: checked to be one it can read when it's picked.
     let image_file = if s(f, "check_image") == "xdvdfs" && kind == "iso" { "default.xex".to_string() } else { String::new() };
+    // The game's update, when it needs one beside the copy.
+    let update = f.get("update").filter(|u| u.is_object()).map(|u| Extra {
+        into: s(u, "folder"),
+        label: { let w = s(u, "what"); if w.is_empty() || w.ends_with('.') { w } else { format!("{w}.") } },
+        accepts: s(u, "accepts"),
+        optional: u.get("optional").and_then(Value::as_bool).unwrap_or(false),
+        name: s(u, "name"),
+        sha256: s(u, "sha256"),
+    }).filter(|x| x.dir(Path::new("/x")).is_some() && !x.label.is_empty() && !x.name.contains(['/', '\\']));
     let mut args: Vec<String> = crate::split_args(&s(b, "args"));
     if how == "flag" {
         if !flag.is_empty() {
@@ -340,11 +505,16 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
                 iso9660: if extract == "iso9660" { contains.first().cloned().unwrap_or_default() } else { String::new() },
                 file: if kind == "iso" { String::new() } else { check_file },
                 n64_region: s(f, "region").to_ascii_uppercase(),
+                n64_id: s(f, "n64_id").to_ascii_uppercase(),
+                n64_rev: f.get("n64_rev").and_then(Value::as_u64).map(|v| v as u8),
             },
             into: if how == "folder" { into } else { String::new() },
             name,
             extract,
             generic: true,
+            for_setup: how == "setup",
+            contains: if how == "folder" { contains.clone() } else { vec![] },
+            update,
             ..Default::default()
         },
         args,
@@ -408,6 +578,25 @@ pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
 }
 
 /// The first place that applies.
+/// A settings file that isn't where the profile says, found beside it: the same name in other
+/// letter case (Linux tells them apart), or the one `*.cfg.json` a new version of the game writes
+/// under another name.
+fn near_config(path: &Path) -> Option<PathBuf> {
+    let dir = path.parent()?;
+    let want = path.file_name()?.to_string_lossy().to_lowercase();
+    let entries: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.is_file()).collect();
+    if let Some(p) = entries.iter().find(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase() == want).unwrap_or(false)) {
+        return Some(p.clone());
+    }
+    if want.ends_with(".cfg.json") {
+        let cfgs: Vec<&PathBuf> = entries.iter().filter(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase().ends_with(".cfg.json")).unwrap_or(false)).collect();
+        if cfgs.len() == 1 {
+            return Some(cfgs[0].clone());
+        }
+    }
+    None
+}
+
 pub fn place(list: &[Place], install: &Path) -> Option<PathBuf> {
     list.iter().find(|p| p.when.is_empty() || Path::new(&fill(&p.when, install, None)).exists()).map(|p| PathBuf::from(fill(&p.path, install, None)))
 }
@@ -581,7 +770,9 @@ pub fn path_value(format: &str, p: &Path) -> String {
 impl Profile {
     pub fn config_file(&self, id: &str, install: &Path) -> Option<File> {
         let c = self.config.iter().find(|c| c.id == id)?;
-        Some(File::open(place(&c.file, install)?, &c.format))
+        let path = place(&c.file, install)?;
+        let path = if path.exists() { path } else { near_config(&path).unwrap_or(path) };
+        Some(File::open(path, &c.format))
     }
 
     /// Before the game starts: its settings files get what it needs and where the player's copy is.
@@ -632,21 +823,66 @@ impl Profile {
             return Ok(());
         }
         std::fs::create_dir_all(&dir)?;
-        let items: Vec<PathBuf> = if copy.is_dir() { std::fs::read_dir(copy)?.flatten().map(|e| e.path()).collect() } else { vec![copy.to_path_buf()] };
+        let mut items: Vec<PathBuf> = if copy.is_dir() { std::fs::read_dir(copy)?.flatten().map(|e| e.path()).collect() } else { vec![copy.to_path_buf()] };
+        // A .cue sheet is only the table of contents: the .bin tracks it names come along too.
+        if !copy.is_dir() {
+            items.extend(cue_tracks(copy));
+        }
         let single = !copy.is_dir();
+        let first = items.first().cloned();
         for from in items {
             let Some(name) = from.file_name() else { continue };
-            let to = if single && !g.name.trim().is_empty() && !g.name.contains(['/', '\\']) { dir.join(g.name.trim()) } else { dir.join(name) };
+            let to = if single && Some(&from) == first.as_ref() && !g.name.trim().is_empty() && !g.name.contains(['/', '\\']) { dir.join(g.name.trim()) } else { dir.join(name) };
+            // A ROM put there in the wrong byte order by an older version: done again.
+            if single && to.is_file() {
+                let head = std::fs::File::open(&to).ok().and_then(|mut f| read_at(&mut f, 0, 4));
+                if head.as_deref().and_then(n64_order).map(|o| o != 0).unwrap_or(false) && to.extension().map(|e| e.eq_ignore_ascii_case("z64")).unwrap_or(false) {
+                    let _ = std::fs::remove_file(&to);
+                }
+            }
             if to.symlink_metadata().is_ok() {
                 continue;
             }
             if from.is_dir() {
                 link_dir(&from, &to)?;
+            } else if place_z64(&from, &to)? {
+                continue;
             } else if std::fs::hard_link(&from, &to).is_err() {
                 std::fs::copy(&from, &to)?;
             }
         }
         Ok(())
+    }
+
+    /// After `place`: what the game's folder is still missing of what it must hold (empty: all there).
+    pub fn missing_after_place(&self, install: &Path) -> Vec<String> {
+        let Some(g) = &self.game else { return vec![] };
+        let into = g.into.trim().trim_matches(['/', '\\']);
+        if into.is_empty() || into.contains("..") || g.contains.is_empty() {
+            return vec![];
+        }
+        let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
+        let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
+        g.contains
+            .iter()
+            .filter(|c| !c.contains(['*', '/', '\\']))
+            .filter(|c| !names.contains(&c.to_lowercase()))
+            .cloned()
+            .collect()
+    }
+
+    /// The game's files already where it reads them (put there by the player): the folder they're
+    /// in. Then no copy has to be picked.
+    pub fn already_in_place(&self, install: &Path) -> Option<PathBuf> {
+        let g = self.game.as_ref()?;
+        let into = g.into.trim().trim_matches(['/', '\\']);
+        if into.is_empty() || into.contains("..") || !g.contains.iter().any(|c| !c.contains(['*', '/', '\\'])) {
+            return None;
+        }
+        if !self.missing_after_place(install).is_empty() {
+            return None;
+        }
+        Some(if into == "." { install.to_path_buf() } else { install.join(into) })
     }
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
@@ -903,36 +1139,121 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
             "That disc image isn't the game this recomp reads.".into()
         });
     }
-    if !g.check.n64_region.is_empty() {
-        if let Some(c) = n64_country(p) {
-            if !g.check.n64_region.contains(c) {
+    if !g.check.n64_region.is_empty() || !g.check.n64_id.is_empty() || g.check.n64_rev.is_some() {
+        if let Some(h) = n64_header(p) {
+            if !g.check.n64_id.is_empty() && !h[0x3C..0x3E].eq_ignore_ascii_case(g.check.n64_id.as_bytes()) {
+                return Err("That ROM is a different game.".into());
+            }
+            let c = h[0x3E] as char;
+            if !g.check.n64_region.is_empty() && c.is_ascii_uppercase() && !g.check.n64_region.contains(c) {
                 return Err(if g.check.n64_region == "E" {
                     "That ROM isn't the USA version, which this recomp needs.".into()
                 } else {
                     "That ROM is from a region this recomp doesn't read.".into()
                 });
             }
+            if let Some(rev) = g.check.n64_rev {
+                if h[0x3F] != rev {
+                    return Err("That ROM is a different version (revision) of the game than this recomp reads.".into());
+                }
+            }
         }
     }
     Ok(())
 }
 
-/// An N64 ROM's country letter (byte 0x3E), in any of the three byte orders ROMs come in.
-fn n64_country(path: &Path) -> Option<char> {
+/// The byte order an N64 ROM is in: 0 for .z64 (as the console reads it), 2 for .v64 (every two
+/// bytes swapped), 4 for .n64 (every four bytes reversed). None: not an N64 ROM.
+fn n64_order(first: &[u8]) -> Option<u8> {
+    match first.get(..4)? {
+        [0x80, 0x37, 0x12, 0x40] => Some(0),
+        [0x37, 0x80, 0x40, 0x12] => Some(2),
+        [0x40, 0x12, 0x37, 0x80] => Some(4),
+        _ => None,
+    }
+}
+
+/// Bytes from any N64 ROM in .z64 order.
+pub fn n64_to_z64(b: &mut [u8], order: u8) {
+    match order {
+        2 => b.chunks_exact_mut(2).for_each(|c| c.swap(0, 1)),
+        4 => b.chunks_exact_mut(4).for_each(|c| c.reverse()),
+        _ => {}
+    }
+}
+
+/// The track files a .cue sheet names (`FILE "Game (Track 1).bin" BINARY`), when they're next to it.
+pub fn cue_tracks(cue: &Path) -> Vec<PathBuf> {
+    if !cue.extension().map(|e| e.eq_ignore_ascii_case("cue")).unwrap_or(false) {
+        return vec![];
+    }
+    let Some(dir) = cue.parent() else { return vec![] };
+    let text = std::fs::read(cue).map(|b| String::from_utf8_lossy(&b[..b.len().min(64 * 1024)]).to_string()).unwrap_or_default();
+    text.lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            if !l.to_ascii_uppercase().starts_with("FILE ") {
+                return None;
+            }
+            let rest = l[5..].trim();
+            let name = if let Some(r) = rest.strip_prefix('"') { r.split('"').next()? } else { rest.split_whitespace().next()? };
+            let p = Path::new(name);
+            // Only a plain file name next to the sheet, never a path out of its folder.
+            if p.components().count() != 1 || name.contains("..") {
+                return None;
+            }
+            Some(dir.join(p)).filter(|f| f.is_file())
+        })
+        .collect()
+}
+
+/// An N64 ROM's first 64 bytes (its header), in .z64 order whatever order the file is in.
+fn n64_header(path: &Path) -> Option<Vec<u8>> {
     let mut f = std::fs::File::open(path).ok()?;
-    let h = read_at(&mut f, 0, 64)?;
-    let at = match &h[..4] {
-        [0x80, 0x37, 0x12, 0x40] => 0x3E, // .z64, as the console reads it
-        [0x37, 0x80, 0x40, 0x12] => 0x3F, // .v64, every two bytes swapped
-        [0x40, 0x12, 0x37, 0x80] => 0x3D, // .n64, every four bytes reversed
-        _ => return None,
-    };
-    let c = h[at] as char;
+    let mut h = read_at(&mut f, 0, 64)?;
+    let order = n64_order(&h)?;
+    n64_to_z64(&mut h, order);
+    Some(h)
+}
+
+/// An N64 ROM's country letter (byte 0x3E), in any of the three byte orders ROMs come in.
+#[allow(dead_code)]
+fn n64_country(path: &Path) -> Option<char> {
+    let c = n64_header(path)?[0x3E] as char;
     c.is_ascii_uppercase().then_some(c)
+}
+
+/// A .v64 or .n64 ROM placed under a .z64 name: written out in .z64 order (a link would hand the
+/// game bytes in the wrong order: "bad N64 magic"). True when it did that.
+fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
+    let wants_z64 = to.extension().map(|e| e.eq_ignore_ascii_case("z64")).unwrap_or(false);
+    if !wants_z64 {
+        return Ok(false);
+    }
+    let mut f = std::fs::File::open(from)?;
+    let Some(head) = read_at(&mut f, 0, 4) else { return Ok(false) };
+    let Some(order) = n64_order(&head).filter(|o| *o != 0) else { return Ok(false) };
+    let mut b = std::fs::read(from)?;
+    n64_to_z64(&mut b, order);
+    std::fs::write(to, b)?;
+    Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn settings_file_under_another_name() {
+        let d = std::env::temp_dir().join(format!("rl-near-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert!(super::near_config(&d.join("starship.cfg.json")).is_none());
+        std::fs::write(d.join("Starship2.cfg.json"), "{}").unwrap();
+        assert_eq!(super::near_config(&d.join("starship.cfg.json")), Some(d.join("Starship2.cfg.json")));
+        std::fs::write(d.join("PORT_SETTINGS.INI"), "").unwrap();
+        assert_eq!(super::near_config(&d.join("port_settings.ini")), Some(d.join("PORT_SETTINGS.INI")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     use super::*;
 
     fn tmp(n: &str) -> PathBuf {
@@ -960,6 +1281,9 @@ mod tests {
         let b: Value = serde_json::from_str(r#"{"start":"SCDA.exe","files":{"how":"folder","folder":"assets","accepts":"folder or iso","contains":["default.xbe","Media"]}}"#).unwrap();
         let p = from_boot(&b).unwrap();
         assert_eq!(p.game.as_ref().unwrap().kind, "iso_or_folder");
+        // An Xbox disc image picked for it is unpacked into the folder, and checked to be this game.
+        assert_eq!(p.game.as_ref().unwrap().extract, "xdvdfs");
+        assert_eq!(p.game.as_ref().unwrap().check.xdvdfs, "default.xbe");
         p.place(&install, Some(&copy)).unwrap();
         assert!(install.join("assets/default.xbe").is_file());
         assert!(install.join("assets/Media").is_dir());
@@ -1094,6 +1418,57 @@ mod tests {
         let iso = d.join("bad.iso");
         std::fs::write(&iso, vec![0u8; 100_000]).unwrap();
         assert!(check_copy(&g, &iso).unwrap_err().starts_with("That disc image can't be read"));
+    }
+
+    #[test]
+    fn cue_brings_its_tracks() {
+        let d = tmp("cue");
+        std::fs::write(d.join("TS (USA).cue"), "FILE \"TS (USA).bin\" BINARY\n  TRACK 01 MODE2/2352\nFILE \"../evil.bin\" BINARY\n").unwrap();
+        std::fs::write(d.join("TS (USA).bin"), b"disc").unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"ts.exe","files":{"how":"folder","folder":".","accepts":"iso"}}"#).unwrap();
+        let p = from_boot(&b).unwrap();
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        p.place(&install, Some(&d.join("TS (USA).cue"))).unwrap();
+        assert!(install.join("TS (USA).cue").is_file() && install.join("TS (USA).bin").is_file());
+    }
+
+    #[test]
+    fn rom_game_version_and_byte_order() {
+        let d = tmp("n64id");
+        let mut h = vec![0u8; 128];
+        h[..4].copy_from_slice(&[0x80, 0x37, 0x12, 0x40]);
+        h[0x3B] = b'N';
+        h[0x3C] = b'P';
+        h[0x3D] = b'D';
+        h[0x3E] = b'E';
+        h[0x3F] = 0;
+        h[100] = 0xAB;
+        let rom = d.join("pd.z64");
+        std::fs::write(&rom, &h).unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"pd.exe","files":{"how":"folder","folder":"data","accepts":"file","contains":["pd.ntsc-final.z64"],"region":"E","n64_id":"PD","n64_rev":1}}"#).unwrap();
+        let p = from_boot(&b).unwrap();
+        let g = p.game.clone().unwrap();
+        assert!(check_copy(&g, &rom).unwrap_err().contains("different version"));
+        h[0x3F] = 1;
+        std::fs::write(&rom, &h).unwrap();
+        assert!(check_copy(&g, &rom).is_ok());
+        h[0x3C] = b'G';
+        h[0x3D] = b'E';
+        std::fs::write(&rom, &h).unwrap();
+        assert_eq!(check_copy(&g, &rom).unwrap_err(), "That ROM is a different game.");
+        // A .v64 placed as .z64 comes out in .z64 order.
+        h[0x3C] = b'P';
+        h[0x3D] = b'D';
+        let mut v = h.clone();
+        v.chunks_mut(2).for_each(|c| c.swap(0, 1));
+        let vrom = d.join("pd.v64");
+        std::fs::write(&vrom, &v).unwrap();
+        assert!(check_copy(&g, &vrom).is_ok());
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        p.place(&install, Some(&vrom)).unwrap();
+        assert_eq!(std::fs::read(install.join("data/pd.ntsc-final.z64")).unwrap(), h);
     }
 
     #[test]

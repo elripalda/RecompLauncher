@@ -1,6 +1,7 @@
 //! Looking after installed games: moving them between drives, backing up what's the player's
 //! (saves, settings, mods) and putting it back, and checking the PC has what recomps need.
 
+use std::collections::HashSet;
 use crate::Error;
 use serde::Serialize;
 use std::fs;
@@ -97,36 +98,71 @@ const PROGRAM_ENDS: [&str; 9] = [".exe", ".dll", ".so", ".appimage", ".pdb", ".m
 /// mods. `release` is what the last install put there (empty for games installed before the launcher
 /// kept that list: then anything that isn't a program). Never a file over 50 MB.
 pub fn player_files(dir: &Path, release: &[PathBuf]) -> Vec<PathBuf> {
+    player_files_within(dir, release).unwrap_or_default()
+}
+
+/// The player asked to skip the backup that's being made (the update goes on without it).
+pub static SKIP_BACKUP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Folders that hold a game's data (a disc or console dump copied in), never saves or settings.
+const DATA_DIRS: [&str; 14] = [
+    "ps3_game", "usrdir", "sce_sys", "sce_module", "ps4_game", "app0", "romfs", "exefs", "shadercache", "shader_cache", "cache", "logs", "crashdumps", ".backups",
+];
+/// Bigger than this, a single file isn't a save or a setting.
+const PLAYER_FILE_MAX: u64 = 16 * 1024 * 1024;
+/// More than this altogether is game data, not the player's files: no backup then.
+const PLAYER_TOTAL_MAX: u64 = 512 * 1024 * 1024;
+const PLAYER_COUNT_MAX: usize = 8_000;
+
+/// None when what's there is too much to be the player's files (a dump unpacked into the game's
+/// folder), took too long to look through, or the player skipped it.
+fn player_files_within(dir: &Path, release: &[PathBuf]) -> Option<Vec<PathBuf>> {
+    use std::sync::atomic::Ordering;
+    let release: HashSet<&PathBuf> = release.iter().collect();
+    let start = std::time::Instant::now();
     let mut out = vec![];
+    let mut total = 0u64;
+    let mut seen = 0usize;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+            seen += 1;
+            if seen % 256 == 0 && (start.elapsed().as_secs() > 20 || SKIP_BACKUP.load(Ordering::Relaxed)) {
+                return None;
+            }
+            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
+                continue;
+            }
             let p = e.path();
             let Ok(m) = e.metadata() else { continue };
             if m.is_dir() {
-                stack.push(p);
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                if !DATA_DIRS.contains(&name.as_str()) {
+                    stack.push(p);
+                }
                 continue;
             }
             let Ok(rel) = p.strip_prefix(dir) else { continue };
             let rel = rel.to_path_buf();
-            if !release.is_empty() {
-                // Saves, settings and mods, not the player's own game files (a disc's worth of
-                // data copied in): those don't change with an update and would make every backup
-                // gigabytes.
-                if !release.contains(&rel) && m.len() <= 50 * 1024 * 1024 {
-                    out.push(rel);
-                }
-            } else {
-                let n = rel.to_string_lossy().to_lowercase();
-                if !PROGRAM_ENDS.iter().any(|e| n.ends_with(e)) && m.len() <= 50 * 1024 * 1024 {
-                    out.push(rel);
+            let n = rel.to_string_lossy().to_lowercase();
+            // Saves, settings and mods, not the player's own game files (a disc's worth of data
+            // copied in): those don't change with an update and would make every backup gigabytes.
+            let mine = if release.is_empty() { !PROGRAM_ENDS.iter().any(|e| n.ends_with(e)) } else { !release.contains(&rel) };
+            if mine && m.len() <= PLAYER_FILE_MAX && !DATA_ENDS.iter().any(|e| n.ends_with(e)) {
+                total += m.len();
+                out.push(rel);
+                if total > PLAYER_TOTAL_MAX || out.len() > PLAYER_COUNT_MAX {
+                    return None;
                 }
             }
         }
     }
     out.sort();
-    out
+    Some(out)
 }
+
+/// Game data and disc images: never the player's files.
+const DATA_ENDS: [&str; 16] = [".iso", ".bin", ".cue", ".chd", ".rvz", ".wbfs", ".xex", ".xbe", ".sdat", ".edat", ".sprx", ".self", ".pkg", ".psarc", ".z64", ".log"];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Backup {
@@ -140,7 +176,8 @@ pub struct Backup {
 /// Zip the player's files into `<backups>/<when>.zip`, keeping the newest `keep`. None when there's
 /// nothing of theirs to keep.
 pub fn backup(dir: &Path, release: &[PathBuf], backups: &Path, keep: usize) -> Result<Option<Backup>, Error> {
-    let files = player_files(dir, release);
+    SKIP_BACKUP.store(false, std::sync::atomic::Ordering::Relaxed);
+    let Some(files) = player_files_within(dir, release) else { return Ok(None) };
     if files.is_empty() {
         return Ok(None);
     }
@@ -151,6 +188,11 @@ pub fn backup(dir: &Path, release: &[PathBuf], backups: &Path, keep: usize) -> R
         let mut z = zip::ZipWriter::new(fs::File::create(&file)?);
         let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         for rel in &files {
+            if SKIP_BACKUP.load(std::sync::atomic::Ordering::Relaxed) {
+                drop(z);
+                let _ = fs::remove_file(&file);
+                return Ok(None);
+            }
             let name = rel.to_string_lossy().replace('\\', "/");
             z.start_file(name, o).map_err(|e| Error::Msg(e.to_string()))?;
             let mut f = fs::File::open(dir.join(rel))?;
@@ -212,6 +254,10 @@ pub struct PcCheck {
     /// Microsoft Visual C++ runtime (2015 to 2022, x64): almost every Windows recomp needs it.
     pub vcredist: Option<bool>,
     pub vulkan: Option<bool>,
+    /// vkBasalt, for looks on Linux.
+    pub vkbasalt: Option<bool>,
+    /// On Linux, what plays Windows recomps (a Proton's name, umu-run or Wine); empty when nothing does.
+    pub proton: Option<String>,
     pub avx: bool,
     pub avx2: bool,
     pub cores: usize,
@@ -242,6 +288,8 @@ pub fn pc_check() -> PcCheck {
     #[cfg(target_os = "linux")]
     {
         c.vulkan = Some(["/usr/lib/x86_64-linux-gnu/libvulkan.so.1", "/usr/lib/libvulkan.so.1", "/usr/lib64/libvulkan.so.1"].iter().any(|p| Path::new(p).exists()));
+        c.vkbasalt = Some(crate::looks::vkbasalt_installed());
+        c.proton = Some(crate::proton::runner().map(|r| r.name()).unwrap_or_default());
     }
     c
 }
@@ -307,4 +355,45 @@ mod tests {
         copy_tree(&d.join("b/game"), &d.join("c/game"), &mut done, 5, &|_, _| {}).unwrap();
         assert_eq!(done, 5);
     }
+}
+
+/// For a game whose own setup works from a clone of its repo: clone it (shallow) and put it in
+/// the game's folder around the release's files, which stay as they are. A folder that's already
+/// a clone is brought up to date instead.
+pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> {
+    let git = |args: &[&std::ffi::OsStr]| -> io::Result<std::process::Output> {
+        let mut c = std::process::Command::new("git");
+        crate::sysenv::clean_std(&mut c);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000);
+        }
+        c.args(args).env("GIT_TERMINAL_PROMPT", "0").output()
+    };
+    let no_git = || Error::Msg("This game builds itself from its project files, which need Git. Install Git for Windows from git-scm.com, then press Install again.".into());
+    if into.join(".git").exists() {
+        let _ = git(&["-C".as_ref(), into.as_os_str(), "pull".as_ref(), "--ff-only".as_ref()]);
+        return Ok(());
+    }
+    let _ = fs::remove_dir_all(scratch);
+    if let Some(p) = scratch.parent() {
+        fs::create_dir_all(p)?;
+    }
+    let url = format!("https://github.com/{repo}.git");
+    let out = git(&["clone".as_ref(), "--depth".as_ref(), "1".as_ref(), url.as_ref(), scratch.as_os_str()]).map_err(|e| if e.kind() == io::ErrorKind::NotFound { no_git() } else { Error::Io(e) })?;
+    if !out.status.success() {
+        let _ = fs::remove_dir_all(scratch);
+        let why = String::from_utf8_lossy(&out.stderr).lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("").to_string();
+        return Err(Error::Msg(format!("Couldn't get its project files from GitHub. {why}")));
+    }
+    fs::create_dir_all(into)?;
+    for e in fs::read_dir(scratch)?.flatten() {
+        let to = into.join(e.file_name());
+        if !to.exists() {
+            fs::rename(e.path(), &to)?;
+        }
+    }
+    let _ = fs::remove_dir_all(scratch);
+    Ok(())
 }

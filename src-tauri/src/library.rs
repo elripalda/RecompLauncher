@@ -49,6 +49,12 @@ pub struct Installed {
     /// The player's copy of the game (disc image or folder), for recomps the launcher sets up.
     #[serde(default)]
     pub game_copy: Option<PathBuf>,
+    /// The game's update the player picked, for recomps that need one beside their copy.
+    #[serde(default)]
+    pub update_copy: Option<PathBuf>,
+    /// A Windows build, started through Proton on Linux.
+    #[serde(default)]
+    pub proton: bool,
     /// Settings passed on the command line: setting id -> choice.
     #[serde(default)]
     pub picks: BTreeMap<String, usize>,
@@ -75,6 +81,12 @@ pub struct Installed {
     /// whose developer or catalog doesn't say.
     #[serde(default)]
     pub found_saves: Vec<String>,
+    /// Where the player says the game saves (Saves, Change): ahead of everything else.
+    #[serde(default)]
+    pub save_place: Option<String>,
+    /// A picture the player picked for its cover (a copy in the launcher's covers folder).
+    #[serde(default)]
+    pub cover_file: Option<PathBuf>,
     /// A program that has to run once before the game: the release's own installer, or a
     /// first-time setup beside the game. Relative to `path`.
     #[serde(default)]
@@ -145,6 +157,9 @@ pub struct Settings {
     /// Closing the window leaves the launcher running by the clock.
     #[serde(default = "yes")]
     pub close_to_tray: bool,
+    /// On Linux: recomps with only a Windows version install that and play through Proton.
+    #[serde(default)]
+    pub proton: bool,
     /// The "still running by the clock" notification has shown once.
     #[serde(default)]
     pub tray_told: bool,
@@ -154,6 +169,17 @@ pub struct Settings {
     /// Anonymous usage stats for recomplauncher.com's dashboard (ping.rs).
     #[serde(default = "yes")]
     pub share_stats: bool,
+    /// The quick menu over games (holding View, Ctrl+F12). Off: the launcher leaves controllers
+    /// and the keyboard alone while a game runs.
+    #[serde(default = "yes")]
+    pub quick_menu: bool,
+    /// Minimize the launcher while a game runs. Not set: on for handhelds, off otherwise.
+    #[serde(default)]
+    pub minimize_playing: Option<bool>,
+    /// Still pictures instead of moving ones, and no catalog refresh during games. Not set: on for
+    /// handhelds, off otherwise.
+    #[serde(default)]
+    pub lighter: Option<bool>,
 }
 
 fn yes() -> bool {
@@ -184,6 +210,7 @@ impl Default for Settings {
             start_in_tv: false,
             setup_done: false,
             close_to_tray: true,
+            proton: false,
             tray_told: false,
             share_usage: true,
             share_stats: true,
@@ -193,6 +220,9 @@ impl Default for Settings {
             sounds: true,
             menu_tips: 0,
             discord: true,
+            quick_menu: true,
+            minimize_playing: None,
+            lighter: None,
         }
     }
 }

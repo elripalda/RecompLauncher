@@ -1,8 +1,9 @@
 //! Controllers: Xbox (and anything else Windows sees as an Xbox pad) through XInput, PlayStation
-//! controllers (DualSense, DualSense Edge, DualShock 4) read directly over USB or Bluetooth.
+//! controllers (DualSense, DualSense Edge, DualShock 4) and the Switch Pro Controller read directly
+//! over USB or Bluetooth. On Linux everything goes through gilrs (evdev, with SDL's mappings).
 //! Both are read even while a game has focus, so the in-game combos work:
 //! View + RB (Create + R1) takes a screenshot, holding View (Create) opens the quick menu. Otherwise buttons go to the launcher's window as `pad` events:
-//! {"b": a | b | x | y | lb | rb | view | menu | guide | up | down | left | right, "kind": xbox | ps}.
+//! {"b": a | b | x | y | lb | rb | view | menu | guide | up | down | left | right, "kind": xbox | ps | nintendo}.
 
 use crate::{ingame, App};
 use serde::Serialize;
@@ -39,11 +40,13 @@ pub struct SonyState {
     pub ly: u8,
 }
 
-/// Read one input report. `dualsense` tells the two layouts apart over USB.
-pub fn parse_sony(r: &[u8], dualsense: bool) -> Option<SonyState> {
+/// Read one input report. `dualsense` tells the two layouts apart over USB; `bt` is a controller
+/// on Bluetooth. Windows pads every Bluetooth read to the longest report (78 bytes), so a DualSense's
+/// short Bluetooth report 0x01 comes in as long as a USB one and only the connection tells them apart.
+pub fn parse_sony(r: &[u8], dualsense: bool, bt: bool) -> Option<SonyState> {
     // Where the first button byte is, for each kind of report.
     let (sticks, b0) = match (r.first()?, r.len()) {
-        (0x01, n) if dualsense && n >= 11 && n > 20 => (1, 8), // DualSense over USB
+        (0x01, n) if dualsense && !bt && (21..=64).contains(&n) => (1, 8), // DualSense over USB
         (0x31, n) if n >= 12 => (2, 9),                       // DualSense over Bluetooth
         (0x11, n) if n >= 10 => (3, 7),                       // DualShock 4 over Bluetooth
         (0x01, n) if n >= 8 => (1, 5),                        // DualShock 4 over USB, or a DualSense's short Bluetooth report
@@ -78,6 +81,69 @@ pub fn parse_sony(r: &[u8], dualsense: bool) -> Option<SonyState> {
     Some(SonyState { held, lx: *r.get(sticks)?, ly: *r.get(sticks + 1)? })
 }
 
+// ---------- Nintendo Switch Pro Controller (and pads that act like one, like 8BitDo's in Switch mode) ----------
+
+pub const NINTENDO: u16 = 0x057E;
+pub const SWITCH_PRO: u16 = 0x2009;
+
+/// One Switch Pro Controller input report: the full one (0x30) or the simple one it sends over
+/// Bluetooth before anything asks for more (0x3F, buttons and d-pad only). Buttons go by what's
+/// printed on them, so A is the one on the right.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn parse_switch(r: &[u8]) -> Option<SonyState> {
+    let mut held = vec![];
+    match *r.first()? {
+        0x30 | 0x21 if r.len() >= 12 => {
+            let (right, mid, left) = (r[3], r[4], r[5]);
+            for (bit, name) in [(0x08, "a"), (0x04, "b"), (0x02, "x"), (0x01, "y"), (0x40, "rb")] {
+                if right & bit != 0 {
+                    held.push(name);
+                }
+            }
+            for (bit, name) in [(0x02, "up"), (0x01, "down"), (0x08, "left"), (0x04, "right"), (0x40, "lb")] {
+                if left & bit != 0 {
+                    held.push(name);
+                }
+            }
+            for (bit, name) in [(0x01, "view"), (0x02, "menu"), (0x10, "guide")] {
+                if mid & bit != 0 {
+                    held.push(name);
+                }
+            }
+            // 12-bit stick values, up is higher; as a byte with up low, like a PlayStation pad's.
+            let x = r[6] as u16 | ((r[7] as u16 & 0x0F) << 8);
+            let y = (r[7] as u16 >> 4) | ((r[8] as u16) << 4);
+            Some(SonyState { held, lx: (x >> 4).min(255) as u8, ly: 255 - (y >> 4).min(255) as u8 })
+        }
+        0x3F if r.len() >= 4 => {
+            let (b1, b2) = (r[1], r[2]);
+            match r[3] {
+                0 => held.push("up"),
+                1 => held.extend(["up", "right"]),
+                2 => held.push("right"),
+                3 => held.extend(["down", "right"]),
+                4 => held.push("down"),
+                5 => held.extend(["down", "left"]),
+                6 => held.push("left"),
+                7 => held.extend(["up", "left"]),
+                _ => {}
+            }
+            for (bit, name) in [(0x02, "a"), (0x01, "b"), (0x08, "x"), (0x04, "y"), (0x10, "lb"), (0x20, "rb")] {
+                if b1 & bit != 0 {
+                    held.push(name);
+                }
+            }
+            for (bit, name) in [(0x01, "view"), (0x02, "menu"), (0x10, "guide")] {
+                if b2 & bit != 0 {
+                    held.push(name);
+                }
+            }
+            Some(SonyState { held, lx: 128, ly: 128 })
+        }
+        _ => None,
+    }
+}
+
 /// The stick, pushed past half way, as a direction.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn stick_dirs(lx: u8, ly: u8) -> Vec<&'static str> {
@@ -100,11 +166,31 @@ fn read_sony(tx: Sender<Ev>) {
     std::thread::spawn(move || {
         let Ok(mut api) = hidapi::HidApi::new() else { return };
         let mut open: std::collections::HashSet<String> = Default::default();
+        let mut first = true;
+        let mut last_scan = std::time::Instant::now();
         loop {
+            // Listing the computer's input devices makes some PCs' mouse hitch, so it's done only
+            // as often as needed: every few seconds while the launcher's window is in front (when
+            // someone may be plugging a controller in), rarely otherwise, and not at all during a
+            // game once a controller is open or the quick menu is off.
+            let wait = if FOCUSED.load(Ordering::Relaxed) {
+                5
+            } else if PLAYING.load(Ordering::Relaxed) && (!QUICK_MENU.load(Ordering::Relaxed) || !open.is_empty()) {
+                u64::MAX
+            } else {
+                60
+            };
+            if !first && last_scan.elapsed().as_secs() < wait {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                continue;
+            }
+            first = false;
+            last_scan = std::time::Instant::now();
             let _ = api.refresh_devices();
             for d in api.device_list() {
                 let (vid, pid) = (d.vendor_id(), d.product_id());
-                if vid != SONY || !(DUALSENSE.contains(&pid) || DUALSHOCK4.contains(&pid)) {
+                let switch = vid == NINTENDO && pid == SWITCH_PRO;
+                if !switch && (vid != SONY || !(DUALSENSE.contains(&pid) || DUALSHOCK4.contains(&pid))) {
                     continue;
                 }
                 let path = d.path().to_string_lossy().to_string();
@@ -113,20 +199,40 @@ fn read_sony(tx: Sender<Ev>) {
                 }
                 let Ok(dev) = d.open_device(&api) else { continue };
                 open.insert(path.clone());
-                let name = if DUALSENSE.contains(&pid) { "DualSense" } else { "DualShock 4" };
-                CONNECTED.lock().unwrap().push(Pad { name: name.into(), kind: "ps" });
+                let name = if switch { "Switch Pro Controller" } else if DUALSENSE.contains(&pid) { "DualSense" } else { "DualShock 4" };
+                let kind: &'static str = if switch { "nintendo" } else { "ps" };
+                CONNECTED.lock().unwrap().push(Pad { name: name.into(), kind });
                 let tx = tx.clone();
                 let dualsense = DUALSENSE.contains(&pid);
+                let bt = matches!(d.bus_type(), hidapi::BusType::Bluetooth);
                 std::thread::spawn(move || {
                     let mut buf = [0u8; 128];
                     let mut prev: Vec<&'static str> = vec![];
                     // The stick counts once it has been seen near the middle.
                     let mut rested = false;
+                    // A Switch pad already in use (by Steam or a game) is left as it is. One that
+                    // sends nothing over USB yet, or only its simple Bluetooth report, is asked for
+                    // its full report.
+                    let mut quiet = 0u32;
+                    let mut asked = false;
                     loop {
                         match dev.read_timeout(&mut buf, 250) {
-                            Ok(0) => continue,
+                            Ok(0) => {
+                                quiet += 1;
+                                if switch && !asked && !bt && quiet >= 3 {
+                                    asked = true;
+                                    switch_full_reports(&dev, true);
+                                }
+                                continue;
+                            }
                             Ok(n) => {
-                                let Some(s) = parse_sony(&buf[..n], dualsense) else { continue };
+                                quiet = 0;
+                                if switch && !asked && buf[0] == 0x3F {
+                                    asked = true;
+                                    switch_full_reports(&dev, false);
+                                }
+                                let parsed = if switch { parse_switch(&buf[..n]) } else { parse_sony(&buf[..n], dualsense, bt) };
+                                let Some(s) = parsed else { continue };
                                 let mut now = s.held.clone();
                                 if (90..=166).contains(&s.lx) && (90..=166).contains(&s.ly) {
                                     rested = true;
@@ -138,7 +244,7 @@ fn read_sony(tx: Sender<Ev>) {
                                 }
                                 for b in &now {
                                     if !prev.contains(b) {
-                                        let _ = tx.send(Ev::Down(b, "ps"));
+                                        let _ = tx.send(Ev::Down(b, kind));
                                     }
                                 }
                                 for b in &prev {
@@ -152,7 +258,7 @@ fn read_sony(tx: Sender<Ev>) {
                         }
                     }
                     let mut c = CONNECTED.lock().unwrap();
-                    if let Some(i) = c.iter().position(|p| p.kind == "ps") {
+                    if let Some(i) = c.iter().position(|p| p.kind == kind) {
                         c.remove(i);
                     }
                 });
@@ -160,10 +266,23 @@ fn read_sony(tx: Sender<Ev>) {
             // Forget devices that went away so they can be opened again when they come back.
             let live: std::collections::HashSet<String> = api.device_list().map(|d| d.path().to_string_lossy().to_string()).collect();
             open.retain(|p| live.contains(p));
-            // Looked for less often while nothing needs a controller.
-            std::thread::sleep(std::time::Duration::from_secs(if idle() { 6 } else { 2 }));
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
     });
+}
+
+/// Ask a Switch Pro Controller for its full input report (0x30). Over USB it first needs the
+/// handshake that switches it to talking over USB with no timeout.
+#[cfg(windows)]
+fn switch_full_reports(dev: &hidapi::HidDevice, usb: bool) {
+    if usb {
+        for cmd in [[0x80u8, 0x02], [0x80, 0x04]] {
+            let _ = dev.write(&cmd);
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+    }
+    // Output report 0x01: a counter, neutral rumble, then subcommand 0x03 (input report mode) 0x30.
+    let _ = dev.write(&[0x01, 0x00, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40, 0x03, 0x30]);
 }
 
 #[cfg(not(windows))]
@@ -179,13 +298,15 @@ fn read_gilrs(tx: Sender<Ev>) {
             let n = name.to_lowercase();
             if n.contains("sony") || n.contains("dualsense") || n.contains("playstation") || n.contains("wireless controller") || n.contains("dualshock") {
                 "ps"
+            } else if n.contains("nintendo") || n.contains("pro controller") || n.contains("joy-con") {
+                "nintendo"
             } else {
                 "xbox"
             }
         };
         let refresh = |g: &Gilrs| {
             let mut c = CONNECTED.lock().unwrap();
-            c.retain(|p| p.kind == "ps" && cfg!(windows));
+            c.retain(|p| (p.kind == "ps" || p.kind == "nintendo") && cfg!(windows));
             for (_, pad) in g.gamepads() {
                 c.push(Pad { name: pad.name().to_string(), kind: kind_of(pad.name()) });
             }
@@ -196,11 +317,14 @@ fn read_gilrs(tx: Sender<Ev>) {
         loop {
             while let Some(ev) = g.next_event() {
                 let kind = kind_of(g.gamepad(ev.id).name());
+                // gilrs names face buttons by where they sit. A Nintendo pad has A on the right and
+                // X on top, and the launcher goes by what's printed on the button.
+                let nin = kind == "nintendo";
                 let name = |b: Button| match b {
-                    Button::South => Some("a"),
-                    Button::East => Some("b"),
-                    Button::West => Some("x"),
-                    Button::North => Some("y"),
+                    Button::South => Some(if nin { "b" } else { "a" }),
+                    Button::East => Some(if nin { "a" } else { "b" }),
+                    Button::West => Some(if nin { "y" } else { "x" }),
+                    Button::North => Some(if nin { "x" } else { "y" }),
                     Button::LeftTrigger => Some("lb"),
                     Button::RightTrigger => Some("rb"),
                     Button::Select => Some("view"),
@@ -261,7 +385,9 @@ fn read_gilrs(tx: Sender<Ev>) {
                     _ => {}
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(if idle() { 60 } else { 10 }));
+            // During a game with the quick menu off nothing needs the controller here.
+            let off = PLAYING.load(Ordering::Relaxed) && !QUICK_MENU.load(Ordering::Relaxed);
+            std::thread::sleep(std::time::Duration::from_millis(if off { 250 } else if idle() { 60 } else { 10 }));
         }
     });
 }
@@ -298,7 +424,7 @@ pub fn start(app: AppHandle) {
                     if let Some(t) = view_since {
                         if !view_used && t.elapsed() > Duration::from_millis(700) {
                             view_used = true;
-                            if !app.state::<App>().running.lock().unwrap().is_empty() {
+                            if QUICK_MENU.load(Ordering::Relaxed) && !app.state::<App>().running.lock().unwrap().is_empty() {
                                 ingame::toggle_overlay(&app);
                             }
                         }
@@ -389,6 +515,8 @@ fn send(app: &AppHandle, name: &str, kind: &str) {
 pub static FOCUSED: AtomicBool = AtomicBool::new(false);
 /// A game is running (its quick menu needs the controller).
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
+/// The player wants the quick menu over games (Settings, While Playing).
+pub static QUICK_MENU: AtomicBool = AtomicBool::new(true);
 
 fn idle() -> bool {
     !FOCUSED.load(Ordering::Relaxed) && !PLAYING.load(Ordering::Relaxed)
@@ -411,7 +539,7 @@ mod tests {
         r[8] = 0x20 | 0x02; // cross, d-pad right
         r[9] = 0x10 | 0x02; // create, R1
         r[10] = 0x01; // PS
-        let s = parse_sony(&r, true).unwrap();
+        let s = parse_sony(&r, true, false).unwrap();
         for b in ["right", "a", "view", "rb", "guide"] {
             assert!(s.held.contains(&b), "{b} missing: {:?}", s.held);
         }
@@ -424,18 +552,53 @@ mod tests {
         bt[0] = 0x31;
         bt[9] = 0x08 | 0x40; // no d-pad, circle
         bt[10] = 0x20; // options
-        let s = parse_sony(&bt, true).unwrap();
+        let s = parse_sony(&bt, true, true).unwrap();
         assert_eq!(s.held, vec!["b", "menu"]);
         let mut ds4 = vec![0u8; 64];
         ds4[0] = 0x01;
         ds4[5] = 0x04 | 0x80; // down, triangle
         ds4[6] = 0x01; // L1
-        let s = parse_sony(&ds4, false).unwrap();
+        let s = parse_sony(&ds4, false, false).unwrap();
         assert_eq!(s.held, vec!["down", "y", "lb"]);
         let mut ds4bt = vec![0u8; 78];
         ds4bt[0] = 0x11;
         ds4bt[7] = 0x08 | 0x10; // square
-        assert_eq!(parse_sony(&ds4bt, false).unwrap().held, vec!["x"]);
+        assert_eq!(parse_sony(&ds4bt, false, true).unwrap().held, vec!["x"]);
+        // A DualSense on Bluetooth before anything switches it to full reports: the short 0x01
+        // report, padded by Windows to 78 bytes, laid out like a DualShock 4's.
+        let mut short = vec![0u8; 78];
+        short[0] = 0x01;
+        short[5] = 0x08 | 0x20; // cross
+        short[6] = 0x01 | 0x02; // L1, R1
+        assert_eq!(parse_sony(&short, true, true).unwrap().held, vec!["a", "lb", "rb"]);
+    }
+
+    #[test]
+    fn switch_pro() {
+        let mut r = vec![0u8; 64];
+        r[0] = 0x30;
+        r[3] = 0x08 | 0x40; // A, R
+        r[4] = 0x01; // minus
+        r[5] = 0x02; // d-pad up
+        // Left stick at the middle (2048, 2048).
+        r[6] = 0x00;
+        r[7] = 0x08;
+        r[8] = 0x80;
+        let s = parse_switch(&r).unwrap();
+        assert_eq!(s.held, vec!["a", "rb", "up", "view"]);
+        assert!(stick_dirs(s.lx, s.ly).is_empty());
+        // Stick all the way up (y 4095) reads as up.
+        r[7] = 0xF8;
+        r[8] = 0xFF;
+        assert_eq!(stick_dirs(parse_switch(&r).unwrap().lx, parse_switch(&r).unwrap().ly), vec!["up"]);
+        let mut simple = vec![0u8; 12];
+        simple[0] = 0x3F;
+        simple[1] = 0x01; // B
+        simple[2] = 0x02; // plus
+        simple[3] = 0x06; // left
+        assert_eq!(parse_switch(&simple).unwrap().held, vec!["left", "b", "menu"]);
+        simple[3] = 0x08;
+        assert_eq!(parse_switch(&simple).unwrap().held, vec!["b", "menu"]);
     }
 
     #[test]
