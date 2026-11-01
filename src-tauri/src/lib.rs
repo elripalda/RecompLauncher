@@ -1017,7 +1017,7 @@ fn followed_news(cat: &Value, l: &mut Library, new_ids: &[String], first_time: b
 // ---------- shortcuts and Steam ----------
 
 #[tauri::command]
-async fn desktop_shortcut(st: State<'_, App>, id: String) -> Res<String> {
+async fn desktop_shortcut(st: State<'_, App>, id: String, menu: Option<bool>) -> Res<String> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let icon = g.exe.as_ref().map(|e| g.path.join(e));
     let name = game_name(&st, &id, &g.name).await;
@@ -1025,7 +1025,7 @@ async fn desktop_shortcut(st: State<'_, App>, id: String) -> Res<String> {
     // or the game can only be started by the launcher for now.
     let direct_on = !st.lib.lock().unwrap().settings.ui.get("shortcut_launcher").and_then(Value::as_bool).unwrap_or(false);
     let direct = if direct_on { direct_start(&st, &id, &g) } else { None };
-    Ok(shortcuts::desktop_shortcut(&id, &name, icon.as_deref(), direct.as_ref().map(|(e, a)| (e.as_path(), a.as_slice())))?.to_string_lossy().into())
+    Ok(shortcuts::desktop_shortcut(&id, &name, icon.as_deref(), direct.as_ref().map(|(e, a)| (e.as_path(), a.as_slice())), menu.unwrap_or(false))?.to_string_lossy().into())
 }
 
 /// What a shortcut straight to the game runs: its program and arguments, as the launcher would start
@@ -1100,6 +1100,11 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
     let steam = shortcuts::steam_dir().ok_or_else(|| Error::Msg("Steam isn't installed on this PC.".into()))?;
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let was_running = shortcuts::steam_running();
+    if was_running {
+        if let Some(why) = shortcuts::cant_restart_steam() {
+            return Err(Error::Msg(why.into()));
+        }
+    }
     if was_running && !restart {
         return Ok("steam_running".into());
     }
@@ -1113,6 +1118,9 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
         ("_logo", fetch_bytes(&st.http, &logo).await, ext_of(&logo)),
     ];
     if was_running {
+        if let Some(why) = shortcuts::cant_restart_steam() {
+            return Err(Error::Msg(why.into()));
+        }
         shortcuts::close_steam(&steam).await?;
     }
     let icon = g.exe.as_ref().map(|e| g.path.join(e).to_string_lossy().to_string()).unwrap_or_default();
@@ -1130,6 +1138,11 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
 async fn launcher_to_steam(st: State<'_, App>, restart: bool) -> Res<String> {
     let steam = shortcuts::steam_dir().ok_or_else(|| Error::Msg("Steam isn't installed on this PC.".into()))?;
     let was_running = shortcuts::steam_running();
+    if was_running {
+        if let Some(why) = shortcuts::cant_restart_steam() {
+            return Err(Error::Msg(why.into()));
+        }
+    }
     if was_running && !restart {
         return Ok("steam_running".into());
     }
@@ -1142,6 +1155,9 @@ async fn launcher_to_steam(st: State<'_, App>, restart: bool) -> Res<String> {
         ("_logo", include_bytes!("../steam-art/logo.png").to_vec(), "png"),
     ];
     if was_running {
+        if let Some(why) = shortcuts::cant_restart_steam() {
+            return Err(Error::Msg(why.into()));
+        }
         shortcuts::close_steam(&steam).await?;
     }
     let n = shortcuts::launcher_to_steam(&steam, &art)?;
@@ -1257,7 +1273,16 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     if !exe.is_file() {
         return Err(Error::Msg(format!("{} is missing. Reinstall the game, or pick its program in the game's settings.", exe_rel.display())));
     }
-    args.extend(join_paths(split_args(&g.args)));
+    // Troubleshoot's Clean Start: this once, without the player's launch options and Look.
+    let clean = {
+        let mut c = CLEAN_START.lock().unwrap();
+        let had = c.iter().any(|x| x == id);
+        c.retain(|x| x != id);
+        had
+    };
+    if !clean {
+        args.extend(join_paths(split_args(&g.args)));
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1271,7 +1296,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let shown = exe_rel.display().to_string();
     // The player's look: ReShade where the game will load it, for this start only.
     let mut look_route: Option<&'static str> = None;
-    let look_run = match look_plan(&st, id, &g, prof.as_ref(), &exe) {
+    let look_run = match if clean { Ok(None) } else { look_plan(&st, id, &g, prof.as_ref(), &exe) } {
         Ok(Some((look, lines, api))) => {
             // A game that can go either way: the way in that last worked for it.
             let (api, route) = looks::route_for(&st.dir, id, api);
@@ -1314,6 +1339,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         return Err(Error::Msg(format!("{name} is already open. Close it (or wait for it to finish closing), then press Play.")));
     }
+    // A Windows script (.cmd, .bat) on Linux: the build's own Linux start script beside it when it
+    // has one (a profile written for Windows names Launcher.cmd; the Linux build has launcher.sh).
+    let exe = if !cfg!(windows) && matches!(exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("cmd" | "bat")) { linux_twin(&exe).unwrap_or(exe) } else { exe };
     // A Python script starts through its interpreter.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     let mut cmd = match ext.as_str() {
@@ -1327,8 +1355,14 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             c.arg(&exe);
             c
         }
-        // A Windows program on Linux: through Proton (or Wine).
-        "exe" if !cfg!(windows) => match proton::runner() {
+        // A shell script on Linux (it may have lost its run permission in the zip).
+        "sh" if !cfg!(windows) => {
+            let mut c = tokio::process::Command::new("sh");
+            c.arg(&exe);
+            c
+        }
+        // A Windows program (or script) on Linux: through Proton (or Wine).
+        "exe" | "cmd" | "bat" if !cfg!(windows) => match proton::runner() {
             Some(r) => proton::command(&r, &st.dir, &exe),
             None => return Err(Error::Msg("This is a Windows version, and it needs Proton to play on Linux. Install Steam and Proton (or umu-launcher, or Wine), then press Play again.".into())),
         },
@@ -2042,7 +2076,20 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
     };
     let desc = str_of(&info, "description").to_string();
     let topics: Vec<String> = info.get("topics").and_then(Value::as_array).map(|l| l.iter().filter_map(|t| t.as_str().map(str::to_string)).collect()).unwrap_or_default();
-    let game = ghinfo::game_of(&desc, &readme);
+    // The game: a catalog game the repo names in its own words first, then what its description,
+    // README and name point at. With a SteamGridDB key, the first of those SteamGridDB knows,
+    // under its name there.
+    let cands = ghinfo::game_candidates(&repo, &desc, &readme);
+    let hay = format!(" {} ", ghinfo::norm(&format!("{} {} {}", repo.replace(['/', '-', '_'], " "), desc, readme.chars().take(1500).collect::<String>())));
+    let from_cat = apps
+        .iter()
+        .filter_map(|a| {
+            let g = str_of(a, "game");
+            let n = ghinfo::norm(g);
+            (n.len() >= 6 && hay.contains(&format!(" {n} "))).then(|| g.to_string())
+        })
+        .max_by_key(|g| g.len());
+    let mut game = from_cat.clone().or_else(|| cands.first().cloned());
     let origin = ghinfo::console_of(&topics, &desc, &readme);
     // A catalog game with the same name: likely the same game, maybe another recomp of it.
     let similar = game.as_ref().and_then(|g| {
@@ -2054,10 +2101,21 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
     });
     let mut art = json!({"covers": [], "heroes": [], "logos": []});
     let mut art_error = String::new();
-    if let (Some(k), Some(g)) = (sgdb_key.as_deref().map(str::trim).filter(|k| !k.is_empty()), game.as_ref()) {
-        match ghinfo::art(&st.http, k, g).await {
-            Ok(a) => art = a,
-            Err(e) => art_error = e,
+    if let Some(k) = sgdb_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+        let tries: Vec<String> = from_cat.into_iter().chain(cands.iter().cloned()).take(5).collect();
+        for t in tries {
+            match ghinfo::find(&st.http, k, &t).await {
+                Ok(Some((id, name))) => {
+                    art = ghinfo::art_of(&st.http, k, id).await;
+                    game = Some(name);
+                    break;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    art_error = e;
+                    break;
+                }
+            }
         }
     }
     Ok(json!({
@@ -2685,6 +2743,189 @@ fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
     let lines: Vec<&str> = text.lines().collect();
     let tail = lines[lines.len().saturating_sub(60)..].join("\n");
     Some((p.to_string_lossy().into(), tail))
+}
+
+// ---------- Troubleshoot ----------
+
+/// One thing Troubleshoot looked at: "ok", "warn", "bad" or "info", what it found, and the fix
+/// the window offers for it ("" for none).
+#[derive(Serialize)]
+struct Check {
+    level: &'static str,
+    /// English, with {name}-style blanks the window fills in from `v` after translating.
+    title: &'static str,
+    detail: String,
+    fix: &'static str,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    v: std::collections::BTreeMap<&'static str, String>,
+}
+
+fn check(level: &'static str, title: &'static str, detail: impl Into<String>, fix: &'static str) -> Check {
+    Check { level, title, detail: detail.into(), fix, v: Default::default() }
+}
+
+impl Check {
+    fn with(mut self, k: &'static str, val: impl Into<String>) -> Self {
+        self.v.insert(k, val.into());
+        self
+    }
+}
+
+/// Starts that skip the player's Look and launch options, once each (Troubleshoot's Clean Start).
+static CLEAN_START: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+#[tauri::command(async)]
+fn clean_start_next(id: String) {
+    CLEAN_START.lock().unwrap().push(id);
+}
+
+/// What could be keeping a game from starting: its files, Windows, what it needs on the PC, the
+/// player's copy, its setup, its folder, and what it printed last time.
+#[tauri::command(async)]
+fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let mut out: Vec<Check> = vec![];
+    // Its folder.
+    if !g.path.is_dir() {
+        out.push(check("bad", "Its folder isn't there", "{path} can't be found. Maybe it's on a drive that isn't connected, or it was moved.", "locate").with("path", g.path.display().to_string()));
+        return Ok(out);
+    }
+    out.push(check("ok", "Its folder is there", g.path.display().to_string(), ""));
+    // The program it starts.
+    let prof = profile_of(&st, &id, &g);
+    let exe = prof
+        .as_ref()
+        .and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e))
+        .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
+    let Some(exe) = exe.filter(|e| e.is_file()) else {
+        out.push(check("bad", "The program it starts isn't there", "Antivirus may have taken it out, or the download was cut short.", "setexe"));
+        return Ok(out);
+    };
+    let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    out.push(check("ok", "It starts {name}", "", "").with("name", &name));
+    // The right build for this PC.
+    let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if cfg!(windows) {
+        if ext == "sh" || ext == "appimage" || ext.is_empty() {
+            out.push(check("bad", "That's not a Windows program", "It looks like a Linux build. Reinstall the game to get its Windows build.", "reinstall"));
+        }
+    } else if matches!(ext.as_str(), "exe" | "cmd" | "bat") {
+        let twin = if ext == "exe" { None } else { linux_twin(&exe) };
+        if let Some(t) = twin {
+            out.push(check("ok", "Its Linux start script is used", t.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), ""));
+        } else if proton::runner().is_some() {
+            out.push(check("info", "It's a Windows version, run through Proton", "If it won't start, a native Linux build (when there is one) usually runs better.", ""));
+        } else {
+            out.push(check("bad", "It's a Windows version and Proton isn't installed", "Install Steam with Proton, or umu-launcher, or Wine, then press Play again.", "proton"));
+        }
+    }
+    // Windows holding it back.
+    #[cfg(windows)]
+    {
+        if std::fs::metadata(format!("{}:Zone.Identifier", exe.display())).is_ok() {
+            out.push(check("warn", "Windows marked it as downloaded from the internet", "Windows can block or slow down a program with that mark. Unblock takes it off this game's files.", "unblock"));
+        }
+    }
+    // What it needs on the PC.
+    let pc = manage::pc_check();
+    if cfg!(windows) {
+        match pc.vcredist {
+            Some(false) => out.push(check("bad", "The Visual C++ runtime isn't installed", "Almost every Windows recomp needs it.", "vcredist")),
+            Some(true) => out.push(check("ok", "The Visual C++ runtime is installed", "", "")),
+            None => {}
+        }
+    }
+    if pc.vulkan == Some(false) {
+        out.push(check("warn", "Your graphics driver doesn't have Vulkan", "Many recomps draw with Vulkan. Updating the graphics driver adds it.", "driver"));
+    }
+    // The player's copy of the game.
+    if let Some(need) = prof.as_ref().and_then(|p| p.game.as_ref()) {
+        match g.game_copy.as_ref() {
+            Some(c) if !c.exists() => out.push(check("bad", "Your copy of the game isn't there anymore", c.display().to_string(), "copy")),
+            Some(c) => match profile::check_copy(need, c) {
+                Ok(()) => out.push(check("ok", "Your copy of the game checks out", c.display().to_string(), "")),
+                Err(why) => out.push(check("bad", "Your copy of the game isn't the one it reads", why, "copy")),
+            },
+            None if prof.as_ref().map(|p| p.already_in_place(&g.path).is_some()).unwrap_or(false) => out.push(check("ok", "The game's files are in its folder", "", "")),
+            None => out.push(check("bad", "Your copy of the game isn't set yet", need.label.clone(), "copy")),
+        }
+    }
+    // Its own first-time setup.
+    if g.setup.is_some() && !g.setup_done {
+        out.push(check("warn", "Its first-time setup hasn't finished", "Press Play and go through the setup window to the end.", ""));
+    }
+    // Already open.
+    if already_open(&exe) {
+        out.push(check("warn", "{name} is already open", "Close it (check the taskbar and the tray), then press Play.", "").with("name", &name));
+    }
+    // The folder can be written to, with room to spare.
+    let probe = g.path.join(".recomplauncher-write-test");
+    match std::fs::write(&probe, b"ok") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            out.push(check("ok", "The launcher can write to its folder", "", ""));
+        }
+        Err(e) => out.push(check("bad", "Its folder can't be written to", "{error}. Games often can't save or set up in protected folders like Program Files.", "move").with("error", e.to_string())),
+    }
+    if let Ok(free) = fs2::available_space(&g.path) {
+        if free < 2 << 30 {
+            out.push(check("warn", "The drive is nearly full", "{gb} GB free. Some games need room for saves and shader caches.", "move").with("gb", format!("{:.1}", free as f64 / 1_073_741_824.0)));
+        }
+    }
+    // Extras on top of the game.
+    let look_on = !g.look.is_empty() && g.look != "off";
+    if look_on || !g.args.trim().is_empty() {
+        let what = match (look_on, !g.args.trim().is_empty()) {
+            (true, true) => "A Look (ReShade) and your own launch options are on. If it won't start, try once without them.",
+            (true, false) => "A Look (ReShade) is on. If it won't start, try once without it.",
+            _ => "Your own launch options are on. If it won't start, try once without them.",
+        };
+        out.push(check("info", "Extras are on", what, "clean"));
+    }
+    // What it printed last time.
+    if let Ok(text) = std::fs::read_to_string(game_output_path(&st.dir, &id)) {
+        let tail: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+        let tail = tail[tail.len().saturating_sub(12)..].join("\n");
+        if !tail.is_empty() {
+            out.push(check("info", "What it printed last time", tail, ""));
+        }
+    }
+    Ok(out)
+}
+
+/// Unblock: takes Windows' "downloaded from the internet" mark off a game's files.
+#[tauri::command(async)]
+fn unblock_game(st: State<'_, App>, id: String) -> Res<u32> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut n = 0u32;
+    #[cfg(windows)]
+    {
+        fn walk(d: &Path, n: &mut u32, depth: u32) {
+            for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    if depth < 6 {
+                        walk(&p, n, depth + 1);
+                    }
+                } else if std::fs::remove_file(format!("{}:Zone.Identifier", p.display())).is_ok() {
+                    *n += 1;
+                }
+            }
+        }
+        walk(&g.path, &mut n, 0);
+    }
+    #[cfg(not(windows))]
+    let _ = g;
+    Ok(n)
+}
+
+/// A Linux build's start script for a Windows one: the same name as .sh, or the usual names.
+fn linux_twin(win: &Path) -> Option<PathBuf> {
+    let dir = win.parent()?;
+    let stem = win.file_stem()?.to_string_lossy().to_string();
+    let wanted = [format!("{stem}.sh"), format!("{}.sh", stem.to_lowercase()), "launcher.sh".into(), "Launcher.sh".into(), "run.sh".into(), "start.sh".into(), "play.sh".into()];
+    wanted.iter().map(|n| dir.join(n)).find(|p| p.is_file())
 }
 
 /// Is a program with this file name running now? (Windows; elsewhere it's never asked.)
@@ -3960,7 +4201,20 @@ fn open_app_control() -> Res<()> {
 pub fn open_thing(app: &AppHandle, target: &str, url: bool) -> Res<()> {
     #[cfg(target_os = "linux")]
     {
-        let _ = (app, url);
+        let _ = app;
+        // A web address goes through the desktop's own "open this link" service first: it opens
+        // the player's default browser, a Flatpak one too, whatever the launcher's surroundings.
+        if url {
+            let mut g = std::process::Command::new("gdbus");
+            g.args(["call", "--session", "--dest", "org.freedesktop.portal.Desktop", "--object-path", "/org/freedesktop/portal/desktop", "--method", "org.freedesktop.portal.OpenURI.OpenURI", "", target, "{}"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            sysenv::clean_std(&mut g);
+            if g.status().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
         let mut c = std::process::Command::new("xdg-open");
         c.arg(target).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         sysenv::clean_std(&mut c);
@@ -4502,6 +4756,9 @@ pub fn run() {
             github_art,
             update_mine,
             release_builds,
+            troubleshoot,
+            unblock_game,
+            clean_start_next,
             plugins::plugin_inspect,
             plugins::plugin_install,
             plugins::plugin_list,

@@ -164,7 +164,7 @@ const PLUG_CALLS = {
     if (ans !== 'yes') throw new Error(t('You said no.'));
     await invoke('plugin_allow_site', { id: m.id, host, always: false });
     toast(tf('Downloading {name}…', { name }));
-    const g = await withSites(m, 'plugin_install_zip', { id: m.id, url, name });
+    const g = await withSites(m, 'plugin_install_zip', { id: m.id, url, name, headers: a.headers && typeof a.headers === 'object' ? a.headers : null });
     await refreshState();
     toast(tf('{name} is in your Library.', { name: g.name }));
     return { id: g.id, name: g.name };

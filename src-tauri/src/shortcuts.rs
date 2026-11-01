@@ -22,8 +22,13 @@ fn safe_name(s: &str) -> String {
 /// A shortcut on the desktop that plays the game. `icon` is the game's program, for its icon.
 /// With `direct`, the shortcut starts that program itself (with those arguments), the way a front
 /// end like RetroBat or Playnite expects; without it, it goes through the launcher (`--play`).
-pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Option<(&Path, &[String])>) -> Result<PathBuf, Error> {
-    let desk = dirs::desktop_dir().or_else(|| dirs::home_dir().map(|h| h.join("Desktop"))).ok_or_else(|| Error::Msg("Couldn't find your desktop folder.".into()))?;
+/// `menu`: in the app menu only (the Start menu on Windows), not on the desktop.
+pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Option<(&Path, &[String])>, menu: bool) -> Result<PathBuf, Error> {
+    let desk = if menu && cfg!(windows) {
+        dirs::data_dir().map(|d| d.join(r"Microsoft\Windows\Start Menu\Programs")).ok_or_else(|| Error::Msg("Couldn't find your Start menu folder.".into()))?
+    } else {
+        dirs::desktop_dir().or_else(|| dirs::home_dir().map(|h| h.join("Desktop"))).ok_or_else(|| Error::Msg("Couldn't find your desktop folder.".into()))?
+    };
     // On Linux an AppImage runs from a folder that's gone once it closes: the shortcut starts the AppImage.
     let launcher = start_path();
     let (target, args): (PathBuf, String) = match direct {
@@ -32,6 +37,7 @@ pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Optio
     };
     #[cfg(windows)]
     {
+        let _ = std::fs::create_dir_all(&desk);
         let lnk = desk.join(format!("{}.lnk", safe_name(name)));
         let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
         let description = if direct.is_some() { format!("Play {name}") } else { format!("Play {name} with RecompLauncher") };
@@ -55,18 +61,23 @@ pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Optio
             args,
             dir.display(),
         );
+        // In the applications menu (where launchers and Steam's Add a Game look), and on the desktop
+        // unless it's for the menu only.
+        let apps = dirs::data_dir().map(|d| d.join("applications"));
+        if let Some(apps) = &apps {
+            if fs::create_dir_all(apps).is_ok() {
+                let _ = fs::write(apps.join(&file_name), &body);
+            }
+        }
+        if menu {
+            return apps.map(|a| a.join(&file_name)).filter(|p| p.is_file()).ok_or_else(|| Error::Msg("Couldn't add it to your app menu.".into()));
+        }
         fs::create_dir_all(&desk)?;
         fs::write(&file, &body)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&file, fs::Permissions::from_mode(0o755))?;
-        }
-        // The same shortcut in the applications menu, where launchers and Steam's Add a Game look.
-        if let Some(apps) = dirs::data_dir().map(|d| d.join("applications")) {
-            if fs::create_dir_all(&apps).is_ok() {
-                let _ = fs::write(apps.join(&file_name), &body);
-            }
         }
         Ok(file)
     }
@@ -301,6 +312,52 @@ fn steam_exe(steam: &Path) -> PathBuf {
     } else {
         PathBuf::from("steam")
     }
+}
+
+/// Steam can't be closed and opened again from here: the launcher was started by Steam (closing
+/// Steam would take the launcher's window down with it), or it's a Steam Deck's Gaming Mode
+/// (Steam is the whole screen there and starts again at once). What to do instead, then.
+pub fn cant_restart_steam() -> Option<&'static str> {
+    #[cfg(target_os = "linux")]
+    {
+        let gaming_mode = std::env::var("XDG_CURRENT_DESKTOP").map(|d| d.eq_ignore_ascii_case("gamescope")).unwrap_or(false) || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some() && std::env::var_os("SteamDeck").is_some();
+        if gaming_mode {
+            return Some("Steam can't restart in Gaming Mode. Switch to Desktop Mode, open RecompLauncher from the desktop, then press Add to Steam.");
+        }
+        if started_by_steam() {
+            return Some("RecompLauncher was opened from Steam, so closing Steam would close it too. Open RecompLauncher from your desktop or app menu instead, then press Add to Steam.");
+        }
+        None
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// Is this launcher a program Steam started (its process, or one above it, is Steam's)?
+#[cfg(target_os = "linux")]
+fn started_by_steam() -> bool {
+    if ["SteamGameId", "SteamAppId", "SteamClientLaunch", "STEAM_COMPAT_CLIENT_INSTALL_PATH"].iter().any(|k| std::env::var_os(k).is_some()) {
+        return true;
+    }
+    let mut pid = std::process::id();
+    for _ in 0..30 {
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { break };
+        // pid (comm) state ppid ...: the name can hold spaces, so after the last ')'.
+        let Some(after) = stat.rfind(')').map(|i| &stat[i + 1..]) else { break };
+        let Some(ppid) = after.split_whitespace().nth(1).and_then(|p| p.parse::<u32>().ok()) else { break };
+        if ppid <= 1 {
+            break;
+        }
+        let comm = std::fs::read_to_string(format!("/proc/{ppid}/comm")).unwrap_or_default();
+        let comm = comm.trim();
+        if comm == "steam" || comm == "reaper" || comm == "steamwebhelper" || comm.starts_with("steam-runtime") || comm == "pressure-vessel" {
+            return true;
+        }
+        pid = ppid;
+    }
+    false
 }
 
 /// Ask Steam to close, and wait (up to 30 s) until it has.

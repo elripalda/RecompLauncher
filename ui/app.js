@@ -2533,6 +2533,7 @@ async function loadCatalog(force) {
     const r = await invoke('get_catalog', { force: !!force });
     S.cat = Object.assign({ apps: [], origins: [] }, r.data);
     S.offline = !!r.offline;
+    S.owned = ownedHere(S.owned);
     // Keep every cover and banner on disk, so scrolling never waits and offline still looks right.
     const urls = uniq(S.cat.apps.flatMap((a) => [a.cover, a.hero, a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     invoke('prefetch_images', { urls }).catch(() => {});
@@ -2992,19 +2993,47 @@ const MI = {
   disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
   layers: '<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
 };
+// A menu at a button or the pointer. An item with `sub` opens its group in the same spot, with a
+// Back row at the top, so the menu stays short.
+const M_CHEV = '<svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+function menuRows(items) {
+  return items.map((i, n) => {
+    if (i === '-') return '<hr>';
+    const icon = i.icon ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI[i.icon] || ''}</svg>` : '';
+    if (i.sub) return `<button type="button" role="menuitem" aria-haspopup="menu" class="has-sub" data-sub="${n}">${icon}${esc(i.label)}${M_CHEV}</button>`;
+    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}</button>`;
+  }).join('');
+}
 function menu(at, items) {
   closeMenu();
   const m = document.createElement('div');
   m.className = 'menu';
   m.setAttribute('role', 'menu');
-  m.innerHTML = items.map((i) => (i === '-' ? '<hr>' : `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}>${i.icon ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI[i.icon] || ''}</svg>` : ''}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}</button>`)).join('');
+  const stack = [];
+  const show = (list, title) => {
+    m.innerHTML = (title ? `<button type="button" class="m-back" data-back="1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>${esc(title)}</button><hr>` : '') + menuRows(list);
+    m.dataset.depth = String(stack.length);
+    place();
+    $('button', m).focus({ preventScroll: true });
+  };
+  m.addEventListener('click', (e) => {
+    const sub = e.target.closest('[data-sub]');
+    const back = e.target.closest('[data-back]');
+    if (!sub && !back) return;
+    e.stopPropagation();
+    if (sub) { const cur = stack.length ? stack[stack.length - 1].list : items; const it = cur[Number(sub.dataset.sub)]; stack.push({ list: it.sub, title: it.label }); show(it.sub, it.label); }
+    else { stack.pop(); const top = stack[stack.length - 1]; show(top ? top.list : items, top ? top.title : ''); }
+  });
   document.body.append(m);
-  let x, y;
-  if (at instanceof Element) { const r = at.getBoundingClientRect(); x = r.right - m.offsetWidth; y = r.bottom + 6; m.style.transformOrigin = 'top right'; }
+  let x, y, right = false;
+  if (at instanceof Element) { const r = at.getBoundingClientRect(); x = r.right; y = r.bottom + 6; right = true; m.style.transformOrigin = 'top right'; }
   else { x = at.x; y = at.y; m.style.transformOrigin = 'top left'; }
-  m.style.top = Math.max(10, Math.min(innerHeight - m.offsetHeight - 10, y)) + 'px';
-  m.style.left = Math.max(10, Math.min(innerWidth - m.offsetWidth - 10, x)) + 'px';
-  $('button', m).focus({ preventScroll: true });
+  function place() {
+    const left = right ? x - m.offsetWidth : x;
+    m.style.top = Math.max(10, Math.min(innerHeight - m.offsetHeight - 10, y)) + 'px';
+    m.style.left = Math.max(10, Math.min(innerWidth - m.offsetWidth - 10, left)) + 'px';
+  }
+  show(items, '');
 }
 
 // The same menu wherever a game is: its "…" button, or a right-click on its tile.
@@ -3023,29 +3052,41 @@ function gameMenu(id) {
     ...(g ? [{ act: 'fav', id, label: favs().includes(id) ? t('Remove from Favorites') : t('Add to Favorites'), icon: 'star' }] : []),
     ...(!g && isSaved(id) ? [{ act: 'unsave', id, label: t('Remove from Library'), icon: 'bin' }] : []),
     ...(g ? ['-',
-      { act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update },
-      { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
-      ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
-      { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
-      { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
-      { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
-      { act: 'rename', id, label: t('Rename…'), icon: 'page' },
-      ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
-      { act: 'cover', id, label: g.cover_file ? t('Change Cover…') : t('Set a Cover…'), icon: 'shot' },
-      ...(g.cover_file ? [{ act: 'cover-reset', id, label: t('Use the Usual Cover'), icon: 'shot' }] : []),
-      { act: 'hero', id, label: g.hero_file ? t('Change Background…') : t('Set a Background…'), icon: 'shot' },
-      ...(g.hero_file ? [{ act: 'hero-reset', id, label: t('Use the Usual Background'), icon: 'shot' }] : []),
-      ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }] : []),
-      ...(looksHere() ? [{ act: 'looks', id, label: t('Looks'), icon: 'look' }] : []),
-      ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
+      { label: t('Manage'), icon: 'gear', sub: [
+        { act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update },
+        { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
+        ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
+        { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
+        { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
+        ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }] : []),
+        ...(looksHere() ? [{ act: 'looks', id, label: t('Looks'), icon: 'look' }] : []),
+        ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
+      ] },
+      { label: t('Customize'), icon: 'shot', sub: [
+        { act: 'rename', id, label: t('Rename…'), icon: 'page' },
+        ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
+        { act: 'cover', id, label: g.cover_file ? t('Change Cover…') : t('Set a Cover…'), icon: 'shot' },
+        ...(g.cover_file ? [{ act: 'cover-reset', id, label: t('Use the Usual Cover'), icon: 'shot' }] : []),
+        { act: 'hero', id, label: g.hero_file ? t('Change Background…') : t('Set a Background…'), icon: 'shot' },
+        ...(g.hero_file ? [{ act: 'hero-reset', id, label: t('Use the Usual Background'), icon: 'shot' }] : []),
+      ] },
+      { label: t('Add To'), icon: 'plus', sub: [
+        { act: 'desktop', id, label: t('Add to desktop'), icon: 'desk' },
+        ...(S.os === 'windows' || S.os === 'linux' ? [{ act: 'app-menu', id, label: S.os === 'windows' ? t('Add to Start Menu') : t('Add to App Menu'), icon: 'desk' }] : []),
+        ...(S.steam ? [{ act: 'steam', id, label: t('Add to Steam'), icon: 'steam' }] : []),
+      ] },
+      { label: t('Files'), icon: 'folder', sub: [
+        { act: 'folder', id, label: t('Open its folder'), icon: 'folder' },
+        { act: 'shots', id, label: t('Screenshots'), icon: 'shot' },
+        { act: 'backups', id, label: t('Backups of your saves…'), icon: 'save' },
+        { act: 'move', id, label: t('Move to another drive…'), icon: 'move' },
+      ] },
+      ...(x && x.repo ? [{ label: t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: `https://github.com/${x.repo}#readme`, label: t('Read me'), icon: 'page' }, { act: 'url', url: `https://github.com/${x.repo}`, label: t('Its GitHub'), icon: 'web' }] }] : []),
       ...(window.pluginMenu ? window.pluginMenu(id) : []),
       '-',
-      { act: 'folder', id, label: t('Open its folder'), icon: 'folder' },
-      { act: 'shots', id, label: t('Screenshots'), icon: 'shot' },
-      { act: 'backups', id, label: t('Backups of your saves…'), icon: 'save' },
-      { act: 'desktop', id, label: t('Add to desktop'), icon: 'desk' }, ...(S.steam ? [{ act: 'steam', id, label: t('Add to Steam'), icon: 'steam' }] : []),
-      { act: 'move', id, label: t('Move to another drive…'), icon: 'move' }] : []),
-    ...(x && x.repo ? ['-', { act: 'url', url: `https://github.com/${x.repo}#readme`, label: t('Read me'), icon: 'page' }, { act: 'url', url: `https://github.com/${x.repo}`, label: t('Its GitHub'), icon: 'web' }] : []),
+      { act: 'troubleshoot', id, label: t('Troubleshoot…'), icon: 'info' },
+      { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
+    ] : x && x.repo ? ['-', { act: 'url', url: `https://github.com/${x.repo}#readme`, label: t('Read me'), icon: 'page' }, { act: 'url', url: `https://github.com/${x.repo}`, label: t('Its GitHub'), icon: 'web' }] : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }
@@ -3387,8 +3428,10 @@ async function addToSteam(id, restart) {
   try {
     const r = await invoke('add_to_steam', { id, restart });
     if (r === 'steam_running') {
-      return modal(`<h2>${esc(t('Restart Steam?'))}</h2><p>${esc(tf('Steam only picks up new games when it starts, so the launcher closes Steam, adds {name} with its art, and opens Steam again.', { name: S.library[id].name }))}</p>
-        <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Restart Steam'))}</button></div>`, (x, close) => { if (x.dataset.x === 'yes') { close(); toast(t('Adding it to Steam…')); addToSteam(id, true); } }, t('Restart Steam'));
+      const v = await (window.ask || ask)(t('Restart Steam?'), `<p>${esc(tf('Steam only picks up new games when it starts, so the launcher closes Steam, adds {name} with its art, and opens Steam again.', { name: S.library[id].name }))}</p>`,
+        [{ label: t('Not now'), v: null }, { label: t('Restart Steam'), v: 'yes', main: true }]);
+      if (v === 'yes') { toast(t('Adding it to Steam…')); return addToSteam(id, true); }
+      return;
     }
     toast(tf('{name} is in your Steam library.', { name: S.library[id].name }));
   } catch (e) { fail(e); }
@@ -3589,6 +3632,12 @@ async function loadEasy(quiet) {
 }
 async function loadOwned() {
   try { S.owned = await invoke('rom_matches'); } catch (e) { S.owned = {}; }
+  S.owned = ownedHere(S.owned);
+}
+// Only recomps this PC can play count as found (a Windows-only one on Linux without Proton doesn't).
+function ownedHere(o) {
+  if (!S.cat || !S.cat.apps.length) return o || {};
+  return Object.fromEntries(Object.entries(o || {}).filter(([id]) => { const a = byId(id); return !a || forOS(a); }));
 }
 
 // What a program's exit code means, when it's one of the usual Windows ones.
@@ -3701,10 +3750,11 @@ async function crashModal(p) {
     <p>${sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
-    <div class="acts grid2"><button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button><button type="button" class="btn${fix ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>
+    <div class="acts ${fix ? 'grid2' : 'grid3'}"><button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button><button type="button" class="btn" data-x="trouble">${esc(t('Troubleshoot'))}</button><button type="button" class="btn${fix ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>
       ${sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Look'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : dll ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : a ? `<button type="button" class="btn" data-x="report">${esc(t('Report on GitHub'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`}<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button></div>`, async (x, close) => {
     if (x.dataset.x === 'copy') { try { await navigator.clipboard.writeText(details); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); } }
     if (x.dataset.x === 'folder') invoke('open_folder', { id: p.id }).catch(fail);
+    if (x.dataset.x === 'trouble') { close(); return troubleshootModal(p.id, codeShown); }
     if (x.dataset.x === 'sac') invoke('open_app_control').catch(fail);
     if (x.dataset.x === 'pickexe') { close(); const el = document.createElement('i'); el.dataset.id = p.id; el.dataset.act = 'setexe'; return act(el, new Event('click')); }
     if (x.dataset.x === 'setup') { try { await invoke('run_program', { id: p.id, rel: setupExe }); close(); toast(t('Its setup is open. Play again when it\'s done.')); } catch (e) { fail(e); } }
@@ -3780,11 +3830,11 @@ function gameInfoModal({ link, info, id }) {
   const key = (S.settings.ui || {}).sgdb_key || '';
   const cur = { name: info.name || '', game: info.game || '', origin: info.origin || '', cover: info.cover || '', hero: info.hero || '', logo: info.logo || '' };
   let art = { covers: [], heroes: [], logos: [] };
-  const take = (a) => {
+  const take = (a, fresh) => {
     art = { covers: (a && a.covers) || [], heroes: (a && a.heroes) || [], logos: (a && a.logos) || [] };
-    if (art.covers.length && (!cur.cover || link)) cur.cover = art.covers[0];
-    if (art.heroes.length && (!cur.hero || link)) cur.hero = art.heroes[0];
-    if (art.logos.length && (!cur.logo || link)) cur.logo = art.logos[0];
+    if (art.covers.length && (!cur.cover || link || fresh)) cur.cover = artUrl(art.covers[0]);
+    if (art.heroes.length && (!cur.hero || link || fresh)) cur.hero = artUrl(art.heroes[0]);
+    if (art.logos.length && (!cur.logo || link || fresh)) cur.logo = artUrl(art.logos[0]);
   };
   take(info.art);
   if (link && !cur.hero) cur.hero = info.hero_default || '';
@@ -3796,7 +3846,8 @@ function gameInfoModal({ link, info, id }) {
         <label><span>${esc(t('Game'))}</span><input class="field" id="gi-game" value="${esc(cur.game)}" maxlength="120" spellcheck="false" placeholder="${esc(t('The game it\'s a recomp of'))}"></label>
         <label><span>${esc(t('Console'))}</span><select class="field" id="gi-origin">${consoleOptions(cur.origin)}</select></label>
       </div></div>
-    ${key ? `<div class="acts grid3 gi-art"><button type="button" class="btn sm" data-x="find">${esc(t('Find Art'))}</button><button type="button" class="btn sm" data-x="cover">${esc(t('Other Cover'))}</button><button type="button" class="btn sm" data-x="hero">${esc(t('Other Background'))}</button></div>`
+    <div class="gi-hero" id="gi-hero" aria-label="${esc(t('Background'))}"></div>
+    ${key ? `<div class="acts grid2 gi-art"><button type="button" class="btn sm" data-x="find">${esc(t('Find Art'))}</button><button type="button" class="btn sm" data-x="choose">${esc(t('Choose Art…'))}</button></div>`
       : `<p class="muted gi-hint">${esc(t('Add your own SteamGridDB key in Settings → Games and folders to get covers and backgrounds.'))}</p>`}
     <p class="err" id="gi-err" hidden>${esc(info.art_error || '')}</p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(link ? t('Add to Library') : t('Save'))}</button></div>`, async (x, close) => {
@@ -3804,15 +3855,11 @@ function gameInfoModal({ link, info, id }) {
     const read = () => { cur.name = $('#gi-name', m).value.trim(); cur.game = $('#gi-game', m).value.trim(); cur.origin = $('#gi-origin', m).value; };
     switch (x.dataset.x) {
       case 'similar': close(); return go('game', info.similar.id);
-      case 'cover': case 'hero': {
-        const list = x.dataset.x === 'cover' ? art.covers : art.heroes;
-        if (list.length > 1) { cur[x.dataset.x] = list[(list.indexOf(cur[x.dataset.x]) + 1) % list.length]; paint(); }
-        return;
-      }
+      case 'choose': return artPicker(art, cur, () => paint());
       case 'find': {
         read();
         x.disabled = true; err.hidden = true;
-        try { take(await invoke('github_art', { game: cur.game || cur.name, sgdbKey: key })); cur.cover = art.covers[0] || cur.cover; cur.hero = art.heroes[0] || cur.hero; cur.logo = art.logos[0] || cur.logo; paint(); if (!art.covers.length) { err.textContent = t('SteamGridDB has no art under that name. Try the game\'s full name.'); err.hidden = false; } } catch (e) { err.textContent = String(e && e.message ? e.message : e); err.hidden = false; }
+        try { take(await invoke('github_art', { game: cur.game || cur.name, sgdbKey: key }), true); paint(); if (!art.covers.length) { err.textContent = t('SteamGridDB has no art under that name. Try the game\'s full name.'); err.hidden = false; } } catch (e) { err.textContent = String(e && e.message ? e.message : e); err.hidden = false; }
         x.disabled = false;
         return;
       }
@@ -3842,14 +3889,142 @@ function gameInfoModal({ link, info, id }) {
   function paint() {
     const box = $('#gi-cover', m);
     box.innerHTML = cur.cover ? pic(cur.cover) : `<span>${esc(cur.name.slice(0, 2).toUpperCase())}</span>`;
-    box.style.setProperty('--hero', cur.hero ? `url("${String(media(cur.hero) || '').replace(/"/g, '%22')}")` : 'none');
-    for (const b of $$('[data-x="cover"]', m)) b.disabled = art.covers.length < 2;
-    for (const b of $$('[data-x="hero"]', m)) b.disabled = art.heroes.length < 2;
+    const hero = $('#gi-hero', m);
+    hero.innerHTML = cur.hero ? pic(cur.hero) : '';
+    hero.hidden = !cur.hero;
+    for (const b of $$('[data-x="choose"]', m)) b.disabled = !art.covers.length && !art.heroes.length;
   }
   paint();
   const e = $('#gi-err', m); e.hidden = !info.art_error;
   $('#gi-name', m).focus();
 }
+// Troubleshoot (Beta): what could keep a game from starting, each with a fix where there is one.
+const TS_FIX = {
+  locate: [N_('Find Its Folder'), (id) => missingModal(id)],
+  setexe: [N_('Choose Program…'), (id) => actOn(id, 'setexe')],
+  reinstall: [N_('Reinstall'), (id) => actOn(id, 'versions')],
+  proton: [N_('Open Settings'), () => { S.setTab = 'pc'; go('settings'); }],
+  unblock: [N_('Unblock'), async (id) => { const n = await invoke('unblock_game', { id }); toast(tn(n, 'Unblocked 1 file.', 'Unblocked {n} files.')); }],
+  vcredist: [N_('Get It'), () => invoke('open_url', { url: 'https://aka.ms/vs/17/release/vc_redist.x64.exe' })],
+  copy: [N_('Pick Your Copy'), (id) => setupModal(id)],
+  move: [N_('Move…'), (id) => moveModal(id)],
+  clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
+};
+// What Troubleshoot can say (from troubleshoot in lib.rs), so they get translated.
+const TS_TEXT = [
+  N_('How it closed last time'),
+  N_('Code {code}'),
+  N_('A Look (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
+  N_('A Look (ReShade) is on. If it won\'t start, try once without it.'),
+  N_('Almost every Windows recomp needs it.'),
+  N_('Antivirus may have taken it out, or the download was cut short.'),
+  N_('Close it (check the taskbar and the tray), then press Play.'),
+  N_('Extras are on'),
+  N_('If it won\'t start, a native Linux build (when there is one) usually runs better.'),
+  N_('Install Steam with Proton, or umu-launcher, or Wine, then press Play again.'),
+  N_('It looks like a Linux build. Reinstall the game to get its Windows build.'),
+  N_('It starts {name}'),
+  N_('It\'s a Windows version and Proton isn\'t installed'),
+  N_('It\'s a Windows version, run through Proton'),
+  N_('Its Linux start script is used'),
+  N_('Its first-time setup hasn\'t finished'),
+  N_('Its folder can\'t be written to'),
+  N_('Its folder is there'),
+  N_('Its folder isn\'t there'),
+  N_('Many recomps draw with Vulkan. Updating the graphics driver adds it.'),
+  N_('Press Play and go through the setup window to the end.'),
+  N_('That\'s not a Windows program'),
+  N_('The Visual C++ runtime is installed'),
+  N_('The Visual C++ runtime isn\'t installed'),
+  N_('The drive is nearly full'),
+  N_('The game\'s files are in its folder'),
+  N_('The launcher can write to its folder'),
+  N_('The program it starts isn\'t there'),
+  N_('What it printed last time'),
+  N_('Windows can block or slow down a program with that mark. Unblock takes it off this game\'s files.'),
+  N_('Windows marked it as downloaded from the internet'),
+  N_('Your copy of the game checks out'),
+  N_('Your copy of the game isn\'t set yet'),
+  N_('Your copy of the game isn\'t the one it reads'),
+  N_('Your copy of the game isn\'t there anymore'),
+  N_('Your graphics driver doesn\'t have Vulkan'),
+  N_('Your own launch options are on. If it won\'t start, try once without them.'),
+  N_('{error}. Games often can\'t save or set up in protected folders like Program Files.'),
+  N_('{gb} GB free. Some games need room for saves and shader caches.'),
+  N_('{name} is already open'),
+  N_('{path} can\'t be found. Maybe it\'s on a drive that isn\'t connected, or it was moved.'),
+];
+function actOn(id, a) { const el = document.createElement('i'); el.dataset.id = id; el.dataset.act = a; return act(el, new Event('click')); }
+const TS_ICON = { ok: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', warn: '<path d="M12 8v5M12 16.5v.01"/><path d="M10.3 3.9 2.6 17.5a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>', bad: '<path d="m7 7 10 10M17 7 7 17"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>' };
+async function troubleshootModal(id, lastCode) {
+  const name = (libApp(S.library[id] || { id, name: id }) || {}).name || id;
+  let checks = null;
+  const draw = () => {
+    const box = $('#ts-list', m);
+    if (!box) return;
+    if (!checks) { box.innerHTML = `<p class="muted">${esc(t('Checking…'))}</p>`; return; }
+    box.innerHTML = checks.map((c, i) => `<div class="ts-row ${c.level}"><span class="ts-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TS_ICON[c.level] || ''}</svg></span>
+      <div class="ts-k"><b>${esc(tf(c.title, c.v))}</b>${c.detail ? `<span class="${c.title === 'What it printed last time' ? 'ts-out' : ''}">${esc(c.title === 'What it printed last time' ? c.detail : tf(c.detail, c.v))}</span>` : ''}</div>
+      ${c.fix && TS_FIX[c.fix] ? `<button type="button" class="btn sm${c.level === 'bad' ? ' main' : ''}" data-x="fix" data-i="${i}">${esc(t(TS_FIX[c.fix][0]))}</button>` : ''}</div>`).join('');
+  };
+  const run = async () => { checks = null; draw(); try { checks = await invoke('troubleshoot', { id }); } catch (e) { checks = [{ level: 'bad', title: String(e && e.message ? e.message : e), detail: '', fix: '' }]; }
+    if (lastCode) checks.push({ level: 'info', title: 'How it closed last time', detail: 'Code {code}', v: { code: lastCode }, fix: '' });
+    // Problems first, what it printed last.
+    const rank = (c) => (c.title === 'What it printed last time' ? 9 : { bad: 0, warn: 1, info: 2, ok: 3 }[c.level] ?? 4);
+    checks = checks.map((c, i) => [c, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map((x) => x[0]); draw(); };
+  const m = modal(`<div class="ts-h"><h2>${esc(tf('Troubleshoot {name}', { name }))}</h2><span class="bh-tag">${esc(t('Beta'))}</span></div>
+    <p class="muted">${esc(t('What could keep it from starting, and a fix where there is one.'))}</p>
+    <div class="ts-list" id="ts-list"></div>
+    <div class="acts grid2"><button type="button" class="btn" data-x="again">${esc(t('Check Again'))}</button><button type="button" class="btn main" data-x="send">${esc(t('Send to the Developer'))}</button></div>`, async (x, close) => {
+    if (x.dataset.x === 'again') return run();
+    if (x.dataset.x === 'fix') { const c = checks[Number(x.dataset.i)]; close(); try { await TS_FIX[c.fix][1](id); } catch (e) { fail(e); } return; }
+    if (x.dataset.x === 'send') {
+      const text = (checks || []).map((c) => { const f = (x) => String(x).replace(/\{(\w+)\}/g, (k, n) => (c.v && n in c.v ? c.v[n] : k)); return `[${c.level}] ${f(c.title)}${c.detail ? ': ' + f(c.detail).replace(/\s+/g, ' ').slice(0, 300) : ''}`; }).join('\n');
+      S.betaFb = Object.assign({ kind: 'bug', area: 'Playing a game', mood: '', text: '', contact: '', attach: true, sent: false, busy: false, game: '' }, S.betaFb || {}, { kind: 'bug', area: 'Playing a game', sent: false, text: (t('It won\'t start. Troubleshoot found:') + '\n' + text).slice(0, 1800) });
+      S.reportGame = id;
+      close();
+      return setSection('report');
+    }
+  }, tf('Troubleshoot {name}', { name }));
+  m.querySelector('.modal').classList.add('ts');
+  draw();
+  run();
+}
+
+// A SteamGridDB picture: { url, thumb } (older answers: just the address).
+const artUrl = (x) => (typeof x === 'string' ? x : (x && x.url) || '');
+const artThumb = (x) => (typeof x === 'string' ? x : (x && (x.thumb || x.url)) || '');
+// Columns for a grid of n that never leave one alone on the last row.
+const evenCols = (n, tries) => tries.find((c) => n <= c || n % c !== 1) || tries[0];
+
+// Every cover and background SteamGridDB has for the game, to pick from.
+function artPicker(art, cur, done) {
+  const sel = { cover: cur.cover, hero: cur.hero };
+  let tab = art.covers.length ? 'cover' : 'hero';
+  const m = modal(`<h2>${esc(t('Choose Art'))}</h2>
+    <div class="seg ap-tabs" role="radiogroup" aria-label="${esc(t('Choose Art'))}">
+      <button type="button" role="radio" data-x="tab" data-k="cover">${esc(tf('Covers ({n})', { n: art.covers.length }))}</button>
+      <button type="button" role="radio" data-x="tab" data-k="hero">${esc(tf('Backgrounds ({n})', { n: art.heroes.length }))}</button>
+    </div>
+    <div class="ap-grid" id="ap-grid"></div>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="use">${esc(t('Use These'))}</button></div>`, (x, close) => {
+    if (x.dataset.x === 'tab') { tab = x.dataset.k; return draw(); }
+    if (x.dataset.x === 'pick') { sel[tab] = x.dataset.u; return draw(); }
+    if (x.dataset.x === 'use') { Object.assign(cur, sel); close(); done(); }
+  }, t('Choose Art'));
+  m.querySelector('.modal').classList.add('ap');
+  function draw() {
+    for (const b of $$('[data-x="tab"]', m)) b.setAttribute('aria-checked', String(b.dataset.k === tab));
+    const list = tab === 'cover' ? art.covers : art.heroes;
+    const g = $('#ap-grid', m);
+    g.className = 'ap-grid ' + tab;
+    g.style.setProperty('--cols', evenCols(list.length, tab === 'cover' ? [5, 4, 6, 3] : [2, 3]));
+    g.innerHTML = list.length ? list.map((x) => { const u = artUrl(x); return `<button type="button" class="ap-it${u === sel[tab] ? ' on' : ''}" data-x="pick" data-u="${esc(u)}" aria-pressed="${u === sel[tab]}">${pic(artThumb(x))}</button>`; }).join('')
+      : `<p class="muted">${esc(t('SteamGridDB has none of these for this game.'))}</p>`;
+  }
+  draw();
+}
+
 function editInfo(id) {
   const a = byId(id);
   if (!a || !a.custom) return;
@@ -3912,6 +4087,7 @@ async function act(el, e) {
     case 'auto-up': try { S.library[id] = await invoke('set_game_options', { id, args: null, autoUpdate: !S.library[id].auto_update }); toast(S.library[id].auto_update ? tf('{name} updates by itself now.', { name: S.library[id].name }) : t('Updates wait for you again.')); render(true); } catch (err) { fail(err); } return;
     case 'launch-opts': return launchOptions(id);
     case 'rename': return renameModal(id);
+    case 'troubleshoot': return troubleshootModal(id);
     case 'edit-info': return editInfo(id);
     case 'sgdb-save': { const v = ($('#sgdb-key') || {}).value || ''; await saveUi({ sgdb_key: v.trim() }); return toast(v.trim() ? t('Saved. Games you add from GitHub get art now.') : t('Key removed.')); }
     case 'build': return changeBuild(id);
@@ -4003,6 +4179,7 @@ async function act(el, e) {
     }
     case 'menu': return menu(el, gameMenu(id));
     case 'folder': try { await invoke('open_folder', { id: id || null, path: el.dataset.path || null }); } catch (err) { fail(err); } return;
+    case 'app-menu': try { await invoke('desktop_shortcut', { id, menu: true }); toast(tf(S.os === 'windows' ? '{name} is in your Start menu.' : '{name} is in your app menu.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
     case 'desktop': try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
     case 'steam': return addToSteam(id, false);
     case 'shots': S.shotsGame = id || ''; return go('shots');

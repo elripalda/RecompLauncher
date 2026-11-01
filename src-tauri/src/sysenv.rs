@@ -37,6 +37,16 @@ pub fn changes_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<Change> {
         if kept.len() == v.split(':').filter(|e| !e.is_empty()).count() {
             continue;
         }
+        let mut kept: Vec<String> = kept.into_iter().map(str::to_string).collect();
+        // Apps installed as Flatpaks (often the browser) are listed from these: kept in view.
+        if k == "XDG_DATA_DIRS" {
+            let home = get("HOME").unwrap_or_default();
+            for d in [format!("{home}/.local/share/flatpak/exports/share"), "/var/lib/flatpak/exports/share".to_string(), "/usr/local/share".to_string(), "/usr/share".to_string()] {
+                if !kept.contains(&d) && std::path::Path::new(&d).is_dir() && !home.is_empty() {
+                    kept.push(d);
+                }
+            }
+        }
         out.push((k, if kept.is_empty() { None } else { Some(OsString::from(kept.join(":"))) }));
     }
     for k in SINGLE {

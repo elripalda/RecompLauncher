@@ -72,6 +72,8 @@ await rl.net.fetch('https://example.com/api', { method: 'POST', headers: { 'Cont
                                               // { status, headers, body } (body as text; pass binary: true for base64)
 await rl.install.zip('https://example.com/files/game.zip', 'My Game');
                                               // asks the player, downloads, unpacks into their library folder; { id, name }
+await rl.install.zip(url, 'My Game', { headers: { Cookie: 'session=...' } });
+                                              // with headers, for a site the player signed in to through your page
 await rl.storage.get('key');                  // anything JSON, up to 1 MB per plugin
 await rl.storage.set('key', { any: 'value' }); // set to null to remove it
 await rl.storage.all();
@@ -88,7 +90,7 @@ When the player says no, or something fails, the promise rejects with an `Error`
 ## The rules a plugin page runs under
 
 - It runs in a sandboxed frame with an origin of its own. It can't reach the launcher's page, its settings, the player's sign-in or their files.
-- Requests and downloads go only to the sites you listed, redirects included. Cookies and the launcher's own sign-in never go along.
+- Requests and downloads go only to the sites you listed, redirects included. Headers you set (a sign-in cookie for your own site, say) go only to those sites, and the launcher's own sign-in never goes along.
 - It can load its own files only. `fetch`, `XMLHttpRequest`, WebSockets, outside images and scripts are all blocked. Use `rl.net.fetch` for the sites you listed.
 - No pop-up windows, `alert` or new tabs.
 - The player can turn every plugin off at once in Settings → Plugins.

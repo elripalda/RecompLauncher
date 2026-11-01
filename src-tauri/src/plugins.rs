@@ -395,8 +395,9 @@ fn client_for(headers: &BTreeMap<String, String>) -> Res<reqwest::Client> {
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
     let mut h = HeaderMap::new();
     for (k, v) in headers {
-        // Cookies and where a request comes from are the launcher's to say.
-        if ["cookie", "host", "origin", "referer", "content-length"].contains(&k.to_lowercase().as_str()) {
+        // Where a request comes from is the launcher's to say. A plugin's own cookies (a sign-in to
+        // a site it lists) go along; the launcher has none of its own here.
+        if ["host", "origin", "referer", "content-length"].contains(&k.to_lowercase().as_str()) {
             continue;
         }
         if let (Ok(n), Ok(v)) = (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(v)) {
@@ -536,7 +537,7 @@ pub fn plugin_add_folder(st: State<'_, App>, id: String, folder: String, name: O
 /// Downloads a zip (or .7z) a plugin points at and installs what's in it as a game in the Library
 /// (with "install"). The player said yes to this exact download first.
 #[tauri::command]
-pub async fn plugin_install_zip(app: AppHandle, st: State<'_, App>, id: String, url: String, name: String) -> Res<Installed> {
+pub async fn plugin_install_zip(app: AppHandle, st: State<'_, App>, id: String, url: String, name: String, headers: Option<BTreeMap<String, String>>) -> Res<Installed> {
     let m = allowed(&st.dir, &id, "install")?;
     let u = check_url(&st.dir, &m, &url)?;
     let name: String = name.trim().chars().take(80).collect();
@@ -552,7 +553,7 @@ pub async fn plugin_install_zip(app: AppHandle, st: State<'_, App>, id: String, 
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let dl_dir = st.dir.join("cache").join("plugin-downloads");
     // Where the file really is, after the site's redirects (each one checked).
-    let client = client_for(&BTreeMap::new())?;
+    let client = client_for(&headers.unwrap_or_default())?;
     let (_, at) = send(&st.dir, &m, &client, reqwest::Method::GET, u, None).await?;
     let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: at.to_string() };
     let report = {
@@ -600,7 +601,7 @@ pub const SDK: &str = r#"(() => {
   window.rl = Object.freeze({
     library: Object.freeze({ list: () => call('library.list'), addFolder: (folder, name) => call('library.addFolder', { folder, name }) }),
     net: Object.freeze({ fetch: (url, o) => call('net.fetch', Object.assign({ url }, o || {})) }),
-    install: Object.freeze({ zip: (url, name) => call('install.zip', { url, name }) }),
+    install: Object.freeze({ zip: (url, name, o) => call('install.zip', { url, name, headers: (o && o.headers) || null }) }),
     storage: Object.freeze({ get: (key) => call('storage.get', { key }), set: (key, value) => call('storage.set', { key, value }), all: () => call('storage.all') }),
     notify: (title, body) => call('notify', { title, body }),
     toast: (text) => call('toast', { text }),
