@@ -272,15 +272,28 @@ pub fn route_for(data: &Path, id: &str, api: Api) -> (Api, Option<&'static str>)
     }
 }
 
+/// The way in kept for a game after a start that crashed (None: both ways, as at first).
+pub fn kept_route(data: &Path, id: &str) -> Option<String> {
+    std::fs::read_to_string(route_file(data, id)).ok().map(|s| s.trim().to_string()).filter(|s| s == "layer" || s == "proxy")
+}
+
+/// Back to trying both ways in (Troubleshoot, when a Look doesn't show).
+pub fn reset_route(data: &Path, id: &str) {
+    let _ = std::fs::remove_file(route_file(data, id));
+}
+
 /// After a game with a look closes: one that went down within seconds tries the next way in.
 pub fn after_run(data: &Path, id: &str, route: &str, secs: u64, code: Option<i32>) {
     let crashed = secs < 20 && code.map(|c| c != 0).unwrap_or(false);
     if !crashed {
         return;
     }
-    let next = match route {
-        "both" => "layer",
-        "layer" => "proxy",
+    // On Windows most games draw with Direct3D, so that way in is tried before Vulkan's.
+    let next = match (route, cfg!(windows)) {
+        ("both", true) => "proxy",
+        ("proxy", true) => "layer",
+        ("both", false) => "layer",
+        ("layer", false) => "proxy",
         _ => "both",
     };
     let f = route_file(data, id);

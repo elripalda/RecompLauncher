@@ -381,6 +381,51 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
 /// From the catalog's boot profile (crate::boot): the player's copy and how it reaches the game,
 /// when it goes on the command line (`files.how: "flag"`) or into a folder (`"folder"`), and the
 /// game's settings the launcher can show (`settings: {config, settings}`).
+/// A native build's program for the Windows one a game's setup names: the same name without its
+/// Windows and processor parts. pd.i686.exe is pd.x86_64, not pd.pal.x86_64 (a build for another
+/// region, with a word the Windows name doesn't have).
+pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
+    const SKIP: [&str; 15] = ["exe", "i686", "i386", "x86", "x86_64", "x64", "amd64", "win32", "win64", "windows", "linux", "bin", "appimage", "sh", "64"];
+    let words = |n: &str| -> Vec<String> { n.to_lowercase().split(['.', '_', '-', ' ']).filter(|w| !w.is_empty() && !SKIP.contains(w)).map(String::from).collect() };
+    let want = words(Path::new(win).file_name()?.to_str()?);
+    if want.is_empty() {
+        return None;
+    }
+    let runnable = |p: &Path| -> bool {
+        let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        if [".dll", ".so", ".exe", ".txt", ".md", ".ini", ".cfg", ".json", ".pdb", ".zip", ".7z", ".dat", ".bin"].iter().any(|e| n.ends_with(e)) || n.contains(".so.") {
+            return false;
+        }
+        if n.ends_with(".x86_64") || n.ends_with(".appimage") || n.ends_with(".sh") {
+            return true;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+        }
+        #[cfg(not(unix))]
+        false
+    };
+    let mut best: Option<(usize, usize, PathBuf)> = None;
+    for e in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = e.path();
+        if !p.is_file() || !runnable(&p) {
+            continue;
+        }
+        let name = p.file_name()?.to_string_lossy().to_string();
+        let have = words(&name);
+        if !want.iter().all(|w| have.contains(w)) {
+            continue;
+        }
+        let extra = have.iter().filter(|w| !want.contains(w)).count();
+        if best.as_ref().map(|(x, l, _)| (extra, name.len()) < (*x, *l)).unwrap_or(true) {
+            best = Some((extra, name.len(), p));
+        }
+    }
+    best.map(|(_, _, p)| p)
+}
+
 pub fn from_boot(b: &Value) -> Option<Profile> {
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
     let (config, settings) = boot_settings(b);
@@ -928,7 +973,12 @@ impl Profile {
     pub fn command(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Option<(PathBuf, Vec<String>)> {
         let _w = WineFill::new(self.through_proton(install));
         let s = self.start.as_ref()?;
-        let exe = s.program.iter().map(|p| install.join(p)).find(|p| p.is_file())?;
+        let exe = s
+            .program
+            .iter()
+            .map(|p| install.join(p))
+            .find(|p| p.is_file())
+            .or_else(|| if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) })?;
         let mut args: Vec<String> = s.args.iter().map(|a| fill(a, install, game)).collect();
         for st in self.settings.iter().filter(|s| s.target == "args") {
             if let Some(c) = picks.get(&st.id).and_then(|i| st.choices.get(*i)) {
@@ -1284,6 +1334,24 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn a_native_build_starts_its_own_region() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join("rl-test-twin");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for n in ["pd.pal.x86_64", "pd.jpn.x86_64", "pd.x86_64", "libSDL2.so", "pd.ini"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"x").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert_eq!(super::native_twin(&d, "pd.i686.exe").unwrap().file_name().unwrap(), "pd.x86_64");
+        assert_eq!(super::native_twin(&d, "pd.pal.i686.exe").unwrap().file_name().unwrap(), "pd.pal.x86_64");
+        assert!(super::native_twin(&d, "other.exe").is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn windows_games_through_proton_get_windows_paths() {
         assert_eq!(wine_path("/home/deck/Games/AC6/disc.iso"), r"Z:\home\deck\Games\AC6\disc.iso");

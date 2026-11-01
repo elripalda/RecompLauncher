@@ -5,6 +5,29 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Set Up By Hand: how a game starts and gets the player's game files, as the player said.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ManualSetup {
+    /// The program that starts it (in its folder, or anywhere).
+    #[serde(default)]
+    pub exe: Option<PathBuf>,
+    /// The player's game files: a disc image, a ROM, or a folder.
+    #[serde(default)]
+    pub copy: Option<PathBuf>,
+    /// "folder": put in a folder inside the game's folder (`into`, "." for the folder itself);
+    /// "arg": handed to the program on its command line (`arg`, with {copy} for where they are);
+    /// "none": the game asks for them itself.
+    #[serde(default)]
+    pub how: String,
+    #[serde(default)]
+    pub into: String,
+    /// A single file's name there, when the game wants it named a certain way.
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub arg: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Installed {
     pub id: String,
@@ -53,6 +76,10 @@ pub struct Installed {
     /// The player's copy of the game (disc image or folder), for recomps the launcher sets up.
     #[serde(default)]
     pub game_copy: Option<PathBuf>,
+    /// Set Up By Hand: the player says which program starts it and how it gets their game files.
+    /// While it's on, it's used instead of the launcher's own setup for this game.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual: Option<ManualSetup>,
     /// The game's update the player picked, for recomps that need one beside their copy.
     #[serde(default)]
     pub update_copy: Option<PathBuf>,

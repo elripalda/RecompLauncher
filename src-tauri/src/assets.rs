@@ -180,10 +180,55 @@ pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
     pool.into_iter().filter(|a| score(&a.name, os, arch) == best).collect()
 }
 
+/// Every build of a release that can run here, best first: every format (an AppImage and a plain
+/// folder, a portable zip and an installer) and 32-bit builds too. A game server is left out unless
+/// it's all there is. With a pattern from the list, only what it matches.
+pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
+    let pool: Vec<&Asset> = match pattern.filter(|p| !p.trim().is_empty()) {
+        Some(p) => assets.iter().filter(|a| wild(p, &a.name)).collect(),
+        None => assets.iter().collect(),
+    };
+    let mut v: Vec<(i32, &Asset)> = pool.into_iter().map(|a| (score(&a.name, os, arch), a)).filter(|(s, _)| *s != i32::MIN).collect();
+    let server = |a: &Asset| words(&a.name).iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv"));
+    if v.iter().any(|(_, a)| !server(a)) {
+        v.retain(|(_, a)| !server(a));
+    }
+    // When a release says which files are for this system, a file that says nothing is for another.
+    if v.iter().any(|(_, a)| says_os(&a.name, os)) {
+        v.retain(|(_, a)| says_os(&a.name, os));
+    }
+    v.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| x.1.name.cmp(&y.1.name)));
+    v.into_iter().map(|(_, a)| a).collect()
+}
+
+/// Does the file's name (or its kind: a .exe, an AppImage, a .dmg) say it's for `os`?
+fn says_os(name: &str, os: &str) -> bool {
+    let w = words(name);
+    let by_kind = matches!((os, kind(name).unwrap_or("")), ("windows", "exe") | ("linux", "appimage") | ("macos", "dmg"));
+    by_kind || OS_WORDS.iter().any(|(o, list)| *o == os && w.iter().any(|x| list.contains(&x.as_str())))
+}
+
+/// What kind of build it is, for the player choosing one: its format, and 32-bit when it is.
+pub fn describe(name: &str, os: &str) -> &'static str {
+    let w = words(name);
+    let has = |l: &[&str]| w.iter().any(|x| l.contains(&x.as_str()));
+    let bit32 = has(&["x86", "i386", "i686", "win32", "32bit"]) && !has(&X64);
+    match (os, kind(name).unwrap_or("")) {
+        (_, _) if has(&["flatpak"]) => "Flatpak",
+        ("linux", "appimage") => "AppImage",
+        ("linux", _) => "Linux Folder",
+        ("windows", "exe") if has(&["setup", "installer", "install"]) => if bit32 { "32-Bit Installer" } else { "Installer" },
+        ("windows", "exe") => if bit32 { "32-Bit Program" } else { "Program" },
+        ("windows", _) => if bit32 { "32-Bit Portable" } else { "Portable" },
+        _ => "Build",
+    }
+}
+
 /// Of `list`, the one most like `before` (the build the player had): same words but the version.
 pub fn most_like<'a>(list: &[&'a Asset], before: &str) -> Option<&'a Asset> {
     let had = words(before);
-    list.iter().copied().max_by_key(|a| words(&a.name).iter().filter(|w| had.contains(w) && !w.chars().all(|c| c.is_ascii_digit() || c == '.')).count())
+    // Of equally close names, the first (lists come best first).
+    list.iter().copied().rev().max_by_key(|a| words(&a.name).iter().filter(|w| had.contains(w) && !w.chars().all(|c| c.is_ascii_digit() || c == '.')).count())
 }
 
 pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Option<&'a Asset> {
@@ -210,7 +255,22 @@ mod tests {
     use super::*;
 
     fn a(n: &str) -> Asset {
-        Asset { name: n.into(), size: 1, digest: None, browser_download_url: format!("https://x/{n}") }
+        Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new() }
+    }
+
+    #[test]
+    fn every_format_for_this_system_is_offered() {
+        let rel = [a("Game-1.0-linux-x86_64.AppImage"), a("Game-1.0-linux-x86_64.tar.gz"), a("Game-1.0-windows-x64.zip"), a("Game-1.0-Setup.exe"), a("Game-1.0-win32.zip"), a("Game-server-linux.tar.gz"), a("Game-1.0.pdb")];
+        let l: Vec<&str> = all_for(&rel, "linux", "x64", None).iter().map(|x| x.name.as_str()).collect();
+        assert_eq!(l, vec!["Game-1.0-linux-x86_64.AppImage", "Game-1.0-linux-x86_64.tar.gz"]);
+        let w: Vec<&str> = all_for(&rel, "windows", "x64", None).iter().map(|x| describe(&x.name, "windows")).collect();
+        assert_eq!(w, vec!["Portable", "32-Bit Portable", "Installer"]);
+        assert_eq!(describe("Game-1.0-linux-x86_64.tar.gz", "linux"), "Linux Folder");
+        // A release that names its Linux files: the unnamed zip is for Windows.
+        let named = [a("Game.AppImage"), a("Game.zip")];
+        assert_eq!(all_for(&named, "linux", "x64", None).len(), 1);
+        let unnamed = [a("Game.tar.gz"), a("Game.zip")];
+        assert_eq!(all_for(&unnamed, "linux", "x64", None).len(), 2);
     }
 
     #[test]

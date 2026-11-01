@@ -204,25 +204,33 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let mut asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
         .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
         .clone();
-    // Several builds that fit this PC equally (one per region, say): the one the player picked, the
-    // one most like what they had, or they're asked.
+    // Several builds that fit this PC equally (one per region, say), or in different forms (an
+    // AppImage and a plain folder, a portable zip and an installer): the one the player picked, the
+    // one most like what they had, or they're asked once, with the usual pick first.
     let choices = if linux_new { assets::choices(&linux_files, os, arch, None) } else { assets::choices(&rel.assets, os, arch, pattern) };
-    if choices.len() > 1 {
-        let had = st.lib.lock().unwrap().installed.get(id).map(|g| g.asset.clone()).filter(|a| !a.is_empty());
-        match (file.as_deref(), had) {
-            (Some(f), _) => {
-                asset = choices.iter().find(|a| a.name == f).map(|a| (*a).clone()).ok_or_else(|| Error::Msg(format!("{f} isn't in this release.")))?;
-            }
-            (None, Some(h)) => {
-                if let Some(a) = assets::most_like(&choices, &h) {
-                    asset = a.clone();
-                }
-            }
-            (None, None) => {
-                let names: Vec<&str> = choices.iter().map(|a| a.name.as_str()).collect();
-                return Err(Error::Msg(format!("PICK_BUILD|{}", names.join("|"))));
+    let all = if linux_new { assets::all_for(&linux_files, os, arch, None) } else { assets::all_for(&rel.assets, os, arch, pattern) };
+    // Kinds of build, 32-bit or not alike: a 32-bit copy alone isn't worth asking about (Change Build has it).
+    let forms = all.iter().map(|a| assets::describe(&a.name, os).trim_start_matches("32-Bit ").to_lowercase()).collect::<std::collections::HashSet<_>>().len();
+    let had = st.lib.lock().unwrap().installed.get(id).map(|g| g.asset.clone()).filter(|a| !a.is_empty());
+    match (file.as_deref(), had) {
+        (Some(f), _) => {
+            asset = all.iter().find(|a| a.name == f).map(|a| (*a).clone()).ok_or_else(|| Error::Msg(format!("{f} isn't in this release.")))?;
+        }
+        (None, Some(h)) if choices.len() > 1 || forms > 1 => {
+            // Updates follow the form the player picked: of the same kind first, then the closest name.
+            let same: Vec<&assets::Asset> = all.iter().copied().filter(|a| assets::describe(&a.name, os) == assets::describe(&h, os)).collect();
+            if let Some(a) = assets::most_like(if same.is_empty() { &all } else { &same }, &h) {
+                asset = a.clone();
             }
         }
+        (None, None) if choices.len() > 1 || forms > 1 => {
+            // Each as "name<tab>kind of build"; the usual pick is marked with a * and listed first.
+            let tag = |n: &str| format!("{n}\t{}", assets::describe(n, os));
+            let mut names: Vec<String> = vec![format!("*{}", tag(&asset.name))];
+            names.extend(all.iter().filter(|a| a.name != asset.name).map(|a| tag(&a.name)));
+            return Err(Error::Msg(format!("PICK_BUILD|{}", names.join("|"))));
+        }
+        _ => {}
     }
 
     let (lib_dir, keep, backup_first, prev) = {
@@ -235,7 +243,14 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
     let target = prev.as_ref().map(|p| p.path.clone()).unwrap_or_else(|| lib_dir.join(folder_name(id)));
     let home = target.parent().map(Path::to_path_buf).unwrap_or(lib_dir.clone());
-    std::fs::create_dir_all(&home).map_err(|e| Error::Msg(format!("Couldn't use the library folder {}: {e}", home.display())))?;
+    std::fs::create_dir_all(&home).map_err(|e| {
+        // The drive it's on isn't there (unplugged, or a letter that changed): said plainly.
+        let drive = home.ancestors().last().filter(|r| !r.as_os_str().is_empty() && !r.exists());
+        match drive {
+            Some(r) => Error::Msg(format!("The drive your library is on ({}) isn't connected. Connect it, or pick another library folder in Settings → Games and folders.", r.display())),
+            None => Error::Msg(format!("Couldn't use the library folder {}: {e}", home.display())),
+        }
+    })?;
     if let Some(free) = manage::free_space(&home) {
         if free < asset.size.saturating_mul(3) {
             return Err(Error::Msg(format!("There isn't enough space on that drive ({} free).", human(free))));
@@ -340,7 +355,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let rec = Installed {
         id: id.into(),
         name: str_of(&entry, "name").into(),
-        game: String::new(),
+        game: prev.as_ref().map(|p| p.game.clone()).unwrap_or_default(),
         repo,
         tag: rel.tag_name.clone(),
         version: str_of(&entry, "version").into(),
@@ -375,6 +390,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         setup_done,
         setup_checked: true,
         exe_rules: if prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false) { u8::MAX } else { install::EXE_RULES },
+        manual: prev.as_ref().and_then(|p| p.manual.clone()),
     };
     {
         let mut l = st.lib.lock().unwrap();
@@ -513,8 +529,10 @@ async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
     let rel = rels.iter().find(|r| r.tag_name == have.0).or_else(|| catalog::latest(&rels)).ok_or_else(|| Error::Msg("It has no releases yet.".into()))?;
     let os = os_for(&st, &entry, &id);
     let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
-    let names: Vec<String> = assets::choices(&rel.assets, os, assets::arch_now(), pattern).iter().map(|a| a.name.clone()).collect();
-    Ok(json!({"tag": rel.tag_name, "builds": names, "current": have.1}))
+    let arch = assets::arch_now();
+    let best = assets::pick(&rel.assets, os, arch, pattern).map(|a| a.name.clone()).unwrap_or_default();
+    let builds: Vec<Value> = assets::all_for(&rel.assets, os, arch, pattern).iter().map(|a| json!({"name": a.name, "label": assets::describe(&a.name, os), "best": a.name == best})).collect();
+    Ok(json!({"tag": rel.tag_name, "builds": builds, "current": have.1}))
 }
 
 #[tauri::command(async)]
@@ -1213,13 +1231,15 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         Starting(id.to_string())
     };
     let g = st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    // Set Up By Hand: the player's own way, instead of the launcher's.
+    let manual = g.manual.clone();
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
-    let prof = profile_of(&st, id, &g);
+    let prof = if manual.is_some() { None } else { profile_of(&st, id, &g) };
     // Its own installer or first-time setup, the first time: that opens instead of the game.
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
     // still runs the release's setup first.)
-    if !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
+    if manual.is_none() && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
         if let Some(setup) = own_setup::pending(&st, id, &g) {
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
@@ -1234,6 +1254,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let mut game_env: Vec<(String, String)> = vec![];
     note_pad();
     let planned = match &prof {
+        _ if manual.is_some() => manual_plan(&g, manual.as_ref().unwrap())?,
         Some(p) if p.start.is_some() => {
             let copy = game_copy(&st, id, &g, p)?;
             p.prepare(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
@@ -1372,9 +1393,11 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             c.arg(&exe);
             c
         }
-        // A shell script on Linux (it may have lost its run permission in the zip).
+        // A shell script on Linux (it may have lost its run permission in the zip). Through bash:
+        // most start scripts use bash's own syntax, which plain sh (dash on many systems) can't read.
         "sh" if !cfg!(windows) => {
-            let mut c = tokio::process::Command::new("sh");
+            let bash = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join("bash").is_file())).unwrap_or(false);
+            let mut c = tokio::process::Command::new(if bash { "bash" } else { "sh" });
             c.arg(&exe);
             c
         }
@@ -2457,6 +2480,15 @@ fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
         if matches!(profile::packed(need, &copy).as_deref(), Some("7z" | "zip")) {
             copy = unpack_copy(&st, need, &copy).map_err(Error::Msg)?;
         }
+        // A folder one level off (the one around the game's files, or one inside them): the right
+        // one is used instead of turning the player away.
+        if copy.is_dir() && copy.parent().is_some() && profile::check_copy(need, &copy).is_err() {
+            if let Some(inner) = copy_in(need, &copy).filter(|c| c != &copy) {
+                copy = inner;
+            } else if let Some(up) = copy.parent().filter(|u| u.parent().is_some() && profile::check_copy(need, u).is_ok()) {
+                copy = up.to_path_buf();
+            }
+        }
         profile::check_copy(need, &copy).map_err(Error::Msg)?;
     }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
@@ -2817,16 +2849,28 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     if cfg!(windows) && !g.path.to_string_lossy().is_ascii() {
         out.push(check("warn", "Its folder's path has letters some games can't read", "Many recomps can't open files in a folder whose path has accents or letters outside English. Move it to a folder with plain letters, like C:\\Recomp Library.", "move"));
     }
-    // The program it starts.
-    let prof = profile_of(&st, &id, &g);
-    let exe = prof
+    // The program it starts (set up by hand: the one the player picked).
+    let prof = if g.manual.is_some() { None } else { profile_of(&st, &id, &g) };
+    let exe = g
+        .manual
         .as_ref()
-        .and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e))
+        .and_then(|m| m.exe.clone())
+        .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
+        .or_else(|| prof.as_ref().and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e)))
         .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
     let Some(exe) = exe.filter(|e| e.is_file()) else {
+        if g.manual.is_some() {
+            out.push(check("bad", "The program you picked isn't there", "An update may have renamed it. Pick it again in Set Up By Hand.", "manual"));
+            return Ok(out);
+        }
         out.push(check("bad", "The program it starts isn't there", "Antivirus may have taken it out, or the download was cut short.", "setexe"));
+        out.push(check("info", "You can set it up by hand", "Point the launcher at its program and your game files yourself.", "manual"));
         return Ok(out);
     };
+    if let Some(m) = &g.manual {
+        let ok = m.copy.as_ref().map(|c| c.exists()).unwrap_or(true);
+        out.push(check(if ok { "info" } else { "bad" }, "It's set up by hand", if ok { "It starts the way you set it up, not the launcher's way." } else { "Your game files aren't where you pointed it anymore." }, "manual"));
+    }
     let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     out.push(check("ok", "It starts {name}", "", "").with("name", &name));
     // The right build for this PC.
@@ -2844,6 +2888,28 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         } else {
             out.push(check("bad", "It's a Windows version and Proton isn't installed", "Install Steam with Proton, or umu-launcher, or Wine, then press Play again.", "proton"));
         }
+    }
+    // Files it needs that aren't on this PC: the DLLs it loads (Windows), the libraries it links
+    // to (Linux). The most common reason a game closes the moment it starts.
+    let lacking = missing_libraries(&exe, &g.path);
+    if !lacking.is_empty() {
+        let low: Vec<String> = lacking.iter().map(|d| d.to_lowercase()).collect();
+        let vc = low.iter().any(|d| d.starts_with("msvcp") || d.starts_with("vcruntime") || d.starts_with("concrt") || d.starts_with("vcomp"));
+        let dx = low.iter().any(|d| d.starts_with("d3dx9_") || d.starts_with("d3dx10_") || d.starts_with("d3dx11_") || d.starts_with("xinput1_3") || d.starts_with("x3daudio") || d.starts_with("xaudio2_7") || d.starts_with("d3dcompiler_4"));
+        let (detail, fix) = if vc {
+            ("Missing: {files}. It needs the Visual C++ runtime, and part of it is missing.", "vcredist")
+        } else if dx {
+            ("Missing: {files}. It needs the older DirectX runtime (June 2010), which Windows doesn't come with.", "dxruntime")
+        } else if cfg!(windows) {
+            ("Missing: {files}. They should come with the game. Reinstall it; if they're still missing, its developer needs to know.", "reinstall")
+        } else {
+            ("Missing: {files}. Install them with your system's package manager (the names are a good search), then press Play again.", "")
+        };
+        out.push(check("bad", "It needs files that aren't on this PC", detail, fix).with("files", lacking.iter().take(8).cloned().collect::<Vec<_>>().join(", ")));
+    }
+    // A folder OneDrive keeps in sync: files can be online-only, and syncing locks them.
+    if cfg!(windows) && g.path.to_string_lossy().to_lowercase().contains("\\onedrive") {
+        out.push(check("warn", "Its folder is in OneDrive", "Games often can't run from a folder OneDrive syncs: some files may only be online, and syncing locks them while the game runs.", "move"));
     }
     // Windows holding it back.
     #[cfg(windows)]
@@ -2907,6 +2973,14 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
             _ => "Your own launch options are on. If it won't start, try once without them.",
         };
         out.push(check("info", "Extras are on", what, "clean"));
+        // A Look kept to one way in after a start that crashed: when that's the wrong one for this
+        // game, the Look never shows.
+        if look_on {
+            if let Some(r) = looks::kept_route(&st.dir, &id) {
+                let way = if r == "layer" { "Vulkan" } else { "Direct3D" };
+                out.push(check("info", "The Look only tries one way in", "Since a start that crashed, its Look goes in through {way} only. If the Look doesn't show, let it try both ways again.", "lookroute").with("way", way));
+            }
+        }
     }
     // What it printed last time.
     if let Ok(text) = std::fs::read_to_string(game_output_path(&st.dir, &id)) {
@@ -2915,9 +2989,13 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
             let l = l.to_lowercase();
             l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing")
         });
+        let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
         if let Some(line) = missing {
-            let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
             out.push(check("bad", "It says something it needs is missing", line.trim().chars().take(300).collect::<String>(), if needs_copy { "copy" } else { "files" }));
+        } else if let Some(line) = text.lines().rev().take(80).find(|l| wrong_copy_line(l)) {
+            // It found game files, but not the right ones (another game, a bad dump, a folder one
+            // level off): picked again, by the launcher's setup or by hand.
+            out.push(check("bad", "It says your game files aren't the right ones", line.trim().chars().take(300).collect::<String>(), if needs_copy { "copy" } else { "manual" }));
         }
         let tail: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
         let tail = tail[tail.len().saturating_sub(12)..].join("\n");
@@ -2925,7 +3003,215 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
             out.push(check("info", "What it printed last time", tail, ""));
         }
     }
+    // Something's wrong and it isn't set up by hand yet: that's the way out when nothing else works.
+    if g.manual.is_none() && out.iter().any(|c| c.level == "bad") && !out.iter().any(|c| c.fix == "manual") {
+        out.push(check("info", "You can set it up by hand", "Point the launcher at its program and your game files yourself.", "manual"));
+    }
     Ok(out)
+}
+
+/// A line where a game says the files it was given aren't its own (wrong game or region, a bad
+/// dump, a folder one level off).
+fn wrong_copy_line(l: &str) -> bool {
+    let l = l.to_lowercase();
+    ["wrong game", "wrong rom", "wrong disc", "wrong region", "invalid rom", "bad rom", "bad dump", "unsupported rom", "unrecognized rom", "unrecognised rom", "checksum mismatch", "hash mismatch", "one level too"]
+        .iter()
+        .any(|w| l.contains(w))
+        || (l.contains("is not the ") && l.contains(" disc"))
+}
+
+/// The libraries a program loads that this PC doesn't have, by name. Windows: its DLLs, looked
+/// for beside it, in Windows' own folders and on the PATH. Linux (a native program): what ldd says
+/// isn't found and isn't anywhere in the game's own folder either.
+fn missing_libraries(exe: &Path, game_dir: &Path) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        let _ = game_dir;
+        let Some(pe) = std::fs::read(exe).ok().and_then(|b| looks::read_pe(&b)) else { return vec![] };
+        let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let wow = root.join("SysWOW64");
+        let sys = if !pe.x64 && wow.is_dir() { wow } else { root.join("System32") };
+        let mut dirs: Vec<PathBuf> = vec![exe.parent().map(Path::to_path_buf).unwrap_or_default(), sys, root.clone()];
+        dirs.extend(std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default());
+        pe.imports
+            .iter()
+            .filter(|d| !d.starts_with("api-ms-") && !d.starts_with("ext-ms-"))
+            .filter(|d| !dirs.iter().any(|p| p.join(d.as_str()).is_file()))
+            .cloned()
+            .collect()
+    }
+    #[cfg(not(windows))]
+    {
+        let mut head = [0u8; 4];
+        let elf = std::fs::File::open(exe).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && &head == b"\x7fELF";
+        if !elf {
+            return vec![];
+        }
+        let mut c = std::process::Command::new("ldd");
+        sysenv::clean_std(&mut c);
+        // ldd answers at once; one that doesn't is left behind rather than keeping Troubleshoot waiting.
+        let Ok(mut ch) = c.arg(exe).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else { return vec![] };
+        let started = std::time::Instant::now();
+        loop {
+            match ch.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if started.elapsed() < std::time::Duration::from_secs(8) => std::thread::sleep(std::time::Duration::from_millis(40)),
+                _ => {
+                    let _ = ch.kill();
+                    let _ = ch.wait();
+                    return vec![];
+                }
+            }
+        }
+        let mut text = String::new();
+        if let Some(mut out) = ch.stdout.take() {
+            let _ = std::io::Read::read_to_string(&mut out, &mut text);
+        }
+        let mut inside: Vec<String> = vec![];
+        let mut walk = vec![(game_dir.to_path_buf(), 0)];
+        while let Some((d, depth)) = walk.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten().take(2000) {
+                let p = e.path();
+                if p.is_dir() && depth < 3 {
+                    walk.push((p, depth + 1));
+                } else if let Some(n) = p.file_name() {
+                    inside.push(n.to_string_lossy().to_string());
+                }
+            }
+        }
+        text.lines()
+            .filter(|l| l.contains("=> not found"))
+            .filter_map(|l| l.split("=>").next().map(|n| n.trim().to_string()))
+            .filter(|n| !n.is_empty() && !inside.contains(n))
+            .collect()
+    }
+}
+
+/// Set Up By Hand: the program and its command line, with the player's game files put where they
+/// said (in a folder inside the game's, on the command line, or nowhere: the game asks).
+fn manual_plan(g: &Installed, m: &library::ManualSetup) -> Res<Option<(PathBuf, Vec<String>)>> {
+    let exe = m
+        .exe
+        .clone()
+        .or_else(|| g.exe.clone())
+        .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
+        .ok_or_else(|| Error::Msg("Set Up By Hand doesn't have a program to start yet. Pick it there.".into()))?;
+    if !exe.is_file() {
+        return Err(Error::Msg(format!("{} isn't in its folder anymore (an update may have renamed it). Pick the program again in Set Up By Hand.", exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())));
+    }
+    let mut args = vec![];
+    if let Some(c) = m.copy.as_ref() {
+        if !c.exists() {
+            return Err(Error::Msg(format!("Your game files aren't at {} anymore. Pick them again in Set Up By Hand.", c.display())));
+        }
+        match m.how.as_str() {
+            "folder" => {
+                let gc = profile::GameCopy { into: if m.into.trim().is_empty() { ".".into() } else { m.into.clone() }, name: m.name.clone(), ..Default::default() };
+                profile::Profile { game: Some(gc), ..Default::default() }.place(&g.path, Some(c)).map_err(|e| Error::Msg(format!("Couldn't put your game files in its folder: {e}")))?;
+            }
+            "arg" => args = fill_copy_args(&m.arg, c),
+            _ => {}
+        }
+    }
+    trail::note(format!("Play {}: set up by hand ({})", g.id, if m.how.is_empty() { "none" } else { &m.how }));
+    Ok(Some((exe, args)))
+}
+
+/// A command line written by the player ("--game {copy}", quotes for words with spaces), split
+/// into its parts with {copy} as the game files' path (kept whole, spaces and all).
+fn fill_copy_args(template: &str, copy: &Path) -> Vec<String> {
+    let mut out = vec![];
+    let (mut cur, mut quoted, mut any) = (String::new(), false, false);
+    for ch in template.chars() {
+        match ch {
+            '"' => {
+                quoted = !quoted;
+                any = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if any || !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                    any = false;
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if any || !cur.is_empty() {
+        out.push(cur);
+    }
+    let path = copy.to_string_lossy();
+    out.into_iter().map(|a| a.replace("{copy}", &path)).collect()
+}
+
+/// What Set Up By Hand starts from: the player's own, or the launcher's way of setting it up.
+#[tauri::command(async)]
+fn manual_defaults(st: State<'_, App>, id: String) -> Res<library::ManualSetup> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    if let Some(m) = g.manual.clone() {
+        return Ok(m);
+    }
+    let prof = profile_of(&st, &id, &g);
+    let mut m = library::ManualSetup { copy: g.game_copy.clone(), ..Default::default() };
+    m.exe = prof
+        .as_ref()
+        .and_then(|p| p.start.as_ref())
+        .and_then(|s| s.program.iter().find(|x| g.path.join(x).is_file()).map(PathBuf::from))
+        .or_else(|| g.exe.clone());
+    match prof.as_ref() {
+        Some(p) if p.game.as_ref().map(|c| !c.into.trim().is_empty()).unwrap_or(false) => {
+            let c = p.game.as_ref().unwrap();
+            m.how = "folder".into();
+            m.into = c.into.clone();
+            m.name = c.name.clone();
+        }
+        Some(p) if p.start.as_ref().map(|s| s.args.iter().any(|a| a.contains("{game}"))).unwrap_or(false) => {
+            m.how = "arg".into();
+            m.arg = p.start.as_ref().unwrap().args.iter().map(|a| { let a = a.replace("{game}", "{copy}"); if a.contains(' ') { format!("\"{a}\"") } else { a } }).collect::<Vec<_>>().join(" ");
+        }
+        _ => m.how = "none".into(),
+    }
+    Ok(m)
+}
+
+/// Set Up By Hand: saved (or turned off with None).
+#[tauri::command(async)]
+fn set_manual(st: State<'_, App>, id: String, manual: Option<library::ManualSetup>) -> Res<Installed> {
+    if let Some(m) = &manual {
+        if !matches!(m.how.as_str(), "folder" | "arg" | "none") {
+            return Err(Error::Msg("Pick how the game gets your files.".into()));
+        }
+        let into = m.into.trim().replace('\\', "/");
+        if m.how == "folder" && (into.contains(':') || into.split('/').any(|c| c == "..") || into.starts_with('/')) {
+            return Err(Error::Msg("That folder has to be inside the game's folder.".into()));
+        }
+        if m.name.contains(['/', '\\']) {
+            return Err(Error::Msg("A file name can't have folders in it.".into()));
+        }
+    }
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    // A program inside the game's folder is kept by its place there, so it still works after the
+    // folder moves.
+    let mut manual = manual;
+    if let Some(e) = manual.as_mut().and_then(|m| m.exe.as_mut()) {
+        if let Ok(rel) = e.strip_prefix(&g.path) {
+            *e = rel.to_path_buf();
+        }
+    }
+    g.manual = manual;
+    let out = g.clone();
+    drop(l);
+    st.save();
+    trail::note(format!("{id}: set up by hand {}", if out.manual.is_some() { "on" } else { "off" }));
+    Ok(out)
+}
+
+/// Troubleshoot: a Look tries both ways in again (Direct3D and Vulkan).
+#[tauri::command(async)]
+fn look_reset_route(st: State<'_, App>, id: String) {
+    looks::reset_route(&st.dir, &id);
+    trail::note(format!("Look for {id}: tries both ways in again"));
 }
 
 /// Unblock: takes Windows' "downloaded from the internet" mark off a game's files.
@@ -2955,12 +3241,40 @@ fn unblock_game(st: State<'_, App>, id: String) -> Res<u32> {
     Ok(n)
 }
 
-/// A Linux build's start script for a Windows one: the same name as .sh, or the usual names.
+/// A Linux build's start script for a Windows one: the same name as .sh, or the usual names. Only
+/// in a folder that has a Linux program in it, and not a script made for Macs: a Windows build can
+/// carry a Mac launcher.sh, and then its .cmd plays through Proton instead.
 fn linux_twin(win: &Path) -> Option<PathBuf> {
     let dir = win.parent()?;
     let stem = win.file_stem()?.to_string_lossy().to_string();
     let wanted = [format!("{stem}.sh"), format!("{}.sh", stem.to_lowercase()), "launcher.sh".into(), "Launcher.sh".into(), "run.sh".into(), "start.sh".into(), "play.sh".into()];
-    wanted.iter().map(|n| dir.join(n)).find(|p| p.is_file())
+    let sh = wanted.iter().map(|n| dir.join(n)).find(|p| p.is_file())?;
+    let text = std::fs::read(&sh).map(|b| String::from_utf8_lossy(&b[..b.len().min(64_000)]).to_lowercase()).unwrap_or_default();
+    let mac_only = (text.contains("darwin") || text.contains("macos")) && !text.contains("linux");
+    (!mac_only && has_linux_program(dir, 2)).then_some(sh)
+}
+
+/// Is there a Linux program (an ELF file) in this folder or the ones just inside it?
+fn has_linux_program(dir: &Path, depth: u32) -> bool {
+    let mut seen = 0;
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            if depth > 0 && has_linux_program(&p, depth - 1) {
+                return true;
+            }
+            continue;
+        }
+        seen += 1;
+        if seen > 600 {
+            break;
+        }
+        let mut head = [0u8; 4];
+        if std::fs::File::open(&p).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && &head == b"\x7fELF" {
+            return true;
+        }
+    }
+    false
 }
 
 /// Is a program with this file name running now? (Windows; elsewhere it's never asked.)
@@ -4817,6 +5131,9 @@ pub fn run() {
             troubleshoot,
             unblock_game,
             clean_start_next,
+            look_reset_route,
+            manual_defaults,
+            set_manual,
             plugins::plugin_inspect,
             plugins::plugin_install,
             plugins::plugin_list,
@@ -4857,6 +5174,23 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_game_saying_its_files_are_wrong_is_heard() {
+        assert!(wrong_copy_line("=== Super Mario Strikers: wrong game data ==="));
+        assert!(wrong_copy_line("That folder is not the Super Mario Strikers disc."));
+        assert!(wrong_copy_line("The path is probably pointing one level too high or too low"));
+        assert!(!wrong_copy_line("Loading the disc..."));
+        assert!(!wrong_copy_line("Region: USA"));
+    }
+
+    #[test]
+    fn hand_written_command_lines_keep_paths_whole() {
+        let c = std::path::Path::new("/home/me/My Games/disc.iso");
+        assert_eq!(super::fill_copy_args("--game {copy}", c), vec!["--game", "/home/me/My Games/disc.iso"]);
+        assert_eq!(super::fill_copy_args("\"--data={copy}\" -fullscreen", c), vec!["--data=/home/me/My Games/disc.iso", "-fullscreen"]);
+        assert_eq!(super::fill_copy_args("{copy}", c), vec!["/home/me/My Games/disc.iso"]);
+    }
+
     #[test]
     fn paths_typed_without_quotes() {
         let d = std::env::temp_dir().join(format!("rl args {}", std::process::id()));

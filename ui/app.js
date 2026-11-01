@@ -1337,6 +1337,7 @@ async function suAct(b) {
       return;
     }
     case 'again': SU.stage = 'pick'; SU.err = ''; return suDraw();
+    case 'manual': { const gid = SU.id; closeSetup(true); return manualModal(gid); }
     case 'ufile': case 'ufolder': {
       const why = await pickUpdate(id, b.dataset.su === 'ufolder');
       if (why === null) return;
@@ -1439,7 +1440,8 @@ function suDraw() {
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="play">${PLAY}${esc(t('Play'))}</button><button type="button" class="btn big" data-su="settings">${esc(t('Settings'))}</button></div>`;
   } else {
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
-      <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>`;
+      <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>
+      ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
   const keepDisc = $('.sdisc', box);
   const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="sdisc ghost"></div><b>${esc(t('Drop your disc image here'))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="${discCls}">${label}</div>`;
@@ -3063,6 +3065,7 @@ function gameMenu(id) {
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
         { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
+        { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }] : []),
         ...(looksHere() ? [{ act: 'looks', id, label: t('Looks'), icon: 'look' }] : []),
         ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
@@ -3188,14 +3191,23 @@ async function startInstall(id, dir, tag) {
 const STARTING = new Set();
 // What a Setup Required recomp needs before it plays: its developer's steps, the README, and a way
 // to say it's done (then Play is back).
-// A release with more than one build for this PC (one per region, say): the player picks which.
-function pickBuild(id, names, current) {
+// A release with more than one build for this PC (one per region, or an AppImage and a plain
+// folder, say): the player picks which. Each is {name, label (the kind of build), best}.
+const BUILD_KINDS = [N_('Flatpak'), N_('AppImage'), N_('Linux Folder'), N_('Installer'), N_('32-Bit Installer'), N_('Program'), N_('32-Bit Program'), N_('Portable'), N_('32-Bit Portable'), N_('Build')];
+// "PICK_BUILD|*name<tab>kind|name<tab>kind" from an install: the usual pick has the *.
+const buildList = (msg) => String(msg).split('|').slice(1).map((s) => { const best = s.startsWith('*'); const [name, label] = s.replace(/^\*/, '').split('\t'); return { name, label: label || '', best }; });
+function pickBuild(id, builds, current) {
   const a = byId(id) || { name: id };
   const go = (file) => { S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() }; render(true); invoke('install', { id, dir: null, tag: null, file }).catch((e) => { delete S.jobs[id]; fail(e); render(true); }); };
-  if (window.tvPickBuild && window.tvPickBuild(id, names, current, go)) return;
-  const btns = names.map((n) => `<button type="button" class="btn${n === current ? ' main' : ''}" data-x="b" data-f="${esc(n)}" title="${esc(n)}">${esc(n)}</button>`);
+  if (window.tvPickBuild && window.tvPickBuild(id, builds, current, go)) return;
+  // Kinds of build to choose from (a portable zip, an installer): each shows its kind, and the usual
+  // one is marked. Builds of one kind (one per region): just their names, none suggested.
+  const kinds = new Set(builds.map((b) => b.label)).size > 1;
+  const lit = builds.some((b) => b.name === current) ? (b) => b.name === current : (b) => kinds && b.best;
+  const btns = builds.map((b) => `<button type="button" class="btn bld${lit(b) ? ' main' : ''}" data-x="b" data-f="${esc(b.name)}" title="${esc(b.name)}">${kinds ? `<b>${esc(t(b.label))}${b.best ? ` <span class="bld-tag">${esc(t('Usual'))}</span>` : ''}</b><small dir="ltr">${esc(b.name)}</small>` : `<b dir="ltr">${esc(b.name)}</b>`}</button>`);
   if (btns.length % 2) btns[0] = btns[0].replace('class="btn', 'class="span2 btn');
-  modal(`<h2>${esc(tf('Which Version of {name}?', { name: a.name }))}</h2><p>${esc(t('This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.'))}</p>
+  const say = kinds ? t('This release comes in more than one kind of build. The usual one works for most players. You can switch later from its right-click menu.') : t('This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.');
+  modal(`<h2>${esc(tf('Which Version of {name}?', { name: a.name }))}</h2><p>${esc(say)}</p>
     <div class="acts grid2 builds">${btns.join('')}</div>`, (x, close) => { if (x.dataset.x === 'b') { close(); go(x.dataset.f); } }, t('Pick a build'));
 }
 async function changeBuild(id) {
@@ -3932,13 +3944,33 @@ const TS_FIX = {
   copy: [N_('Pick Your Copy'), (id) => setupModal(id)],
   move: [N_('Move…'), (id) => moveModal(id)],
   files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
+  manual: [N_('Set Up By Hand…'), (id) => manualModal(id)],
+  dxruntime: [N_('Get It'), () => invoke('open_url', { url: 'https://www.microsoft.com/en-us/download/details.aspx?id=35' })],
+  lookroute: [N_('Try Both Ways'), async (id) => { await invoke('look_reset_route', { id }); toast(t('Done. Press Play to try the Look again.')); }],
   clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
 };
 // What Troubleshoot can say (from troubleshoot in lib.rs), so they get translated.
 const TS_TEXT = [
+  N_('The program you picked isn\'t there'),
+  N_('An update may have renamed it. Pick it again in Set Up By Hand.'),
+  N_('You can set it up by hand'),
+  N_('Point the launcher at its program and your game files yourself.'),
+  N_('It\'s set up by hand'),
+  N_('It starts the way you set it up, not the launcher\'s way.'),
+  N_('Your game files aren\'t where you pointed it anymore.'),
+  N_('It needs files that aren\'t on this PC'),
+  N_('Missing: {files}. It needs the Visual C++ runtime, and part of it is missing.'),
+  N_('Missing: {files}. It needs the older DirectX runtime (June 2010), which Windows doesn\'t come with.'),
+  N_('Missing: {files}. They should come with the game. Reinstall it; if they\'re still missing, its developer needs to know.'),
+  N_('Missing: {files}. Install them with your system\'s package manager (the names are a good search), then press Play again.'),
+  N_('Its folder is in OneDrive'),
+  N_('Games often can\'t run from a folder OneDrive syncs: some files may only be online, and syncing locks them while the game runs.'),
+  N_('The Look only tries one way in'),
+  N_('Since a start that crashed, its Look goes in through {way} only. If the Look doesn\'t show, let it try both ways again.'),
   N_('Its folder\'s path has letters some games can\'t read'),
   N_('Many recomps can\'t open files in a folder whose path has accents or letters outside English. Move it to a folder with plain letters, like C:\\Recomp Library.'),
   N_('It says something it needs is missing'),
+  N_('It says your game files aren\'t the right ones'),
   N_('How it closed last time'),
   N_('Code {code}'),
   N_('A Look (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
@@ -3981,6 +4013,57 @@ const TS_TEXT = [
   N_('{name} is already open'),
   N_('{path} can\'t be found. Maybe it\'s on a drive that isn\'t connected, or it was moved.'),
 ];
+// Set Up By Hand: the player points at the program and their game files, and says how the game
+// gets them. For when the launcher's own setup keeps getting it wrong.
+async function manualModal(id) {
+  const g = S.library[id];
+  if (!g) return;
+  let m;
+  try { m = await invoke('manual_defaults', { id }); } catch (e) { return fail(e); }
+  m = Object.assign({ exe: null, copy: null, how: 'none', into: '', name: '', arg: '' }, m);
+  const on = !!g.manual;
+  const name = (libApp(g) || {}).name || g.name;
+  const show = (p) => (p ? String(p) : '');
+  const HOW = [['folder', t('Put Them in Its Folder')], ['arg', t('Give Them to the Program')], ['none', t('It Asks for Them')]];
+  const html = () => `<h2>${esc(tf('Set Up {name} By Hand', { name }))}</h2>
+    <p class="muted">${esc(t('Point the launcher at the program that starts the game and at your game files, and say how the game gets them. It starts that way from now on, instead of the launcher\'s own setup.'))}</p>
+    <div class="mh">
+      <div class="mh-row"><div class="mh-k"><b>${esc(t('Program'))}</b><span class="path">${esc(show(m.exe) || t('Not picked'))}</span></div><button type="button" class="btn sm" data-x="exe">${esc(t('Choose…'))}</button></div>
+      <div class="mh-row"><div class="mh-k"><b>${esc(t('Your Game Files'))}</b><span class="path">${esc(show(m.copy) || t('None'))}</span></div><span class="mh-b2"><button type="button" class="btn sm" data-x="copy-file">${esc(t('File…'))}</button><button type="button" class="btn sm" data-x="copy-dir">${esc(t('Folder…'))}</button></span></div>
+      <div class="mh-how" role="radiogroup" aria-label="${esc(t('How the game gets them'))}">${HOW.map(([k, n]) => `<button type="button" role="radio" aria-checked="${m.how === k}" class="mh-opt${m.how === k ? ' on' : ''}" data-x="how" data-k="${k}">${esc(n)}</button>`).join('')}</div>
+      ${m.how === 'folder' ? `<label class="mh-f"><span>${esc(t('Folder inside the game\'s folder (. for the folder itself)'))}</span><input class="field" id="mh-into" value="${esc(m.into || '.')}" spellcheck="false"></label>
+        <label class="mh-f"><span>${esc(t('Name it (optional, for a single file)'))}</span><input class="field" id="mh-name" value="${esc(m.name || '')}" spellcheck="false" placeholder="${esc(t('Keep its name'))}"></label>` : ''}
+      ${m.how === 'arg' ? `<label class="mh-f"><span>${esc(t('Command line ({copy} is where your game files are)'))}</span><input class="field" id="mh-arg" value="${esc(m.arg || '{copy}')}" spellcheck="false"></label>` : ''}
+    </div>
+    <p class="err" id="mh-err" hidden></p>
+    <div class="acts ${on ? 'grid3' : 'grid2'}">${on ? `<button type="button" class="btn" data-x="off">${esc(t('Turn It Off'))}</button>` : ''}<button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="save">${esc(t('Save'))}</button></div>`;
+  const read = (box) => {
+    const v = (sel) => { const el = $(sel, box); return el ? el.value.trim() : null; };
+    if (v('#mh-into') != null) m.into = v('#mh-into');
+    if (v('#mh-name') != null) m.name = v('#mh-name');
+    if (v('#mh-arg') != null) m.arg = v('#mh-arg');
+  };
+  const scrim = modal(html(), async (x, close) => {
+    const box = $('.modal', scrim);
+    read(box);
+    const redraw = () => { box.innerHTML = html(); };
+    const err = (e) => { const el = $('#mh-err', box); if (el) { el.textContent = String(e && e.message ? e.message : e); el.hidden = false; } };
+    switch (x.dataset.x) {
+      case 'exe': { const p = await pickFile({ title: t('The program that starts the game'), defaultPath: g.path, directory: false, multiple: false }).catch(() => null); if (p) { m.exe = typeof p === 'string' ? p : p.path; redraw(); } return; }
+      case 'copy-file': { const p = await pickFile({ title: t('Your game files'), directory: false, multiple: false }).catch(() => null); if (p) { m.copy = typeof p === 'string' ? p : p.path; redraw(); } return; }
+      case 'copy-dir': { const p = await pickFile({ title: t('Your game files'), directory: true }).catch(() => null); if (p) { m.copy = typeof p === 'string' ? p : p.path; redraw(); } return; }
+      case 'how': m.how = x.dataset.k; return redraw();
+      case 'off':
+        try { S.library[id] = await invoke('set_manual', { id, manual: null }); close(); toast(t('It uses the launcher\'s own setup again.')); render(true); } catch (e) { err(e); }
+        return;
+      case 'save':
+        if (!m.exe) return err(t('Pick the program that starts the game.'));
+        if (m.how !== 'none' && !m.copy) return err(t('Pick your game files, or choose It Asks for Them.'));
+        try { S.library[id] = await invoke('set_manual', { id, manual: m }); close(); toast(t('Saved. Press Play to start it your way.')); render(true); } catch (e) { err(e); }
+    }
+  }, tf('Set Up {name} By Hand', { name }));
+}
+
 function actOn(id, a) { const el = document.createElement('i'); el.dataset.id = id; el.dataset.act = a; return act(el, new Event('click')); }
 const TS_ICON = { ok: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', warn: '<path d="M12 8v5M12 16.5v.01"/><path d="M10.3 3.9 2.6 17.5a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>', bad: '<path d="m7 7 10 10M17 7 7 17"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>' };
 async function troubleshootModal(id, lastCode) {
@@ -4290,6 +4373,7 @@ async function act(el, e) {
       try { const at = await invoke('make_portable', { target: path }); toast(tf('Portable copy made in {folder}. Start RecompLauncher from there.', { folder: at })); invoke('open_folder', { id: null, path: at }).catch(() => {}); } catch (err) { fail(err); }
       return;
     }
+    case 'manual': return manualModal(id);
     case 'setexe': {
       const g = S.library[id];
       const p = await pickFile({ title: t('The program that starts the game'), defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
@@ -4519,7 +4603,7 @@ T.event.listen('install', ({ payload: p }) => {
       else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
       else toast(tf('{name} is ready to play.', { name }));
     }
-    else if (p.phase === 'error' && String(p.msg || '').startsWith('PICK_BUILD|')) { S.recent = S.recent.filter((r) => r !== p); pickBuild(id, p.msg.split('|').slice(1)); }
+    else if (p.phase === 'error' && String(p.msg || '').startsWith('PICK_BUILD|')) { S.recent = S.recent.filter((r) => r !== p); pickBuild(id, buildList(p.msg)); }
     else if (p.phase === 'error') { if (!blocked(id, p.msg)) toast(tf('{name}: {msg}', { name, msg: cleanMsg(p.msg) }), true); p.msg = cleanMsg(p.msg); }
     refreshState().then(() => render(true));
     return;

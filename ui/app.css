@@ -347,6 +347,9 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 /* Side by side, the same size: a longer translation goes onto two lines inside its button. */
 .acts.grid2 .btn{white-space:normal;height:auto;min-height:42px;padding:8px 12px;line-height:1.2;text-align:center}
 .acts.grid2 .span2{grid-column:span 2}
+.builds .bld{display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center}
+.builds .bld small{font-size:11px;opacity:.7;overflow-wrap:anywhere;font-weight:400}
+.bld-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:999px;background:color-mix(in srgb,currentColor 16%,transparent);vertical-align:1px}
 .blurb{margin:0;font-size:17px;color:#d6dce5;line-height:1.55}
 .feat{display:flex;flex-wrap:wrap;gap:8px}
 .feat span{height:30px;padding:0 12px;border-radius:9px;background:var(--card);border:1px solid var(--line);font-size:13px;font-weight:600;display:inline-flex;align-items:center}
@@ -1528,3 +1531,20 @@ body.playing *,body.playing *::before,body.playing *::after{animation-play-state
 
 .plug-tab{height:min(70vh,720px);border-radius:var(--r);overflow:hidden;border:1px solid var(--line);background:var(--card)}
 .plug-tab iframe{width:100%;height:100%;border:0;display:block;background:transparent}
+/* Words you may want to copy can be selected (and copied with Ctrl+C): descriptions, paths, what a
+   window says, Troubleshoot's findings, error text. Buttons and tiles stay unselectable. */
+.blurb,.modal p,.modal li,.ts-k,.path,.gp-h h1,.gp-meta,.stats b,.set-row .k span,.card p,.err,.toast,.feat span,.dl-row .mid span,.logbox,.gi-hint{user-select:text;-webkit-user-select:text;cursor:auto}
+
+/* Set Up By Hand */
+.mh{display:flex;flex-direction:column;gap:10px;margin:14px 0}
+.mh-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:var(--card2)}
+.mh-k{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mh-k .path{font-size:12.5px;color:var(--dim);overflow-wrap:anywhere}
+.mh-b2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mh-how{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mh-opt{height:auto;min-height:44px;padding:8px 10px;border-radius:12px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font-weight:600;font-size:13px;cursor:pointer;white-space:normal}
+.mh-opt.on{border-color:var(--cyan);background:var(--card3);box-shadow:0 0 0 1px var(--cyan) inset}
+.mh-f{display:flex;flex-direction:column;gap:6px;text-align:start}
+.mh-f span{font-size:13px;color:var(--dim)}
+@media (max-width:560px){.mh-how{grid-template-columns:1fr}}
+.su-hand{margin:12px 0 0;font-size:13.5px;color:var(--dim)}
