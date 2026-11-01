@@ -6,6 +6,7 @@
 - **Fits small screens.** The launcher now works down to 640×480, so CRTs and small displays are fine.
 - **Choose your art.** Add From GitHub and Edit Game Info now have Choose Art: every cover and background SteamGridDB has for the game, side by side. Click the ones you like.
 - **Better at knowing the game.** Add From GitHub now finds the game's name in more kinds of repo titles and descriptions ("… PC Port", "a recomp of …"), and checks it with SteamGridDB when you have a key.
+- **Plugins can add mods.** A plugin can put a mod or texture pack straight into a game's folder, after asking you. Plugin downloads show in Downloads with their progress, and you pick where they go.
 - **Plugins can sign you in.** A plugin can keep you signed in to the sites it lists, so downloads that need your account work. Your sign-in for one site never goes to any other.
 - **Safer plugins.** When a site sends a plugin's request or download somewhere else, the launcher follows it only to sites that plugin listed, and asks you first about any you haven't allowed yet.
 - **Linux: links open your browser.** Links now open in your default browser, Flatpak browsers too.

@@ -52,7 +52,7 @@ my-plugin.rlplugin
 | `library.read` | See the games in your Library | Names, folders, play time. |
 | `library.add` | Add folders to your Library | Asks the player each time. |
 | `network` | Connect to the listed sites | Asks the player the first time for each site. They can allow it once or always. |
-| `install` | Download and install games from the listed sites | Asks the player each time, naming the file and the site. `.zip` and `.7z` only. |
+| `install` | Download and install add-ons from the listed sites | Mods, texture packs and other add-ons. Asks the player each time, naming the file, the site and where it goes. Shows in Downloads, where the player can cancel it. `.zip` and `.7z` only. |
 | `notify` | Show notifications in the launcher | |
 
 ## Talking to the launcher
@@ -70,10 +70,14 @@ await rl.library.list();                     // [{ id, name, version, folder, re
 await rl.library.addFolder(folder, name);     // asks the player; { id, name }
 await rl.net.fetch('https://example.com/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
                                               // { status, headers, body } (body as text; pass binary: true for base64)
-await rl.install.zip('https://example.com/files/game.zip', 'My Game');
-                                              // asks the player, downloads, unpacks into their library folder; { id, name }
-await rl.install.zip(url, 'My Game', { headers: { Cookie: 'session=...' } });
+await rl.install.zip('https://example.com/files/hd-textures.zip', 'HD Textures', { game: id, into: 'mods' });
+                                              // asks the player, downloads, unpacks into that game's mods folder; { id, name }
+await rl.install.zip(url, 'HD Textures', { game: id });
+                                              // without into: straight into the game's folder, keeping the zip's folders
+await rl.install.zip(url, 'HD Textures', { game: id, headers: { Cookie: 'session=...' } });
                                               // with headers, for a site the player signed in to through your page
+await rl.install.zip(url, 'Toolkit');         // without game: unpacked into a folder of its own and added to the Library
+                                              // (the player sees where and can pick another folder)
 await rl.storage.get('key');                  // anything JSON, up to 1 MB per plugin
 await rl.storage.set('key', { any: 'value' }); // set to null to remove it
 await rl.storage.all();
@@ -83,6 +87,8 @@ await rl.openGame(id);                        // a game's page (needs library.re
 await rl.info();                              // { launcher, os, language, theme }
 
 rl.on('menu', ({ item, game }) => { /* game: { id, name, folder? } */ });
+rl.on('progress', ({ name, phase, done, total, speed }) => { /* your rl.install.zip downloads */ });
+                                              // phase: prepare, download, verify, unpack, done, error, cancelled
 ```
 
 When the player says no, or something fails, the promise rejects with an `Error` whose message says why.

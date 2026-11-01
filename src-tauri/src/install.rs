@@ -331,6 +331,16 @@ fn overlay(from: &Path, to: &Path) -> io::Result<()> {
 
 /// Unpack (or place) the downloaded file into `target`. Returns the files it put there, relative.
 pub fn unpack(file: &Path, target: &Path, staging: &Path) -> Result<Vec<PathBuf>, Error> {
+    unpack_with(file, target, staging, true)
+}
+
+/// Like unpack, but keeps the archive's folders as they are (a mod's own layout), even a single
+/// folder at the top.
+pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<PathBuf>, Error> {
+    unpack_with(file, target, staging, false)
+}
+
+fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
     let name = file.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
     let k = kind(&name).ok_or_else(|| Error::Msg(format!("{name} isn't a kind of file the launcher can install")))?;
     // Windows Security and Search look at a fresh download first and can hold it for a moment.
@@ -357,7 +367,7 @@ pub fn unpack(file: &Path, target: &Path, staging: &Path) -> Result<Vec<PathBuf>
         }
         _ => return Err(Error::Msg(format!("{name} can't be installed on this PC"))),
     }
-    let from = root(staging);
+    let from = if strip_top { root(staging) } else { staging.to_path_buf() };
     let mut files = vec![];
     list(&from, &from, &mut files);
     overlay(&from, target)?;

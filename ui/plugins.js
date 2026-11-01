@@ -11,7 +11,7 @@ const PERM_WORDS = {
   'library.read': N_('See the games in your Library'),
   'library.add': N_('Add folders to your Library (asks you each time)'),
   network: N_('Connect to {sites} (asks you the first time for each)'),
-  install: N_('Download and install games from {sites} (asks you each time)'),
+  install: N_('Download and install add-ons from {sites} (asks you each time)'),
   notify: N_('Show notifications in the launcher'),
 };
 
@@ -90,6 +90,24 @@ async function plugMenuPicked(gameId, key) {
   go('plug:' + pid);
 }
 
+// A plugin's download, shown in Downloads and the island like any other, and passed on to the
+// plugin's own page as `progress` events.
+T.event.listen('plugin-progress', ({ payload: p }) => {
+  const id = p.id;
+  plugSend(p.plugin, { event: 'progress', data: { name: p.name, phase: p.phase, done: p.done, total: p.total, speed: p.speed } });
+  if (['done', 'error', 'cancelled'].includes(p.phase)) {
+    delete S.jobs[id];
+    ENDED[id] = Date.now();
+    if (p.phase === 'error') toast(tf('{name}: {msg}', { name: p.name, msg: cleanMsg(p.msg || '') }), true);
+    else if (p.phase === 'cancelled') toast(tf('{name} was cancelled.', { name: p.name }));
+    render(true);
+    return;
+  }
+  const had = S.jobs[id];
+  S.jobs[id] = Object.assign(p, { plug: true, at: Date.now() });
+  if (!had || had.phase !== p.phase) render(true); else { paintProgress(id); paintIsland(); }
+});
+
 // ---------- asking the player ----------
 
 // One question at a time, whichever plugin asks.
@@ -155,19 +173,36 @@ const PLUG_CALLS = {
   'install.zip': async (m, a) => {
     if (!plugCan(m, 'install')) throw new Error(t('It didn\'t ask for permission to do that.'));
     const url = String(a.url || ''), name = String(a.name || '').trim().slice(0, 80);
+    const gid = a.game ? String(a.game) : '', into = a.into ? String(a.into).slice(0, 200) : '';
+    const game = gid ? S.library[gid] : null;
+    if (gid && !game) throw new Error(t('That game isn\'t installed.'));
+    const gname = game ? ((libApp(game) || {}).name || game.name) : '';
     let host = '', file = '';
     try { const u = new URL(url); host = u.hostname; file = decodeURIComponent(u.pathname.split('/').pop() || ''); } catch (e) { throw new Error(t('That isn\'t an address.')); }
-    const ans = await plugAsk(() => ({
-      html: `${plugHead(m)}<h2>${esc(tf('Download and install {name}?', { name }))}</h2><p>${esc(tf('{plugin} wants to download {file} from {site} and put it in your Library as a game.', { plugin: m.name, file, site: host }))}</p><p class="muted">${esc(t('Only say yes if you trust this plugin and where the file comes from.'))}</p>`,
+    // Where it goes when it isn't for a game: the folder last picked for this plugin, or the
+    // default Recomp Library. The player can change it right here.
+    const dirs = (S.settings.ui || {}).plug_dirs || {};
+    let dir = game ? '' : (dirs[m.id] || S.settings.library_dir || '');
+    let ans;
+    for (;;) {
+      ans = await plugAsk(() => ({
+      html: `${plugHead(m)}<h2>${esc(tf('Download and install {name}?', { name }))}</h2><p>${esc(game ? (into ? tf('{plugin} wants to download {file} from {site} and add it to {game}, in its {folder} folder.', { plugin: m.name, file, site: host, game: gname, folder: into }) : tf('{plugin} wants to download {file} from {site} and add it to {game}\'s folder.', { plugin: m.name, file, site: host, game: gname })) : tf('{plugin} wants to download {file} from {site} and add it to your Library.', { plugin: m.name, file, site: host }))}</p>${game ? '' : `<div class="plug-where"><div><span class="muted">${esc(t('It goes in'))}</span><b>${esc(dir)}</b></div><button type="button" class="btn sm" data-x="where">${esc(t('Change…'))}</button></div>`}<p class="muted">${esc(t('Only say yes if you trust this plugin and where the file comes from.'))}</p>`,
       buttons: [['no', t('Cancel')], ['yes', t('Download and Install'), true]],
-    }));
+      }));
+      if (ans !== 'where') break;
+      const p = await pickFile({ title: t('Where it goes'), directory: true, defaultPath: dir || undefined }).catch(() => null);
+      const picked = p && (typeof p === 'string' ? p : p.path);
+      if (picked) { dir = picked; await saveUi({ plug_dirs: Object.assign({}, dirs, { [m.id]: picked }) }, true); }
+    }
     if (ans !== 'yes') throw new Error(t('You said no.'));
     await invoke('plugin_allow_site', { id: m.id, host, always: false });
     toast(tf('Downloading {name}…', { name }));
-    const g = await withSites(m, 'plugin_install_zip', { id: m.id, url, name, headers: a.headers && typeof a.headers === 'object' ? a.headers : null });
+    let g;
+    try { g = await withSites(m, 'plugin_install_zip', { id: m.id, url, name, headers: a.headers && typeof a.headers === 'object' ? a.headers : null, game: gid || null, into: into || null, dir: game ? null : (dir || null) }); }
+    catch (e) { if (/^cancell?ed$/i.test(String(e && e.message ? e.message : e))) throw new Error(t('Cancelled.')); throw e; }
     await refreshState();
-    toast(tf('{name} is in your Library.', { name: g.name }));
-    return { id: g.id, name: g.name };
+    toast(game ? tf('{name} is added to {game}.', { name, game: gname }) : tf('{name} is in your Library.', { name: g.name }));
+    return { id: g.id, name: game ? name : g.name };
   },
   'storage.get': async (m, a) => { const all = await invoke('plugin_store_get', { id: m.id }); return all[String(a.key)] ?? null; },
   'storage.all': (m) => invoke('plugin_store_get', { id: m.id }),

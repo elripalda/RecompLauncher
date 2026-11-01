@@ -534,52 +534,127 @@ pub fn plugin_add_folder(st: State<'_, App>, id: String, folder: String, name: O
     Ok(g)
 }
 
-/// Downloads a zip (or .7z) a plugin points at and installs what's in it as a game in the Library
-/// (with "install"). The player said yes to this exact download first.
+/// A folder inside a game's folder a plugin may unpack into: plain names only, up to four deep.
+fn sub_folder(into: &str) -> Res<PathBuf> {
+    let mut p = PathBuf::new();
+    for part in into.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        let ok = part.len() <= 64 && part != "." && part != ".." && !part.contains(':') && !part.ends_with('.') && !part.ends_with(' ') && part.chars().all(|c| !c.is_control() && !"<>\"|?*".contains(c));
+        if !ok || p.components().count() >= 4 {
+            return Err(Error::Msg("That folder name can't be used.".into()));
+        }
+        p.push(part);
+    }
+    Ok(p)
+}
+
+/// Downloads a zip (or .7z) a plugin points at (with "install"): into an installed game's folder
+/// (a mod, a texture pack), or as its own entry in the Library, in the folder the player picked
+/// (`dir`, from the launcher's own question, never from the plugin). The player said yes to this
+/// exact download first. It shows in Downloads like any other, and can be cancelled there.
 #[tauri::command]
-pub async fn plugin_install_zip(app: AppHandle, st: State<'_, App>, id: String, url: String, name: String, headers: Option<BTreeMap<String, String>>) -> Res<Installed> {
+#[allow(clippy::too_many_arguments)]
+pub async fn plugin_install_zip(app: AppHandle, st: State<'_, App>, id: String, url: String, name: String, headers: Option<BTreeMap<String, String>>, game: Option<String>, into: Option<String>, dir: Option<String>) -> Res<Installed> {
     let m = allowed(&st.dir, &id, "install")?;
     let u = check_url(&st.dir, &m, &url)?;
     let name: String = name.trim().chars().take(80).collect();
     if name.is_empty() {
-        return Err(Error::Msg("It needs a name for the game.".into()));
+        return Err(Error::Msg("It needs a name.".into()));
     }
+    let job = format!("plugin-{}-{}", m.id, crate::library::folder_name(&name).to_lowercase());
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut jobs = st.jobs.lock().unwrap();
+        if jobs.contains_key(&job) {
+            return Err(Error::Msg("That's downloading already.".into()));
+        }
+        jobs.insert(job.clone(), cancel.clone());
+    }
+    let tell = {
+        let (app, job, name, plugin) = (app.clone(), job.clone(), name.clone(), m.id.clone());
+        move |phase: &str, done: u64, total: u64, speed: u64, msg: Option<String>| {
+            let _ = app.emit("plugin-progress", json!({ "id": job, "plugin": plugin, "name": name, "phase": phase, "done": done, "total": total, "speed": speed, "msg": msg }));
+        }
+    };
+    tell("prepare", 0, 0, 0, None);
+    let r = install_zip(&st, &m, u, &name, headers, game, into, dir, &job, cancel, &tell).await;
+    st.jobs.lock().unwrap().remove(&job);
+    match &r {
+        Ok(_) => tell("done", 0, 0, 0, None),
+        Err(Error::Cancelled) => tell("cancelled", 0, 0, 0, None),
+        Err(e) => tell("error", 0, 0, 0, Some(e.to_string())),
+    }
+    r
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn install_zip(
+    st: &State<'_, App>,
+    m: &Manifest,
+    u: reqwest::Url,
+    name: &str,
+    headers: Option<BTreeMap<String, String>>,
+    game: Option<String>,
+    into: Option<String>,
+    dir: Option<String>,
+    job: &str,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    tell: &(dyn Fn(&str, u64, u64, u64, Option<String>) + Send + Sync),
+) -> Res<Installed> {
+    // Into a game: its folder (or a folder inside it), checked before anything downloads.
+    let into_game = match game.as_deref() {
+        Some(gid) => {
+            let g = st.lib.lock().unwrap().installed.get(gid).cloned().ok_or_else(|| Error::Msg("That game isn't installed.".into()))?;
+            if !g.path.is_dir() {
+                return Err(Error::Msg("That game's folder isn't there.".into()));
+            }
+            Some((g.clone(), g.path.join(sub_folder(into.as_deref().unwrap_or(""))?)))
+        }
+        None => None,
+    };
     let file_name = u.path_segments().and_then(|s| s.last()).filter(|s| !s.is_empty()).unwrap_or("download.zip").to_string();
     let low = file_name.to_lowercase();
     if !(low.ends_with(".zip") || low.ends_with(".7z")) {
         return Err(Error::Msg("Plugins can install .zip and .7z files only.".into()));
     }
-    let job = format!("plugin-{}", crate::library::folder_name(&name).to_lowercase());
-    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let dl_dir = st.dir.join("cache").join("plugin-downloads");
     // Where the file really is, after the site's redirects (each one checked).
     let client = client_for(&headers.unwrap_or_default())?;
-    let (_, at) = send(&st.dir, &m, &client, reqwest::Method::GET, u, None).await?;
+    let (_, at) = send(&st.dir, m, &client, reqwest::Method::GET, u, None).await?;
     let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: at.to_string() };
-    let report = {
-        let app = app.clone();
-        move |p: crate::install::Progress| {
-            let _ = app.emit("plugin-progress", &p);
-        }
-    };
-    let got = crate::install::download(&client, &asset, &dl_dir, &job, cancel, &report).await?;
-    let lib_dir = st.lib.lock().unwrap().settings.library_dir.clone();
-    let mut target = lib_dir.join(crate::library::folder_name(&name));
-    let mut n = 2;
-    while target.exists() {
-        target = lib_dir.join(format!("{}-{n}", crate::library::folder_name(&name)));
-        n += 1;
-    }
+    let report = |p: crate::install::Progress| tell(p.phase, p.done, p.total, p.speed, None);
+    let got = crate::install::download(&client, &asset, &dl_dir, job, cancel, &report).await?;
+    tell("unpack", 0, 0, 0, None);
     let staging = st.dir.join("cache").join("plugin-unpack");
     let file = got.file.clone();
+    if let Some((g, target)) = into_game {
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&target)?;
+            crate::install::unpack_as_is(&file, &target, &staging)
+        })
+        .await
+        .map_err(|e| Error::Msg(e.to_string()))??;
+        let _ = std::fs::remove_file(&got.file);
+        return Ok(g);
+    }
+    let lib_dir = match dir.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+        Some(d) => PathBuf::from(d),
+        None => st.lib.lock().unwrap().settings.library_dir.clone(),
+    };
+    std::fs::create_dir_all(&lib_dir)?;
+    let mut target = lib_dir.join(crate::library::folder_name(name));
+    let mut n = 2;
+    while target.exists() {
+        target = lib_dir.join(format!("{}-{n}", crate::library::folder_name(name)));
+        n += 1;
+    }
     let t2 = target.clone();
     tokio::task::spawn_blocking(move || crate::install::unpack(&file, &t2, &staging)).await.map_err(|e| Error::Msg(e.to_string()))??;
     let _ = std::fs::remove_file(&got.file);
-    let mut g = crate::devtools::add_folder(&st, target.to_string_lossy().to_string(), None, "own")?;
+    let mut g = crate::devtools::add_folder(st, target.to_string_lossy().to_string(), None, "own")?;
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id) {
-        x.name = name.clone();
+        x.name = name.to_string();
     }
-    g.name = name;
+    g.name = name.to_string();
     st.save();
     Ok(g)
 }
@@ -601,7 +676,7 @@ pub const SDK: &str = r#"(() => {
   window.rl = Object.freeze({
     library: Object.freeze({ list: () => call('library.list'), addFolder: (folder, name) => call('library.addFolder', { folder, name }) }),
     net: Object.freeze({ fetch: (url, o) => call('net.fetch', Object.assign({ url }, o || {})) }),
-    install: Object.freeze({ zip: (url, name, o) => call('install.zip', { url, name, headers: (o && o.headers) || null }) }),
+    install: Object.freeze({ zip: (url, name, o) => call('install.zip', { url, name, headers: (o && o.headers) || null, game: (o && o.game) || null, into: (o && o.into) || null }) }),
     storage: Object.freeze({ get: (key) => call('storage.get', { key }), set: (key, value) => call('storage.set', { key, value }), all: () => call('storage.all') }),
     notify: (title, body) => call('notify', { title, body }),
     toast: (text) => call('toast', { text }),
@@ -712,6 +787,16 @@ mod tests {
         let mut f = m();
         f.page = Some(Page { entry: "../../secret.html".into(), ..Default::default() });
         assert!(check(&mut f).is_err());
+    }
+
+    #[test]
+    fn mod_folders_stay_inside_the_game() {
+        assert_eq!(sub_folder("").unwrap(), PathBuf::new());
+        assert_eq!(sub_folder("mods/textures").unwrap(), PathBuf::from("mods").join("textures"));
+        assert_eq!(sub_folder("\\mods\\hd\\").unwrap(), PathBuf::from("mods").join("hd"));
+        for bad in ["..", "mods/../..", "C:", "c:/x", "a/b/c/d/e", "x.", "a|b"] {
+            assert!(sub_folder(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

@@ -1494,3 +1494,11 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 .ts-k .ts-out { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; max-height: 160px; overflow: auto; }
 .ts-row .btn.sm { white-space: nowrap; }
 @media (max-width: 560px) { .ts-row { grid-template-columns: 26px 1fr; } .ts-row .btn.sm { grid-column: 2; justify-self: start; } }
+
+/* Where a plugin's download goes */
+.plug-where { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--card2); margin: 4px 0 12px; }
+.plug-where > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.plug-where span { font-size: 12px; }
+.plug-where b { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.plug-ph { display: grid; place-items: center; color: var(--muted); }
+.plug-ph .plug-ic { width: 28px; height: 28px; }

@@ -1832,7 +1832,7 @@ function pageDownloads() {
   const hist = S.dlHist || [];
   const act = Object.keys(S.jobs), fails = S.recent.filter((r) => !S.jobs[r.id] && r.phase === 'error');
   const ups = Object.keys(S.updates).filter((id) => S.library[id] && !S.jobs[id]);
-  const art = (id) => { const a = byId(id) || { id, name: S.library[id]?.name || id }; return [a, a.cover ? pic(a.cover) : '<span class="ph"></span>']; };
+  const art = (id) => { const pj = S.jobs[id] && S.jobs[id].plug ? S.jobs[id] : null; if (pj) { const pm = plugMan(pj.plugin); return [{ id, name: pj.name }, `<span class="ph plug-ph">${pm ? plugIcon(pm, pm.icon) : PUZZLE}</span>`]; } const a = byId(id) || { id, name: S.library[id]?.name || id }; return [a, a.cover ? pic(a.cover) : '<span class="ph"></span>']; };
   const total = hist.reduce((n, h) => n + (h.size || 0), 0), secs = hist.reduce((n, h) => n + (h.secs || 0), 0);
   const avg = secs ? total / secs : 0;
   const nInst = Object.values(S.library).filter((g) => !g.local).length;
@@ -1844,7 +1844,7 @@ function pageDownloads() {
     [t('Average speed'), avg ? tf('{speed}/s', { speed: fmtB(avg) }) : '—', hist[0] ? tf('Last one {when}', { when: ago(hist[0].when) }) : ''],
   ];
   const now = act.map((id) => { const [a, img] = art(id); const j = S.jobs[id] || {};
-    return `<div class="dl-now">${img}<div class="mid"><div class="dl-top"><b>${esc(a.name)}</b><span class="tag cy">${esc(S.library[id] ? t('Update') : t('New'))}</span></div>${progress(id)}</div><button type="button" class="btn" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button></div>`; }).join('');
+    return `<div class="dl-now">${img}<div class="mid"><div class="dl-top"><b>${esc(a.name)}</b><span class="tag cy">${esc(j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New'))}</span></div>${progress(id)}</div><button type="button" class="btn" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button></div>`; }).join('');
   const self = S.launcherUpd ? `<div class="dl-row"><img class="self" src="img/mark.svg" alt=""><div class="mid"><b>RecompLauncher</b><span>${esc(tf('{from} → {to}', { from: verName(S.version), to: verName(S.launcherUpd.version) }))}</span></div><button type="button" class="btn main sm" data-act="self-update">${DOWN}${esc(t('Update'))}</button></div>` : '';
   const upRows = self + ups.map((id) => { const [a, img] = art(id);
     return `<div class="dl-row">${img}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
@@ -2307,14 +2307,14 @@ function paintIsland() {
   const off = !ids.length || S.view === 'downloads' || document.body.classList.contains('tv-on');
   document.body.classList.toggle('isl-on', !off);
   if (off) { el.hidden = true; el.dataset.id = ''; return; }
-  const id = ids[0], j = S.jobs[id], a = byId(id) || { name: (S.library[id] || {}).name || id };
+  const id = ids[0], j = S.jobs[id], a = (j && j.plug && { name: j.name }) || byId(id) || { name: (S.library[id] || {}).name || id };
   const [l, r] = progLabel(j);
   const busy = !j || j.phase !== 'download' || !j.total;
   if (el.hidden || el.dataset.id !== id) {
     el.hidden = false; el.dataset.id = id;
     el.innerHTML = `<span class="th">${a.cover ? pic(a.cover) : ''}</span><span class="k"><b></b><small></small></span><span class="pc"></span><i class="ln"></i>`;
   }
-  $('b', el).textContent = S.library[id] ? tf('Updating {name}', { name: a.name }) : tf('Installing {name}', { name: a.name });
+  $('b', el).textContent = S.library[id] && !(j && j.plug) ? tf('Updating {name}', { name: a.name }) : tf('Installing {name}', { name: a.name });
   $('small', el).textContent = (ids.length > 1 ? tf('{n} more after it', { n: ids.length - 1 }) + ' · ' : '') + [l, r].filter(Boolean).join(' · ');
   $('.pc', el).textContent = busy ? '' : pct(j) + '%';
   const ln = $('.ln', el);
