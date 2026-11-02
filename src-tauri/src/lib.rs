@@ -4449,6 +4449,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "arch": assets::arch_now(),
         "version": env!("CARGO_PKG_VERSION"),
         "site": catalog::base(),
+        "thumbs": net::THUMBS,
         "library": l.installed,
         "settings": l.settings,
         "roms": l.roms,
@@ -5075,6 +5076,7 @@ pub fn run() {
             }
             trail::start(&dir);
             net::init(app.handle());
+            proton::set_data(&dir);
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
                 .connect_timeout(std::time::Duration::from_secs(8))

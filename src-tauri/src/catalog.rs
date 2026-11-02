@@ -73,17 +73,64 @@ fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
-async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool) -> Result<Value, Error> {
-    let r = crate::net::send(http.get(url).timeout(wait), url, player).await?;
+/// What the site said last time about a file kept on disk (its ETag and Last-Modified), so the
+/// next ask can be "only if it changed" and an unchanged file comes back as a tiny 304.
+fn tag_file(file: &Path) -> PathBuf {
+    let mut n = file.as_os_str().to_owned();
+    n.push(".tag");
+    PathBuf::from(n)
+}
+
+fn load_tag(file: &Path) -> (Option<String>, Option<String>) {
+    let v: Value = std::fs::read(tag_file(file)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    let s = |k: &str| v.get(k).and_then(Value::as_str).filter(|s| !s.is_empty() && s.len() < 300).map(String::from);
+    (s("etag"), s("modified"))
+}
+
+/// The copy on disk is current again (the site said it hasn't changed): its age starts over.
+fn touch(file: &Path) {
+    if let Ok(f) = std::fs::OpenOptions::new().append(true).open(file) {
+        let _ = f.set_modified(SystemTime::now());
+    }
+}
+
+/// Asks the site for a JSON file. With `file` (the copy on disk), only if it changed: None means
+/// it didn't (304), and the copy on disk is still right.
+async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool, file: Option<&Path>) -> Result<Option<(Value, reqwest::header::HeaderMap)>, Error> {
+    let mut rb = http.get(url).timeout(wait);
+    if let Some(f) = file.filter(|f| f.is_file()) {
+        let (etag, modified) = load_tag(f);
+        if let Some(e) = etag {
+            rb = rb.header(reqwest::header::IF_NONE_MATCH, e);
+        }
+        if let Some(m) = modified {
+            rb = rb.header(reqwest::header::IF_MODIFIED_SINCE, m);
+        }
+    }
+    let r = crate::net::send(rb, url, player).await?;
+    if r.status() == reqwest::StatusCode::NOT_MODIFIED && file.map(|f| f.is_file()).unwrap_or(false) {
+        return Ok(None);
+    }
     if !r.status().is_success() {
         return Err(Error::Net(format!("recomplauncher.com answered {}", r.status().as_u16())));
     }
+    let headers = r.headers().clone();
     match r.json::<Value>().await {
-        Ok(v) => Ok(v),
+        Ok(v) => Ok(Some((v, headers))),
         Err(e) => {
             crate::net::bad_answer(url);
             Err(e.into())
         }
+    }
+}
+
+fn save_tag_from(file: &Path, h: &reqwest::header::HeaderMap) {
+    let g = |k: reqwest::header::HeaderName| h.get(k).and_then(|v| v.to_str().ok()).map(String::from);
+    let (etag, modified) = (g(reqwest::header::ETAG), g(reqwest::header::LAST_MODIFIED));
+    if etag.is_none() && modified.is_none() {
+        let _ = std::fs::remove_file(tag_file(file));
+    } else {
+        let _ = std::fs::write(tag_file(file), serde_json::to_vec(&serde_json::json!({ "etag": etag, "modified": modified })).unwrap_or_default());
     }
 }
 
@@ -102,12 +149,21 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
             return Ok(Fetched { data: h.data.clone(), offline: h.age >= fresh, age: h.age });
         }
     }
-    match get_json(http, url, wait, player).await {
-        Ok(v) if check(&v) => {
+    match get_json(http, url, wait, player, have.as_ref().map(|_| file.as_path())).await {
+        // Unchanged since the copy on disk: a 304 of a few bytes instead of the whole file.
+        Ok(None) => {
+            touch(&file);
+            match have {
+                Some(h) => Ok(Fetched { offline: false, age: 0, ..h }),
+                None => Err(Error::Net("recomplauncher.com sent something unexpected".into())),
+            }
+        }
+        Ok(Some((v, headers))) if check(&v) => {
             save(&file, &v);
+            save_tag_from(&file, &headers);
             Ok(Fetched { data: v, offline: false, age: 0 })
         }
-        Ok(_) => {
+        Ok(Some(_)) => {
             crate::net::bad_answer(url);
             have.map(|h| Fetched { offline: true, ..h }).ok_or_else(|| Error::Net("recomplauncher.com sent something unexpected".into()))
         }
@@ -263,13 +319,45 @@ fn releases_url(repo: &str) -> String {
     format!("{}/api/gh.php?repo={}", base(), repo)
 }
 
+/// Release info straight from GitHub, for when the site can't be reached: GitHub's own list (what
+/// gh.php passes on), so installing and updating still work while the site is down. Downloads
+/// always come from GitHub anyway.
+async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
+    let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
+    let r = crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, true).await?;
+    if !r.status().is_success() {
+        return Err(Error::Net(format!("GitHub answered {}", r.status().as_u16())));
+    }
+    let v: Value = r.json().await?;
+    if !v.is_array() {
+        return Err(Error::Net("GitHub sent something unexpected".into()));
+    }
+    let file = releases_file(dir, repo);
+    save(&file, &v);
+    // Not the site's copy: its tag no longer goes with it.
+    let _ = std::fs::remove_file(tag_file(&file));
+    crate::trail::note(&format!("Release info for {repo} came from GitHub (the site couldn't be reached)"));
+    Ok(Fetched { data: v, offline: false, age: 0 })
+}
+
+/// The site's answer, or GitHub's when the site couldn't give one (`fresh`: an old copy on disk
+/// isn't good enough, as for an install).
+async fn or_github(http: &reqwest::Client, dir: &Path, repo: &str, got: Result<Fetched, Error>, fresh: bool) -> Result<Fetched, Error> {
+    match got {
+        Ok(f) if !(f.offline && fresh) => Ok(f),
+        Ok(f) => Ok(from_github(http, dir, repo).await.unwrap_or(f)),
+        Err(e) => from_github(http, dir, repo).await.map_err(|_| e),
+    }
+}
+
 /// A recomp's releases. Used from disk while younger than six hours. `force`: the player asked
 /// for it now (installing, updating, adding a repo).
 pub async fn releases(http: &reqwest::Client, dir: &Path, repo: &str, force: bool) -> Result<Fetched, Error> {
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { LIST_FRESH }, crate::net::QUICK, force, Value::is_array).await
+    let got = cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { LIST_FRESH }, crate::net::QUICK, force, Value::is_array).await;
+    or_github(http, dir, repo, got, force).await
 }
 
 /// For installing or updating: the player's doing, but a copy from the last `secs` seconds (an
@@ -278,7 +366,8 @@ pub async fn releases_within(http: &reqwest::Client, dir: &Path, repo: &str, sec
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    cached(http, &releases_url(repo), releases_file(dir, repo), secs, crate::net::QUICK, true, Value::is_array).await
+    let got = cached(http, &releases_url(repo), releases_file(dir, repo), secs, crate::net::QUICK, true, Value::is_array).await;
+    or_github(http, dir, repo, got, true).await
 }
 
 /// A recomp's releases as kept on disk (any age), without asking anyone.
@@ -344,6 +433,52 @@ mod tests {
         assert!(!repo_ok("../etc"));
         assert!(!repo_ok("a/.."));
         assert!(!repo_ok("a/b?x=1"));
+    }
+
+    /// A tiny site: the list with an ETag, and a 304 when asked with that ETag.
+    fn tiny_site() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = format!("http://{}", l.local_addr().unwrap());
+        let full = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let f2 = full.clone();
+        std::thread::spawn(move || {
+            for c in l.incoming().flatten().take(4) {
+                let mut c = c;
+                let mut buf = [0u8; 4096];
+                let n = c.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+                let resp = if req.contains("if-none-match: w/\"v1\"") {
+                    "HTTP/1.1 304 Not Modified\r\nETag: W/\"v1\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else {
+                    f2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let body = r#"{"apps":[{"id":"a"}]}"#;
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nETag: W/\"v1\"\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+                };
+                let _ = c.write_all(resp.as_bytes());
+            }
+        });
+        (addr, full)
+    }
+
+    #[test]
+    fn unchanged_list_comes_back_as_304() {
+        let (site, full) = tiny_site();
+        let dir = std::env::temp_dir().join(format!("rl-etag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("list.json");
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let http = reqwest::Client::new();
+        let url = format!("{site}/pc-catalog.json");
+        let first = rt.block_on(cached(&http, &url, file.clone(), 0, Duration::from_secs(5), true, list_ok)).unwrap();
+        assert_eq!(first.data["apps"][0]["id"], "a");
+        assert!(tag_file(&file).is_file());
+        // Asked again: only if it changed. It didn't, so the copy on disk is used and is fresh.
+        let again = rt.block_on(cached(&http, &url, file.clone(), 0, Duration::from_secs(5), true, list_ok)).unwrap();
+        assert_eq!(again.data["apps"][0]["id"], "a");
+        assert!(!again.offline);
+        assert_eq!(full.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -294,7 +294,7 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         ));
     }
     for t in &p.saves {
-        let f = crate::saves::resolve(t, &g.path);
+        let f = crate::saves::resolve_for(t, &g);
         let shown = if t.contains('*') { f.parent().map(Path::to_path_buf).unwrap_or(f.clone()) } else { f.clone() };
         if shown.exists() {
             items.push(ok(format!("Saves: {}", f.display())));

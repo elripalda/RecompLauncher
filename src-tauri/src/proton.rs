@@ -24,6 +24,42 @@ impl Runner {
     }
 }
 
+/// The launcher's data folder, where the shared prefix lives.
+static DATA: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+pub fn set_data(dir: &Path) {
+    let _ = DATA.set(dir.to_path_buf());
+}
+
+/// The Windows user folder inside the shared prefix: where a Windows game played here keeps its
+/// AppData and Documents. Where Proton (or Wine) will make it when nothing has been played yet.
+pub fn windows_user() -> Option<PathBuf> {
+    windows_user_in(&DATA.get()?.join("proton"), runner().as_ref())
+}
+
+fn windows_user_in(base: &Path, r: Option<&Runner>) -> Option<PathBuf> {
+    let pfx = base.join("pfx/drive_c/users/steamuser");
+    if pfx.is_dir() {
+        return Some(pfx);
+    }
+    let users = base.join("wine/drive_c/users");
+    let me = std::env::var("USER").ok().filter(|u| !u.is_empty()).map(|u| users.join(u));
+    if users.is_dir() {
+        if let Some(m) = me.clone().filter(|m| m.is_dir()) {
+            return Some(m);
+        }
+        let other = std::fs::read_dir(&users).into_iter().flatten().flatten().map(|e| e.path()).find(|p| p.is_dir() && p.file_name().map(|n| n != "Public").unwrap_or(false));
+        if other.is_some() {
+            return other;
+        }
+    }
+    match r {
+        Some(Runner::Wine(_)) => me,
+        Some(_) => Some(pfx),
+        None => None,
+    }
+}
+
 fn on_path(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(name)).find(|f| f.is_file()))
 }
@@ -113,6 +149,19 @@ pub fn command(r: &Runner, data: &Path, exe: &Path) -> tokio::process::Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_windows_user_folder() {
+        let base = std::env::temp_dir().join(format!("rl-pfx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let proton = Runner::Proton(PathBuf::from("/p"), PathBuf::from("/s"));
+        // Nothing played yet: where Proton will make it.
+        assert_eq!(windows_user_in(&base, Some(&proton)), Some(base.join("pfx/drive_c/users/steamuser")));
+        assert_eq!(windows_user_in(&base, None), None);
+        std::fs::create_dir_all(base.join("pfx/drive_c/users/steamuser")).unwrap();
+        assert_eq!(windows_user_in(&base, None), Some(base.join("pfx/drive_c/users/steamuser")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn newest_proton_first() {

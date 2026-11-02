@@ -74,6 +74,60 @@ pub fn resolve(template: &str, install: &Path) -> PathBuf {
     PathBuf::from(if cfg!(windows) { t.replace('/', "\\") } else { t })
 }
 
+/// A Windows game on Linux, started through Proton (or Wine): its AppData and Documents are the
+/// prefix's, not Linux's.
+fn windows_user(g: &Installed) -> Option<PathBuf> {
+    if cfg!(windows) {
+        return None;
+    }
+    let exe = g.exe.as_ref().and_then(|e| e.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if !(g.proton || matches!(exe.as_str(), "exe" | "bat" | "cmd")) {
+        return None;
+    }
+    crate::proton::windows_user()
+}
+
+/// Windows' own folders, as they are under a Windows user folder.
+const WIN_PLACES: [(&str, &str); 4] = [("{local}", "AppData/Local"), ("{config}", "AppData/Roaming"), ("{documents}", "Documents"), ("{home}", "")];
+
+fn in_user(t: &str, user: &Path) -> Option<PathBuf> {
+    for (k, sub) in WIN_PLACES {
+        let Some(rest) = t.strip_prefix(k) else { continue };
+        if !(rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\')) {
+            continue;
+        }
+        let base = if sub.is_empty() { user.to_path_buf() } else { user.join(sub) };
+        let rest = rest.trim_start_matches(['/', '\\']);
+        return Some(if rest.is_empty() { base } else { base.join(rest) });
+    }
+    None
+}
+
+/// A template on this PC, for this game: the same place on Windows and in the Proton prefix on
+/// Linux for a Windows game, so cloud saves go between a Windows PC and a Linux handheld.
+pub fn resolve_for(template: &str, g: &Installed) -> PathBuf {
+    if let Some(p) = windows_user(g).and_then(|u| in_user(template, &u)) {
+        return p;
+    }
+    resolve(template, &g.path)
+}
+
+/// This PC's path as a template, for this game (see `resolve_for`).
+pub fn templatize_for(p: &Path, g: &Installed) -> String {
+    if let Some(user) = windows_user(g) {
+        if !p.starts_with(&g.path) {
+            for (k, sub) in WIN_PLACES {
+                let base = if sub.is_empty() { user.clone() } else { user.join(sub) };
+                if let Ok(rest) = p.strip_prefix(&base) {
+                    let r = rest.to_string_lossy().replace('\\', "/");
+                    return if r.is_empty() { k.to_string() } else { format!("{k}/{r}") };
+                }
+            }
+        }
+    }
+    templatize(p, &g.path)
+}
+
 /// This PC's path as a template that works on any PC: `C:\Users\Ruben\AppData\Local\X` -> `{local}/X`.
 pub fn templatize(p: &Path, install: &Path) -> String {
     let bases: Vec<(&str, Option<PathBuf>)> = vec![
@@ -186,7 +240,7 @@ pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
     let none = HashSet::new();
     let mut out = vec![];
     for (i, s) in spots.iter().enumerate() {
-        let p = resolve(&s.template, &g.path);
+        let p = resolve_for(&s.template, g);
         let last = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let mut found: Vec<(String, PathBuf, u64)> = vec![];
         if last.contains('*') {
@@ -448,7 +502,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         Err(_) => false,
     };
     let mut z = zip::ZipArchive::new(fs::File::open(zip_file)?).map_err(|e| Error::Msg(e.to_string()))?;
-    let roots: Vec<PathBuf> = man.spots.iter().map(|t| resolve(t, &g.path)).collect();
+    let roots: Vec<PathBuf> = man.spots.iter().map(|t| resolve_for(t, g)).collect();
     let wanted: HashSet<(usize, String)> = man.files.iter().map(|f| (f.spot, f.rel.clone())).collect();
     // Saves in the same places that the copy doesn't have: only once what's there now is safely
     // kept, and never in the game's own folder as a whole, where other files live too.
@@ -511,6 +565,7 @@ pub struct Watch {
     install: PathBuf,
     before: HashMap<PathBuf, (u64, u64)>,
     release: HashSet<String>,
+    game: Installed,
 }
 
 const NOT_NAMES: [&str; 14] = ["recomp", "recompiled", "edition", "game", "games", "the", "port", "version", "windows", "release", "remastered", "launcher", "native", "decomp"];
@@ -562,15 +617,21 @@ fn snap(root: &Path, into: &mut HashMap<PathBuf, (u64, u64)>, budget: &mut usize
 /// Documents, Saved Games and AppData), and what's in them.
 pub fn watch_start(g: &Installed, names: &[&str]) -> Watch {
     let toks = tokens(names);
-    let home = dirs::home_dir();
-    let docs = dirs::document_dir().or_else(|| home.as_ref().map(|h| h.join("Documents")));
+    // A Windows game on Linux saves in the prefix's Windows folders.
+    let win = windows_user(g);
+    let home = win.clone().or_else(dirs::home_dir);
+    let docs = if win.is_some() { home.as_ref().map(|h| h.join("Documents")) } else { dirs::document_dir().or_else(|| home.as_ref().map(|h| h.join("Documents"))) };
+    let (config, local) = match &win {
+        Some(u) => (Some(u.join("AppData/Roaming")), Some(u.join("AppData/Local"))),
+        None => (dirs::config_dir(), dirs::data_local_dir()),
+    };
     let mut bases: Vec<PathBuf> = vec![];
     for b in [
         docs.clone(),
         docs.as_ref().map(|d| d.join("My Games")),
         home.as_ref().map(|h| h.join("Saved Games")),
-        dirs::config_dir(),
-        dirs::data_local_dir(),
+        config,
+        local,
         home.as_ref().map(|h| h.join("AppData").join("LocalLow")),
         home.as_ref().map(|h| h.join(".local/share")),
         home.as_ref().map(|h| h.join(".config")),
@@ -600,7 +661,7 @@ pub fn watch_start(g: &Installed, names: &[&str]) -> Watch {
         snap(r, &mut before, &mut budget);
     }
     let release = g.files.iter().map(|f| f.to_string_lossy().replace('\\', "/").to_lowercase()).collect();
-    Watch { roots, install: g.path.clone(), before, release }
+    Watch { roots, install: g.path.clone(), before, release, game: g.clone() }
 }
 
 /// After it closed: the places where it wrote something that looks like a save, as templates.
@@ -631,7 +692,7 @@ pub fn watch_end(w: Watch) -> Vec<String> {
                 None => format!("{{install}}/{rel_s}"),
             }
         } else {
-            templatize(root, &w.install)
+            templatize_for(root, &w.game)
         };
         if !out.contains(&t) {
             out.push(t);
@@ -751,6 +812,17 @@ mod tests {
         fs::write(inst.join("game.exe"), "patched").unwrap();
         fs::write(inst.join("crash.log"), "x").unwrap();
         assert_eq!(watch_end(w), vec!["{install}/saves"]);
+    }
+
+    #[test]
+    fn windows_places_inside_a_prefix() {
+        let u = PathBuf::from("/data/proton/pfx/drive_c/users/steamuser");
+        assert_eq!(in_user("{local}/Game/saves", &u), Some(u.join("AppData/Local").join("Game/saves")));
+        assert_eq!(in_user("{config}/Game", &u), Some(u.join("AppData/Roaming").join("Game")));
+        assert_eq!(in_user("{documents}/My Games/X", &u), Some(u.join("Documents").join("My Games/X")));
+        assert_eq!(in_user("{home}", &u), Some(u.clone()));
+        assert_eq!(in_user("{install}/save", &u), None);
+        assert_eq!(in_user("{localx}/a", &u), None);
     }
 
     #[test]

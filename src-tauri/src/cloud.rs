@@ -567,7 +567,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let spots: Vec<SpotInfo> = spots_of(&st, &id, &g)
         .into_iter()
         .map(|s| {
-            let p = saves::resolve(&s.template, &g.path);
+            let p = saves::resolve_for(&s.template, &g);
             let shown = if s.template.contains('*') { p.parent().map(Path::to_path_buf).unwrap_or(p.clone()) } else { p.clone() };
             SpotInfo { exists: shown.exists(), path: p.to_string_lossy().to_string(), template: s.template, from: s.from }
         })
@@ -608,7 +608,7 @@ fn overview(app: &AppHandle) -> Value {
         let local = saves::list(&st.dir, &id);
         let state = saves::state(&st.dir, &id);
         let found = spots_of(&st, &id, &g).iter().any(|s| {
-            let p = saves::resolve(&s.template, &g.path);
+            let p = saves::resolve_for(&s.template, &g);
             let shown = if s.template.contains('*') { p.parent().map(Path::to_path_buf).unwrap_or(p.clone()) } else { p };
             shown.exists()
         });
@@ -676,7 +676,7 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
             if !p.is_dir() {
                 return Err(Error::Msg("That folder couldn't be found.".into()));
             }
-            Some(saves::templatize(&p, &g.path))
+            Some(saves::templatize_for(&p, g))
         }
         None => None,
     };
@@ -691,7 +691,7 @@ pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
     let g = game(&st, &id)?;
     let p = spots_of(&st, &id, &g)
         .iter()
-        .map(|s| saves::resolve(&s.template, &g.path))
+        .map(|s| saves::resolve_for(&s.template, &g))
         .map(|p| if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) })
         .find(|p| p.is_dir())
         .ok_or_else(|| Error::Msg("Its save folder isn't there yet. Play once first.".into()))?;

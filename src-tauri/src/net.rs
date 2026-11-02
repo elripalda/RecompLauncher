@@ -16,6 +16,10 @@ use tauri::{AppHandle, Emitter};
 /// the API to its own address (api.recomplauncher.com, say) by changing this one line.
 pub const API_BASE: &str = "https://recomplauncher.com";
 
+/// Smaller copies of the site's pictures (made once on the server, cached by Cloudflare), as the
+/// website's own thumb() helper asks for them: ?f=<file in /media>&w=<width>.
+pub const THUMBS: &str = "https://recompstore.com/api/thumb.php";
+
 /// The website people open in their browser (download page, links). Not used for requests.
 pub const SITE: &str = "https://recomplauncher.com";
 

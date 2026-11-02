@@ -31,6 +31,10 @@ const htmlFill = (s, v) => esc(s).replace(/\{(\w+)\}/g, (m, k) => (v && k in v ?
 // The RecompLauncher Discord (the catalog can name a newer invite).
 const discordUrl = () => { const u = (S.cat && S.cat.site && S.cat.site.discord) || ''; return /^https:\/\//.test(u) ? u : 'https://discord.gg/FUzqGM2cvf'; };
 const webUrl = (u) => (!u ? '' : /^(https?:|data:)/.test(u) ? u : S.site + (u[0] === '/' ? '' : '/') + u);
+// A cover at the size a tile shows it: the site's smaller copy (its thumb.php, the same one the
+// website uses) for pictures in its /media folder; anything else as it is.
+const THUMB_RE = /^https:\/\/(?:www\.)?recomp(?:store|launcher)\.com\/media\/([A-Za-z0-9][A-Za-z0-9._-]{0,150}\.(?:jpe?g|png|webp))$/i;
+const thumbOf = (u, w = 400) => { if (!u || !S.thumbs) return u; const m = THUMB_RE.exec(webUrl(u)); return m ? `${S.thumbs}?f=${encodeURIComponent(m[1])}&w=${w}` : u; };
 // Pictures come through the launcher's disk cache, so they show at once and work offline.
 const media = (u) => { if (u && String(u).startsWith('local:')) return fileSrc(String(u).slice(6)); const w = webUrl(u); return !w || w.startsWith('data:') || !T.core.convertFileSrc ? w : T.core.convertFileSrc(w, 'rlimg'); };
 const fmtN = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'K' : String(n || 0));
@@ -249,8 +253,44 @@ function fitOne(el) {
     el.style.setProperty('--glide', Math.max(1.2, over / 40).toFixed(2) + 's');
   }
 }
+// Puts back what an earlier fit changed (writes only), then measures every title at once (one
+// layout for all of them), and fits only the ones that don't fit.
+function fitBatch(els) {
+  for (const el of els) {
+    if (el.dataset.full && el.textContent !== el.dataset.full) el.textContent = el.dataset.full;
+    if (el.style.fontSize) el.style.fontSize = '';
+    if (el.classList.contains('long')) el.classList.remove('long');
+  }
+  const over = els.filter((el) => { const w = el.clientWidth; return w && el.scrollWidth > w + 0.5; });
+  for (const el of over) fitOne(el);
+}
+// A big list's tiles off screen aren't drawn until they come near (content-visibility), and
+// measuring one makes it draw: their titles are fitted as they come near instead.
+const FIT_LATER = new Set();
+const FIT_IO = typeof IntersectionObserver === 'function' ? new IntersectionObserver((ents) => {
+  const els = [];
+  for (const e of ents) {
+    if (!e.isIntersecting) continue;
+    FIT_IO.unobserve(e.target);
+    FIT_LATER.delete(e.target);
+    const t = e.target.querySelector('.t');
+    if (t) els.push(t);
+  }
+  if (els.length) fitBatch(els);
+}, { rootMargin: '600px 0px' }) : null;
 function fitTitles(root = document) {
-  for (const el of $$('.tile .t', root)) fitOne(el);
+  for (const tile of FIT_LATER) if (!tile.isConnected) { FIT_IO.unobserve(tile); FIT_LATER.delete(tile); }
+  const els = $$('.tile .t', root);
+  if (FIT_IO && els.length > 40) {
+    const vh = innerHeight, now = [];
+    for (const el of els) {
+      const tile = el.closest('.tile');
+      const r = tile.getBoundingClientRect();
+      if (r.bottom > -600 && r.top < vh + 600) now.push(el);
+      else if (!FIT_LATER.has(tile)) { FIT_LATER.add(tile); FIT_IO.observe(tile); }
+    }
+    fitBatch(now);
+  } else fitBatch(els);
   // The small numbers on a game's page: a long date (Russian, Japanese) gets a little smaller
   // instead of cut off.
   for (const el of $$('.stats b', root)) {
@@ -455,13 +495,13 @@ function poster(a, mine, inst, wide) {
     // A wide tile: the game's art, blurred and darkened, with its logo in the middle (its name
     // when there's no logo).
     const art = a.hero || a.cover, logo = a.logo;
-    return `<div class="poster wide${lb ? ' local' : ''}"><span class="ph"></span>${art ? `<img class="wbg" src="${esc(media(art))}" alt="" loading="lazy" decoding="async">` : ''}<span class="wshade"></span>${logo ? `<img class="wlogo" src="${esc(media(logo))}" alt="${esc(a.name)}" loading="lazy" decoding="async">` : `<span class="wname">${esc(a.name)}</span>`}${lb || badge}${prog ? prog : easy}${vers}</div>`;
+    return `<div class="poster wide${lb ? ' local' : ''}"><span class="ph"></span>${art ? `<img class="wbg" src="${esc(media(thumbOf(art)))}" alt="" loading="lazy" decoding="async">` : ''}<span class="wshade"></span>${logo ? `<img class="wlogo" src="${esc(media(logo))}" alt="${esc(a.name)}" loading="lazy" decoding="async">` : `<span class="wname">${esc(a.name)}</span>`}${lb || badge}${prog ? prog : easy}${vers}</div>`;
   }
-  return `<div class="poster${lb ? ' local' : ''}"><span class="ph">${esc(a.name)}</span>${pic(a.cover, '', 'loading="lazy"')}${lb || badge}${prog ? prog : easy}${vers}</div>`;
+  return `<div class="poster${lb ? ' local' : ''}"><span class="ph">${esc(a.name)}</span>${pic(thumbOf(a.cover), '', 'loading="lazy"')}${lb || badge}${prog ? prog : easy}${vers}</div>`;
 }
 
 function tile(a, opts = {}) {
-  const cov = a.cover ? media(a.cover) : '';
+  const cov = a.cover ? media(thumbOf(a.cover)) : '';
   const sub = opts.sub != null ? opts.sub : a.game ? `${DISC_S}<span>${esc(a.game)}</span>` : `<span>${esc(originName(a.origin))}</span>`;
   const vt = (devOf(a) || {}).verified;
   const quick = opts.quick && S.library[a.id] && !S.jobs[a.id];
@@ -673,7 +713,7 @@ function newsSection() {
   if (!n.length) return '';
   const list = n.length === 1 ? n : n.slice(0, Math.min(4, n.length - (n.length % 2)));
   return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('What\'s new for your games'))}</h2></div></div><div class="news-grid${list.length === 1 ? ' one' : ''}">${list.map((x) => { const a = byId(x.id) || {}; return `<button type="button" class="news" data-act="news-open" data-id="${esc(x.id)}">
-      ${a.cover ? pic(a.cover, '', 'loading="lazy"') : '<span class="ph"></span>'}
+      ${a.cover ? pic(thumbOf(a.cover), '', 'loading="lazy"') : '<span class="ph"></span>'}
       <span class="in"><span class="kick">${esc(x.name)}</span><b>${esc(x.title)}</b><small>${esc(date(x.date))}${x.have ? ' · ' + esc(t('Installed')) : S.updates[x.id] === x.tag ? ' · ' + esc(t('Ready to update')) : ''}</small><span class="p">${esc(notesLine(x.notes) || t('No notes for this one.'))}</span></span></button>`; }).join('')}</div></section>`;
 }
 
@@ -754,7 +794,7 @@ function slider(feats) {
   return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(a.hero || a.cover, 'bg')}
       <div class="sl-in"><span class="kick">${esc(bannerInfo(a.id).tag || (a.featured ? t('Featured') : t('Popular right now')))}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span>${slideTitle(a)}${based(a)}${bannerInfo(a.id).text || a.blurb ? `<p>${esc(bannerInfo(a.id).text || a.blurb)}</p>` : ''}
         <div class="acts">${actions(a, 'big')}<button type="button" class="btn big glass" data-act="open" data-id="${esc(a.id)}">${esc(t('Details'))}</button></div></div>
-      <div class="sl-cover">${pic(a.cover)}</div></div>`).join('')}
+      <div class="sl-cover">${pic(thumbOf(a.cover))}</div></div>`).join('')}
     ${feats.length > 1 ? `<div class="sl-ui">${feats.map((a, i) => `<button type="button" class="dot${i === S.slide ? ' on' : ''}" data-act="slide" data-i="${i}" aria-label="${esc(tf('Show {name}', { name: a.name }))}"></button>`).join('')}</div>
     <div class="sl-arrows"><button type="button" data-act="slide-step" data-d="-1" aria-label="${esc(t('Previous'))}">${CHEV_L}</button><button type="button" data-act="slide-step" data-d="1" aria-label="${esc(t('Next'))}">${CHEV_R}</button></div>` : ''}</section>`;
 }
@@ -958,9 +998,9 @@ function pageGame(id) {
   const chips = [isAI(a) ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', S.easy.has(id) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', lookChip(inst)].join('');
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
-    <div class="gp-amb">${pic(a.cover)}</div>
+    <div class="gp-amb">${pic(thumbOf(a.cover))}</div>
     <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
-    <div class="gp-top"><div class="gp-cover">${pic(a.cover)}</div>
+    <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
       <div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div></div>
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
@@ -1084,7 +1124,10 @@ function wantCounts() {
   setTimeout(() => loadCounts(), 0);
 }
 async function loadCounts(force) {
+  const before = JSON.stringify(S.runCounts || {});
   try { S.runCounts = (await invoke('report_counts', { force: !!force })) || {}; } catch { S.runCounts = S.runCounts || {}; }
+  // Nothing new: the page stays as it is (no second draw of a long list).
+  if (JSON.stringify(S.runCounts) === before) return;
   if (S.view === 'game') refreshGame();
   else if (S.view === 'discover' && $('#dlist')) morphList($('#dlist'), discoverGrid());
   else if (S.view === 'home') render(true);
@@ -1949,7 +1992,7 @@ function updatesTab(log) {
   const CHEV = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   return `<div class="upd-list">${log.map((u) => {
     const a = u.self ? null : byId(u.id) || { id: u.id, name: u.name };
-    const img = u.self ? '<span class="upd-self" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.cover ? pic(a.cover) : '<span class="ph"></span>';
+    const img = u.self ? '<span class="upd-self" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.cover ? pic(thumbOf(a.cover)) : '<span class="ph"></span>';
     const open = S.updOpen.has(u.key);
     return `<div class="upd${open ? ' open' : ''}" data-key="${esc(u.key)}"${u.self ? ' data-self="1"' : ''}>
       <button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(agoCap(u.when))}</span>${CHEV}</button>
@@ -2335,7 +2378,7 @@ function paintIsland() {
   const busy = !j || j.phase !== 'download' || !j.total;
   if (el.hidden || el.dataset.id !== id) {
     el.hidden = false; el.dataset.id = id;
-    el.innerHTML = `<span class="th">${a.cover ? pic(a.cover) : ''}</span><span class="k"><b></b><small></small></span><span class="pc"></span><i class="ln"></i>`;
+    el.innerHTML = `<span class="th">${a.cover ? pic(thumbOf(a.cover)) : ''}</span><span class="k"><b></b><small></small></span><span class="pc"></span><i class="ln"></i>`;
   }
   $('b', el).textContent = S.library[id] && !(j && j.plug) ? tf('Updating {name}', { name: a.name }) : tf('Installing {name}', { name: a.name });
   $('small', el).textContent = (ids.length > 1 ? tf('{n} more after it', { n: ids.length - 1 }) + ' · ' : '') + [l, r].filter(Boolean).join(' · ');
@@ -2542,7 +2585,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, library: st.library || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
+  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
   S.missing = new Set(st.missing || []);
@@ -2563,7 +2606,7 @@ async function loadCatalog(force) {
     S.owned = ownedHere(S.owned);
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
-    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [a.cover, a.hero, a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [thumbOf(a.cover), a.hero, a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     if (urls.length) invoke('prefetch_images', { urls }).catch(() => {});
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
@@ -2592,6 +2635,23 @@ async function loadRels(repo, force) {
   }
   if (S.view === 'game') refreshGame();
   else if (S.view === 'downloads') for (const el of $$('.upd.open')) fillUpd(el);
+}
+
+// Like the website: when the pointer rests on a game (or it gets focus), what its page shows from
+// the site starts loading, so the page has it when it opens. Once per game per session.
+let warmT = 0;
+function warmGame(el) {
+  const id = el.dataset.id, a = id && byId(id);
+  if (!a || S.view === 'game') return;
+  if (S.reports[id] === undefined && !a.soon && !(S.library[id] && S.library[id].local)) loadReports(id);
+  if (a.repo && !S.rels[a.repo]) loadRels(a.repo);
+}
+for (const ev of ['pointerover', 'focusin']) {
+  document.addEventListener(ev, (e) => {
+    const el = e.target.closest && e.target.closest('[data-act="open"][data-id]');
+    clearTimeout(warmT);
+    if (el && !document.body.classList.contains('tv-on')) warmT = setTimeout(() => warmGame(el), 300);
+  });
 }
 
 async function checkUpdates(loud) {
@@ -4732,8 +4792,8 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   render();
   trayWords();
   await loadCatalog(false);
-  await loadOwned();
-  await loadEasy(true);
+  // Both read the list on disk: side by side.
+  await Promise.all([loadOwned(), loadEasy(true)]);
   // No connection and nothing saved from before: the Library still works.
   if (S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   // The page the player picked to open on (Settings → Appearance), when nothing else was opened yet.
