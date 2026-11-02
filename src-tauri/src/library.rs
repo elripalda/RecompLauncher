@@ -121,6 +121,17 @@ pub struct Installed {
     /// The player's own picture behind the game's page (a wide one), in the launcher's covers folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hero_file: Option<PathBuf>,
+    /// The player's own logo (a see-through picture over the background), in the covers folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_file: Option<PathBuf>,
+    /// The player's own icon (square), in the covers folder: for shortcuts, Steam and the game's
+    /// window while it runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_file: Option<PathBuf>,
+    /// How the player framed each of their pictures, so Customize can open it again as it was:
+    /// "cover" / "hero" / "logo" / "icon" -> { src: the picture as it came, x, y, zoom }.
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub art_edit: serde_json::Map<String, serde_json::Value>,
     /// A program that has to run once before the game: the release's own installer, or a
     /// first-time setup beside the game. Relative to `path`.
     #[serde(default)]

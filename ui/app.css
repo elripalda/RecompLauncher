@@ -584,6 +584,7 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .found-card .acts .prog{min-width:200px}
 .news small.based{font-size:12.5px;gap:6px}
 .side.auto #collapse{display:none}
+.side .nav.side-upd{color:var(--cyan)}
 .sec-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .sec-h .field{max-width:260px;height:38px;padding:0 14px}
 .g-body.still>.stack{animation:none}.g-body.still .bars i{animation:none}
@@ -1478,6 +1479,9 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 .menu button.m-back{color:var(--dim);font-weight:700}
 .menu button.m-back svg{color:var(--dim)}
 .menu[data-depth="1"],.menu[data-depth="2"]{animation:m-in .16s var(--ease)}
+.menu.fly{animation:m-in .14s var(--ease);transform-origin:top left}
+.menu button.has-sub.open{background:var(--fill3)}
+.menu button.has-sub.open svg{color:var(--ink)}
 @keyframes m-in{from{opacity:.4;transform:translateX(6px)}to{opacity:1;transform:none}}
 
 /* Troubleshoot */
@@ -1527,7 +1531,7 @@ body.scrolling .tile,body.scrolling .shelf .track>*,body.scrolling .card a,body.
 /* Big grids: tiles out of view aren't drawn at all until they scroll in. */
 #main .grid>.tile{content-visibility:auto;contain-intrinsic-size:auto 320px}
 /* While a game runs, nothing in the launcher moves. */
-body.playing *,body.playing *::before,body.playing *::after{animation-play-state:paused!important}
+body.playing *,body.playing *::before,body.playing *::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important}
 
 .plug-tab{height:min(70vh,720px);border-radius:var(--r);overflow:hidden;border:1px solid var(--line);background:var(--card)}
 .plug-tab iframe{width:100%;height:100%;border:0;display:block;background:transparent}
@@ -1548,3 +1552,59 @@ body.playing *,body.playing *::before,body.playing *::after{animation-play-state
 .mh-f span{font-size:13px;color:var(--dim)}
 @media (max-width:560px){.mh-how{grid-template-columns:1fr}}
 .su-hand{margin:12px 0 0;font-size:13.5px;color:var(--dim)}
+
+/* ---------- Customize ---------- */
+.modal.cz{width:min(1000px,calc(100vw - 48px));max-width:none;position:relative}
+.cz h2{padding-right:44px}
+.cz-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:2px 0 16px}
+.cz-tabs button{text-align:center}
+.cz-body{min-height:440px;transition:opacity .15s}
+.cz-body.busy{opacity:.55;pointer-events:none}
+.cz-art{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:20px}
+.cz-stage{position:relative;height:360px;border-radius:16px;background:var(--bg2);border:1px solid var(--line2);overflow:hidden;cursor:grab;touch-action:none;outline:none}
+.cz-stage:active{cursor:grabbing}
+.cz-stage canvas{display:block}
+.cz-empty{position:absolute;inset:0;display:grid;place-items:center;padding:30px;text-align:center;color:var(--muted);font-size:14px;pointer-events:none}
+.cz-ctl{display:flex;align-items:center;gap:14px;margin:12px 0}
+.cz-zoom{flex:1;display:flex;align-items:center;gap:10px;color:var(--muted);font-weight:600;font-size:13px}
+.cz-zoom input{flex:1;accent-color:var(--cyan)}
+.cz-fit{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.cz-src{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.cz-src .btn{white-space:normal;height:auto;min-height:42px;padding:8px 10px;line-height:1.2}
+.cz-right h4{margin:2px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.cz-prev{display:flex;flex-direction:column;gap:12px}
+.cz-tip{margin:12px 0 0;font-size:13px}
+.pv-tile{display:flex;flex-direction:column;gap:8px;width:160px;margin:0 auto}
+.pv-tile .pv-cover{width:160px;aspect-ratio:2/3;height:auto;border-radius:12px;object-fit:cover;background:var(--fill2);display:block}
+.pv-tile b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:var(--fill)}
+.pv-row .pv-cover{width:34px;height:51px;border-radius:6px;object-fit:cover;background:var(--fill2);flex:none}
+.pv-row span{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-head,.pv-wide{position:relative;width:100%;border-radius:12px;overflow:hidden;background:var(--fill2)}
+.pv-head{aspect-ratio:96/31}
+.pv-wide{aspect-ratio:16/9}
+.pv-hero{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pv-shade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(0,0,0,.5))}
+.pv-logo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62%;height:56%;object-fit:contain;display:block}
+span.pv-logo{display:none}
+.pv-icons{display:flex;align-items:flex-end;justify-content:center;gap:18px;padding:16px;border-radius:12px;background:var(--fill)}
+.pv-i64{width:64px;height:64px}.pv-i32{width:32px;height:32px}.pv-i16{width:16px;height:16px}.pv-i24{width:24px;height:24px;flex:none}
+.pv-icons>*,.pv-bar>canvas,.pv-bar>img{object-fit:contain;display:block}
+.pv-bar{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#0b0d12;color:#e8ecf3}
+.pv-bar span{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-name{max-width:560px}
+.cz-lab{display:block;font-weight:700;margin:4px 0 8px}
+.cz-sgbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;margin-bottom:12px}
+.cz-games{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.cz-games small{opacity:.7;font-weight:600}
+.ap-grid.sq .ap-it{aspect-ratio:1}
+.ap-grid.sq .ap-it img{object-fit:contain;padding:8px;background:repeating-conic-gradient(#232a36 0 25%,#1b212c 0 50%) 0 0/16px 16px}
+.cz-key{max-width:560px}
+.cz-keyrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0}
+@media (max-width:860px){.cz-art{grid-template-columns:1fr}.cz-stage{height:300px}}
+
+/* After a game's own setup: which program starts it */
+.cp-list{display:flex;flex-direction:column;gap:8px;margin:4px 0 16px;max-height:44vh;overflow-y:auto}
+.cp-it{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:12px 14px;border-radius:12px;background:var(--fill);border:1px solid var(--line2);text-align:start}
+.cp-it small{color:var(--dim);font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-it.on{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(52,242,232,.25)}

@@ -496,6 +496,10 @@ fn write_entry(steam: &Path, name: &str, launch: &str, icon: &str, art: &[(&str,
         fs::create_dir_all(&grid)?;
         for (suffix, data, ext) in art {
             if !data.is_empty() {
+                // The same picture saved before in another format would be the one Steam shows.
+                for old in ["png", "jpg", "jpeg", "webp"] {
+                    let _ = fs::remove_file(grid.join(format!("{app_id}{suffix}.{old}")));
+                }
                 fs::write(grid.join(format!("{app_id}{suffix}.{ext}")), data)?;
             }
         }

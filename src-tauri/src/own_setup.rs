@@ -170,6 +170,17 @@ pub fn spawn(p: &Path) -> std::io::Result<Started> {
 /// `copy`: the player's copy of the game, handed to the setup as if dropped on it.
 pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
     let dir = p.parent().map(Path::to_path_buf).unwrap_or_default();
+    // A Windows setup on Linux runs through Proton (or Wine), like a Windows game does.
+    #[cfg(not(windows))]
+    let mut c = if crate::proton::is_windows_program(p) {
+        match (crate::proton::runner(), crate::proton::data_dir()) {
+            (Some(r), Some(data)) => crate::proton::std_command(&r, &data, p),
+            _ => return Err(std::io::Error::other("it's a Windows program, and running it on Linux needs Proton or Wine (Steam's Proton is enough)")),
+        }
+    } else {
+        std::process::Command::new(p)
+    };
+    #[cfg(windows)]
     let mut c = std::process::Command::new(p);
     crate::sysenv::clean_std(&mut c);
     if let Some(x) = copy {
@@ -222,12 +233,12 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<
         // A setup that's only a starter (TotK-Setup.exe opens its Python window and quits): the
         // setup isn't over until every program from the download it started has closed too.
         let places = wait_for_rest(&folder);
-        let state = finish(&app, &id, code, since, &places);
+        let (state, candidates) = finish(&app, &id, code, since, &places);
         OPEN.lock().unwrap().retain(|x| x != &id);
         if from_bp {
             crate::show_main(&app);
         }
-        tell(&app, &id, &name, state);
+        let _ = app.emit("first-setup", json!({"id": id, "name": name, "state": state, "candidates": candidates}));
     });
     Ok(())
 }
@@ -369,9 +380,11 @@ fn player_places(st: &App) -> Vec<PathBuf> {
 /// After the setup: "done" (the game is there to play), "lost" (it finished, but the game wasn't
 /// found: the player picks its program) or "cancelled" (it didn't finish; the next Play opens it
 /// again).
-fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said: &[String]) -> &'static str {
+/// Returns how it went ("done", "confirm", "lost" or "cancelled") and, for "confirm", the programs
+/// the player can pick from (the launcher's own pick first).
+fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said: &[String]) -> (&'static str, Vec<String>) {
     let st = app.state::<App>();
-    let Some(mut g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return "cancelled" };
+    let Some(mut g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return ("cancelled", vec![]) };
     let os = crate::assets::os_now();
     let n = names(&g);
     let nr: Vec<&str> = n.iter().map(String::as_str).collect();
@@ -422,7 +435,37 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
         g.exe = None;
     }
     let found = usable(&g);
-    let state = if found { "done" } else if code == Some(0) { "lost" } else { "cancelled" };
+    // Only a game whose profile names the program its setup makes is known for sure. Otherwise
+    // the player says which program starts the game (an installer's tools, a translator or a
+    // builder left beside it, aren't the game), from the launcher's pick and the programs the
+    // setup just made.
+    let mut candidates: Vec<String> = vec![];
+    if !(found && want.is_some()) && code == Some(0) {
+        if let Some(e) = g.exe.as_ref().filter(|_| found) {
+            candidates.push(if e.is_absolute() { e.clone() } else { g.path.join(e) }.to_string_lossy().to_string());
+        }
+        let mut near: Vec<PathBuf> = said.iter().map(PathBuf::from).map(|p| if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) }).filter(|p| p.is_dir()).collect();
+        near.push(g.path.clone());
+        near.extend(player_places(&st));
+        for p in new_programs(since, &near) {
+            let s = p.to_string_lossy().to_string();
+            if !candidates.iter().any(|c| c.eq_ignore_ascii_case(&s)) {
+                candidates.push(s);
+            }
+        }
+        candidates.truncate(8);
+    }
+    let state = if found && want.is_some() {
+        "done"
+    } else if !candidates.is_empty() {
+        "confirm"
+    } else if found {
+        "done"
+    } else if code == Some(0) {
+        "lost"
+    } else {
+        "cancelled"
+    };
     {
         let mut l = st.lib.lock().unwrap();
         if let Some(r) = l.installed.get_mut(id) {
@@ -432,7 +475,48 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
         }
     }
     st.save();
-    state
+    (state, candidates)
+}
+
+/// Programs made since `since` (with two minutes' grace) in these folders, a few levels down: what
+/// a setup that just ran put there. Newest first; setups, uninstallers and helpers left out.
+/// Windows programs only; quick (a few seconds at most).
+fn new_programs(since: SystemTime, near: &[PathBuf]) -> Vec<PathBuf> {
+    if !cfg!(windows) {
+        return vec![];
+    }
+    let since = since.checked_sub(std::time::Duration::from_secs(120)).unwrap_or(since);
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(6);
+    let skip = ["windows", "programdata", "$recycle.bin", "system volume information", "appdata", "node_modules", ".git", "redist", "_commonredist", "directx", "vcredist"];
+    let mut seen = std::collections::HashSet::new();
+    let mut found: Vec<(SystemTime, PathBuf)> = vec![];
+    for root in near {
+        let mut stack = vec![(root.clone(), 0usize)];
+        while let Some((dir, d)) = stack.pop() {
+            if std::time::Instant::now() > until {
+                break;
+            }
+            if !seen.insert(dir.to_string_lossy().to_lowercase()) {
+                continue;
+            }
+            for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                let Ok(ft) = e.file_type() else { continue };
+                if ft.is_dir() {
+                    if d < 4 && !skip.contains(&name.as_str()) && !name.starts_with('.') {
+                        stack.push((e.path(), d + 1));
+                    }
+                } else if name.ends_with(".exe") && !name.starts_with("unins") && !install::looks_like_setup(Path::new(&name)) && !["crashpad_handler.exe", "crashreporter.exe", "dxsetup.exe", "vc_redist.x64.exe", "vc_redist.x86.exe"].contains(&name.as_str()) {
+                    let made = e.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                    if made >= since {
+                        found.push((made, e.path()));
+                    }
+                }
+            }
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.into_iter().map(|f| f.1).take(8).collect()
 }
 
 /// The program a game's installer builds (its profile's `then_start`, like `totk.exe`), made since

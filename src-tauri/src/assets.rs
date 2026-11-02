@@ -82,7 +82,7 @@ const X64: [&str; 5] = ["x64", "x86_64", "amd64", "win64", "64bit"];
 /// What kind of file it is, by its ending, and whether this system can use it as a build.
 pub fn kind(name: &str) -> Option<&'static str> {
     let n = name.to_lowercase();
-    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".appimage", "appimage"), (".exe", "exe"), (".dmg", "dmg")] {
+    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".dmg", "dmg")] {
         if n.ends_with(end) {
             return Some(k);
         }
@@ -92,9 +92,19 @@ pub fn kind(name: &str) -> Option<&'static str> {
 
 fn usable(os: &str, k: &str) -> bool {
     match os {
-        "windows" => matches!(k, "zip" | "7z" | "exe"),
-        "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z"),
+        "windows" => matches!(k, "zip" | "7z" | "rar" | "exe"),
+        "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
         _ => matches!(k, "zip" | "dmg"),
+    }
+}
+
+/// A file this system can use as a build: by its kind, and a .tar.gz on Windows only when its name
+/// says it's for Windows (tmc-multi-windows-x86_64-v1.tar.gz).
+fn usable_file(os: &str, name: &str) -> bool {
+    match kind(name) {
+        Some(k) if usable(os, k) => true,
+        Some("tar.gz" | "tar.xz") if os == "windows" => words(name).iter().any(|w| matches!(w.as_str(), "windows" | "win" | "win64" | "win32")),
+        _ => false,
     }
 }
 
@@ -124,7 +134,7 @@ fn other_os(name: &str, os: &str) -> bool {
 
 fn score(name: &str, os: &str, arch: &str) -> i32 {
     let k = match kind(name) {
-        Some(k) if usable(os, k) => k,
+        Some(k) if usable_file(os, name) => k,
         _ => return i32::MIN,
     };
     if not_a_build(name) || other_arch(name, arch) || other_os(name, os) {
@@ -236,7 +246,7 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
         let best = assets
             .iter()
             .filter(|a| wild(p, &a.name) && !other_arch(&a.name, arch) && !not_a_build(&a.name))
-            .filter(|a| kind(&a.name).map(|k| usable(os, k)).unwrap_or(false))
+            .filter(|a| usable_file(os, &a.name))
             .max_by_key(|a| score(&a.name, os, arch).max(0));
         if best.is_some() {
             return best;
@@ -256,6 +266,19 @@ mod tests {
 
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new() }
+    }
+
+    #[test]
+    fn rar_and_windows_tarballs_are_builds() {
+        assert_eq!(pick(&[a("release.rar")], "windows", "x64", Some("release.rar")).map(|x| x.name.as_str()), Some("release.rar"));
+        assert_eq!(pick(&[a("bloodyextreme.rar")], "windows", "x64", None).map(|x| x.name.as_str()), Some("bloodyextreme.rar"));
+        let tmc = [a("tmc-multi-linux-x86_64-v0.9.6.tar.gz"), a("tmc-multi-windows-arm64-v0.9.6.tar.gz"), a("tmc-multi-windows-x86_64-v0.9.6.tar.gz"), a("tmc-multi-android-v0.9.6.apk")];
+        assert_eq!(pick(&tmc, "windows", "x64", Some("tmc-multi-windows-x86_64-*.tar.gz")).map(|x| x.name.as_str()), Some("tmc-multi-windows-x86_64-v0.9.6.tar.gz"));
+        assert_eq!(pick(&tmc, "windows", "x64", None).map(|x| x.name.as_str()), Some("tmc-multi-windows-x86_64-v0.9.6.tar.gz"));
+        // A tarball that doesn't say Windows is still Linux's.
+        assert!(pick(&[a("Game-1.0.tar.gz")], "windows", "x64", None).is_none());
+        // An updater's files alone are no build.
+        assert!(pick(&[a("update.json"), a("update.json.sig")], "windows", "x64", None).is_none());
     }
 
     #[test]

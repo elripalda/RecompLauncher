@@ -5,6 +5,7 @@
 //! or closes.
 
 pub mod adopt;
+pub mod art;
 pub mod assets;
 pub mod boot;
 pub mod catalog;
@@ -179,13 +180,48 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     trail::note(format!("Install {id}: {} releases", rels.len()));
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
-    // A version the player picked (an older one, to go back to), or the newest.
+    // A version the player picked (an older one, to go back to), or the newest. A newest release
+    // with nothing for this system in it (only an updater's files, say): the newest one that has.
+    let os0 = os_for(st, &entry, id);
+    let pattern0 = entry.get("assets").and_then(|a| a.get(os0)).and_then(Value::as_str);
+    let has_build = |r: &Release| {
+        assets::pick(&r.assets, os0, assets::arch_now(), pattern0).is_some()
+            || (os0 == "linux" && r.assets.iter().any(|a| { let n = a.name.to_lowercase(); (n.contains("linux") || n.ends_with(".appimage")) && assets::pick(std::slice::from_ref(a), "linux", assets::arch_now(), None).is_some() }))
+    };
+    let mut fell_back = false;
     let rel = match &tag {
         Some(t) => rels.iter().find(|r| &r.tag_name == t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
+        None if !has_build(newest) => match rels.iter().filter(|r| !r.draft && (!r.prerelease || newest.prerelease)).find(|r| has_build(r)) {
+            Some(r) => {
+                trail::note(format!("Install {id}: {} has no build for this PC, so {} instead", newest.tag_name, r.tag_name));
+                fell_back = true;
+                r
+            }
+            None => newest,
+        },
         None => newest,
     };
-    let pinned = rel.tag_name != newest.tag_name;
-    let (os, arch) = (os_for(st, &entry, id), assets::arch_now());
+    let pinned = rel.tag_name != newest.tag_name && !fell_back;
+    let (mut os, arch) = (os_for(st, &entry, id), assets::arch_now());
+    // On Linux with Proton, a release with a Linux build and a Windows one: the player picks the
+    // first time (the Linux one is the usual pick), and updates keep the system they picked. A
+    // Windows file picked is played through Proton.
+    let (lin, win) = linux_and_windows(st, &entry, rel, arch);
+    if let Some(f) = file.as_deref() {
+        if win.iter().any(|a| a.name == f) {
+            os = "windows";
+        } else if lin.iter().any(|a| a.name == f) {
+            os = "linux";
+        }
+    }
+    let first_time = !st.lib.lock().unwrap().installed.contains_key(id);
+    if file.is_none() && first_time && !lin.is_empty() && !win.is_empty() {
+        let best = assets::pick(&lin, "linux", arch, None).map(|a| a.name.clone()).unwrap_or_else(|| lin[0].name.clone());
+        let mut names: Vec<String> = vec![format!("*{best}\t{}", assets::describe(&best, "linux"))];
+        names.extend(lin.iter().filter(|a| a.name != best).map(|a| format!("{}\t{}", a.name, assets::describe(&a.name, "linux"))));
+        names.extend(win.iter().map(|a| format!("{}\tWindows Build", a.name)));
+        return Err(Error::Msg(format!("PICK_BUILD|{}", names.join("|"))));
+    }
     let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
     let os_name = match os {
         "windows" => "Windows",
@@ -387,6 +423,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         save_place: prev.as_ref().and_then(|p| p.save_place.clone()),
         cover_file: prev.as_ref().and_then(|p| p.cover_file.clone()),
         hero_file: prev.as_ref().and_then(|p| p.hero_file.clone()),
+        logo_file: prev.as_ref().and_then(|p| p.logo_file.clone()),
+        icon_file: prev.as_ref().and_then(|p| p.icon_file.clone()),
+        art_edit: prev.as_ref().map(|p| p.art_edit.clone()).unwrap_or_default(),
         setup,
         setup_done,
         setup_checked: true,
@@ -430,6 +469,47 @@ fn os_for(st: &App, entry: &Value, id: &str) -> &'static str {
     } else {
         here
     }
+}
+
+/// A folder in `dir` (or `dir` itself), up to `depth` levels down, that has every one of `want`
+/// (lowercase names) right in it.
+fn folder_with(dir: &Path, want: &[String], depth: usize) -> Option<PathBuf> {
+    if want.is_empty() || !dir.is_dir() {
+        return None;
+    }
+    let mut level = vec![dir.to_path_buf()];
+    for _ in 0..=depth {
+        let mut next = vec![];
+        for d in &level {
+            let names: Vec<String> = std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
+            if want.iter().all(|w| names.contains(w)) {
+                return Some(d.clone());
+            }
+            next.extend(std::fs::read_dir(d).into_iter().flatten().flatten().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).map(|e| e.path()).take(40));
+        }
+        level = next;
+    }
+    None
+}
+
+/// On Linux with Proton: the release's Linux builds and its Windows builds, when it has both (else
+/// two empty lists). A Linux build the list doesn't name yet counts when its file says Linux.
+fn linux_and_windows(st: &App, entry: &Value, rel: &Release, arch: &str) -> (Vec<assets::Asset>, Vec<assets::Asset>) {
+    if assets::os_now() != "linux" || !st.lib.lock().unwrap().settings.proton || proton::runner().is_none() || !runs_here(entry, "windows") {
+        return (vec![], vec![]);
+    }
+    let pat = |os: &str| entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
+    let lin: Vec<assets::Asset> = if runs_here(entry, "linux") {
+        assets::all_for(&rel.assets, "linux", arch, pat("linux")).into_iter().cloned().collect()
+    } else {
+        let named: Vec<assets::Asset> = rel.assets.iter().filter(|a| { let n = a.name.to_lowercase(); n.contains("linux") || n.ends_with(".appimage") }).cloned().collect();
+        assets::all_for(&named, "linux", arch, None).into_iter().cloned().collect()
+    };
+    let win: Vec<assets::Asset> = assets::all_for(&rel.assets, "windows", arch, pat("windows")).into_iter().cloned().collect();
+    if lin.is_empty() || win.is_empty() {
+        return (vec![], vec![]);
+    }
+    (lin, win)
 }
 
 fn runs_here(entry: &Value, os: &str) -> bool {
@@ -532,7 +612,15 @@ async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
     let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
     let arch = assets::arch_now();
     let best = assets::pick(&rel.assets, os, arch, pattern).map(|a| a.name.clone()).unwrap_or_default();
-    let builds: Vec<Value> = assets::all_for(&rel.assets, os, arch, pattern).iter().map(|a| json!({"name": a.name, "label": assets::describe(&a.name, os), "best": a.name == best})).collect();
+    let mut builds: Vec<Value> = assets::all_for(&rel.assets, os, arch, pattern).iter().map(|a| json!({"name": a.name, "label": assets::describe(&a.name, os), "best": a.name == best})).collect();
+    // On Linux with Proton, the release's builds for the other system too.
+    let (lin, win) = linux_and_windows(st.inner(), &entry, rel, arch);
+    let others = if os == "linux" { win.iter().map(|a| json!({"name": a.name, "label": "Windows Build", "best": false})).collect::<Vec<_>>() } else { lin.iter().map(|a| json!({"name": a.name, "label": assets::describe(&a.name, "linux"), "best": false})).collect() };
+    for o in others {
+        if !builds.iter().any(|b| b["name"] == o["name"]) {
+            builds.push(o);
+        }
+    }
     Ok(json!({"tag": rel.tag_name, "builds": builds, "current": have.1}))
 }
 
@@ -1051,8 +1139,9 @@ fn followed_news(cat: &Value, l: &mut Library, new_ids: &[String], first_time: b
 #[tauri::command]
 async fn desktop_shortcut(st: State<'_, App>, id: String, menu: Option<bool>) -> Res<String> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    let icon = g.exe.as_ref().map(|e| g.path.join(e));
-    let name = game_name(&st, &id, &g.name).await;
+    // The player's icon (Customize) or the list's, else the game's program.
+    let icon = game_art(&st, &id, &g).await.icon;
+    let name = shown_name(&st, &id, &g).await;
     // Straight to the game unless the player asked for shortcuts through the launcher (Settings),
     // or the game can only be started by the launcher for now.
     let direct_on = !st.lib.lock().unwrap().settings.ui.get("shortcut_launcher").and_then(Value::as_bool).unwrap_or(false);
@@ -1124,6 +1213,86 @@ fn ext_of(url: &str) -> &'static str {
     }
 }
 
+/// A game's pictures for Steam and shortcuts: the player's own from Customize first, else the
+/// list's. Each is (bytes, extension); empty when there's none.
+struct GameArt {
+    cover: (Vec<u8>, &'static str),
+    hero: (Vec<u8>, &'static str),
+    logo: (Vec<u8>, &'static str),
+    /// A picture file for the game's icon (an .ico on Windows when there is one).
+    icon: Option<PathBuf>,
+}
+
+async fn game_art(st: &App, id: &str, g: &Installed) -> GameArt {
+    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
+    let a = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
+    async fn pick(st: &App, own: Option<&PathBuf>, url: &str) -> (Vec<u8>, &'static str) {
+        if let Some(f) = own.filter(|f| f.is_file()) {
+            let ext = if f.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false) { "png" } else { "jpg" };
+            return (std::fs::read(f).unwrap_or_default(), ext);
+        }
+        (fetch_bytes(&st.http, url).await, ext_of(url))
+    }
+    let cover = pick(st, g.cover_file.as_ref(), str_of(&a, "cover")).await;
+    let hero = pick(st, g.hero_file.as_ref(), str_of(&a, "hero")).await;
+    let logo = pick(st, g.logo_file.as_ref(), str_of(&a, "logo")).await;
+    // The icon: the player's, else the list's (kept once in the covers folder), else (Windows) the
+    // game's program.
+    let mut icon = g.icon_file.clone().filter(|f| f.is_file());
+    if icon.is_none() {
+        let url = str_of(&a, "icon");
+        if !url.is_empty() {
+            let file = st.dir.join("covers").join(format!("{}-icon-list.png", folder_name(id)));
+            if !file.is_file() {
+                let b = fetch_bytes(&st.http, url).await;
+                if crate::media::mime(&b) == "image/png" {
+                    let _ = std::fs::create_dir_all(st.dir.join("covers"));
+                    let _ = std::fs::write(&file, &b);
+                    let _ = std::fs::write(file.with_extension("ico"), art::ico_from_png(&b));
+                }
+            }
+            icon = Some(file).filter(|f| f.is_file());
+        }
+    }
+    let icon = match icon {
+        Some(p) if cfg!(windows) => Some(Some(p.with_extension("ico")).filter(|i| i.is_file()).unwrap_or(p)),
+        Some(p) => Some(p),
+        None if cfg!(windows) => g.exe.as_ref().map(|e| g.path.join(e)),
+        None => None,
+    };
+    GameArt { cover, hero, logo, icon }
+}
+
+/// Steam's wide picture (920x430): the background filled to that shape, with the logo on it when
+/// there is one. The background as it is when it can't be read.
+fn wide_capsule(hero: &[u8], logo: &[u8]) -> Option<Vec<u8>> {
+    use image::GenericImageView;
+    let base = image::load_from_memory(hero).ok()?;
+    let mut base = base.resize_to_fill(920, 430, image::imageops::FilterType::Triangle).to_rgba8();
+    if let Ok(l) = image::load_from_memory(logo) {
+        let (lw, lh) = l.dimensions();
+        if lw > 0 && lh > 0 {
+            let k = (920.0 * 0.62 / lw as f32).min(430.0 * 0.55 / lh as f32);
+            let l = l.resize((lw as f32 * k).max(1.0) as u32, (lh as f32 * k).max(1.0) as u32, image::imageops::FilterType::Triangle).to_rgba8();
+            let (x, y) = ((920 - l.width() as i64) / 2, (430 - l.height() as i64) / 2);
+            image::imageops::overlay(&mut base, &l, x, y);
+        }
+    }
+    let rgb = image::DynamicImage::ImageRgba8(base).to_rgb8();
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90).encode_image(&rgb).ok()?;
+    Some(out)
+}
+
+/// The name for Steam and shortcuts: the player's own (Rename), else the game's, else the recomp's.
+async fn shown_name(st: &App, id: &str, g: &Installed) -> String {
+    let own = st.lib.lock().unwrap().settings.ui.get("names").and_then(|n| n.get(id)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    match own {
+        Some(n) => n,
+        None => game_name(st, id, &g.name).await,
+    }
+}
+
 /// Add the game to Steam. If Steam is open and `restart` is false, nothing changes and the answer
 /// is "steam_running", so the window can ask first; with `restart`, Steam is closed, the game
 /// added, and Steam started again.
@@ -1140,15 +1309,10 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
     if was_running && !restart {
         return Ok("steam_running".into());
     }
-    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
-    let a = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
-    let (cover, hero, logo) = (str_of(&a, "cover").to_string(), str_of(&a, "hero").to_string(), str_of(&a, "logo").to_string());
-    let art = vec![
-        ("p", fetch_bytes(&st.http, &cover).await, ext_of(&cover)),
-        ("_hero", fetch_bytes(&st.http, &hero).await, ext_of(&hero)),
-        ("", fetch_bytes(&st.http, &hero).await, ext_of(&hero)),
-        ("_logo", fetch_bytes(&st.http, &logo).await, ext_of(&logo)),
-    ];
+    // The player's own pictures (Customize) when they have them, else the list's.
+    let ga = game_art(&st, &id, &g).await;
+    let wide = wide_capsule(&ga.hero.0, &ga.logo.0).map(|b| (b, "jpg")).unwrap_or_else(|| ga.hero.clone());
+    let art = vec![("p", ga.cover.0.clone(), ga.cover.1), ("_hero", ga.hero.0.clone(), ga.hero.1), ("", wide.0, wide.1), ("_logo", ga.logo.0.clone(), ga.logo.1)];
     if was_running {
         if let Some(why) = shortcuts::cant_restart_steam() {
             return Err(Error::Msg(why.into()));
@@ -1156,9 +1320,9 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
         trail::note(format!("Add to Steam ({id}): closing Steam"));
         shortcuts::close_steam(&steam).await.inspect_err(|e| trail::note(format!("Add to Steam: {e}")))?;
     }
-    let icon = g.exe.as_ref().map(|e| g.path.join(e).to_string_lossy().to_string()).unwrap_or_default();
-    let name = Some(str_of(&a, "game").trim().to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| g.name.clone());
-    let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art)?;
+    let icon = ga.icon.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+    let name = shown_name(&st, &id, &g).await;
+    let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art).inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
     trail::note(format!("Add to Steam ({id}): written for {n} account(s)"));
     if was_running {
         shortcuts::start_steam(&steam);
@@ -1262,8 +1426,24 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             p.place(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't put your copy of the game where it reads it: {e}")))?;
             // Everything the game reads has to be there now; if not, the copy picked isn't the
             // right folder (the files are one level down, or it's a different disc): pick again.
-            let missing = p.missing_after_place(&g.path);
+            let mut missing = p.missing_after_place(&g.path);
+            // The files a level or two down in the folder picked (the folder around them, or one
+            // named after the game's ID): that inner folder is the copy, so the game isn't asked
+            // for again and again.
+            if let (Some(c), false) = (copy.as_deref(), missing.is_empty()) {
+                let want: Vec<String> = p.game.as_ref().map(|gc| gc.contains.iter().filter(|x| !x.contains(['*', '/', '\\'])).map(|x| x.to_lowercase()).collect()).unwrap_or_default();
+                if let Some(inner) = folder_with(c, &want, 2) {
+                    trail::note(format!("Play {id}: the game's files are in {}, one level down", inner.display()));
+                    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                        x.game_copy = Some(inner.clone());
+                    }
+                    st.save();
+                    p.place(&g.path, Some(inner.as_path())).map_err(|e| Error::Msg(format!("Couldn't put your copy of the game where it reads it: {e}")))?;
+                    missing = p.missing_after_place(&g.path);
+                }
+            }
             if copy.is_some() && !missing.is_empty() {
+                trail::note(format!("Play {id}: still missing after placing the copy: {}", missing.join(", ")));
                 if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                     x.game_copy = None;
                 }
@@ -1499,6 +1679,22 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         });
     }
     ping::game_start(app, &id);
+    // The player's own icon (Customize) on the game's window and taskbar button, once its window
+    // is up. Looked for a few times, since games take a while to open their window.
+    #[cfg(windows)]
+    if let Some(png) = g.icon_file.as_ref().filter(|f| f.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false)).and_then(|f| std::fs::read(f).ok()) {
+        let dir = if exe.starts_with(&g.path) { g.path.clone() } else { exe.parent().map(Path::to_path_buf).unwrap_or_else(|| g.path.clone()) };
+        let (a, idc) = (app.clone(), id.clone());
+        std::thread::spawn(move || {
+            for wait in [3u64, 5, 7, 15, 30] {
+                std::thread::sleep(std::time::Duration::from_secs(wait));
+                if !a.state::<App>().running.lock().unwrap().contains_key(&idc) {
+                    break;
+                }
+                win::set_window_icon(&dir, &png);
+            }
+        });
+    }
     // The first few times, say how to open the quick menu.
     let tips = {
         let mut l = st.lib.lock().unwrap();
@@ -5077,6 +5273,13 @@ pub fn run() {
             trail::start(&dir);
             net::init(app.handle());
             proton::set_data(&dir);
+            // The files an update moved aside (they were in use while it copied).
+            #[cfg(windows)]
+            if let Some(d) = exe_dir() {
+                for f in ["recomplauncher.exe.old", "WebView2Loader.dll.old"] {
+                    let _ = std::fs::remove_file(d.join(f));
+                }
+            }
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
                 .connect_timeout(std::time::Duration::from_secs(8))
@@ -5269,7 +5472,7 @@ pub fn run() {
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, scan_roms, rom_matches,
-            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, all_screenshots, delete_screenshot,
+            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,

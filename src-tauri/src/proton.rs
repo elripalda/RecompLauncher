@@ -122,11 +122,16 @@ pub fn runner() -> Option<Runner> {
 
 /// The command that starts `exe` through `r`, with the shared prefix in `data`.
 pub fn command(r: &Runner, data: &Path, exe: &Path) -> tokio::process::Command {
+    tokio::process::Command::from(std_command(r, data, exe))
+}
+
+/// The same, as a plain (not async) command: for a game's setup program.
+pub fn std_command(r: &Runner, data: &Path, exe: &Path) -> std::process::Command {
     let base = data.join("proton");
     let _ = std::fs::create_dir_all(&base);
     match r {
         Runner::Umu(umu, proton) => {
-            let mut c = tokio::process::Command::new(umu);
+            let mut c = std::process::Command::new(umu);
             c.arg(exe).env("WINEPREFIX", base.join("pfx")).env("GAMEID", "umu-default");
             if let Some(p) = proton {
                 c.env("PROTONPATH", p);
@@ -134,16 +139,26 @@ pub fn command(r: &Runner, data: &Path, exe: &Path) -> tokio::process::Command {
             c
         }
         Runner::Proton(p, root) => {
-            let mut c = tokio::process::Command::new(p.join("proton"));
+            let mut c = std::process::Command::new(p.join("proton"));
             c.arg("run").arg(exe).env("STEAM_COMPAT_DATA_PATH", &base).env("STEAM_COMPAT_CLIENT_INSTALL_PATH", root);
             c
         }
         Runner::Wine(w) => {
-            let mut c = tokio::process::Command::new(w);
+            let mut c = std::process::Command::new(w);
             c.arg(exe).env("WINEPREFIX", base.join("wine"));
             c
         }
     }
+}
+
+/// The launcher's data folder (where the shared prefix is), once it's known.
+pub fn data_dir() -> Option<PathBuf> {
+    DATA.get().cloned()
+}
+
+/// A Windows program by its file (.exe, .bat, .cmd, .msi).
+pub fn is_windows_program(p: &Path) -> bool {
+    matches!(p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("exe" | "bat" | "cmd" | "msi"))
 }
 
 #[cfg(test)]

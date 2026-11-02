@@ -269,6 +269,51 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+; Tauri's Install section runs this just before it copies the files. An update from inside the
+; launcher (/P /UPDATE): the launcher closes itself right after starting this, but it can take a
+; moment. It's given a few seconds, then asked, then made to close, so the copy never waits on a
+; file still in use. The old files are then moved aside (Windows lets a file in use be renamed);
+; the launcher clears them away the next time it starts.
+!macro NSIS_HOOK_PREINSTALL
+  ${If} $PassiveMode = 1
+  ${OrIf} $UpdateMode = 1
+    StrCpy $R9 0
+    rl_pre_wait:
+    nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
+    Pop $R0
+    ${If} $R0 = 0
+      IntOp $R9 $R9 + 1
+      ${If} $R9 = 8
+      ${AndIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
+        ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --quit'
+      ${EndIf}
+      ${If} $R9 < 16
+        Sleep 500
+        Goto rl_pre_wait
+      ${EndIf}
+      nsis_tauri_utils::KillProcessCurrentUser "${MAINBINARYNAME}.exe"
+      Pop $R0
+      Sleep 1000
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
+      Delete "$INSTDIR\${MAINBINARYNAME}.exe.old"
+      Rename "$INSTDIR\${MAINBINARYNAME}.exe" "$INSTDIR\${MAINBINARYNAME}.exe.old"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\WebView2Loader.dll"
+      Delete "$INSTDIR\WebView2Loader.dll.old"
+      Rename "$INSTDIR\WebView2Loader.dll" "$INSTDIR\WebView2Loader.dll.old"
+    ${EndIf}
+    Delete "$INSTDIR\${MAINBINARYNAME}.exe.old"
+    Delete "$INSTDIR\WebView2Loader.dll.old"
+  ${EndIf}
+!macroend
+
+; Uninstalling: the old files an update moved aside go too, so the folder can go.
+!macro NSIS_HOOK_PREUNINSTALL
+  Delete "$INSTDIR\${MAINBINARYNAME}.exe.old"
+  Delete "$INSTDIR\WebView2Loader.dll.old"
+!macroend
+
 Function RLWelcomeLeave
   ${If} $RLHad != ""
     ${VersionCompare} $RLHad "0.8.1" $0

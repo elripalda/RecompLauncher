@@ -262,11 +262,53 @@ pub async fn find(http: &reqwest::Client, key: &str, name: &str) -> Result<Optio
     Ok(found.get("data").and_then(Value::as_array).and_then(|l| l.first()).and_then(|g| Some((g.get("id")?.as_u64()?, g.get("name")?.as_str()?.to_string()))))
 }
 
-/// Every cover, background and logo SteamGridDB has for a game (by its SteamGridDB id).
+/// Every cover, background, logo and icon SteamGridDB has for a game (by its SteamGridDB id).
 pub async fn art_of(http: &reqwest::Client, key: &str, id: u64) -> Value {
-    let (pc, ph, pl) = (format!("grids/game/{id}?dimensions=600x900&types=static"), format!("heroes/game/{id}?types=static"), format!("logos/game/{id}?types=static"));
-    let (covers, heroes, logos) = tokio::join!(sgdb(http, key, &pc), sgdb(http, key, &ph), sgdb(http, key, &pl));
-    json!({"covers": pics(covers, 40), "heroes": pics(heroes, 30), "logos": pics(logos, 12)})
+    let (pc, ph, pl, pi) = (
+        format!("grids/game/{id}?dimensions=600x900&types=static"),
+        format!("heroes/game/{id}?types=static"),
+        format!("logos/game/{id}?types=static"),
+        format!("icons/game/{id}?types=static"),
+    );
+    let (covers, heroes, logos, icons) = tokio::join!(sgdb(http, key, &pc), sgdb(http, key, &ph), sgdb(http, key, &pl), sgdb(http, key, &pi));
+    json!({"covers": pics(covers, 40), "heroes": pics(heroes, 30), "logos": pics(logos, 24), "icons": pics(icons, 24)})
+}
+
+/// SteamGridDB's games for a name, best first: [{ id, name, year }]. Err when the key isn't taken.
+pub async fn search(http: &reqwest::Client, key: &str, name: &str) -> Result<Value, String> {
+    if key.is_empty() {
+        return Err("Add your SteamGridDB key in Settings → Games and folders first.".into());
+    }
+    let term: String = name.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '\'' { c } else { ' ' }).collect();
+    let term = term.split_whitespace().collect::<Vec<_>>().join(" ");
+    if term.is_empty() {
+        return Ok(json!([]));
+    }
+    let r = http
+        .get(format!("https://www.steamgriddb.com/api/v2/search/autocomplete/{}", term.replace(' ', "%20").replace('\'', "%27")))
+        .bearer_auth(key)
+        .timeout(std::time::Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| format!("Couldn't reach SteamGridDB: {e}"))?;
+    if r.status().as_u16() == 401 {
+        return Err("SteamGridDB didn't take that API key. Check it in Settings → Games and folders.".into());
+    }
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    let list: Vec<Value> = v
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|l| {
+            l.iter()
+                .filter_map(|g| {
+                    let year = g.get("release_date").and_then(Value::as_i64).map(|t| chrono::DateTime::from_timestamp(t, 0).map(|d| d.format("%Y").to_string()).unwrap_or_default()).unwrap_or_default();
+                    Some(json!({"id": g.get("id")?.as_u64()?, "name": g.get("name")?.as_str()?, "year": year}))
+                })
+                .take(12)
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Value::Array(list))
 }
 
 /// Art for a game by name.

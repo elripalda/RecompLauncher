@@ -173,6 +173,51 @@ mod imp {
         ok.then(|| PathBuf::from(String::from_utf16_lossy(&buf[..len as usize])))
     }
 
+    // ---------- a game's window icon ----------
+
+    /// Puts the player's icon (PNG bytes) on the windows of the programs running from `dir` (the
+    /// game's folder, or the folder its program is in): their title bar and taskbar button. Some
+    /// games set their own icon again afterwards. Returns how many windows got it.
+    pub fn set_window_icon(dir: &Path, png: &[u8]) -> usize {
+        use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::*;
+        let d = dir.to_string_lossy().trim_end_matches('\\').to_lowercase() + "\\";
+        let mine = std::process::id();
+        let pids: Vec<u32> = processes()
+            .into_iter()
+            .map(|(p, _)| p)
+            .filter(|&p| p != mine && p != 0 && process_file(p).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false))
+            .collect();
+        if pids.is_empty() {
+            return 0;
+        }
+        let big = unsafe { CreateIconFromResourceEx(png, true, 0x0003_0000, 256, 256, LR_DEFAULTCOLOR) };
+        let small = unsafe { CreateIconFromResourceEx(png, true, 0x0003_0000, 32, 32, LR_DEFAULTCOLOR) };
+        let (Ok(big), Ok(small)) = (big, small) else { return 0 };
+        struct Want {
+            pids: Vec<u32>,
+            found: Vec<HWND>,
+        }
+        unsafe extern "system" fn each(h: HWND, l: LPARAM) -> windows::core::BOOL {
+            let w = unsafe { &mut *(l.0 as *mut Want) };
+            let mut pid = 0u32;
+            unsafe { GetWindowThreadProcessId(h, Some(&mut pid as *mut u32)) };
+            // The program's own windows: shown, and not owned by another window (a dialog).
+            if w.pids.contains(&pid) && unsafe { IsWindowVisible(h) }.as_bool() && unsafe { GetWindow(h, GW_OWNER) }.is_err() {
+                w.found.push(h);
+            }
+            true.into()
+        }
+        let mut want = Want { pids, found: vec![] };
+        let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut want as *mut Want as isize)) };
+        for h in &want.found {
+            for (which, icon) in [(ICON_BIG, big), (ICON_SMALL, small)] {
+                unsafe { SendMessageTimeoutW(*h, WM_SETICON, WPARAM(which as usize), LPARAM(icon.0 as isize), SMTO_ABORTIFHUNG, 500, None) };
+            }
+        }
+        want.found.len()
+    }
+
     #[link(name = "ntdll")]
     extern "system" {
         fn NtQueryInformationProcess(h: *mut core::ffi::c_void, class: u32, info: *mut core::ffi::c_void, len: u32, ret: *mut u32) -> i32;
