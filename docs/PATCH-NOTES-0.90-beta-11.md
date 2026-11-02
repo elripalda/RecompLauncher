@@ -7,6 +7,7 @@
 - **Programs that need admin.** Games and setups that have to run as administrator now ask Windows for permission instead of failing.
 - **Discord from shortcuts.** Games started from a desktop shortcut now show up in your Discord status too, as long as the launcher is open.
 - **More crash help on Linux.** The crash window spots when Proton is missing something a game needs, or when a game needs a library your system doesn't have, and tells you what to install.
+- **Save backups catch every save.** Saves kept as .bin files (common in Xbox ports) are now backed up and synced too.
 - **Text Size.** Settings → Appearance has a new Text Size option, from 90% up to 150%, to make the whole launcher bigger or smaller. Ctrl with + or - works too.
 - **Row arrows respond everywhere.** The left and right arrows on Home and Discover rows now work wherever you click them.
 

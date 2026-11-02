@@ -32,8 +32,8 @@ const MAX_FILES: usize = 20_000;
 const WALK_MAX: usize = 250_000;
 const WALK_SECS: u64 = 20;
 /// Never in a save copy: game files, programs, archives, logs.
-const NOT_SAVES: [&str; 37] = [
-    ".iso", ".bin", ".cue", ".chd", ".cso", ".gcm", ".rvz", ".wbfs", ".wad", ".nsp", ".xci", ".xex", ".xbe", ".z64", ".n64", ".v64",
+const NOT_SAVES: [&str; 36] = [
+    ".iso", ".cue", ".chd", ".cso", ".gcm", ".rvz", ".wbfs", ".wad", ".nsp", ".xci", ".xex", ".xbe", ".z64", ".n64", ".v64",
     ".sfc", ".smc", ".gba", ".nds", ".3ds", ".elf", ".rpx", ".exe", ".dll", ".so", ".pdb", ".msi", ".zip", ".7z", ".rar", ".appimage",
     ".log", ".tmp", ".dmp", ".mp4", ".mkv",
 ];
@@ -151,8 +151,15 @@ fn lower(p: &Path) -> String {
     p.to_string_lossy().to_lowercase()
 }
 
+/// A .bin bigger than this is a disc image's track, not a save (Xbox and many PC ports keep saves
+/// in small .bin files).
+const BIN_SAVE_MAX: u64 = 16 * 1024 * 1024;
+
 fn is_save_file(name: &str, size: u64) -> bool {
     let n = name.to_lowercase();
+    if n.ends_with(".bin") && size > BIN_SAVE_MAX {
+        return false;
+    }
     size <= MAX_FILE && !NOT_SAVES.iter().any(|e| n.ends_with(e))
 }
 
@@ -714,6 +721,15 @@ pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn small_bin_files_are_saves() {
+        assert!(super::is_save_file("SaveData.bin", 300_000));
+        assert!(super::is_save_file("profile.BIN", 64));
+        assert!(!super::is_save_file("Track 01.bin", 400 * 1024 * 1024));
+        assert!(!super::is_save_file("game.iso", 10));
+    }
+
     use super::*;
 
     fn tmp(n: &str) -> PathBuf {
