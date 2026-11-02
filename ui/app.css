@@ -256,7 +256,8 @@ body.oled .slide::after{background:linear-gradient(90deg,#000 0%,rgba(0,0,0,.65)
 .pager .ar:disabled{opacity:.3;cursor:default}
 .pager .see{height:38px;padding:0 14px;border-radius:12px;font-weight:700;font-size:13px;color:var(--cyan)}
 .pager .see:hover{background:var(--fill2)}
-.viewport{overflow:hidden;margin:-30px -20px -26px;padding:30px 20px 26px}
+.viewport{overflow:hidden;margin:-30px -20px -26px;padding:30px 20px 26px;pointer-events:none}
+.viewport>.track{pointer-events:auto}
 .track{display:flex;gap:var(--gap);transition:transform .55s var(--ease);will-change:transform}
 .track>.tile{flex:0 0 calc((100% - var(--gap) * (var(--per) - 1)) / var(--per))}
 .news-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}

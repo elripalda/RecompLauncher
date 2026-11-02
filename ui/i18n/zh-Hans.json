@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "SteamGridDB 上没有这个名称的内容。换一个试试。",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "已保存。现在各处都会显示，Steam 中会在你下次添加时显示。",
  "A picture": "一张图片",
- "Update RecompLauncher": "更新 RecompLauncher"
+ "Update RecompLauncher": "更新 RecompLauncher",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "运行它的 Proton 缺少这款游戏需要的一部分 Windows 功能。请安装 GE-Proton（用 ProtonUp-Qt 点几下就能装，Steam Deck 上也行）后再玩：启动器会使用找到的最新 Proton。",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "它需要 {file}，但这台电脑上没有。请用系统的包管理器安装后再玩。",
+ "Which Program Starts {name}?": "哪个程序启动 {name}？",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "下载的文件里有多个程序，启动器会选的那些看起来像工具。选择游戏本体，之后「开始游戏」就会启动它。",
+ "Text Size": "文字大小",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "让启动器里的一切（文字、按钮和封面）变大或变小。按 Ctrl 加 + 或 - 也一样。"
 }

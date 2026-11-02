@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "SteamGridDB'de bu adla bir şey yok. Başka bir ad dene.",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "Kaydedildi. Artık her yerde görünüyor; Steam'de ise onu bir sonraki eklediğinde.",
  "A picture": "Bir resim",
- "Update RecompLauncher": "RecompLauncher'ı güncelle"
+ "Update RecompLauncher": "RecompLauncher'ı güncelle",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "Çalıştığı Proton'da bu oyunun ihtiyaç duyduğu bir Windows parçası eksik. GE-Proton'u yükle (ProtonUp-Qt birkaç tıkla ekler, Steam Deck'te de) ve tekrar oyna: başlatıcı bulduğu en yeni Proton'u kullanır.",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "{file} gerekiyor ve bu bilgisayarda yok. Sisteminin paket yöneticisiyle yükle, sonra tekrar oyna.",
+ "Which Program Starts {name}?": "{name} oyununu hangi program başlatıyor?",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "İndirmede birden fazla program var ve başlatıcının seçeceği programlar araç gibi görünüyor. Oyunu seç, Oyna bundan sonra onu başlatsın.",
+ "Text Size": "Yazı Boyutu",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "Başlatıcıdaki her şeyi büyütür ya da küçültür: yazı, düğmeler ve kapaklar. Ctrl ile + veya - aynısını yapar."
 }

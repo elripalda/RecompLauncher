@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "SteamGridDB không có gì với tên đó. Hãy thử tên khác.",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "Đã lưu. Giờ nó hiển thị ở mọi nơi, còn trong Steam thì vào lần tới bạn thêm nó.",
  "A picture": "Một ảnh",
- "Update RecompLauncher": "Cập nhật RecompLauncher"
+ "Update RecompLauncher": "Cập nhật RecompLauncher",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "Bản Proton đã dùng thiếu một phần của Windows mà trò chơi này cần. Hãy cài GE-Proton (ProtonUp-Qt thêm nó chỉ với vài cú nhấp, cả trên Steam Deck) rồi chơi lại: trình khởi chạy dùng bản Proton mới nhất mà nó tìm thấy.",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "Trò chơi cần {file}, nhưng tệp này không có trên PC. Hãy cài nó bằng trình quản lý gói của hệ thống rồi chơi lại.",
+ "Which Program Starts {name}?": "Chương trình nào khởi động {name}?",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "Bản tải về có nhiều chương trình, và những chương trình mà trình khởi chạy sẽ chọn trông giống công cụ. Hãy chọn trò chơi, từ giờ nút Chơi sẽ khởi động nó.",
+ "Text Size": "Cỡ chữ",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "Phóng to hoặc thu nhỏ mọi thứ trong trình khởi chạy: chữ, nút và ảnh bìa. Ctrl và + hoặc - cũng làm được."
 }

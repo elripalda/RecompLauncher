@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "لا يوجد شيء على SteamGridDB بهذا الاسم. جرّب اسمًا آخر.",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "تم الحفظ. يظهر الآن في كل مكان، وفي Steam في المرة القادمة التي تضيفها فيها.",
  "A picture": "صورة",
- "Update RecompLauncher": "تحديث RecompLauncher"
+ "Update RecompLauncher": "تحديث RecompLauncher",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "ينقص Proton الذي شُغّلت به جزءًا من Windows تحتاجه هذه اللعبة. ثبّت GE-Proton (يضيفه ProtonUp-Qt ببضع نقرات، على Steam Deck أيضًا) ثم العب مجددًا: يستخدم المشغّل أحدث Proton يجده.",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "تحتاج إلى {file}، وهو غير موجود على هذا الجهاز. ثبّته بمدير الحزم في نظامك ثم العب مجددًا.",
+ "Which Program Starts {name}?": "أي برنامج يشغّل {name}؟",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "يحتوي التنزيل على أكثر من برنامج، والبرامج التي سيختارها المشغّل تبدو أدوات. اختر اللعبة، وسيشغّلها زر اللعب من الآن.",
+ "Text Size": "حجم النص",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "يكبّر كل ما في المشغّل أو يصغّره: النصوص والأزرار والأغلفة. Ctrl مع + أو - يفعل الشيء نفسه."
 }

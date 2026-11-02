@@ -124,6 +124,24 @@ function based(a) { return a.game ? `<div class="based">${DISC_S}<span>${htmlFil
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
 const needsSetup = (a) => !!(a && a.setup_required);
 // Games added to the Library without installing them yet (like a store's library): id → when.
+// Text Size: the whole window zoomed, like a browser's zoom, and kept for next time.
+const UI_SCALES = [0.9, 1, 1.1, 1.25, 1.5];
+const uiScale = () => { const v = Number(((S.settings && S.settings.ui) || {}).ui_scale); return UI_SCALES.includes(v) ? v : 1; };
+async function setUiScale(v) {
+  if (!UI_SCALES.includes(v)) return;
+  try { await invoke('set_ui_scale', { scale: v }); } catch (e) { return fail(e); }
+  await saveUi({ ui_scale: v }, true);
+  render(true);
+}
+// Ctrl with + or - steps through the sizes, Ctrl+0 goes back to 100%.
+addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || !S.settings) return;
+  const i = UI_SCALES.indexOf(uiScale());
+  const to = ['+', '='].includes(e.key) ? UI_SCALES[Math.min(i + 1, UI_SCALES.length - 1)] : e.key === '-' ? UI_SCALES[Math.max(i - 1, 0)] : e.key === '0' ? 1 : null;
+  if (to == null) return;
+  e.preventDefault();
+  if (to !== uiScale()) setUiScale(to);
+});
 const saved = () => ((S.settings && S.settings.ui) || {}).saved || {};
 const isSaved = (id) => !!saved()[id];
 const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
@@ -192,7 +210,7 @@ async function checkLauncher(btn) {
   el.innerHTML = bad ? `<span>${esc(t('Couldn\'t check for updates right now.'))}</span>` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>${esc(t('You have the newest RecompLauncher.'))}</span>`;
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 260); }, 3600);
 }
-const fail = (e) => toast(t(String(e && e.message ? e.message : e)), true);
+const fail = (e) => toast(t(String(e && e.message ? e.message : e).replace(/^[A-Z_]+\|/, '')), true);
 
 // Markdown from README sections and release notes, made safe: HTML tags dropped, everything escaped,
 // links opened in the browser.
@@ -2140,6 +2158,7 @@ function pageSettings() {
     }
     case 'look':
       body = group(t('Appearance'), `<div class="set-row"><div class="k"><b>${esc(t('Theme'))}</b><span>${esc(t('Dark, black for OLED screens, or light.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Theme'))}">${[['dark', t('Dark')], ['oled', t('OLED')], ['light', tc('Light|theme')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.theme === 'light' ? 'light' : ui.oled ? 'oled' : 'dark') === k}" data-act="theme" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
+        + `<div class="set-row"><div class="k"><b>${esc(t('Text Size'))}</b><span>${esc(t('Bigger or smaller text, buttons and covers. Ctrl with + or - works too.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Text Size'))}">${UI_SCALES.map((k) => `<button type="button" role="radio" aria-checked="${uiScale() === k}" data-act="ui-scale" data-k="${k}">${Math.round(k * 100)}%</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
@@ -3437,6 +3456,8 @@ async function playGame2(id, program) {
     catch (err) {
       const m = String(err && err.message ? err.message : err).match(/^NEED_COPY\|(.*)$/);
       if (m || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
+      // It couldn't tell which program is the game (every one looks like a tool): the player says.
+      if (/^PICK_EXE\|/.test(String(err && err.message ? err.message : err))) return askProgram(id);
       if (!blocked(id, err)) fail(err);
       if (/program/i.test(String(err))) { S.nextTab = 'installed'; go('game', id); }
     }
@@ -3447,6 +3468,15 @@ async function playGame2(id, program) {
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep playing it'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Close it and play'))}</button></div>`, (x, close) => { if (x.dataset.x === 'yes') { close(); go2(true); } }, t('Switch games'));
 }
 
+async function askProgram(id) {
+  const g = S.library[id] || {};
+  let list = [];
+  try { list = ((await invoke('game_programs', { id })) || []).filter((p) => !/unins/i.test(p)).slice(0, 8); } catch (e) { /* none */ }
+  const sep = String(g.path || '').includes('\\') ? '\\' : '/';
+  const full = list.map((p) => `${String(g.path).replace(/[\\/]$/, '')}${sep}${p}`);
+  if (!full.length) { S.nextTab = 'installed'; go('game', id); return toast(t('The launcher couldn\'t tell which program starts the game. Pick it in the game\'s settings.'), true); }
+  return confirmProgram(id, (libApp(g) || g).name || id, full, true);
+}
 // Hold Play: pick which of the game's programs starts this time (the game itself, or its own
 // launcher or tools). A normal press starts the usual one.
 window.startWith = async function startWith(id) {
@@ -3907,6 +3937,10 @@ async function crashModal(p) {
   const vram = /OUT_OF_DEVICE_MEMORY|vmaCreate\w+\(.*failed: -2\b|out of (?:video|device|gpu) memory/i.test(said);
   // Windows ran out of memory for it (RAM and the page file together).
   const oom = !vram && ([-2147024882, 2147942414, -1073741801, 3221225495].includes(Number(p.code)) || /memory commit|commit limit|out of memory|std::bad_alloc|failed to allocate \d+ bytes/i.test(said));
+  // Linux: the Proton it ran through lacks a part of Windows this game calls.
+  const protonGap = /wine: Call from [0-9A-Fa-f]+ to unimplemented function/i.test(said);
+  // Linux: a library the game needs isn't on this PC.
+  const noLib = /error while loading shared libraries: ([^\s:]+)/i.exec(said);
   // A script it runs called a program that isn't installed (cmd's code 9009).
   const noCmd = Number(p.code) === 9009 || /is not recognized as an internal or external command/i.test(said);
   const wrongDisc = /no game archives|not the right disc|wrong disc/i.test(said);
@@ -3925,7 +3959,7 @@ async function crashModal(p) {
   // A fix it can offer: that's the main button, and sending the report comes second.
   const fix = sac || otherBuild || badOpts || rootFlag || dotnet || noWrite || lookOn || glSetting || dll || setupExe || usage;
   const m = modal(`<h2>${esc(tf('{name} closed unexpectedly', { name: g.name }))}</h2>
-    <p>${sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
+    <p>${sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
     <div class="acts ${fix ? 'grid2' : 'grid3'}"><button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button><button type="button" class="btn${!fix && p.secs < 5 ? ' main' : ''}" data-x="trouble">${esc(t('Troubleshoot'))}</button><button type="button" class="btn${fix || p.secs < 5 ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>
@@ -4498,6 +4532,7 @@ async function act(el, e) {
     case 'customize': return window.customizeModal && window.customizeModal(id);
     case 'hero-reset': try { S.library[id] = await invoke('set_cover', { id, path: null, hero: true }); } catch (err) { return fail(err); } byId(id); return render(true);
     case 'start-page': { await saveUi({ start_page: el.dataset.k || '' }); return render(true); }
+    case 'ui-scale': return setUiScale(Number(el.dataset.k));
     case 'theme': { const k = el.dataset.k; await saveUi({ theme: k === 'light' ? 'light' : '', oled: k === 'oled' }); return render(true); }
     case 'skip-backup': return invoke('skip_backup').catch(() => {});
     case 'check-upd': {
@@ -4795,20 +4830,20 @@ T.event.listen('game', ({ payload: p }) => {
 // Its own setup finished, but the game it made wasn't found: the player points at it.
 // After a game's own setup: which program starts the game. The launcher's pick is first; the
 // others are programs the setup just made. Pick Another for anything else.
-function confirmProgram(id, name, list) {
+function confirmProgram(id, name, list, ask) {
   let sel = 0;
   const dirOf = (p) => p.replace(/[\\/][^\\/]*$/, '');
   const fileOf = (p) => p.split(/[\\/]/).pop();
   // Programs named like tools (a translator, a patcher, a builder) go below the rest, so the first
   // one, picked already, is the likeliest game.
-  const tool = (p) => (/xlate|translat|tool|patch|setup|install|extract|unpack|build|convert|config|crash|unins|redist/i.test(fileOf(p)) ? 1 : 0);
+  const tool = (p) => (/xlate|translat|tool|patch|setup|install|extract|unpack|build|convert|config|crash|unins|redist|shader|compil|deps|server/i.test(fileOf(p)) || /[\\/](deps|tools?|temp|tmp|compilers?|sdk)[\\/]/i.test(p) ? 1 : 0);
   list = [...list].sort((x, y) => tool(x) - tool(y));
-  const m = modal(`<h2>${esc(tf('{name} Is Set Up', { name }))}</h2><p>${esc(t('Which program starts the game? Its setup may have left other programs too, like a builder or a tool, so check this one.'))}</p>
+  const m = modal(`<h2>${esc(ask ? tf('Which Program Starts {name}?', { name }) : tf('{name} Is Set Up', { name }))}</h2><p>${esc(ask ? t('Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.') : t('Which program starts the game? Its setup may have left other programs too, like a builder or a tool, so check this one.'))}</p>
     <div class="cp-list" role="radiogroup">${list.map((p, i) => `<button type="button" class="cp-it${i === 0 ? ' on' : ''}" role="radio" aria-checked="${i === 0}" data-x="cp" data-i="${i}"><b>${esc(fileOf(p))}</b><small dir="ltr">${esc(dirOf(p))}</small></button>`).join('')}</div>
     <div class="acts grid2"><button type="button" class="btn" data-x="other">${esc(t('Pick Another…'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Play Starts This One'))}</button></div>`, async (x, close) => {
     if (x.dataset.x === 'cp') { sel = Number(x.dataset.i); for (const b of $$('.cp-it', m)) { const on = Number(b.dataset.i) === sel; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } return; }
     if (x.dataset.x === 'yes') {
-      try { S.library[id] = await invoke('set_exe', { id, path: list[sel] }); close(); toast(tf('{name} is set up. Press Play to start it.', { name })); render(true); } catch (e) { fail(e); }
+      try { S.library[id] = await invoke('set_exe', { id, path: list[sel] }); close(); render(true); if (ask) playGame(id); else toast(tf('{name} is set up. Press Play to start it.', { name })); } catch (e) { fail(e); }
       return;
     }
     if (x.dataset.x === 'other') {

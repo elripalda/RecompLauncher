@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "На SteamGridDB нічого немає під цією назвою. Спробуй іншу.",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "Збережено. Тепер це показується всюди, а в Steam — коли наступного разу додаси гру.",
  "A picture": "Зображення",
- "Update RecompLauncher": "Оновити RecompLauncher"
+ "Update RecompLauncher": "Оновити RecompLauncher",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "У Proton, через який вона запускалася, бракує частини Windows, потрібної цій грі. Встановіть GE-Proton (ProtonUp-Qt додасть його в кілька кліків, і на Steam Deck теж) і запустіть знову: лаунчер бере найновіший Proton, який знаходить.",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "Їй потрібен {file}, а його немає на цьому ПК. Встановіть його через менеджер пакетів вашої системи й запустіть знову.",
+ "Which Program Starts {name}?": "Яка програма запускає {name}?",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "У завантаженні кілька програм, і ті, які вибрав би лаунчер, схожі на утиліти. Виберіть гру, і «Грати» запускатиме її.",
+ "Text Size": "Розмір тексту",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "Робить усе в лаунчері більшим або меншим: текст, кнопки й обкладинки. Ctrl і + або - роблять те саме."
 }

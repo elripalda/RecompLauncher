@@ -322,7 +322,7 @@ fn releases_url(repo: &str) -> String {
 /// Release info straight from GitHub, for when the site can't be reached: GitHub's own list (what
 /// gh.php passes on), so installing and updating still work while the site is down. Downloads
 /// always come from GitHub anyway.
-async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
+pub(crate) async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
     let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
     let r = crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, true).await?;
     if !r.status().is_success() {
@@ -346,7 +346,12 @@ async fn or_github(http: &reqwest::Client, dir: &Path, repo: &str, got: Result<F
     match got {
         Ok(f) if !(f.offline && fresh) => Ok(f),
         Ok(f) => Ok(from_github(http, dir, repo).await.unwrap_or(f)),
-        Err(e) => from_github(http, dir, repo).await.map_err(|_| e),
+        // Neither could answer: the copy on disk, however old, rather than nothing (its files are
+        // usually still there).
+        Err(e) => match from_github(http, dir, repo).await {
+            Ok(f) => Ok(f),
+            Err(_) => on_disk(&releases_file(dir, repo), Value::is_array).map(|h| Fetched { offline: true, ..h }).ok_or(e),
+        },
     }
 }
 

@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "SteamGridDB ไม่มีอะไรในชื่อนั้น ลองชื่ออื่น",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "บันทึกแล้ว ตอนนี้จะแสดงทุกที่ และใน Steam ในครั้งถัดไปที่คุณเพิ่ม",
  "A picture": "รูปภาพ",
- "Update RecompLauncher": "อัปเดต RecompLauncher"
+ "Update RecompLauncher": "อัปเดต RecompLauncher",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "Proton ที่ใช้รันขาดส่วนหนึ่งของ Windows ที่เกมนี้ต้องใช้ ติดตั้ง GE-Proton (ProtonUp-Qt เพิ่มให้ได้ในไม่กี่คลิก ใช้บน Steam Deck ได้ด้วย) แล้วเล่นอีกครั้ง: ตัวเปิดเกมจะใช้ Proton ใหม่สุดที่หาเจอ",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "เกมต้องใช้ {file} ซึ่งไม่มีในพีซีเครื่องนี้ ติดตั้งด้วยตัวจัดการแพ็กเกจของระบบ แล้วเล่นอีกครั้ง",
+ "Which Program Starts {name}?": "โปรแกรมไหนเปิด {name}?",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "ไฟล์ที่ดาวน์โหลดมีหลายโปรแกรม และตัวที่ตัวเปิดเกมจะเลือกดูเหมือนเครื่องมือ เลือกตัวเกม แล้วปุ่มเล่นจะเปิดตัวนั้นต่อจากนี้",
+ "Text Size": "ขนาดตัวอักษร",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "ทำให้ทุกอย่างในตัวเปิดเกมใหญ่ขึ้นหรือเล็กลง ทั้งตัวอักษร ปุ่ม และปก กด Ctrl กับ + หรือ - ก็ได้เหมือนกัน"
 }

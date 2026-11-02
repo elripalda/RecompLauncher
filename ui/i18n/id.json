@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "SteamGridDB tidak punya apa pun dengan nama itu. Coba yang lain.",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "Tersimpan. Sekarang tampil di mana-mana, dan di Steam saat kamu menambahkannya lagi nanti.",
  "A picture": "Sebuah gambar",
- "Update RecompLauncher": "Perbarui RecompLauncher"
+ "Update RecompLauncher": "Perbarui RecompLauncher",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "Proton yang dipakai tidak punya bagian Windows yang dibutuhkan game ini. Pasang GE-Proton (ProtonUp-Qt menambahkannya dalam beberapa klik, juga di Steam Deck) lalu main lagi: launcher memakai Proton terbaru yang ditemukannya.",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "Game ini butuh {file}, yang tidak ada di PC ini. Pasang lewat pengelola paket sistemmu, lalu main lagi.",
+ "Which Program Starts {name}?": "Program mana yang menjalankan {name}?",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "Unduhannya berisi lebih dari satu program, dan yang akan dipilih launcher tampak seperti alat. Pilih game-nya, dan Main akan menjalankannya mulai sekarang.",
+ "Text Size": "Ukuran Teks",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "Membuat semua di launcher lebih besar atau lebih kecil: teks, tombol, dan sampul. Ctrl dan + atau - juga bisa."
 }

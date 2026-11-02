@@ -89,6 +89,15 @@ pub fn rank(name: &str) -> (u32, u32, u32) {
     }
 }
 
+/// A Proton built for another processor (an ARM64 one on a normal PC needs a runtime this PC can't
+/// run): by its name, or the Steam runtime its manifest asks for.
+fn other_arch(dir: &Path, name: &str) -> bool {
+    let arm_here = crate::assets::arch_now() == "arm64";
+    let manifest = std::fs::read_to_string(dir.join("toolmanifest.vdf")).unwrap_or_default().to_lowercase();
+    let arm = name.contains("arm64") || name.contains("aarch64") || manifest.contains("arm64") || manifest.contains("aarch64");
+    arm != arm_here
+}
+
 /// Every Proton found, newest first, with its Steam folder.
 pub fn protons() -> Vec<(PathBuf, PathBuf)> {
     let mut out = vec![];
@@ -97,7 +106,7 @@ pub fn protons() -> Vec<(PathBuf, PathBuf)> {
             for e in std::fs::read_dir(&parent).into_iter().flatten().flatten() {
                 let p = e.path();
                 let name = e.file_name().to_string_lossy().to_lowercase();
-                if p.join("proton").is_file() && name.contains("proton") {
+                if p.join("proton").is_file() && name.contains("proton") && !other_arch(&p, &name) {
                     out.push((p, root.clone()));
                 }
             }

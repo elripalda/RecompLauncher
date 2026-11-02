@@ -1870,5 +1870,11 @@
  "SteamGridDB has nothing by that name. Try another.": "SteamGridDB にその名前のものはありません。別の名前で試してください。",
  "Saved. It shows everywhere now, and in Steam the next time you add it.": "保存しました。すべての場所に反映されました。Steam には次に追加したときに反映されます。",
  "A picture": "画像",
- "Update RecompLauncher": "RecompLauncher をアップデート"
+ "Update RecompLauncher": "RecompLauncher をアップデート",
+ "The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.": "実行に使った Proton には、このゲームに必要な Windows の機能が足りません。GE-Proton を入れて（ProtonUp-Qt なら数クリック、Steam Deck でも可）もう一度遊んでください。ランチャーは見つかった一番新しい Proton を使います。",
+ "It needs {file}, which isn't on this PC. Install it with your system's package manager, then play again.": "{file} が必要ですが、この PC にありません。システムのパッケージマネージャーで入れてから、もう一度遊んでください。",
+ "Which Program Starts {name}?": "{name} を起動するのはどのプログラム？",
+ "Its download has more than one program, and the ones the launcher would pick look like tools. Choose the game, and Play starts it from then on.": "ダウンロードには複数のプログラムがあり、ランチャーが選ぶものはツールのようです。ゲーム本体を選ぶと、次からプレイでそれが起動します。",
+ "Text Size": "文字の大きさ",
+ "Bigger or smaller text, buttons and covers. Ctrl with + or - works too.": "ランチャー全体（文字、ボタン、カバー）を大きくしたり小さくしたりします。Ctrl と + または - でも同じです。"
 }

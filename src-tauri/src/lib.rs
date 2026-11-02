@@ -306,7 +306,26 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
     }
-    let got = install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await?;
+    let got = match install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await {
+        // The file isn't there anymore (the release was changed after its list was read): the
+        // release asked for straight from GitHub, and its file for this PC tried once more.
+        Err(Error::Msg(m)) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => {
+            trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
+            let fresh: Vec<Release> = catalog::from_github(&st.http, &st.dir, &repo).await.ok().and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
+            let again = fresh.iter().find(|r| r.tag_name == rel.tag_name).and_then(|r| {
+                let all = assets::all_for(&r.assets, os, arch, pattern);
+                all.iter().copied().find(|a| a.name == asset.name).or_else(|| assets::most_like(&all, &asset.name)).or_else(|| assets::pick(&r.assets, os, arch, pattern)).cloned()
+            });
+            match again {
+                Some(a) => {
+                    asset = a;
+                    install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await?
+                }
+                None => return Err(Error::Msg(m)),
+            }
+        }
+        r => r?,
+    };
     drop(permit);
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
@@ -355,7 +374,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // Keep the program the player picked, unless the update replaced it with a differently named one
     // (an AppImage carries its version in its name).
     let names = [str_of(&entry, "name"), repo.rsplit('/').next().unwrap_or(""), str_of(&entry, "game")];
-    let mut exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file());
+    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
+    let kept = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
+    let mut exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && (kept || !install::looks_like_tool(e, &names)));
     if let Some(old) = exe.clone() {
         let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
         let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
@@ -366,7 +387,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             }
         }
     }
-    let exe = exe.or_else(|| install::find_exe(&target, os, &names));
+    let exe = exe.or_else(|| install::find_game_exe(&target, os, &names));
     // The catalog's boot profile says which program starts it, unless the player picked one.
     let boot = boot::Boot::from_entry(&entry);
     let picked = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
@@ -863,6 +884,16 @@ async fn restore_backup(st: State<'_, App>, id: String, name: String) -> Res<usi
     }
     let file = backups_dir(&g).join(&name);
     tokio::task::spawn_blocking(move || manage::restore(&file, &g.path)).await.map_err(|e| Error::Msg(e.to_string()))?
+}
+
+/// Text Size: the launcher's window zoomed (0.9 to 1.5).
+#[tauri::command]
+fn set_ui_scale(app: AppHandle, scale: f64) -> Res<()> {
+    if !(0.5..=2.0).contains(&scale) {
+        return Err(Error::Msg("That size isn't one of the choices.".into()));
+    }
+    let w = app.get_webview_window("main").ok_or_else(|| Error::Msg("The launcher's window isn't open.".into()))?;
+    w.set_zoom(scale).map_err(|e| Error::Msg(e.to_string()))
 }
 
 #[tauri::command(async)]
@@ -1485,7 +1516,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             (exe, rel)
         }
         None => {
-            let exe_rel = g.exe.clone().ok_or_else(|| Error::Msg("The launcher couldn't tell which program starts the game. Pick it in the game's settings.".into()))?;
+            let exe_rel = g.exe.clone().ok_or_else(|| Error::Msg("PICK_EXE|The launcher couldn't tell which program starts the game.".into()))?;
             (g.path.join(&exe_rel), exe_rel)
         }
     };
@@ -1619,9 +1650,29 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             cmd.env(k, v);
         }
     }
+    // An AppImage on a Linux without FUSE 2 (libfuse.so.2, missing on many new systems): it unpacks
+    // itself and runs from there instead of failing to start.
+    #[cfg(target_os = "linux")]
+    if ext == "appimage" && !sysenv::has_fuse2() {
+        cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+        trail::note(format!("Play {id}: no FUSE 2 on this PC, the AppImage unpacks itself to run"));
+    }
     note_run(&st, id, &g, &exe, &args, &cwd, prof.as_ref(), look_run.is_some());
     trail::note(format!("Play {id}: {}{}", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), if look_run.is_some() { " with a Look" } else { "" }));
     let spawned = cmd.spawn();
+    // A program that has to run as administrator (Windows says so, error 740): Windows asks the
+    // player, then it starts. A setup goes through the setup steps, which find the game after.
+    #[cfg(windows)]
+    if let Err(e) = &spawned {
+        if e.raw_os_error() == Some(740) {
+            trail::note(format!("Play {id}: needs administrator, asking Windows"));
+            if install::looks_like_setup(&exe_rel) {
+                return own_setup::run(app, id, &g, &exe, None);
+            }
+            let line = args.iter().map(|a| if a.contains(' ') || a.is_empty() { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ");
+            return win::run_as_admin(&exe, &line, &cwd).map(|_| ()).map_err(|e| Error::Msg(format!("{shown} has to run as administrator, and Windows didn't start it: {e}")));
+        }
+    }
     if let Err(e) = &spawned {
         trail::note(format!("Play {id}: didn't start: {e}"));
     }
@@ -2746,6 +2797,61 @@ fn game_action(app: AppHandle, st: State<'_, App>, id: String, action: String) -
     std::fs::create_dir_all(&dir)?;
     open_thing(&app, &dir.to_string_lossy(), false)?;
     Ok(String::new())
+}
+
+/// Discord for a game started outside the launcher (a desktop shortcut straight to its program):
+/// while the launcher is open, it looks every 20 seconds for an installed game's program running
+/// from that game's folder, and shows it in Discord as if it had started it.
+#[cfg(windows)]
+fn watch_outside(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut shown: Option<String> = None;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            let st = app.state::<App>();
+            // Not on, or a game the launcher started itself (that one shows already).
+            if !g_discord(&st) || !st.running.lock().unwrap().is_empty() {
+                if shown.take().is_some() && !g_discord(&st) {
+                    discord::send(discord::Msg::Clear);
+                }
+                continue;
+            }
+            let games: Vec<(String, String, PathBuf)> = {
+                let l = st.lib.lock().unwrap();
+                l.installed
+                    .values()
+                    .filter_map(|g| {
+                        let exe = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) })?;
+                        let name = exe.file_name()?.to_string_lossy().to_lowercase();
+                        let common = ["launcher.exe", "game.exe", "start.exe", "main.exe", "setup.exe", "play.exe", "run.exe"].contains(&name.as_str());
+                        (name.ends_with(".exe") && !common).then(|| (g.id.clone(), name, exe.parent().map(Path::to_path_buf).unwrap_or_else(|| g.path.clone())))
+                    })
+                    .collect()
+            };
+            if games.is_empty() {
+                continue;
+            }
+            let procs = win::processes();
+            let found = games.iter().find(|(_, name, dir)| {
+                procs.iter().any(|(pid, n)| n.to_lowercase() == *name && win::process_file(*pid).map(|f| f.starts_with(dir)).unwrap_or(false))
+            });
+            match (found, &shown) {
+                (Some((id, _, _)), Some(s)) if s == id => {}
+                (Some((id, _, _)), _) => {
+                    let (app_id, game, cover) = discord_info(&st, id);
+                    let recomp = st.lib.lock().unwrap().installed.get(id).map(|g| g.name.clone()).unwrap_or_default();
+                    discord::send(discord::Msg::Playing { app_id, game, recomp, cover, start: now() });
+                    trail::note(format!("Discord: {id} started outside the launcher"));
+                    shown = Some(id.clone());
+                }
+                (None, Some(_)) => {
+                    discord::send(discord::Msg::Clear);
+                    shown = None;
+                }
+                (None, None) => {}
+            }
+        }
+    });
 }
 
 fn g_discord(st: &App) -> bool {
@@ -5324,6 +5430,15 @@ pub fn run() {
                 looked: Mutex::new(HashSet::new()),
                 headless: AtomicBool::new(play.is_some()),
             });
+            #[cfg(windows)]
+            watch_outside(app.handle().clone());
+            // Text Size from last time.
+            {
+                let z = app.state::<App>().lib.lock().unwrap().settings.ui.get("ui_scale").and_then(Value::as_f64).filter(|z| (0.5..=2.0).contains(z));
+                if let (Some(z), Some(w)) = (z, app.get_webview_window("main")) {
+                    let _ = w.set_zoom(z);
+                }
+            }
             // The games running keep their "playing" markers fresh (see wait_for_play); old ones
             // from a launcher that didn't close cleanly are cleared.
             {
@@ -5471,7 +5586,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, scan_roms, rom_matches,
+            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting,

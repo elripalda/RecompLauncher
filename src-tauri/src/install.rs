@@ -605,7 +605,31 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 7;
+pub const EXE_RULES: u8 = 8;
+
+/// Words in the name of a program that comes with a game but is one of its tools: a translator,
+/// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
+/// build_deps.sh, ttt2-server).
+const TOOL_WORDS: [&str; 22] = ["xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool"];
+/// Folders a release keeps its tools, or leftovers from building, in.
+const TOOL_DIRS: [&str; 12] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders"];
+
+/// Whether a program (relative to the game's folder) is one of the game's tools rather than the
+/// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
+pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
+    let want: Vec<String> = names.iter().flat_map(|n| tokens(n)).collect();
+    let stem = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    if tokens(stem).iter().any(|t| !want.contains(t) && TOOL_WORDS.contains(&t.as_str())) {
+        return true;
+    }
+    rel.parent().map(|d| d.components().any(|c| TOOL_DIRS.contains(&c.as_os_str().to_string_lossy().to_lowercase().as_str()))).unwrap_or(false)
+}
+
+/// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
+/// player is asked.
+pub fn find_game_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
+    find_exe(dir, os, names).filter(|e| !looks_like_tool(e, names))
+}
 
 /// A Windows script a release can start the game with (a .bat or .cmd).
 pub fn is_script(p: &Path) -> bool {
@@ -768,6 +792,10 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             if t.iter().any(|x| x == "recompiled" || x == "recomp") {
                 s += 10;
             }
+            // One of its tools: behind every program that isn't.
+            if p.strip_prefix(dir).map(|r| looks_like_tool(r, names)).unwrap_or(false) {
+                s -= 1000;
+            }
             if best.as_ref().map(|(b, _)| s > *b).unwrap_or(true) {
                 best = Some((s, p));
             }
@@ -865,6 +893,33 @@ mod tests {
         put(&d.join("bin/SonicUnleashedRecomp.exe"), 20_000_000);
         assert_eq!(find_exe(&d, "windows", &["Unleashed Recompiled", "UnleashedRecomp"]).unwrap(), PathBuf::from("bin/SonicUnleashedRecomp.exe"));
         assert!(find_exe(&tmp("empty"), "windows", &["x"]).is_none());
+    }
+
+    #[test]
+    fn tools_are_not_the_game() {
+        // A translator in bin, bigger than the game.
+        let d = tmp("tool1");
+        put(&d.join("bin/xcx_xlate.exe"), 60_000_000);
+        put(&d.join("xcx.exe"), 20_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["XCX Recomp", "xcx-recomp"]).unwrap(), PathBuf::from("xcx.exe"));
+        // A shader builder in deps.
+        let d = tmp("tool2");
+        put(&d.join("deps/shaders/ultrs-shaders.exe"), 50_000_000);
+        put(&d.join("UltraTears.exe"), 10_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["UltraTears", "ultratears"]).unwrap(), PathBuf::from("UltraTears.exe"));
+        // Only a compiler: no telling, the player picks.
+        let d = tmp("tool3");
+        put(&d.join("compiler/xbe_recomp.exe"), 5_000_000);
+        assert!(find_game_exe(&d, "windows", &["007 Nightfire XBE Recomp", "007Nightfire-XBERecomp"]).is_none());
+        // A dedicated server beside the game; a server whose name is the game's stays a candidate.
+        let d = tmp("tool4");
+        put(&d.join("ttt2-server.exe"), 9_000_000);
+        put(&d.join("ttt2.exe"), 8_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["TTT2 PC", "tekken-tag-tournament-2-pc"]).unwrap(), PathBuf::from("ttt2.exe"));
+        assert!(!looks_like_tool(Path::new("ServerRecomp.exe"), &["Server Recomp"]));
+        // A game kept in a folder called build isn't a tool; one in temp is.
+        assert!(!looks_like_tool(Path::new("build/totk.exe"), &["TotK Recomp"]));
+        assert!(looks_like_tool(Path::new("temp/zelda totk-1/build/totk.exe"), &["TotK Recomp"]));
     }
 
     fn sparse(p: &Path, len: u64) {

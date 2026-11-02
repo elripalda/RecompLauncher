@@ -42,14 +42,14 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         let outside = g.exe.as_ref().map(|e| e.is_absolute()).unwrap_or(false);
         let boot = crate::boot::of(&st.dir, id);
         if !outside && g.exe_rules != u8::MAX {
-            if let Some(e) = boot.as_ref().and_then(|b| b.start_in(&g.path)).or_else(|| install::find_exe(&g.path, os, &nr)) {
+            if let Some(e) = boot.as_ref().and_then(|b| b.start_in(&g.path)).or_else(|| install::find_game_exe(&g.path, os, &nr)) {
                 // Launch options were for the program it started before (a path to the game's files
                 // for its engine, say): its launcher doesn't take them.
                 if g.exe.as_ref().map(|old| *old != e).unwrap_or(false) {
                     g.args = String::new();
                 }
                 g.exe = Some(e);
-            } else if !g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e)).unwrap_or(false) {
+            } else if !g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e) && !install::looks_like_tool(e, &nr)).unwrap_or(false) {
                 g.exe = None;
             }
         }

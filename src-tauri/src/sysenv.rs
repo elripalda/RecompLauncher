@@ -158,3 +158,10 @@ mod tests {
         assert!(changes_from(&|k| if k == "PATH" { Some("/usr/bin".into()) } else { None }).is_empty());
     }
 }
+
+/// Whether this Linux has FUSE 2 (libfuse.so.2), which most AppImages need to mount themselves.
+#[cfg(target_os = "linux")]
+pub fn has_fuse2() -> bool {
+    let dirs = ["/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/run/host/usr/lib", "/run/host/usr/lib64"];
+    dirs.iter().any(|d| std::path::Path::new(d).join("libfuse.so.2").exists())
+}
