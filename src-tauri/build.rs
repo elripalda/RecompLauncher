@@ -1,5 +1,10 @@
+#[path = "build/control_registry.rs"]
+mod control_registry;
+
 fn main() {
     pack();
+    // The local control API's list of commands and events, read from the source (see src/control).
+    control_registry::generate(std::path::Path::new("src"), &std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("control_registry.rs"));
     // Cross-building for Windows with MinGW: unrar's C++ is built without a C++ library, so
     // libstdc++ goes in statically (the program needs no MinGW DLLs), with the Windows libraries
     // unrar names in #pragma comment, which MinGW doesn't read.

@@ -1414,7 +1414,9 @@ async function pickUpdate(id, folder) {
   return '';
 }
 // ---------- setting a game up with the player's copy ----------
-const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+// `run`: the number setup_copy answered with (this dialog's run); `early`: events that came before it did;
+// `seq`: bumped when a start is superseded (closed, or started again), so a late answer knows it's stale.
+const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', run: null, early: [], seq: 0 };
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) return window.tvSetup(id);
   if (SU.el && SU.stage === 'run' && SU.id !== id) return toast(t('Finish the setup that\'s running first.'));
@@ -1422,7 +1424,7 @@ async function setupModal(id) {
   const su = S.setup[id];
   if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
   closeSetup(true);
-  Object.assign(SU, { id, stage: needUpdate(su) && su.copy ? 'update' : 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
+  Object.assign(SU, { id, stage: needUpdate(su) && su.copy ? 'update' : 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', run: null, early: [] });
   const s = document.createElement('div');
   s.className = 'scrim';
   s.innerHTML = `<div class="modal su" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}"></div>`;
@@ -1439,7 +1441,11 @@ async function setupModal(id) {
 }
 function closeSetup(quiet) {
   if (!SU.el) return;
-  if (SU.stage === 'run' && SU.id) invoke('setup_cancel', { id: SU.id }).catch(() => {});
+  // Stops this dialog's run only (never another one for the game, from the API say). One still
+  // starting, its number not back yet, is stopped by suBegin when the number comes.
+  if (SU.stage === 'run' && SU.id && SU.run != null) invoke('setup_cancel', { id: SU.id, run: SU.run }).catch(() => {});
+  SU.seq++;
+  clearTimeout(SU.timer);
   SU.el.remove();
   SU.el = null;
   if (!quiet && SU.stage !== 'pick') { delete S.setup[SU.id]; loadSetup(SU.id); }
@@ -1471,9 +1477,21 @@ async function suAct(b) {
   void su;
 }
 async function suBegin(path) {
-  Object.assign(SU, { stage: 'run', path, step: 'read', steps: {}, ev: {}, q: [], at: Date.now(), result: null, err: '' });
+  const id = SU.id, seq = ++SU.seq;
+  Object.assign(SU, { stage: 'run', path, step: 'read', steps: {}, ev: {}, q: [], early: [], run: null, at: Date.now(), result: null, err: '' });
   suDraw();
-  try { await invoke('setup_copy', { id: SU.id, path }); } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
+  let run;
+  try { run = await invoke('setup_copy', { id, path }); } catch (e) {
+    if (seq === SU.seq && SU.el) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
+    return;
+  }
+  // Closed (or started again) while it was starting: this run is stopped, and only this one.
+  if (seq !== SU.seq || !SU.el || SU.id !== id) { invoke('setup_cancel', { id, run }).catch(() => {}); return; }
+  SU.run = run;
+  // Its events that came before its number did; other runs' are left out.
+  const early = SU.early;
+  SU.early = [];
+  for (const p of early) { if (SU.run !== run || SU.stage !== 'run') break; suTake(p); }
 }
 const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
 // The copy's in: the game's update next, when it needs one, then ready.
@@ -1505,7 +1523,29 @@ function suPump() {
   }
   suDraw();
 }
-T.event.listen('setup', ({ payload: p }) => { if (SU.el && p.id === SU.id && SU.stage === 'run') { SU.q.push(p); suPump(); } });
+// Only this dialog's run counts: events carry their run, and until setup_copy has said which run is
+// this dialog's they wait (a run can report before its number comes back). Another run of the same
+// game (started from the API, or the one this dialog replaced closing) isn't this dialog's.
+T.event.listen('setup', ({ payload: p }) => {
+  if (!SU.el || p.id !== SU.id || SU.stage !== 'run') return;
+  if (SU.run == null) { SU.early.push(p); return; }
+  suTake(p);
+});
+function suTake(p) {
+  if (p.run !== SU.run) return;
+  if (p.step === 'cancelled') return suStopped(p);
+  SU.q.push(p);
+  suPump();
+}
+// This dialog's run was stopped from elsewhere (setup_cancel through the API, say) or replaced by a
+// newer run for the game: it won't finish, so the dialog ends instead of spinning on.
+function suStopped(p) {
+  clearTimeout(SU.timer);
+  SU.q = [];
+  SU.stage = 'stopped';
+  closeSetup(true);
+  toast(t(p.text || 'Cancelled.'));
+}
 function suDraw() {
   if (!SU.el) return;
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
@@ -2769,13 +2809,36 @@ async function setLanguage(code) {
   const ui = Object.assign({}, S.settings.ui || {}, { lang: code });
   const next = Object.assign({}, S.settings, { ui });
   try { await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { return fail(e); }
-  await loadLang(code === 'auto' ? systemLang() : code);
-  tDom();
+  await showLang(true);
   render(true);
-  trayWords();
   if (window.tvRefresh) window.tvRefresh();
 }
 window.setLanguage = setLanguage;
+// The language the settings ask for: the computer's when they say 'auto' (or nothing).
+function wantLang() {
+  const l = (S.settings.ui || {}).lang;
+  return l && l !== 'auto' ? l : systemLang();
+}
+// That language's text loaded, and put on the page's fixed parts and the tray's menu. Nothing is
+// saved: the caller draws the rest again. One load at a time, and the latest settings win: when they
+// ask for another language while one is loading (an API change crossing Settings' own control, or
+// two API changes), that one is loaded next, and every caller waits for the end. `always` loads even
+// when the language shown is already the one asked for (Settings' own control, start); otherwise
+// nothing is read then.
+let langRun = null;
+function showLang(always) {
+  if (langRun) return langRun;
+  if (!always && wantLang() === curLang()) return Promise.resolve();
+  langRun = (async () => {
+    try {
+      let want;
+      do { want = wantLang(); await loadLang(want); } while (wantLang() !== want);
+      tDom();
+      trayWords();
+    } finally { langRun = null; }
+  })();
+  return langRun;
+}
 // Another section of Settings: only the right side changes, with a short fade. The list on the
 // left and the page around it stay as they are.
 function setSection(k, fade = true) {
@@ -4980,6 +5043,27 @@ T.event.listen('goto', ({ payload: p }) => {
   if (p.view === 'shots') { S.shotsGame = p.id || ''; go('shots'); }
 });
 T.event.listen('toast', ({ payload }) => toast(t(String(payload)), true));
+// Something changed through the local control API (scripts, MCP), or background work it started (a
+// setup, an install) ended: the Library and settings are read again, and so is each game's setup that
+// was read before (set_game_copy, set_update_copy and setup_copy change it), then the window and Big
+// Picture (when it's on) are drawn again with them.
+let ctlT = 0;
+async function controlChanged() {
+  const ids = Object.keys(S.setup).filter((id) => S.setup[id] !== 'loading');
+  const [, setups] = await Promise.all([refreshState(), Promise.all(ids.map((id) => invoke('game_setup', { id }).then((x) => [id, x], () => [id, undefined])))]);
+  // One started loading meanwhile keeps that read; one that couldn't be read is read again when it's shown.
+  for (const [id, x] of setups) {
+    if (S.setup[id] === 'loading') continue;
+    if (x === undefined) delete S.setup[id]; else S.setup[id] = x;
+  }
+  // What the settings change beyond the drawing (as their own controls do, without saving again):
+  // Lighter Launcher's class on the page, and a new language's text, loaded before the redraw.
+  applyLighter();
+  await showLang();
+  render(true);
+  if (window.tvRefresh) window.tvRefresh();
+}
+T.event.listen('control-api-changed', () => { clearTimeout(ctlT); ctlT = setTimeout(() => controlChanged().catch(() => {}), 250); });
 T.event.listen('setup-required', ({ payload }) => { if (S.cat && S.cat.apps.length) { invoke('take_setup_asked').catch(() => {}); setupReqModal(String(payload)); } });
 // Started again from Steam (or anything with --bigpicture) while already open.
 T.event.listen('bigpicture', () => { if (window.startTV && !document.body.classList.contains('tv-on')) window.startTV(); });
@@ -5004,12 +5088,9 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
 
 (async function start() {
   try { await refreshState(); } catch (e) { fail(e); }
-  const lang = (S.settings.ui || {}).lang;
-  await loadLang(lang && lang !== 'auto' ? lang : systemLang());
-  tDom();
+  await showLang(true);
   if ((S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length) S.view = 'library';
   render();
-  trayWords();
   await loadCatalog(false);
   // Both read the list on disk: side by side.
   await Promise.all([loadOwned(), loadEasy(true)]);

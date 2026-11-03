@@ -44,6 +44,9 @@
     "homepage": "https://recomplauncher.com",
     "category": "Game",
     "shortDescription": "One home for PC recomps",
+    "resources": {
+      "../tools/control-api/recomplauncher_mcp.py": "control-api/recomplauncher_mcp.py"
+    },
     "longDescription": "RecompLauncher finds, installs, updates and starts PC recomps from each developer's own GitHub. No game files are included: every game needs your own copy.",
     "copyright": "RecompLauncher is free software under the GPL-3.0. No game content is included.",
     "license": "GPL-3.0-or-later",
