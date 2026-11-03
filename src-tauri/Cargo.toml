@@ -33,6 +33,7 @@ sevenz-rust = "0.6"
 unrar = "0.5"
 flate2 = "1"
 tar = "0.4"
+backhand = { version = "0.21", default-features = false, features = ["gzip", "xz", "xz-static", "zstd", "lz4"] }
 dirs = "5"
 thiserror = "1"
 tauri-plugin-single-instance = "2"
