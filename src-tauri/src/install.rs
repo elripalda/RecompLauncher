@@ -42,9 +42,11 @@ pub struct Downloaded {
     pub verified: bool,
 }
 
-/// A big file from a site that sends parts of files: downloaded in four pieces at once, which is
-/// much faster from sites that hold each connection to a set speed. `None` when the site doesn't
-/// send parts or the file is small: then it's downloaded the usual way.
+/// A big file from a site that sends parts of files: downloaded in small chunks over several
+/// connections at once. Many sites hold each connection to a set speed, or send the first few
+/// megabytes of a connection fast and then slow it right down; a fresh request for each chunk, and
+/// a connection that falls far behind the others dropped and asked again, keeps it fast to the end.
+/// `None` when the site doesn't send parts or the file is small: then it's downloaded the usual way.
 pub async fn download_split(
     http: &reqwest::Client,
     url: &str,
@@ -54,9 +56,13 @@ pub async fn download_split(
     cancel: Arc<AtomicBool>,
     report: &(dyn Fn(Progress) + Send + Sync),
 ) -> Result<Option<Downloaded>, Error> {
+    use std::collections::VecDeque;
     use std::sync::atomic::AtomicU64;
-    const PIECES: u64 = 4;
-    // Does it send parts, and how big is it? One byte asked for says both.
+    use std::sync::Mutex;
+    const WORKERS: usize = 8;
+    const CHUNK: u64 = 8 << 20;
+    // Does it send parts, and how big is it? One byte asked for says both. Where it ends up after
+    // redirects is where every chunk is asked for, so each one doesn't go through them again.
     let probe = http.get(url).header(reqwest::header::RANGE, "bytes=0-0").timeout(Duration::from_secs(30)).send().await;
     let Ok(probe) = probe else { return Ok(None) };
     if probe.status() != reqwest::StatusCode::PARTIAL_CONTENT {
@@ -69,6 +75,7 @@ pub async fn download_split(
         .and_then(|v| v.rsplit('/').next())
         .and_then(|n| n.trim().parse::<u64>().ok())
         .unwrap_or(0);
+    let landed = probe.url().to_string();
     drop(probe);
     if total < 48 << 20 {
         return Ok(None);
@@ -82,59 +89,102 @@ pub async fn download_split(
         f.set_len(total)?;
     }
     let done = Arc::new(AtomicU64::new(0));
-    let step = total.div_ceil(PIECES);
+    // The best speed one connection has kept up (bytes a second), for spotting a slowed one.
+    let best = Arc::new(AtomicU64::new(0));
+    let queue: Arc<Mutex<VecDeque<(u64, u64)>>> = Arc::new(Mutex::new((0..total.div_ceil(CHUNK)).map(|i| (i * CHUNK, ((i + 1) * CHUNK).min(total))).collect()));
     let mut tasks = vec![];
-    for i in 0..PIECES {
-        let (from, to) = (i * step, ((i + 1) * step).min(total));
-        if from >= to {
-            continue;
-        }
-        let (http, url, part, done, cancel) = (http.clone(), url.to_string(), part.clone(), done.clone(), cancel.clone());
+    for _ in 0..WORKERS {
+        let (http, first, url, part, done, cancel, queue, best) = (http.clone(), landed.clone(), url.to_string(), part.clone(), done.clone(), cancel.clone(), queue.clone(), best.clone());
         tasks.push(tokio::spawn(async move {
             use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-            let mut at = from;
-            let mut tries = 0u32;
-            while at < to {
-                if cancel.load(Ordering::Relaxed) {
-                    return Err(Error::Cancelled);
-                }
-                tries += 1;
-                let r = http.get(&url).header(reqwest::header::RANGE, format!("bytes={at}-{}", to - 1)).timeout(Duration::from_secs(60 * 60 * 6)).send().await;
-                let r = match r {
-                    Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
-                    Ok(r) if tries >= 4 => return Err(Error::Msg(answered(r.status().as_u16(), &url, &url.rsplit('/').next().unwrap_or("the file").to_string()))),
-                    Err(e) if tries >= 4 => return Err(e.into()),
-                    _ => {
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        continue;
-                    }
-                };
-                let mut out = tokio::fs::OpenOptions::new().write(true).open(&part).await?;
-                out.seek(std::io::SeekFrom::Start(at)).await?;
-                let mut stream = r.bytes_stream();
-                loop {
+            let mut out = tokio::fs::OpenOptions::new().write(true).open(&part).await?;
+            loop {
+                let next = queue.lock().unwrap().pop_front();
+                let Some((from, to)) = next else { break };
+                let mut at = from;
+                let (mut tries, mut redials) = (0u32, 0u32);
+                // How fast it was when last dropped for being slow: a new connection no faster
+                // means the site is just slow right now, and dropping more won't help.
+                let mut was: Option<u64> = None;
+                while at < to {
                     if cancel.load(Ordering::Relaxed) {
                         return Err(Error::Cancelled);
                     }
-                    match tokio::time::timeout(Duration::from_secs(40), stream.next()).await {
-                        Ok(Some(Ok(b))) => {
-                            let n = (b.len() as u64).min(to - at);
-                            out.write_all(&b[..n as usize]).await?;
-                            at += n;
-                            done.fetch_add(n, Ordering::Relaxed);
-                            if at >= to {
+                    // The address it landed on, then the first one again if that stops working
+                    // (a mirror's link can expire).
+                    let ask = if tries < 2 { &first } else { &url };
+                    let r = http.get(ask).header(reqwest::header::RANGE, format!("bytes={at}-{}", to - 1)).timeout(Duration::from_secs(60 * 30)).send().await;
+                    let r = match r {
+                        Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
+                        other => {
+                            tries += 1;
+                            match other {
+                                Ok(r) if tries >= 5 => return Err(Error::Msg(answered(r.status().as_u16(), &url, url.rsplit('/').next().unwrap_or("the file")))),
+                                Err(e) if tries >= 5 => return Err(e.into()),
+                                _ => {}
+                            }
+                            tokio::time::sleep(Duration::from_secs(2 * tries as u64)).await;
+                            continue;
+                        }
+                    };
+                    out.seek(std::io::SeekFrom::Start(at)).await?;
+                    let mut stream = r.bytes_stream();
+                    let started = Instant::now();
+                    let (mut win, mut win_bytes) = (Instant::now(), 0u64);
+                    let mut slowed = false;
+                    loop {
+                        if cancel.load(Ordering::Relaxed) {
+                            return Err(Error::Cancelled);
+                        }
+                        match tokio::time::timeout(Duration::from_secs(30), stream.next()).await {
+                            Ok(Some(Ok(b))) => {
+                                let n = (b.len() as u64).min(to - at);
+                                out.write_all(&b[..n as usize]).await?;
+                                at += n;
+                                win_bytes += n;
+                                done.fetch_add(n, Ordering::Relaxed);
+                                if at >= to {
+                                    break;
+                                }
+                                // Every few seconds: this connection's speed against the best one.
+                                // Far behind (a quarter of it) once it's been going a while: dropped
+                                // and asked again from here, which gets a fresh, fast connection.
+                                let secs = win.elapsed().as_secs_f64();
+                                if secs >= 4.0 {
+                                    let rate = (win_bytes as f64 / secs) as u64;
+                                    (win, win_bytes) = (Instant::now(), 0);
+                                    if let Some(w) = was.take() {
+                                        if rate <= w.saturating_mul(2) {
+                                            // Asking again didn't help: this is the speed now.
+                                            best.store(rate, Ordering::Relaxed);
+                                            redials = u32::MAX;
+                                        }
+                                    }
+                                    let top = best.fetch_max(rate, Ordering::Relaxed).max(rate);
+                                    if started.elapsed() >= Duration::from_secs(8) && rate < top / 4 && redials < 30 {
+                                        was = Some(rate);
+                                        slowed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            // Ended early or stalled: asked again from where it got to.
+                            _ => {
+                                tries += 1;
                                 break;
                             }
                         }
-                        // Ended early or stalled: ask again from where it got to.
-                        _ => break,
+                    }
+                    if slowed {
+                        redials += 1;
+                        continue;
+                    }
+                    if at < to && tries >= 8 {
+                        return Err(Error::Msg(format!("The download of {} stopped. Try again.", url.rsplit('/').next().unwrap_or("the file"))));
                     }
                 }
-                out.flush().await?;
-                if at < to && tries >= 6 {
-                    return Err(Error::Msg(format!("The download of {} stopped. Try again.", url.rsplit('/').next().unwrap_or("the file"))));
-                }
             }
+            out.flush().await?;
             Ok::<(), Error>(())
         }));
     }
@@ -893,6 +943,20 @@ mod tests {
         put(&d.join("bin/SonicUnleashedRecomp.exe"), 20_000_000);
         assert_eq!(find_exe(&d, "windows", &["Unleashed Recompiled", "UnleashedRecomp"]).unwrap(), PathBuf::from("bin/SonicUnleashedRecomp.exe"));
         assert!(find_exe(&tmp("empty"), "windows", &["x"]).is_none());
+    }
+
+    /// Against a site that slows each connection after its first few megabytes (a stand-in
+    /// server, `RL_SPLIT_URL`): the file arrives whole, and quickly.
+    #[tokio::test]
+    #[ignore]
+    async fn split_download_keeps_its_speed() {
+        let Ok(url) = std::env::var("RL_SPLIT_URL") else { return };
+        let dir = tmp("split");
+        let http = reqwest::Client::new();
+        let t = Instant::now();
+        let got = download_split(&http, &url, "big.bin", &dir, "t", Arc::new(AtomicBool::new(false)), &|_| {}).await.unwrap().unwrap();
+        eprintln!("split download: {:.1} s, sha256 {}", t.elapsed().as_secs_f64(), got.sha256);
+        assert_eq!(got.sha256, std::env::var("RL_SPLIT_SHA").unwrap());
     }
 
     #[test]
