@@ -1633,14 +1633,16 @@
   }
 
   // ---------- setting a game up with the player's copy, full screen ----------
-  const TS = { id: null, stage: 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+  // `run`: the number setup_copy answered with (this sheet's run); `early`: events that came before it
+  // did; `seq`: bumped when a start is superseded (closed, or started again), so a late answer knows.
+  const TS = { id: null, stage: 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', run: null, early: [], seq: 0 };
   async function tvSetup(id) {
     if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
     if (S.setup[id] === undefined || S.setup[id] === 'loading') { try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; } }
     const su = S.setup[id];
     if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
     if (TV.sheet) closeSheet();
-    Object.assign(TS, { id, stage: su.copy && su.update && !su.update_copy && !su.update_optional ? 'update' : 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
+    Object.assign(TS, { id, stage: su.copy && su.update && !su.update_copy && !su.update_optional ? 'update' : 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', run: null, early: [] });
     tsDraw();
     sfx('open');
   }
@@ -1699,15 +1701,28 @@
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
-    // B leaves: it stops a setup that's running.
-    TV.sheet = { items, keep: TS.stage !== 'ready', prev: TV.sheet ? TV.sheet.prev : prevKey, onClose: () => { if (TS.stage === 'run') invoke('setup_cancel', { id }).catch(() => {}); if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); } TS.id = null; } };
+    // B leaves: it stops the setup that's running, this sheet's run only (one whose number isn't
+    // back yet is stopped by tsBegin when it comes).
+    TV.sheet = { items, setup: true, keep: TS.stage !== 'ready', prev: TV.sheet ? TV.sheet.prev : prevKey, onClose: () => { if (TS.stage === 'run' && TS.run != null) invoke('setup_cancel', { id, run: TS.run }).catch(() => {}); if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); } TS.seq++; clearTimeout(TS.timer); TS.id = null; } };
     const f = $('[data-sheet]', el);
     if (f) focus(f, true);
   }
   async function tsBegin(path) {
-    Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    const id = TS.id, seq = ++TS.seq;
+    Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], early: [], run: null, at: Date.now(), extras: false });
     tsDraw();
-    try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
+    let run;
+    try { run = await invoke('setup_copy', { id, path }); } catch (e) {
+      if (seq === TS.seq && TS.id === id) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
+      return;
+    }
+    // Left (or started again) while it was starting: this run is stopped, and only this one.
+    if (seq !== TS.seq || TS.id !== id) { invoke('setup_cancel', { id, run }).catch(() => {}); return; }
+    TS.run = run;
+    // Its events that came before its number did; other runs' are left out.
+    const early = TS.early;
+    TS.early = [];
+    for (const p of early) { if (TS.run !== run || TS.stage !== 'run') break; tsTake(p); }
   }
   const TS_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
   function tsPump() {
@@ -1737,7 +1752,29 @@
     }
     tsDraw();
   }
-  T.event.listen('setup', ({ payload: p }) => { if (TV.on && TS.id && p.id === TS.id && TS.stage === 'run') { TS.q.push(p); tsPump(); } });
+  // Only this sheet's run counts (see the window's setup dialog): events wait until setup_copy has
+  // said which run is this sheet's, and another run of the same game isn't this sheet's.
+  T.event.listen('setup', ({ payload: p }) => {
+    if (!TV.on || !TS.id || p.id !== TS.id || TS.stage !== 'run') return;
+    if (TS.run == null) { TS.early.push(p); return; }
+    tsTake(p);
+  });
+  function tsTake(p) {
+    if (p.run !== TS.run) return;
+    if (p.step === 'cancelled') return tsStopped(p);
+    TS.q.push(p);
+    tsPump();
+  }
+  // This sheet's run was stopped from elsewhere (the API, say) or replaced by a newer run for the
+  // game: it won't finish, so the sheet closes instead of spinning on.
+  function tsStopped(p) {
+    clearTimeout(TS.timer);
+    TS.q = [];
+    TS.stage = 'stopped';
+    if (TV.sheet && TV.sheet.setup) closeSheet();
+    else { const el = $('.tv-setup:not(.out)', stage() || root); if (el) el.remove(); TS.seq++; TS.id = null; }
+    toast(t(p.text || 'Cancelled.'));
+  }
   window.tvSetup = tvSetup;
   window.tvSetupBusy = () => !!(TV.on && TS.id);
 
