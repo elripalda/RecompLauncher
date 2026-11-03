@@ -5,6 +5,7 @@
 //! or closes.
 
 pub mod adopt;
+mod appimage;
 pub mod art;
 pub mod assets;
 pub mod boot;
