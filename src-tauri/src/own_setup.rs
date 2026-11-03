@@ -32,6 +32,14 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         return None;
     }
     let mut g = g.clone();
+    // Left on the release's own installer as if it were the game (picked by hand when it was the
+    // only program there): it goes back to being the setup, which finds the game it installs.
+    let own_installer = g.exe.as_ref().map(|e| !e.is_absolute() && e.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&g.asset)).unwrap_or(false) && install::looks_like_setup(e)).unwrap_or(false);
+    if own_installer {
+        g.exe = None;
+        g.exe_rules = 0;
+        g.setup_done = false;
+    }
     if !g.setup_checked || g.exe_rules < install::EXE_RULES {
         let os = crate::assets::os_now();
         let n = names(&g);

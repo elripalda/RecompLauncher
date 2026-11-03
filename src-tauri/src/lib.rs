@@ -311,6 +311,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         // release asked for straight from GitHub, and its file for this PC tried once more.
         Err(Error::Msg(m)) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => {
             trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
+            // A developer swapping a release's files: give it a moment to finish.
+            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
             let fresh: Vec<Release> = catalog::from_github(&st.http, &st.dir, &repo).await.ok().and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
             let again = fresh.iter().find(|r| r.tag_name == rel.tag_name).and_then(|r| {
                 let all = assets::all_for(&r.assets, os, arch, pattern);
@@ -602,6 +604,15 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
     tauri::async_runtime::spawn(async move {
         let st = app2.state::<App>();
         let r = do_install(&app2, &st, &id, dir, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), cancel).await;
+        // Windows refusing a file (access denied) says only that: what it usually means, and what
+        // to do about it.
+        let r = r.map_err(|e| match e {
+            Error::Io(io) if io.raw_os_error() == Some(5) || io.kind() == std::io::ErrorKind::PermissionDenied => {
+                trail::note(format!("Install {id}: {io}"));
+                Error::Msg("Windows didn't let the launcher write the game's files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.".into())
+            }
+            e => e,
+        });
         st.jobs.lock().unwrap().remove(&id);
         match r {
             Ok(()) => trail::note(format!("Install {id}: done")),
@@ -1398,7 +1409,91 @@ async fn launcher_to_steam(st: State<'_, App>, restart: bool) -> Res<String> {
     Ok(format!("added:{n}"))
 }
 
+/// A recomp's README from its GitHub, for its page: kept on disk for a day, and the copy on disk
+/// when GitHub can't be reached. None when the repo has none.
+#[tauri::command]
+async fn repo_readme(st: State<'_, App>, repo: String) -> Res<Option<String>> {
+    let ok = repo.split('/').count() == 2 && !repo.contains("..") && repo.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c));
+    if !ok {
+        return Ok(None);
+    }
+    let file = st.dir.join("cache/readme").join(format!("{}.md", repo.replace('/', "__")));
+    let age = std::fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|m| m.elapsed().ok()).map(|d| d.as_secs());
+    let disk = || std::fs::read_to_string(&file).ok();
+    if age.map(|a| a < 24 * 3600).unwrap_or(false) {
+        return Ok(disk().filter(|t| !t.is_empty()));
+    }
+    let got = st
+        .http
+        .get(format!("https://api.github.com/repos/{repo}/readme"))
+        .header("Accept", "application/vnd.github.raw")
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await;
+    let text = match got {
+        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => Some(String::new()),
+        Ok(r) if r.status().is_success() => r.text().await.ok(),
+        _ => None,
+    };
+    match text {
+        Some(mut t) => {
+            if t.len() > 200_000 {
+                let mut cut = 200_000;
+                while !t.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                t.truncate(cut);
+            }
+            let _ = std::fs::create_dir_all(file.parent().unwrap());
+            let _ = std::fs::write(&file, &t);
+            Ok(Some(t).filter(|t| !t.is_empty()))
+        }
+        None => Ok(disk().filter(|t| !t.is_empty())),
+    }
+}
+
+/// GE-Proton, for Windows recomps on Linux (and for Steam's own games too): the newest one from
+/// its GitHub. Progress comes as "ge_progress".
+#[tauri::command]
+async fn ge_proton_install(app: AppHandle, st: State<'_, App>) -> Res<String> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let a = app.clone();
+    let report = move |p: install::Progress| {
+        let _ = a.emit("ge_progress", &p);
+    };
+    trail::note("GE-Proton: getting the newest");
+    let tag = proton::install_ge(&st.http, &st.dir.join("cache"), cancel, &report).await.inspect_err(|e| trail::note(format!("GE-Proton: {e}")))?;
+    trail::note(format!("GE-Proton: {tag} in place"));
+    Ok(tag)
+}
+
+/// What Windows recomps start through on this PC now: its name, and whether it's a GE-Proton.
+#[tauri::command(async)]
+fn proton_now() -> Value {
+    let name = proton::runner().map(|r| r.name());
+    let ge = name.as_deref().map(|n| proton::rank(n).0 == 2).unwrap_or(false);
+    json!({ "runner": name, "ge": ge })
+}
+
 // ---------- playing ----------
+
+/// A shell script run through bash (or sh where there's no bash).
+fn shell_script(exe: &Path) -> tokio::process::Command {
+    let bash = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join("bash").is_file())).unwrap_or(false);
+    let mut c = tokio::process::Command::new(if bash { "bash" } else { "sh" });
+    c.arg(exe);
+    c
+}
+
+/// A text file to start that doesn't say what runs it (no "#!" line): a shell script, then. Not a
+/// program (ELF), and not one that names its own interpreter.
+fn headless_script(exe: &Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 512];
+    let n = std::fs::File::open(exe).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
+    let head = &head[..n];
+    n > 0 && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!") && !head.contains(&0)
+}
 
 // Games being started right now, so a second Play while the first is still on its way does nothing.
 static STARTING: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -1491,7 +1586,13 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
                 }
             }
             game_env = p.env_vars(&g.path, copy.as_deref());
-            p.command(&g.path, copy.as_deref(), &g.picks)
+            // Its program under another name than the profile's (a Linux build): the one the game
+            // starts with, still given the copy and the rest of the profile's command line.
+            p.command(&g.path, copy.as_deref(), &g.picks).or_else(|| {
+                let e = g.exe.as_ref().map(|e| g.path.join(e)).filter(|e| e.is_file())?;
+                trail::note(format!("Play {id}: the profile's program isn't here, its arguments go to {}", e.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+                Some((e, p.args_for(&g.path, copy.as_deref(), &g.picks)))
+            })
         }
         // Settings only: the program starts as usual, with the settings on the command line.
         Some(p) => {
@@ -1607,16 +1708,17 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         }
         // A shell script on Linux (it may have lost its run permission in the zip). Through bash:
         // most start scripts use bash's own syntax, which plain sh (dash on many systems) can't read.
-        "sh" if !cfg!(windows) => {
-            let bash = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join("bash").is_file())).unwrap_or(false);
-            let mut c = tokio::process::Command::new(if bash { "bash" } else { "sh" });
-            c.arg(&exe);
-            c
+        // The same for a start script without a "#!" line (or an extension): Linux won't run one
+        // on its own ("Exec format error").
+        "sh" if !cfg!(windows) => shell_script(&exe),
+        _ if !cfg!(windows) && headless_script(&exe) => {
+            trail::note(format!("Play {id}: a start script without a #! line, through the shell"));
+            shell_script(&exe)
         }
         // A Windows program (or script) on Linux: through Proton (or Wine).
         "exe" | "cmd" | "bat" if !cfg!(windows) => match proton::runner() {
             Some(r) => proton::command(&r, &st.dir, &exe),
-            None => return Err(Error::Msg("This is a Windows version, and it needs Proton to play on Linux. Install Steam and Proton (or umu-launcher, or Wine), then press Play again.".into())),
+            None => return Err(Error::Msg("This is a Windows version, and it needs Proton to play on Linux. Settings → General → GE-Proton installs it in one press, then press Play again.".into())),
         },
         _ => tokio::process::Command::new(&exe),
     };
@@ -1684,6 +1786,8 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let mut child = spawned.map_err(|e| {
         if is_blocked(&e) {
             defender_msg(e, &shown)
+        } else if !cfg!(windows) && e.raw_os_error() == Some(8) {
+            Error::Msg(format!("{shown} isn't built for this PC's processor (Exec format error). Pick the build for your system on the game's page, or choose another program in Troubleshoot."))
         } else {
             Error::Msg(format!("Couldn't start {shown}: {e}"))
         }
@@ -2078,7 +2182,9 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
                 return fail(format!("Couldn't unpack the disc: {e}"));
             }
             if let Some(f) = p.game.as_ref().map(|x| x.check.file.clone()).filter(|f| !f.is_empty()) {
-                if !dest.join(&f).is_file() {
+                // Any case: discs name it default.xex or Default.xex, and Linux tells them apart.
+                let has = dest.join(&f).is_file() || std::fs::read_dir(&dest).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&f));
+                if !has {
                     return fail(format!("The disc unpacked, but it doesn't have {f}. It may be a different game."));
                 }
             }
@@ -3175,7 +3281,15 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         out.push(check(if ok { "info" } else { "bad" }, "It's set up by hand", if ok { "It starts the way you set it up, not the launcher's way." } else { "Your game files aren't where you pointed it anymore." }, "manual"));
     }
     let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    out.push(check("ok", "It starts {name}", "", "").with("name", &name));
+    // A program in a setup's working folder (temp\…\build) or one of the game's tools: what it
+    // starts is probably not the finished game.
+    let rel = exe.strip_prefix(&g.path).map(Path::to_path_buf).unwrap_or_else(|_| PathBuf::from(&name));
+    let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit('/').next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
+    if install::looks_like_tool(&rel, &names) {
+        out.push(check("warn", "It starts {name}, which looks like one of the game's tools", "It sits in a folder for tools or a setup's leftovers ({folder}). Choose the game's own program, where its setup installed it.", "setexe").with("name", &name).with("folder", rel.parent().map(|d| d.display().to_string()).unwrap_or_default()));
+    } else {
+        out.push(check("ok", "It starts {name}", "", "").with("name", &name));
+    }
     // The right build for this PC.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     if cfg!(windows) {
@@ -3771,6 +3885,20 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
         return Err(Error::Msg("That file doesn't exist.".into()));
     }
     let outside = !p.starts_with(&g.path);
+    // The release's own file when that file is its installer (one Setup.exe and nothing else): it
+    // runs as the game's setup, which finds the game it installs, rather than as the game.
+    let is_download = p.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&g.asset)).unwrap_or(false);
+    if !outside && is_download && install::looks_like_setup(&p) {
+        g.setup = p.strip_prefix(&g.path).ok().map(Path::to_path_buf);
+        g.setup_done = false;
+        g.exe = None;
+        g.exe_rules = install::EXE_RULES;
+        let out = g.clone();
+        drop(l);
+        st.save();
+        trail::note(format!("{id}: its download is its installer, so it runs as the setup"));
+        return Ok(out);
+    }
     g.exe = Some(p.strip_prefix(&g.path).map(Path::to_path_buf).unwrap_or(p));
     // The player's pick: the launcher never picks again over it.
     g.exe_rules = u8::MAX;
@@ -3821,7 +3949,7 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
 // ---------- the catalog ----------
 
 /// Whether the server is resting after trouble (the window shows "Offline" while it is).
-#[tauri::command]
+#[tauri::command(async)]
 fn net_state() -> Value {
     json!({ "offline": net::offline() })
 }
@@ -4483,7 +4611,7 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
 }
 
 /// The programs that came with a game (its own setup or tools among them), inside its folder.
-#[tauri::command]
+#[tauri::command(async)]
 fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let os = if g.proton { "windows" } else { assets::os_now() };
@@ -4547,7 +4675,7 @@ fn game_root(dir: String, need: Vec<String>) -> Option<String> {
 }
 
 /// Starts one of a game's own programs (its setup, say), from inside its folder only.
-#[tauri::command]
+#[tauri::command(async)]
 fn run_program(st: State<'_, App>, id: String, rel: String) -> Res<()> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let rel = PathBuf::from(&rel);
@@ -4719,6 +4847,8 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     }
     let file = std::env::temp_dir().join(format!("RecompLauncher-{}-setup.exe", str_of(&v, "version").trim_start_matches('v')));
     std::fs::write(&file, &bytes)?;
+    // Noted, so the next start can tell whether it went in (see update_check_last).
+    let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file}).to_string());
     // Its own small window shows the progress (/P), and RecompLauncher opens again after (/R).
     // In that mode the installer closes any copy of the launcher still open before it copies.
     // This one closes right away, so none of our files are in use. /UPDATE: it replaces the files
@@ -4765,7 +4895,46 @@ fn get_state(st: State<'_, App>) -> Value {
         // Run as an AppImage: its bundled GStreamer libraries don't match the PC's own plugins, and
         // the web view hangs the moment it opens a sound. The page then plays none.
         "appimage": cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some(),
+        "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
     })
+}
+
+/// An update started from inside the launcher that didn't go in (this is still the version it
+/// started from): { to, installer }. The window offers to run that installer the usual way, where
+/// the player sees what stops it.
+static UPDATE_FAILED: Mutex<Option<Value>> = Mutex::new(None);
+
+/// At start: did the last update from inside the launcher go in?
+fn update_check_last(dir: &Path) {
+    let f = dir.join("update-pending.json");
+    let Some(v) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
+    let (to, from, at) = (str_of(&v, "to").to_string(), str_of(&v, "from").to_string(), v.get("at").and_then(Value::as_u64).unwrap_or(0));
+    let me = env!("CARGO_PKG_VERSION");
+    if me == to || me != from || now().saturating_sub(at) > 3 * 86400 {
+        let _ = std::fs::remove_file(&f);
+        return;
+    }
+    let installer = str_of(&v, "installer").to_string();
+    trail::note(format!("The update to {to} didn't install (this is still {me})"));
+    *UPDATE_FAILED.lock().unwrap() = Some(json!({"to": to, "installer": installer, "there": Path::new(&installer).is_file()}));
+    let _ = std::fs::remove_file(&f);
+}
+
+/// Runs the update's installer the usual way (its own window, not the quiet one), so whatever stops
+/// it is on screen. The launcher closes so its files are free.
+#[tauri::command]
+fn update_retry(app: AppHandle) -> Res<()> {
+    let installer = UPDATE_FAILED.lock().unwrap().as_ref().map(|v| str_of(v, "installer").to_string()).unwrap_or_default();
+    if installer.is_empty() || !Path::new(&installer).is_file() {
+        return Err(Error::Msg("The installer isn't there anymore. Use Update again to download it.".into()));
+    }
+    let mut c = std::process::Command::new(&installer);
+    if let (Some(_), Some(d)) = (portable_dir(), exe_dir()) {
+        c.arg(format!("/D={}", d.display()));
+    }
+    c.spawn().map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
+    app.exit(0);
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -4932,7 +5101,7 @@ fn skip_backup() {
 }
 
 /// For the window: is this a handheld, so While Playing settings can show their defaults.
-#[tauri::command]
+#[tauri::command(async)]
 fn is_handheld() -> bool {
     HANDHELD.load(Ordering::Relaxed)
 }
@@ -5181,7 +5350,7 @@ fn portable_remap(dir: &Path) {
 }
 
 /// Whether this launcher is portable, and where it keeps its data, for Settings.
-#[tauri::command]
+#[tauri::command(async)]
 fn portable_info(st: State<'_, App>) -> Value {
     json!({ "portable": portable_dir().is_some(), "data": st.dir.to_string_lossy() })
 }
@@ -5377,6 +5546,7 @@ pub fn run() {
                 portable_remap(&dir);
             }
             trail::start(&dir);
+            update_check_last(&dir);
             net::init(app.handle());
             proton::set_data(&dir);
             // The files an update moved aside (they were in use while it copied).
@@ -5438,6 +5608,17 @@ pub fn run() {
                 if let (Some(z), Some(w)) = (z, app.get_webview_window("main")) {
                     let _ = w.set_zoom(z);
                 }
+            }
+            // Linux: scrolling eases like the rest of the desktop does, instead of jumping a notch
+            // at a time.
+            #[cfg(target_os = "linux")]
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.with_webview(|wv| {
+                    use webkit2gtk::{SettingsExt, WebViewExt};
+                    if let Some(s) = wv.inner().settings() {
+                        s.set_enable_smooth_scrolling(true);
+                    }
+                });
             }
             // The games running keep their "playing" markers fresh (see wait_for_play); old ones
             // from a launcher that didn't close cleanly are cleared.
@@ -5586,7 +5767,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, scan_roms, rom_matches,
+            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting,

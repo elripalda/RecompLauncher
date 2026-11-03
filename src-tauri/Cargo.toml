@@ -58,6 +58,9 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Regi
 [target.'cfg(not(windows))'.dependencies]
 gilrs = "0.11"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "=2.0.2"
+
 [profile.release]
 codegen-units = 1
 lto = true

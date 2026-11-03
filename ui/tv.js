@@ -65,7 +65,8 @@
   // Button icons for the controller in use: Xbox letters, or PlayStation shapes.
   const glyph = (n, cls = '') => {
     const pref = (S.settings.ui || {}).tv_glyphs;
-    const p = padArt(pref || S.padKind || 'xbox', n);
+    const auto = S.padKind || 'xbox';
+    const p = padArt(pref || (S.deck && auto === 'xbox' ? 'steam' : auto), n);
     return `<i class="glyph g-${n} ${cls}" style="--m:url(${p.url})" role="img" aria-label="${esc(t(p.name))}"></i>`;
   };
 
@@ -125,6 +126,9 @@
     // Scaled to fit the 16:9 size, then stretched to the screen's own shape, so a 16:10 Steam Deck
     // or an ultrawide is filled edge to edge instead of getting bands.
     const k = Math.min(innerWidth / w, innerHeight / h);
+    // Mid-switch to full screen the window can measure nothing for a moment: sized again shortly,
+    // rather than drawn at no size (only the sound, nothing to see).
+    if (!(k > 0) || !isFinite(k)) { clearTimeout(fit.again); fit.again = setTimeout(fit, 120); return; }
     const W = Math.round(innerWidth / k), H = Math.round(innerHeight / k);
     st.style.width = W + 'px';
     st.style.height = H + 'px';
@@ -227,7 +231,7 @@
       const b = $('.tv-boot', root);
       if (!b || !TV.on) return;
       b.classList.add('out');
-      setTimeout(() => { if (!TV.on) return; TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
+      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
     }, 3100);
   }
 
@@ -975,7 +979,7 @@
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to put an older one back'))}</small></span>${svg('chevR', 30)}</button>
           ${head(t('Controller'))}
-          ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
+          ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
           ${head(t('Big Picture mode'))}
           <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>
@@ -2254,7 +2258,7 @@
     else if (act === 'homeview') await saveUi({ tv_home: roll(['', 'pinned'], ui.tv_home || '') });
     else if (act === 'dockview') await saveUi({ tv_dock: roll(['', 'wide'], ui.tv_dock || '') });
     else if (act === 'bgmode') await saveUi({ tv_bg: roll(['', 'grid', 'drift', 'art'], ui.tv_bg || '') });
-    else if (act === 'glyphs') await saveUi({ tv_glyphs: roll(['', 'xbox', 'ps', 'nintendo'], ui.tv_glyphs || '') });
+    else if (act === 'glyphs') await saveUi({ tv_glyphs: roll(['', 'xbox', 'ps', 'nintendo', 'steam'], ui.tv_glyphs || '') });
     else if (act === 'theme') {
       const now = ui.theme === 'light' ? 2 : ui.oled ? 1 : 0, next = (now + dir + 3) % 3;
       await saveUi({ theme: next === 2 ? 'light' : '', oled: next === 1 });
@@ -2372,7 +2376,7 @@
     if (!document.hasFocus() || S.away) return;
     for (const gp of navigator.getGamepads()) {
       if (!gp) continue;
-      const kind = /054c|sony|dualsense|playstation|wireless controller/i.test(gp.id) ? 'ps' : /057e|nintendo|pro controller|joy-con/i.test(gp.id) ? 'nintendo' : 'xbox';
+      const kind = /054c|sony|dualsense|playstation|wireless controller/i.test(gp.id) ? 'ps' : /057e|nintendo|pro controller|joy-con/i.test(gp.id) ? 'nintendo' : /28de|valve|steam/i.test(gp.id) || S.deck ? 'steam' : 'xbox';
       const now = {};
       // Buttons go by what's printed on them: on a Nintendo pad A is on the right, B at the bottom.
       const nin = kind === 'nintendo' ? { 0: 'b', 1: 'a', 2: 'y', 3: 'x' } : {};

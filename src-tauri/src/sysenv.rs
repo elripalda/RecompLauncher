@@ -93,7 +93,11 @@ pub fn prepare_start() {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
     let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
-    if (gamescope || from_steam) && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    // NVIDIA's driver and the libraries an AppImage carries are where the web view's default
+    // renderer most often leaves the window blank, so those get the one that works everywhere.
+    let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+    let appimage = std::env::var_os("APPIMAGE").is_some();
+    if (gamescope || from_steam || nvidia || appimage) && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     if std::env::var_os("RL_STEAM_CLEAN").is_some() {

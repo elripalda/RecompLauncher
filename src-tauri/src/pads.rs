@@ -84,6 +84,10 @@ pub fn parse_sony(r: &[u8], dualsense: bool, bt: bool) -> Option<SonyState> {
 // ---------- Nintendo Switch Pro Controller (and pads that act like one, like 8BitDo's in Switch mode) ----------
 
 pub const NINTENDO: u16 = 0x057E;
+/// Valve: the Steam Controller (wired, its wireless receiver) and the Steam Deck's own controls.
+/// Without Steam running they act as a mouse and keyboard; Steam Input turns them into a pad.
+pub const VALVE: u16 = 0x28DE;
+pub const STEAM_PADS: [u16; 5] = [0x1102, 0x1142, 0x1105, 0x1106, 0x1205];
 pub const SWITCH_PRO: u16 = 0x2009;
 
 /// One Switch Pro Controller input report: the full one (0x30) or the simple one it sends over
@@ -187,6 +191,17 @@ fn read_sony(tx: Sender<Ev>) {
             first = false;
             last_scan = std::time::Instant::now();
             let _ = api.refresh_devices();
+            // A Steam Controller is listed (by name only: Steam reads it, and passes its buttons on).
+            let steam_pad = api.device_list().any(|d| d.vendor_id() == VALVE && STEAM_PADS.contains(&d.product_id()));
+            {
+                let mut c = CONNECTED.lock().unwrap();
+                let has = c.iter().any(|p| p.kind == "steam");
+                if steam_pad && !has {
+                    c.push(Pad { name: "Steam Controller".into(), kind: "steam" });
+                } else if !steam_pad && has {
+                    c.retain(|p| p.kind != "steam");
+                }
+            }
             for d in api.device_list() {
                 let (vid, pid) = (d.vendor_id(), d.product_id());
                 let switch = vid == NINTENDO && pid == SWITCH_PRO;
@@ -300,13 +315,15 @@ fn read_gilrs(tx: Sender<Ev>) {
                 "ps"
             } else if n.contains("nintendo") || n.contains("pro controller") || n.contains("joy-con") {
                 "nintendo"
+            } else if n.contains("steam") || n.contains("valve") {
+                "steam"
             } else {
                 "xbox"
             }
         };
         let refresh = |g: &Gilrs| {
             let mut c = CONNECTED.lock().unwrap();
-            c.retain(|p| (p.kind == "ps" || p.kind == "nintendo") && cfg!(windows));
+            c.retain(|p| (p.kind == "ps" || p.kind == "nintendo" || p.kind == "steam") && cfg!(windows));
             for (_, pad) in g.gamepads() {
                 c.push(Pad { name: pad.name().to_string(), kind: kind_of(pad.name()) });
             }

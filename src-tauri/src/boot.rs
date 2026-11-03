@@ -59,7 +59,7 @@ fn built_in() -> &'static Value {
 }
 
 /// The shipped profiles, for the window (the game page's "Before you play").
-#[tauri::command]
+#[tauri::command(async)]
 pub fn boot_builtin() -> Value {
     built_in().clone()
 }

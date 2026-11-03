@@ -471,6 +471,15 @@ function oneEach(list, keep) {
 const forOS = (a) => (a.systems || []).includes(S.os) || !!(a.assets && a.assets[S.os]) || !!S.builds[a.id] || viaProton(a);
 // On Linux with Proton on, a recomp with only a Windows version plays through Proton.
 const viaProton = (a) => S.os === 'linux' && !!S.settings.proton && ((a.systems || []).includes('windows') || !!(a.assets && a.assets.windows));
+// The systems a recomp has a build for, in a fixed order.
+const runsOn = (a) => ['windows', 'linux', 'macos'].filter((k) => (a.systems || []).includes(k) || !!(a.assets && a.assets[k]) || (k === S.os && !!S.builds[a.id]));
+// Small marks for those under a cover. On Linux, a Windows-only one says it plays through Proton.
+function osMarks(a) {
+  const on = runsOn(a);
+  if (!on.length) return '';
+  const px = S.os === 'linux' && !on.includes('linux') && on.includes('windows');
+  return `<span class="osm${px ? ' px' : ''}" title="${esc(px ? t('Windows version, plays through Proton') : on.map((k) => OS_NAME[k]).join(' · '))}">${on.map(osIcon).join('')}${px ? `<b>${esc(t('Proton'))}</b>` : ''}</span>`;
+}
 const byDl = (x, y) => (y.downloads || 0) - (x.downloads || 0);
 const byNew = (x, y) => String(y.added || y.released || '').localeCompare(String(x.added || x.released || ''));
 const byUpdated = (x, y) => String(y.released || '').localeCompare(String(x.released || ''));
@@ -533,7 +542,7 @@ function tile(a, opts = {}) {
   const qadd = !quick && !opts.mine && !S.library[a.id] && !S.jobs[a.id] && status(a) === 'get';
   const qsaved = qadd && isSaved(a.id);
   return `<div class="tile${opts.on ? ' on' : ''}" data-id="${esc(a.id)}">${cov ? `<span class="glow" style="background-image:url('${cssUrl(cov)}')"></span>` : ''}
-    <button type="button" class="tile-b" data-act="${opts.act || 'open'}" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${poster(a, opts.mine, opts.inst, opts.wide)}${vt ? '<span class="trow">' : ''}<span class="t"${shortName(a.name) !== a.name ? ` data-short="${esc(shortName(a.name))}" data-full="${esc(a.name)}"` : ''} title="${esc(a.name)}">${esc(a.name)}</span>${vt ? `${TICK(15)}</span>` : ''}<span class="s">${sub}</span></button>
+    <button type="button" class="tile-b" data-act="${opts.act || 'open'}" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${poster(a, opts.mine, opts.inst, opts.wide)}${vt ? '<span class="trow">' : ''}<span class="t"${shortName(a.name) !== a.name ? ` data-short="${esc(shortName(a.name))}" data-full="${esc(a.name)}"` : ''} title="${esc(a.name)}">${esc(a.name)}</span>${vt ? `${TICK(15)}</span>` : ''}<span class="s">${sub}${opts.wide ? '' : osMarks(a)}</span></button>
     ${quick ? `<span class="qpw"><button type="button" class="qp" data-act="${S.running.has(a.id) ? 'resume' : 'play'}" data-id="${esc(a.id)}" aria-label="${esc(tf('Play {name}', { name: a.name }))}" title="${esc(t('Play'))}">${PLAY}</button></span>` : ''}${qadd ? `<span class="qpw"><button type="button" class="qp${qsaved ? '' : ' add'}" data-act="${qsaved ? 'install' : 'addlib'}" data-id="${esc(a.id)}" aria-label="${esc(qsaved ? tf('Install {name}', { name: a.name }) : tf('Add {name} to your Library', { name: a.name }))}" title="${esc(qsaved ? t('Install') : t('Add to Library'))}">${qsaved ? DOWN : PLUS}</button></span>` : ''}</div>`;
 }
 
@@ -563,10 +572,12 @@ const DISCORD = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="tr
 // What the controller buttons do, for Settings > Controllers (desktop and Big Picture mode).
 const PAD_NAME = { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', view: N_('View'), menu: N_('Menu') };
 const PAD_PS = { a: N_('Cross'), b: N_('Circle'), x: N_('Square'), y: N_('Triangle'), lb: 'L1', rb: 'R1', view: N_('Create'), menu: N_('Options') };
-const padKind = () => S.padKind || ((S.pads || [])[0] || {}).kind || 'xbox';
+// On a Steam Deck its own buttons (L1/R1) unless another kind of pad is in use.
+const padKind = () => { const k = S.padKind || ((S.pads || [])[0] || {}).kind || 'xbox'; return S.deck && k === 'xbox' ? 'steam' : k; };
 const PAD_NIN = { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'L', rb: 'R', view: N_('Minus'), menu: N_('Plus') };
 // The icon file and button names for a kind of controller: xbox, ps or nintendo.
-window.padArt = (k, n) => { const ps = k === 'ps', nin = k === 'nintendo'; return { url: `img/pad/${ps ? 'ps' : nin ? 'nintendo' : 'xbox'}-${n}.${ps ? 'png' : 'svg'}`, name: (ps ? PAD_PS : nin ? PAD_NIN : PAD_NAME)[n] || n }; };
+const PAD_STEAM = { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'L1', rb: 'R1', view: N_('View'), menu: N_('Menu') };
+window.padArt = (k, n) => { const ps = k === 'ps', nin = k === 'nintendo', st = k === 'steam'; return { url: `img/pad/${ps ? 'ps' : nin ? 'nintendo' : st ? 'steam' : 'xbox'}-${n}.${ps ? 'png' : 'svg'}`, name: (ps ? PAD_PS : nin ? PAD_NIN : st ? PAD_STEAM : PAD_NAME)[n] || n }; };
 const padGlyph = (n) => { const p = padArt(padKind(), n); return `<i class="glyph g-${n}" style="--m:url(${p.url})" role="img" aria-label="${esc(t(p.name))}"></i>`; };
 function buttonGuide(g = padGlyph) {
   const plus = '<em>+</em>';
@@ -869,7 +880,7 @@ function layoutShelves(scope = document) {
 
 function discoverList() {
   const f = S.find, q = S.q.trim().toLowerCase();
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && (!f.great || playsGreat(a)) && (!f.easy || (S.easy.has(a.id) && !a.soon)) && (!f.mp || isMulti(a))
+  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && (!f.runs || runsOn(a).includes(f.runs)) && (!f.great || playsGreat(a)) && (!f.easy || (S.easy.has(a.id) && !a.soon)) && (!f.mp || isMulti(a))
     && (!q || [a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ').toLowerCase().includes(q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDl);
@@ -891,6 +902,7 @@ function pageDiscover() {
       <label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="origin">${[['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name])].map(([k, n]) => `<option value="${esc(k)}"${f.origin === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
       <label class="pill-sel">${esc(t('Genre'))}<select class="sel" data-act="genre-sel">${[['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])].map(([k, n]) => `<option value="${esc(k)}"${f.genre === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
       <label class="pill-sel">${esc(t('Show'))}<select class="sel" data-act="show-sel">${SHOWS.map(([k, n]) => `<option value="${k}"${(f.show || '') === k ? ' selected' : ''}>${esc(t(n))}</option>`).join('')}</select></label>
+      <label class="pill-sel">${esc(t('Runs On'))}<select class="sel" data-act="runs-sel">${[['', t('Any')], ['windows', 'Windows'], ['linux', 'Linux'], ['macos', 'Mac']].map(([k, n]) => `<option value="${k}"${(f.runs || '') === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
       <label class="pill-sel">${esc(t('Tag'))}<select class="sel" data-act="tag-sel">${[['', t('Any')], ...allTags().map((k) => [k, k])].map(([k, n]) => `<option value="${esc(k)}"${(f.tag || '') === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
     </div><div class="grp">
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.easy}" data-act="easy-f">${DISC_S}${esc(t('Easy Setup'))}<span class="switch" aria-hidden="true"></span></button>
@@ -1033,7 +1045,7 @@ function pageGame(id) {
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
 }
 // RecompLauncher itself in Steam, starting in Big Picture mode (Gaming Mode on a Steam Deck).
-window.selfToSteam = (r) => selfToSteam(r);
+window.selfToSteam = selfToSteam;
 async function selfToSteam(restart) {
   let r;
   try { r = await invoke('launcher_to_steam', { restart }); } catch (e) { return fail(e); }
@@ -1213,6 +1225,21 @@ function gameRail(a) {
     ${S.library[a.id] && S.os !== 'macos' ? `<div class="acts grid2">${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(a.id)}">${esc(t('Add to Steam'))}</button>` : ''}<button type="button" class="btn${S.steam ? '' : ' span2'}" data-act="desktop" data-id="${esc(a.id)}">${esc(t('Add to desktop'))}</button></div>` : ''}
     ${a.repo ? `<div class="acts grid2"><button type="button" class="btn" data-act="url" data-url="https://github.com/${esc(a.repo)}">GitHub</button><button type="button" class="btn" data-act="url" data-url="https://github.com/${esc(a.repo)}/issues">${esc(t('Report a problem'))}</button></div>` : ''}</div>`;
 }
+// The recomp's README from its GitHub, folded away under its heading until it's opened. Loaded
+// as the page opens (the launcher keeps a copy for a day), so it opens at once.
+S.readme = {};
+function readmeCard(a) {
+  if (!a.repo || a.local) return '';
+  const r = S.readme[a.repo];
+  if (r === undefined) {
+    S.readme[a.repo] = 'loading';
+    invoke('repo_readme', { repo: a.repo }).then((t2) => { S.readme[a.repo] = t2 || null; if (S.view === 'game' && (byId(S.arg) || {}).repo === a.repo && S.tab === 'overview') refreshGame(); }).catch(() => { S.readme[a.repo] = null; });
+    return '';
+  }
+  if (!r || r === 'loading') return '';
+  const open = !!S.readmeOpen;
+  return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
+}
 function gameBody(a) {
   const id = a.id, inst = S.library[id];
   gameTabs(a);
@@ -1233,6 +1260,7 @@ function gameBody(a) {
       ${shotsCard(a)}
       ${runsCard(a)}
       ${a.description ? `<div class="card"><h3 style="margin-bottom:12px">${esc(t('From the developer'))}</h3><div class="md">${md(a.description)}</div></div>` : ''}
+      ${readmeCard(a)}
       ${bootNote(a) || setupGuide(a) ? `<div class="card"><h3 style="margin:0">${esc(t('How to Set Up'))}</h3>${setupGuide(a) ? `<p style="margin:8px 0 0">${esc(setupGuide(a))}</p>` : ''}${bootNote(a) ? `<p style="margin:8px 0 0">${esc(bootNote(a))}</p>` : ''}</div>` : ''}
       ${isAI(a) ? `<div class="card"><span class="ai-tag">${esc(t('AI-assisted'))}</span><p style="margin:10px 0 0">${esc(a.ai.by === 'developer' ? tf('Its developer says AI tools helped with its {uses}.', { uses: aiUses(a) }) : tf('Its project on GitHub shows AI tools helped with its {uses}.', { uses: aiUses(a) }))}</p>${a.ai.note ? `<p class="muted" style="margin:8px 0 0">“${esc(a.ai.note)}”</p>` : ''}<p class="muted" style="margin:8px 0 0;font-size:14px">${esc(S.settings.hide_ai ? t('You\'ve hidden AI-assisted recomps, so this one doesn\'t show anywhere else.') : t('Rather not see AI-assisted recomps?'))} <a href="#" data-go="settings">${esc(t('Settings'))}</a></p></div>` : ''}
       ${a.credits ? `<div class="card"><h3 style="margin-bottom:8px">${esc(t('Credits'))}</h3><div class="md">${md(a.credits)}</div></div>` : ''}
@@ -1358,6 +1386,8 @@ function copyPickOpts(id) {
   const what = `${(b.files || {}).what || ''} ${su.needs || ''}`;
   const n64 = /\bN64\b|\.z64|\.n64|\.v64|\bROM\b/i.test(what) && !/\bdisc\b|\.iso/i.test(what);
   const exts = n64 ? ROM_EXTS.n64 : ROM_EXTS.disc;
+  // A file that's neither a ROM nor a disc (a download package with no extension): any file.
+  if (!n64 && !/\bdisc\b|\.iso\b|\biso\b/i.test(what)) return { title: t('Your copy of the game'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] };
   return { title: n64 ? t('Your ROM of the game') : t('Your disc image of the game'), directory: false, multiple: false,
     filters: [{ name: n64 ? t('N64 ROMs') : t('Disc images'), extensions: exts }, { name: t('All files'), extensions: ['*'] }] };
 }
@@ -2095,6 +2125,38 @@ const SET_ICONS = {
   beta: '<path d="M9.5 3h5M10 3v6.2L4.8 18.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9.2V3"/><path d="M7.2 14h9.6"/>',
 };
 const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
+// GE-Proton on Linux: what Windows recomps start through now, and the newest GE-Proton in one press.
+function geRow(row) {
+  if (S.os !== 'linux') return '';
+  if (!S.protonNow && !S.protonAsked) { S.protonAsked = true; invoke('proton_now').then((r) => { S.protonNow = r; if (S.view === 'settings') setSection(S.setTab); }).catch(() => {}); }
+  const now = S.protonNow || {}, busy = S.geBusy;
+  const say = !S.protonNow ? t('Checking what this PC has…')
+    : now.ge ? tf('Windows recomps play through {name}. Check for a newer one now and then.', { name: now.runner })
+    : now.runner ? tf('Windows recomps play through {name} now. GE-Proton runs more of them, and it\'s free.', { name: now.runner })
+    : t('Nothing on this PC can run Windows recomps yet. GE-Proton is free and takes a minute.');
+  const label = busy ? (busy.phase === 'download' && busy.total ? tf('Downloading {pct}%', { pct: Math.floor(busy.done / busy.total * 100) }) : t('Unpacking…')) : now.ge ? t('Check for a Newer One') : t('Install GE-Proton');
+  return row(t('GE-Proton'), say, `<button type="button" class="btn sm" data-act="ge-proton"${busy ? ' disabled' : ''}>${esc(label)}</button>`);
+}
+async function geInstall() {
+  if (S.geBusy) return;
+  S.geBusy = { phase: 'download', done: 0, total: 0 };
+  if (S.view === 'settings') setSection(S.setTab);
+  const was = (S.protonNow || {}).runner;
+  try {
+    const tag = await invoke('ge_proton_install');
+    S.protonNow = await invoke('proton_now').catch(() => S.protonNow);
+    toast(tag === was ? tf('{name} is the newest. You\'re all set.', { name: tag }) : tf('{name} is installed. Windows recomps play through it now.', { name: tag }));
+  } catch (e) { fail(e); }
+  S.geBusy = null;
+  if (S.view === 'settings') setSection(S.setTab);
+}
+T.event.listen('ge_progress', ({ payload: p }) => {
+  if (!S.geBusy) return;
+  const pct = (x) => (x.total ? Math.floor(x.done / x.total * 100) : -1);
+  const moved = pct(p) !== pct(S.geBusy) || p.phase !== S.geBusy.phase;
+  S.geBusy = p;
+  if (moved && S.view === 'settings') { const b = document.querySelector('[data-act="ge-proton"]'); if (b) b.textContent = p.phase === 'download' && p.total ? tf('Downloading {pct}%', { pct: pct(p) }) : t('Unpacking…'); }
+});
 function pageSettings() {
   const st = S.settings, ui = st.ui || {}, sw = (k, on, label, act = 'toggle') => `<button type="button" class="switch" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}" data-k="${k}"></button>`;
   const libs = S.libs.length ? S.libs : [{ path: st.library_dir, default: true, games: Object.keys(S.library).length }];
@@ -2111,7 +2173,7 @@ function pageSettings() {
       body = group(t('Language'), row(t('Language'), t('The launcher and its quick menu over your games.'), `<select class="sel" data-act="lang" aria-label="${esc(t('Language'))}">${[['auto', tf('Same as your computer ({lang})', { lang: (LANGS.find((x) => x[0] === systemLang()) || ['', 'English (US)'])[1] })]].concat(LANGS).map(([c, n]) => `<option value="${c}"${(ui.lang || 'auto') === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`))
         + group(t('Discover'), row(t('Refresh Discover'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
           + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps'))))
-        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.'), sw('proton', st.proton, t('Play Windows recomps with Proton')))) : '')
+        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
         + group(t('Notifications and sharing'), row(t('Notifications'), S.os === 'windows' ? t('A Windows notification when a new recomp comes out for a game you own.') : t('A notification when a new recomp comes out for a game you own.'), sw('notify', st.notify, t('Notifications')))
           + row(t('Discord status'), t('Shows the game you\'re playing on your Discord profile, with its cover and play time.'), sw('discord', st.discord !== false, t('Discord status')))
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
@@ -2180,7 +2242,7 @@ function pageSettings() {
         + `<p class="set-tip">${esc(t('Hold Menu on your controller to switch to Big Picture mode.'))}</p>`;
       break;
     case 'pads':
-      body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads.'))}</p>`)
+      body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
         + group(t('Buttons'), `<div class="pad-guide">${buttonGuide().map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>`);
       break;
     case 'pc':
@@ -2615,8 +2677,10 @@ function paintProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
+  document.body.classList.toggle('linux', S.os === 'linux');
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
+  if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
   S.missing = new Set(st.missing || []);
   for (const id of Object.keys(S.library)) byId(id);
   // The core's list of jobs is the truth: one it no longer has is over (unless it was only just
@@ -3540,6 +3604,18 @@ function blocked(id, err) {
 }
 const cleanMsg = (m) => t(String(m || '').replace(/^BLOCKED\|[^|]*\|/, ''));
 
+// The last update from inside the launcher didn't go in: its installer, run the usual way, shows
+// what stopped it (an antivirus, a folder Windows protects), or it's downloaded again.
+function updateFailedModal(f) {
+  if (document.body.classList.contains('tv-on') || $('.scrim')) { setTimeout(() => updateFailedModal(f), 4000); return; }
+  modal(`<h2>${esc(t('The Update Didn\'t Install'))}</h2><p>${esc(tf('RecompLauncher {to} was downloaded, but it didn\'t install, so this is still {now}. Run its installer the usual way to see what\'s stopping it, like an antivirus or a folder Windows protects.', { to: verName(f.to), now: verName(S.version) }))}</p>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="go">${esc(f.there ? t('Run the Installer') : t('Download It Again'))}</button></div>`, async (x, close) => {
+    if (x.dataset.x !== 'go') return;
+    close();
+    if (!f.there) return selfUpdate();
+    try { await invoke('update_retry'); } catch (e) { fail(e); }
+  }, t('The Update Didn\'t Install'));
+}
 async function selfUpdate() {
   toast(t('Downloading the new RecompLauncher…'));
   try { await invoke('update_launcher'); } catch (e) { if (!blocked('', e)) fail(e); }
@@ -4159,6 +4235,13 @@ const TS_TEXT = [
   N_('It says your game files aren\'t the right ones'),
   N_('How it closed last time'),
   N_('Code {code}'),
+  N_('It starts {name}, which looks like one of the game\'s tools'),
+  N_('It sits in a folder for tools or a setup\'s leftovers ({folder}). Choose the game\'s own program, where its setup installed it.'),
+  N_('Windows didn\'t let the launcher write the game\'s files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.'),
+  N_('This is a Windows version, and it needs Proton to play on Linux. Settings → General → GE-Proton installs it in one press, then press Play again.'),
+  N_('GE-Proton is only made for x86-64 PCs.'),
+  N_('GitHub\'s answer about GE-Proton didn\'t make sense. Try again later.'),
+  N_('The GE-Proton download didn\'t have Proton in it.'),
   N_('A Look (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
   N_('A Look (ReShade) is on. If it won\'t start, try once without it.'),
   N_('Almost every Windows recomp needs it.'),
@@ -4438,6 +4521,8 @@ async function act(el, e) {
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
     case 'self-steam': return selfToSteam(false);
+    case 'ge-proton': return geInstall();
+    case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
     case 'run-say': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
     case 'ver-go': if (S.view === 'game') return switchVersion(id); closeMenu(); return go('game', id);
     case 'ver-hide': { const p = saveUi({ verHide: !(S.settings.ui || {}).verHide }, true); refreshGame(); return p; }
@@ -4626,6 +4711,7 @@ document.addEventListener('change', (e) => {
   if (s.dataset.act === 'genre-sel') { S.find.genre = s.value; return updateDiscover(); }
   if (s.dataset.act === 'tag-sel') { S.find.tag = s.value; return render(true); }
   if (s.dataset.act === 'show-sel') { S.find.show = s.value; return updateDiscover(); }
+  if (s.dataset.act === 'runs-sel') { S.find.runs = s.value; return updateDiscover(); }
   if (s.dataset.act === 'libsort') { S.lib.sort = s.value; return updateLibrary(); }
   if (s.dataset.act === 'liborigin') { S.lib.origin = s.value; return updateLibrary(); }
   render(true);

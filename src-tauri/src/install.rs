@@ -561,7 +561,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     // Windows Security and Search look at a fresh download first and can hold it for a moment.
     for _ in 0..20 {
         match fs::File::open(file) {
-            Err(e) if matches!(e.raw_os_error(), Some(32) | Some(33)) => std::thread::sleep(std::time::Duration::from_millis(500)),
+            Err(e) if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) => std::thread::sleep(std::time::Duration::from_millis(500)),
             _ => break,
         }
     }
@@ -660,7 +660,7 @@ pub const EXE_RULES: u8 = 8;
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
 /// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 22] = ["xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool"];
+const TOOL_WORDS: [&str; 24] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool"];
 /// Folders a release keeps its tools, or leftovers from building, in.
 const TOOL_DIRS: [&str; 12] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders"];
 

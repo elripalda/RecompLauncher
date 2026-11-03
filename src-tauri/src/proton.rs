@@ -117,6 +117,72 @@ pub fn protons() -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
+/// Where a downloaded Proton goes: the compatibilitytools.d of the Steam on this PC (the one
+/// installed normally before the Flatpak one), or of a Steam folder made for it when there's none.
+pub fn tools_dir() -> Option<PathBuf> {
+    let roots = steam_roots();
+    let real = roots.iter().find(|r| r.join("steamapps").is_dir() && !r.to_string_lossy().contains("/.var/app/")).or_else(|| roots.iter().find(|r| r.join("steamapps").is_dir())).or(roots.first());
+    let root = real.cloned().or_else(|| dirs::home_dir().map(|h| h.join(".local/share/Steam")))?;
+    Some(std::fs::canonicalize(&root).unwrap_or(root).join("compatibilitytools.d"))
+}
+
+/// The newest GE-Proton from its GitHub, unpacked where Steam and the launcher both find it.
+/// Its name when it's in place (also when it already was).
+pub async fn install_ge(
+    http: &reqwest::Client,
+    cache: &Path,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    report: &(dyn Fn(crate::install::Progress) + Send + Sync),
+) -> Result<String, crate::Error> {
+    use crate::Error;
+    if crate::assets::arch_now() == "arm64" {
+        return Err(Error::Msg("GE-Proton is only made for x86-64 PCs.".into()));
+    }
+    let to = tools_dir().ok_or_else(|| Error::Msg("Couldn't find your home folder.".into()))?;
+    let rel: serde_json::Value = http
+        .get("https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest")
+        .header("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await?
+        .error_for_status()
+        .map_err(|e| Error::Msg(format!("GitHub didn't answer about GE-Proton: {e}")))?
+        .json()
+        .await?;
+    let tag = rel.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if tag.is_empty() || tag.contains(['/', '\\']) || tag.contains("..") {
+        return Err(Error::Msg("GitHub's answer about GE-Proton didn't make sense. Try again later.".into()));
+    }
+    if to.join(&tag).join("proton").is_file() {
+        return Ok(tag);
+    }
+    let assets: Vec<crate::assets::Asset> = rel.get("assets").cloned().and_then(|a| serde_json::from_value(a).ok()).unwrap_or_default();
+    let asset = assets.into_iter().find(|a| a.name.ends_with(".tar.gz")).ok_or_else(|| Error::Msg(format!("{tag} has no download for Linux yet. Try again later.")))?;
+    let dl = crate::install::download(http, &asset, &cache.join("ge-proton"), "ge-proton", cancel, report).await?;
+    report(crate::install::Progress::new("ge-proton", "unpack", 0, 0));
+    let (file, to2, tag2) = (dl.file.clone(), to.clone(), tag.clone());
+    tokio::task::spawn_blocking(move || -> Result<(), Error> {
+        std::fs::create_dir_all(&to2)?;
+        // Unpacked beside where it goes, then moved in whole: Steam never sees half a Proton.
+        let part = to2.join(".recomplauncher-part");
+        let _ = std::fs::remove_dir_all(&part);
+        std::fs::create_dir_all(&part)?;
+        let mut t = tar::Archive::new(flate2::read::GzDecoder::new(std::fs::File::open(&file)?));
+        t.set_preserve_permissions(true);
+        t.unpack(&part)?;
+        let top = part.join(&tag2);
+        let top = if top.join("proton").is_file() { top } else { std::fs::read_dir(&part)?.flatten().map(|e| e.path()).find(|p| p.join("proton").is_file()).ok_or_else(|| Error::Msg("The GE-Proton download didn't have Proton in it.".into()))? };
+        let _ = std::fs::remove_dir_all(to2.join(&tag2));
+        std::fs::rename(&top, to2.join(&tag2))?;
+        let _ = std::fs::remove_dir_all(&part);
+        let _ = std::fs::remove_file(&file);
+        Ok(())
+    })
+    .await
+    .map_err(|e| Error::Msg(e.to_string()))??;
+    Ok(tag)
+}
+
 /// The best way to start a Windows program on this PC, if there's one.
 pub fn runner() -> Option<Runner> {
     let proton = protons().into_iter().next();

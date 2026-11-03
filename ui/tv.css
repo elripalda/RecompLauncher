@@ -823,3 +823,8 @@ body.light .tv-ach-ok{color:#8a6400}
 .tv-cell:has(.tv-poster.f) .aura{display:block;animation:tvAura .3s ease}
 @keyframes tvAura{from{opacity:0;transform:scale(.9)}to{opacity:.75;transform:scale(1.04)}}
 body.playing .tv-stage *{animation-play-state:paused!important}
+
+/* Linux: smaller blurs for the glows (see app.css). */
+body.linux .tv-cell .aura{filter:blur(18px) saturate(1.5)}
+body.linux .tv-setup .glow{filter:blur(56px) saturate(1.4)}
+body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}

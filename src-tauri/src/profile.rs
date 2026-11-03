@@ -399,13 +399,19 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
         if n.ends_with(".x86_64") || n.ends_with(".appimage") || n.ends_with(".sh") {
             return true;
         }
+        // A program, by its run permission or its first bytes (an ELF): zips made on Windows drop
+        // the permission.
+        let elf = || {
+            let mut head = [0u8; 4];
+            std::fs::File::open(p).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && &head == b"\x7fELF"
+        };
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+            std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false) || elf()
         }
         #[cfg(not(unix))]
-        false
+        elf()
     };
     let mut best: Option<(usize, usize, PathBuf)> = None;
     for e in std::fs::read_dir(dir).ok()?.flatten() {
@@ -979,13 +985,21 @@ impl Profile {
             .map(|p| install.join(p))
             .find(|p| p.is_file())
             .or_else(|| if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) })?;
+        Some((exe, self.args_for(install, game, picks)))
+    }
+
+    /// The command line it gives its program: its own arguments (the player's copy among them) and
+    /// the settings that go there.
+    pub fn args_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Vec<String> {
+        let _w = WineFill::new(self.through_proton(install));
+        let Some(s) = self.start.as_ref() else { return vec![] };
         let mut args: Vec<String> = s.args.iter().map(|a| fill(a, install, game)).collect();
         for st in self.settings.iter().filter(|s| s.target == "args") {
             if let Some(c) = picks.get(&st.id).and_then(|i| st.choices.get(*i)) {
                 args.extend(c.args.iter().map(|a| fill(a, install, game)));
             }
         }
-        Some((exe, args))
+        args
     }
 
     /// Which choice each setting is on (the first whose values all match), and whether it applies.
@@ -1214,7 +1228,8 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         _ => p.is_file(),
     };
     if !kind_ok {
-        return Err(if folder { "It needs the disc image (.iso), not a folder.".into() } else { "It needs the game's folder, not a file.".into() });
+        let disc = g.label.to_lowercase().contains("iso") || g.label.to_lowercase().contains("disc");
+        return Err(if !folder { "It needs the game's folder, not a file.".into() } else if disc { "It needs the disc image (.iso), not a folder.".into() } else { "It needs the file itself, not a folder.".into() });
     }
     if folder {
         if !g.check.file.is_empty() && !p.join(&g.check.file).is_file() && !std::fs::read_dir(p).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&g.check.file)) {
@@ -1334,6 +1349,39 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn game_data_profiles_from_the_store() {
+        use super::*;
+        let mk = |b: &str| from_boot(&serde_json::from_str::<Value>(b).unwrap()).unwrap();
+        // A flag that takes the disc's files: an image is unpacked, the folder goes after the flag.
+        let p = mk(r#"{"kind":"portable","start":"pgr4_recompiled.exe","start_is":"game","args":"--execute_unclipped_draw_vs_on_cpu --gpu_plugin=xenos","files":{"how":"flag","flag":"--game_data_root","accepts":"folder or iso","extract":"xdvdfs","contains":["default.xex"]}}"#);
+        let g = p.game.as_ref().unwrap();
+        assert_eq!((g.kind.as_str(), g.extract.as_str(), g.check.file.as_str()), ("iso_or_folder", "xdvdfs", "default.xex"));
+        assert_eq!(p.start.as_ref().unwrap().args, ["--execute_unclipped_draw_vs_on_cpu", "--gpu_plugin=xenos", "--game_data_root", "{game}"]);
+        // A folder holding only the package file is fine.
+        let p = mk(r#"{"kind":"portable","start":"NHL3on3 Launcher.bat","files":{"how":"flag","flag":"--game_data_root","accepts":"folder"}}"#);
+        let g = p.game.as_ref().unwrap();
+        assert_eq!((g.kind.as_str(), g.check.file.as_str()), ("folder", ""));
+        let d = std::env::temp_dir().join("rl-3on3-test");
+        let _ = std::fs::create_dir_all(&d);
+        std::fs::write(d.join("58410975"), b"x").unwrap();
+        assert!(check_copy(g, &d).is_ok());
+        // A file beside the program, under its own name.
+        let p = mk(r#"{"kind":"portable","start":"NBA JAM Mod Manager.exe","files":{"how":"folder","folder":".","accepts":"file"}}"#);
+        let g = p.game.as_ref().unwrap();
+        assert_eq!((g.kind.as_str(), g.name.as_str(), g.into.as_str()), ("iso", "", "."));
+        let inst = std::env::temp_dir().join("rl-openjam-test");
+        let _ = std::fs::remove_dir_all(&inst);
+        std::fs::create_dir_all(&inst).unwrap();
+        let file = d.join("0123456789ABCDEF0123456789ABCDEF0123456789");
+        std::fs::write(&file, b"pkg").unwrap();
+        p.place(&inst, Some(&file)).unwrap();
+        assert!(inst.join("0123456789ABCDEF0123456789ABCDEF0123456789").is_file());
+        assert!(check_copy(g, &d).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&inst);
+    }
     #[cfg(unix)]
     #[test]
     fn a_native_build_starts_its_own_region() {
