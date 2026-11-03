@@ -48,10 +48,42 @@ through us, and every release you publish reaches players the next time the laun
 
 The launcher uses the first one it finds:
 
-1. **Your release.** Put `recomplauncher.json` at the top of your release zip, next to your
-   executable. This is the best place, because it ships with every release.
-2. **The catalog.** If you can't ship it, send it to us and we'll add it to your entry on
+1. **Inside your AppImage.** Put `recomplauncher.json` at the AppDir root before packaging a
+   type-2 AppImage. It belongs to that exact build and takes precedence over an adjacent file.
+2. **Your release folder.** Put `recomplauncher.json` at the top of your release zip, next to your
+   executable. It also provides a fallback for AppImages without valid embedded metadata.
+3. **The catalog.** If you can't ship it, send it to us and we'll add it to your entry on
    recomplauncher.com.
+
+### AppImages
+
+The launcher reads `/recomplauncher.json` directly from the AppImage's SquashFS payload.
+It does not execute or mount the image to inspect it, and writes no extracted JSON sidecar.
+Settings, save and folder paths still start from the installation directory (`{install}`),
+not from the internal filesystem.
+
+Use the AppImage's filename in `start.program`, for example:
+
+```json
+"start": {
+  "program": ["MyGame-x86_64.AppImage"],
+  "args": ["{game}"]
+}
+```
+
+Program entries ending in `.AppImage` in `start` and `prepare` are rebound to the actual
+installed filename, so renaming the download does not break launch. An internal path such
+as `usr/bin/game` cannot be started by the launcher outside the image.
+
+Embedded lookup applies when the install folder contains exactly one regular `.AppImage`
+file at its top level (case-insensitive extension). With multiple AppImages it does not
+guess: the adjacent profile and catalog fallback continue to work. The manifest must be
+a regular file no larger than 1 MiB, with `format: 1`. Gzip, XZ, Zstandard and LZ4 SquashFS
+compression are supported. Missing, malformed or unsupported metadata falls back to the
+adjacent manifest and then the catalog. Replacing the image is reflected on the next read;
+there is no extracted copy to become stale.
+
+Developer tools identify the embedded source and check the profile actually in use.
 
 Two examples are worth reading:
 
