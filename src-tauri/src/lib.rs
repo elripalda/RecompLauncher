@@ -1104,7 +1104,9 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
             continue;
         }
         out.remove(id);
-        if let Some(r) = found.iter().find(|r| profile::check_copy(&need, &r.path).is_ok()) {
+        // PS4 folders already carry a title. A shared file such as eboot.bin can't identify
+        // another game when the catalog title didn't match.
+        if let Some(r) = found.iter().find(|r| r.system != "ps4" && profile::check_copy(&need, &r.path).is_ok()) {
             out.insert(id.to_string(), r.clone());
         }
     }

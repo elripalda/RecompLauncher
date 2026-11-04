@@ -1,8 +1,8 @@
 //! Finding the player's own games in their ROM and backup folders, and which ones have a recomp.
 //!
 //! N64 ROMs carry the game's name in their header, so those are matched on it (whatever the file
-//! is called). Disc images and game folders are matched on their file or folder name. Nothing is
-//! read beyond a ROM's 64-byte header, and nothing leaves the PC.
+//! is called). Extracted PS4 games are identified by their local param.sfo metadata. Other disc
+//! images and game folders are matched on their file or folder name. Nothing leaves the PC.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RomFile {
     pub path: PathBuf,
-    /// n64, x360, gc, wii, ps2 or "" when the kind of file doesn't say.
+    /// n64, x360, gc, wii, ps4 or "" when the kind of file doesn't say.
     pub system: String,
-    /// The name inside the ROM's header, or the file's name.
+    /// The title from the game's metadata, or the file's name.
     pub title: String,
     /// US, Europe, Japan or "".
     #[serde(default)]
@@ -125,14 +125,74 @@ pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
     }
 }
 
-/// Look through the folders for ROMs, disc images and Xbox 360 game folders (a folder holding
-/// default.xex). Stops at a few thousand files so a whole drive can't hang it.
+/// Read the title and title ID from the little-endian PSF index and string tables.
+fn ps4_title(sfo: &[u8]) -> Option<&str> {
+    let read_u32 = |offset: usize| Some(u32::from_le_bytes(sfo.get(offset..offset + 4)?.try_into().ok()?) as usize);
+    if !sfo.starts_with(b"\0PSF") {
+        return None;
+    }
+    let keys = read_u32(8)?;
+    let values = read_u32(12)?;
+    let index_end = read_u32(16)?.checked_mul(16)?.checked_add(20)?;
+    if index_end > keys || keys > values || values > sfo.len() {
+        return None;
+    }
+    let mut title = None;
+    let mut title_id = None;
+    for (i, entry) in sfo[20..index_end].chunks_exact(16).enumerate() {
+        if u16::from_le_bytes([entry[2], entry[3]]) != 0x0204 {
+            continue;
+        }
+        let key_offset = u16::from_le_bytes([entry[0], entry[1]]) as usize;
+        let key = sfo.get(keys + key_offset..values)?.split(|&b| b == 0).next()?;
+        if key != b"TITLE" && key != b"TITLE_ID" {
+            continue;
+        }
+        let index = 20 + i * 16;
+        let len = read_u32(index + 4)?;
+        let start = values.checked_add(read_u32(index + 12)?)?;
+        let value = sfo.get(start..start.checked_add(len)?)?.split(|&b| b == 0).next()?;
+        let value = std::str::from_utf8(value).ok()?.trim();
+        if key == b"TITLE" {
+            title = Some(value);
+        } else {
+            title_id = Some(value);
+        }
+    }
+    let digits = title_id?.strip_prefix("CUSA")?;
+    if digits.len() != 5 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    title.filter(|t| !t.is_empty())
+}
+
+fn identify_ps4(folder: &Path) -> Option<RomFile> {
+    let path = folder.join("sce_sys/param.sfo");
+    if !folder.join("eboot.bin").is_file() || !path.is_file() {
+        return None;
+    }
+    const MAX_SFO: u64 = 64 * 1024;
+    let mut sfo = Vec::new();
+    fs::File::open(path).ok()?.take(MAX_SFO + 1).read_to_end(&mut sfo).ok()?;
+    if sfo.len() as u64 > MAX_SFO {
+        return None;
+    }
+    let title = ps4_title(&sfo)?.to_string();
+    Some(RomFile { path: folder.to_path_buf(), system: "ps4".into(), title, region: String::new(), size: 0 })
+}
+
+/// Look through the folders for ROMs, disc images and extracted Xbox 360 and PS4 games.
+/// Stops after a bounded number of entries so a whole drive can't hang it.
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
     let mut out = vec![];
     let mut seen = 0usize;
     for d in dirs {
         let mut stack = vec![(d.clone(), 0usize)];
         while let Some((dir, depth)) = stack.pop() {
+            if let Some(game) = identify_ps4(&dir) {
+                out.push(game);
+                continue;
+            }
             let Ok(rd) = fs::read_dir(&dir) else { continue };
             for e in rd.flatten() {
                 seen += 1;
@@ -298,6 +358,54 @@ mod tests {
         assert!(m.contains_key("skate3"));
         assert!(!m.contains_key("sm64"));
         assert!(!m.contains_key("skate-wrong-system"));
+    }
+
+    #[test]
+    fn scans_extracted_ps4_games_by_sfo_title() {
+        let root = tmp("ps4");
+        let game = root.join("PS4/The Order 1886/CUSA00035");
+        fs::create_dir_all(game.join("sce_sys")).unwrap();
+        fs::write(game.join("eboot.bin"), b"").unwrap();
+
+        let keys = b"TITLE\0TITLE_ID\0";
+        let title = b"The Order: 1886\0";
+        let id = b"CUSA00035\0";
+        let mut sfo = b"\0PSF".to_vec();
+        for field in [0x101u32, 52, 52 + keys.len() as u32, 2] {
+            sfo.extend(field.to_le_bytes());
+        }
+        for (key, length, offset) in [(0u16, title.len(), 0), (6, id.len(), title.len())] {
+            sfo.extend(key.to_le_bytes());
+            sfo.extend(0x0204u16.to_le_bytes());
+            for field in [length, length, offset] {
+                sfo.extend((field as u32).to_le_bytes());
+            }
+        }
+        sfo.extend(keys);
+        sfo.extend(title);
+        sfo.extend(id);
+        let metadata = game.join("sce_sys/param.sfo");
+        fs::write(&metadata, &sfo).unwrap();
+
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].system, "ps4");
+        assert_eq!(found[0].title, "The Order: 1886");
+        assert_eq!(found[0].path, game);
+        assert_eq!(scan(&[game.clone()]), found);
+        let catalog = serde_json::json!({"apps": [
+            {"id": "order", "game": "The Order: 1886", "origin": "ps4"},
+            {"id": "wrong-platform", "game": "The Order: 1886", "origin": "ps3"},
+            {"id": "wrong-title", "game": "Bloodborne", "origin": "ps4"}
+        ]});
+        let matched = match_catalog(&catalog, &found);
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched["order"].path, game);
+
+        sfo.pop();
+        fs::write(metadata, sfo).unwrap();
+        assert!(scan(&[root.clone()]).is_empty());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
