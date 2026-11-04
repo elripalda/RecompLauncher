@@ -116,6 +116,25 @@ fn not_a_build(name: &str) -> bool {
         || w.iter().any(|x| matches!(x.as_str(), "symbols" | "pdb" | "debug" | "dbg" | "source" | "sources" | "src"))
 }
 
+/// Words that tag a file as a build for a console or a phone: never a build for a PC.
+const PLATFORM_TAGS: [&str; 19] = ["switch", "nx", "nsp", "xci", "nro", "android", "apk", "aab", "ios", "ipa", "ps4", "ps5", "vita", "psp", "3ds", "wiiu", "wii", "xbox", "vpk"];
+/// Files for a console or a phone by their ending.
+const PLATFORM_ENDS: [&str; 7] = [".apk", ".ipa", ".nsp", ".xci", ".nro", ".vpk", ".pkg"];
+
+/// A file built for a console or a phone (Game-0.5.3.1-switch.zip, Game-1.0-android-arm64.apk),
+/// never a build for this PC. Only the words after the version count: a game's own name can have
+/// console words in it ("Xbox 360", "Wii"), and with no version to go by the file is left in.
+fn for_other_platform(name: &str) -> bool {
+    let n = name.to_lowercase();
+    if PLATFORM_ENDS.iter().any(|e| n.ends_with(e)) {
+        return true;
+    }
+    static VERSION: std::sync::OnceLock<regex_lite::Regex> = std::sync::OnceLock::new();
+    let re = VERSION.get_or_init(|| regex_lite::Regex::new(r"(?:^|[^a-z0-9])v?\d+(?:\.\d+)+|(?:^|[^a-z0-9])v\d+").unwrap());
+    let Some(m) = re.find(&n) else { return false };
+    words(&n[m.end()..]).iter().any(|w| PLATFORM_TAGS.contains(&w.as_str()))
+}
+
 /// Built for another processor than this one?
 fn other_arch(name: &str, arch: &str) -> bool {
     let w = words(name);
@@ -137,7 +156,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         Some(k) if usable_file(os, name) => k,
         _ => return i32::MIN,
     };
-    if not_a_build(name) || other_arch(name, arch) || other_os(name, os) {
+    if not_a_build(name) || other_arch(name, arch) || other_os(name, os) || for_other_platform(name) {
         return i32::MIN;
     }
     let w = words(name);
@@ -245,11 +264,18 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
     if let Some(p) = pattern.filter(|p| !p.trim().is_empty()) {
         let best = assets
             .iter()
-            .filter(|a| wild(p, &a.name) && !other_arch(&a.name, arch) && !not_a_build(&a.name))
+            .filter(|a| wild(p, &a.name) && !other_arch(&a.name, arch) && !not_a_build(&a.name) && !for_other_platform(&a.name))
             .filter(|a| usable_file(os, &a.name))
             .max_by_key(|a| score(&a.name, os, arch).max(0));
         if best.is_some() {
             return best;
+        }
+        // The list says what this system's file is called, and nothing in this release is: it has
+        // no build for this system (an older release that does is used instead). Only when the
+        // pattern names a file that's there but for another processor (a list pointing at the ARM
+        // build) is the best guess used.
+        if !assets.iter().any(|a| wild(p, &a.name)) {
+            return None;
         }
     }
     assets
@@ -324,10 +350,31 @@ mod tests {
     }
 
     #[test]
-    fn renamed_files_still_found() {
+    fn a_pattern_that_matches_nothing_means_no_build() {
         let r = [a("Game-2.0-win64.zip"), a("Game-2.0-linux.AppImage"), a("Game-2.0-symbols.zip"), a("Source code.zip")];
-        assert_eq!(pick(&r, "windows", "x64", Some("Game-1.*-Windows.zip")).unwrap().name, "Game-2.0-win64.zip");
+        // The list says what the Windows file is called and this release has none: no build here
+        // (an older release that has one is installed instead). Without a pattern, the best guess.
+        assert!(pick(&r, "windows", "x64", Some("Game-1.*-Windows.zip")).is_none());
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "Game-2.0-win64.zip");
         assert_eq!(pick(&r, "linux", "x64", None).unwrap().name, "Game-2.0-linux.AppImage");
+    }
+
+    #[test]
+    fn console_and_phone_builds_are_never_for_a_pc() {
+        // Only a Switch build in the newest release, and the list's pattern matches nothing.
+        assert!(pick(&[a("Marchwind64-0.5.3.1-switch.zip")], "windows", "x64", Some("Marchwind64-*-windows-x64.zip")).is_none());
+        assert!(pick(&[a("Marchwind64-0.5.3.1-switch.zip")], "windows", "x64", None).is_none());
+        assert!(pick(&[a("Marchwind64-0.5.3.1-switch.zip")], "linux", "x64", None).is_none());
+        let r = [a("Game-1.0-android-arm64.apk"), a("Game-1.0-windows-x64.zip")];
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "Game-1.0-windows-x64.zip");
+        assert_eq!(all_for(&[a("Game-1.0-ps5.zip"), a("Game-1.0-win64.zip")], "windows", "x64", None).len(), 1);
+        assert!(choices(&[a("Game-v2-nx.zip")], "windows", "x64", None).is_empty());
+        // Console words in a game's own name are its name, not a platform.
+        assert_eq!(pick(&[a("Xbox 360 Something-windows.zip")], "windows", "x64", None).unwrap().name, "Xbox 360 Something-windows.zip");
+        assert_eq!(pick(&[a("Wii Sports Recomp-1.2-windows-x64.zip")], "windows", "x64", None).unwrap().name, "Wii Sports Recomp-1.2-windows-x64.zip");
+        assert_eq!(pick(&[a("PS2 Racer 2.0-win64.zip")], "windows", "x64", None).unwrap().name, "PS2 Racer 2.0-win64.zip");
+        // A later version word isn't a platform: xbox360 as one word stays in.
+        assert_eq!(pick(&[a("Game-1.0-xbox360-windows.zip")], "windows", "x64", None).unwrap().name, "Game-1.0-xbox360-windows.zip");
     }
 
     #[test]

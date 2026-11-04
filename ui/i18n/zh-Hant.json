@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Microsoft 的下載伺服器沒有如預期回應。請稍後再試，或從 microsoft.com 取得。",
  "The installer was cancelled.": "安裝程式已取消。",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Visual C++ 安裝程式沒有完成。請從 microsoft.com 執行它，看看是什麼原因。",
- "A site took too long to answer. Try again in a minute.": "某個網站回應太久。請一分鐘後再試。"
+ "A site took too long to answer. Try again in a minute.": "某個網站回應太久。請一分鐘後再試。",
+ "Graphics Mode": "圖形模式",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "啟動器繪製視窗的方式。「更快」更流暢；「更穩」可修正視窗空白或閃爍。下次開啟啟動器時生效。",
+ "Faster": "更快",
+ "Safer": "更穩",
+ "Play Both": "兩個都玩",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "當機發生在模組（{mod}）中，而不是遊戲本身。請關閉或更新該模組，然後再玩。",
+ "Graphics Mode changes the next time the launcher opens.": "圖形模式會在下次開啟啟動器時變更。"
 }

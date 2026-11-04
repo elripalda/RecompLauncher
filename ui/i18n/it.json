@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Il download di Microsoft non ha risposto come previsto. Riprova più tardi, o scaricalo da microsoft.com.",
  "The installer was cancelled.": "Il programma di installazione è stato annullato.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Il programma di installazione di Visual C++ non è stato completato. Avvialo da microsoft.com per vedere perché.",
- "A site took too long to answer. Try again in a minute.": "Un sito ha impiegato troppo a rispondere. Riprova tra un minuto."
+ "A site took too long to answer. Try again in a minute.": "Un sito ha impiegato troppo a rispondere. Riprova tra un minuto.",
+ "Graphics Mode": "Modalità grafica",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "Come il launcher disegna la sua finestra. «Più veloce» è più fluido; «Più sicuro» risolve una finestra vuota o che sfarfalla. Vale dalla prossima apertura del launcher.",
+ "Faster": "Più veloce",
+ "Safer": "Più sicuro",
+ "Play Both": "Gioca a entrambi",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Si è bloccato dentro una mod ({mod}), non nel gioco stesso. Disattiva quella mod o aggiornala, poi gioca di nuovo.",
+ "Graphics Mode changes the next time the launcher opens.": "La modalità grafica cambia alla prossima apertura del launcher."
 }

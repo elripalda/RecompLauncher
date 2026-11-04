@@ -89,7 +89,7 @@ pub fn clean_tokio(c: &mut tokio::process::Command) {
 /// launcher's web view can crash on, so it starts itself again without them; and under Gaming
 /// Mode's compositor the web view draws with a renderer that works there.
 #[cfg(target_os = "linux")]
-pub fn prepare_start() {
+pub fn prepare_start(data: Option<std::path::PathBuf>) {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
     let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
@@ -97,8 +97,18 @@ pub fn prepare_start() {
     // renderer most often leaves the window blank, so those get the one that works everywhere.
     let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
     let appimage = std::env::var_os("APPIMAGE").is_some();
-    if (gamescope || from_steam || nvidia || appimage) && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    // The player's choice in Settings → Appearance wins over the guess; their own variables win over both.
+    let mode = data.map(|d| graphics_mode(&d)).unwrap_or_default();
+    let safe_way = match mode.as_str() {
+        "fast" => false,
+        "safe" => true,
+        _ => gamescope || from_steam || nvidia || appimage,
+    };
+    if safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if mode == "safe" && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
     if std::env::var_os("RL_STEAM_CLEAN").is_some() {
         return;
@@ -122,6 +132,16 @@ pub fn prepare_start() {
         // Only returns when it couldn't start again; then it carries on as it is.
         let _ = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
     }
+}
+
+/// Settings → Appearance → Graphics Mode, read from library.json before the window opens.
+#[cfg(target_os = "linux")]
+fn graphics_mode(data: &std::path::Path) -> String {
+    std::fs::read(data.join("library.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v.pointer("/settings/linux_graphics").and_then(|m| m.as_str()).map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// A list of paths (or preloads) without Steam's own entries.

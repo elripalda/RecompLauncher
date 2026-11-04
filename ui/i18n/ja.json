@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Microsoft のダウンロードから想定どおりの応答がありませんでした。しばらくしてからもう一度試すか、microsoft.com から入手してください。",
  "The installer was cancelled.": "インストーラーがキャンセルされました。",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Visual C++ のインストーラーが完了しませんでした。理由を確かめるには、microsoft.com から実行してください。",
- "A site took too long to answer. Try again in a minute.": "サイトの応答に時間がかかりすぎました。1 分ほどしてからもう一度お試しください。"
+ "A site took too long to answer. Try again in a minute.": "サイトの応答に時間がかかりすぎました。1 分ほどしてからもう一度お試しください。",
+ "Graphics Mode": "グラフィックモード",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "ランチャーのウィンドウの描画方法です。「高速」はより滑らかに、「安全」はウィンドウが真っ白になったりちらついたりする場合に効果があります。次にランチャーを開いたときから反映されます。",
+ "Faster": "高速",
+ "Safer": "安全",
+ "Play Both": "両方プレイ",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "MOD（{mod}）の中でクラッシュしました。ゲーム本体の問題ではありません。その MOD をオフにするかアップデートしてから、もう一度プレイしてください。",
+ "Graphics Mode changes the next time the launcher opens.": "グラフィックモードは次にランチャーを開いたときに切り替わります。"
 }

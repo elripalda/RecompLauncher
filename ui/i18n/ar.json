@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "لم يستجب تنزيل Microsoft كما هو متوقع. حاول مرة أخرى لاحقًا، أو نزّله من microsoft.com.",
  "The installer was cancelled.": "تم إلغاء برنامج التثبيت.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "لم يكتمل برنامج تثبيت Visual C++. شغّله من microsoft.com لمعرفة السبب.",
- "A site took too long to answer. Try again in a minute.": "استغرق أحد المواقع وقتًا طويلًا للاستجابة. حاول مرة أخرى بعد دقيقة."
+ "A site took too long to answer. Try again in a minute.": "استغرق أحد المواقع وقتًا طويلًا للاستجابة. حاول مرة أخرى بعد دقيقة.",
+ "Graphics Mode": "وضع الرسومات",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "طريقة رسم المشغّل لنافذته. «أسرع» أكثر سلاسة، و«أكثر أمانًا» يصلح النافذة الفارغة أو الوامضة. يسري في المرة القادمة التي يُفتح فيها المشغّل.",
+ "Faster": "أسرع",
+ "Safer": "أكثر أمانًا",
+ "Play Both": "العب كلتيهما",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "تعطّلت اللعبة داخل تعديل ({mod})، وليس في اللعبة نفسها. أوقف هذا التعديل أو حدّثه، ثم العب مجددًا.",
+ "Graphics Mode changes the next time the launcher opens.": "يتغيّر وضع الرسومات في المرة القادمة التي يُفتح فيها المشغّل."
 }

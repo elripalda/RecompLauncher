@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "เซิร์ฟเวอร์ดาวน์โหลดของ Microsoft ไม่ตอบกลับตามที่ควร ลองอีกครั้งภายหลัง หรือดาวน์โหลดจาก microsoft.com",
  "The installer was cancelled.": "ยกเลิกตัวติดตั้งแล้ว",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "ตัวติดตั้ง Visual C++ ทำงานไม่เสร็จ เปิดตัวติดตั้งจาก microsoft.com เพื่อดูสาเหตุ",
- "A site took too long to answer. Try again in a minute.": "เว็บไซต์ตอบกลับช้าเกินไป ลองอีกครั้งในอีกสักนาที"
+ "A site took too long to answer. Try again in a minute.": "เว็บไซต์ตอบกลับช้าเกินไป ลองอีกครั้งในอีกสักนาที",
+ "Graphics Mode": "โหมดกราฟิก",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "วิธีที่ตัวเปิดเกมวาดหน้าต่างของตัวเอง เร็วขึ้น จะลื่นกว่า ส่วน ปลอดภัยกว่า จะแก้หน้าต่างว่างเปล่าหรือกะพริบ มีผลเมื่อเปิดตัวเปิดเกมครั้งถัดไป",
+ "Faster": "เร็วขึ้น",
+ "Safer": "ปลอดภัยกว่า",
+ "Play Both": "เล่นทั้งสองเกม",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "เกมแครชภายในม็อด ({mod}) ไม่ใช่ตัวเกมเอง ปิดหรืออัปเดตม็อดนั้น แล้วเล่นอีกครั้ง",
+ "Graphics Mode changes the next time the launcher opens.": "โหมดกราฟิกจะเปลี่ยนเมื่อเปิดตัวเปิดเกมครั้งถัดไป"
 }

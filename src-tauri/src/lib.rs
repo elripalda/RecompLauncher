@@ -176,6 +176,17 @@ async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>
     }
 }
 
+/// The release the store checked and let out for a recomp (its "tag" in the list), if it says.
+fn catalog_tag(entry: &Value) -> Option<String> {
+    entry.get("tag").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
+}
+
+/// The same release name, give or take a leading "v" and letter case.
+fn same_tag(a: &str, b: &str) -> bool {
+    let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).trim_start_matches('.').to_ascii_lowercase();
+    !a.trim().is_empty() && n(a) == n(b)
+}
+
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -199,8 +210,20 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             || (os0 == "linux" && r.assets.iter().any(|a| { let n = a.name.to_lowercase(); (n.contains("linux") || n.ends_with(".appimage")) && assets::pick(std::slice::from_ref(a), "linux", assets::arch_now(), None).is_some() }))
     };
     let mut fell_back = false;
+    // The release the store checked and let out (the list's "tag"): that one, unless the player
+    // picked a version. When it's gone from GitHub or has nothing for this system, the usual rules.
+    let listed = catalog_tag(&entry).and_then(|t| rels.iter().find(|r| !r.draft && same_tag(&r.tag_name, &t))).filter(|r| has_build(r));
+    if let (None, Some(r)) = (&tag, listed) {
+        if r.tag_name != newest.tag_name {
+            trail::note(format!("Install {id}: {} is the version the store let out", r.tag_name));
+        }
+    }
     let rel = match &tag {
         Some(t) => rels.iter().find(|r| &r.tag_name == t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
+        None if listed.is_some() => {
+            fell_back = true;
+            listed.unwrap()
+        }
         None if !has_build(newest) => match rels.iter().filter(|r| !r.draft && (!r.prerelease || newest.prerelease)).find(|r| has_build(r)) {
             Some(r) => {
                 trail::note(format!("Install {id}: {} has no build for this PC, so {} instead", newest.tag_name, r.tag_name));
@@ -1621,14 +1644,31 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     };
     let g = st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     // Set Up By Hand: the player's own way, instead of the launcher's.
-    let manual = g.manual.clone();
+    let mut manual = g.manual.clone();
+    // A game whose release is its installer, with a new version to build: its setup runs even when
+    // it's set up by hand (that only says how it starts). A program picked by hand in what the
+    // setup leaves behind while it builds (a temp folder) is let go: the setup finds the new one.
+    let installer = boot::of(&st.dir, id).map(|b| b.is_installer()).unwrap_or(false);
+    let rebuild = installer && manual.is_some() && !g.setup_done && g.setup.is_some();
+    if rebuild {
+        let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit('/').next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
+        let leftover = manual.as_ref().and_then(|m| m.exe.as_ref()).map(|e| { let rel = e.strip_prefix(&g.path).unwrap_or(e); install::looks_like_tool(rel, &names) }).unwrap_or(false);
+        if leftover && manual.as_ref().map(|m| m.how == "none" || m.how.is_empty()).unwrap_or(false) {
+            trail::note(format!("Play {id}: set up by hand on a program in its setup's leftovers; the setup builds the new version and the launcher finds it"));
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                x.manual = None;
+            }
+            st.save();
+            manual = None;
+        }
+    }
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
     let prof = if manual.is_some() { None } else { profile_of(&st, id, &g) };
     // Its own installer or first-time setup, the first time: that opens instead of the game.
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
     // still runs the release's setup first.)
-    if manual.is_none() && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
+    if (manual.is_none() || rebuild) && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
         if let Some(setup) = own_setup::pending(&st, id, &g) {
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
@@ -4175,8 +4215,24 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
                 g.tag = tag;
             }
         }
+        let os_g = if g.proton { "windows" } else { assets::os_now() };
+        let entry = catalog::app(&cat, &g.id);
+        let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
+        // The store says which release is out (the list's "tag"): an update only when that changes
+        // to one newer than what's installed. Releases the store is still checking wait on purpose.
+        if let Some(t) = entry.and_then(catalog_tag) {
+            let at = |tag: &str| rels.iter().position(|r| same_tag(&r.tag_name, tag));
+            if let Some(i) = at(&t) {
+                let r = &rels[i];
+                let newer = at(&g.tag).map(|j| i < j).unwrap_or(true);
+                if !g.pinned && !same_tag(&r.tag_name, &g.tag) && newer && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
+                    out.insert(g.id.clone(), r.tag_name.clone());
+                }
+                continue;
+            }
+        }
         if let Some(r) = catalog::latest_for(&rels, &g.tag) {
-            if !g.pinned && r.tag_name != g.tag && assets::pick(&r.assets, if g.proton { "windows" } else { assets::os_now() }, assets::arch_now(), None).is_some() {
+            if !g.pinned && r.tag_name != g.tag && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
                 out.insert(g.id.clone(), r.tag_name.clone());
             }
         }
@@ -4871,8 +4927,21 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     if attach {
         let dir = st.dir.clone();
         let pc = tokio::task::spawn_blocking(move || usage::pc_info(&dir)).await.unwrap_or_default();
+        // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
+        let drawing = if cfg!(target_os = "linux") {
+            let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
+            let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
+            format!(
+                "Graphics mode: {}{}{}\n",
+                if mode.is_empty() { "auto" } else { &mode },
+                if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
+                if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
+            )
+        } else {
+            String::new()
+        };
         let mut txt = format!(
-            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n\nInstalled games:\n",
+            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
             env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
         );
         {
@@ -5568,7 +5637,7 @@ fn wait_for_play(args: &[String]) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
-    sysenv::prepare_start();
+    sysenv::prepare_start(data_dir_early());
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
         return;
     }

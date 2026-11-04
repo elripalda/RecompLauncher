@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Сервер завантажень Microsoft відповів не так, як очікувалося. Спробуй пізніше або завантаж його з microsoft.com.",
  "The installer was cancelled.": "Встановлення скасовано.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Інсталятор Visual C++ не завершив роботу. Запусти його з microsoft.com, щоб побачити чому.",
- "A site took too long to answer. Try again in a minute.": "Сайт надто довго не відповідав. Спробуй ще раз за хвилину."
+ "A site took too long to answer. Try again in a minute.": "Сайт надто довго не відповідав. Спробуй ще раз за хвилину.",
+ "Graphics Mode": "Графічний режим",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "Як лаунчер малює своє вікно. «Швидше» — плавніше, «Надійніше» допомагає, якщо вікно порожнє або мерехтить. Діє з наступного запуску лаунчера.",
+ "Faster": "Швидше",
+ "Safer": "Надійніше",
+ "Play Both": "Грати в обидві",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Збій стався всередині мода ({mod}), а не в самій грі. Вимкни цей мод або онови його, а потім грай знову.",
+ "Graphics Mode changes the next time the launcher opens.": "Графічний режим зміниться під час наступного запуску лаунчера."
 }

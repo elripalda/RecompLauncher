@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Microsoft'un indirme sunucusu beklenen yanıtı vermedi. Daha sonra tekrar deneyin ya da microsoft.com'dan indirin.",
  "The installer was cancelled.": "Kurulum programı iptal edildi.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Visual C++ kurulum programı tamamlanmadı. Nedenini görmek için onu microsoft.com'dan çalıştırın.",
- "A site took too long to answer. Try again in a minute.": "Bir site yanıt vermekte çok gecikti. Bir dakika sonra yeniden deneyin."
+ "A site took too long to answer. Try again in a minute.": "Bir site yanıt vermekte çok gecikti. Bir dakika sonra yeniden deneyin.",
+ "Graphics Mode": "Grafik Modu",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "Başlatıcının penceresini nasıl çizdiği. Daha Hızlı daha akıcıdır; Daha Güvenli boş veya titreyen bir pencereyi düzeltir. Başlatıcının bir sonraki açılışında geçerli olur.",
+ "Faster": "Daha Hızlı",
+ "Safer": "Daha Güvenli",
+ "Play Both": "İkisini de Oyna",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Oyunun kendisi değil, bir mod ({mod}) içinde çöktü. O modu kapatın veya güncelleyin, sonra yeniden oynayın.",
+ "Graphics Mode changes the next time the launcher opens.": "Grafik Modu, başlatıcının bir sonraki açılışında değişir."
 }

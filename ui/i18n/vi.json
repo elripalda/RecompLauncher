@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Máy chủ tải xuống của Microsoft phản hồi không như mong đợi. Hãy thử lại sau, hoặc tải từ microsoft.com.",
  "The installer was cancelled.": "Trình cài đặt đã bị hủy.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Trình cài đặt Visual C++ chưa hoàn tất. Hãy chạy nó từ microsoft.com để xem lý do.",
- "A site took too long to answer. Try again in a minute.": "Một trang web phản hồi quá lâu. Hãy thử lại sau một phút."
+ "A site took too long to answer. Try again in a minute.": "Một trang web phản hồi quá lâu. Hãy thử lại sau một phút.",
+ "Graphics Mode": "Chế độ đồ họa",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "Cách trình khởi chạy vẽ cửa sổ của nó. Nhanh hơn thì mượt hơn; An toàn hơn sửa cửa sổ trống hoặc nhấp nháy. Có hiệu lực từ lần mở trình khởi chạy tiếp theo.",
+ "Faster": "Nhanh hơn",
+ "Safer": "An toàn hơn",
+ "Play Both": "Chơi cả hai",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Lỗi xảy ra bên trong mod ({mod}), không phải ở chính trò chơi. Hãy tắt hoặc cập nhật mod đó rồi chơi lại.",
+ "Graphics Mode changes the next time the launcher opens.": "Chế độ đồ họa sẽ thay đổi vào lần mở trình khởi chạy tiếp theo."
 }

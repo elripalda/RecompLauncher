@@ -233,6 +233,10 @@ pub struct Settings {
     /// handhelds, off otherwise.
     #[serde(default)]
     pub lighter: Option<bool>,
+    /// Linux: how the launcher's window is drawn. "fast" (the graphics card's quickest way),
+    /// "safe" (the way that works everywhere) or empty (picked for this PC). Read at start.
+    #[serde(default)]
+    pub linux_graphics: String,
 }
 
 fn yes() -> bool {
@@ -278,6 +282,7 @@ impl Default for Settings {
             quick_menu: true,
             minimize_playing: None,
             lighter: None,
+            linux_graphics: String::new(),
         }
     }
 }

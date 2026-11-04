@@ -98,7 +98,88 @@ fn read_pc() -> PcInfo {
 fn read_pc() -> PcInfo {
     let cpu = std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| s.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split(':').nth(1)).map(|x| x.trim().to_string())).unwrap_or_default();
     let ram_gb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| s.lines().next().and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok())).map(|k| ((k as f64) / 1048576.0).round() as u32).unwrap_or(0);
-    PcInfo { osver: std::env::consts::OS.into(), cpu, cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(0), ram_gb, ..Default::default() }
+    // The system's own name ("SteamOS 3.7", "Ubuntu 24.04 LTS"), not just "linux".
+    let osver = std::fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim().trim_matches('"').to_string())))
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| std::env::consts::OS.into());
+    let (gpu, gpu_driver) = linux_gpu();
+    PcInfo { osver, cpu, cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(0), ram_gb, gpu, gpu_driver }
+}
+
+/// The graphics card on Linux, from /sys (no tools needed): NVIDIA, then AMD, then Intel, then
+/// any other, skipping a virtual machine's. Named from the system's PCI list when it has one.
+#[cfg(not(windows))]
+fn linux_gpu() -> (String, String) {
+    let rd = |p: &Path| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
+    let mut cards: Vec<(u32, String, String, String)> = vec![];
+    for e in std::fs::read_dir("/sys/class/drm").into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if !(n.starts_with("card") && n[4..].chars().all(|c| c.is_ascii_digit()) && n.len() > 4) {
+            continue;
+        }
+        let dev = e.path().join("device");
+        let (vendor, device) = (rd(&dev.join("vendor")), rd(&dev.join("device")));
+        let hex = |s: &str| s.trim_start_matches("0x").to_ascii_lowercase();
+        let (vendor, device) = (hex(&vendor), hex(&device));
+        if vendor.is_empty() {
+            continue;
+        }
+        let driver = std::fs::read_link(dev.join("driver")).ok().and_then(|l| l.file_name().map(|f| f.to_string_lossy().to_string())).unwrap_or_default();
+        let rank = match vendor.as_str() { "10de" => 0, "1002" => 1, "8086" => 2, "1af4" | "15ad" | "1234" | "80ee" | "1b36" => 9, _ => 3 };
+        if !cards.iter().any(|c| c.1 == vendor && c.2 == device) {
+            cards.push((rank, vendor, device, driver));
+        }
+    }
+    cards.sort_by_key(|c| c.0);
+    let Some((_, vendor, device, driver)) = cards.into_iter().next() else { return (String::new(), String::new()) };
+    let maker = match vendor.as_str() { "10de" => "NVIDIA", "1002" => "AMD", "8086" => "Intel", _ => "" };
+    // NVIDIA's own driver names the card and its version.
+    let nv_model = || {
+        std::fs::read_dir("/proc/driver/nvidia/gpus").ok()?.flatten().find_map(|g| {
+            rd(&g.path().join("information")).lines().find_map(|l| l.strip_prefix("Model:").map(|m| m.trim().to_string())).filter(|m| !m.is_empty())
+        })
+    };
+    let name = (vendor == "10de").then(nv_model).flatten().or_else(|| pci_name(&vendor, &device).map(|n| if maker.is_empty() || n.to_lowercase().contains(&maker.to_lowercase()) { n } else { format!("{maker} {n}") })).unwrap_or_else(|| if maker.is_empty() { format!("GPU {vendor}:{device}") } else { format!("{maker} GPU ({device})") });
+    let version = if driver == "nvidia" {
+        rd(Path::new("/proc/driver/nvidia/version")).lines().next().and_then(|l| l.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit()) && w.contains('.'))).map(str::to_string).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    (name, [driver, version].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" "))
+}
+
+/// A card's name from the system's PCI list ("VanGogh [AMD Custom GPU 0405]" → "AMD Custom GPU 0405").
+#[cfg(not(windows))]
+fn pci_name(vendor: &str, device: &str) -> Option<String> {
+    let list = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"].iter().find_map(|p| std::fs::read_to_string(p).ok())?;
+    pci_lookup(&list, vendor, device)
+}
+
+#[cfg(any(not(windows), test))]
+fn pci_lookup(list: &str, vendor: &str, device: &str) -> Option<String> {
+    let mut inside = false;
+    for l in list.lines() {
+        if l.starts_with('#') || l.is_empty() {
+            continue;
+        }
+        if !l.starts_with('\t') {
+            if inside {
+                return None;
+            }
+            inside = l.get(..4).is_some_and(|v| v.eq_ignore_ascii_case(vendor));
+        } else if inside && !l.starts_with("\t\t") {
+            let l = &l[1..];
+            if l.get(..4).is_some_and(|d| d.eq_ignore_ascii_case(device)) {
+                let n = l[4..].trim();
+                // The marketing name is in brackets when there is one.
+                let shown = n.rfind('[').and_then(|a| n[a + 1..].find(']').map(|b| n[a + 1..a + 1 + b].to_string())).filter(|x| !x.trim().is_empty()).unwrap_or_else(|| n.to_string());
+                return Some(shown.trim().to_string());
+            }
+        }
+    }
+    None
 }
 
 /// The PC (asked of Windows once a day, kept in cache/pcinfo.json).
@@ -106,7 +187,8 @@ pub fn pc_info(dir: &Path) -> PcInfo {
     let f = dir.join("cache/pcinfo.json");
     let fresh = std::fs::metadata(&f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() < 86400).unwrap_or(false);
     if fresh {
-        if let Some(p) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<PcInfo>(&b).ok()) {
+        // Linux didn't know its graphics card before, so a saved one without it is asked again.
+        if let Some(p) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<PcInfo>(&b).ok()).filter(|p| !p.gpu.is_empty() || !cfg!(target_os = "linux")) {
             return p;
         }
     }
@@ -267,4 +349,20 @@ pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Optio
     }))
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pci_lookup;
+
+    #[test]
+    fn a_graphics_card_is_named_from_the_pci_list() {
+        let list = "# comment\n1002  Advanced Micro Devices, Inc. [AMD/ATI]\n\t163f  VanGogh [AMD Custom GPU 0405]\n\t\t1002 0123  Some subsystem\n\t73df  Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]\n10de  NVIDIA Corporation\n\t2504  GA106 [GeForce RTX 3060 Lite Hash Rate]\n\t1234  Plain Name\n8086  Intel Corporation\n\t163f  Not this one\n";
+        assert_eq!(pci_lookup(list, "1002", "163f").as_deref(), Some("AMD Custom GPU 0405"));
+        assert_eq!(pci_lookup(list, "1002", "73DF").as_deref(), Some("Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT"));
+        assert_eq!(pci_lookup(list, "10de", "2504").as_deref(), Some("GeForce RTX 3060 Lite Hash Rate"));
+        assert_eq!(pci_lookup(list, "10de", "1234").as_deref(), Some("Plain Name"));
+        assert_eq!(pci_lookup(list, "1002", "0123"), None);
+        assert_eq!(pci_lookup(list, "8086", "9999"), None);
+    }
 }

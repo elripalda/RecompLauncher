@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Unduhan Microsoft tidak menjawab seperti yang diharapkan. Coba lagi nanti, atau ambil dari microsoft.com.",
  "The installer was cancelled.": "Penginstal dibatalkan.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Penginstal Visual C++ tidak selesai. Jalankan dari microsoft.com untuk melihat penyebabnya.",
- "A site took too long to answer. Try again in a minute.": "Sebuah situs terlalu lama menjawab. Coba lagi semenit lagi."
+ "A site took too long to answer. Try again in a minute.": "Sebuah situs terlalu lama menjawab. Coba lagi semenit lagi.",
+ "Graphics Mode": "Mode Grafis",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "Cara launcher menggambar jendelanya. Lebih Cepat lebih mulus; Lebih Aman memperbaiki jendela yang kosong atau berkedip. Berlaku saat launcher dibuka berikutnya.",
+ "Faster": "Lebih Cepat",
+ "Safer": "Lebih Aman",
+ "Play Both": "Mainkan Keduanya",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Game crash di dalam mod ({mod}), bukan di game-nya sendiri. Matikan atau perbarui mod itu, lalu main lagi.",
+ "Graphics Mode changes the next time the launcher opens.": "Mode Grafis berubah saat launcher dibuka berikutnya."
 }

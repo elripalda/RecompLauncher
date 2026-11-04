@@ -1932,5 +1932,12 @@
  "Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.": "Microsoft 다운로드가 예상대로 응답하지 않았습니다. 나중에 다시 시도하거나 microsoft.com에서 받으세요.",
  "The installer was cancelled.": "설치 프로그램이 취소되었습니다.",
  "The Visual C++ installer didn't finish. Run it from microsoft.com to see why.": "Visual C++ 설치 프로그램이 끝나지 않았습니다. 이유를 확인하려면 microsoft.com에서 받아 실행하세요.",
- "A site took too long to answer. Try again in a minute.": "사이트 응답이 너무 오래 걸렸습니다. 1분 뒤 다시 시도하세요."
+ "A site took too long to answer. Try again in a minute.": "사이트 응답이 너무 오래 걸렸습니다. 1분 뒤 다시 시도하세요.",
+ "Graphics Mode": "그래픽 모드",
+ "How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.": "런처가 창을 그리는 방식입니다. 더 빠르게는 더 부드럽고, 더 안전하게는 창이 비거나 깜빡이는 문제를 해결합니다. 다음에 런처를 열 때 적용됩니다.",
+ "Faster": "더 빠르게",
+ "Safer": "더 안전하게",
+ "Play Both": "둘 다 플레이",
+ "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "게임이 아니라 모드({mod}) 안에서 충돌했습니다. 그 모드를 끄거나 업데이트한 다음 다시 플레이하세요.",
+ "Graphics Mode changes the next time the launcher opens.": "그래픽 모드는 다음에 런처를 열 때 바뀝니다."
 }
