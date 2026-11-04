@@ -334,7 +334,8 @@
 
   // The main button: Play, Install, Update, a download's progress, or Back to the game.
   // Setup Required: a yellow badge on the cover until the player says it's set up.
-  const sreqBadge = (a) => needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
+  // Only on a game in the player's Library, as a to-do: nothing that reads as a warning on the rest.
+  const sreqBadge = (a) => S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
   // What a Setup Required recomp needs before it plays, as a sheet: its developer's steps, the
   // README, its folder, and Done, Play (after which Play is back for good).
   function tvSetupReq(id) {
@@ -442,7 +443,7 @@
     if (mine.length) return { list: mine.slice(0, DOCK_MAX), kind: 'mine' };
     // Nothing installed yet: the games picked for the top of Home, in their order.
     const picked = window.bannerApps && bannerApps();
-    return picked ? { list: picked, kind: 'banner' } : { list: oneEach(pool().sort(byDl)).slice(0, 10), kind: 'top' };
+    return picked ? { list: turnkeyFirst(picked), kind: 'banner' } : { list: turnkeyFirst(oneEach(pool().sort(byDl)).slice(0, 10)), kind: 'top' };
   }
   function pageHome() {
     const d = dockList(), list = d.list;
@@ -454,13 +455,15 @@
     const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !haveAny(a)).sort(byDl));
     if (owned.length) rows.push(row('own', t('Found in your folders'), owned.map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
+    const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
+    if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
     if (disc.length >= 2) rows.push(row('disc', t('Drop in your disc'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
     const upd = recentlyUpdated(pool()).slice(0, 14);
     if (upd.length) rows.push(row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')));
-    rows.push(row('new', t('Just added'), oneEach(pool().sort(byNew), true).slice(0, 14).map((a) => poster(a, 'n:' + a.id)).join('')));
-    if (d.kind !== 'top') rows.push(row('top', t('Most played'), oneEach(pool().sort(byDl)).slice(0, 14).map((a) => poster(a, 't:' + a.id)).join('')));
+    rows.push(row('new', t('Just added'), turnkeyFirst(oneEach(pool().sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
+    if (d.kind !== 'top') rows.push(row('top', t('Most played'), turnkeyFirst(oneEach(pool().sort(byDl)).slice(0, 14)).map((a) => poster(a, 't:' + a.id)).join('')));
     // Covers: every game in the dock fits across, smaller when there are more of them. Wide
     // pictures: as many as fit, and the row slides.
     const wide = (S.settings.ui || {}).tv_dock === 'wide';
@@ -877,7 +880,7 @@
       { label: t('Show'), sub: t((SHOWS.find(([k]) => k === (TV.dshow || '')) || SHOWS[0])[1]), icon: 'layers', run: pickShow },
       { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
       { label: t('Search'), sub: TV.dq ? TV.dq : t('Find a game by name'), icon: 'search', run: tvSearch },
-      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dsort = 'popular'; TV.genre = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dsort = ''; TV.genre = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
     ]);
   }
   // Search with the controller: an on-screen keyboard (a keyboard types straight in too). The games
@@ -921,16 +924,18 @@
     // Search, a console and the order narrow it further (Sort & Filter).
     const q = fold((TV.dq || '').trim()), org = TV.dorigin || '', srt = TV.dsort || 'popular';
     const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDl;
-    const list = oneEach(apps.filter((a) => (g === 'easy' ? S.easy.has(a.id) && !a.soon : g === 'mp' ? isMulti(a) : !g || a.genre === g))
+    const found = oneEach(apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)))
       .filter((a) => !q || fold(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`).includes(q))
       .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y)), srt === 'new');
+    // Discover's own order (no sort picked): turnkey recomps first.
+    const list = TV.dsort ? found : turnkeyFirst(found);
     const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
-    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some((a) => S.easy.has(a.id)) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
+    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), list.length === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: list.length, os: OS_NAME[S.os] }))}${chips}
         <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>`)}

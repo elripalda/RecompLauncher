@@ -1939,5 +1939,9 @@
  "Safer": "安全",
  "Play Both": "両方プレイ",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "MOD（{mod}）の中でクラッシュしました。ゲーム本体の問題ではありません。その MOD をオフにするかアップデートしてから、もう一度プレイしてください。",
- "Graphics Mode changes the next time the launcher opens.": "グラフィックモードは次にランチャーを開いたときに切り替わります。"
+ "Graphics Mode changes the next time the launcher opens.": "グラフィックモードは次にランチャーを開いたときに切り替わります。",
+ "Ready to Play": "すぐにプレイ",
+ "The launcher sets these up for you. No extra steps.": "ランチャーが設定まで済ませます。追加の手順はありません。",
+ "Show the AI-assisted tag": "「AI 使用」タグを表示",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "ゲームページのタグです。開発者が AI を何に使ったかは、いつでもゲームの「概要」で確認できます。"
 }

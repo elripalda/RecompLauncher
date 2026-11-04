@@ -1939,5 +1939,9 @@
  "Safer": "더 안전하게",
  "Play Both": "둘 다 플레이",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "게임이 아니라 모드({mod}) 안에서 충돌했습니다. 그 모드를 끄거나 업데이트한 다음 다시 플레이하세요.",
- "Graphics Mode changes the next time the launcher opens.": "그래픽 모드는 다음에 런처를 열 때 바뀝니다."
+ "Graphics Mode changes the next time the launcher opens.": "그래픽 모드는 다음에 런처를 열 때 바뀝니다.",
+ "Ready to Play": "바로 플레이",
+ "The launcher sets these up for you. No extra steps.": "런처가 대신 설정해 줍니다. 추가 단계가 없습니다.",
+ "Show the AI-assisted tag": "AI 활용 태그 표시",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "게임 페이지의 태그입니다. 개발자가 AI를 어디에 썼는지는 언제든 게임의 개요에서 볼 수 있습니다."
 }

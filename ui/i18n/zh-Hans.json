@@ -1939,5 +1939,9 @@
  "Safer": "更稳",
  "Play Both": "两个都玩",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "崩溃发生在模组（{mod}）中，而不是游戏本身。请关闭或更新该模组，然后再玩。",
- "Graphics Mode changes the next time the launcher opens.": "图形模式将在下次打开启动器时更改。"
+ "Graphics Mode changes the next time the launcher opens.": "图形模式将在下次打开启动器时更改。",
+ "Ready to Play": "即刻畅玩",
+ "The launcher sets these up for you. No extra steps.": "启动器会为你设置好，无需额外步骤。",
+ "Show the AI-assisted tag": "显示“AI 辅助”标签",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "游戏页面上的标签。开发者将 AI 用于哪些方面，始终可以在游戏的“概览”中看到。"
 }

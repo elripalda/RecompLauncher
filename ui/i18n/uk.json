@@ -1939,5 +1939,9 @@
  "Safer": "Надійніше",
  "Play Both": "Грати в обидві",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Збій стався всередині мода ({mod}), а не в самій грі. Вимкни цей мод або онови його, а потім грай знову.",
- "Graphics Mode changes the next time the launcher opens.": "Графічний режим зміниться під час наступного запуску лаунчера."
+ "Graphics Mode changes the next time the launcher opens.": "Графічний режим зміниться під час наступного запуску лаунчера.",
+ "Ready to Play": "Готово до гри",
+ "The launcher sets these up for you. No extra steps.": "Лаунчер налаштує їх за тебе. Без зайвих кроків.",
+ "Show the AI-assisted tag": "Показувати мітку «За допомогою ШІ»",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "Мітка на сторінках ігор. Для чого розробник використав ШІ, завжди є в «Огляді» гри."
 }

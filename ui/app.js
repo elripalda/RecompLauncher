@@ -126,6 +126,12 @@ function based(a) { return a.game ? `<div class="based">${DISC_S}<span>${htmlFil
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
 const needsSetup = (a) => !!(a && a.setup_required);
+// Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
+// files where the game reads them), with no setup steps on its first start.
+const TURNKEY_HOW = ['folder', 'flag', 'setup'];
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.id) || TURNKEY_HOW.includes(String((((a.boot) || (S.bootBuiltin || {})[a.id] || {}).files || {}).how || '')));
+// Turnkey recomps first, each group in the order it had. Nothing is left out.
+const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
 // Text Size: the whole window zoomed, like a browser's zoom, and kept for next time.
 const UI_SCALES = [0.9, 1, 1.1, 1.25, 1.5];
@@ -539,8 +545,9 @@ function poster(a, mine, inst, wide) {
           : !S.library[a.id] && isSaved(a.id) && !mine ? `<span class="badge tl lib">${esc(t('In Library'))}</span>`
             : own ? `<span class="badge tl">${esc(t('You have it'))}</span>` : '';
   const lb = S.library[a.id] && S.library[a.id].local ? `<span class="badge tl dev">${esc(S.library[a.id].tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '';
-  const easy = needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="badge easy setupreq">${WRENCH.replace(/18/g, '13')}${esc(t('Setup Required'))}</span>`
-    : !S.library[a.id] && S.easy.has(a.id) && !a.soon ? `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '';
+  // Easy Setup on turnkey recomps. Setup Required only on a game in the player's Library, as a to-do.
+  const easy = S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="badge easy setupreq">${WRENCH.replace(/18/g, '13')}${esc(t('Setup Required'))}</span>`
+    : !S.library[a.id] && turnkey(a) ? `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '';
   const prog = job ? `<span class="bar-p"><i data-prog-bar="${esc(a.id)}" style="width:${pct(job)}%"></i></span>` : '';
   const vg = !mine && !prog && verGroup(a);
   const vers = vg ? `<span class="badge vers" title="${esc(tn(vg.list.length, '1 version', '{n} versions'))}">${LAYERS}${fmtNum(vg.list.length)}</span>`
@@ -791,8 +798,9 @@ function pageHome() {
   if (!apps.length) return S.cat ? `<div class="page">${offlineNote()}<div class="empty"><h2>${esc(t('Nothing to discover right now'))}</h2></div></div>` : `<div class="loading">${esc(t('Loading…'))}</div>`;
   const mine = apps.filter(forOS);
   const pool = (mine.length ? mine : apps).filter((a) => !a.soon);
-  const feats = bannerApps() || oneEach(uniq([...pool.filter((a) => a.featured && (a.hero || a.cover)), ...[...pool].filter((a) => a.hero).sort(byDl), ...[...pool].sort(byDl)].map((a) => a.id)).map(byId)).slice(0, 5);
+  const feats = turnkeyFirst(bannerApps() || oneEach(uniq([...pool.filter((a) => a.featured && (a.hero || a.cover)), ...[...pool].filter((a) => a.hero).sort(byDl), ...[...pool].sort(byDl)].map((a) => a.id)).map(byId)).slice(0, 5));
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
+  const ready = oneEach(pool.filter(turnkey).sort(byNew), true);
   const played = Object.values(S.library).sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !haveAny(a)).sort(byDl));
   const easy = oneEach(pool.filter((a) => S.easy.has(a.id) && !haveAny(a)));
@@ -801,11 +809,12 @@ function pageHome() {
     ${feats.length ? slider(feats) : ''}
     ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: 'library', sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
     ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true }) : ''}
+    ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { note: t('The launcher sets these up for you. No extra steps.') }) : ''}
     ${shelf('updated', t('Recently updated'), recentlyUpdated(pool), { sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
     ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(pool.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
     ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
-    ${shelf('popular', t('Popular right now'), oneEach([...pool].sort(byDl)), { see: 'popular' })}
-    ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: 'new' })}
+    ${shelf('popular', t('Popular right now'), oneEach([...pool].sort(byDl)), { see: 'popular', turnkey: true })}
+    ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: 'new', turnkey: true })}
     ${easy.length >= 2 ? shelf('easy', t('Drop in your disc'), easy, { note: t('Pick your disc image and these are set up for you, with their settings right in the launcher.') }) : ''}
     ${newsSection()}
   </div>`;
@@ -875,7 +884,7 @@ function shelf(key, title, list, o = {}) {
   if (!list.length) return '';
   return `<section class="shelf" data-shelf="${key}" data-n="${Math.min(24, list.length)}"><div class="shelf-h"><div><h2>${esc(title)}</h2>${o.note ? `<p>${esc(o.note)}</p>` : ''}</div>
     <div class="pager"><small></small>${o.see ? `<button type="button" class="see" ${o.see === 'library' ? 'data-go="library"' : `data-act="see-all" data-sort="${o.see}"`}>${esc(t('See all'))}</button>` : ''}<button type="button" class="ar" data-act="shelf" data-d="-1" aria-label="${esc(t('Back'))}">${CHEV_L}</button><button type="button" class="ar" data-act="shelf" data-d="1" aria-label="${esc(t('More'))}">${CHEV_R}</button></div></div>
-    <div class="viewport"><div class="track">${list.slice(0, 24).map((a) => tile(a, { mine: o.mine, quick: o.quick, sub: o.sub ? o.sub(a) : undefined })).join('')}</div></div></section>`;
+    <div class="viewport"><div class="track">${(o.turnkey ? turnkeyFirst(list.slice(0, 24)) : list.slice(0, 24)).map((a) => tile(a, { mine: o.mine, quick: o.quick, sub: o.sub ? o.sub(a) : undefined })).join('')}</div></div></section>`;
 }
 // Each shelf shows as many games as fit, and pages through the rest.
 function layoutShelves(scope = document) {
@@ -901,11 +910,13 @@ function layoutShelves(scope = document) {
 
 function discoverList() {
   const f = S.find, q = fold(S.q.trim());
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && (!f.runs || runsOn(a).includes(f.runs)) && (!f.great || playsGreat(a)) && (!f.easy || (S.easy.has(a.id) && !a.soon)) && (!f.mp || isMulti(a))
+  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && (!f.runs || runsOn(a).includes(f.runs)) && (!f.great || playsGreat(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a))
     && (!q || fold([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ')).includes(q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDl);
-  return oneEach(list.sort(soonLast), f.sort === 'new');
+  const out = oneEach(list.sort(soonLast), f.sort === 'new');
+  // Discover's own order (Popular, not picked by the player): turnkey recomps first.
+  return f.sort === 'popular' && !f.picked ? turnkeyFirst(out) : out;
 }
 
 function pageDiscover() {
@@ -1054,7 +1065,8 @@ function pageGame(id) {
   if (S.mods[id] === undefined) loadMods(id);
   if (inst && S.setup[id] === undefined) loadSetup(id);
   const su = S.setup[id];
-  const chips = [isAI(a) ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', S.easy.has(id) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', lookChip(inst)].join('');
+  // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
+  const chips = [turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
     <div class="gp-amb">${pic(thumbOf(a.cover))}</div>
@@ -2206,7 +2218,8 @@ function pageSettings() {
       if (!S.ids && !S.idsAsked) { S.idsAsked = true; invoke('data_ids').then((ids) => { S.ids = ids; if (S.view === 'settings') render(true); }).catch(() => {}); }
       body = group(t('Language'), row(t('Language'), t('The launcher and its quick menu over your games.'), `<select class="sel" data-act="lang" aria-label="${esc(t('Language'))}">${[['auto', tf('Same as your computer ({lang})', { lang: (LANGS.find((x) => x[0] === systemLang()) || ['', 'English (US)'])[1] })]].concat(LANGS).map(([c, n]) => `<option value="${c}"${(ui.lang || 'auto') === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`))
         + group(t('Discover'), row(t('Refresh Discover'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
-          + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps'))))
+          + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
+          + row(t('Show the AI-assisted tag'), t('The tag on game pages. What the developer used AI for is always in the game\'s Overview.'), sw('show_ai_tag', ui.show_ai_tag, t('Show the AI-assisted tag'), 'ui-toggle')))
         + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
         + group(t('Notifications and sharing'), row(t('Notifications'), S.os === 'windows' ? t('A Windows notification when a new recomp comes out for a game you own.') : t('A notification when a new recomp comes out for a game you own.'), sw('notify', st.notify, t('Notifications')))
           + row(t('Discord status'), t('Shows the game you\'re playing on your Discord profile, with its cover and play time.'), sw('discord', st.discord !== false, t('Discord status')))
@@ -4520,7 +4533,7 @@ async function act(el, e) {
     case 'slide': return showSlide(Number(el.dataset.i));
     case 'slide-step': return showSlide((S.slide || 0) + Number(el.dataset.d));
     case 'shelf': { const sh = el.closest('.shelf'); S.shelf[sh.dataset.shelf] = (S.shelf[sh.dataset.shelf] || 0) + Number(el.dataset.d); return layoutShelves(sh.parentElement); }
-    case 'sort': S.find.sort = el.dataset.k; return updateDiscover();
+    case 'sort': S.find.sort = el.dataset.k; S.find.picked = true; return updateDiscover();
     case 'clear-q': { S.q = ''; const q = $('#dq'); if (q) { q.value = ''; q.focus(); } return refreshList('dq'); }
     case 'pin': { const p = (S.settings.ui || {}).pins || []; const on = p.includes(id); await saveUi({ pins: on ? p.filter((x) => x !== id) : [...p, id] }); return toast(on ? t('Unpinned.') : t('Pinned to the sidebar.')); }
     case 'fav': { const f = (S.settings.ui || {}).favs || []; const on = f.includes(id); await saveUi({ favs: on ? f.filter((x) => x !== id) : [...f, id] }); toast(on ? t('Removed from Favorites.') : t('Added to Favorites.')); return render(true); }
@@ -4579,7 +4592,7 @@ async function act(el, e) {
     }
     case 'side-reset': return saveUi({ side_order: [], side_hide: [] });
     case 'genre': e.preventDefault(); S.find.genre = el.dataset.g; if (S.view === 'discover') { S.anim = 'enter-soft'; render(true); } else go('discover'); return;
-    case 'see-all': S.find.sort = el.dataset.sort; S.find.genre = ''; S.q = ''; return go('discover');
+    case 'see-all': S.find.sort = el.dataset.sort; S.find.picked = false; S.find.genre = ''; S.q = ''; return go('discover');
     case 'mine': S.find.mine = !S.find.mine; return updateDiscover();
     case 'libf': S.lib.filter = el.dataset.f; return updateLibrary();
     case 'ver-menu': return verMenu(el);

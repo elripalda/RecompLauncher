@@ -1939,5 +1939,9 @@
  "Safer": "Plus sûr",
  "Play Both": "Jouer aux deux",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Il a planté dans un mod ({mod}), pas dans le jeu lui-même. Désactivez ce mod ou mettez-le à jour, puis rejouez.",
- "Graphics Mode changes the next time the launcher opens.": "Le mode graphique change au prochain démarrage du lanceur."
+ "Graphics Mode changes the next time the launcher opens.": "Le mode graphique change au prochain démarrage du lanceur.",
+ "Ready to Play": "Prêts à jouer",
+ "The launcher sets these up for you. No extra steps.": "Le lanceur les configure pour vous. Aucune étape en plus.",
+ "Show the AI-assisted tag": "Afficher l’étiquette « Assistée par IA »",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "L’étiquette sur les pages des jeux. Ce pour quoi le développeur a utilisé l’IA figure toujours dans l’Aperçu du jeu."
 }

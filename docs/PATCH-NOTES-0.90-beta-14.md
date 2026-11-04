@@ -1,5 +1,7 @@
 # RecompLauncher 0.90 Beta 14
 
+- **Ready to Play.** Recomps that set themselves up now come first, with their own row on Home.
+- **Cleaner game pages.** Easy Setup leads, and the AI-assisted tag is an option in Settings → General.
 - **Smarter downloads.** The right build for your PC gets picked more reliably, and updates follow the recommended version.
 - **Better ROM scanning.** Faster and more thorough, and extracted games are recognized as one entry.
 - **Play Both.** Start another game while one is already running.

@@ -1939,5 +1939,9 @@
  "Safer": "An toàn hơn",
  "Play Both": "Chơi cả hai",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Lỗi xảy ra bên trong mod ({mod}), không phải ở chính trò chơi. Hãy tắt hoặc cập nhật mod đó rồi chơi lại.",
- "Graphics Mode changes the next time the launcher opens.": "Chế độ đồ họa sẽ thay đổi vào lần mở trình khởi chạy tiếp theo."
+ "Graphics Mode changes the next time the launcher opens.": "Chế độ đồ họa sẽ thay đổi vào lần mở trình khởi chạy tiếp theo.",
+ "Ready to Play": "Sẵn sàng chơi",
+ "The launcher sets these up for you. No extra steps.": "Trình khởi chạy thiết lập sẵn cho bạn. Không cần thêm bước nào.",
+ "Show the AI-assisted tag": "Hiện thẻ Có AI hỗ trợ",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "Thẻ trên trang trò chơi. Nhà phát triển dùng AI vào việc gì luôn có trong mục Tổng quan của trò chơi."
 }

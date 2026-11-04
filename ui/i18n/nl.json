@@ -1939,5 +1939,9 @@
  "Safer": "Veiliger",
  "Play Both": "Allebei spelen",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Het crashte in een mod ({mod}), niet in de game zelf. Zet die mod uit of werk hem bij en speel dan opnieuw.",
- "Graphics Mode changes the next time the launcher opens.": "De grafische modus verandert de volgende keer dat de launcher opent."
+ "Graphics Mode changes the next time the launcher opens.": "De grafische modus verandert de volgende keer dat de launcher opent.",
+ "Ready to Play": "Klaar om te spelen",
+ "The launcher sets these up for you. No extra steps.": "De launcher stelt ze voor je in. Geen extra stappen.",
+ "Show the AI-assisted tag": "Het label Met AI-hulp tonen",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "Het label op gamepagina’s. Waarvoor de ontwikkelaar AI gebruikte, staat altijd in het Overzicht van de game."
 }

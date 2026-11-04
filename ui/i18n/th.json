@@ -1939,5 +1939,9 @@
  "Safer": "ปลอดภัยกว่า",
  "Play Both": "เล่นทั้งสองเกม",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "เกมแครชภายในม็อด ({mod}) ไม่ใช่ตัวเกมเอง ปิดหรืออัปเดตม็อดนั้น แล้วเล่นอีกครั้ง",
- "Graphics Mode changes the next time the launcher opens.": "โหมดกราฟิกจะเปลี่ยนเมื่อเปิดตัวเปิดเกมครั้งถัดไป"
+ "Graphics Mode changes the next time the launcher opens.": "โหมดกราฟิกจะเปลี่ยนเมื่อเปิดตัวเปิดเกมครั้งถัดไป",
+ "Ready to Play": "พร้อมเล่น",
+ "The launcher sets these up for you. No extra steps.": "ตัวเปิดเกมตั้งค่าให้คุณ ไม่ต้องทำขั้นตอนเพิ่ม",
+ "Show the AI-assisted tag": "แสดงแท็ก ใช้ AI ช่วย",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "แท็กในหน้าเกม สิ่งที่นักพัฒนาใช้ AI ช่วยจะอยู่ใน ภาพรวม ของเกมเสมอ"
 }

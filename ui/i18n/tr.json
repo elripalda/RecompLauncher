@@ -1939,5 +1939,9 @@
  "Safer": "Daha Güvenli",
  "Play Both": "İkisini de Oyna",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "Oyunun kendisi değil, bir mod ({mod}) içinde çöktü. O modu kapatın veya güncelleyin, sonra yeniden oynayın.",
- "Graphics Mode changes the next time the launcher opens.": "Grafik Modu, başlatıcının bir sonraki açılışında değişir."
+ "Graphics Mode changes the next time the launcher opens.": "Grafik Modu, başlatıcının bir sonraki açılışında değişir.",
+ "Ready to Play": "Oynamaya Hazır",
+ "The launcher sets these up for you. No extra steps.": "Başlatıcı bunları sizin için kurar. Ek adım yok.",
+ "Show the AI-assisted tag": "Yapay zekâ destekli etiketini göster",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "Oyun sayfalarındaki etiket. Geliştiricinin yapay zekâyı ne için kullandığı her zaman oyunun Genel bakış bölümünde yer alır."
 }

@@ -1939,5 +1939,9 @@
  "Safer": "أكثر أمانًا",
  "Play Both": "العب كلتيهما",
  "It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.": "تعطّلت اللعبة داخل تعديل ({mod})، وليس في اللعبة نفسها. أوقف هذا التعديل أو حدّثه، ثم العب مجددًا.",
- "Graphics Mode changes the next time the launcher opens.": "يتغيّر وضع الرسومات في المرة القادمة التي يُفتح فيها المشغّل."
+ "Graphics Mode changes the next time the launcher opens.": "يتغيّر وضع الرسومات في المرة القادمة التي يُفتح فيها المشغّل.",
+ "Ready to Play": "جاهزة للعب",
+ "The launcher sets these up for you. No extra steps.": "يجهّز المشغّل هذه الألعاب لك. بلا خطوات إضافية.",
+ "Show the AI-assisted tag": "إظهار وسم «بمساعدة الذكاء الاصطناعي»",
+ "The tag on game pages. What the developer used AI for is always in the game's Overview.": "الوسم في صفحات الألعاب. ما استخدم المطوّر الذكاء الاصطناعي من أجله موجود دائمًا في «نظرة عامة» الخاصة باللعبة."
 }
