@@ -293,31 +293,48 @@ fn identify_switch(folder: &Path) -> Option<RomFile> {
 }
 
 /// Look through the folders for ROMs, disc images and extracted games.
-/// Skip linked directories so the scan stays within the selected trees.
+/// Linked folders are looked through once (a link back into a folder already seen is skipped), so
+/// the scan can't go round in circles, and a whole drive of millions of files still ends.
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
+    const MOST: usize = 1_000_000;
     let mut out = vec![];
+    let mut seen = 0usize;
+    let mut been: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     let mut pending: Vec<_> = dirs.iter().rev().cloned().collect();
     while let Some(dir) = pending.pop() {
-        if let Some(game) = identify_playstation(&dir).or_else(|| identify_switch(&dir)) {
-            out.push(game);
+        if !been.insert(fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone())) {
             continue;
         }
         let Ok(rd) = fs::read_dir(&dir) else { continue };
-        for e in rd.flatten() {
-            let Ok(kind) = e.file_type() else { continue };
+        let entries: Vec<fs::DirEntry> = rd.flatten().collect();
+        // An extracted game is one entry, and what's inside it isn't looked through. Only a folder
+        // with the files that mark one is checked, so the rest are read once.
+        let marked = entries.iter().any(|e| {
+            let n = e.file_name();
+            let n = n.to_string_lossy();
+            ["eboot.bin", "ps3_disc.sfb", "base", "exefs"].iter().any(|m| n.eq_ignore_ascii_case(m))
+        });
+        if marked {
+            if let Some(game) = identify_playstation(&dir).or_else(|| identify_switch(&dir)) {
+                out.push(game);
+                continue;
+            }
+        }
+        for e in entries {
+            seen += 1;
+            if seen > MOST {
+                return out;
+            }
+            let Ok(mut kind) = e.file_type() else { continue };
+            // A link counts as what it points to.
+            let linked = if kind.is_symlink() { fs::metadata(e.path()).ok() } else { None };
+            if let Some(m) = &linked {
+                kind = m.file_type();
+            }
             if kind.is_dir() {
                 let name = e.file_name().to_string_lossy().to_lowercase();
                 if name.starts_with('.') || name == "node_modules" || name == "windows" {
                     continue;
-                }
-                #[cfg(windows)]
-                {
-                    use std::os::windows::fs::MetadataExt;
-                    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-                    let Ok(meta) = e.metadata() else { continue };
-                    if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-                        continue;
-                    }
                 }
                 pending.push(e.path());
                 continue;
@@ -325,7 +342,7 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
             if !kind.is_file() {
                 continue;
             }
-            if let Some(r) = identify_with_size(&e.path(), || e.metadata().ok().map(|meta| meta.len())) {
+            if let Some(r) = identify_with_size(&e.path(), || linked.as_ref().map(|m| m.len()).or_else(|| e.metadata().ok().map(|meta| meta.len()))) {
                 out.push(r);
             }
         }
@@ -466,6 +483,23 @@ mod tests {
         fs::write(exefs.join("main.npdm"), b"bad!").unwrap();
         assert!(scan(&[root.clone()]).iter().any(|r| r.path == exefs.join("nested.gba")));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_folders_and_files_are_looked_through_once() {
+        let root = tmp("links");
+        let real = root.join("gamecube");
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("Game.gba"), [0; 8192]).unwrap();
+        // EmuDeck-style second name for the same folder, a link back up (a loop), and a linked file.
+        std::os::unix::fs::symlink(&real, root.join("gc")).unwrap();
+        std::os::unix::fs::symlink(&root, real.join("up")).unwrap();
+        std::os::unix::fs::symlink(real.join("Game.gba"), root.join("Linked.gba")).unwrap();
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().any(|r| r.path.ends_with("Linked.gba") && r.size == 8192));
     }
 
     #[test]
