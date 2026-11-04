@@ -59,7 +59,10 @@ pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
         return vec![Spot { template: t.trim().to_string(), from: "player" }];
     }
     let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
-    for (v, from) in [(dev, "developer"), (catalog, "catalog"), (&g.found_saves[..], "found")] {
+    // Places the launcher once saw the game write to, without the ones that turned out to hold
+    // programs (a runtime it downloaded on its first start): those are never saves.
+    let found: Vec<String> = g.found_saves.iter().filter(|t| !(t.starts_with("{install}/") && holds_programs(&resolve_for(t, g)))).cloned().collect();
+    for (v, from) in [(dev, "developer"), (catalog, "catalog"), (&found[..], "found")] {
         let s = list(v, from);
         if !s.is_empty() {
             return s;
@@ -88,7 +91,7 @@ fn windows_user(g: &Installed) -> Option<PathBuf> {
 }
 
 /// Windows' own folders, as they are under a Windows user folder.
-const WIN_PLACES: [(&str, &str); 4] = [("{local}", "AppData/Local"), ("{config}", "AppData/Roaming"), ("{documents}", "Documents"), ("{home}", "")];
+const WIN_PLACES: [(&str, &str); 5] = [("{appdata}", "AppData/Roaming"), ("{local}", "AppData/Local"), ("{config}", "AppData/Roaming"), ("{documents}", "Documents"), ("{home}", "")];
 
 fn in_user(t: &str, user: &Path) -> Option<PathBuf> {
     for (k, sub) in WIN_PLACES {
@@ -154,6 +157,32 @@ fn lower(p: &Path) -> String {
 /// A .bin bigger than this is a disc image's track, not a save (Xbox and many PC ports keep saves
 /// in small .bin files).
 const BIN_SAVE_MAX: u64 = 16 * 1024 * 1024;
+
+/// A folder with programs in it (a runtime a game downloads on its first start, like Java or
+/// Python, or its own tools): never a save place, even when the game writes small files there.
+pub fn holds_programs(dir: &Path) -> bool {
+    const PROGRAMS: [&str; 7] = [".exe", ".dll", ".so", ".dylib", ".jar", ".jmod", ".pyd"];
+    let mut stack = vec![(dir.to_path_buf(), 0usize)];
+    let mut seen = 0usize;
+    while let Some((d, depth)) = stack.pop() {
+        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+            seen += 1;
+            if seen > 4000 {
+                return false;
+            }
+            let Ok(t) = e.file_type() else { continue };
+            let n = e.file_name().to_string_lossy().to_lowercase();
+            if t.is_dir() {
+                if depth < 3 {
+                    stack.push((e.path(), depth + 1));
+                }
+            } else if PROGRAMS.iter().any(|x| n.ends_with(x)) || n.contains(".so.") || crate::proton::elf_arch(&e.path()).is_some() {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 fn is_save_file(name: &str, size: u64) -> bool {
     let n = name.to_lowercase();
@@ -515,13 +544,30 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // kept, and never in the game's own folder as a whole, where other files live too.
     if kept {
         let same: Vec<Spot> = man.spots.iter().map(|t| Spot { template: t.clone(), from: "copy" }).collect();
+        // Where extra saves can go: places the game's developer, the catalog or the player named
+        // (never the game's whole folder), and places outside the game's folder. Not a place that
+        // was only a guess inside the game's folder, or one that holds programs: those can be part
+        // of the game (a runtime it downloaded).
+        let named = |t: &str| spots_now.iter().any(|s| s.template == t && matches!(s.from, "developer" | "catalog" | "player"));
+        let may_clear: Vec<bool> = man
+            .spots
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let whole = t.trim_end_matches(['/', '\\']) == "{install}";
+                let in_game = t.starts_with("{install}");
+                !whole && (!in_game || named(t)) && !roots.get(i).map(|r| holds_programs(r)).unwrap_or(true)
+            })
+            .collect();
         for e in collect(&same, g) {
-            let whole_folder = man.spots.get(e.spot).map(|t| t.trim_end_matches(['/', '\\']) == "{install}").unwrap_or(false);
-            if !whole_folder && !wanted.contains(&(e.spot, e.rel.clone())) {
+            let ok = may_clear.get(e.spot).copied().unwrap_or(false);
+            if ok && !wanted.contains(&(e.spot, e.rel.clone())) {
                 let _ = fs::remove_file(&e.abs);
             }
         }
     }
+    let today: HashSet<&str> = spots_now.iter().map(|s| s.template.as_str()).collect();
+    let skip: HashSet<usize> = man.spots.iter().enumerate().filter(|(i, t)| t.starts_with("{install}/") && !today.contains(t.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
     let mut n = 0;
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| Error::Msg(e.to_string()))?;
@@ -532,6 +578,11 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         let Some((spot, rel)) = name.split_once('/') else { continue };
         let Ok(spot) = spot.parse::<usize>() else { continue };
         let Some(root) = roots.get(spot) else { continue };
+        // A place in the game's folder that holds programs and isn't one of its save places
+        // anymore (a runtime an older version mistook for saves): left as it is.
+        if skip.contains(&spot) {
+            continue;
+        }
         // Only plain names: nothing that climbs out, or that Windows reads as a drive or a root.
         if rel.split('/').any(|c| c == ".." || c.is_empty() || c.contains('\\') || c.contains(':')) {
             continue;
@@ -695,9 +746,14 @@ pub fn watch_end(w: Watch) -> Vec<String> {
                 continue;
             }
             match rel_s.split_once('/') {
+                // Not a folder of programs: a runtime the game fetched (Java, Python) writes small
+                // files too.
+                Some((first, _)) if holds_programs(&w.install.join(first)) => continue,
                 Some((first, _)) => format!("{{install}}/{first}"),
                 None => format!("{{install}}/{rel_s}"),
             }
+        } else if holds_programs(root) {
+            continue;
         } else {
             templatize_for(root, &w.game)
         };
@@ -721,6 +777,32 @@ pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_downloaded_runtime_is_never_a_save_place() {
+        use crate::library::Installed;
+        use std::path::PathBuf;
+        let d = std::env::temp_dir().join("rl-watch-jdk");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("launch.bat"), "x").unwrap();
+        let g = Installed { id: "sc".into(), name: "Severed Chains".into(), path: d.clone(), files: vec![PathBuf::from("launch.bat")], ..Default::default() };
+        let w = super::watch_start(&g, &["Severed Chains"]);
+        // The first start: Java arrives, and the game saves.
+        std::fs::create_dir_all(d.join("jdk25/lib")).unwrap();
+        std::fs::create_dir_all(d.join("jdk25/bin")).unwrap();
+        std::fs::write(d.join("jdk25/lib/jvm.cfg"), "-server KNOWN").unwrap();
+        std::fs::write(d.join("jdk25/bin/java.dll"), "MZ").unwrap();
+        std::fs::create_dir_all(d.join("saves")).unwrap();
+        std::fs::write(d.join("saves/slot1.dat"), "save").unwrap();
+        let found = super::watch_end(w);
+        assert_eq!(found, vec!["{install}/saves".to_string()]);
+        // One an older version recorded is dropped.
+        let g2 = Installed { found_saves: vec!["{install}/jdk25".into(), "{install}/saves".into()], ..g.clone() };
+        let spots = super::spots(&[], &[], &g2);
+        assert_eq!(spots.iter().map(|s| s.template.as_str()).collect::<Vec<_>>(), vec!["{install}/saves"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
 
     #[test]
     fn small_bin_files_are_saves() {

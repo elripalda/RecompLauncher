@@ -919,13 +919,13 @@
     const genres = Object.keys(GENRES).filter((x) => apps.some((a) => a.genre === x));
     // "Easy Setup" is a chip of its own, before the genres.
     // Search, a console and the order narrow it further (Sort & Filter).
-    const q = (TV.dq || '').trim().toLowerCase(), org = TV.dorigin || '', srt = TV.dsort || 'popular';
+    const q = fold((TV.dq || '').trim()), org = TV.dorigin || '', srt = TV.dsort || 'popular';
     const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDl;
     const list = oneEach(apps.filter((a) => (g === 'easy' ? S.easy.has(a.id) && !a.soon : g === 'mp' ? isMulti(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)))
-      .filter((a) => !q || `${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`.toLowerCase().includes(q))
+      .filter((a) => !q || fold(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`).includes(q))
       .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y)), srt === 'new');
     const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';

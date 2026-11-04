@@ -584,28 +584,10 @@ fn find_own(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     if let Some(p) = entry.get("launcher").and_then(|v| serde_json::from_value::<Profile>(v.clone()).ok()).and_then(ok) {
         return Some(p);
     }
-    let mut p = BUILT_IN
+    BUILT_IN
         .iter()
         .filter_map(|t| serde_json::from_str::<Profile>(t).ok())
-        .find(|p| !repo.is_empty() && p.repo.eq_ignore_ascii_case(repo))?;
-    if p.repo == "TwilitRealm/dusklight" {
-        if cfg!(target_os = "macos") {
-            if let Some(start) = &mut p.start {
-                start.program = vec!["Dusklight.app/Contents/MacOS/Dusklight".into()];
-            }
-        }
-        if cfg!(target_os = "linux") && !p.through_proton(game_dir) {
-            // SDL stores native Linux preferences under XDG_DATA_HOME.
-            for file in p.config.iter_mut().flat_map(|c| &mut c.file) {
-                file.path = file.path.replace("{config}/", "{local}/");
-                file.when = file.when.replace("{config}/", "{local}/");
-            }
-            for path in &mut p.saves {
-                *path = path.replace("{config}/", "{local}/");
-            }
-        }
-    }
-    Some(p)
+        .find(|p| !repo.is_empty() && p.repo.eq_ignore_ascii_case(repo))
 }
 
 // ---------- paths ----------
@@ -662,6 +644,19 @@ impl Drop for WineFill {
 }
 
 /// Fills in {install}, {documents}, {local}, {config}, {home}, {game} and {pad}.
+/// `{appdata}`: where this system keeps programs' own data, the folder SDL-based games save in
+/// (AppData\\Roaming on Windows, Application Support on a Mac, ~/.local/share on Linux). One word
+/// for all three, so a save copied on one system lands in the right place on another.
+pub fn app_data() -> Option<PathBuf> {
+    if cfg!(windows) {
+        dirs::config_dir()
+    } else if cfg!(target_os = "macos") {
+        dirs::data_dir()
+    } else {
+        dirs::data_local_dir()
+    }
+}
+
 pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     if !t.contains('{') {
         return t.to_string();
@@ -670,6 +665,7 @@ pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     t.replace("{pad}", &PAD.read().unwrap())
         .replace("{install}", &install.to_string_lossy())
         .replace("{documents}", &s(dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents")))))
+        .replace("{appdata}", &s(app_data()))
         .replace("{local}", &s(dirs::data_local_dir()))
         .replace("{config}", &s(dirs::config_dir()))
         .replace("{home}", &s(dirs::home_dir()))
@@ -1257,6 +1253,17 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         }
         return Ok(());
     }
+    // A compressed disc image (.rvz, .chd...) for a recomp that reads plain ones: said now, rather
+    // than the game failing to read it. One whose label names that kind takes it.
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if ["rvz", "wia", "gcz", "wbfs", "chd", "cso", "zso", "nkit"].contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!("{ext} ")) {
+        let dolphin = ["rvz", "wia", "gcz", "wbfs", "nkit"].contains(&ext.as_str());
+        return Err(if dolphin {
+            format!("That's a compressed .{ext} image, and this recomp reads plain .iso files. Convert it first: in Dolphin, right-click the game, Convert File, and pick ISO.")
+        } else {
+            format!("That's a compressed .{ext} image, and this recomp reads plain .iso files. Convert it to .iso first.")
+        });
+    }
     if !g.check.iso9660.is_empty() && !iso9660_has(p, &g.check.iso9660) {
         return Err("That disc image isn't the release this recomp reads.".into());
     }
@@ -1522,7 +1529,7 @@ mod tests {
         profile.pick(&install, "fps_cap", 2).unwrap();
         assert_eq!(profile.config_file("main", &install).unwrap().get("video.maxFrameRate").as_deref(), Some("90"));
 
-        let user_root = if cfg!(target_os = "linux") { "{local}" } else { "{config}" };
+        let user_root = "{appdata}";
         assert!(profile.saves.contains(&format!("{user_root}/TwilitRealm/Dusk/states.json")));
         let game = crate::library::Installed { path: install.clone(), ..Default::default() };
         let portable: Vec<_> = profile.saves.into_iter().filter(|path| path.starts_with("{install}/")).collect();

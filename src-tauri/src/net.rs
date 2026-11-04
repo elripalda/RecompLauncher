@@ -178,7 +178,7 @@ fn went_well(url: &str) {
 /// earlier failure was counted don't count again (an outage is one failure, not ten).
 fn went_badly(url: &str, after: Option<u64>, started: Instant) {
     let k = key(url);
-    let secs = {
+    let (secs, fails) = {
         let mut g = GATES.lock().unwrap();
         let gate = g.get_or_insert_with(HashMap::new).entry(k.clone()).or_default();
         let counted = gate.last_fail.map(|t| started < t).unwrap_or(false);
@@ -197,10 +197,12 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
             return;
         }
         gate.until = Some(until);
-        secs
+        (secs, gate.fails)
     };
     crate::trail::note(&format!("{k} had trouble; asking again in {secs}s"));
-    if is_api(&k) {
+    // Offline only once it's more than one hiccup (a slow answer, one refused request): a single
+    // miss shouldn't put the whole launcher in offline mode.
+    if is_api(&k) && fails >= 2 {
         set_offline(true);
     }
 }

@@ -89,13 +89,37 @@ pub fn rank(name: &str) -> (u32, u32, u32) {
     }
 }
 
+/// The processor a program was built for, from its ELF header: "x64", "arm64", or None when it
+/// isn't a Linux program (or is for something else).
+pub fn elf_arch(p: &Path) -> Option<&'static str> {
+    use std::io::Read;
+    let mut h = [0u8; 20];
+    std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut h)).ok()?;
+    if &h[..4] != b"\x7fELF" {
+        return None;
+    }
+    match u16::from_le_bytes([h[18], h[19]]) {
+        0x3E => Some("x64"),
+        0xB7 => Some("arm64"),
+        _ => None,
+    }
+}
+
+/// The processor a Proton folder's own programs are built for, when that can be read.
+fn built_for(dir: &Path) -> Option<&'static str> {
+    ["files/bin/wineserver", "files/bin/wine64", "files/bin/wine", "dist/bin/wineserver", "dist/bin/wine64", "dist/bin/wine"].iter().find_map(|b| elf_arch(&dir.join(b)))
+}
+
 /// A Proton built for another processor (an ARM64 one on a normal PC needs a runtime this PC can't
-/// run): by its name, or the Steam runtime its manifest asks for.
+/// run): by the programs inside it, else its name or the Steam runtime its manifest asks for.
 fn other_arch(dir: &Path, name: &str) -> bool {
-    let arm_here = crate::assets::arch_now() == "arm64";
+    let here = if crate::assets::arch_now() == "arm64" { "arm64" } else { "x64" };
+    if let Some(a) = built_for(dir) {
+        return a != here;
+    }
     let manifest = std::fs::read_to_string(dir.join("toolmanifest.vdf")).unwrap_or_default().to_lowercase();
     let arm = name.contains("arm64") || name.contains("aarch64") || manifest.contains("arm64") || manifest.contains("aarch64");
-    arm != arm_here
+    arm != (here == "arm64")
 }
 
 /// Every Proton found, newest first, with its Steam folder.
@@ -139,30 +163,83 @@ pub async fn install_ge(
         return Err(Error::Msg("GE-Proton is only made for x86-64 PCs.".into()));
     }
     let to = tools_dir().ok_or_else(|| Error::Msg("Couldn't find your home folder.".into()))?;
-    let rel: serde_json::Value = http
-        .get("https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest")
-        .header("Accept", "application/vnd.github+json")
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await?
-        .error_for_status()
-        .map_err(|e| Error::Msg(format!("GitHub didn't answer about GE-Proton: {e}")))?
-        .json()
-        .await?;
-    let tag = rel.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    if tag.is_empty() || tag.contains(['/', '\\']) || tag.contains("..") {
+    const REPO: &str = "https://github.com/GloriousEggroll/proton-ge-custom";
+    // The newest one's name, from where GitHub's "latest release" page leads (not its API, which
+    // turns players away after a few asks an hour).
+    let ok_tag = |t: &str| t.starts_with("GE-Proton") && !t.contains("..") && t.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    let from_page = match http.get(format!("{REPO}/releases/latest")).timeout(std::time::Duration::from_secs(30)).send().await {
+        Ok(r) if r.status().is_success() => r.url().path().rsplit('/').next().map(str::to_string).filter(|t| ok_tag(t)),
+        _ => None,
+    };
+    // When that page doesn't answer: GitHub's API, once.
+    let tag = match from_page {
+        Some(t) => t,
+        None => {
+            let v: serde_json::Value = http
+                .get("https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest")
+                .header("Accept", "application/vnd.github+json")
+                .timeout(std::time::Duration::from_secs(30))
+                .send()
+                .await
+                .map_err(|e| Error::Msg(format!("GitHub didn't answer about GE-Proton: {e}")))?
+                .error_for_status()
+                .map_err(|e| Error::Msg(format!("GitHub didn't answer about GE-Proton: {e}")))?
+                .json()
+                .await?;
+            v.get("tag_name").and_then(|t| t.as_str()).unwrap_or("").to_string()
+        }
+    };
+    if !ok_tag(&tag) {
         return Err(Error::Msg("GitHub's answer about GE-Proton didn't make sense. Try again later.".into()));
     }
-    if to.join(&tag).join("proton").is_file() {
+    // Already here, and built for this PC: nothing to do. One built for another processor (an
+    // earlier version of this button picked the ARM64 download) is replaced.
+    if to.join(&tag).join("proton").is_file() && !other_arch(&to.join(&tag), &tag.to_lowercase()) {
         return Ok(tag);
     }
-    let assets: Vec<crate::assets::Asset> = rel.get("assets").cloned().and_then(|a| serde_json::from_value(a).ok()).unwrap_or_default();
-    let asset = assets.into_iter().find(|a| a.name.ends_with(".tar.gz")).ok_or_else(|| Error::Msg(format!("{tag} has no download for Linux yet. Try again later.")))?;
+    // The x86-64 download, by the names GE-Proton gives its files (newer releases say so in the
+    // name; older ones had only the one).
+    let mut pick = None;
+    for name in [format!("{tag}-x86_64"), tag.clone()] {
+        let url = format!("{REPO}/releases/download/{tag}/{name}.tar.gz");
+        let ok = http.head(&url).timeout(std::time::Duration::from_secs(30)).send().await.map(|r| r.status().is_success()).unwrap_or(false);
+        if ok {
+            pick = Some(name);
+            break;
+        }
+    }
+    let name = pick.ok_or_else(|| Error::Msg(format!("{tag} has no download for this PC yet. Try again later.")))?;
+    // Its checksum, published beside it.
+    let sum = http.get(format!("{REPO}/releases/download/{tag}/{name}.sha512sum")).timeout(std::time::Duration::from_secs(30)).send().await.ok().filter(|r| r.status().is_success());
+    let want = match sum {
+        Some(r) => r.text().await.ok().and_then(|t| t.split_whitespace().next().map(str::to_lowercase)).filter(|h| h.len() == 128),
+        None => None,
+    };
+    let asset = crate::assets::Asset { name: format!("{name}.tar.gz"), size: 0, digest: None, browser_download_url: format!("{REPO}/releases/download/{tag}/{name}.tar.gz") };
     let dl = crate::install::download(http, &asset, &cache.join("ge-proton"), "ge-proton", cancel, report).await?;
     report(crate::install::Progress::new("ge-proton", "unpack", 0, 0));
     let (file, to2, tag2) = (dl.file.clone(), to.clone(), tag.clone());
     tokio::task::spawn_blocking(move || -> Result<(), Error> {
+        if let Some(want) = want {
+            use sha2::Digest;
+            let mut h = sha2::Sha512::new();
+            std::io::copy(&mut std::fs::File::open(&file)?, &mut h)?;
+            if hex::encode(h.finalize()) != want {
+                let _ = std::fs::remove_file(&file);
+                return Err(Error::Msg("The GE-Proton download didn't match its checksum. Try again.".into()));
+            }
+        }
         std::fs::create_dir_all(&to2)?;
+        // GE-Protons an earlier version of this button put here built for ARM64 under a normal
+        // name: they can't run on this PC, so they go.
+        for e in std::fs::read_dir(&to2).into_iter().flatten().flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            let p = e.path();
+            if n.starts_with("GE-Proton") && !n.to_lowercase().contains("aarch64") && !n.to_lowercase().contains("arm64") && built_for(&p).map(|a| a == "arm64").unwrap_or(false) {
+                crate::trail::note(format!("GE-Proton: {n} is built for ARM64, taken out"));
+                let _ = std::fs::remove_dir_all(&p);
+            }
+        }
         // Unpacked beside where it goes, then moved in whole: Steam never sees half a Proton.
         let part = to2.join(".recomplauncher-part");
         let _ = std::fs::remove_dir_all(&part);
@@ -251,6 +328,27 @@ mod tests {
         std::fs::create_dir_all(base.join("pfx/drive_c/users/steamuser")).unwrap();
         assert_eq!(windows_user_in(&base, None), Some(base.join("pfx/drive_c/users/steamuser")));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn an_arm_proton_under_a_normal_name_is_skipped() {
+        let d = std::env::temp_dir().join("rl-ge-arch");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("files/bin")).unwrap();
+        let mut elf = vec![0u8; 64];
+        elf[..4].copy_from_slice(b"\x7fELF");
+        elf[18] = 0xB7;
+        std::fs::write(d.join("files/bin/wineserver"), &elf).unwrap();
+        assert_eq!(super::elf_arch(&d.join("files/bin/wineserver")), Some("arm64"));
+        if crate::assets::arch_now() != "arm64" {
+            assert!(super::other_arch(&d, "ge-proton11-12"));
+        }
+        elf[18] = 0x3E;
+        std::fs::write(d.join("files/bin/wineserver"), &elf).unwrap();
+        if crate::assets::arch_now() != "arm64" {
+            assert!(!super::other_arch(&d, "ge-proton11-12"));
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

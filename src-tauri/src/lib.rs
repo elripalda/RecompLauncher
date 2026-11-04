@@ -70,8 +70,18 @@ pub enum Error {
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
-        if e.is_connect() || e.is_timeout() {
-            Error::Net("Couldn't reach the internet. Check your connection and try again.".into())
+        // Which site didn't answer, when it's known: one site being down isn't the player's internet.
+        let site = e.url().and_then(|u| u.host_str()).map(|h| h.trim_start_matches("www.").to_string());
+        if e.is_timeout() {
+            match site {
+                Some(h) => Error::Net(format!("{h} took too long to answer. Try again in a minute.")),
+                None => Error::Net("A site took too long to answer. Try again in a minute.".into()),
+            }
+        } else if e.is_connect() {
+            match site {
+                Some(h) => Error::Net(format!("Couldn't reach {h}. Check your connection, or try again in a minute.")),
+                None => Error::Net("Couldn't reach the internet. Check your connection and try again.".into()),
+            }
         } else if e.is_decode() {
             Error::Net("recomplauncher.com sent something unexpected.".into())
         } else {
@@ -410,7 +420,13 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         Some(b) => b.setup_near(&target).or_else(|| install::find_setup(&target, os, exe.as_deref().filter(|e| !e.is_absolute()))),
         None => install::find_setup(&target, os, exe.as_deref().filter(|e| !e.is_absolute())),
     };
-    let setup_done = setup.is_some() && prev.as_ref().map(|p| p.setup_done && p.exe.as_ref().map(|e| !e.is_absolute()).unwrap_or(false)).unwrap_or(false);
+    // A release that's the game's installer (it builds the game, like TotK-Setup.exe): a new version
+    // has to be built again, so its setup runs on the next Play even though the old build is there.
+    let rebuild = boot.as_ref().map(|b| b.is_installer()).unwrap_or(false) && prev.as_ref().map(|p| p.tag != rel.tag_name).unwrap_or(false);
+    let setup_done = !rebuild && setup.is_some() && prev.as_ref().map(|p| p.setup_done && p.exe.as_ref().map(|e| !e.is_absolute()).unwrap_or(false)).unwrap_or(false);
+    if rebuild && setup.is_some() {
+        trail::note(format!("Install {id}: a new version of its installer, it runs again on the next Play"));
+    }
 
     let rec = Installed {
         id: id.into(),
@@ -607,9 +623,33 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         // Windows refusing a file (access denied) says only that: what it usually means, and what
         // to do about it.
         let r = r.map_err(|e| match e {
-            Error::Io(io) if io.raw_os_error() == Some(5) || io.kind() == std::io::ErrorKind::PermissionDenied => {
-                trail::note(format!("Install {id}: {io}"));
-                Error::Msg("Windows didn't let the launcher write the game's files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.".into())
+            Error::Io(io) => {
+                let code = io.raw_os_error();
+                let win = cfg!(windows);
+                // The drive itself failing to read or write (a failing or unplugged drive, a bad
+                // memory card), out of room, or a folder that vanished part way.
+                let drive = if win { matches!(code, Some(23) | Some(483) | Some(1117) | Some(1392) | Some(1393) | Some(55) | Some(21)) } else { matches!(code, Some(5) | Some(30)) };
+                let full = if win { matches!(code, Some(39) | Some(112)) } else { code == Some(28) };
+                let gone = win && matches!(code, Some(3) | Some(53) | Some(67));
+                if (win && code == Some(5)) || io.kind() == std::io::ErrorKind::PermissionDenied {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg(if win {
+                        "Windows didn't let the launcher write the game's files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.".into()
+                    } else {
+                        "The launcher isn't allowed to write to the library folder. Pick one in your home folder in Settings → Games and Folders.".into()
+                    })
+                } else if drive {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg("The drive couldn't read or write the game's files (a drive error, not the download). Check the drive or memory card is plugged in and healthy, or pick a library folder on another drive in Settings → Games and Folders.".into())
+                } else if full {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg("The drive ran out of space while installing. Free some up, or pick a library folder on another drive in Settings → Games and Folders.".into())
+                } else if gone {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg("A folder the install was using isn't there anymore (a drive was unplugged or renamed, or a network folder dropped). Check the library folder in Settings → Games and Folders and try again.".into())
+                } else {
+                    Error::Io(io)
+                }
             }
             e => e,
         });
@@ -1452,6 +1492,64 @@ async fn repo_readme(st: State<'_, App>, repo: String) -> Res<Option<String>> {
     }
 }
 
+/// Microsoft's Visual C++ runtime (x64), which almost every Windows recomp needs: its official
+/// installer downloaded from Microsoft and run with its own small progress window. "installed",
+/// "restart" (Windows wants a restart to finish) or an error.
+#[tauri::command]
+async fn install_vcredist(st: State<'_, App>) -> Res<String> {
+    #[cfg(not(windows))]
+    {
+        let _ = &st;
+        Err(Error::Msg("The Visual C++ runtime is for Windows.".into()))
+    }
+    #[cfg(windows)]
+    {
+        trail::note("Visual C++ runtime: getting Microsoft's installer");
+        let r = st
+            .http
+            .get("https://aka.ms/vs/17/release/vc_redist.x64.exe")
+            .timeout(std::time::Duration::from_secs(300))
+            .send()
+            .await
+            .map_err(|e| Error::Msg(format!("Couldn't download the Visual C++ runtime: {e}")))?;
+        // Only from Microsoft, wherever the short link leads.
+        let host = r.url().host_str().unwrap_or("").to_ascii_lowercase();
+        if !(host.ends_with(".microsoft.com") || host == "microsoft.com") || !r.status().is_success() {
+            return Err(Error::Msg("Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.".into()));
+        }
+        let bytes = r.bytes().await.map_err(|e| Error::Msg(format!("Couldn't download the Visual C++ runtime: {e}")))?;
+        if bytes.len() < 1 << 20 || &bytes[..2] != b"MZ" {
+            return Err(Error::Msg("Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.".into()));
+        }
+        let dir = st.dir.join("cache");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("vc_redist.x64.exe");
+        std::fs::write(&file, &bytes)?;
+        let f2 = file.clone();
+        let code = tokio::task::spawn_blocking(move || -> Result<Option<i32>, Error> {
+            let args = "/install /passive /norestart";
+            let mut c = std::process::Command::new(&f2);
+            c.args(args.split(' '));
+            match c.spawn() {
+                Ok(mut child) => Ok(child.wait().ok().and_then(|s| s.code())),
+                Err(e) if e.raw_os_error() == Some(740) => Ok(win::run_as_admin(&f2, args, f2.parent().unwrap_or(Path::new("."))).map_err(|e| Error::Msg(format!("Windows didn't start the installer: {e}")))?.wait()),
+                Err(e) => Err(Error::Msg(format!("Couldn't start the installer: {e}"))),
+            }
+        })
+        .await
+        .map_err(|e| Error::Msg(e.to_string()))??;
+        let _ = std::fs::remove_file(&file);
+        trail::note(format!("Visual C++ runtime: installer closed with {code:?}"));
+        match code {
+            // 1638: a newer one is already there.
+            Some(0) | Some(1638) => Ok("installed".into()),
+            Some(3010) | Some(1641) => Ok("restart".into()),
+            Some(1602) => Err(Error::Msg("The installer was cancelled.".into())),
+            _ => Err(Error::Msg("The Visual C++ installer didn't finish. Run it from microsoft.com to see why.".into())),
+        }
+    }
+}
+
 /// GE-Proton, for Windows recomps on Linux (and for Steam's own games too): the newest one from
 /// its GitHub. Progress comes as "ge_progress".
 #[tauri::command]
@@ -1558,7 +1656,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             // for again and again.
             if let (Some(c), false) = (copy.as_deref(), missing.is_empty()) {
                 let want: Vec<String> = p.game.as_ref().map(|gc| gc.contains.iter().filter(|x| !x.contains(['*', '/', '\\'])).map(|x| x.to_lowercase()).collect()).unwrap_or_default();
-                if let Some(inner) = folder_with(c, &want, 2) {
+                if let Some(inner) = folder_with(c, &want, 3) {
                     trail::note(format!("Play {id}: the game's files are in {}, one level down", inner.display()));
                     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                         x.game_copy = Some(inner.clone());
@@ -2545,11 +2643,12 @@ async fn github_os(st: &App, repo: &str) -> Res<&'static str> {
         return Err(Error::Msg("That repo hasn't put out a release yet, so there's nothing to install.".into()));
     }
     let (here, arch) = (assets::os_now(), assets::arch_now());
-    let proton = here == "linux" && st.lib.lock().unwrap().settings.proton;
     let has = |os: &str| rels.iter().any(|r| !r.draft && assets::pick(&r.assets, os, arch, None).is_some());
     if has(here) {
         Ok(here)
-    } else if proton && has("windows") {
+    } else if here == "linux" && (has("windows") || rels.iter().any(|r| !r.draft && assets::pick(&r.assets, "windows", "x64", None).is_some())) {
+        // A Windows-only one on Linux: added as that, and it plays through Proton (its page offers
+        // to turn Proton on when it's off).
         Ok("windows")
     } else {
         let name = match here {
@@ -3407,7 +3506,14 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
             l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing")
         });
         let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
-        if let Some(line) = missing {
+        let said = |w: &str| text.lines().rev().take(120).any(|l| l.contains(w));
+        if said("GLIBC_") && said("not found") {
+            // A Linux build made on a newer Linux than this one (SteamOS, an older distro).
+            out.push(check("bad", "Its Linux build needs a newer Linux", "It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game's page, or update your system.", ""));
+        } else if said("--game_data_root") {
+            // An Xbox 360 recomp that takes the game's files from a folder it's given.
+            out.push(check("bad", "It needs to be told where your game files are", "This recomp reads your extracted game from a folder given to it when it starts, and its page doesn't set that up yet. Use Set Up By Hand and pick the folder with your game's files (the one with default.xex).", "manual"));
+        } else if let Some(line) = missing {
             out.push(check("bad", "It says something it needs is missing", line.trim().chars().take(300).collect::<String>(), if needs_copy { "copy" } else { "files" }));
         } else if let Some(line) = text.lines().rev().take(80).find(|l| wrong_copy_line(l)) {
             // It found game files, but not the right ones (another game, a bad dump, a folder one
@@ -3585,6 +3691,12 @@ fn manual_defaults(st: State<'_, App>, id: String) -> Res<library::ManualSetup> 
         Some(p) if p.start.as_ref().map(|s| s.args.iter().any(|a| a.contains("{game}"))).unwrap_or(false) => {
             m.how = "arg".into();
             m.arg = p.start.as_ref().unwrap().args.iter().map(|a| { let a = a.replace("{game}", "{copy}"); if a.contains(' ') { format!("\"{a}\"") } else { a } }).collect::<Vec<_>>().join(" ");
+        }
+        // Nothing known, but the game said last time how it takes its files (Xbox 360 recomps:
+        // --game_data_root): that, ready for the player's folder.
+        _ if std::fs::read_to_string(game_output_path(&st.dir, &id)).map(|t| t.contains("--game_data_root")).unwrap_or(false) => {
+            m.how = "arg".into();
+            m.arg = "--game_data_root {copy}".into();
         }
         _ => m.how = "none".into(),
     }
@@ -3876,6 +3988,21 @@ fn overlay_action(app: AppHandle, action: String) {
 }
 
 /// The program to start, picked by the player when the launcher's guess was wrong.
+/// A file picked as the game's program that can't be one: a disc image, an archive, a save, a
+/// picture. Why, for the player.
+pub(crate) fn not_a_program(p: &Path) -> Option<&'static str> {
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "iso" | "cue" | "chd" | "cso" | "gcm" | "rvz" | "wbfs" | "wia" | "gcz" | "xci" | "nsp" | "nca" | "wad" | "wux" | "wud" | "rpx" | "xex" | "xbe" | "elf" | "z64" | "n64" | "v64" | "sfc" | "smc" | "gba" | "nds" | "3ds" | "cia" | "pkg" =>
+            Some("That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup."),
+        "zip" | "7z" | "rar" | "gz" | "xz" | "tar" =>
+            Some("That's a compressed file, not a program. Unpack it first, then pick the program inside."),
+        "txt" | "md" | "pdf" | "json" | "toml" | "ini" | "cfg" | "log" | "png" | "jpg" | "jpeg" | "dll" | "so" | "sav" | "dat" =>
+            Some("That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage)."),
+        _ => None,
+    }
+}
+
 #[tauri::command(async)]
 fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
@@ -3883,6 +4010,9 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     let p = PathBuf::from(&path);
     if !p.is_file() {
         return Err(Error::Msg("That file doesn't exist.".into()));
+    }
+    if let Some(why) = not_a_program(&p) {
+        return Err(Error::Msg(why.into()));
     }
     let outside = !p.starts_with(&g.path);
     // The release's own file when that file is its installer (one Setup.exe and nothing else): it
@@ -5558,7 +5688,8 @@ pub fn run() {
             }
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
-                .connect_timeout(std::time::Duration::from_secs(8))
+                // Slow DNS or a busy mobile connection can take a while to connect.
+                .connect_timeout(std::time::Duration::from_secs(15))
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
@@ -5767,7 +5898,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, scan_roms, rom_matches,
+            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting,

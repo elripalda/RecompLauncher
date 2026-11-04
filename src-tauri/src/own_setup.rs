@@ -40,6 +40,14 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         g.exe_rules = 0;
         g.setup_done = false;
     }
+    // Left on something that can't start (a disc image or an archive picked by mistake): picked
+    // again, or asked.
+    if g.exe.as_ref().map(|e| crate::not_a_program(e).is_some()).unwrap_or(false) {
+        crate::trail::note(format!("Play {id}: its program was set to a file that can't start, picked again"));
+        g.exe = None;
+        g.exe_rules = 0;
+        g.setup_checked = false;
+    }
     if !g.setup_checked || g.exe_rules < install::EXE_RULES {
         let os = crate::assets::os_now();
         let n = names(&g);
@@ -144,6 +152,24 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         }
         st.save();
         g.setup_done = false;
+    }
+    // Updated before the launcher knew to run an installer again (the game it built is older than
+    // the update): its setup runs once for this version, so the new version gets built.
+    if g.setup_done && g.setup.is_some() && crate::boot::of(&st.dir, id).map(|b| b.is_installer()).unwrap_or(false) {
+        let mark = st.dir.join("rebuilt").join(format!("{id}@{}", g.tag.replace(['/', '\\', ':'], "_")));
+        let built = g.exe.as_ref().filter(|e| !e.is_absolute()).map(|e| g.path.join(e)).and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok());
+        let updated = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.updated_at);
+        let old_build = built.map(|b| b + std::time::Duration::from_secs(120) < updated).unwrap_or(false);
+        if old_build && !mark.exists() && g.updated_at > g.installed_at {
+            let _ = std::fs::create_dir_all(mark.parent().unwrap());
+            let _ = std::fs::write(&mark, b"");
+            crate::trail::note(format!("Play {id}: its build is older than the {} update, the setup runs once to build it", g.tag));
+            if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
+                r.setup_done = false;
+            }
+            st.save();
+            g.setup_done = false;
+        }
     }
     if g.setup_done {
         return None;

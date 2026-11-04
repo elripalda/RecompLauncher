@@ -655,7 +655,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 8;
+pub const EXE_RULES: u8 = 9;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -669,10 +669,19 @@ const TOOL_DIRS: [&str; 12] = ["compiler", "compilers", "deps", "dependencies", 
 pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     let want: Vec<String> = names.iter().flat_map(|n| tokens(n)).collect();
     let stem = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if tokens(stem).iter().any(|t| !want.contains(t) && TOOL_WORDS.contains(&t.as_str())) {
+    // A tool word, or a name that ends in one (hactool, gt3tool), that isn't part of the game's name.
+    if tokens(stem).iter().any(|t| !want.contains(t) && (TOOL_WORDS.contains(&t.as_str()) || t == "tool" || t == "tools" || (t.len() > 4 && (t.ends_with("tool") || t.ends_with("tools"))))) {
         return true;
     }
-    rel.parent().map(|d| d.components().any(|c| TOOL_DIRS.contains(&c.as_os_str().to_string_lossy().to_lowercase().as_str()))).unwrap_or(false)
+    // In a tools folder, or a hidden one (.tools, .sdk): leftovers from building, not the game.
+    rel.parent()
+        .map(|d| {
+            d.components().any(|c| {
+                let n = c.as_os_str().to_string_lossy().to_lowercase();
+                (n.starts_with('.') && n != "." && n != "..") || TOOL_DIRS.contains(&n.as_str())
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
@@ -760,7 +769,21 @@ pub fn is_program(p: &Path, os: &str) -> bool {
         if n.contains('.') && !n.ends_with(".sh") && !n.ends_with(".bin") {
             return false;
         }
-        return fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false);
+        if !fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false) {
+            return false;
+        }
+        // The run permission alone says little: on a memory card or a drive formatted for Windows
+        // (exFAT, NTFS) every file has it. A program is a Linux one built for this PC's processor,
+        // or a script that says what runs it.
+        if n.ends_with(".sh") {
+            return true;
+        }
+        let here = if crate::assets::arch_now() == "arm64" { "arm64" } else { "x64" };
+        if let Some(a) = crate::proton::elf_arch(p) {
+            return a == here;
+        }
+        let mut head = [0u8; 2];
+        return fs::File::open(p).and_then(|mut f| io::Read::read_exact(&mut f, &mut head)).map(|_| &head == b"#!").unwrap_or(false);
     }
     #[allow(unreachable_code)]
     false
@@ -916,10 +939,19 @@ mod tests {
             let gz = flate2::write::GzEncoder::new(fs::File::create(&tpath).unwrap(), flate2::Compression::fast());
             let mut t = tar::Builder::new(gz);
             let mut h = tar::Header::new_gnu();
-            h.set_size(4);
+            // A Linux program's header: ELF, built for x86-64 (or this PC's ARM64).
+            let mut elf = [0u8; 20];
+            elf[..4].copy_from_slice(b"\x7fELF");
+            elf[18] = if crate::assets::arch_now() == "arm64" { 0xB7 } else { 0x3E };
+            h.set_size(20);
             h.set_mode(0o755);
             h.set_cksum();
-            t.append_data(&mut h, "Game/Game", &b"elf!"[..]).unwrap();
+            t.append_data(&mut h, "Game/Game", &elf[..]).unwrap();
+            let mut r = tar::Header::new_gnu();
+            r.set_size(6);
+            r.set_mode(0o755);
+            r.set_cksum();
+            t.append_data(&mut r, "Game/LICENSE", &b"MIT..."[..]).unwrap();
             t.into_inner().unwrap().finish().unwrap();
         }
         let target = d.join("lib/game");
@@ -927,6 +959,8 @@ mod tests {
         assert!(target.join("Game").is_file());
         #[cfg(unix)]
         assert_eq!(find_exe(&target, "linux", &["Game"]).unwrap(), PathBuf::from("Game"));
+        #[cfg(unix)]
+        assert!(!is_program(&target.join("LICENSE"), "linux"));
     }
 
     #[test]
@@ -984,6 +1018,12 @@ mod tests {
         // A game kept in a folder called build isn't a tool; one in temp is.
         assert!(!looks_like_tool(Path::new("build/totk.exe"), &["TotK Recomp"]));
         assert!(looks_like_tool(Path::new("temp/zelda totk-1/build/totk.exe"), &["TotK Recomp"]));
+        assert!(looks_like_tool(Path::new("hactool.exe"), &["XCX Recomp"]));
+        assert!(looks_like_tool(Path::new("gt3tool"), &["GT3 Revisited"]));
+        assert!(looks_like_tool(Path::new("HacTool.exe"), &["XCX Recomp"]));
+        assert!(looks_like_tool(Path::new(".tools/sdk/win-amd64/bin/rexglue.exe"), &["Table Tennis"]));
+        assert!(!looks_like_tool(Path::new("gt3r"), &["GT3 Revisited"]));
+        assert!(!looks_like_tool(Path::new("ToolKitty.exe"), &["Tool Kitty"]));
     }
 
     fn sparse(p: &Path, len: u64) {

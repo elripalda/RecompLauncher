@@ -8,6 +8,9 @@ const invoke = (cmd, args) => T.core.invoke(cmd, args);
 
 const GENRES = { action: N_('Action'), adventure: N_('Adventure'), platformer: N_('Platformers'), racing: N_('Racing'), fighting: N_('Fighting'), shooter: N_('Shooters'), sports: N_('Sports'), rpg: N_('RPG'), puzzle: N_('Puzzle') };
 const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux' };
+// Text for searching: lower case and without accents, so "pokemon" finds Pokémon.
+const fold = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+window.fold = fold;
 // Looks run on ReShade on Windows and on vkBasalt on Linux.
 window.looksHere = () => S.os === 'windows' || S.os === 'linux';
 const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N_('voice or music') };
@@ -471,6 +474,24 @@ function oneEach(list, keep) {
 const forOS = (a) => (a.systems || []).includes(S.os) || !!(a.assets && a.assets[S.os]) || !!S.builds[a.id] || viaProton(a);
 // On Linux with Proton on, a recomp with only a Windows version plays through Proton.
 const viaProton = (a) => S.os === 'linux' && !!S.settings.proton && ((a.systems || []).includes('windows') || !!(a.assets && a.assets.windows));
+// A Windows build to fall back on (through Proton on Linux).
+const hasWindowsBuild = (a) => (a.systems || []).includes('windows') || !!(a.assets && a.assets.windows);
+// Linux, Proton off (or none on this PC): turned on, with GE-Proton first when nothing can run
+// Windows programs yet. Then the recomp can be added and installed like any other.
+async function useProton(id) {
+  try {
+    const now = S.protonNow || await invoke('proton_now').catch(() => null);
+    S.protonNow = now;
+    if (!now || !now.runner) {
+      toast(t('Getting GE-Proton first. It takes a minute.'));
+      await geInstall();
+      if (!(S.protonNow || {}).runner) return;
+    }
+    await saveSettings({ proton: true });
+    toast(t('Proton is on. Windows recomps play through it now.'));
+    if (S.view === 'game') refreshGame(); else render(true);
+  } catch (e) { fail(e); }
+}
 // The systems a recomp has a build for, in a fixed order.
 const runsOn = (a) => ['windows', 'linux', 'macos'].filter((k) => (a.systems || []).includes(k) || !!(a.assets && a.assets[k]) || (k === S.os && !!S.builds[a.id]));
 // Small marks for those under a cover. On Linux, a Windows-only one says it plays through Proton.
@@ -615,7 +636,7 @@ function actions(a, size = 'big') {
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
     case 'installed': return needsSetup(a) && !setupDone(a.id) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : b('main', 'play', esc(t('Play')), PLAY) + more;
     case 'soon': return `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` + more;
-    case 'nobuild': return `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
+    case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     default: return (isSaved(a.id) ? b('main', 'install', esc(t('Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DOWN) : b('main', 'addlib', esc(t('Add to Library')), PLUS)) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + more;
   }
 }
@@ -879,9 +900,9 @@ function layoutShelves(scope = document) {
 }
 
 function discoverList() {
-  const f = S.find, q = S.q.trim().toLowerCase();
+  const f = S.find, q = fold(S.q.trim());
   let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && (!f.runs || runsOn(a).includes(f.runs)) && (!f.great || playsGreat(a)) && (!f.easy || (S.easy.has(a.id) && !a.soon)) && (!f.mp || isMulti(a))
-    && (!q || [a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ').toLowerCase().includes(q)));
+    && (!q || fold([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ')).includes(q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDl);
   return oneEach(list.sort(soonLast), f.sort === 'new');
@@ -942,7 +963,7 @@ function savedItems() {
 }
 function libList() {
   libFilterOk();
-  const q = S.lq.trim().toLowerCase();
+  const q = fold(S.lq.trim());
   let list = Object.values(S.library).map((g) => ({ g, a: libApp(g) })).concat(savedItems());
   if (S.lib.filter === 'saved') list = list.filter((x) => x.saved);
   if (S.lib.filter === 'inst') list = list.filter((x) => !x.saved);
@@ -950,7 +971,7 @@ function libList() {
   if (S.lib.filter === 'setup') list = list.filter((x) => S.easy.has(x.g.id) && !x.g.game_copy);
   if (S.lib.filter === 'fav') list = list.filter((x) => favs().includes(x.g.id));
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
-  if (q) list = list.filter((x) => [x.a.name, x.a.game].join(' ').toLowerCase().includes(q));
+  if (q) list = list.filter((x) => fold([x.a.name, x.a.game].join(' ')).includes(q));
   if (S.lib.sort === 'az') list.sort((x, y) => x.a.name.localeCompare(y.a.name));
   else if (S.lib.sort === 'time') list.sort((x, y) => (y.g.played_secs || 0) - (x.g.played_secs || 0));
   else list.sort((x, y) => (y.g.last_played || 0) - (x.g.last_played || 0) || (y.g.updated_at || y.g.installed_at || 0) - (x.g.updated_at || x.g.installed_at || 0));
@@ -1797,8 +1818,8 @@ function modsTab(a) {
 function tsCard(a, m, btn) {
   const id = a.id, ml = S.modList[id];
   if (!ml) loadModList(id);
-  const q = S.modQ.trim().toLowerCase();
-  const list = ml && ml.list ? ml.list.filter((p) => !q || [p.name, p.owner, p.desc, ...(p.categories || [])].join(' ').toLowerCase().includes(q)).slice(0, 60) : [];
+  const q = fold(S.modQ.trim());
+  const list = ml && ml.list ? ml.list.filter((p) => !q || fold([p.name, p.owner, p.desc, ...(p.categories || [])].join(' ')).includes(q)).slice(0, 60) : [];
   return `<div class="card"><div class="sec-h" style="margin-bottom:10px"><h3>${esc(t('From Thunderstore'))}</h3><input class="field" type="search" placeholder="${esc(t('Search mods'))}" value="${esc(S.modQ)}" data-modq aria-label="${esc(t('Search mods'))}"></div>
       ${!ml || ml.loading ? `<p class="muted" style="margin:0">${esc(t('Loading the mods…'))}</p>` : ml.error ? `<p class="err" style="margin:0">${esc(t(ml.error))}</p>`
         : list.length ? `<div class="mods">${list.map((p) => `<div class="mod">${p.icon ? `<img src="${esc(media(p.icon))}" alt="" loading="lazy">` : '<span class="ph"></span>'}<div class="mid"><b>${esc(p.name)}</b><small>${esc(tf('By {who} · {n} downloads · v{v}', { who: p.owner, n: fmtN(p.downloads), v: p.version }))}</small><span>${esc(p.desc)}</span></div><div class="acts"><button type="button" class="btn sm icon" data-act="url" data-url="${esc(p.page)}" title="${esc(t('Its page'))}" aria-label="${esc(t('Its page'))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI.web}</svg></button>${btn(p)}</div></div>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(t('Nothing matches.'))}</p>`}
@@ -2125,6 +2146,19 @@ const SET_ICONS = {
   beta: '<path d="M9.5 3h5M10 3v6.2L4.8 18.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9.2V3"/><path d="M7.2 14h9.6"/>',
 };
 const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
+// Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
+// shows the progress, and Windows may ask for permission).
+let vcBusy = false;
+async function installVcredist() {
+  if (vcBusy) return;
+  vcBusy = true;
+  toast(t('Getting the Visual C++ runtime from Microsoft…'));
+  try {
+    const r = await invoke('install_vcredist');
+    toast(r === 'restart' ? t('The Visual C++ runtime is installed. Restart your PC to finish, then play again.') : t('The Visual C++ runtime is installed. Play again.'));
+  } catch (e) { fail(e); }
+  vcBusy = false;
+}
 // GE-Proton on Linux: what Windows recomps start through now, and the newest GE-Proton in one press.
 function geRow(row) {
   if (S.os !== 'linux') return '';
@@ -4015,6 +4049,10 @@ async function crashModal(p) {
   const oom = !vram && ([-2147024882, 2147942414, -1073741801, 3221225495].includes(Number(p.code)) || /memory commit|commit limit|out of memory|std::bad_alloc|failed to allocate \d+ bytes/i.test(said));
   // Linux: the Proton it ran through lacks a part of Windows this game calls.
   const protonGap = /wine: Call from [0-9A-Fa-f]+ to unimplemented function/i.test(said);
+  // Linux: the Proton it ran through is built for another processor (an ARM64 one on a normal PC).
+  const armProton = S.os === 'linux' && (/steamrt[\w.-]*arm[\w-]* validation failed/i.test(said) || (/Exec format error/i.test(said) && /\.(exe|bat|cmd)$/i.test(String(g.exe || ''))));
+  // Linux: a native build made for a newer Linux than this one (glibc).
+  const glibc = S.os === 'linux' && /version [`'"]?GLIBC_[\w.]+[`'"]? not found/i.test(said);
   // Linux: a library the game needs isn't on this PC.
   const noLib = /error while loading shared libraries: ([^\s:]+)/i.exec(said);
   // A script it runs called a program that isn't installed (cmd's code 9009).
@@ -4024,7 +4062,7 @@ async function crashModal(p) {
   const sac = [-1058471934, 3236495362].includes(Number(p.code)) || /blocked by (?:smart app control|your organization|app control)/i.test(said);
   // The release has a program for each version of the game, and this one isn't for the player's.
   const otherBuild = /use the build that matches|recompiled from a different version of the game executable/i.test(said);
-  const wrongCopy = /wrong rom|rom is not supported|rom (?:file )?is truncated|truncated or invalid|invalid rom|cartridge id at|bad n64 magic|validation failed|isn't the (?:pal|ntsc|usa|us|european|japanese|japan|europe)\b|failed validation|re-dump|verify your file matches|hash mismatch|doesn't match any known|not a supported (?:dump|rom|version)|unsupported (?:rom|dump|version|revision)|wrong (?:region|revision)|bad dump|country byte|rejected: .{0,40}expected|region mismatch|sha1 [0-9a-f]{6,}.{0,30}another release|another release of (?:the|this) game/i.test(said);
+  const wrongCopy = !armProton && /wrong rom|rom is not supported|rom (?:file )?is truncated|truncated or invalid|invalid rom|cartridge id at|bad n64 magic|validation failed|isn't the (?:pal|ntsc|usa|us|european|japanese|japan|europe)\b|failed validation|re-dump|verify your file matches|hash mismatch|doesn't match any known|not a supported (?:dump|rom|version)|unsupported (?:rom|dump|version|revision)|wrong (?:region|revision)|bad dump|country byte|rejected: .{0,40}expected|region mismatch|sha1 [0-9a-f]{6,}.{0,30}another release|another release of (?:the|this) game/i.test(said);
   // It says to run its own setup first: offer the setup program that came with it.
   let setupExe = '';
   if (/run (?:the |its )?setup|setup to unpack|setup first/i.test(said)) {
@@ -4033,13 +4071,13 @@ async function crashModal(p) {
   const miss = log && (String(log[1]).match(new RegExp(`(?:cannot open|can't open|couldn't open|failed to open|not found|no such file|missing)[^\\n]*?([^\\s'"\\\\/:]+\\.${EXT})\\b`, 'i')) || String(log[1]).match(new RegExp(`([^\\s'"\\\\/:]+\\.${EXT})\\b[^\\n]*?(?:not found|missing|cannot be opened)`, 'i')));
   if (miss && gotFlag) { rootFlag = gotFlag[1]; need = [miss[1]]; }
   // A fix it can offer: that's the main button, and sending the report comes second.
-  const fix = sac || otherBuild || badOpts || rootFlag || dotnet || noWrite || lookOn || glSetting || dll || setupExe || usage;
+  const fix = armProton || sac || otherBuild || badOpts || rootFlag || dotnet || noWrite || lookOn || glSetting || dll || setupExe || usage;
   const m = modal(`<h2>${esc(tf('{name} closed unexpectedly', { name: g.name }))}</h2>
-    <p>${sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Install GE-Proton (ProtonUp-Qt adds it in a few clicks, on Steam Deck too) and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
+    <p>${sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
     <div class="acts ${fix ? 'grid2' : 'grid3'}"><button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button><button type="button" class="btn${!fix && p.secs < 5 ? ' main' : ''}" data-x="trouble">${esc(t('Troubleshoot'))}</button><button type="button" class="btn${fix || p.secs < 5 ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>
-      ${sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Look'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : dll ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : a ? `<button type="button" class="btn" data-x="report">${esc(t('Report on GitHub'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`}<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button></div>`, async (x, close) => {
+      ${armProton ? `<button type="button" class="btn main" data-x="geproton">${esc(t('Install GE-Proton'))}</button>` : sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Look'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : dll ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : a ? `<button type="button" class="btn" data-x="report">${esc(t('Report on GitHub'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`}<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button></div>`, async (x, close) => {
     if (x.dataset.x === 'copy') { try { await navigator.clipboard.writeText(details); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); } }
     if (x.dataset.x === 'folder') invoke('open_folder', { id: p.id }).catch(fail);
     if (x.dataset.x === 'trouble') { close(); return troubleshootModal(p.id, codeShown); }
@@ -4051,7 +4089,8 @@ async function crashModal(p) {
     if (x.dataset.x === 'dotnet') invoke('open_url', { url: dotnetUrl }).catch(fail);
     if (x.dataset.x === 'manage') { close(); S.nextTab = 'installed'; go('game', p.id); }
     if (x.dataset.x === 'nolook') { close(); if (!S.looks[p.id] || S.looks[p.id] === 'loading') S.looks[p.id] = { look: g.look, amount: g.look_amount }; await setLook(p.id, ''); playGame(p.id); }
-    if (x.dataset.x === 'vcredist') invoke('open_url', { url: 'https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist' }).catch(fail);
+    if (x.dataset.x === 'vcredist') { close(); installVcredist(); }
+    if (x.dataset.x === 'geproton') { close(); geInstall(); }
     if (x.dataset.x === 'clearopts') { try { S.library[p.id] = await invoke('set_game_options', { id: p.id, args: '', autoUpdate: null }); close(); toast(t('Cleared. Press Play to start it.')); } catch (e) { fail(e); } }
     if (x.dataset.x === 'gdr') {
       const dir = await pickFile({ title: t('Pick your game files'), directory: true }).catch(fail);
@@ -4202,7 +4241,7 @@ const TS_FIX = {
   reinstall: [N_('Reinstall'), (id) => actOn(id, 'versions')],
   proton: [N_('Open Settings'), () => { S.setTab = 'pc'; go('settings'); }],
   unblock: [N_('Unblock'), async (id) => { const n = await invoke('unblock_game', { id }); toast(tn(n, 'Unblocked 1 file.', 'Unblocked {n} files.')); }],
-  vcredist: [N_('Get It'), () => invoke('open_url', { url: 'https://aka.ms/vs/17/release/vc_redist.x64.exe' })],
+  vcredist: [N_('Install It'), () => installVcredist()],
   copy: [N_('Pick Your Copy'), (id) => setupModal(id)],
   move: [N_('Move…'), (id) => moveModal(id)],
   files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
@@ -4242,6 +4281,23 @@ const TS_TEXT = [
   N_('GE-Proton is only made for x86-64 PCs.'),
   N_('GitHub\'s answer about GE-Proton didn\'t make sense. Try again later.'),
   N_('The GE-Proton download didn\'t have Proton in it.'),
+  N_('Its Linux build needs a newer Linux'),
+  N_('It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game\'s page, or update your system.'),
+  N_('It needs to be told where your game files are'),
+  N_('This recomp reads your extracted game from a folder given to it when it starts, and its page doesn\'t set that up yet. Use Set Up By Hand and pick the folder with your game\'s files (the one with default.xex).'),
+  N_('That\'s your game\'s disc image or ROM, not the program that starts it. Pick the recomp\'s own program (usually an .exe in its folder); your copy of the game goes in its setup.'),
+  N_('That\'s a compressed file, not a program. Unpack it first, then pick the program inside.'),
+  N_('That isn\'t a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage).'),
+  N_('The launcher isn\'t allowed to write to the library folder. Pick one in your home folder in Settings → Games and Folders.'),
+  N_('The drive couldn\'t read or write the game\'s files (a drive error, not the download). Check the drive or memory card is plugged in and healthy, or pick a library folder on another drive in Settings → Games and Folders.'),
+  N_('The drive ran out of space while installing. Free some up, or pick a library folder on another drive in Settings → Games and Folders.'),
+  N_('A folder the install was using isn\'t there anymore (a drive was unplugged or renamed, or a network folder dropped). Check the library folder in Settings → Games and Folders and try again.'),
+  N_('The GE-Proton download didn\'t match its checksum. Try again.'),
+  N_('The Visual C++ runtime is for Windows.'),
+  N_('Microsoft\'s download didn\'t answer as expected. Try again later, or get it from microsoft.com.'),
+  N_('The installer was cancelled.'),
+  N_('The Visual C++ installer didn\'t finish. Run it from microsoft.com to see why.'),
+  N_('A site took too long to answer. Try again in a minute.'),
   N_('A Look (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
   N_('A Look (ReShade) is on. If it won\'t start, try once without it.'),
   N_('Almost every Windows recomp needs it.'),
@@ -4522,6 +4578,7 @@ async function act(el, e) {
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
     case 'self-steam': return selfToSteam(false);
     case 'ge-proton': return geInstall();
+    case 'use-proton': return useProton(id);
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
     case 'run-say': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
     case 'ver-go': if (S.view === 'game') return switchVersion(id); closeMenu(); return go('game', id);
@@ -4647,7 +4704,7 @@ async function act(el, e) {
     case 'rom-scan': return scanRoms();
     case 'found-fix': return fixFound(id);
     case 'tv': return window.enterTV && window.enterTV();
-    case 'vcredist': return invoke('open_url', { url: 'https://aka.ms/vs/17/release/vc_redist.x64.exe' }).catch(fail);
+    case 'vcredist': return installVcredist();
     case 'report': S.reportGame = id; return setSection('report');
     case 'portable-open': return invoke('open_folder', { id: null, path: (S.portableInfo || {}).data }).catch(fail);
     case 'portable-make': {

@@ -9,7 +9,8 @@
   },
   "start": {
     "program": [
-      "dusklight.exe"
+      "dusklight.exe",
+      "Dusklight.app/Contents/MacOS/Dusklight"
     ],
     "args": [
       "--dvd",
@@ -26,15 +27,15 @@
           "if": "{install}/data/config.json"
         },
         {
-          "path": "{config}/TwilitRealm/Dusklight/config.json",
-          "if": "{config}/TwilitRealm/Dusklight/config.json"
+          "path": "{appdata}/TwilitRealm/Dusklight/config.json",
+          "if": "{appdata}/TwilitRealm/Dusklight/config.json"
         },
         {
-          "path": "{config}/TwilitRealm/Dusk/config.json",
-          "if": "{config}/TwilitRealm/Dusk/config.json"
+          "path": "{appdata}/TwilitRealm/Dusk/config.json",
+          "if": "{appdata}/TwilitRealm/Dusk/config.json"
         },
         {
-          "path": "{config}/TwilitRealm/Dusklight/config.json"
+          "path": "{appdata}/TwilitRealm/Dusklight/config.json"
         }
       ]
     }
@@ -258,17 +259,17 @@
     "{install}/data/MemoryCard*.raw",
     "{install}/data/*.gci",
     "{install}/data/states.json",
-    "{config}/TwilitRealm/Dusklight/USA",
-    "{config}/TwilitRealm/Dusklight/EUR",
-    "{config}/TwilitRealm/Dusklight/JAP",
-    "{config}/TwilitRealm/Dusklight/MemoryCard*.raw",
-    "{config}/TwilitRealm/Dusklight/*.gci",
-    "{config}/TwilitRealm/Dusklight/states.json",
-    "{config}/TwilitRealm/Dusk/USA",
-    "{config}/TwilitRealm/Dusk/EUR",
-    "{config}/TwilitRealm/Dusk/JAP",
-    "{config}/TwilitRealm/Dusk/MemoryCard*.raw",
-    "{config}/TwilitRealm/Dusk/*.gci",
-    "{config}/TwilitRealm/Dusk/states.json"
+    "{appdata}/TwilitRealm/Dusklight/USA",
+    "{appdata}/TwilitRealm/Dusklight/EUR",
+    "{appdata}/TwilitRealm/Dusklight/JAP",
+    "{appdata}/TwilitRealm/Dusklight/MemoryCard*.raw",
+    "{appdata}/TwilitRealm/Dusklight/*.gci",
+    "{appdata}/TwilitRealm/Dusklight/states.json",
+    "{appdata}/TwilitRealm/Dusk/USA",
+    "{appdata}/TwilitRealm/Dusk/EUR",
+    "{appdata}/TwilitRealm/Dusk/JAP",
+    "{appdata}/TwilitRealm/Dusk/MemoryCard*.raw",
+    "{appdata}/TwilitRealm/Dusk/*.gci",
+    "{appdata}/TwilitRealm/Dusk/states.json"
   ]
 }
