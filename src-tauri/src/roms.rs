@@ -195,6 +195,28 @@ fn valid_playstation_id(id: &str) -> bool {
         && id.bytes().skip(4).all(|b| b.is_ascii_digit())
 }
 
+/// Resolve each component exactly when possible. A folded name must be unique.
+fn game_path(folder: &Path, relative: &str) -> Option<PathBuf> {
+    let mut path = folder.to_path_buf();
+    for name in relative.split('/') {
+        let exact = path.join(name);
+        match fs::symlink_metadata(&exact) {
+            Ok(_) => path = exact,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                let mut matches = fs::read_dir(&path).ok()?.flatten().filter(|entry| {
+                    entry.file_name().to_str().is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+                });
+                path = matches.next()?.path();
+                if matches.next().is_some() {
+                    return None;
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+    Some(path)
+}
+
 fn identify_ps5(folder: &Path) -> Option<RomFile> {
     fn title_of(entry: &Value) -> Option<&str> {
         entry.get("titleName")?.as_str().map(str::trim).filter(|title| !title.is_empty())
@@ -202,7 +224,7 @@ fn identify_ps5(folder: &Path) -> Option<RomFile> {
 
     const MAX_PARAM: u64 = 64 * 1024;
     let mut data = Vec::new();
-    fs::File::open(folder.join("sce_sys/param.json")).ok()?
+    fs::File::open(game_path(folder, "sce_sys/param.json")?).ok()?
         .take(MAX_PARAM + 1).read_to_end(&mut data).ok()?;
     if data.len() as u64 > MAX_PARAM {
         return None;
@@ -222,14 +244,17 @@ fn identify_ps5(folder: &Path) -> Option<RomFile> {
 }
 
 fn identify_playstation(folder: &Path) -> Option<RomFile> {
-    if folder.join("eboot.bin").is_file() {
-        let ps4 = identify_sfo(folder, &folder.join("sce_sys/param.sfo"), "ps4", |id| {
-            id.starts_with("CUSA") && valid_playstation_id(id)
+    let has_file = |relative| game_path(folder, relative).is_some_and(|path| path.is_file());
+    if has_file("eboot.bin") {
+        let ps4 = game_path(folder, "sce_sys/param.sfo").and_then(|path| {
+            identify_sfo(folder, &path, "ps4", |id| id.starts_with("CUSA") && valid_playstation_id(id))
         });
-        return ps4.or_else(|| identify_ps5(folder));
+        if let Some(game) = ps4.or_else(|| identify_ps5(folder)) {
+            return Some(game);
+        }
     }
-    if folder.join("PS3_DISC.SFB").is_file() && folder.join("PS3_GAME/USRDIR/EBOOT.BIN").is_file() {
-        return identify_sfo(folder, &folder.join("PS3_GAME/PARAM.SFO"), "ps3", |id| {
+    if has_file("PS3_DISC.SFB") && has_file("PS3_GAME/USRDIR/EBOOT.BIN") {
+        return identify_sfo(folder, &game_path(folder, "PS3_GAME/PARAM.SFO")?, "ps3", |id| {
             (id.starts_with("BC") || id.starts_with("BL")) && valid_playstation_id(id)
         });
     }
@@ -249,16 +274,18 @@ fn identify_switch(folder: &Path) -> Option<RomFile> {
             None
         }
     })?;
-    let valid_exefs = |exefs: &Path| {
+    let valid_exefs = |relative| {
+        let Some(exefs) = game_path(folder, relative) else { return false };
         [("main.npdm", b"META"), ("main", b"NSO0")].iter().all(|(name, magic)| {
+            let Some(path) = game_path(&exefs, name) else { return false };
             let mut header = [0; 4];
-            fs::File::open(exefs.join(name)).and_then(|mut file| file.read_exact(&mut header)).is_ok()
+            fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)).is_ok()
                 && &header == *magic
         })
     };
     // A flat exefs is accepted directly under the console folder to avoid
     // treating an update inside a collection as a standalone game.
-    if !valid_exefs(&folder.join("base/exefs")) && !(depth == 0 && valid_exefs(&folder.join("exefs"))) {
+    if !valid_exefs("base/exefs") && !(depth == 0 && valid_exefs("exefs")) {
         return None;
     }
     let title = folder.file_name()?.to_str()?.to_string();
@@ -396,6 +423,21 @@ mod tests {
     }
 
     #[test]
+    fn prefers_exact_game_paths_over_ambiguous_case_matches() {
+        let root = tmp("case-match");
+        let upper = root.join("PARAM.SFO");
+        let lower = root.join("param.sfo");
+        fs::write(&upper, []).unwrap();
+        // Default Windows filesystems cannot represent both spellings.
+        if fs::OpenOptions::new().write(true).create_new(true).open(&lower).is_ok() {
+            assert_eq!(game_path(&root, "param.sfo"), Some(lower));
+            assert_eq!(game_path(&root, "PARAM.SFO"), Some(upper));
+            assert!(game_path(&root, "Param.sfo").is_none());
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn treats_valid_extracted_switch_games_as_single_entries() {
         let root = tmp("switch2");
         let game = root.join("SWITCH2/Mario Kart World");
@@ -405,10 +447,10 @@ mod tests {
         fs::write(exefs.join("main.npdm"), b"META").unwrap();
         fs::write(exefs.join("nested.gba"), [0; 8192]).unwrap();
         let switch = root.join("SWITCH/Example Game");
-        let flat_exefs = switch.join("exefs");
+        let flat_exefs = switch.join("ExeFS");
         fs::create_dir_all(&flat_exefs).unwrap();
         fs::write(flat_exefs.join("main"), b"NSO0").unwrap();
-        fs::write(flat_exefs.join("main.npdm"), b"META").unwrap();
+        fs::write(flat_exefs.join("MAIN.NPDM"), b"META").unwrap();
         let sibling = root.join("Pokemon Emerald.gba");
         fs::write(&sibling, [0; 8192]).unwrap();
 
@@ -567,13 +609,13 @@ mod tests {
         assert!(scan(&[root.clone()]).is_empty());
 
         let ps3 = root.join("PS3/Demons Souls");
-        fs::create_dir_all(ps3.join("PS3_GAME/USRDIR")).unwrap();
+        fs::create_dir_all(ps3.join("ps3_game/USRDIR")).unwrap();
         fs::write(ps3.join("PS3_DISC.SFB"), b"").unwrap();
-        fs::write(ps3.join("PS3_GAME/USRDIR/EBOOT.BIN"), b"").unwrap();
+        fs::write(ps3.join("ps3_game/USRDIR/eboot.bin"), b"").unwrap();
         sfo.extend(b"\0");
         let id_start = sfo.len() - id.len();
         sfo[id_start..id_start + 9].copy_from_slice(b"BLES00932");
-        fs::write(ps3.join("PS3_GAME/PARAM.SFO"), sfo).unwrap();
+        fs::write(ps3.join("ps3_game/param.sfo"), sfo).unwrap();
         let found = scan(&[root.clone()]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].path, ps3);
