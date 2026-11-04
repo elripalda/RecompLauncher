@@ -364,15 +364,17 @@ pub struct Action {
 
 // ---------- finding a profile ----------
 
-/// None ship built in right now: each recomp's own developer adds easy setup to their release.
-/// The two examples in docs/examples are still loaded by the tests.
-#[cfg(not(test))]
-const BUILT_IN: &[&str] = &[];
-#[cfg(test)]
-const BUILT_IN: &[&str] = &[include_str!("../../docs/examples/fifawc14.json"), include_str!("../../docs/examples/streetball.json")];
+/// Launcher-maintained profiles for official releases that ship without one.
+const BUILT_IN: &[&str] = &[
+    include_str!("../boot/dusklight.json"),
+    #[cfg(test)]
+    include_str!("../../docs/examples/fifawc14.json"),
+    #[cfg(test)]
+    include_str!("../../docs/examples/streetball.json"),
+];
 
 /// The profile for a game: the developer's own (in the game's folder), the catalog's, a built-in
-/// one for its repo (none at the moment), or one made from the catalog's boot profile when that
+/// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))
@@ -582,10 +584,28 @@ fn find_own(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     if let Some(p) = entry.get("launcher").and_then(|v| serde_json::from_value::<Profile>(v.clone()).ok()).and_then(ok) {
         return Some(p);
     }
-    BUILT_IN
+    let mut p = BUILT_IN
         .iter()
         .filter_map(|t| serde_json::from_str::<Profile>(t).ok())
-        .find(|p| !repo.is_empty() && p.repo.eq_ignore_ascii_case(repo))
+        .find(|p| !repo.is_empty() && p.repo.eq_ignore_ascii_case(repo))?;
+    if p.repo == "TwilitRealm/dusklight" {
+        if cfg!(target_os = "macos") {
+            if let Some(start) = &mut p.start {
+                start.program = vec!["Dusklight.app/Contents/MacOS/Dusklight".into()];
+            }
+        }
+        if cfg!(target_os = "linux") && !p.through_proton(game_dir) {
+            // SDL stores native Linux preferences under XDG_DATA_HOME.
+            for file in p.config.iter_mut().flat_map(|c| &mut c.file) {
+                file.path = file.path.replace("{config}/", "{local}/");
+                file.when = file.when.replace("{config}/", "{local}/");
+            }
+            for path in &mut p.saves {
+                *path = path.replace("{config}/", "{local}/");
+            }
+        }
+    }
+    Some(p)
 }
 
 // ---------- paths ----------
@@ -1468,6 +1488,59 @@ mod tests {
         assert!(f.settings.iter().any(|s| s.id == "resolution"));
         let s = find(Path::new("/nope"), "luckvj/streetball-revival", &Value::Null).unwrap();
         assert_eq!(s.game.unwrap().check.iso9660, "SLUS_206.51");
+    }
+
+    #[test]
+    fn dusklight_official_package_uses_the_launcher_profile() {
+        let install = tmp("dusklight");
+        let program = if cfg!(windows) {
+            "dusklight.exe"
+        } else if cfg!(target_os = "macos") {
+            "Dusklight.app/Contents/MacOS/Dusklight"
+        } else {
+            "Dusklight-v2.0.3-linux-x86_64.AppImage"
+        };
+        let executable = install.join(program);
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, b"").unwrap();
+        let disc = install.join("Twilight Princess.rvz");
+        std::fs::write(&disc, b"").unwrap();
+        let profile = find(&install, "twilitrealm/dusklight", &Value::Null).unwrap();
+        check_copy(profile.game.as_ref().unwrap(), &disc).unwrap();
+        let picks = BTreeMap::new();
+        let (exe, args) = profile.command(&install, Some(&disc), &picks).unwrap();
+        assert_eq!(exe, executable);
+        assert_eq!(args, vec!["--dvd".to_string(), disc.to_string_lossy().into_owned()]);
+
+        let data = install.join("data");
+        std::fs::create_dir(&data).unwrap();
+        std::fs::write(data.join("config.json"), "{}").unwrap();
+        let cap = profile.settings.iter().position(|s| s.id == "fps_cap").unwrap();
+        assert!(!profile.current(&install, &picks)[cap].1);
+        profile.pick(&install, "fps", 1).unwrap();
+        assert!(profile.current(&install, &picks)[cap].1);
+        profile.pick(&install, "fps_cap", 2).unwrap();
+        assert_eq!(profile.config_file("main", &install).unwrap().get("video.maxFrameRate").as_deref(), Some("90"));
+
+        let user_root = if cfg!(target_os = "linux") { "{local}" } else { "{config}" };
+        assert!(profile.saves.contains(&format!("{user_root}/TwilitRealm/Dusk/states.json")));
+        let game = crate::library::Installed { path: install.clone(), ..Default::default() };
+        let portable: Vec<_> = profile.saves.into_iter().filter(|path| path.starts_with("{install}/")).collect();
+        let spots = crate::saves::spots(&portable, &[], &game);
+        let card = data.join("MemoryCardA.USA.raw");
+        let states = data.join("states.json");
+        std::fs::write(&card, b"card").unwrap();
+        std::fs::write(&states, b"[]").unwrap();
+        let app = install.join("launcher-data");
+        let backup = crate::saves::backup(&app, "dusklight", &spots, &game).unwrap().unwrap();
+        assert_eq!(backup.files, 2);
+        std::fs::remove_file(&card).unwrap();
+        std::fs::remove_file(&states).unwrap();
+        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
+        assert_eq!(std::fs::read(card).unwrap(), b"card");
+        assert_eq!(std::fs::read(states).unwrap(), b"[]");
+        let _ = std::fs::remove_dir_all(&install);
     }
 
     #[test]
