@@ -475,6 +475,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         proton: os == "windows" && assets::os_now() == "linux",
         picks: prev.as_ref().map(|p| p.picks.clone()).unwrap_or_default(),
+        slider_vals: prev.as_ref().map(|p| p.slider_vals.clone()).unwrap_or_default(),
         args: prev.as_ref().map(|p| p.args.clone()).unwrap_or_default(),
         auto_update: prev.as_ref().map(|p| p.auto_update).unwrap_or(false),
         local: false,
@@ -2793,7 +2794,10 @@ fn remove_github(st: State<'_, App>, id: String) -> Res<()> {
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    profile::find(&g.path, &g.repo, &entry)
+    profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+        p.slider_vals = g.slider_vals.clone();
+        p
+    })
 }
 
 /// The player's copy for this game: the one they picked, or the one found in their folders. Err
@@ -2837,6 +2841,21 @@ struct SetupOption {
     choices: Vec<String>,
     current: usize,
     applies: bool,
+    /// The heading it's under ("" for none).
+    group: String,
+    /// Hidden until the player shows advanced options.
+    advanced: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slider: Option<SliderNow>,
+}
+
+/// A slider as the window shows it: its range and step, and the value exactly as written now.
+#[derive(Serialize)]
+struct SliderNow {
+    min: f64,
+    max: f64,
+    step: f64,
+    value: String,
 }
 
 #[derive(Serialize)]
@@ -2885,7 +2904,17 @@ fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
             .map(|(s, (i, applies))| {
                 // The launcher's own settings wait for the file the game makes on its first start.
                 let ready = !p.from_boot || s.target == "args" || p.config_file(&s.target, &g.path).map(|f| f.existed).unwrap_or(false);
-                SetupOption { id: s.id.clone(), label: s.label.clone(), help: s.help.clone(), choices: s.choices.iter().map(|c| c.label.clone()).collect(), current: i, applies: applies && ready }
+                SetupOption {
+                    id: s.id.clone(),
+                    label: s.label.clone(),
+                    help: s.help.clone(),
+                    choices: s.choices.iter().map(|c| c.label.clone()).collect(),
+                    current: i,
+                    applies: applies && ready,
+                    group: s.group.trim().to_string(),
+                    advanced: p.is_advanced(s),
+                    slider: s.slider.as_ref().map(|sl| SliderNow { min: sl.min, max: sl.max, step: sl.step(), value: p.slider_now(s, &g.path).unwrap_or_default() }),
+                }
             })
             .collect(),
         actions: p.actions.iter().map(|a| SetupAction { id: a.id.clone(), label: a.label.clone(), help: a.help.clone(), kind: if a.clear.is_empty() { "open".into() } else { "clear".into() } }).collect(),
@@ -3017,6 +3046,26 @@ fn set_game_setting(st: State<'_, App>, id: String, setting: String, choice: usi
         let _ = p.prepare(&g.path, g.game_copy.as_deref());
     }
     p.pick(&g.path, &setting, choice).map_err(Error::Msg)
+}
+
+/// The player moved a slider: written into the game's settings file, or kept for the command line.
+/// Gives back the value as written.
+#[tauri::command(async)]
+fn set_game_slider(st: State<'_, App>, id: String, setting: String, value: f64) -> Res<String> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    let s = p.settings.iter().find(|s| s.id == setting).ok_or_else(|| Error::Msg("That isn't one of its settings.".into()))?;
+    if s.target != "args" && !p.from_boot {
+        let _ = p.prepare(&g.path, g.game_copy.as_deref());
+    }
+    let text = p.set_slider(&g.path, &setting, value).map_err(Error::Msg)?;
+    if s.target == "args" {
+        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
+            x.slider_vals.insert(setting, text.clone());
+        }
+        st.save();
+    }
+    Ok(text)
 }
 
 /// A profile's button: open a folder, or clear one (the shader cache).
@@ -3299,6 +3348,17 @@ fn recent_log(st: State<'_, App>, id: String, since: u64) -> Option<(String, Str
 }
 
 fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
+    let p = recent_log_path(st, id, since)?;
+    let text = std::fs::read(&p).ok()?;
+    let text = String::from_utf8_lossy(&text);
+    let lines: Vec<&str> = text.lines().collect();
+    let tail = lines[lines.len().saturating_sub(60)..].join("\n");
+    Some((p.to_string_lossy().into(), tail))
+}
+
+/// The newest log the launcher knows for a game from its last session (or since `since`): the
+/// game's own, what it printed, or ReShade's.
+pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf> {
     let id = id.to_string();
     let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
     // Not told when it started: the start of its last session (an old log is never "the crash").
@@ -3345,12 +3405,7 @@ fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         (secs + 5 >= since).then_some((t, p))
     });
-    let (_, p) = best?;
-    let text = std::fs::read(&p).ok()?;
-    let text = String::from_utf8_lossy(&text);
-    let lines: Vec<&str> = text.lines().collect();
-    let tail = lines[lines.len().saturating_sub(60)..].join("\n");
-    Some((p.to_string_lossy().into(), tail))
+    best.map(|(_, p)| p)
 }
 
 // ---------- Troubleshoot ----------
@@ -5976,7 +6031,7 @@ pub fn run() {
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open,

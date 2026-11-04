@@ -903,6 +903,31 @@
     TV.sheet.onClose = () => { clearTimeout(later); TV.gridShown = {}; TV.focusKey = 'g:@search'; draw(true); setScroll(0, true); };
     show();
   }
+  // Typing a few words with the controller (a report's note): Send once there are `min` letters.
+  window.tvType = ({ title, hint, min = 0, max = 1000, more = '' }) => new Promise((res) => {
+    let text = '', settled = false;
+    const done = (v) => { if (settled) return; settled = true; res(v); };
+    const show = () => {
+      const f = $('#tv-kbq', root); if (f) f.textContent = text;
+      const ph = $('#tv-kbph', root); if (ph) ph.hidden = !!text;
+      const n = $('#tv-kbn', root); if (n) n.textContent = min && text.trim().length < min ? tf('{n} more letters', { n: min - text.trim().length }) : '';
+    };
+    const type = (c) => { if (text.length < max) { text += c; show(); } };
+    const del = () => { text = text.slice(0, -1); show(); };
+    const send = () => {
+      if (text.trim().length < min) { sfx('back'); toast(tf('A few more words, please: at least {n} letters.', { n: min })); return; }
+      TV.sheet.keep = false; done(text.trim()); closeSheet();
+    };
+    const items = KEYS.map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
+      .concat([{ label: t('Space'), cls: 'key wide', run: () => type(' ') }, { label: t('Delete'), cls: 'key wide', icon: 'erase', run: del }, { label: t('Clear'), cls: 'key wide', run: () => { text = ''; show(); } }, { label: t('Send'), cls: 'key wide done', icon: 'check', run: send }]);
+    const head = `<h3>${esc(title)}</h3><div class="tv-kb-field"><span id="tv-kbq"></span><span id="tv-kbph" class="ph">${esc(hint || '')}</span><i class="caret"></i></div><div class="tv-kb-hints"><span>${glyph('y')}${esc(t('Space'))}</span><span>${glyph('x')}${esc(t('Delete'))}</span><span id="tv-kbn"></span></div>${more}`;
+    sheet(title, items, 'kb', head);
+    TV.sheet.keep = true;
+    TV.sheet.kb = { type, del };
+    TV.sheet.keys = (b) => { if (b === 'y') { type(' '); sfx('move'); return true; } if (b === 'x') { del(); sfx('move'); return true; } return false; };
+    TV.sheet.onClose = () => done(null);
+    show();
+  });
   // Achievements, coming soon: what it'll be, Learn More, and Sign In when you aren't.
   function pageAchTV() {
     const signed = !!(S.account && S.account.signedIn);
@@ -1232,6 +1257,39 @@
 
   // A game's own settings, set up by the launcher: its copy of the game, then each setting.
   // Left and right (or A) change a setting.
+  // A game's settings: a heading where the group changes, advanced ones after Show Advanced Options,
+  // and sliders that left and right move a step at a time.
+  function tvSettingRows(id, prof) {
+    if (!prof) return [];
+    const open = advOpen(id);
+    let last = '';
+    const rows = prof.settings.filter((o) => open || !o.advanced).map((o) => {
+      const g = o.group || '', head = g && g !== last ? `<div class="tv-subh">${esc(g)}</div>` : '';
+      last = g;
+      const val = o.slider ? o.slider.value : (o.choices[o.current] || '');
+      return `${head}<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gs:${esc(o.id)}" data-gset="${esc(o.id)}"${o.slider ? ' data-slide="1"' : ''} data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(o.label)}<small>${esc(o.help)}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(val)}</b>${svg('chevR', 22)}</span></button>`;
+    });
+    if (prof.settings.some((o) => o.advanced)) rows.push(`<button type="button" class="tv-item" data-f data-key="gs:@adv" data-tvact="gadv" data-id="${esc(id)}"><span class="k">${esc(open ? t('Hide Advanced Options') : t('Show Advanced Options'))}</span><span class="tv-pill">${svg(open ? 'chevL' : 'chevR', 20)}</span></button>`);
+    return rows;
+  }
+  // A slider, one step from the value it really has; written a moment after the last press.
+  const tvSlideWrites = {};
+  function stepSlider(el, o, step) {
+    const sl = o.slider, cur = parseFloat(sl.value);
+    const k = ((Number.isFinite(cur) ? cur : sl.min) - sl.min) / sl.step;
+    const n = step > 0 ? Math.floor(k + 1e-9) + 1 : Math.ceil(k - 1e-9) - 1;
+    const places = Math.max(stepPlaces(sl.step), stepPlaces(sl.min)), m = 10 ** places;
+    const v = Math.min(sl.max, Math.max(sl.min, Math.round((sl.min + n * sl.step) * m) / m));
+    sl.value = v.toFixed(places);
+    const b = el.querySelector('.tv-cycle b');
+    if (b) { b.textContent = sl.value; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+    setPanel(el);
+    const id = el.dataset.id, key = id + '|' + o.id;
+    clearTimeout(tvSlideWrites[key]);
+    tvSlideWrites[key] = setTimeout(async () => {
+      try { sl.value = await invoke('set_game_slider', { id, setting: o.id, value: v }); if (b) b.textContent = sl.value; } catch (e) { fail(e); }
+    }, 300);
+  }
   function pageGameSettings(id) {
     const a = byId(id) || { id, name: (S.library[id] || {}).name || id };
     const su = S.setup[id];
@@ -1250,7 +1308,7 @@
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
       prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
       ...lookRows,
-      ...(prof ? prof.settings : []).map((o) => `<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gs:${esc(o.id)}" data-gset="${esc(o.id)}" data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(o.label)}<small>${esc(o.help)}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 22)}</span></button>`),
+      ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
     ].join('') || `<p class="tv-empty">${esc(t('Nothing to set for this game.'))}</p>`;
     const sub = prof && prof.settings.length ? (prof.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings, so they\'re the same in its own launcher.')) : S.os === 'linux' ? t('Looks are drawn over the game. Press Home while you play to turn one off and on.') : t('Looks are drawn over the game. Press Home while you play to fine-tune one.');
@@ -1308,6 +1366,7 @@
     const o = su && su.settings && su.settings.find((x) => x.id === k);
     if (!o || !o.applies) return;
     sfx('move');
+    if (o.slider) return stepSlider(el, o, step);
     const i = (o.current + step + o.choices.length) % o.choices.length;
     o.current = i;
     const b = el.querySelector('.tv-cycle b');
@@ -1900,6 +1959,12 @@
     } else if (k) {
       const o = (su.settings || []).find((x) => x.id === k);
       if (!o) return;
+      if (o.slider) {
+        const sl = o.slider, pct = Math.max(0, Math.min(100, ((parseFloat(sl.value) - sl.min) / ((sl.max - sl.min) || 1)) * 100)) || 0;
+        html = `<span class="k">${esc(o.applies ? t('Setting') : t('Not used right now'))}</span><h3>${esc(o.label)}</h3>
+          <div class="val">${svg('chevL', 34)}<b>${esc(sl.value)}</b>${svg('chevR', 34)}</div>
+          <div class="tv-slbar"><i style="width:${pct.toFixed(1)}%"></i></div><p>${esc(o.help)}</p>`;
+      } else
       html = `<span class="k">${esc(o.applies ? t('Setting') : t('Not used right now'))}</span><h3>${esc(o.label)}</h3>
         <div class="val">${svg('chevL', 34)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 34)}</div>
         <div class="dots">${o.choices.map((c, i) => `<i class="${i === o.current ? 'on' : ''}" title="${esc(c)}"></i>`).join('')}</div><p>${esc(o.help)}</p>`;
@@ -2200,6 +2265,7 @@
       case 'tag': sfx('select'); TV.dtag = el.dataset.tag; TV.genre = ''; TV.dq = ''; TV.dorigin = ''; TV.gridShown = {}; return go('discover');
       case 'dtagclear': sfx('back'); TV.dtag = ''; TV.focusKey = 'g:@filter'; return discoverRedraw();
       case 'dfilter': return tvFilter();
+      case 'gadv': sfx('select'); await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); TV.focusKey = 'gs:@adv'; return draw(true);
       case 'gaction': {
         const run = async () => { try { const r = await invoke('game_action', { id, action: el.dataset.k }); if (r) toast(t(r)); } catch (e) { fail(e); } };
         const a = ((S.setup[id] || {}).actions || []).find((x) => x.id === el.dataset.k);

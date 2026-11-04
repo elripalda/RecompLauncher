@@ -106,6 +106,24 @@ The same check is how the launcher finds copies in the player's folders, so a di
 
 Leave `game` out if your recomp finds the game itself.
 
+**A second pick: the game's update.** When the game needs something beside the player's copy,
+picked on its own (a title update, or a PS4 update folder kept apart from the game), add `update`
+to `game`. The launcher asks for it after the copy and puts it in your folder:
+
+```json
+"game": {
+  "kind": "folder",
+  "label": "Your game folder (CUSA00341).",
+  "check": { "file": "eboot.bin" },
+  "update": { "into": "update", "label": "Your 1.02 update folder.", "accepts": "folder", "optional": true }
+}
+```
+
+- `into`: the folder inside your release it goes in.
+- `label`: what to ask for.
+- `accepts`: `"file"` (the default), `"folder"` or `"file or folder"`.
+- `optional`: the game plays without it, so the player can skip it.
+
 ### `start`
 
 - `program`: paths inside your release, tried in order. The first one that exists runs.
@@ -214,6 +232,37 @@ Each setting is a row with a list of choices. On a controller, left and right mo
   a good first choice, labelled "Game's option" or similar.
 - **Settings that only apply sometimes.** `when` greys a setting out unless the keys it lists
   match. FIFA's Window size has `"when": { "fullscreen": "false" }`.
+
+**Groups.** Give settings a `group` and a small heading shows where the group changes. Settings
+keep the order you list them in.
+
+```json
+{ "id": "invert", "label": "Invert Camera", "group": "Controls", "choices": [ ... ] }
+```
+
+**Advanced options.** `"advanced": true` hides a setting until the player presses Show Advanced
+Options, at the bottom of the list (the launcher remembers it per game). To hide a whole group,
+list it next to `settings`. Hidden settings keep their values and are still written.
+
+```json
+"groups": [ { "id": "Advanced", "advanced": true } ]
+```
+
+**Sliders.** For a number, use `slider` instead of `choices`. Its `key` is read and written like
+`set` keys (`Section/Key` works too), and `format` says how the number is written (printf style,
+`"%g"` when you leave it out). A value off the step, like 1.37 set in the game's own menu, shows
+as it is and stays until the player moves the slider. Left and right move one step.
+
+```json
+{
+  "id": "sens", "label": "Mouse Sensitivity", "group": "Controls",
+  "slider": { "key": "mouse_sensitivity", "min": 0.1, "max": 5, "step": 0.05, "format": "%.2f" },
+  "defaults": { "mouse_sensitivity": "1.0" }
+}
+```
+
+On the command line, use `"in": "args"` with `args` and `{value}` where the number goes:
+`"args": ["--sens", "{value}"]`. It's passed once the player has moved the slider.
 
 Keep labels short and help text to a sentence. Say what it does for the player, not what the
 key is called.

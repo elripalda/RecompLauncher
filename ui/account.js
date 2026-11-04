@@ -9,6 +9,8 @@ const CLOUD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" 
 const SITE = 'https://recomplauncher.com';
 S.account = { signedIn: false };
 S.saves = {};
+// The signed-in player's reports (Settings > Account > Your Reports), with developers' answers.
+S.myReports = null;
 
 const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 const avatar = (u, size = 28) => (u && u.avatar ? `<img class="acc-pic" src="${esc(u.avatar)}" alt="" width="${size}" height="${size}">` : `<span class="acc-pic none" style="width:${size}px;height:${size}px">${esc(((u && u.username) || '?').slice(0, 1).toUpperCase())}</span>`);
@@ -18,14 +20,38 @@ async function loadAccount(fresh) {
   const was = !!(S.account && S.account.signedIn);
   try { S.account = await invoke('account_state', { fresh: !!fresh }); } catch (e) { S.account = S.account || { signedIn: false }; }
   // Signed in (or out) just now: what each game's Saves tab knew is out of date.
-  if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; }
+  if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; }
+  renderAccountBits();
+  if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
+}
+
+// ---------- your reports ----------
+async function loadMyReports() {
+  if (!(S.account && S.account.signedIn)) { S.myReports = null; return renderAccountBits(); }
+  if (S.myReports && S.myReports.loading) return;
+  const had = (S.myReports && S.myReports.list) || null;
+  S.myReports = { list: had, loading: true };
+  try { const r = await invoke('my_reports'); S.myReports = { list: (r && r.reports) || [] }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
   renderAccountBits();
 }
+window.loadMyReports = loadMyReports;
+// A developer answered and the player hasn't looked yet: the newest developer answer on each report, against what was seen.
+const repSeen = () => (S.settings.ui || {}).reports_seen || {};
+const lastDevReply = (r) => Math.max(0, ...(r.replies || []).filter((x) => x.dev).map((x) => x.id || 0));
+const reportsUnread = () => !!(S.myReports && S.myReports.list && S.myReports.list.some((r) => lastDevReply(r) > (repSeen()[r.id] || 0)));
+function markReportsSeen() {
+  const list = (S.myReports && S.myReports.list) || [];
+  const seen = Object.assign({}, repSeen());
+  let changed = false;
+  for (const r of list) { const d = lastDevReply(r); if (d > (seen[r.id] || 0)) { seen[r.id] = d; changed = true; } }
+  if (changed) saveUi({ reports_seen: seen }, true).then(() => { const b = $('#acc-btn .acc-dot'); if (b) b.remove(); });
+}
+setInterval(() => { if (S.account && S.account.signedIn && !document.hidden) loadMyReports(); }, 30 * 60 * 1000);
 function renderAccountBits() {
   const b = $('#acc-btn');
   if (b) {
     const a = S.account || {};
-    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
+    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your report'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
     b.title = a.signedIn ? t('Account') : t('Sign in');
   }
   if (S.view === 'settings' && S.setTab === 'account' && window.setSection) window.setSection('account', false);
@@ -109,7 +135,27 @@ function accountSection(group, row) {
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
       <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`)
+    + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
+}
+// Your Reports: what you said about each game, and what its developer answered. Looking at it
+// counts as having seen the answers.
+function myReportsGroup(group, row) {
+  const m = S.myReports;
+  if (!m || (!m.list && m.loading)) return group(t('Your Reports'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
+  if (!m.list) return group(t('Your Reports'), row(t('Your reports couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
+  if (!m.list.length) return group(t('Your Reports'), row(t('No reports yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
+  setTimeout(markReportsSeen, 0);
+  const seen = repSeen();
+  const when = (w) => { const ts = Date.parse(w) / 1000; return ts ? ago(ts) : ''; };
+  const item = (r) => {
+    const fresh = lastDevReply(r) > (seen[r.id] || 0);
+    const replies = (r.replies || []).map((x) => `<div class="rep-reply${x.dev ? ' dev' : ''}"><div class="who">${x.dev ? `<b>${esc(x.name || t('Developer'))}</b><span class="dev-badge">${esc(t('Developer'))}</span>` : `<b>${esc(t('You'))}</b>`}<small>${esc(when(x.when))}</small></div><p dir="auto">${esc(x.text)}</p></div>`).join('');
+    const answer = (r.replies || []).some((x) => x.dev) ? `<div class="myrep-ans"><textarea class="field" rows="2" maxlength="2000" data-myrep="${r.id}" placeholder="${esc(t('Answer the developer'))}" aria-label="${esc(t('Answer the developer'))}"></textarea><button type="button" class="btn sm" data-act="myrep-send" data-id="${r.id}">${esc(t('Send'))}</button></div>` : '';
+    return `<div class="myrep${fresh ? ' fresh' : ''}"><div class="myrep-h"><b>${esc(r.name || r.app)}</b><span class="rverdict v-${esc(r.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[r.verdict] || ''))}</span><small>${esc([r.version, when(r.when)].filter(Boolean).join(' · '))}</small></div>
+      ${r.note ? `<p class="rep-note" dir="auto">${esc(r.note)}</p>` : ''}${replies ? `<div class="rep-replies">${replies}</div>` : ''}${answer}</div>`;
+  };
+  return group(t('Your Reports'), `<p class="set-note" style="margin:0 0 6px">${esc(t('What you said about each game, and what its developer answered.'))}</p>${m.list.slice(0, 30).map(item).join('')}`);
 }
 
 // ---------- a game's Saves tab ----------
@@ -252,7 +298,21 @@ window.accountAct = async (act, el) => {
     case 'acc-create': return signIn(true);
     case 'acc-signout': return signOut();
     case 'acc-retry': el.disabled = true; await loadAccount(true); if (S.account && !S.account.offline) toast(t('Connected again.')); return render(true);
-    case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; return go('settings'); } return signIn(false);
+    case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
+    case 'myrep-load': return loadMyReports();
+    case 'myrep-send': {
+      const ta = $(`textarea[data-myrep="${CSS.escape(String(id))}"]`);
+      const text = ta ? ta.value.trim() : '';
+      if (!text) return toast(t('Write your answer first.'), true);
+      el.disabled = true;
+      try {
+        const r = await invoke('report_reply', { id: Number(id), text });
+        const rep2 = ((S.myReports && S.myReports.list) || []).find((x) => String(x.id) === String(id));
+        if (rep2 && r && r.replies) rep2.replies = r.replies;
+        toast(t('Sent to the developer.'));
+      } catch (e) { el.disabled = false; return fail(e); }
+      return render(true);
+    }
     case 'saves-cloud': {
       const on = el.getAttribute('aria-checked') !== 'true';
       try { S.library[id] = await invoke('saves_cloud', { id, on }); } catch (e) { return fail(e); }

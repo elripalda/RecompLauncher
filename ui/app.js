@@ -1225,6 +1225,11 @@ function runScore(id) {
   const p = r.pct('runs');
   return `<span class="vscore ${p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low'}" title="${esc(`${tf('{pct}% plays great', { pct: p })} · ${tn(r.n, '1 report', '{n} reports')}`)}">${esc(tf('{pct}%', { pct: p }))}</span>`;
 }
+// A developer's answers under a player's report, marked Developer.
+function devReplies(x) {
+  const list = (x.replies || []).filter((r) => r.dev);
+  return list.length ? `<div class="rep-replies">${list.map((r) => `<div class="rep-reply dev"><div class="who"><b>${esc(r.name || t('Developer'))}</b><span class="dev-badge">${esc(t('Developer'))}</span><small>${esc(Date.parse(r.when) ? ago(Date.parse(r.when) / 1000) : '')}</small></div><p dir="auto">${esc(r.text)}</p></div>`).join('')}</div>` : '';
+}
 function runsCard(a) {
   if (a.soon || (S.library[a.id] && S.library[a.id].local)) return '';
   const rep = S.reports[a.id];
@@ -1238,8 +1243,8 @@ function runsCard(a) {
   const acts = `<div class="acts${say ? ' grid2' : ''}">${say}${all}</div>`;
   if (!r.n) return `<div class="card runs">${head(rep.error ? t('Can\'t be reached right now') : t('No reports yet'))}<p class="runs-empty">${esc(inst ? t('Be the first: after you play, say how it ran on your PC.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.'))}</p>${say ? `<div class="acts">${say}</div>` : ''}</div>`;
   const items = (rep.items || []).slice(0, 3).map((x) => `<div class="rep"><div class="rep-top"><span class="rverdict v-${esc(x.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[x.verdict] || ''))}</span><small>${esc([x.version, x.when ? ago(Date.parse(x.when) / 1000 || x.when) : ''].filter(Boolean).join(' · '))}</small></div>
-      ${x.pc ? `<p class="rep-pc">${esc([x.pc.gpu, x.pc.cpu, x.pc.ram ? tf('{n} GB', { n: x.pc.ram }) : '', x.pc.os].filter(Boolean).join(' · '))}</p>` : ''}
-      ${x.note ? `<p class="rep-note" dir="auto">${esc(x.note)}</p>` : ''}</div>`).join('');
+      ${x.specs ? `<p class="rep-pc">${esc(x.specs)}</p>` : x.pc ? `<p class="rep-pc">${esc([x.pc.gpu, x.pc.cpu, x.pc.ram ? tf('{n} GB', { n: x.pc.ram }) : '', x.pc.os].filter(Boolean).join(' · '))}</p>` : ''}
+      ${x.note ? `<p class="rep-note" dir="auto">${esc(x.note)}</p>` : ''}${devReplies(x)}</div>`).join('');
   return `<div class="card runs">${head(tn(r.n, '1 report', '{n} reports'))}
     <div class="runs-top"><b class="runs-pct">${esc(tf('{pct}%', { pct: r.pct('runs') }))}</b><span>${esc(t('say it plays great'))}</span></div>
     ${runBar(r)}
@@ -1626,7 +1631,7 @@ function settingsTab(a) {
     ${su.needs ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${su.copy ? esc(su.copy) : esc(su.needs)}</span></div><button type="button" class="btn${su.copy ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(su.copy ? t('Change') : t('Insert it'))}</button></div></div>` : ''}
     ${su.update ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('The game\'s update'))}</b><span>${su.update_copy ? esc(su.update_copy) : esc(su.update)}</span></div><button type="button" class="btn${su.update_copy || su.update_optional ? '' : ' main'}" data-act="setupdate" data-id="${esc(id)}">${esc(su.update_copy ? t('Change') : t('Choose It'))}</button></div></div>` : ''}
     ${su.settings.length ? `<div class="card"><div class="card-h"><h3>${esc(t('How it runs'))}</h3><span>${esc(su.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings'))}</span></div>
-      ${su.settings.map((o) => `<div class="set-row${o.applies ? '' : ' off'}"><div class="k"><b>${esc(o.label)}</b><span>${esc(o.help)}</span></div>${seg(o)}</div>`).join('')}</div>` : ''}
+      ${gameSettingRows(id, su, seg)}</div>` : ''}
     ${su.actions.length ? `<div class="card">${su.actions.map((x) => `<div class="set-row"><div class="k"><b>${esc(x.label)}</b><span>${esc(x.help)}</span></div><button type="button" class="btn${x.kind === 'clear' ? ' danger' : ''}" data-act="gaction" data-id="${esc(id)}" data-k="${esc(x.id)}">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</button></div>`).join('')}</div>` : ''}
   </div>`;
 }
@@ -1643,6 +1648,67 @@ function portableRow(row) {
   if (p && p.portable) return brow(t('Portable Mode'), tf('On. Your library, settings, play time and save backups are in {folder}, next to the launcher, so they go wherever it goes.', { folder: p.data }), `<button type="button" class="btn" data-act="portable-open">${esc(t('Open'))}</button>`);
   return brow(t('Make a Portable Copy'), t('A copy of RecompLauncher on a portable drive that keeps its library, settings, play time and save backups next to it, to use on any PC. Put your Recomp Library on that drive too.'), `<button type="button" class="btn" data-act="portable-make">${esc(t('Make a Portable Copy'))}</button>`);
 }
+// A game's settings in their order: a heading where the group changes, advanced ones only after
+// Show Advanced Options (remembered per game), and sliders with their value beside them.
+const advOpen = (id) => !!(((S.settings.ui || {}).adv_open || {})[id]);
+function gameSettingRows(id, su, seg) {
+  const open = advOpen(id), hasAdv = su.settings.some((o) => o.advanced);
+  let last = '';
+  const rows = su.settings.filter((o) => open || !o.advanced).map((o) => {
+    const g = o.group || '', head = g && g !== last ? `<div class="set-sub">${esc(g)}</div>` : '';
+    last = g;
+    const ctl = o.slider ? `<div class="gslider"><input type="range" min="${o.slider.min}" max="${o.slider.max}" step="${o.slider.step}" value="${esc(parseFloat(o.slider.value) || o.slider.min)}" data-gslide data-id="${esc(id)}" data-k="${esc(o.id)}" aria-label="${esc(o.label)}"${o.applies ? '' : ' disabled'}><output>${esc(o.slider.value)}</output></div>` : seg(o);
+    return `${head}<div class="set-row${o.applies ? '' : ' off'}"><div class="k"><b>${esc(o.label)}</b><span>${esc(o.help)}</span></div>${ctl}</div>`;
+  }).join('');
+  return rows + (hasAdv ? `<div class="set-adv"><button type="button" class="btn" data-act="gadv" data-id="${esc(id)}">${esc(open ? t('Hide Advanced Options') : t('Show Advanced Options'))}</button></div>` : '');
+}
+// A slider moved: written at once (by drag, on release; by keys, a moment after the last press).
+const stepPlaces = (st) => { const d = String(st).split('.')[1]; return d ? Math.min(10, d.length) : 0; };
+function sliderOf(el) {
+  const su = S.setup[el.dataset.id];
+  return su && su !== 'loading' ? (su.settings || []).find((o) => o.id === el.dataset.k && o.slider) : null;
+}
+const slideWrites = {};
+function slideTo(el, v, later) {
+  const o = sliderOf(el);
+  if (!o) return;
+  const sl = o.slider, out = el.parentNode.querySelector('output');
+  v = Math.min(sl.max, Math.max(sl.min, v));
+  const shown = v.toFixed(Math.max(stepPlaces(sl.step), stepPlaces(sl.min)));
+  el.value = v;
+  if (out) out.textContent = shown;
+  const key = el.dataset.id + '|' + el.dataset.k;
+  clearTimeout(slideWrites[key]);
+  const write = async () => {
+    try { const txt = await invoke('set_game_slider', { id: el.dataset.id, setting: el.dataset.k, value: v }); sl.value = txt; if (out) out.textContent = txt; } catch (e) { fail(e); }
+  };
+  if (later) slideWrites[key] = setTimeout(write, 300); else write();
+}
+document.addEventListener('input', (e) => {
+  const el = e.target.closest && e.target.closest('input[data-gslide]');
+  if (!el) return;
+  const o = sliderOf(el), out = el.parentNode.querySelector('output');
+  if (o && out) out.textContent = Number(el.value).toFixed(Math.max(stepPlaces(o.slider.step), stepPlaces(o.slider.min)));
+});
+document.addEventListener('change', (e) => {
+  const el = e.target.closest && e.target.closest('input[data-gslide]');
+  if (el) slideTo(el, Number(el.value));
+});
+// Left and right: one step from the value it really has (one set in the game, off the step,
+// goes to the next step up or down).
+document.addEventListener('keydown', (e) => {
+  const el = e.target.closest && e.target.closest('input[data-gslide]');
+  if (!el || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  const o = sliderOf(el);
+  if (!o || el.disabled) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const sl = o.slider, cur = parseFloat((el.parentNode.querySelector('output') || {}).textContent) || parseFloat(sl.value) || sl.min;
+  const up = e.key === 'ArrowRight' || e.key === 'ArrowUp', k = (cur - sl.min) / sl.step;
+  const n = up ? Math.floor(k + 1e-9) + 1 : Math.ceil(k - 1e-9) - 1;
+  const m = 10 ** Math.max(stepPlaces(sl.step), stepPlaces(sl.min));
+  slideTo(el, Math.round((sl.min + n * sl.step) * m) / m, true);
+}, true);
 async function setGameSetting(id, k, i) {
   try { await invoke('set_game_setting', { id, setting: k, choice: Number(i) }); } catch (e) { return fail(e); }
   delete S.setup[id];
@@ -4299,6 +4365,21 @@ const TS_TEXT = [
   N_('It says your game files aren\'t the right ones'),
   N_('How it closed last time'),
   N_('Code {code}'),
+  // Reports and their answers (the launcher's words, and the website's).
+  N_('Tell the developer what happened and when.'),
+  N_('Pick how it plays.'),
+  N_('Sign in to see your reports.'),
+  N_('Sign in to answer.'),
+  N_('Your reports couldn\'t be loaded. Try again later.'),
+  N_('Your answer didn\'t go through. Try again later.'),
+  N_('Your report is in, but the log couldn\'t be kept.'),
+  N_('Logs can be 2 MB at most.'),
+  N_('Send the log as a text file, like a .txt or .log.'),
+  N_('That\'s a lot at once. Try again later.'),
+  N_('That\'s a lot of answers in an hour. Try again a bit later.'),
+  N_('That report isn\'t yours, or it\'s gone.'),
+  N_('That setting isn\'t a slider.'),
+  N_('That isn\'t a number.'),
   N_('It starts {name}, which looks like one of the game\'s tools'),
   N_('It sits in a folder for tools or a setup\'s leftovers ({folder}). Choose the game\'s own program, where its setup installed it.'),
   N_('Windows didn\'t let the launcher write the game\'s files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.'),
@@ -4523,7 +4604,7 @@ function launchOptions(id) {
 // ---------- clicks ----------
 async function act(el, e) {
   const a = el.dataset.act, id = el.dataset.id;
-  if (/^(acc|saves)-/.test(a) && window.accountAct) return window.accountAct(a, el);
+  if (/^(acc|saves|myrep)-/.test(a) && window.accountAct) return window.accountAct(a, el);
   if (/^beta-/.test(a) && window.moreAct) return window.moreAct(a, el);
   if (a === 'adopt' && window.adoptAct) return window.adoptAct(a, el);
   switch (a) {
@@ -4630,6 +4711,7 @@ async function act(el, e) {
     case 'self-update': return selfUpdate();
     case 'pick-copy': return pickCopy(id, !!el.dataset.folder);
     case 'gset': return setGameSetting(id, el.dataset.k, el.dataset.i);
+    case 'gadv': { await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); if (S.view === 'game' && S.arg === id && $('#g-body')) showTab(S.tab); else render(true); return; }
     case 'look': return setLook(id, el.dataset.look);
     case 'gaction': {
       const run = async () => { try { const r = await invoke('game_action', { id, action: el.dataset.k }); if (r) toast(t(r)); } catch (err) { fail(err); } };

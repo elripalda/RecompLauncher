@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 const FILE: &str = "recomplauncher.json";
-const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "actions", "prepare", "looks", "mods", "saves"];
+const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves"];
 
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
@@ -325,6 +325,29 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         }
         if s.target != "args" && !ids.contains(&s.target) {
             items.push(err(format!("\"{}\" is in \"{}\", which isn't one of your settings files", s.label, s.target), "Use a \"config\" id, or \"args\" for the command line."));
+            continue;
+        }
+        if let Some(sl) = s.slider.as_ref() {
+            if !(sl.min < sl.max) {
+                items.push(err(format!("\"{}\": the slider's \"min\" has to be below its \"max\"", s.label), "Give the lowest and highest values the game takes."));
+                continue;
+            }
+            if s.target == "args" {
+                let list = if s.args.is_empty() { &sl.args } else { &s.args };
+                if !list.iter().any(|a| a.contains("{value}")) {
+                    items.push(err(format!("\"{}\": no {{value}} in its \"args\"", s.label), "Write where the number goes, like [\"--sens\", \"{value}\"]."));
+                    continue;
+                }
+                items.push(ok(format!("{}: a slider on the command line, {} to {}", s.label, sl.min, sl.max)));
+                continue;
+            }
+            let key = if sl.key.is_empty() { s.id.as_str() } else { sl.key.as_str() };
+            let has = p.config_file(&s.target, dir).and_then(|f| f.get(key)).is_some() || s.defaults.contains_key(key);
+            if has {
+                items.push(ok(format!("{}: {} (a slider, {} to {})", s.label, p.slider_now(s, dir).unwrap_or_default(), sl.min, sl.max)));
+            } else {
+                items.push(warn(format!("{}: the file has no \"{key}\"", s.label), "Put the game's own value in \"defaults\" so the slider starts there."));
+            }
             continue;
         }
         if s.choices.len() < 2 {

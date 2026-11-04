@@ -336,24 +336,204 @@ pub async fn usage_event(app: AppHandle, kind: String, game: String, version: Op
     Ok(())
 }
 
-/// "How did it run?": the player's word, with the PC it was played on.
+// ---------- "How did it run?": reports developers can act on ----------
+
+/// The site's PC store API: reports, the player's own reports, answering a developer.
+fn pc_api() -> String {
+    format!("{}/api/pc.php", catalog::base())
+}
+
+/// A log goes with a report as its last 2 MB.
+pub const LOG_MAX: usize = 2 << 20;
+
+/// The PC in one short line, as the player sees it before sending: "Windows 11 23H2 · Ryzen 7
+/// 5800X · RTX 3070 (driver 566.36) · 32 GB".
+pub fn specs_line(pc: &PcInfo) -> String {
+    let tidy = |x: &str, drop: &[&str]| {
+        let mut s = x.replace("(R)", "").replace("(TM)", "").replace("(tm)", "");
+        for d in drop {
+            s = s.replace(d, " ");
+        }
+        let s = regex_lite::Regex::new(r"\s*@\s*[\d.]+\s*GHz|\b\d+-Core\b|\bProcessor\b|\bCPU\b|\bwith Radeon Graphics\b").unwrap().replace_all(&s, " ").to_string();
+        s.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+    let cpu = tidy(&pc.cpu, &["AMD ", "Intel "]);
+    let gpu = tidy(&pc.gpu, &["NVIDIA ", "GeForce ", "AMD ", "Intel "]);
+    let driver = pc.gpu_driver.split_whitespace().last().unwrap_or("").to_string();
+    let gpu = if gpu.is_empty() || driver.is_empty() || !driver.chars().next().is_some_and(|c| c.is_ascii_digit()) { gpu } else { format!("{gpu} (driver {driver})") };
+    let ram = if pc.ram_gb > 0 { format!("{} GB", pc.ram_gb) } else { String::new() };
+    [pc.osver.trim().to_string(), cpu, gpu, ram].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ")
+}
+
+/// What it's played on, as the site names it.
+fn sys_now() -> &'static str {
+    if crate::shortcuts::is_steam_deck() {
+        "deck"
+    } else {
+        std::env::consts::OS
+    }
+}
+
+/// A log as it goes with a report: its last 2 MB (from the start of a line), as text.
+pub fn log_tail(bytes: &[u8], max: usize) -> String {
+    let cut = if bytes.len() > max {
+        let from = bytes.len() - max;
+        let at = bytes[from..].iter().position(|b| *b == b'\n').map(|i| from + i + 1).filter(|i| *i < bytes.len()).unwrap_or(from);
+        &bytes[at..]
+    } else {
+        bytes
+    };
+    let mut text = String::from_utf8_lossy(cut).replace('\0', " ");
+    // The lossy text can come out a little longer (a broken character becomes three bytes).
+    while text.len() > max {
+        let mut i = text.len() - max;
+        while !text.is_char_boundary(i) {
+            i += 1;
+        }
+        text = text[i..].to_string();
+    }
+    text
+}
+
+/// A report as the site takes it: the fields, and the log when there's one. Refused here the same
+/// way the site would: a bad report says what happened.
+#[derive(Debug)]
+pub struct ReportForm {
+    pub fields: Vec<(&'static str, String)>,
+    pub log: Option<(String, String)>,
+}
+
+pub fn report_form(id: &str, verdict: &str, sys: &str, note: &str, version: &str, specs: &str, log: Option<(String, String)>) -> Result<ReportForm, String> {
+    if !["runs", "issues", "broken"].contains(&verdict) {
+        return Err("Pick how it plays.".into());
+    }
+    let note = note.trim();
+    if verdict != "runs" && note.chars().count() < 15 {
+        return Err("Tell the developer what happened and when.".into());
+    }
+    Ok(ReportForm {
+        fields: vec![
+            ("a", "feedback".into()),
+            ("id", id.into()),
+            ("verdict", verdict.into()),
+            ("sys", sys.into()),
+            ("note", note.chars().take(1000).collect()),
+            ("version", version.chars().take(40).collect()),
+            ("specs", specs.chars().take(600).collect()),
+        ],
+        log: log.filter(|(_, t)| !t.trim().is_empty()),
+    })
+}
+
+/// The report as multipart/form-data.
+pub fn multipart(form: &ReportForm, boundary: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (k, v) in &form.fields {
+        out.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+    }
+    if let Some((name, text)) = &form.log {
+        let name: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')).collect();
+        out.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"log\"; filename=\"{}\"\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n", if name.is_empty() { "game.log" } else { &name }).as_bytes());
+        out.extend(text.as_bytes());
+        out.extend(b"\r\n");
+    }
+    out.extend(format!("--{boundary}--\r\n").as_bytes());
+    out
+}
+
+/// The game's newest log, for a report: its file name and last 2 MB.
+fn report_log(st: &App, id: &str) -> Option<(String, String)> {
+    let p = crate::recent_log_path(st, id, 0)?;
+    let bytes = std::fs::read(&p).ok()?;
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "game.log".into());
+    Some((name, log_tail(&bytes, LOG_MAX)))
+}
+
+/// What goes with a report, shown to the player before they send it: their PC in a line, the
+/// version they have, and the log the launcher would attach (its name and size), if it has one.
 #[tauri::command]
-pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Option<String>, mins: Option<u64>) -> Res<()> {
+pub async fn report_preview(app: AppHandle, id: String) -> Res<Value> {
     let st = app.state::<App>();
     let version = st.lib.lock().unwrap().installed.get(&id).map(|g| g.tag.clone()).unwrap_or_default();
     let dir = st.dir.clone();
     let pc = tokio::task::spawn_blocking(move || pc_info(&dir)).await.unwrap_or_default();
-    post(&st, "report", json!({
-        "install": install_id(&st.dir), "app": id, "verdict": verdict, "sys": std::env::consts::OS, "version": version, "note": note.unwrap_or_default(),
-        "mins": mins.unwrap_or(0), "gpu": pc.gpu, "cpu": pc.cpu, "ram_gb": pc.ram_gb, "osver": pc.osver,
-    }))
-    .await?;
-    Ok(())
+    let log = crate::recent_log_path(&st, &id, 0).and_then(|p| {
+        let size = std::fs::metadata(&p).ok()?.len();
+        Some(json!({"name": p.file_name()?.to_string_lossy(), "size": size.min(LOG_MAX as u64)}))
+    });
+    Ok(json!({"specs": specs_line(&pc), "version": version, "sys": sys_now(), "log": log}))
+}
+
+/// "How did it run?": the player's word, the version they have and their PC in a line, with the
+/// game's log when they leave it on. Signed in, it's tied to their account so they hear back.
+#[tauri::command]
+pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Option<String>, mins: Option<u64>, log: Option<bool>) -> Res<Value> {
+    let _ = mins;
+    let st = app.state::<App>();
+    let version = st.lib.lock().unwrap().installed.get(&id).map(|g| g.tag.clone()).unwrap_or_default();
+    let dir = st.dir.clone();
+    let pc = tokio::task::spawn_blocking(move || pc_info(&dir)).await.unwrap_or_default();
+    let attach = if log.unwrap_or(false) { report_log(&st, &id) } else { None };
+    let form = report_form(&id, &verdict, sys_now(), note.as_deref().unwrap_or(""), &version, &specs_line(&pc), attach).map_err(Error::Msg)?;
+    let boundary = format!("----RecompLauncher{}", (0..12).map(|_| format!("{:02x}", rand_byte())).collect::<String>());
+    let url = pc_api();
+    let mut req = st
+        .http
+        .post(&url)
+        .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
+        .body(multipart(&form, &boundary))
+        .timeout(std::time::Duration::from_secs(60));
+    if let Some(t) = token(&st.dir) {
+        req = req.header("X-RL-Token", t);
+    }
+    let r = crate::net::send(req, &url, true).await?;
+    let code = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if code >= 400 {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("The website didn't take it. Try again later.").to_string()));
+    }
+    Ok(v)
+}
+
+/// The signed-in player's reports, with what developers answered.
+#[tauri::command]
+pub async fn my_reports(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let t = token(&st.dir).ok_or_else(|| Error::Msg("Sign in to see your reports.".into()))?;
+    let url = pc_api();
+    let req = st.http.get(&url).query(&[("a", "my-reports")]).header("X-RL-Token", t).timeout(crate::net::QUICK);
+    let r = crate::net::send(req, &url, true).await?;
+    let code = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if code >= 400 {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("Your reports couldn't be loaded. Try again later.").to_string()));
+    }
+    Ok(v)
+}
+
+/// The player answers a developer on one of their reports.
+#[tauri::command]
+pub async fn report_reply(app: AppHandle, id: i64, text: String) -> Res<Value> {
+    let st = app.state::<App>();
+    let t = token(&st.dir).ok_or_else(|| Error::Msg("Sign in to answer.".into()))?;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err(Error::Msg("Write your answer first.".into()));
+    }
+    let url = pc_api();
+    let req = st.http.post(&url).json(&json!({"a": "report-reply", "id": id, "text": text})).header("X-RL-Token", t).timeout(crate::net::QUICK);
+    let r = crate::net::send(req, &url, true).await?;
+    let code = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if code >= 400 {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("Your answer didn't go through. Try again later.").to_string()));
+    }
+    Ok(v)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::pci_lookup;
+    use super::*;
 
     #[test]
     fn a_graphics_card_is_named_from_the_pci_list() {
@@ -364,5 +544,52 @@ mod tests {
         assert_eq!(pci_lookup(list, "10de", "1234").as_deref(), Some("Plain Name"));
         assert_eq!(pci_lookup(list, "1002", "0123"), None);
         assert_eq!(pci_lookup(list, "8086", "9999"), None);
+    }
+
+    #[test]
+    fn a_report_says_what_happened_and_always_carries_specs_and_version() {
+        // Has problems / Won't run need a note of 15 characters or more; Plays great doesn't.
+        assert!(report_form("g", "issues", "windows", "", "v1.2", "Windows 11", None).is_err());
+        assert!(report_form("g", "broken", "windows", "it crashed", "v1.2", "Windows 11", None).is_err());
+        assert!(report_form("g", "issues", "windows", "Crashes after the intro on level one.", "v1.2", "Windows 11", None).is_ok());
+        assert!(report_form("g", "runs", "windows", "", "v1.2", "Windows 11", None).is_ok());
+        assert!(report_form("g", "great", "windows", "", "v1.2", "Windows 11", None).is_err());
+        // Version and specs go every time, even empty.
+        let f = report_form("g", "runs", "deck", "", "", "", None).unwrap();
+        let names: Vec<&str> = f.fields.iter().map(|(k, _)| *k).collect();
+        assert!(names.contains(&"version") && names.contains(&"specs") && names.contains(&"sys") && names.contains(&"note"));
+        let f = report_form("g", "broken", "windows", "Black screen right after the logo.", "v2.0", "Windows 11 · RTX 3070", Some(("game.log".into(), "line 1\nline 2\n".into()))).unwrap();
+        let body = String::from_utf8(multipart(&f, "XYZ")).unwrap();
+        assert!(body.contains("name=\"a\"\r\n\r\nfeedback\r\n"));
+        assert!(body.contains("name=\"version\"\r\n\r\nv2.0\r\n"));
+        assert!(body.contains("name=\"specs\"\r\n\r\nWindows 11 · RTX 3070\r\n"));
+        assert!(body.contains("name=\"log\"; filename=\"game.log\"\r\nContent-Type: text/plain"));
+        assert!(body.ends_with("--XYZ--\r\n"));
+    }
+
+    #[test]
+    fn a_long_log_goes_as_its_last_2_mb() {
+        let mut big = Vec::new();
+        let mut n = 0u32;
+        while big.len() < 3 * 1024 * 1024 {
+            big.extend(format!("line {n} of the game's log\n").as_bytes());
+            n += 1;
+        }
+        let tail = log_tail(&big, LOG_MAX);
+        assert!(tail.len() <= LOG_MAX && tail.len() > LOG_MAX - 100);
+        assert!(tail.starts_with("line "), "starts on a whole line");
+        assert!(tail.ends_with(&format!("line {} of the game's log\n", n - 1)));
+        // A short one goes whole; nothing that isn't text gets through.
+        assert_eq!(log_tail(b"ok\0fine\n", LOG_MAX), "ok fine\n");
+    }
+
+    #[test]
+    fn the_pc_in_one_short_line() {
+        let pc = PcInfo { osver: "Windows 11 23H2".into(), cpu: "AMD Ryzen 7 5800X 8-Core Processor".into(), cores: 16, ram_gb: 32, gpu: "NVIDIA GeForce RTX 3070".into(), gpu_driver: "566.36".into() };
+        assert_eq!(specs_line(&pc), "Windows 11 23H2 · Ryzen 7 5800X · RTX 3070 (driver 566.36) · 32 GB");
+        let pc = PcInfo { osver: "SteamOS 3.7.13".into(), cpu: "AMD Custom APU 0405".into(), ram_gb: 15, gpu: "AMD Custom GPU 0405".into(), gpu_driver: "amdgpu".into(), ..Default::default() };
+        assert_eq!(specs_line(&pc), "SteamOS 3.7.13 · Custom APU 0405 · Custom GPU 0405 · 15 GB");
+        let pc = PcInfo { osver: "Windows 10".into(), cpu: "Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz".into(), ..Default::default() };
+        assert_eq!(specs_line(&pc), "Windows 10 · Core i7-9700K");
     }
 }

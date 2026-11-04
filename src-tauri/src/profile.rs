@@ -32,6 +32,10 @@ pub struct Profile {
     pub exit_codes: BTreeMap<String, String>,
     #[serde(default)]
     pub settings: Vec<Setting>,
+    /// Groups of settings, next to "settings": a whole group can be advanced (hidden until the
+    /// player shows advanced options).
+    #[serde(default)]
+    pub groups: Vec<Group>,
     #[serde(default)]
     pub actions: Vec<Action>,
     /// The recomp's own setup step, run once after the player's copy is picked (and again when
@@ -49,6 +53,10 @@ pub struct Profile {
     /// release's own setup still runs first, and its settings only change files that are there.
     #[serde(skip)]
     pub from_boot: bool,
+    /// The player's slider values for settings on the command line (setting id -> value), from
+    /// the Library: filled in by the launcher, never read from the file.
+    #[serde(skip)]
+    pub slider_vals: BTreeMap<String, String>,
 }
 
 /// A program in the release that sets the game up without showing a window. It may print lines
@@ -331,6 +339,8 @@ pub struct Setting {
     /// "main" (a settings file's id) or "args" (passed when the game starts).
     #[serde(default = "main", rename = "in")]
     pub target: String,
+    /// What it can be set to. A slider has none.
+    #[serde(default)]
     pub choices: Vec<Choice>,
     /// The game's own values for keys the file doesn't have yet.
     #[serde(default)]
@@ -338,6 +348,118 @@ pub struct Setting {
     /// Only when these keys have these values (otherwise shown greyed out).
     #[serde(default)]
     pub when: BTreeMap<String, String>,
+    /// The heading it's shown under ("Controls"). Settings keep their order: a heading shows where
+    /// the group changes from one setting to the next.
+    #[serde(default)]
+    pub group: String,
+    /// Hidden until the player presses Show Advanced Options (its value stays as it is).
+    #[serde(default)]
+    pub advanced: bool,
+    /// A number on a slider instead of choices.
+    #[serde(default)]
+    pub slider: Option<Slider>,
+    /// For a slider on the command line ("in": "args"): its arguments, with {value} for the number.
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+/// A slider: the key it sets (Section/Key in a settings file, like "set"), its range and step, and
+/// how the number is written (printf style: "%.2f", "%d"; "%g" when not said).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Slider {
+    #[serde(default)]
+    pub key: String,
+    pub min: f64,
+    pub max: f64,
+    #[serde(default)]
+    pub step: f64,
+    #[serde(default)]
+    pub format: String,
+    /// The same as the setting's "args", for a slider on the command line.
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+/// A group of settings, by the name they use in "group". `advanced`: the whole group is hidden
+/// until the player shows advanced options.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Group {
+    pub id: String,
+    #[serde(default)]
+    pub advanced: bool,
+}
+
+impl Slider {
+    /// The step it moves by (a hundredth of the range when it doesn't say).
+    pub fn step(&self) -> f64 {
+        if self.step > 0.0 && self.step.is_finite() {
+            self.step
+        } else if self.max > self.min {
+            (self.max - self.min) / 100.0
+        } else {
+            1.0
+        }
+    }
+
+    /// Digits after the point in its step (and its ends), so 0.1 + 0.2 stays 0.3.
+    fn places(&self) -> usize {
+        let p = |x: f64| {
+            let s = format!("{x}");
+            s.split_once('.').map(|(_, d)| d.len()).unwrap_or(0).min(10)
+        };
+        p(self.step()).max(p(self.min)).max(p(self.max))
+    }
+
+    /// A number the player moved it to: on a step, inside its ends.
+    pub fn snap(&self, v: f64) -> f64 {
+        let (lo, hi) = if self.min <= self.max { (self.min, self.max) } else { (self.max, self.min) };
+        let st = self.step();
+        let n = ((v.clamp(lo, hi) - lo) / st).round();
+        let x = (lo + n * st).clamp(lo, hi);
+        let m = 10f64.powi(self.places() as i32);
+        (x * m).round() / m
+    }
+
+    /// The number written its way (printf style).
+    pub fn text(&self, v: f64) -> String {
+        printf(if self.format.trim().is_empty() { "%g" } else { self.format.trim() }, v)
+    }
+}
+
+/// A number in a printf-style format: %d, %i, %f, %.2f, %g, %.3g, %e, with text around it ("%.1fx").
+pub fn printf(fmt: &str, v: f64) -> String {
+    let re = regex_lite::Regex::new(r"%([+]?)(?:\.(\d+))?([dfgieFGE])").unwrap();
+    let Some(c) = re.captures(fmt) else { return gfmt(v, 6) };
+    let plus = !c[1].is_empty();
+    let prec = c.get(2).and_then(|m| m.as_str().parse::<usize>().ok());
+    let body = match &c[3] {
+        "d" | "i" => format!("{}", v.round() as i64),
+        "f" | "F" => format!("{:.*}", prec.unwrap_or(6).min(12), v),
+        "e" | "E" => format!("{:.*e}", prec.unwrap_or(6).min(12), v),
+        _ => gfmt(v, prec.unwrap_or(6).clamp(1, 17)),
+    };
+    let body = if plus && v >= 0.0 { format!("+{body}") } else { body };
+    let m = c.get(0).unwrap();
+    format!("{}{}{}", &fmt[..m.start()], body, &fmt[m.end()..]).replace("%%", "%")
+}
+
+/// C's %g: `sig` significant digits, trailing zeros left off.
+fn gfmt(v: f64, sig: usize) -> String {
+    if v == 0.0 || !v.is_finite() {
+        return if v.is_finite() { "0".into() } else { format!("{v}") };
+    }
+    let exp = v.abs().log10().floor() as i32;
+    if exp < -4 || exp >= sig as i32 {
+        let s = format!("{:.*e}", sig.saturating_sub(1), v);
+        // 1.500000e3 -> 1.5e+03, as C writes it.
+        let (m, e) = s.split_once('e').unwrap_or((&s, "0"));
+        let m = if m.contains('.') { m.trim_end_matches('0').trim_end_matches('.') } else { m };
+        let e: i32 = e.parse().unwrap_or(0);
+        return format!("{m}e{}{:02}", if e < 0 { '-' } else { '+' }, e.abs());
+    }
+    let decimals = (sig as i32 - 1 - exp).max(0) as usize;
+    let s = format!("{:.*}", decimals, v);
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -457,6 +579,7 @@ pub fn from_boot(b: &Value) -> Option<Profile> {
         game: copy.map(|(g, _)| g),
         config,
         settings,
+        groups: b.get("settings").and_then(|v| v.get("groups")).and_then(|g| serde_json::from_value::<Vec<Group>>(g.clone()).ok()).unwrap_or_default(),
         from_boot: true,
         ..Default::default()
     })
@@ -476,7 +599,7 @@ fn boot_settings(b: &Value) -> (Vec<Config>, Vec<Setting>) {
     let settings: Vec<Setting> = v.get("settings").and_then(|c| serde_json::from_value::<Vec<Setting>>(c.clone()).ok()).unwrap_or_default();
     let settings: Vec<Setting> = settings
         .into_iter()
-        .filter(|st| st.choices.len() >= 2 && (st.target == "args" || config.iter().any(|c| c.id == st.target)))
+        .filter(|st| (st.choices.len() >= 2 || st.slider.as_ref().map(|sl| sl.min < sl.max && (st.target != "args" || st.args.iter().chain(sl.args.iter()).any(|a| a.contains("{value}")))).unwrap_or(false)) && (st.target == "args" || config.iter().any(|c| c.id == st.target)))
         .collect();
     let used: Vec<Config> = config.into_iter().filter(|c| settings.iter().any(|st| st.target == c.id)).collect();
     (used, settings)
@@ -1014,8 +1137,61 @@ impl Profile {
             if let Some(c) = picks.get(&st.id).and_then(|i| st.choices.get(*i)) {
                 args.extend(c.args.iter().map(|a| fill(a, install, game)));
             }
+            args.extend(self.slider_args(st).into_iter().map(|a| fill(&a, install, game)));
         }
         args
+    }
+
+    /// A command-line slider the player moved: its arguments with the number in place of {value}.
+    /// Not moved: nothing, so the game keeps its own value.
+    fn slider_args(&self, st: &Setting) -> Vec<String> {
+        let (Some(sl), Some(v)) = (st.slider.as_ref(), self.slider_vals.get(&st.id)) else { return vec![] };
+        let list = if st.args.is_empty() { &sl.args } else { &st.args };
+        list.iter().map(|a| a.replace("{value}", v)).collect()
+    }
+
+    /// Whether a setting is hidden behind Show Advanced Options: itself, or its whole group.
+    pub fn is_advanced(&self, st: &Setting) -> bool {
+        st.advanced || (!st.group.is_empty() && self.groups.iter().any(|g| g.advanced && g.id == st.group))
+    }
+
+    /// A slider's value now, exactly as written: in its file (or the player's, on the command line),
+    /// else the game's default, else its low end. Never rounded or rewritten here.
+    pub fn slider_now(&self, st: &Setting, install: &Path) -> Option<String> {
+        let sl = st.slider.as_ref()?;
+        let un = |x: &str| x.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string();
+        let key = if sl.key.is_empty() { st.id.as_str() } else { sl.key.as_str() };
+        let now = if st.target == "args" { self.slider_vals.get(&st.id).cloned() } else { self.config_file(&st.target, install).and_then(|f| f.get(key)) };
+        Some(now.or_else(|| st.defaults.get(key).cloned()).map(|v| un(&v)).filter(|v| !v.is_empty()).unwrap_or_else(|| sl.text(sl.min)))
+    }
+
+    /// The player moved a slider: the number, on a step and written its way, goes into its file in
+    /// the file's own style (quoted when the value there is). On the command line the caller keeps
+    /// it. Gives back what was written.
+    pub fn set_slider(&self, install: &Path, id: &str, value: f64) -> Result<String, String> {
+        let st = self.settings.iter().find(|s| s.id == id).ok_or("That isn't one of its settings.")?;
+        let sl = st.slider.as_ref().ok_or("That setting isn't a slider.")?;
+        if !value.is_finite() {
+            return Err("That isn't a number.".into());
+        }
+        let text = sl.text(sl.snap(value));
+        if st.target == "args" {
+            return Ok(text);
+        }
+        let key = if sl.key.is_empty() { st.id.as_str() } else { sl.key.as_str() };
+        let mut f = self.config_file(&st.target, install).ok_or("Its settings file couldn't be found.")?;
+        if self.from_boot && !f.existed {
+            return Err("Play the game once first: it makes its settings file then.".into());
+        }
+        let now = f.get(key).map(|v| v.trim().to_string()).unwrap_or_default();
+        let q = now.chars().next().filter(|c| (*c == '"' || *c == '\'') && now.len() >= 2 && now.ends_with(*c));
+        let out = match q {
+            Some(q) => format!("{q}{text}{q}"),
+            None => text.clone(),
+        };
+        f.set(key, &out);
+        f.save().map_err(|e| format!("Couldn't save its settings: {e}"))?;
+        Ok(text)
     }
 
     /// Which choice each setting is on (the first whose values all match), and whether it applies.
@@ -1056,6 +1232,7 @@ impl Profile {
             if let Some(c) = picks.get(&st.id).and_then(|i| st.choices.get(*i)) {
                 args.extend(c.args.iter().map(|a| fill(a, install, None)));
             }
+            args.extend(self.slider_args(st).into_iter().map(|a| fill(&a, install, None)));
         }
         args
     }
@@ -1070,7 +1247,12 @@ impl Profile {
         let mut out = vec![];
         for c in &self.config {
             let Some(f) = self.config_file(&c.id, install).filter(|f| f.existed) else { continue };
-            let mut keys: Vec<&String> = self.settings.iter().filter(|s| s.target == c.id).flat_map(|s| s.choices.iter().flat_map(|ch| ch.set.keys())).collect();
+            let mut keys: Vec<&String> = self
+                .settings
+                .iter()
+                .filter(|s| s.target == c.id)
+                .flat_map(|s| s.choices.iter().flat_map(|ch| ch.set.keys()).chain(s.slider.as_ref().map(|sl| if sl.key.is_empty() { &s.id } else { &sl.key })))
+                .collect();
             keys.sort();
             keys.dedup();
             for k in keys {
@@ -1452,6 +1634,71 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn groups_advanced_settings_and_sliders_parse() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,
+            "config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "groups":[{"id":"Advanced","advanced":true}],
+            "settings":[
+              {"id":"fs","label":"Full screen","group":"Display","choices":[{"label":"Off","set":{"Video/fullscreen":"false"}},{"label":"On","set":{"Video/fullscreen":"true"}}]},
+              {"id":"sens","label":"Mouse Sensitivity","group":"Controls","slider":{"key":"Input/mouse_sensitivity","min":0.1,"max":5,"step":0.05,"format":"%.2f"},"defaults":{"Input/mouse_sensitivity":"1.0"}},
+              {"id":"vs","label":"V-Sync","advanced":true,"choices":[{"label":"Off","set":{"Video/vsync":"false"}},{"label":"On","set":{"Video/vsync":"true"}}]},
+              {"id":"tx","label":"Texture Cache","group":"Advanced","choices":[{"label":"Off","set":{"Video/tc":"0"}},{"label":"On","set":{"Video/tc":"1"}}]},
+              {"id":"fov","label":"Field of View","in":"args","args":["--fov","{value}"],"slider":{"min":60,"max":120,"step":5,"format":"%d"}}
+            ]}"#).unwrap();
+        assert_eq!(p.settings.len(), 5);
+        let adv: Vec<bool> = p.settings.iter().map(|s| p.is_advanced(s)).collect();
+        assert_eq!(adv, vec![false, false, true, true, false]);
+        assert_eq!(p.settings[1].group, "Controls");
+        assert!(p.settings[1].choices.is_empty() && p.settings[1].slider.is_some());
+        // A command-line slider: nothing until the player moves it, then its number in {value}.
+        let mut p = p;
+        assert!(p.setting_args(Path::new("/x"), &BTreeMap::new()).is_empty());
+        assert_eq!(p.set_slider(Path::new("/x"), "fov", 93.0).unwrap(), "95");
+        p.slider_vals.insert("fov".into(), "95".into());
+        assert_eq!(p.setting_args(Path::new("/x"), &BTreeMap::new()), vec!["--fov", "95"]);
+    }
+
+    #[test]
+    fn a_slider_leaves_the_games_own_value_alone_until_moved() {
+        let d = tmp("slider");
+        let f = d.join("config.toml");
+        let text = "[Input]\nmouse_sensitivity = 1.37\ninvert = false\n";
+        std::fs::write(&f, text).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "settings":[{"id":"sens","label":"Mouse Sensitivity","slider":{"key":"Input/mouse_sensitivity","min":0.1,"max":5,"step":0.05,"format":"%.2f"},"defaults":{"Input/mouse_sensitivity":"1.0"}}]}"#).unwrap();
+        // Off its step, set from the game's own menu: shown as it is, and reading it writes nothing.
+        assert_eq!(p.slider_now(&p.settings[0], &d).as_deref(), Some("1.37"));
+        let _ = p.current(&d, &BTreeMap::new());
+        let _ = p.kept(&d);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), text);
+        // Moved: on a step, written with its format, the rest of the file as it was.
+        assert_eq!(p.set_slider(&d, "sens", 2.4987).unwrap(), "2.50");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Input]\nmouse_sensitivity = 2.50\ninvert = false\n");
+        assert_eq!(p.slider_now(&p.settings[0], &d).as_deref(), Some("2.50"));
+        // A quoted value stays quoted; past the end goes to the end.
+        std::fs::write(&f, "[Input]\nmouse_sensitivity = \"1.0\"\n").unwrap();
+        assert_eq!(p.set_slider(&d, "sens", 9.0).unwrap(), "5.00");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Input]\nmouse_sensitivity = \"5.00\"\n");
+        // Not in the file yet: the game's default shows.
+        std::fs::write(&f, "[Input]\ninvert = false\n").unwrap();
+        assert_eq!(p.slider_now(&p.settings[0], &d).as_deref(), Some("1.0"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn numbers_are_written_printf_style() {
+        assert_eq!(printf("%.2f", 2.5), "2.50");
+        assert_eq!(printf("%d", 94.6), "95");
+        assert_eq!(printf("%g", 0.30000000000000004), "0.3");
+        assert_eq!(printf("%g", 1.0), "1");
+        assert_eq!(printf("%g", 1500000.0), "1.5e+06");
+        assert_eq!(printf("%.1fx", 1.25), "1.2x");
+        let sl = Slider { key: "k".into(), min: 0.1, max: 5.0, step: 0.05, ..Default::default() };
+        assert_eq!(sl.text(sl.snap(0.1 + 0.2)), "0.3");
+        assert_eq!(sl.text(sl.snap(-3.0)), "0.1");
     }
 
     #[test]

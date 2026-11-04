@@ -365,6 +365,15 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .set-row .k{display:flex;flex-direction:column;gap:2px;min-width:0}
 .set-row .k b{font-size:15px}
 .set-row .k span{font-size:13px;color:var(--dim);overflow-wrap:anywhere}
+/* A game's settings: a group's heading, Show Advanced Options, and sliders with their value. */
+.set-sub{margin:18px 0 0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.card-h+.set-sub{margin-top:6px}
+.set-adv{display:flex;justify-content:center;padding-top:18px;border-top:1px solid var(--line)}
+.set-row+.set-adv{margin-top:0}
+.gslider{display:flex;align-items:center;gap:12px;flex:none;width:min(320px,45%)}
+.gslider input{flex:1;min-width:0;accent-color:var(--cyan);height:28px;cursor:pointer}
+.gslider input:disabled{cursor:default;opacity:.5}
+.gslider output{min-width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
 .set-row .acts{flex:none}
 .set-row.off{opacity:.45}
 .set-row .sel{min-width:170px}
@@ -912,6 +921,13 @@ body.away *,body.away *::before,body.away *::after{animation-play-state:paused!i
 .ask-run .ask-x:hover{background:var(--fill3);color:var(--ink)}
 .ask-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px}
 .ask-three .btn{padding:0 8px;font-size:13px;height:40px}
+.ask-log{display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;margin-top:2px}
+.ask-log input{width:17px;height:17px;flex:none;margin-top:1px;accent-color:var(--cyan)}
+.ask-log span{display:flex;flex-direction:column;gap:1px}
+.ask-log small{color:var(--dim);font-size:12px}
+.ask-specs{font-size:12px;color:var(--dim);line-height:1.4;overflow-wrap:anywhere}
+.ask-how{align-self:flex-start;font-size:13px}
+.ask-err{margin:0;font-size:13px;color:var(--bad,#ff7a7a)}
 .ask-three .v-runs:hover{border-color:rgba(52,242,232,.5)}
 .ask-three .v-issues:hover{border-color:rgba(245,184,61,.55)}
 .ask-three .v-broken:hover{border-color:rgba(255,122,122,.55)}
@@ -1099,6 +1115,23 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 .rverdict i{width:8px;height:8px;border-radius:50%}
 .rep-pc{margin:0;color:var(--dim);font-size:12.5px}
 .rep-note{margin:2px 0 0;font-size:14px;line-height:1.5;color:#d6dce5}
+/* Answers under a report: a developer's are marked; Your Reports in Settings > Account. */
+.rep-replies{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding-left:12px;border-left:2px solid var(--line2)}
+.rep-reply .who{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.rep-reply .who small{color:var(--dim)}
+.rep-reply p{margin:3px 0 0;font-size:13.5px;line-height:1.5;color:#d6dce5;overflow-wrap:anywhere}
+.rep-reply.dev{border-left-color:var(--cyan)}
+.rep-replies .rep-reply.dev{margin-left:-14px;padding-left:12px;border-left:2px solid var(--cyan)}
+.dev-badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.02em;background:rgba(52,242,232,.14);color:var(--cyan)}
+.myrep{padding:14px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.myrep:last-child{border-bottom:0;padding-bottom:0}
+.myrep-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.myrep-h small{color:var(--dim);font-size:12.5px;margin-left:auto}
+.myrep.fresh .myrep-h b::after{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--cyan);margin-left:8px;vertical-align:middle}
+.myrep-ans{display:flex;gap:10px;align-items:flex-end;margin-top:10px}
+.myrep-ans textarea{flex:1;min-width:0;resize:vertical;min-height:44px}
+.acc-btn{position:relative}
+.acc-dot{position:absolute;top:8px;left:30px;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 2px var(--side)}
 .runs .acts{margin-top:14px}
 .runs-empty{margin:0;color:var(--muted);font-size:14px}
 .vscore{flex:none;height:19px;padding:0 6px;border-radius:6px;display:inline-flex;align-items:center;font-size:10.5px;font-weight:800;color:#06121a}

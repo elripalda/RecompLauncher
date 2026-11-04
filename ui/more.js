@@ -170,13 +170,30 @@ async function askRun(id, secs, asked_for) {
     await keep(r);
   }
   const mins = Math.round(secs / 60);
-  const send = async (verdict, note) => {
-    try { await invoke('run_report', { id, verdict, note: note || null, mins }); keep(Object.assign({}, r, { sent: true })); toast(t('Thanks! It\'s on the game\'s page on recomplauncher.com.')); delete S.reports[id]; if (S.view === 'game' && S.arg === id) setTimeout(() => loadReports(id, true), 1500); } catch (e) { fail(e); }
+  // What goes with it, shown before sending: the PC in a line, the version, and the game's log.
+  let pre = null;
+  try { pre = await invoke('report_preview', { id }); } catch (e) { pre = null; }
+  const send = async (verdict, note, log) => {
+    const r2 = await invoke('run_report', { id, verdict, note: note || null, mins, log: !!log });
+    keep(Object.assign({}, r, { sent: true }));
+    toast(r2 && r2.warning ? t(r2.warning) : t('Thanks! It\'s on the game\'s page on recomplauncher.com.'));
+    delete S.reports[id];
+    if (S.view === 'game' && S.arg === id) setTimeout(() => loadReports(id, true), 1500);
+    if (S.account && S.account.signedIn && window.loadMyReports) setTimeout(() => window.loadMyReports(true), 2500);
   };
+  const a = byId(id) || {};
+  const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
+  const specsLine = pre ? [pre.specs, pre.version].filter(Boolean).join(' · ') : '';
   if (tvOn() && window.tvAsk) {
     const i = await window.tvAsk(tf('How did {name} run?', { name: g.name }), VERDICT.map(([, n]) => ({ label: t(n), sub: t('Shows on its page, with your PC\'s graphics card'), icon: 'check' })).concat([{ label: t('Not now'), icon: 'chevL' }]));
-    if (i != null && i >= 0 && i < 3) send(VERDICT[i][0]);
-    return;
+    if (i == null || i < 0 || i > 2) return;
+    const verdict = VERDICT[i][0];
+    if (verdict === 'runs') return send(verdict).catch(fail);
+    // A problem: what happened, typed with the controller, and the game's log along with it.
+    const more = `${specsLine ? `<p class="tv-kb-note">${esc(t('This goes with your report'))}: ${esc(specsLine)}</p>` : ''}${pre && pre.log ? `<p class="tv-kb-note">${esc(t('The game\'s log goes too. Only the game\'s developer sees it.'))}</p>` : ''}`;
+    const note = window.tvType ? await window.tvType({ title: t('What happened?'), hint: t('What happened, and when?'), min: 15, more }) : null;
+    if (note == null) return;
+    return send(verdict, note, !!(pre && pre.log)).catch(fail);
   }
   const old = $('.ask-run');
   if (old) old.remove();
@@ -192,14 +209,43 @@ async function askRun(id, secs, asked_for) {
   box.addEventListener('click', (e) => {
     if (e.target.closest('.ask-x')) { clearTimeout(timer); return close(); }
     const v = e.target.closest('[data-v]');
-    if (v) {
-      clearTimeout(timer);
-      // A few words, if they want: then it's sent.
-      box.innerHTML = `<b>${esc(t('Anything others should know?'))}</b><textarea rows="3" maxlength="500" placeholder="${esc(t('What works, what doesn\'t, settings that helped'))}"></textarea><div class="acts grid2"><button type="button" class="btn" data-s="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-s="note">${esc(t('Send'))}</button></div>`;
-      const ta = $('textarea', box);
-      ta.focus();
-      box.onclick = (ev) => { const s = ev.target.closest('[data-s]'); if (!s) return; send(v.dataset.v, s.dataset.s === 'note' ? ta.value.trim() : ''); close(); };
-    }
+    if (!v) return;
+    clearTimeout(timer);
+    const verdict = v.dataset.v, bad = verdict !== 'runs';
+    // A few words: needed for a problem (what happened, and when), up to them for Plays great.
+    box.innerHTML = `<button type="button" class="ask-x" aria-label="${esc(t('Close'))}">×</button><b>${esc(bad ? t('What happened?') : t('Anything others should know?'))}</b>
+      <textarea rows="3" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}></textarea>
+      ${pre && pre.log ? `<label class="ask-log"><input type="checkbox" data-log${bad ? ' checked' : ''}><span>${esc(t('Attach the Game\'s Log'))}<small>${esc(t('Only the game\'s developer sees the log.'))}</small></span></label>` : ''}
+      ${specsLine ? `<small class="ask-specs">${esc(t('This goes with your report'))}: ${esc(specsLine)}</small>` : ''}
+      ${howTo ? `<button type="button" class="linkbtn ask-how" data-s="how">${esc(t('How to Report Bugs for This Game'))}</button>` : ''}
+      <p class="ask-err" hidden></p>
+      <div class="acts grid2">${bad ? `<button type="button" class="btn" data-s="cancel">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-s="note" disabled>${esc(t('Send'))}</button>` : `<button type="button" class="btn" data-s="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-s="note">${esc(t('Send'))}</button>`}</div>`;
+    const ta = $('textarea', box), go2 = $('[data-s="note"]', box), err = $('.ask-err', box);
+    ta.focus();
+    if (bad) ta.addEventListener('input', () => { go2.disabled = [...ta.value.trim()].length < 15; });
+    let busy = false;
+    box.onclick = async (ev) => {
+      if (ev.target.closest('.ask-x')) return close();
+      const s2 = ev.target.closest('[data-s]');
+      if (!s2 || busy) return;
+      if (s2.dataset.s === 'how') return invoke('open_url', { url: howTo }).catch(fail);
+      if (s2.dataset.s === 'cancel') return close();
+      const note = s2.dataset.s === 'note' ? ta.value.trim() : '';
+      if (bad && [...note].length < 15) return;
+      busy = true;
+      $$('.acts .btn', box).forEach((b) => { b.disabled = true; });
+      try {
+        await send(verdict, note, !!($('[data-log]', box) || {}).checked);
+        close();
+      } catch (ex) {
+        // The site's own words when it turns the report down.
+        busy = false;
+        err.textContent = String(ex && ex.message ? ex.message : ex);
+        err.hidden = false;
+        $$('.acts .btn', box).forEach((b) => { b.disabled = false; });
+        if (bad) go2.disabled = [...ta.value.trim()].length < 15;
+      }
+    };
   });
 }
 T.event.listen('game', ({ payload: p }) => {
