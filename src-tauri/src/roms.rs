@@ -1,8 +1,8 @@
 //! Finding the player's own games in their ROM and backup folders, and which ones have a recomp.
 //!
 //! N64 ROMs carry the game's name in their header, so those are matched on it (whatever the file
-//! is called). Extracted PS4 games are identified by their local param.sfo metadata. Other disc
-//! images and game folders are matched on their file or folder name. Nothing leaves the PC.
+//! is called). Extracted PlayStation games are identified by their local metadata. Other disc images
+//! and game folders are matched on their file or folder name. Nothing leaves the PC.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -92,6 +92,9 @@ const CART_ORIGINS: [&str; 13] = ["n64", "snes", "nes", "gb", "gbc", "gba", "ds"
 /// Can this file be a game for that console? The same console, or one that plays its games
 /// (Game Boy and Game Boy Color), or a disc image of unknown kind for a console that uses discs.
 fn fits(rom: &RomFile, origin: &str) -> bool {
+    if matches!(rom.system.as_str(), "ps3" | "ps5" | "switch2") {
+        return origin == rom.system.as_str();
+    }
     if origin.is_empty() || origin == "other" || origin == "arcade" {
         return true;
     }
@@ -106,14 +109,25 @@ fn fits(rom: &RomFile, origin: &str) -> bool {
 
 /// One file: a ROM, a disc image, or an Xbox 360 game's default.xex (which stands for its folder).
 pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
-    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    identify_with_size(p, || Some(size))
+}
+
+fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let ext = p.extension()?.to_str()?.to_ascii_lowercase();
+    let is_n64 = N64.contains(&ext.as_str());
+    let is_disc = DISC.contains(&ext.as_str());
+    let is_cart = CART.contains(&ext.as_str());
+    if !is_n64 && !is_disc && !is_cart && ext != "xex" {
+        return None;
+    }
+    let size = size()?;
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-    if N64.contains(&ext.as_str()) {
+    if is_n64 {
         let (title, region) = n64_header(p).unwrap_or((stem.clone(), String::new()));
         Some(RomFile { path: p.to_path_buf(), system: "n64".into(), title, region, size })
-    } else if DISC.contains(&ext.as_str()) && size > 50 * 1024 * 1024 {
+    } else if is_disc && size > 50 * 1024 * 1024 {
         Some(RomFile { path: p.to_path_buf(), system: system_for(&ext).into(), title: stem, region: String::new(), size })
-    } else if CART.contains(&ext.as_str()) && size >= 8 * 1024 {
+    } else if is_cart && size >= 8 * 1024 {
         Some(RomFile { path: p.to_path_buf(), system: system_for(&ext).into(), title: stem, region: String::new(), size })
     } else if ext == "xex" && stem.eq_ignore_ascii_case("default") {
         // An extracted Xbox 360 game: the folder's name is the game's.
@@ -126,7 +140,7 @@ pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
 }
 
 /// Read the title and title ID from the little-endian PSF index and string tables.
-fn ps4_title(sfo: &[u8]) -> Option<&str> {
+fn sfo_title(sfo: &[u8]) -> Option<(&str, &str)> {
     let read_u32 = |offset: usize| Some(u32::from_le_bytes(sfo.get(offset..offset + 4)?.try_into().ok()?) as usize);
     if !sfo.starts_with(b"\0PSF") {
         return None;
@@ -159,61 +173,133 @@ fn ps4_title(sfo: &[u8]) -> Option<&str> {
             title_id = Some(value);
         }
     }
-    let digits = title_id?.strip_prefix("CUSA")?;
-    if digits.len() != 5 || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    title.filter(|t| !t.is_empty())
+    Some((title.filter(|t| !t.is_empty())?, title_id?))
 }
 
-fn identify_ps4(folder: &Path) -> Option<RomFile> {
-    let path = folder.join("sce_sys/param.sfo");
-    if !folder.join("eboot.bin").is_file() || !path.is_file() {
-        return None;
-    }
+fn identify_sfo(folder: &Path, path: &Path, system: &str, valid_id: impl FnOnce(&str) -> bool) -> Option<RomFile> {
     const MAX_SFO: u64 = 64 * 1024;
     let mut sfo = Vec::new();
     fs::File::open(path).ok()?.take(MAX_SFO + 1).read_to_end(&mut sfo).ok()?;
     if sfo.len() as u64 > MAX_SFO {
         return None;
     }
-    let title = ps4_title(&sfo)?.to_string();
-    Some(RomFile { path: folder.to_path_buf(), system: "ps4".into(), title, region: String::new(), size: 0 })
+    let (title, id) = sfo_title(&sfo)?;
+    if !valid_id(id) {
+        return None;
+    }
+    Some(RomFile { path: folder.to_path_buf(), system: system.into(), title: title.into(), region: String::new(), size: 0 })
 }
 
-/// Look through the folders for ROMs, disc images and extracted Xbox 360 and PS4 games.
-/// Stops after a bounded number of entries so a whole drive can't hang it.
+fn valid_playstation_id(id: &str) -> bool {
+    id.len() == 9 && id.bytes().take(4).all(|b| b.is_ascii_uppercase())
+        && id.bytes().skip(4).all(|b| b.is_ascii_digit())
+}
+
+fn identify_ps5(folder: &Path) -> Option<RomFile> {
+    fn title_of(entry: &Value) -> Option<&str> {
+        entry.get("titleName")?.as_str().map(str::trim).filter(|title| !title.is_empty())
+    }
+
+    const MAX_PARAM: u64 = 64 * 1024;
+    let mut data = Vec::new();
+    fs::File::open(folder.join("sce_sys/param.json")).ok()?
+        .take(MAX_PARAM + 1).read_to_end(&mut data).ok()?;
+    if data.len() as u64 > MAX_PARAM {
+        return None;
+    }
+    let param: Value = serde_json::from_slice(&data).ok()?;
+    let digits = param.get("titleId")?.as_str()?.strip_prefix("PPSA")?;
+    let digits = digits.strip_prefix('-').unwrap_or(digits);
+    if digits.len() != 5 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let localized = param.get("localizedParameters")?.as_object()?;
+    let preferred = localized.get("defaultLanguage").and_then(Value::as_str);
+    let title = preferred.and_then(|lang| localized.get(lang)).and_then(title_of)
+        .or_else(|| localized.get("en-US").and_then(title_of))
+        .or_else(|| localized.values().find_map(title_of))?;
+    Some(RomFile { path: folder.to_path_buf(), system: "ps5".into(), title: title.into(), region: String::new(), size: 0 })
+}
+
+fn identify_playstation(folder: &Path) -> Option<RomFile> {
+    if folder.join("eboot.bin").is_file() {
+        let ps4 = identify_sfo(folder, &folder.join("sce_sys/param.sfo"), "ps4", |id| {
+            id.starts_with("CUSA") && valid_playstation_id(id)
+        });
+        return ps4.or_else(|| identify_ps5(folder));
+    }
+    if folder.join("PS3_DISC.SFB").is_file() && folder.join("PS3_GAME/USRDIR/EBOOT.BIN").is_file() {
+        return identify_sfo(folder, &folder.join("PS3_GAME/PARAM.SFO"), "ps3", |id| {
+            (id.starts_with("BC") || id.starts_with("BL")) && valid_playstation_id(id)
+        });
+    }
+    None
+}
+
+fn identify_switch(folder: &Path) -> Option<RomFile> {
+    // Switch and Switch 2 share these file signatures. Use the library's platform
+    // folder as the platform hint, and require the extracted base game layout.
+    let (depth, system) = folder.ancestors().skip(1).enumerate().find_map(|(depth, parent)| {
+        let name = parent.file_name()?.to_str()?;
+        if name.eq_ignore_ascii_case("switch2") || name.eq_ignore_ascii_case("switch 2") {
+            Some((depth, "switch2"))
+        } else if name.eq_ignore_ascii_case("switch") {
+            Some((depth, "switch"))
+        } else {
+            None
+        }
+    })?;
+    let valid_exefs = |exefs: &Path| {
+        [("main.npdm", b"META"), ("main", b"NSO0")].iter().all(|(name, magic)| {
+            let mut header = [0; 4];
+            fs::File::open(exefs.join(name)).and_then(|mut file| file.read_exact(&mut header)).is_ok()
+                && &header == *magic
+        })
+    };
+    // A flat exefs is accepted directly under the console folder to avoid
+    // treating an update inside a collection as a standalone game.
+    if !valid_exefs(&folder.join("base/exefs")) && !(depth == 0 && valid_exefs(&folder.join("exefs"))) {
+        return None;
+    }
+    let title = folder.file_name()?.to_str()?.to_string();
+    Some(RomFile { path: folder.to_path_buf(), system: system.into(), title, region: String::new(), size: 0 })
+}
+
+/// Look through the folders for ROMs, disc images and extracted games.
+/// Skip linked directories so the scan stays within the selected trees.
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
     let mut out = vec![];
-    let mut seen = 0usize;
-    for d in dirs {
-        let mut stack = vec![(d.clone(), 0usize)];
-        while let Some((dir, depth)) = stack.pop() {
-            if let Some(game) = identify_ps4(&dir) {
-                out.push(game);
-                continue;
-            }
-            let Ok(rd) = fs::read_dir(&dir) else { continue };
-            for e in rd.flatten() {
-                seen += 1;
-                if seen > 50_000 {
-                    return out;
-                }
-                let p = e.path();
-                let Ok(meta) = e.metadata() else { continue };
-                if meta.is_dir() {
-                    let name = e.file_name().to_string_lossy().to_lowercase();
-                    if name.starts_with('.') || name == "node_modules" || name == "windows" {
-                        continue;
-                    }
-                    if depth < 6 {
-                        stack.push((p, depth + 1));
-                    }
+    let mut pending: Vec<_> = dirs.iter().rev().cloned().collect();
+    while let Some(dir) = pending.pop() {
+        if let Some(game) = identify_playstation(&dir).or_else(|| identify_switch(&dir)) {
+            out.push(game);
+            continue;
+        }
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let Ok(kind) = e.file_type() else { continue };
+            if kind.is_dir() {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                if name.starts_with('.') || name == "node_modules" || name == "windows" {
                     continue;
                 }
-                if let Some(r) = identify(&p, meta.len()) {
-                    out.push(r);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+                    let Ok(meta) = e.metadata() else { continue };
+                    if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                        continue;
+                    }
                 }
+                pending.push(e.path());
+                continue;
+            }
+            if !kind.is_file() {
+                continue;
+            }
+            if let Some(r) = identify_with_size(&e.path(), || e.metadata().ok().map(|meta| meta.len())) {
+                out.push(r);
             }
         }
     }
@@ -310,6 +396,51 @@ mod tests {
     }
 
     #[test]
+    fn treats_valid_extracted_switch_games_as_single_entries() {
+        let root = tmp("switch2");
+        let game = root.join("SWITCH2/Mario Kart World");
+        let exefs = game.join("base/exefs");
+        fs::create_dir_all(&exefs).unwrap();
+        fs::write(exefs.join("main"), b"NSO0").unwrap();
+        fs::write(exefs.join("main.npdm"), b"META").unwrap();
+        fs::write(exefs.join("nested.gba"), [0; 8192]).unwrap();
+        let switch = root.join("SWITCH/Example Game");
+        let flat_exefs = switch.join("exefs");
+        fs::create_dir_all(&flat_exefs).unwrap();
+        fs::write(flat_exefs.join("main"), b"NSO0").unwrap();
+        fs::write(flat_exefs.join("main.npdm"), b"META").unwrap();
+        let sibling = root.join("Pokemon Emerald.gba");
+        fs::write(&sibling, [0; 8192]).unwrap();
+
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 3);
+        let detected = found.iter().find(|r| r.path == game).unwrap();
+        assert_eq!(detected.title, "Mario Kart World");
+        assert!(fits(detected, "switch2"));
+        assert!(!fits(detected, "switch"));
+        assert!(found.iter().any(|r| r.path == switch && r.system == "switch"));
+        assert!(found.iter().any(|r| r.path == sibling));
+
+        fs::write(exefs.join("main.npdm"), b"bad!").unwrap();
+        assert!(scan(&[root.clone()]).iter().any(|r| r.path == exefs.join("nested.gba")));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn scans_deep_rom_folders() {
+        let root = tmp("deep-scan");
+        let folder = root.join("GBA/Collection/Backups/Regions/USA/Roleplaying/Pokemon");
+        fs::create_dir_all(&folder).unwrap();
+        let emerald = folder.join("Pokemon Emerald.gba");
+        fs::write(&emerald, [0; 8192]).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, emerald);
+    }
+
+    #[test]
     fn reads_all_three_byte_orders() {
         let d = tmp("orders");
         fs::write(d.join("a.z64"), rom("z64", "ZELDA MAJORA'S MASK", b'E')).unwrap();
@@ -361,7 +492,36 @@ mod tests {
     }
 
     #[test]
-    fn scans_extracted_ps4_games_by_sfo_title() {
+    fn scans_extracted_ps5_games_by_param_json() {
+        let root = tmp("ps5");
+        let game = root.join("PS5/PPSA21559");
+        fs::create_dir_all(game.join("sce_sys")).unwrap();
+        fs::write(game.join("eboot.bin"), b"").unwrap();
+        fs::write(game.join("assets.gba"), [0; 8192]).unwrap();
+        let param = game.join("sce_sys/param.json");
+        let mut metadata = serde_json::json!({
+            "titleId": "PPSA21559",
+            "localizedParameters": {
+                "defaultLanguage": "en-US",
+                "en-US": {"titleName": "ASTRO BOT"}
+            }
+        });
+        fs::write(&param, metadata.to_string()).unwrap();
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, game);
+        assert_eq!(found[0].title, "ASTRO BOT");
+        assert!(fits(&found[0], "ps5"));
+        assert!(!fits(&found[0], "ps4"));
+
+        metadata["titleId"] = serde_json::json!("CUSA21559");
+        fs::write(&param, metadata.to_string()).unwrap();
+        assert!(scan(&[root.clone()]).iter().all(|r| r.system != "ps5"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn scans_extracted_playstation_games_by_sfo_title() {
         let root = tmp("ps4");
         let game = root.join("PS4/The Order 1886/CUSA00035");
         fs::create_dir_all(game.join("sce_sys")).unwrap();
@@ -403,8 +563,21 @@ mod tests {
         assert_eq!(matched["order"].path, game);
 
         sfo.pop();
-        fs::write(metadata, sfo).unwrap();
+        fs::write(metadata, &sfo).unwrap();
         assert!(scan(&[root.clone()]).is_empty());
+
+        let ps3 = root.join("PS3/Demons Souls");
+        fs::create_dir_all(ps3.join("PS3_GAME/USRDIR")).unwrap();
+        fs::write(ps3.join("PS3_DISC.SFB"), b"").unwrap();
+        fs::write(ps3.join("PS3_GAME/USRDIR/EBOOT.BIN"), b"").unwrap();
+        sfo.extend(b"\0");
+        let id_start = sfo.len() - id.len();
+        sfo[id_start..id_start + 9].copy_from_slice(b"BLES00932");
+        fs::write(ps3.join("PS3_GAME/PARAM.SFO"), sfo).unwrap();
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, ps3);
+        assert_eq!(found[0].system, "ps3");
         let _ = fs::remove_dir_all(root);
     }
 

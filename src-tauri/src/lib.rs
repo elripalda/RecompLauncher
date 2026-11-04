@@ -1104,9 +1104,13 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
             continue;
         }
         out.remove(id);
-        // PS4 folders already carry a title. A shared file such as eboot.bin can't identify
-        // another game when the catalog title didn't match.
-        if let Some(r) = found.iter().find(|r| r.system != "ps4" && profile::check_copy(&need, &r.path).is_ok()) {
+        // Recognized PlayStation and Switch folders are matched by title. Shared files
+        // such as eboot.bin or main.npdm can't identify another game.
+        if let Some(r) = found.iter().find(|r| {
+            let matched_by_title = matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2")
+                || (r.system == "switch" && r.size == 0);
+            !matched_by_title && profile::check_copy(&need, &r.path).is_ok()
+        }) {
             out.insert(id.to_string(), r.clone());
         }
     }
