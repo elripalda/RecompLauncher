@@ -328,7 +328,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
 
     // A GitLab project's files come only from that project on gitlab.com.
-    if !catalog::own_download(&repo, &asset.browser_download_url) {
+    if !catalog::own_download(&repo, &asset.browser_download_url, rel.project_id) {
         trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
         return Err(Error::Msg("That file isn't in this recomp's own releases, so it wasn't downloaded.".into()));
     }

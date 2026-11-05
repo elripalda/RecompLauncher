@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "กดปุ่ม หรือกดคีย์บนคีย์บอร์ด",
  "Press a key on your keyboard": "กดคีย์บนคีย์บอร์ด",
  "Add a Key": "เพิ่มคีย์",
- "Stars on GitLab": "ดาวบน GitLab"
+ "Stars on GitLab": "ดาวบน GitLab",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "เกมสร้างโฟลเดอร์ภายในโฟลเดอร์ของตัวเองไม่ได้ ความปลอดภัยของ Windows อาจบล็อกไว้ ใน การป้องกันไวรัสและภัยคุกคาม ที่หัวข้อ การป้องกันแรนซัมแวร์ ให้ปิด การเข้าถึงโฟลเดอร์ที่ควบคุม หรืออนุญาตให้เกมนี้ผ่านได้ แล้วเล่นอีกครั้ง"
 }

@@ -50,6 +50,13 @@ pub async fn get(http: &reqwest::Client, dir: &Path, url: &str) -> Option<Vec<u8
     if let Ok(b) = tokio::fs::read(&file).await {
         return Some(b);
     }
+    // A few at a time: a page of covers asked for all at once can meet the site's limit.
+    static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(6);
+    let _slot = SLOTS.acquire().await.ok()?;
+    // Fetched by another request while this one waited.
+    if let Ok(b) = tokio::fs::read(&file).await {
+        return Some(b);
+    }
     // A site that's resting after trouble isn't asked: the picture shows next time.
     let r = crate::net::send_picture(http.get(url).timeout(std::time::Duration::from_secs(30)), url).await?;
     if !r.status().is_success() {

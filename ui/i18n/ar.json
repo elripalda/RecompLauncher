@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "اضغط زرًا، أو مفتاحًا على لوحة المفاتيح",
  "Press a key on your keyboard": "اضغط مفتاحًا على لوحة المفاتيح",
  "Add a Key": "إضافة مفتاح",
- "Stars on GitLab": "النجوم على GitLab"
+ "Stars on GitLab": "النجوم على GitLab",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "لم تتمكن من إنشاء مجلد داخل مجلدها. قد يكون أمن Windows هو ما يمنعها: ضمن الحماية من الفيروسات والتهديدات، في الحماية من برامج الفدية الضارة، أوقف الوصول المتحكم به إلى المجلدات أو اسمح لهذه اللعبة من خلاله، ثم العب مرة أخرى."
 }

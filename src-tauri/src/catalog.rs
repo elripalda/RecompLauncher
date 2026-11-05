@@ -43,6 +43,10 @@ pub struct Release {
     pub html_url: Option<String>,
     #[serde(default)]
     pub assets: Vec<Asset>,
+    /// A GitLab project's number (gl.php gives it): its uploaded files live under
+    /// gitlab.com/-/project/<number>/uploads/.
+    #[serde(default)]
+    pub project_id: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -351,13 +355,91 @@ fn releases_url(repo: &str) -> String {
     }
 }
 
-/// A GitLab project's files come only from that project on gitlab.com (its release links,
-/// package files, uploads and job artifacts all live under its path). GitHub's are as before.
-pub fn own_download(repo: &str, url: &str) -> bool {
+/// Many GitLab projects put their downloads in the release notes (files uploaded to the project,
+/// linked as `/uploads/<secret>/<file>`) rather than as release assets. For a release with no
+/// assets, those links become its assets, each with the SHA-256 the notes give for it, if any.
+/// GitLab serves those files only by the project's number (`/-/project/<number>/uploads/...`), so
+/// this needs the `project_id` gl.php gives with each release.
+pub fn gitlab_assets(repo: &str, data: &mut Value) {
+    let Some(path) = gitlab_path(repo) else { return };
+    let Some(list) = data.as_array_mut() else { return };
+    let link = regex_lite::Regex::new(r#"(https://gitlab\.com/([A-Za-z0-9_./-]+?))?/(?:-/project/\d+/)?uploads/([0-9a-fA-F]{16,64})/([^\s)\]"'<>]+)"#).unwrap();
+    let hash = regex_lite::Regex::new(r"\b([0-9a-fA-F]{64})\b").unwrap();
+    let norm = |n: &str| n.trim().to_lowercase().replace(' ', "_");
+    for r in list.iter_mut() {
+        if r.get("assets").and_then(Value::as_array).map(|a| !a.is_empty()).unwrap_or(false) {
+            continue;
+        }
+        let Some(project) = r.get("project_id").and_then(Value::as_u64) else { continue };
+        let body = r.get("body").and_then(Value::as_str).unwrap_or("").to_string();
+        // "<sha256> <file>" (or "<file> <sha256>") lines.
+        let mut sums: Vec<(String, String)> = vec![];
+        for line in body.lines() {
+            if let Some(m) = hash.find(line) {
+                let rest = format!("{} {}", &line[..m.start()], &line[m.end()..]);
+                let name = rest.trim_matches(|c: char| c.is_whitespace() || "-*`:|".contains(c)).to_string();
+                if !name.is_empty() {
+                    sums.push((norm(&name), m.as_str().to_lowercase()));
+                }
+            }
+        }
+        let mut assets: Vec<Value> = vec![];
+        for c in link.captures_iter(&body) {
+            // Another project's file isn't this one's.
+            if c.get(2).map(|p| !p.as_str().eq_ignore_ascii_case(path) && p.as_str() != format!("-/project/{project}")).unwrap_or(false) {
+                continue;
+            }
+            let file = c[4].trim_end_matches(['.', ',']).to_string();
+            let name = percent_decode(&file);
+            if name.contains('/') || name.contains('\\') || crate::assets::kind(&name).is_none() {
+                continue;
+            }
+            let url = format!("https://gitlab.com/-/project/{project}/uploads/{}/{file}", &c[3]);
+            if assets.iter().any(|a| a["browser_download_url"] == url.as_str()) {
+                continue;
+            }
+            let digest = sums.iter().find(|(n, _)| *n == norm(&name)).map(|(_, h)| format!("sha256:{h}"));
+            assets.push(serde_json::json!({ "name": name, "size": 0, "browser_download_url": url, "digest": digest }));
+        }
+        if !assets.is_empty() {
+            r["assets"] = Value::Array(assets);
+        }
+    }
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn with_gitlab_assets(repo: &str, mut f: Fetched) -> Fetched {
+    gitlab_assets(repo, &mut f.data);
+    f
+}
+
+/// A GitLab project's files come only from that project on gitlab.com: under its path (release
+/// links, package files, job artifacts), or under its number (files uploaded to it, which GitLab
+/// serves at /-/project/<number>/uploads/). GitHub's are as before.
+pub fn own_download(repo: &str, url: &str, project_id: Option<u64>) -> bool {
     let Some(p) = gitlab_path(repo) else { return true };
     let Ok(u) = reqwest::Url::parse(url) else { return false };
     let path = u.path().to_ascii_lowercase();
-    u.scheme() == "https" && u.host_str() == Some("gitlab.com") && u.port().is_none() && u.username().is_empty() && u.password().is_none() && path.starts_with(&format!("/{}/", p.to_ascii_lowercase()))
+    let mine = path.starts_with(&format!("/{}/", p.to_ascii_lowercase())) || project_id.map(|n| path.starts_with(&format!("/-/project/{n}/uploads/"))).unwrap_or(false);
+    u.scheme() == "https" && u.host_str() == Some("gitlab.com") && u.port().is_none() && u.username().is_empty() && u.password().is_none() && mine
 }
 
 /// Catalog entries for GitLab projects ("host": "gitlab") get their repo the launcher's way
@@ -422,7 +504,7 @@ pub async fn releases(http: &reqwest::Client, dir: &Path, repo: &str, force: boo
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
     let got = cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { LIST_FRESH }, crate::net::QUICK, force, Value::is_array).await;
-    or_github(http, dir, repo, got, force).await
+    or_github(http, dir, repo, got, force).await.map(|f| with_gitlab_assets(repo, f))
 }
 
 /// For installing or updating: the player's doing, but a copy from the last `secs` seconds (an
@@ -432,7 +514,7 @@ pub async fn releases_within(http: &reqwest::Client, dir: &Path, repo: &str, sec
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
     let got = cached(http, &releases_url(repo), releases_file(dir, repo), secs, crate::net::QUICK, true, Value::is_array).await;
-    or_github(http, dir, repo, got, true).await
+    or_github(http, dir, repo, got, true).await.map(|f| with_gitlab_assets(repo, f))
 }
 
 /// A recomp's releases as kept on disk (any age), without asking anyone.
@@ -440,7 +522,7 @@ pub fn releases_on_disk(dir: &Path, repo: &str) -> Option<Fetched> {
     if !repo_ok(repo) {
         return None;
     }
-    on_disk(&releases_file(dir, repo), Value::is_array)
+    on_disk(&releases_file(dir, repo), Value::is_array).map(|f| with_gitlab_assets(repo, f))
 }
 
 /// Asked again in the background (not the player's doing): a push about a new release.
@@ -448,7 +530,7 @@ pub async fn releases_refresh(http: &reqwest::Client, dir: &Path, repo: &str) ->
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    cached(http, &releases_url(repo), releases_file(dir, repo), 0, crate::net::QUICK, false, Value::is_array).await
+    cached(http, &releases_url(repo), releases_file(dir, repo), 0, crate::net::QUICK, false, Value::is_array).await.map(|f| with_gitlab_assets(repo, f))
 }
 
 /// The newest release to install: not a draft, and not a pre-release unless that's all there is.
@@ -490,16 +572,16 @@ mod tests {
         assert!(super::releases_url("a/b").ends_with("/api/gh.php?repo=a/b"));
         assert!(super::releases_file(std::path::Path::new("d"), "gitlab:a/b").ends_with("gitlab_a__b.json"));
         // Downloads only from the project itself.
-        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/-/releases/v1/downloads/game.zip"));
-        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/-/package_files/12/download"));
-        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/uploads/abc/game.zip"));
-        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/other/-/releases/v1/downloads/game.zip"));
-        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/bb/-/releases/v1/downloads/game.zip"));
-        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/b/../c/game.zip"));
-        assert!(!super::own_download("gitlab:a/b", "https://evil.example/a/b/game.zip"));
-        assert!(!super::own_download("gitlab:a/b", "http://gitlab.com/a/b/game.zip"));
+        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/-/releases/v1/downloads/game.zip", None));
+        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/-/package_files/12/download", None));
+        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/uploads/abc/game.zip", None));
+        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/other/-/releases/v1/downloads/game.zip", None));
+        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/bb/-/releases/v1/downloads/game.zip", None));
+        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/b/../c/game.zip", None));
+        assert!(!super::own_download("gitlab:a/b", "https://evil.example/a/b/game.zip", None));
+        assert!(!super::own_download("gitlab:a/b", "http://gitlab.com/a/b/game.zip", None));
         // GitHub as before.
-        assert!(super::own_download("a/b", "https://github.com/a/b/releases/download/v1/x.zip"));
+        assert!(super::own_download("a/b", "https://github.com/a/b/releases/download/v1/x.zip", None));
         // A catalog entry with "host": "gitlab" gets the launcher's kind of repo; GitHub's don't change.
         let mut cat = serde_json::json!({"apps": [{"id": "x", "host": "gitlab", "repo": "g/s/p"}, {"id": "y", "repo": "o/r"}]});
         super::mark_hosts(&mut cat);
@@ -507,6 +589,39 @@ mod tests {
         assert_eq!(cat["apps"][1]["repo"], "o/r");
         super::mark_hosts(&mut cat);
         assert_eq!(cat["apps"][0]["repo"], "gitlab:g/s/p");
+    }
+
+    #[test]
+    fn gitlab_downloads_in_the_release_notes() {
+        let body = "**Downloads**\n\n- Windows:\n\n [Power Moon Recomp-0.2.1-windows.zip](/uploads/c2943d662cc803b10ca028c02907c8c5/Power_Moon_Recomp-0.2.1-windows.zip)\n- Linux:\n\n [Power Moon Recomp-0.2.1-linux-x86_64.AppImage](/uploads/de58d1e7804bf4126901bf9dcbd42b78/Power_Moon_Recomp-0.2.1-linux-x86_64.AppImage)\n![shot](/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/shot.png)\n[other](https://gitlab.com/someone/else/uploads/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/x-windows.zip)\n\nSHA-256\n\n```\nb14f6b7acdfa06915f383a9edaabd041e336e8a89f5e1a367615a3fae4837f44 Power Moon Recomp-0.2.1-windows.zip\n```";
+        let mut v = serde_json::json!([{"tag_name": "v0.2.1", "body": body, "assets": [], "project_id": 88379810}, {"tag_name": "v0.2.0", "body": body, "project_id": 88379810, "assets": [{"name": "kept.zip", "size": 1, "browser_download_url": "https://gitlab.com/g/p/-/releases/v0.2.0/downloads/kept.zip"}]}]);
+        super::gitlab_assets("gitlab:g/p", &mut v);
+        let a = v[0]["assets"].as_array().unwrap();
+        assert_eq!(a.len(), 2);
+        assert_eq!(a[0]["name"], "Power_Moon_Recomp-0.2.1-windows.zip");
+        assert_eq!(a[0]["browser_download_url"], "https://gitlab.com/-/project/88379810/uploads/c2943d662cc803b10ca028c02907c8c5/Power_Moon_Recomp-0.2.1-windows.zip");
+        assert_eq!(a[0]["digest"], "sha256:b14f6b7acdfa06915f383a9edaabd041e336e8a89f5e1a367615a3fae4837f44");
+        assert_eq!(a[1]["name"], "Power_Moon_Recomp-0.2.1-linux-x86_64.AppImage");
+        assert!(a[1]["digest"].is_null());
+        assert!(a.iter().all(|x| super::own_download("gitlab:g/p", x["browser_download_url"].as_str().unwrap(), Some(88379810))));
+        // Only this project's number.
+        assert!(!super::own_download("gitlab:g/p", "https://gitlab.com/-/project/1/uploads/c2943d662cc803b10ca028c02907c8c5/x.zip", Some(88379810)));
+        assert!(!super::own_download("gitlab:g/p", "https://gitlab.com/-/project/88379810/uploads/c2943d662cc803b10ca028c02907c8c5/x.zip", None));
+        // A release with its own assets keeps them.
+        assert_eq!(v[1]["assets"].as_array().unwrap().len(), 1);
+        // The picker finds the Windows build.
+        let rels: Vec<super::Release> = serde_json::from_value(v).unwrap();
+        assert_eq!(crate::assets::pick(&rels[0].assets, "windows", "x64", None).map(|a| a.name.as_str()), Some("Power_Moon_Recomp-0.2.1-windows.zip"));
+        assert_eq!(super::percent_decode("Game%20One%2B.zip"), "Game One+.zip");
+        // Without the project's number there's no address that works: left as it is.
+        let mut n = serde_json::json!([{"tag_name": "v1", "body": body, "assets": []}]);
+        super::gitlab_assets("gitlab:g/p", &mut n);
+        assert!(n[0]["assets"].as_array().unwrap().is_empty());
+        assert_eq!(super::percent_decode("50%"), "50%");
+        // GitHub's lists aren't touched.
+        let mut g = serde_json::json!([{"tag_name": "v1", "body": body, "assets": []}]);
+        super::gitlab_assets("o/r", &mut g);
+        assert!(g[0]["assets"].as_array().unwrap().is_empty());
     }
 
     #[test]
@@ -581,7 +696,7 @@ mod tests {
 
     #[test]
     fn newest_stable_first() {
-        let r = |t: &str, pre: bool, draft: bool| Release { tag_name: t.into(), name: None, published_at: None, prerelease: pre, draft, body: None, html_url: None, assets: vec![] };
+        let r = |t: &str, pre: bool, draft: bool| Release { tag_name: t.into(), name: None, published_at: None, prerelease: pre, draft, body: None, html_url: None, assets: vec![], project_id: None };
         assert_eq!(latest(&[r("v3", false, true), r("v2", true, false), r("v1", false, false)]).unwrap().tag_name, "v1");
         assert_eq!(latest(&[r("v2", true, false)]).unwrap().tag_name, "v2");
         assert!(latest(&[r("v2", false, true)]).is_none());

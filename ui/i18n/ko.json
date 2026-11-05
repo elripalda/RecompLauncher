@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "버튼이나 키보드의 키를 누르세요",
  "Press a key on your keyboard": "키보드의 키를 누르세요",
  "Add a Key": "키 추가",
- "Stars on GitLab": "GitLab 별"
+ "Stars on GitLab": "GitLab 별",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "자체 폴더 안에 폴더를 만들지 못했습니다. Windows 보안이 차단하고 있을 수 있습니다. 바이러스 및 위협 방지의 랜섬웨어 방지에서 제어된 폴더 액세스를 끄거나 이 게임을 허용한 다음 다시 플레이하세요."
 }

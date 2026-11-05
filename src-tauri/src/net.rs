@@ -83,7 +83,9 @@ fn host(url: &str) -> String {
 }
 
 /// What a failure puts to rest: the whole site, except release info (gh.php passes on GitHub's own
-/// trouble with one repo, which says nothing about the site), which rests on its own.
+/// trouble with one repo, which says nothing about the site), which rests on its own, and pictures
+/// (a page of covers asked for at once can meet the site's limit, which says nothing about the
+/// rest of it: the list, updates and reports carry on).
 fn key(url: &str) -> String {
     let h = host(url);
     let path = reqwest::Url::parse(url).map(|u| u.path().to_string()).unwrap_or_default();
@@ -91,6 +93,8 @@ fn key(url: &str) -> String {
         format!("{h}/gh")
     } else if path.ends_with("/api/gl.php") {
         format!("{h}/gl")
+    } else if path.starts_with("/media/") || url.starts_with(THUMBS) {
+        format!("{h}/pictures")
     } else {
         h
     }
@@ -259,6 +263,13 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
             let code = r.status().as_u16();
             if matches!(code, 429 | 503) {
                 went_badly(url, retry_after(&r), started);
+            } else if r.status().is_success() && key(url) != host(url) {
+                // Pictures come again: their own rest is over (the site's isn't touched).
+                let mut g = GATES.lock().unwrap();
+                if let Some(gate) = g.get_or_insert_with(HashMap::new).get_mut(&key(url)) {
+                    gate.fails = 0;
+                    gate.until = None;
+                }
             }
             Some(r)
         }
@@ -342,6 +353,18 @@ mod tests {
         }
         let a: Vec<f64> = (0..20).map(|_| random()).collect();
         assert!(a.windows(2).any(|w| w[0] != w[1]));
+    }
+
+    #[test]
+    fn pictures_rest_on_their_own() {
+        let pic = "https://pics-test.example/media/cover.jpg";
+        let api = "https://pics-test.example/api/pc.php";
+        went_badly(pic, Some(60), Instant::now());
+        assert!(resting(pic, false));
+        // The site's list and the rest carry on.
+        assert!(!resting(api, false));
+        went_well(pic);
+        assert!(!resting(pic, false));
     }
 
     #[test]

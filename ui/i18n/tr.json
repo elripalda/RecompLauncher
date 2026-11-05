@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "Bir düğmeye veya klavyenizde bir tuşa basın",
  "Press a key on your keyboard": "Klavyenizde bir tuşa basın",
  "Add a Key": "Tuş ekle",
- "Stars on GitLab": "GitLab yıldızları"
+ "Stars on GitLab": "GitLab yıldızları",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "Kendi klasörünün içinde klasör oluşturamadı. Windows Güvenliği engelliyor olabilir: Virüs ve tehdit koruması, Fidye yazılımı koruması altında Denetimli klasör erişimi'ni kapat ya da bu oyuna bu özellik üzerinden izin ver, sonra yeniden oyna."
 }

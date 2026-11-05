@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "ボタン、またはキーボードのキーを押してください",
  "Press a key on your keyboard": "キーボードのキーを押してください",
  "Add a Key": "キーを追加",
- "Stars on GitLab": "GitLab のスター"
+ "Stars on GitLab": "GitLab のスター",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "自身のフォルダー内にフォルダーを作成できませんでした。Windows セキュリティがブロックしている可能性があります。「ウイルスと脅威の防止」の「ランサムウェア防止」で「コントロールされたフォルダー アクセス」をオフにするか、このゲームを許可してから、もう一度プレイしてください。"
 }

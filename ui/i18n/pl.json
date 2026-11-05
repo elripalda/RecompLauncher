@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "Naciśnij przycisk albo klawisz na klawiaturze",
  "Press a key on your keyboard": "Naciśnij klawisz na klawiaturze",
  "Add a Key": "Dodaj klawisz",
- "Stars on GitLab": "Gwiazdki na GitLabie"
+ "Stars on GitLab": "Gwiazdki na GitLabie",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "Nie udało mu się utworzyć folderu we własnym folderze. Zabezpieczenia Windows mogą go blokować: w sekcji Ochrona przed wirusami i zagrożeniami, Ochrona przed oprogramowaniem wymuszającym okup wyłącz Kontrolowany dostęp do folderu albo zezwól tej grze na dostęp, a potem zagraj ponownie."
 }

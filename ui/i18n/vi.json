@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "Nhấn một nút, hoặc một phím trên bàn phím",
  "Press a key on your keyboard": "Nhấn một phím trên bàn phím",
  "Add a Key": "Thêm phím",
- "Stars on GitLab": "Sao trên GitLab"
+ "Stars on GitLab": "Sao trên GitLab",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "Nó không tạo được thư mục bên trong thư mục của chính nó. Bảo mật Windows có thể đang chặn nó: trong Bảo vệ khỏi vi-rút và mối đe dọa, mục Bảo vệ khỏi phần mềm tống tiền, hãy tắt Truy cập thư mục được kiểm soát hoặc cho phép trò chơi này đi qua, rồi chơi lại."
 }

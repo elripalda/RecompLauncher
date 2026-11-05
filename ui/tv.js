@@ -2451,6 +2451,11 @@
       // The file browser and the first-run setup take the controller while they're up.
       if (window.fbPad && window.fbPad(b)) return;
       if (window.oobPad && window.oobPad(b)) return;
+      // The desktop view moves with the controller too.
+      if (b !== 'menu-hold' && document.hasFocus() && window.deskPad && window.deskPad(b)) {
+        if (!TV.hinted && !document.querySelector('.oob')) { TV.hinted = true; if (window.toast) toast(t('Hold Menu on your controller to switch to Big Picture mode.')); }
+        return;
+      }
       // A controller on the desktop view: holding Menu (Options) for a second opens TV mode. Not in
       // the first few seconds after the launcher opens, and not while the first-run setup is up.
       if (b === 'menu-hold' && document.hasFocus() && performance.now() - BORN > 3000 && !document.querySelector('.oob')) enter();

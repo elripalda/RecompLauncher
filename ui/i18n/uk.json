@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "Натисни кнопку або клавішу на клавіатурі",
  "Press a key on your keyboard": "Натисни клавішу на клавіатурі",
  "Add a Key": "Додати клавішу",
- "Stars on GitLab": "Зірки на GitLab"
+ "Stars on GitLab": "Зірки на GitLab",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "Їй не вдалося створити папку всередині власної папки. Можливо, її блокує «Безпека Windows»: у розділі «Захист від вірусів і загроз», «Захист від зловмисних програм із вимогою викупу» вимкніть «Керований доступ до папок» або дозвольте цій грі працювати через нього, а потім запустіть знову."
 }

@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "Tekan tombol kontroler, atau tombol di keyboard",
  "Press a key on your keyboard": "Tekan tombol di keyboard",
  "Add a Key": "Tambah tombol",
- "Stars on GitLab": "Bintang di GitLab"
+ "Stars on GitLab": "Bintang di GitLab",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "Ia tidak bisa membuat folder di dalam foldernya sendiri. Keamanan Windows mungkin memblokirnya: di Perlindungan virus & ancaman, bagian Perlindungan ransomware, matikan Akses folder terkontrol atau izinkan game ini melewatinya, lalu main lagi."
 }

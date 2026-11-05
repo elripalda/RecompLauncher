@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "按下按鈕，或鍵盤上的按鍵",
  "Press a key on your keyboard": "按下鍵盤上的按鍵",
  "Add a Key": "新增按鍵",
- "Stars on GitLab": "GitLab 星數"
+ "Stars on GitLab": "GitLab 星數",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "它無法在自己的資料夾中建立資料夾。可能是 Windows 安全性封鎖了它：請在「病毒與威脅防護」的「勒索軟體防護」中關閉「受控資料夾存取權」，或允許此遊戲通過，然後再次開始遊戲。"
 }

@@ -988,7 +988,8 @@ function libList() {
   if (S.lib.filter === 'saved') list = list.filter((x) => x.saved);
   if (S.lib.filter === 'inst') list = list.filter((x) => !x.saved);
   if (S.lib.filter === 'update') list = list.filter((x) => S.updates[x.g.id]);
-  if (S.lib.filter === 'setup') list = list.filter((x) => S.easy.has(x.g.id) && !x.g.game_copy);
+  // Installed games still waiting for the player's copy (as its count says); saved ones are under Not Installed.
+  if (S.lib.filter === 'setup') list = list.filter((x) => !x.saved && S.easy.has(x.g.id) && !x.g.game_copy);
   if (S.lib.filter === 'fav') list = list.filter((x) => favs().includes(x.g.id));
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
   if (q) list = list.filter((x) => fold([x.a.name, x.a.game].join(' ')).includes(q));
@@ -2766,18 +2767,31 @@ function morphList(box, html) {
       return n;
     });
     // The rest of the box (the count) comes from the new markup; the grid keeps its elements.
+    // The grid that stays never leaves this page: a picture moved into the template and back
+    // can be left blank (the covers and logos that went missing in the Library).
     const keep = oldGrid;
     keep.replaceChildren(...kids);
-    newGrid.replaceWith(keep);
-    box.replaceChildren(...tpl.content.childNodes);
+    if (keep.parentNode === box && newGrid.parentNode === tpl.content) {
+      const nodes = [...tpl.content.childNodes], at = nodes.indexOf(newGrid);
+      for (const c of [...box.childNodes]) if (c !== keep) c.remove();
+      keep.before(...nodes.slice(0, at));
+      keep.after(...nodes.slice(at + 1));
+    } else {
+      const mark = document.createComment('');
+      newGrid.replaceWith(mark);
+      box.replaceChildren(...tpl.content.childNodes);
+      mark.replaceWith(keep);
+    }
     evenGrids(box);
     fitTitles(box);
     glideFrom(before);
+    reviveSoon(box);
   } else {
     box.replaceChildren(...tpl.content.childNodes);
     fresh.push(...$$('.grid > .tile', box));
     evenGrids(box);
     fitTitles(box);
+    reviveSoon(box);
   }
   if (calm()) return;
   let i = 0;
@@ -4233,6 +4247,9 @@ async function crashModal(p) {
   const dotnetUrl = net && /^https:\/\/(?:aka\.ms|dotnet\.microsoft\.com)\//i.test(net[1]) ? net[1] : 'https://dotnet.microsoft.com/download';
   // It can't write to its own folder (installed somewhere protected, like Program Files).
   const noWrite = /can't write to its folder|cannot write to (?:its|the game) folder|access (?:is|was) denied|permission denied|read-only file system/i.test(said);
+  // It couldn't make a folder inside its own folder, which isn't somewhere protected: Windows
+  // Security's Controlled folder access (ransomware protection) blocks programs it doesn't know.
+  const blocked = !noWrite && S.os === 'windows' && /(?:cannot|can't|could not|couldn't|failed to|unable to) create (?:the )?(?:directory|folder)/i.test(said);
   // A PS3 port that needs the update's decrypted EBOOT (an encrypted one renamed doesn't count).
   const eboot = /No decrypted EBOOT\.elf|isn't a decrypted EBOOT|EBOOT\.elf (?:file )?(?:is not|isn't) valid|E1\s+FAIL/i.test(said);
   // An Xbox 360 recomp built for a title update the player's copy doesn't have.
@@ -4281,7 +4298,7 @@ async function crashModal(p) {
   // A fix it can offer: that's the main button, and sending the report comes second.
   const fix = armProton || sac || otherBuild || badOpts || rootFlag || dotnet || noWrite || lookOn || glSetting || dll || setupExe || usage;
   const m = modal(`<h2>${esc(tf('{name} closed unexpectedly', { name: g.name }))}</h2>
-    <p>${modName ? esc(tf('It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.', { mod: modName })) : sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
+    <p>${modName ? esc(tf('It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.', { mod: modName })) : sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : blocked ? esc(t('It couldn\'t make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : dll ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
     <div class="acts grid2">${evenActs([`<button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button>`, `<button type="button" class="btn${!fix && p.secs < 5 ? ' main' : ''}" data-x="trouble">${esc(t('Troubleshoot'))}</button>`, `<button type="button" class="btn${fix || p.secs < 5 ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>`,
@@ -5136,6 +5153,27 @@ document.addEventListener('contextmenu', (e) => {
 $('#brand').addEventListener('click', () => aboutModal());
 // Pictures fade in as they arrive instead of popping in.
 document.addEventListener('load', (e) => { if (e.target instanceof HTMLImageElement) { e.target.classList.add('ld'); LOADED.add(e.target.getAttribute('src')); } }, true);
+// A picture that couldn't be had (the site was busy, the connection dropped) is asked for again a
+// little later, a few times, instead of leaving an empty tile until the page is drawn again.
+const RETRY_AFTER = [5000, 30000, 75000, 150000];
+document.addEventListener('error', (e) => {
+  const im = e.target;
+  if (!(im instanceof HTMLImageElement) || !im.isConnected) return;
+  const src = im.getAttribute('src'), n = Number(im.dataset.tries || 0);
+  if (!src || src.startsWith('data:') || n >= RETRY_AFTER.length) return;
+  im.dataset.tries = String(n + 1);
+  setTimeout(() => { if (im.isConnected && im.getAttribute('src') === src && !(im.naturalWidth > 0)) { im.loading = 'eager'; im.removeAttribute('src'); im.setAttribute('src', src); } }, RETRY_AFTER[n]);
+}, true);
+// Pictures in a part of the page that was just redrawn: one that's in but was never shown gets shown.
+function reviveIn(root) {
+  for (const im of (root || document).querySelectorAll('img')) {
+    if (im.complete && im.naturalWidth > 0 && !im.classList.contains('ld')) { im.classList.add('ld'); LOADED.add(im.getAttribute('src')); }
+  }
+}
+function reviveSoon(root) {
+  requestAnimationFrame(() => reviveIn(root));
+  setTimeout(() => reviveIn(root), 800);
+}
 // Coming back from Big Picture mode (the window leaving full screen), a picture can be left waiting
 // to load, or loaded but never shown: black covers. Each one is shown if it's in, or loaded now.
 window.reviveImages = () => {
@@ -5146,6 +5184,148 @@ window.reviveImages = () => {
     if (src && im.complete) { im.removeAttribute('src'); im.setAttribute('src', src); }
   }
 };
+// The same when the window comes back from being minimized or hidden in the tray.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(window.reviveImages, 300); });
+
+// ---------- a controller on the desktop view ----------
+// The D-pad or stick moves a highlight between what's on screen, A presses it, B goes back (or
+// closes what's open), X opens a game's menu, LB and RB switch pages, and left and right change a
+// list or a slider. Holding Menu still opens Big Picture mode. The mouse takes over when it moves.
+const PAD = { el: null };
+const PAD_ITEMS = 'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function padLayer() {
+  if (SU.el && SU.el.isConnected) return SU.el;
+  const m = [...document.querySelectorAll('.menu')].pop();
+  if (m) return m;
+  return [...document.querySelectorAll('.scrim, .oob')].pop() || $('#app') || document.body;
+}
+function padTargets(root) {
+  return [...root.querySelectorAll(PAD_ITEMS)].filter((el) => {
+    // Never the window's own buttons (Close would close the launcher).
+    if (/^w-/.test(el.id) || el.closest('[inert], [hidden], #tv')) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 2 && r.height > 2 && getComputedStyle(el).visibility !== 'hidden';
+  });
+}
+// Where the highlight starts: a dialog's main button, or the first thing on the page in view.
+function padStart(root, list) {
+  if (root.id !== 'app') return list.find((el) => el.matches('.btn.main, [data-x="yes"]')) || list[0];
+  const main = $('#main'), box = main ? main.getBoundingClientRect() : null;
+  const inView = list.filter((el) => main && main.contains(el) && el.getBoundingClientRect().top >= box.top - 4 && el.getBoundingClientRect().top < box.bottom);
+  // A page's main button (Play) first, else the first thing at the top.
+  return inView.find((el) => el.matches('.btn.main')) || inView.sort((a, b) => { const p = a.getBoundingClientRect(), q = b.getBoundingClientRect(); return (p.top - q.top) || (p.left - q.left); })[0] || list[0];
+}
+function padFocus(el) {
+  if (!el) return;
+  if (PAD.el && PAD.el !== el) PAD.el.classList.remove('pad-focus');
+  PAD.el = el;
+  document.body.classList.add('pad-nav');
+  el.classList.add('pad-focus');
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: calm() ? 'auto' : 'smooth' });
+}
+function padCurrent(root, list) {
+  if (PAD.el && PAD.el.isConnected && root.contains(PAD.el) && list.includes(PAD.el)) return PAD.el;
+  const a = document.activeElement;
+  return a && a !== document.body && root.contains(a) && list.includes(a) ? a : null;
+}
+// The closest control that way: one in line (the same row or column) before one off to the side.
+function padMove(dir) {
+  const root = padLayer(), list = padTargets(root);
+  if (!list.length) return;
+  const cur = padCurrent(root, list);
+  if (!cur) return padFocus(padStart(root, list));
+  const side = dir === 'left' || dir === 'right';
+  // Left and right change a list or a slider in place.
+  if (side && cur.matches('select')) {
+    const opts = [...cur.options], step = dir === 'right' ? 1 : -1;
+    let i = cur.selectedIndex + step;
+    while (opts[i] && opts[i].disabled) i += step;
+    if (opts[i]) { cur.selectedIndex = i; cur.dispatchEvent(new Event('change', { bubbles: true })); }
+    return;
+  }
+  if (side && cur.matches('input[type="range"]')) {
+    if (cur.matches('[data-gslide]')) cur.dispatchEvent(new KeyboardEvent('keydown', { key: dir === 'right' ? 'ArrowRight' : 'ArrowLeft', bubbles: true }));
+    else { if (dir === 'right') cur.stepUp(); else cur.stepDown(); cur.dispatchEvent(new Event('input', { bubbles: true })); cur.dispatchEvent(new Event('change', { bubbles: true })); }
+    return;
+  }
+  const c = cur.getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of list) {
+    if (el === cur || el.contains(cur) || cur.contains(el)) continue;
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    let gap, overlap, cross;
+    if (side) {
+      if (dir === 'right' ? x <= cx + 1 : x >= cx - 1) continue;
+      gap = dir === 'right' ? r.left - c.right : c.left - r.right;
+      overlap = Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top);
+      cross = Math.abs(y - cy);
+    } else {
+      if (dir === 'down' ? y <= cy + 1 : y >= cy - 1) continue;
+      gap = dir === 'down' ? r.top - c.bottom : c.top - r.bottom;
+      overlap = Math.min(r.right, c.right) - Math.max(r.left, c.left);
+      cross = Math.abs(x - cx);
+    }
+    const score = Math.max(gap, -20) + (overlap > 0 ? cross * 0.3 : 400 + cross * 2);
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) padFocus(best);
+}
+// After a press that changes the page, the highlight goes to the new page.
+function padAfter() {
+  setTimeout(() => { if (document.body.classList.contains('pad-nav') && (!PAD.el || !PAD.el.isConnected || !padLayer().contains(PAD.el))) { const root = padLayer(); padFocus(padStart(root, padTargets(root))); } }, 450);
+}
+window.deskPad = (b) => {
+  if (b === 'up' || b === 'down' || b === 'left' || b === 'right') { padMove(b); return true; }
+  const root = padLayer(), list = padTargets(root), cur = padCurrent(root, list);
+  if (b === 'a') {
+    if (!cur) { padMove('down'); return true; }
+    if (cur.matches('input[type="range"], select')) return true;
+    if (cur.matches('input:not([type="checkbox"]):not([type="radio"]), textarea')) { cur.focus(); return true; }
+    if (root.id === 'app') PAD.from = cur;
+    cur.click();
+    padAfter();
+    return true;
+  }
+  if (b === 'b') {
+    const over = [...document.querySelectorAll('.scrim, .oob')].pop();
+    const layer = !!(SU.el || $('.menu') || over);
+    if (SU.el) closeSetup();
+    else if ($('.menu')) closeMenu();
+    else if (over) over.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    else if (document.activeElement && document.activeElement.matches('input, textarea')) document.activeElement.blur();
+    else if (S.back.length || S.view !== 'home') back();
+    // Closing a menu or a dialog: back to what opened it.
+    if (layer && PAD.from && PAD.from.isConnected && !$('.menu') && !SU.el) setTimeout(() => { if (PAD.from && PAD.from.isConnected && padLayer().contains(PAD.from)) padFocus(PAD.from); }, 30);
+    padAfter();
+    return true;
+  }
+  if (b === 'lb' || b === 'rb') {
+    const navs = $$('#side .nav[data-go]').filter((n) => n.offsetParent !== null);
+    const i = navs.findIndex((n) => n.dataset.go === S.view);
+    const next = navs[(i < 0 ? 0 : i + (b === 'rb' ? 1 : -1) + navs.length) % navs.length];
+    if (next) { next.click(); padAfter(); }
+    return true;
+  }
+  if (b === 'x' && cur) {
+    const g = cur.closest('[data-id]');
+    if (g) {
+      PAD.from = cur;
+      const r = cur.getBoundingClientRect();
+      cur.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      setTimeout(() => { const m = $('.menu'); if (m) padFocus(padTargets(m)[0]); }, 60);
+    }
+    return true;
+  }
+  return false;
+};
+// The mouse moving again: no highlight.
+document.addEventListener('mousemove', (e) => {
+  if (!document.body.classList.contains('pad-nav') || (Math.abs(e.movementX) + Math.abs(e.movementY) < 3)) return;
+  document.body.classList.remove('pad-nav');
+  if (PAD.el) PAD.el.classList.remove('pad-focus');
+  PAD.el = null;
+}, true);
 
 // The window has no system title bar, so these are its buttons.
 const W = T.window.getCurrentWindow();

@@ -2009,5 +2009,6 @@
  "Press a button, or a key on your keyboard": "Prime um botão ou uma tecla do teclado",
  "Press a key on your keyboard": "Prime uma tecla do teclado",
  "Add a Key": "Adicionar tecla",
- "Stars on GitLab": "Estrelas no GitLab"
+ "Stars on GitLab": "Estrelas no GitLab",
+ "It couldn't make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.": "Não conseguiu criar uma pasta dentro da própria pasta. A Segurança do Windows pode estar a bloqueá-lo: em Proteção contra vírus e ameaças, Proteção contra ransomware, desativa o Acesso controlado a pastas ou permite este jogo através dele e joga outra vez."
 }
