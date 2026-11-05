@@ -232,7 +232,7 @@
     },
     "exit_codes": {
       "type": "object",
-      "description": "Exit code (as a string) to the message shown to the player.",
+      "description": "Exit code (as a string) to the message shown to the player. \"ok\" instead of a message: the game closes with that code when it's quit normally, so it isn't shown as a crash.",
       "additionalProperties": {
         "type": "string"
       }
@@ -337,6 +337,56 @@
           "args": {
             "$ref": "#/definitions/args",
             "description": "For a slider with \"in\": \"args\": its arguments, with {value} for the number, like [\"--sens\", \"{value}\"]. Passed only once the player has moved it."
+          },
+          "bindings": {
+            "type": "object",
+            "description": "Key bindings instead of choices: the game's actions, each with the keys it's on in the settings file. The game page shows each action with its keys as chips; the player presses a chip and then the new key, mouse button or wheel. Only actions the player changes are written.",
+            "required": [
+              "actions"
+            ],
+            "properties": {
+              "separator": {
+                "type": "string",
+                "description": "Joins several keys on one action, in the order the player set them. Default \"|\"."
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8,
+                "description": "Keys one action can have. Default 2."
+              },
+              "actions": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "key"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Where it's written, with the same rules as \"set\": Section/Key for INI or TOML, nested/keys for JSON."
+                    },
+                    "pad": {
+                      "type": "boolean",
+                      "description": "It takes a controller button too."
+                    }
+                  }
+                }
+              },
+              "names": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "The launcher's name for a key or button, to the name your file uses for it, like {\"Return\": \"Enter\"}. Without one, a name the file already uses for that key is kept."
+              }
+            }
           }
         },
         "additionalProperties": false,
@@ -349,6 +399,11 @@
           {
             "required": [
               "slider"
+            ]
+          },
+          {
+            "required": [
+              "bindings"
             ]
           }
         ]

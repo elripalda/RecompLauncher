@@ -41,7 +41,10 @@ pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
     let s = |a: &Value, k: &str| a.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     if !repo.is_empty() {
         let r = repo.trim().trim_end_matches(".git").trim_end_matches('/').to_lowercase();
-        let r = r.rsplit("github.com/").next().unwrap_or(&r).to_string();
+        let r = match r.split_once("gitlab.com/") {
+            Some((_, p)) => format!("gitlab:{p}"),
+            None => r.rsplit("github.com/").next().unwrap_or(&r).to_string(),
+        };
         if let Some(a) = apps.iter().find(|a| s(a, "repo").to_lowercase() == r) {
             return Some(s(a, "id"));
         }

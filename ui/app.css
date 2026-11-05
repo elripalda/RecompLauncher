@@ -374,6 +374,25 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .gslider input{flex:1;min-width:0;accent-color:var(--cyan);height:28px;cursor:pointer}
 .gslider input:disabled{cursor:default;opacity:.5}
 .gslider output{min-width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
+/* Key bindings: an action per row, its keys as chips; the one waiting for a key glows. */
+.kb{padding-top:6px}.kb.off{opacity:.45}
+.kb-head{padding-top:12px}
+.kb-row{padding:10px 0}
+.kb-row .k b{font-size:14px;font-weight:600}
+.kb-row .k .kdup{font-size:12px;color:var(--warn)}
+.kchips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex:none;max-width:60%}
+.kchip{display:inline-flex;align-items:center;height:32px;border-radius:9px;background:var(--card);border:1px solid var(--line);overflow:hidden}
+.kc{height:32px;min-width:44px;padding:0 12px;font-weight:600;font-size:13px;color:var(--ink);white-space:nowrap;border-radius:9px}
+.kchip .kc{border-radius:0}
+.kc:hover{background:var(--line)}
+.kx{display:grid;place-items:center;width:28px;height:32px;color:var(--dim);border-left:1px solid var(--line)}
+.kx svg{width:12px;height:12px}
+.kx:hover{color:var(--ink);background:var(--line)}
+.kadd{border:1px dashed var(--line);color:var(--muted);font-size:16px}
+.kc.cap,.kchip.cap{border-color:var(--cyan);box-shadow:0 0 0 2px color-mix(in srgb,var(--cyan) 35%,transparent)}
+.kchip.cap .kc,.kadd.cap{color:var(--cyan);font-size:13px;animation:kwait 1.2s ease-in-out infinite}
+@keyframes kwait{50%{opacity:.55}}
+.kc:disabled,.kx:disabled{cursor:default;opacity:.6}
 .set-row .acts{flex:none}
 .set-row.off{opacity:.45}
 .set-row .sel{min-width:170px}

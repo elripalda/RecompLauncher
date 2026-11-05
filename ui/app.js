@@ -173,6 +173,15 @@ async function removeFromLibrary(id) {
 }
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
+// Where a recomp lives: GitHub, or GitLab for a project kept as gitlab:group/project.
+const isLab = (repo) => /^gitlab:/i.test(String(repo || ''));
+const repoHome = (repo) => isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : `https://github.com/${repo}`;
+const repoIssues = (repo) => isLab(repo) ? `${repoHome(repo)}/-/issues/new` : `https://github.com/${repo}/issues`;
+const repoReadme = (repo) => isLab(repo) ? repoHome(repo) : `https://github.com/${repo}#readme`;
+// A link to a project: GitHub's mark for GitHub, a plain branch for anywhere else.
+const BRANCH_S = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3.4-11 6.6"/></svg>';
+window.repoHome = repoHome;
+window.repoReadme = repoReadme;
 const DISC_S = '<svg class="disc" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>';
 const DISC_L = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 6a6 6 0 0 1 6 6" opacity=".5"/></svg>';
 const CHEV_L = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>';
@@ -1017,7 +1026,7 @@ function pageLibrary() {
   return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one for versions, launch options and more.', '{n} games. Right-click one for versions, launch options and more.'))}</p></div>
       <div class="dctl"><label class="smallsearch"><span class="sr">${esc(t('Search your games'))}</span>${SEARCH.replace('width="20" height="20"', 'width="16" height="16"')}<input id="lq" type="search" placeholder="${esc(t('Search your games'))}" value="${esc(S.lq)}" autocomplete="off" spellcheck="false"></label>
       <button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button>
-      <button type="button" class="btn" data-act="gh-add">${GITHUB_S}${esc(t('Add From GitHub'))}</button>
+      <button type="button" class="btn" data-act="gh-add">${BRANCH_S}${esc(t('Add From GitHub or GitLab'))}</button>
       ${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}
       ${consoleSel}<label class="pill-sel">${esc(t('Sort'))}<select class="sel" data-act="libsort"><option value="played"${S.lib.sort === 'played' ? ' selected' : ''}>${esc(t('Recently played'))}</option><option value="time"${S.lib.sort === 'time' ? ' selected' : ''}>${esc(t('Most played'))}</option><option value="az"${S.lib.sort === 'az' ? ' selected' : ''}>${esc(t('A to Z'))}</option></select></label></div></div>
     ${n || setup || nf || nsaved ? `<div class="chips"><button type="button" class="chip${S.lib.filter === 'all' ? ' on' : ''}" data-act="libf" data-f="all">${esc(t('All'))} <b>${fmtNum(total)}</b></button>${nsaved ? `<button type="button" class="chip${S.lib.filter === 'inst' ? ' on' : ''}" data-act="libf" data-f="inst">${esc(t('Installed'))} <b>${fmtNum(Object.keys(S.library).length)}</b></button>` : ''}${n ? `<button type="button" class="chip${S.lib.filter === 'update' ? ' on' : ''}" data-act="libf" data-f="update">${esc(t('Update ready'))} <b>${fmtNum(n)}</b></button>` : ''}${setup ? `<button type="button" class="chip${S.lib.filter === 'setup' ? ' on' : ''}" data-act="libf" data-f="setup">${esc(t('Needs your copy'))} <b>${fmtNum(setup)}</b></button>` : ''}${nf ? `<button type="button" class="chip${S.lib.filter === 'fav' ? ' on' : ''}" data-act="libf" data-f="fav">${STAR}${esc(t('Favorites'))} <b>${fmtNum(nf)}</b></button>` : ''}${nsaved ? `<button type="button" class="chip${S.lib.filter === 'saved' ? ' on' : ''}" data-act="libf" data-f="saved">${esc(t('Not Installed'))} <b>${fmtNum(nsaved)}</b></button>` : ''}${n > 1 ? `<button type="button" class="chip main" data-act="update-all">${esc(tf('Update All ({n})', { n }))}</button>` : ''}</div>` : ''}
@@ -1255,13 +1264,13 @@ function runsCard(a) {
 function gameRail(a) {
   const facts = [
     [t('Latest version'), a.version ? 'v' + String(a.version).replace(/^v/i, '') : ''], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   return `<div class="stack">${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
     ${S.library[a.id] && S.os !== 'macos' ? `<div class="acts grid2">${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(a.id)}">${esc(t('Add to Steam'))}</button>` : ''}<button type="button" class="btn${S.steam ? '' : ' span2'}" data-act="desktop" data-id="${esc(a.id)}">${esc(t('Add to desktop'))}</button></div>` : ''}
-    ${a.repo ? `<div class="acts grid2"><button type="button" class="btn" data-act="url" data-url="https://github.com/${esc(a.repo)}">GitHub</button><button type="button" class="btn" data-act="url" data-url="https://github.com/${esc(a.repo)}/issues">${esc(t('Report a problem'))}</button></div>` : ''}</div>`;
+    ${a.repo ? `<div class="acts grid2"><button type="button" class="btn" data-act="url" data-url="${esc(repoHome(a.repo))}">${isLab(a.repo) ? 'GitLab' : 'GitHub'}</button><button type="button" class="btn" data-act="url" data-url="${esc(repoIssues(a.repo))}">${esc(t('Report a problem'))}</button></div>` : ''}</div>`;
 }
 // The recomp's README from its GitHub, folded away under its heading until it's opened. Loaded
 // as the page opens (the launcher keeps a copy for a day), so it opens at once.
@@ -1276,7 +1285,7 @@ function readmeCard(a) {
   }
   if (!r || r === 'loading') return '';
   const open = !!S.readmeOpen;
-  return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
+  return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(isLab(a.repo) ? t('From its GitLab') : t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
 }
 function gameBody(a) {
   const id = a.id, inst = S.library[id];
@@ -1332,7 +1341,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? t('matched GitHub\'s checksum') : t('GitHub had no checksum for it'))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
+      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
     </div>
     <div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
@@ -1624,9 +1633,10 @@ T.event.listen('tauri://drag-leave', () => { if (SU.el) $('.su-stage', SU.el)?.c
 function settingsTab(a) {
   const id = a.id, su = S.setup[id];
   if (!su || su === 'loading') return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading…'))}</p></div></div>`;
+  // A value the game set itself that isn't one of the choices: none is on, and the value shows.
   const seg = (o) => o.choices.length <= 4 && o.choices.join('').length <= 34
-    ? `<div class="seg" role="radiogroup" aria-label="${esc(o.label)}">${o.choices.map((c, i) => `<button type="button" role="radio" aria-checked="${o.current === i}" data-act="gset" data-id="${esc(id)}" data-k="${esc(o.id)}" data-i="${i}"${o.applies ? '' : ' disabled'}>${esc(c)}</button>`).join('')}</div>`
-    : `<select class="sel" data-act="gsel" data-id="${esc(id)}" data-k="${esc(o.id)}"${o.applies ? '' : ' disabled'}>${o.choices.map((c, i) => `<option value="${i}"${o.current === i ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+    ? `<div class="seg" role="radiogroup" aria-label="${esc(o.label)}">${o.choices.map((c, i) => `<button type="button" role="radio" aria-checked="${o.own == null && o.current === i}" data-act="gset" data-id="${esc(id)}" data-k="${esc(o.id)}" data-i="${i}"${o.applies ? '' : ' disabled'}>${esc(c)}</button>`).join('')}</div>`
+    : `<select class="sel" data-act="gsel" data-id="${esc(id)}" data-k="${esc(o.id)}"${o.applies ? '' : ' disabled'}>${o.own != null ? `<option value="" selected disabled>${esc(o.own)}</option>` : ''}${o.choices.map((c, i) => `<option value="${i}"${o.own == null && o.current === i ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
   return `<div class="stack">
     ${su.needs ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${su.copy ? esc(su.copy) : esc(su.needs)}</span></div><button type="button" class="btn${su.copy ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(su.copy ? t('Change') : t('Insert it'))}</button></div></div>` : ''}
     ${su.update ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('The game\'s update'))}</b><span>${su.update_copy ? esc(su.update_copy) : esc(su.update)}</span></div><button type="button" class="btn${su.update_copy || su.update_optional ? '' : ' main'}" data-act="setupdate" data-id="${esc(id)}">${esc(su.update_copy ? t('Change') : t('Choose It'))}</button></div></div>` : ''}
@@ -1657,11 +1667,118 @@ function gameSettingRows(id, su, seg) {
   const rows = su.settings.filter((o) => open || !o.advanced).map((o) => {
     const g = o.group || '', head = g && g !== last ? `<div class="set-sub">${esc(g)}</div>` : '';
     last = g;
+    if (o.bindings) return head + bindRows(id, o);
     const ctl = o.slider ? `<div class="gslider"><input type="range" min="${o.slider.min}" max="${o.slider.max}" step="${o.slider.step}" value="${esc(parseFloat(o.slider.value) || o.slider.min)}" data-gslide data-id="${esc(id)}" data-k="${esc(o.id)}" aria-label="${esc(o.label)}"${o.applies ? '' : ' disabled'}><output>${esc(o.slider.value)}</output></div>` : seg(o);
-    return `${head}<div class="set-row${o.applies ? '' : ' off'}"><div class="k"><b>${esc(o.label)}</b><span>${esc(o.help)}</span></div>${ctl}</div>`;
+    const help = o.own != null ? [o.help, tf('Set in the game to {value}.', { value: o.own })].filter(Boolean).join(' ') : o.help;
+    return `${head}<div class="set-row${o.applies ? '' : ' off'}"><div class="k"><b>${esc(o.label)}</b><span>${esc(help)}</span></div>${ctl}</div>`;
   }).join('');
   return rows + (hasAdv ? `<div class="set-adv"><button type="button" class="btn" data-act="gadv" data-id="${esc(id)}">${esc(open ? t('Hide Advanced Options') : t('Show Advanced Options'))}</button></div>` : '');
 }
+// ---------- key bindings: each action's keys as chips; pressing one waits for the next key ----------
+const KEY_CODES = { Space: 'Space', Enter: 'Return', NumpadEnter: 'Return', Tab: 'Tab', Backspace: 'Backspace', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', AltLeft: 'Alt', AltRight: 'Alt', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', PageUp: 'Page Up', PageDown: 'Page Down', CapsLock: 'Caps Lock' };
+// A key by where it is on the keyboard (Z is Z whatever the layout types), in the launcher's names.
+function keyName(e) {
+  const c = e.code || '';
+  if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+  if (/^Digit\d$/.test(c)) return c.slice(5);
+  if (/^F(?:[1-9]|1[0-2])$/.test(c)) return c;
+  if (KEY_CODES[c]) return KEY_CODES[c];
+  if (/^Numpad\d$/.test(c)) return 'Numpad ' + c.slice(6);
+  if (c && !/^(?:Meta|OS|Unidentified)/.test(c)) return c;
+  return e.key && e.key.length === 1 && e.key.trim() ? e.key.toUpperCase() : '';
+}
+const MOUSE_NAMES = ['Mouse Left', 'Mouse Middle', 'Mouse Right', 'Mouse 4', 'Mouse 5'];
+// Controller buttons, Xbox and PlayStation names.
+const PAD_NAMES = { a: ['A', 'Cross'], b: ['B', 'Circle'], x: ['X', 'Square'], y: ['Y', 'Triangle'], lb: ['LB', 'L1'], rb: ['RB', 'R1'], lt: ['LT', 'L2'], rt: ['RT', 'R2'], ls: ['LS', 'L3'], rs: ['RS', 'R3'], view: ['Back', 'Share'], menu: ['Start', 'Options'], up: ['D-Pad Up', 'D-Pad Up'], down: ['D-Pad Down', 'D-Pad Down'], left: ['D-Pad Left', 'D-Pad Left'], right: ['D-Pad Right', 'D-Pad Right'] };
+let BIND = null;
+// Waits for the next key, mouse button or wheel turn (and controller button, for an action that
+// takes one). Escape cancels, and so does waiting ten seconds. done(name), or done(null).
+function bindCapture(pad, done) {
+  if (BIND) BIND.stop(null);
+  let over = false, until = 0, timer = 0;
+  const onKey = (e) => { e.preventDefault(); e.stopImmediatePropagation(); if (e.repeat) return; if (e.key === 'Escape') return stop(null); const n = keyName(e); if (n) stop(n); };
+  const onDown = (e) => { e.preventDefault(); e.stopImmediatePropagation(); const n = MOUSE_NAMES[e.button]; if (n) stop(n); };
+  const onWheel = (e) => { e.preventDefault(); e.stopImmediatePropagation(); if (e.deltaY) stop(e.deltaY < 0 ? 'Wheel Up' : 'Wheel Down'); };
+  // The mouse button that was the answer doesn't also press what's under it.
+  const eat = (e) => { if (!over || performance.now() < until) { e.preventDefault(); e.stopImmediatePropagation(); } };
+  const EATS = ['mouseup', 'click', 'auxclick', 'contextmenu', 'dblclick'];
+  function stop(name) {
+    if (over) return;
+    over = true;
+    until = performance.now() + 400;
+    clearTimeout(timer);
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('mousedown', onDown, true);
+    window.removeEventListener('wheel', onWheel, { capture: true });
+    setTimeout(() => { for (const ev of EATS) window.removeEventListener(ev, eat, true); }, 450);
+    BIND = null;
+    window.bindPad = null;
+    done(name);
+  }
+  for (const ev of EATS) window.addEventListener(ev, eat, true);
+  // The press that started it is over before this listens.
+  setTimeout(() => { if (over) return; window.addEventListener('keydown', onKey, true); window.addEventListener('mousedown', onDown, true); window.addEventListener('wheel', onWheel, { capture: true, passive: false }); }, 0);
+  timer = setTimeout(() => stop(null), 10000);
+  window.bindPad = (b, kind) => {
+    if (!pad) { if (b === 'b') stop(null); return true; }
+    const n = PAD_NAMES[b];
+    if (n) stop(n[kind === 'ps' ? 1 : 0]);
+    return true;
+  };
+  BIND = { stop };
+}
+// Which other actions a key is on too: said, not changed.
+function bindDupes(o) {
+  const by = {};
+  for (const a of o.bindings.actions) for (const k of a.keys) (by[k.toLowerCase()] = by[k.toLowerCase()] || []).push(a.label);
+  return (a) => [...new Set(a.keys.flatMap((k) => (by[k.toLowerCase()] || []).filter((l) => l !== a.label)))];
+}
+function bindRows(id, o) {
+  const b = o.bindings, cap = S.bindCap && S.bindCap.id === id && S.bindCap.k === o.id ? S.bindCap : null;
+  const dupes = bindDupes(o), off = o.applies ? '' : ' disabled';
+  const waiting = (a) => esc(a.pad ? t('Press a key or button…') : t('Press a key…'));
+  const rows = b.actions.map((a, ai) => {
+    const at = (i) => cap && cap.ai === ai && cap.i === i;
+    const chips = a.keys.map((k, i) => `<span class="kchip${at(i) ? ' cap' : ''}"><button type="button" class="kc" data-act="bindcap" data-id="${esc(id)}" data-k="${esc(o.id)}" data-a="${ai}" data-i="${i}"${off}>${at(i) ? waiting(a) : esc(k)}</button><button type="button" class="kx" data-act="bindclear" data-id="${esc(id)}" data-k="${esc(o.id)}" data-a="${ai}" data-i="${i}" aria-label="${esc(tf('Clear {key}', { key: k }))}"${off}>${XMARK}</button></span>`);
+    if (a.keys.length < b.max) chips.push(`<button type="button" class="kc kadd${at(a.keys.length) ? ' cap' : ''}" data-act="bindcap" data-id="${esc(id)}" data-k="${esc(o.id)}" data-a="${ai}" data-i="${a.keys.length}" aria-label="${esc(tf('Add a key for {action}', { action: a.label }))}"${off}>${at(a.keys.length) ? waiting(a) : '+'}</button>`);
+    const d = dupes(a);
+    return `<div class="set-row kb-row"><div class="k"><b>${esc(a.label)}</b>${d.length ? `<span class="kdup">${esc(tf('Also used by {action}', { action: d.join(', ') }))}</span>` : ''}</div><div class="kchips">${chips.join('')}</div></div>`;
+  }).join('');
+  return `<div class="kb${o.applies ? '' : ' off'}"><div class="set-row kb-head"><div class="k"><b>${esc(o.label)}</b><span>${esc(o.help)}</span></div><button type="button" class="btn" data-act="bindreset" data-id="${esc(id)}" data-k="${esc(o.id)}"${b.changed && o.applies ? '' : ' disabled'}>${esc(t('Reset to Default'))}</button></div>${rows}</div>`;
+}
+function bindingOf(id, k) {
+  const su = S.setup[id];
+  return su && su !== 'loading' ? (su.settings || []).find((o) => o.id === k && o.bindings) : null;
+}
+function redrawSetup(id) {
+  if (S.view === 'game' && S.arg === id && $('#g-body')) showTab(S.tab); else render(true);
+  if (window.tvRefresh) window.tvRefresh();
+}
+async function bindSet(id, k, ai, keys) {
+  const o = bindingOf(id, k), a = o && o.bindings.actions[ai];
+  if (!a) return;
+  try { a.keys = await invoke('set_game_binding', { id, setting: k, action: a.key, keys }); } catch (e) { fail(e); }
+  delete S.setup[id];
+  await loadSetup(id);
+}
+// One action's key i (a new one when i is past the last): the next key pressed.
+function bindAsk(id, k, ai, i, onWait) {
+  const o = bindingOf(id, k), a = o && o.bindings.actions[ai];
+  if (!a || !o.applies) return;
+  S.bindCap = { id, k, ai, i };
+  if (onWait) onWait(a); else redrawSetup(id);
+  bindCapture(a.pad, (name) => {
+    S.bindCap = null;
+    if (onWait) onWait(null);
+    if (!name) return redrawSetup(id);
+    const keys = [...a.keys];
+    keys[Math.min(i, keys.length)] = name;
+    bindSet(id, k, ai, keys);
+  });
+}
+window.bindAsk = bindAsk;
+window.bindSet = bindSet;
+window.bindDupes = bindDupes;
 // A slider moved: written at once (by drag, on release; by keys, a moment after the last press).
 const stepPlaces = (st) => { const d = String(st).split('.')[1]; return d ? Math.min(10, d.length) : 0; };
 function sliderOf(el) {
@@ -2334,7 +2451,7 @@ function pageSettings() {
     case 'look':
       body = group(t('Appearance'), `<div class="set-row"><div class="k"><b>${esc(t('Theme'))}</b><span>${esc(t('Dark, black for OLED screens, or light.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Theme'))}">${[['dark', t('Dark')], ['oled', t('OLED')], ['light', tc('Light|theme')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.theme === 'light' ? 'light' : ui.oled ? 'oled' : 'dark') === k}" data-act="theme" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Text Size'))}</b><span>${esc(t('Bigger or smaller text, buttons and covers. Ctrl with + or - works too.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Text Size'))}">${UI_SCALES.map((k) => `<button type="button" role="radio" aria-checked="${uiScale() === k}" data-act="ui-scale" data-k="${k}">${Math.round(k * 100)}%</button>`).join('')}</div></div>`
-        + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
+        + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['discover', t('Discover')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
@@ -3417,12 +3534,12 @@ function gameMenu(id) {
         { act: 'backups', id, label: t('Backups of your saves…'), icon: 'save' },
         { act: 'move', id, label: t('Move to another drive…'), icon: 'move' },
       ] },
-      ...(x && x.repo ? [{ label: t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: `https://github.com/${x.repo}#readme`, label: t('Read me'), icon: 'page' }, { act: 'url', url: `https://github.com/${x.repo}`, label: t('Its GitHub'), icon: 'web' }] }] : []),
+      ...(x && x.repo ? [{ label: isLab(x.repo) ? t('On GitLab') : t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] }] : []),
       ...(window.pluginMenu ? window.pluginMenu(id) : []),
       '-',
       { act: 'troubleshoot', id, label: t('Troubleshoot…'), icon: 'info' },
       { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
-    ] : x && x.repo ? ['-', { act: 'url', url: `https://github.com/${x.repo}#readme`, label: t('Read me'), icon: 'page' }, { act: 'url', url: `https://github.com/${x.repo}`, label: t('Its GitHub'), icon: 'web' }] : []),
+    ] : x && x.repo ? ['-', { act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }
@@ -3594,7 +3711,7 @@ function setupReqModal(id) {
   if (!a) return;
   const inst = S.library[id];
   const steps = (a.setup_steps || []).filter(Boolean);
-  const readme = a.setup_readme || (a.repo ? `https://github.com/${a.repo}#readme` : '');
+  const readme = a.setup_readme || (a.repo ? repoReadme(a.repo) : '');
   // Two to a row; with an odd number the first one takes a row of its own, so none sits alone.
   const btns = [readme ? `<button type="button" class="btn" data-x="readme">${esc(t('Open the README'))}</button>` : '',
     inst ? `<button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button>` : '',
@@ -3712,7 +3829,7 @@ function blocked(id, err) {
       ${a.repo ? `<button type="button" class="btn" data-x="gh">${esc(t('Tell its developer'))}</button>` : `<button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button>`}<button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`, (x) => {
     if (x.dataset.x === 'vt') invoke('open_url', { url: 'https://www.virustotal.com/gui/home/upload' }).catch(fail);
     if (x.dataset.x === 'ms') invoke('open_url', { url: 'https://www.microsoft.com/en-us/wdsi/filesubmission' }).catch(fail);
-    if (x.dataset.x === 'gh') invoke('open_url', { url: `https://github.com/${a.repo}/issues` }).catch(fail);
+    if (x.dataset.x === 'gh') invoke('open_url', { url: repoIssues(a.repo) }).catch(fail);
     if (x.dataset.x === 'folder') invoke('open_folder', { id }).catch(fail);
   }, t('Blocked by Windows Security'));
   return true;
@@ -4102,7 +4219,7 @@ async function crashModal(p) {
   if (ask) { rootFlag = ask[1]; need = (ask[2].match(/[\w.-]+(?=\/)/g) || []); }
   const gotFlag = !rootFlag && String(g.args || '').match(/(--[\w-]*(?:root|dir|path|game|data)[\w-]*)[ =]("[^"]*"|\S+)/i);
   // The graphics card or its driver can't run it.
-  const gpu = /no Vulkan [\d.]+ device|doesn't implement the VK_KHR_surface|unable to create a d3d12 device|volkInitialize failed|vkCreateInstance failed|VK_ERROR_INCOMPATIBLE_DRIVER|vulkan (?:is )?not (?:supported|available)|does not support vulkan|failed to (?:create|initiali[sz]e) (?:the )?(?:vulkan|d3d12|directx 12)/i.test(said);
+  const gpu = /no Vulkan [\d.]+ device|doesn't implement the VK_KHR_surface|unable to create a d3d12 device|volkInitialize failed|vkCreateInstance failed|VK_ERROR_INCOMPATIBLE_DRIVER|vulkan (?:is )?not (?:supported|available)|does not support vulkan|failed to (?:create|initiali[sz]e) (?:the )?(?:vulkan|d3d12|directx 12)|unable to initiali[sz]e direct3d 12|unable to find (?:any )?devices? that supports? vulkan|\bvk[A-Z]\w+(?: could)? not (?:be )?located/i.test(said);
   // OpenGL in particular: often a game that can draw another way, in its Game settings.
   const gl = /failed to initiali[sz]e opengl|opengl loader|(?:couldn't|could not|unable to|failed to) create (?:an? )?(?:opengl|gl) context|wglCreateContext failed/i.test(said);
   let su = S.setup[p.id] && S.setup[p.id] !== 'loading' ? S.setup[p.id] : null;
@@ -4193,7 +4310,7 @@ async function crashModal(p) {
       const cur = String((S.library[p.id] || {}).args || '').replace(new RegExp(`${rootFlag}[ =]("[^"]*"|\\S+)`, 'g'), '').trim();
       try { S.library[p.id] = await invoke('set_game_options', { id: p.id, args: `${cur} ${rootFlag} "${root}"`.trim(), autoUpdate: null }); close(); toast(t('Saved. Press Play to start it.')); } catch (e) { fail(e); }
     }
-    if (x.dataset.x === 'report' && a) invoke('open_url', { url: `https://github.com/${a.repo}/issues` }).catch(fail);
+    if (x.dataset.x === 'report' && a) invoke('open_url', { url: repoIssues(a.repo) }).catch(fail);
     if (x.dataset.x === 'send') {
       const box = $('#c-note', m);
       const note = ((box || {}).value || '').trim();
@@ -4209,8 +4326,8 @@ async function crashModal(p) {
 // Add a recomp by its GitHub link: one the catalog lists opens its page; another is read first
 // (its game, console and art), shown to the player to check, then added to the Library.
 function githubModal() {
-  const m = modal(`<h2>${esc(t('Add From GitHub'))}</h2><p>${esc(t('Paste the link to a recomp\'s GitHub page. The launcher reads its releases and adds it to your Library, ready to install and keep up to date.'))}</p>
-    <input class="field" id="ghl" type="url" placeholder="https://github.com/owner/name" spellcheck="false" autocomplete="off" aria-label="${esc(t('GitHub link'))}">
+  const m = modal(`<h2>${esc(t('Add From GitHub or GitLab'))}</h2><p>${esc(t('Paste the link to a recomp\'s GitHub or GitLab page. The launcher reads its releases and adds it to your Library, ready to install and keep up to date.'))}</p>
+    <input class="field" id="ghl" type="url" placeholder="https://github.com/owner/name" spellcheck="false" autocomplete="off" aria-label="${esc(t('GitHub or GitLab link'))}">
     <p class="err" id="ghe" hidden></p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Next'))}</button></div>`, async (x, close) => {
     if (x.dataset.x !== 'yes') return;
@@ -4224,10 +4341,10 @@ function githubModal() {
       if (r.known) { toast(tf('{name} is already in Discover. Here it is.', { name: r.known.name })); return go('game', r.known.id); }
       gameInfoModal({ link, info: r });
     } catch (e) {
-      err.textContent = String(e && e.message ? e.message : e); err.hidden = false;
+      err.textContent = t(String(e && e.message ? e.message : e)); err.hidden = false;
       x.disabled = false; x.textContent = was;
     }
-  }, t('Add From GitHub'));
+  }, t('Add From GitHub or GitLab'));
   const f = $('#ghl', m); f.focus();
   f.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-x="yes"]', m).click(); });
 }
@@ -4386,6 +4503,13 @@ const TS_TEXT = [
   N_('This is a Windows version, and it needs Proton to play on Linux. Settings → General → GE-Proton installs it in one press, then press Play again.'),
   N_('GE-Proton is only made for x86-64 PCs.'),
   N_('GitHub\'s answer about GE-Proton didn\'t make sense. Try again later.'),
+  N_('That isn\'t a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.'),
+  N_('That file isn\'t in this recomp\'s own releases, so it wasn\'t downloaded.'),
+  N_('Windows needs your permission to install it. Press the button again and choose Yes when Windows asks.'),
+  N_('That isn\'t an N64 ROM. Pick your game\'s .z64, .n64 or .v64 file.'),
+  N_('That\'s a picture, document or video, not your copy of the game. Pick the game file itself.'),
+  N_('That setting isn\'t a list of keys.'),
+  N_('That isn\'t one of its actions.'),
   N_('The GE-Proton download didn\'t have Proton in it.'),
   N_('Its Linux build needs a newer Linux'),
   N_('It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game\'s page, or update your system.'),
@@ -4438,6 +4562,11 @@ const TS_TEXT = [
   N_('Your copy of the game isn\'t the one it reads'),
   N_('Your copy of the game isn\'t there anymore'),
   N_('Your graphics driver doesn\'t have Vulkan'),
+  N_('Your copy of the game may be incomplete'),
+  N_('Its size isn\'t one a full dump of the cartridge has. If the game won\'t start, try another copy of your own cartridge.'),
+  N_('The Look didn\'t start last time'),
+  N_('ReShade didn\'t load in this game, so its Look can\'t show. Play it without the Look.'),
+  N_('ReShade didn\'t load in this game. The next time it starts, the Look tries another way in.'),
   N_('Your own launch options are on. If it won\'t start, try once without them.'),
   N_('{error}. Games often can\'t save or set up in protected folders like Program Files.'),
   N_('{gb} GB free. Some games need room for saves and shader caches.'),
@@ -4711,6 +4840,9 @@ async function act(el, e) {
     case 'self-update': return selfUpdate();
     case 'pick-copy': return pickCopy(id, !!el.dataset.folder);
     case 'gset': return setGameSetting(id, el.dataset.k, el.dataset.i);
+    case 'bindcap': return bindAsk(id, el.dataset.k, Number(el.dataset.a), Number(el.dataset.i));
+    case 'bindclear': { const o = bindingOf(id, el.dataset.k), a = o && o.bindings.actions[Number(el.dataset.a)]; if (a) bindSet(id, el.dataset.k, Number(el.dataset.a), a.keys.filter((_, j) => j !== Number(el.dataset.i))); return; }
+    case 'bindreset': { try { await invoke('reset_game_bindings', { id, setting: el.dataset.k }); } catch (e) { fail(e); } delete S.setup[id]; return loadSetup(id); }
     case 'gadv': { await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); if (S.view === 'game' && S.arg === id && $('#g-body')) showTab(S.tab); else render(true); return; }
     case 'look': return setLook(id, el.dataset.look);
     case 'gaction': {
@@ -5073,6 +5205,8 @@ T.event.listen('game', ({ payload: p }) => {
     delete S.shots[p.id];
     // ReShade may have been downloaded for it, and there may be new screenshots to preview on.
     forgetLooks(p.id);
+    // Its own menu may have changed its settings while it ran: read again (nothing is written).
+    if (S.setup[p.id] && S.setup[p.id] !== 'loading') { delete S.setup[p.id]; loadSetup(p.id); }
   }
   refreshState().then(() => render(true));
 });
@@ -5173,6 +5307,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   await loadLang(lang && lang !== 'auto' ? lang : systemLang());
   tDom();
   if ((S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length) S.view = 'library';
+  else if ((S.settings.ui || {}).start_page === 'discover') S.view = 'discover';
   render();
   trayWords();
   await loadCatalog(false);
@@ -5182,6 +5317,8 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   // The page the player picked to open on (Settings → Appearance), when nothing else was opened yet.
   if ((S.settings.ui || {}).start_page === 'library' && S.view === 'home' && Object.keys(S.library).length) S.view = 'library';
+  // Discover with nothing to show (offline, nothing saved): the Library, as above.
+  if (S.view === 'discover' && S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   S.anim = 'enter';
   render(true);
   // Update check first (it keeps the release info on disk current), then the news reads from it.

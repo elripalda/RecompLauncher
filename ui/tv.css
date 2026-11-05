@@ -833,3 +833,10 @@ body.linux .tv-cell .aura{filter:blur(18px) saturate(1.5)}
 body.linux .tv-setup .glow{filter:blur(56px) saturate(1.4)}
 body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-kb-note{margin:10px 0 0;font-size:16px;color:var(--tvdim,#8f9cb0);line-height:1.4}
+
+/* Waiting for a key binding. */
+.tv-capture{position:absolute;inset:0;z-index:30;display:grid;place-items:center;background:rgba(2,4,8,.72);animation:tv-fade .2s ease both}
+.tv-capture-in{display:flex;flex-direction:column;align-items:center;gap:10px;padding:44px 64px;border-radius:24px;background:linear-gradient(180deg,#0e1729,#0b1220);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14)}
+.tv-capture-in b{font:700 semi-expanded 32px Archivo,sans-serif;animation:kwait 1.2s ease-in-out infinite}
+.tv-capture-in small{font-size:20px;color:var(--tvsoft,#a9c1d4)}
+@keyframes kwait{50%{opacity:.55}}

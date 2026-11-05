@@ -119,6 +119,12 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     if keep_pre == preload && keep_lib == libs {
         return;
     }
+    // Steam's overlay, kept aside for the game: Steam finds the game's window through it (Steam
+    // Link and Remote Play stream that window; without it they show the desktop, often black).
+    let overlay = steam_only(&preload, &["gameoverlayrenderer"]);
+    if !overlay.is_empty() {
+        std::env::set_var("RL_STEAM_OVERLAY", &overlay);
+    }
     for (k, v) in [("LD_PRELOAD", keep_pre), ("LD_LIBRARY_PATH", keep_lib)] {
         if v.is_empty() {
             std::env::remove_var(k);
@@ -144,6 +150,35 @@ fn graphics_mode(data: &std::path::Path) -> String {
         .unwrap_or_default()
 }
 
+/// The entries of a preload list that are Steam's own (its overlay), space-separated.
+pub fn steam_only(list: &str, keep: &[&str]) -> String {
+    list.split([' ', ':']).filter(|e| !e.is_empty() && keep.iter().any(|d| e.contains(d))).collect::<Vec<_>>().join(" ")
+}
+
+/// A game started from a Steam shortcut gets Steam's overlay back (the launcher itself runs without
+/// it): its preload, and its Vulkan layer switched on. Nothing changes for a launcher Steam didn't
+/// start.
+#[cfg(target_os = "linux")]
+pub fn steam_overlay_for_game(c: &mut tokio::process::Command) {
+    let Some(overlay) = std::env::var("RL_STEAM_OVERLAY").ok().filter(|o| !o.trim().is_empty()) else { return };
+    // Only the overlay's own files, and only ones that are there.
+    let ok: Vec<&str> = overlay.split(' ').filter(|e| e.ends_with("gameoverlayrenderer.so") && !e.contains("..") && std::path::Path::new(e).is_file()).collect();
+    if ok.is_empty() {
+        return;
+    }
+    let cur = std::env::var("LD_PRELOAD").unwrap_or_default();
+    let mut list: Vec<String> = cur.split([' ', ':']).filter(|e| !e.is_empty()).map(str::to_string).collect();
+    for e in ok {
+        if !list.iter().any(|x| x == e) {
+            list.push(e.to_string());
+        }
+    }
+    c.env("LD_PRELOAD", list.join(" "));
+    if std::env::var_os("ENABLE_VK_LAYER_VALVE_steam_overlay_1").is_none() {
+        c.env("ENABLE_VK_LAYER_VALVE_steam_overlay_1", "1");
+    }
+}
+
 /// A list of paths (or preloads) without Steam's own entries.
 pub fn steam_free(list: &str, sep: char, drop: &[&str]) -> String {
     let sep_s = sep.to_string();
@@ -156,6 +191,8 @@ mod tests {
     fn steam_entries_are_taken_out() {
         assert_eq!(super::steam_free("/tmp/.mount_x/usr/lib:/home/deck/.steam/root/ubuntu12_32/steam-runtime/lib:/usr/lib", ':', &["steam-runtime", "ubuntu12_32"]), "/tmp/.mount_x/usr/lib:/usr/lib");
         assert_eq!(super::steam_free("/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so", ' ', &["gameoverlayrenderer"]), "");
+        // Steam's overlay, kept aside for the game.
+        assert_eq!(super::steam_only("/s/ubuntu12_32/gameoverlayrenderer.so:/s/ubuntu12_64/gameoverlayrenderer.so /x/libother.so", &["gameoverlayrenderer"]), "/s/ubuntu12_32/gameoverlayrenderer.so /s/ubuntu12_64/gameoverlayrenderer.so");
         assert_eq!(super::steam_free("/usr/lib", ':', &["steam-runtime"]), "/usr/lib");
     }
     use super::*;

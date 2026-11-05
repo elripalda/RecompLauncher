@@ -232,6 +232,7 @@ pub fn save_mine(dir: &Path, list: &[Value]) -> std::io::Result<()> {
 /// The catalog with the player's own recomps added after it (one the catalog has since listed
 /// itself, by the same repo, stays the catalog's).
 pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
+    mark_hosts(&mut cat);
     let list = mine(dir);
     if list.is_empty() {
         return cat;
@@ -254,11 +255,19 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     cat
 }
 
-/// owner/repo from a GitHub link (or "owner/repo" itself).
+/// owner/repo from a GitHub link (or "owner/repo" itself), or gitlab:group/project from a GitLab
+/// one (with or without /-/releases, a trailing .git, subgroups too).
 pub fn repo_from_link(s: &str) -> Option<String> {
     let s = s.trim().trim_end_matches('/');
     let s = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://")).unwrap_or(s);
     let s = s.strip_prefix("www.").unwrap_or(s);
+    if let Some(rest) = s.strip_prefix("gitlab.com/") {
+        let rest = rest.split(['?', '#']).next().unwrap_or("");
+        let rest = rest.split("/-/").next().unwrap_or("").trim_end_matches('/');
+        let rest = rest.strip_suffix(".git").unwrap_or(rest);
+        let repo = format!("gitlab:{rest}");
+        return repo_ok(&repo).then_some(repo);
+    }
     // Only GitHub: another site's link (its host has a dot) isn't one.
     let rest = match s.strip_prefix("github.com/") {
         Some(r) => r,
@@ -305,24 +314,75 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
 }
 
+/// A project on GitLab, as the launcher keeps it: `gitlab:group/project` (subgroups too:
+/// `gitlab:group/subgroup/project`). Its path on gitlab.com.
+pub fn gitlab_path(repo: &str) -> Option<&str> {
+    repo.strip_prefix("gitlab:")
+}
+
+pub fn is_gitlab(repo: &str) -> bool {
+    gitlab_path(repo).is_some()
+}
+
+fn part_ok(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) && s != "." && s != ".."
+}
+
 fn repo_ok(repo: &str) -> bool {
+    if let Some(p) = gitlab_path(repo) {
+        let parts: Vec<&str> = p.split('/').collect();
+        return (2..=20).contains(&parts.len()) && parts.iter().all(|s| part_ok(s));
+    }
     let mut it = repo.split('/');
-    let ok = |s: Option<&str>| s.map(|s| !s.is_empty() && s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) && s != "." && s != "..").unwrap_or(false);
+    let ok = |s: Option<&str>| s.map(part_ok).unwrap_or(false);
     ok(it.next()) && ok(it.next()) && it.next().is_none()
 }
 
 fn releases_file(dir: &Path, repo: &str) -> PathBuf {
-    dir.join("cache/releases").join(format!("{}.json", repo.replace('/', "__")))
+    dir.join("cache/releases").join(format!("{}.json", repo.replace(':', "_").replace('/', "__")))
 }
 
+/// Where a project's releases are read: GitHub's through gh.php, GitLab's through gl.php, which
+/// gives them in the same shape.
 fn releases_url(repo: &str) -> String {
-    format!("{}/api/gh.php?repo={}", base(), repo)
+    match gitlab_path(repo) {
+        Some(p) => format!("{}/api/gl.php?repo={}", base(), p.replace('/', "%2F")),
+        None => format!("{}/api/gh.php?repo={}", base(), repo),
+    }
+}
+
+/// A GitLab project's files come only from that project on gitlab.com (its release links,
+/// package files, uploads and job artifacts all live under its path). GitHub's are as before.
+pub fn own_download(repo: &str, url: &str) -> bool {
+    let Some(p) = gitlab_path(repo) else { return true };
+    let Ok(u) = reqwest::Url::parse(url) else { return false };
+    let path = u.path().to_ascii_lowercase();
+    u.scheme() == "https" && u.host_str() == Some("gitlab.com") && u.port().is_none() && u.username().is_empty() && u.password().is_none() && path.starts_with(&format!("/{}/", p.to_ascii_lowercase()))
+}
+
+/// Catalog entries for GitLab projects ("host": "gitlab") get their repo the launcher's way
+/// (gitlab:group/project), so everything after tells the two apart by the repo alone.
+pub fn mark_hosts(cat: &mut Value) {
+    let Some(apps) = cat.get_mut("apps").and_then(Value::as_array_mut) else { return };
+    for a in apps {
+        let lab = a.get("host").and_then(Value::as_str).map(|h| h.trim().eq_ignore_ascii_case("gitlab")).unwrap_or(false);
+        let Some(r) = a.get("repo").and_then(Value::as_str).map(str::to_string) else { continue };
+        if lab && !is_gitlab(&r) {
+            let r = r.trim().trim_start_matches("https://").trim_start_matches("gitlab.com/").trim_end_matches('/');
+            let r = r.strip_suffix(".git").unwrap_or(r);
+            a["repo"] = Value::String(format!("gitlab:{r}"));
+        }
+    }
 }
 
 /// Release info straight from GitHub, for when the site can't be reached: GitHub's own list (what
 /// gh.php passes on), so installing and updating still work while the site is down. Downloads
 /// always come from GitHub anyway.
 pub(crate) async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
+    // A GitLab project's releases only come through the site.
+    if is_gitlab(repo) {
+        return Err(Error::Net("The site couldn't be reached".into()));
+    }
     let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
     let r = crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, true).await?;
     if !r.status().is_success() {
@@ -418,12 +478,45 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn gitlab_projects() {
+        assert_eq!(super::repo_from_link("https://gitlab.com/a/b").as_deref(), Some("gitlab:a/b"));
+        assert_eq!(super::repo_from_link("https://gitlab.com/a/b/c.git").as_deref(), Some("gitlab:a/b/c"));
+        assert_eq!(super::repo_from_link("gitlab.com/a/b/-/releases").as_deref(), Some("gitlab:a/b"));
+        assert_eq!(super::repo_from_link("https://gitlab.com/a/b/-/releases/v1?x=1").as_deref(), Some("gitlab:a/b"));
+        assert_eq!(super::repo_from_link("https://gitlab.com/a"), None);
+        assert_eq!(super::repo_from_link("https://gitlab.com/a/../b"), None);
+        // Releases through the site's gl.php, cached apart from GitHub's.
+        assert!(super::releases_url("gitlab:a/b/c").ends_with("/api/gl.php?repo=a%2Fb%2Fc"));
+        assert!(super::releases_url("a/b").ends_with("/api/gh.php?repo=a/b"));
+        assert!(super::releases_file(std::path::Path::new("d"), "gitlab:a/b").ends_with("gitlab_a__b.json"));
+        // Downloads only from the project itself.
+        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/-/releases/v1/downloads/game.zip"));
+        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/-/package_files/12/download"));
+        assert!(super::own_download("gitlab:a/b", "https://gitlab.com/a/b/uploads/abc/game.zip"));
+        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/other/-/releases/v1/downloads/game.zip"));
+        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/bb/-/releases/v1/downloads/game.zip"));
+        assert!(!super::own_download("gitlab:a/b", "https://gitlab.com/a/b/../c/game.zip"));
+        assert!(!super::own_download("gitlab:a/b", "https://evil.example/a/b/game.zip"));
+        assert!(!super::own_download("gitlab:a/b", "http://gitlab.com/a/b/game.zip"));
+        // GitHub as before.
+        assert!(super::own_download("a/b", "https://github.com/a/b/releases/download/v1/x.zip"));
+        // A catalog entry with "host": "gitlab" gets the launcher's kind of repo; GitHub's don't change.
+        let mut cat = serde_json::json!({"apps": [{"id": "x", "host": "gitlab", "repo": "g/s/p"}, {"id": "y", "repo": "o/r"}]});
+        super::mark_hosts(&mut cat);
+        assert_eq!(cat["apps"][0]["repo"], "gitlab:g/s/p");
+        assert_eq!(cat["apps"][1]["repo"], "o/r");
+        super::mark_hosts(&mut cat);
+        assert_eq!(cat["apps"][0]["repo"], "gitlab:g/s/p");
+    }
+
+    #[test]
     fn github_links() {
         assert_eq!(super::repo_from_link("https://github.com/danielgomesvieira2000/burnout3-pc").as_deref(), Some("danielgomesvieira2000/burnout3-pc"));
         assert_eq!(super::repo_from_link("github.com/a/b.git").as_deref(), Some("a/b"));
         assert_eq!(super::repo_from_link("https://github.com/a/b/releases/tag/v1").as_deref(), Some("a/b"));
         assert_eq!(super::repo_from_link("a/b").as_deref(), Some("a/b"));
-        assert_eq!(super::repo_from_link("https://gitlab.com/a/b"), None);
+        assert_eq!(super::repo_from_link("https://gitlab.com/a/b").as_deref(), Some("gitlab:a/b"));
+        assert_eq!(super::repo_from_link("https://codeberg.org/a/b"), None);
         assert_eq!(super::name_from_repo("x/burnout3-pc"), "Burnout3 PC");
         assert_eq!(super::name_from_repo("x/gt3_revisited"), "Gt3 Revisited");
     }

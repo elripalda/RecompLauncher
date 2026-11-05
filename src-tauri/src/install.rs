@@ -669,7 +669,7 @@ const BUILD_TOOLS: [&str; 44] = [
     "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
 ];
 /// Folders a release keeps its tools, or leftovers from building, in.
-const TOOL_DIRS: [&str; 12] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders"];
+const TOOL_DIRS: [&str; 13] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
@@ -679,7 +679,7 @@ pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     // A build tool by its whole name (ninja.exe, cmake, python3.exe).
     let whole = rel.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     let whole = whole.strip_suffix(".exe").unwrap_or(&whole);
-    if BUILD_TOOLS.contains(&whole) || whole.starts_with("python3.") {
+    if BUILD_TOOLS.contains(&whole) || whole.starts_with("python3.") || whole.starts_with("llvm-") || whole.starts_with("clang") {
         return true;
     }
     // A tool word, or a name that ends in one (hactool, gt3tool), that isn't part of the game's name.

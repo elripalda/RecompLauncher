@@ -231,7 +231,7 @@
       const b = $('.tv-boot', root);
       if (!b || !TV.on) return;
       b.classList.add('out');
-      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
+      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : (S.settings.ui || {}).start_page === 'discover' ? 'discover' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
     }, 3100);
   }
 
@@ -343,7 +343,7 @@
     if (!a) return;
     const inst = S.library[id];
     const steps = (a.setup_steps || []).filter(Boolean);
-    const readme = a.setup_readme || (a.repo ? `https://github.com/${a.repo}#readme` : '');
+    const readme = a.setup_readme || (a.repo ? window.repoReadme(a.repo) : '');
     const head = `<h3>${esc(tf('Set up {name}', { name: a.name }))}</h3><p class="tv-sreq-p">${esc(t('This one needs a few things on your PC before it plays. Do these once, in order:'))}</p>
       ${steps.length ? `<ol class="tv-sreq-steps">${steps.map((x) => `<li dir="auto">${esc(x)}</li>`).join('')}</ol>` : `<p class="tv-sreq-p">${esc(t('Its developer\'s README has the steps.'))}</p>`}
       ${inst ? '' : `<p class="tv-sreq-p dim">${esc(t('Install it first, then come back here.'))}</p>`}`;
@@ -1266,11 +1266,39 @@
     const rows = prof.settings.filter((o) => open || !o.advanced).map((o) => {
       const g = o.group || '', head = g && g !== last ? `<div class="tv-subh">${esc(g)}</div>` : '';
       last = g;
-      const val = o.slider ? o.slider.value : (o.choices[o.current] || '');
+      // Key bindings: a row for each action, its keys on the right; A changes them.
+      if (o.bindings) {
+        const dupes = window.bindDupes(o);
+        const acts = o.bindings.actions.map((a, ai) => { const d = dupes(a); return `<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gb:${esc(o.id)}:${ai}" data-tvact="bind" data-k="${esc(o.id)}" data-a="${ai}" data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(a.label)}${d.length ? `<small>${esc(tf('Also used by {action}', { action: d.join(', ') }))}</small>` : ''}</span><span class="tv-pill">${esc(a.keys.join(' · ') || t('None'))}</span></button>`; });
+        const reset = `<button type="button" class="tv-item${o.bindings.changed && o.applies ? '' : ' off'}" data-f data-key="gb:${esc(o.id)}:@reset" data-tvact="bindreset" data-k="${esc(o.id)}" data-id="${esc(id)}"${o.bindings.changed && o.applies ? '' : ' disabled'}><span class="k">${esc(t('Reset to Default'))}<small>${esc(o.label)}</small></span></button>`;
+        return head + (o.label && o.label !== g ? `<div class="tv-subh">${esc(o.label)}</div>` : '') + acts.join('') + reset;
+      }
+      const val = o.slider ? o.slider.value : o.own != null ? o.own : (o.choices[o.current] || '');
       return `${head}<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gs:${esc(o.id)}" data-gset="${esc(o.id)}"${o.slider ? ' data-slide="1"' : ''} data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(o.label)}<small>${esc(o.help)}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(val)}</b>${svg('chevR', 22)}</span></button>`;
     });
     if (prof.settings.some((o) => o.advanced)) rows.push(`<button type="button" class="tv-item" data-f data-key="gs:@adv" data-tvact="gadv" data-id="${esc(id)}"><span class="k">${esc(open ? t('Hide Advanced Options') : t('Show Advanced Options'))}</span><span class="tv-pill">${svg(open ? 'chevL' : 'chevR', 20)}</span></button>`);
     return rows;
+  }
+  // An action's keys: change one, add one, or clear one.
+  function bindSheet(id, k, ai) {
+    const su = S.setup[id], o = su && su !== 'loading' && su.settings.find((x) => x.id === k && x.bindings);
+    const a = o && o.bindings.actions[ai];
+    if (!a) return;
+    const ask = (i) => () => {
+      TV.focusKey = `gb:${k}:${ai}`;
+      window.bindAsk(id, k, ai, i, (act) => {
+        $('.tv-capture', root)?.remove();
+        if (!act) return;
+        const el = document.createElement('div');
+        el.className = 'tv-capture';
+        el.innerHTML = `<div class="tv-capture-in"><b>${esc(act.pad ? t('Press a button, or a key on your keyboard') : t('Press a key on your keyboard'))}</b><small>${esc(act.label)}</small></div>`;
+        stage().append(el);
+      });
+    };
+    const items = a.keys.map((key, i) => ({ label: key, sub: t('Change'), run: ask(i) }));
+    if (a.keys.length < o.bindings.max) items.push({ label: t('Add a Key'), run: ask(a.keys.length) });
+    a.keys.forEach((key, i) => items.push({ label: tf('Clear {key}', { key }), gap: i === 0, run: () => { TV.focusKey = `gb:${k}:${ai}`; return window.bindSet(id, k, ai, a.keys.filter((_, j) => j !== i)); } }));
+    sheet(a.label, items);
   }
   // A slider, one step from the value it really has; written a moment after the last press.
   const tvSlideWrites = {};
@@ -1369,6 +1397,7 @@
     if (o.slider) return stepSlider(el, o, step);
     const i = (o.current + step + o.choices.length) % o.choices.length;
     o.current = i;
+    o.own = null;
     const b = el.querySelector('.tv-cycle b');
     if (b) { b.textContent = o.choices[i]; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
     setPanel(el);
@@ -2265,6 +2294,8 @@
       case 'tag': sfx('select'); TV.dtag = el.dataset.tag; TV.genre = ''; TV.dq = ''; TV.dorigin = ''; TV.gridShown = {}; return go('discover');
       case 'dtagclear': sfx('back'); TV.dtag = ''; TV.focusKey = 'g:@filter'; return discoverRedraw();
       case 'dfilter': return tvFilter();
+      case 'bind': return bindSheet(id, el.dataset.k, Number(el.dataset.a));
+      case 'bindreset': { sfx('select'); try { await invoke('reset_game_bindings', { id, setting: el.dataset.k }); } catch (e) { fail(e); } delete S.setup[id]; TV.focusKey = el.dataset.key; return loadSetup(id); }
       case 'gadv': sfx('select'); await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); TV.focusKey = 'gs:@adv'; return draw(true);
       case 'gaction': {
         const run = async () => { try { const r = await invoke('game_action', { id, action: el.dataset.k }); if (r) toast(t(r)); } catch (e) { fail(e); } };
@@ -2410,6 +2441,8 @@
     const at = performance.now();
     if (b !== 'menu-hold' && b === lastPad.b && at - lastPad.t < 70) return;
     if (b !== 'menu-hold') lastPad = { b, t: at };
+    // Waiting for a key binding: the press is the answer.
+    if (window.bindPad && b !== 'menu-hold' && window.bindPad(b, kind || S.padKind)) return;
     if (kind && kind !== S.padKind) {
       S.padKind = kind;
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
@@ -2434,7 +2467,7 @@
     nativeSeen = true;
     if (typeof payload === 'string') pad(payload); else pad(payload.b, payload.kind);
   });
-  const STD = { 0: 'a', 1: 'b', 2: 'x', 3: 'y', 4: 'lb', 5: 'rb', 8: 'view', 9: 'menu', 12: 'up', 13: 'down', 14: 'left', 15: 'right', 16: 'guide' };
+  const STD = { 0: 'a', 1: 'b', 2: 'x', 3: 'y', 4: 'lb', 5: 'rb', 6: 'lt', 7: 'rt', 8: 'view', 9: 'menu', 10: 'ls', 11: 'rs', 12: 'up', 13: 'down', 14: 'left', 15: 'right', 16: 'guide' };
   const held = {};
   const menuAt = {};
   let rep = { b: null, t: 0, n: 0 };

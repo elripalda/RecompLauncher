@@ -264,6 +264,36 @@ as it is and stays until the player moves the slider. Left and right move one st
 On the command line, use `"in": "args"` with `args` and `{value}` where the number goes:
 `"args": ["--sens", "{value}"]`. It's passed once the player has moved the slider.
 
+**Key bindings.** For controls kept one action per line (`key.cross=Space`), use `bindings`. Each
+action's `key` is read and written like `set` keys. The game page lists the actions with their
+keys as chips: the player presses a chip (or + for another key, up to `max`, 2 by default) and
+then the key, mouse button or wheel. Several keys on one action are joined with `separator`.
+Only actions the player changes are written, and Reset to Default puts back your `defaults`.
+
+```json
+{
+  "id": "keys", "label": "Keyboard & Mouse", "group": "Controls",
+  "bindings": {
+    "separator": "|", "max": 2,
+    "actions": [
+      { "label": "Cross", "key": "key.cross" },
+      { "label": "Options", "key": "key.options" }
+    ]
+  },
+  "defaults": { "key.cross": "Space", "key.options": "Escape|Return" }
+}
+```
+
+Keys are written as letters, digits, F1 to F12, Space, Return, Escape, Tab, Backspace, Shift,
+Ctrl, Alt, Up, Down, Left, Right, Mouse Left, Mouse Right, Mouse Middle, Mouse 4, Mouse 5, Wheel
+Up and Wheel Down. When your file already uses another name for one of them (Enter for Return),
+that one is kept. To choose your own, add `"names": { "Return": "Enter" }`. `"pad": true` on an
+action lets it take a controller button too (A, B, X, Y or Cross, Circle, Square, Triangle, LB,
+RB, LT, RT, Start, Back, the sticks and the D-pad).
+
+When the game closes, the launcher reads its settings again, so changes made in the game's own
+menu show on its page. A value that isn't one of a setting's choices shows as it is.
+
 Keep labels short and help text to a sentence. Say what it does for the player, not what the
 key is called.
 
@@ -357,10 +387,11 @@ the launcher. For the rest, the player gets a link to the mod's page.
 - `actions`: buttons under the settings. `open` opens one of your folders. `clear` empties one,
   written as a folder name and a subfolder (`"saves/cache"`). The launcher asks first.
 - `exit_codes`: when your game exits with one of these, the player sees your message instead of
-  a crash report.
+  a crash report. `"ok"` instead of a message: that's how your game closes when it's quit
+  normally, so it isn't shown as a crash.
 
 ```json
-"exit_codes": { "252968961": "It couldn't find your copy of the game. Pick it again on the game's page." }
+"exit_codes": { "252968961": "It couldn't find your copy of the game. Pick it again on the game's page.", "1": "ok" }
 ```
 
 ## Level 3: full setup

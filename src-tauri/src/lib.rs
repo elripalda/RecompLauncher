@@ -327,6 +327,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
 
+    // A GitLab project's files come only from that project on gitlab.com.
+    if !catalog::own_download(&repo, &asset.browser_download_url) {
+        trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
+        return Err(Error::Msg("That file isn't in this recomp's own releases, so it wasn't downloaded.".into()));
+    }
     // One download at a time; this one waits its turn.
     let permit = match st.download_slot.clone().try_acquire_owned() {
         Ok(p) => p,
@@ -1558,11 +1563,27 @@ async fn install_vcredist(st: State<'_, App>) -> Res<String> {
         let f2 = file.clone();
         let code = tokio::task::spawn_blocking(move || -> Result<Option<i32>, Error> {
             let args = "/install /passive /norestart";
+            let admin = |f: &Path| -> Result<Option<i32>, Error> {
+                match win::run_as_admin(f, args, f.parent().unwrap_or(Path::new("."))) {
+                    Ok(h) => Ok(h.wait()),
+                    // 1223: the player said No when Windows asked.
+                    Err(e) if e.raw_os_error() == Some(1223) => Ok(Some(1223)),
+                    Err(e) => Err(Error::Msg(format!("Windows didn't start the installer: {e}"))),
+                }
+            };
             let mut c = std::process::Command::new(&f2);
             c.args(args.split(' '));
             match c.spawn() {
-                Ok(mut child) => Ok(child.wait().ok().and_then(|s| s.code())),
-                Err(e) if e.raw_os_error() == Some(740) => Ok(win::run_as_admin(&f2, args, f2.parent().unwrap_or(Path::new("."))).map_err(|e| Error::Msg(format!("Windows didn't start the installer: {e}")))?.wait()),
+                // 5: Windows didn't let it install without asking first. Asked once, the way
+                // Windows asks (the player presses Yes).
+                Ok(mut child) => match child.wait().ok().and_then(|s| s.code()) {
+                    Some(5) => {
+                        trail::note("Visual C++ runtime: the installer needs Windows' permission; asking");
+                        admin(&f2)
+                    }
+                    other => Ok(other),
+                },
+                Err(e) if e.raw_os_error() == Some(740) => admin(&f2),
                 Err(e) => Err(Error::Msg(format!("Couldn't start the installer: {e}"))),
             }
         })
@@ -1571,6 +1592,7 @@ async fn install_vcredist(st: State<'_, App>) -> Res<String> {
         let _ = std::fs::remove_file(&file);
         trail::note(format!("Visual C++ runtime: installer closed with {code:?}"));
         match code {
+            Some(5) | Some(1223) => Err(Error::Msg("Windows needs your permission to install it. Press the button again and choose Yes when Windows asks.".into())),
             // 1638: a newer one is already there.
             Some(0) | Some(1638) => Ok("installed".into()),
             Some(3010) | Some(1641) => Ok("restart".into()),
@@ -1796,7 +1818,8 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         Ok(Some((look, lines, api))) => {
             // A game that can go either way: the way in that last worked for it.
             let (api, route) = looks::route_for(&st.dir, id, api);
-            look_route = route.filter(|_| cfg!(windows));
+            // "only": a game with one way in, looked at after the run all the same (did ReShade start?).
+            look_route = if cfg!(windows) { Some(route.unwrap_or("only")) } else { None };
             match if cfg!(windows) { looks::prepare(&st.dir, id, &exe, look, g.look_amount, lines, api) } else { looks::prepare_vkbasalt(&st.dir, id, look, g.look_amount, lines) } {
                 Ok(r) => Some(r),
                 Err(e) => {
@@ -1868,6 +1891,12 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         _ => tokio::process::Command::new(&exe),
     };
     sysenv::clean_tokio(&mut cmd);
+    // Started from a Steam shortcut: Steam's overlay goes back for the game, so Steam Link and
+    // Remote Play can stream its window.
+    #[cfg(target_os = "linux")]
+    if !matches!(ext.as_str(), "exe" | "cmd" | "bat") {
+        sysenv::steam_overlay_for_game(&mut cmd);
+    }
     cmd.args(&args).current_dir(&cwd).kill_on_drop(false);
     // What the game prints, kept for this start: a game that closes right away usually says why
     // there, and the crash report takes it along.
@@ -2019,6 +2048,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         };
         let secs = start.elapsed().as_secs();
         let st = app2.state::<App>();
+        // A game that closes with the same code every time it's quit normally (its profile or the
+        // catalog says which): that's a normal close, not a crash.
+        let code = code.map(|c| if quit_code(&st, &id, prof.as_ref(), c) { 0 } else { c });
         if let Some(route) = look_route {
             looks::after_run(&st.dir, &id, route, secs, code);
         }
@@ -2594,13 +2626,17 @@ fn cached_catalog(st: &App) -> Value {
 /// art from SteamGridDB when the player gave their key.
 #[tauri::command]
 async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub link. It looks like github.com/owner/name.".into()))?;
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let apps = cat.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
     if let Some(a) = apps.iter().find(|a| str_of(a, "repo").eq_ignore_ascii_case(&repo)) {
         return Ok(json!({"repo": repo, "known": {"id": str_of(a, "id"), "name": str_of(a, "name")}}));
     }
     let os = github_os(&st, &repo).await?;
+    // A GitLab project: only its releases are read (through the site), so its name stands in for
+    // what GitHub would say about it.
+    let lab = catalog::is_gitlab(&repo);
+    let api = if lab { String::new() } else { format!("https://api.github.com/repos/{repo}") };
     let get = |url: String, raw: bool| {
         let mut r = st.http.get(url).timeout(std::time::Duration::from_secs(10));
         if raw {
@@ -2608,22 +2644,28 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         }
         r.send()
     };
-    let (info, readme) = tokio::join!(get(format!("https://api.github.com/repos/{repo}"), false), get(format!("https://api.github.com/repos/{repo}/readme"), true));
-    let info: Value = match info {
-        Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
-        _ => Value::Null,
+    let (info, readme) = if lab {
+        (Value::Null, String::new())
+    } else {
+        let (info, readme) = tokio::join!(get(api.clone(), false), get(format!("{api}/readme"), true));
+        let info: Value = match info {
+            Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
+            _ => Value::Null,
+        };
+        let readme = match readme {
+            Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
+            _ => String::new(),
+        };
+        (info, readme)
     };
-    let readme = match readme {
-        Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
-        _ => String::new(),
-    };
+    let path = catalog::gitlab_path(&repo).unwrap_or(&repo).to_string();
     let desc = str_of(&info, "description").to_string();
     let topics: Vec<String> = info.get("topics").and_then(Value::as_array).map(|l| l.iter().filter_map(|t| t.as_str().map(str::to_string)).collect()).unwrap_or_default();
     // The game: a catalog game the repo names in its own words first, then what its description,
     // README and name point at. With a SteamGridDB key, the first of those SteamGridDB knows,
     // under its name there.
-    let cands = ghinfo::game_candidates(&repo, &desc, &readme);
-    let hay = format!(" {} ", ghinfo::norm(&format!("{} {} {}", repo.replace(['/', '-', '_'], " "), desc, readme.chars().take(1500).collect::<String>())));
+    let cands = ghinfo::game_candidates(&path, &desc, &readme);
+    let hay = format!(" {} ", ghinfo::norm(&format!("{} {} {}", path.replace(['/', '-', '_'], " "), desc, readme.chars().take(1500).collect::<String>())));
     let from_cat = apps
         .iter()
         .filter_map(|a| {
@@ -2666,14 +2708,15 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         "known": Value::Null,
         "os": os,
         // The project's own name; the game it's a recomp of goes in "game" (Show Game Names uses it).
-        "name": catalog::name_from_repo(&repo),
+        "name": catalog::name_from_repo(&path),
         "game": game.unwrap_or_default(),
         "origin": origin,
         "blurb": desc,
         "similar": similar.map(|a| json!({"id": str_of(a, "id"), "name": str_of(a, "name")})),
         "art": art,
         "art_error": art_error,
-        "hero_default": format!("https://opengraph.githubassets.com/1/{repo}"),
+        "hero_default": if lab { String::new() } else { format!("https://opengraph.githubassets.com/1/{repo}") },
+        "host": if lab { "gitlab" } else { "github" },
     }))
 }
 
@@ -2716,7 +2759,7 @@ const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero
 /// { id, known, name }.
 #[tauri::command]
 async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub link. It looks like github.com/owner/name.".into()))?;
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
     if let Some(a) = cat.get("apps").and_then(Value::as_array).and_then(|l| l.iter().find(|a| same(a))) {
@@ -2724,26 +2767,36 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
     }
     let os = github_os(&st, &repo).await?;
     let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, &repo, false).await?.data).unwrap_or_default();
-    // What the repo says about itself, when GitHub answers (it's fine without).
-    let meta: Value = match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
-        Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
-        _ => Value::Null,
+    // What the repo says about itself, when GitHub answers (it's fine without). A GitLab
+    // project's releases are all that's read of it.
+    let lab = catalog::is_gitlab(&repo);
+    let meta: Value = if lab {
+        Value::Null
+    } else {
+        match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
+            Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
+            _ => Value::Null,
+        }
     };
-    let owner = repo.split('/').next().unwrap_or("").to_string();
-    let id: String = format!("gh-{}", repo.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
+    let path = catalog::gitlab_path(&repo).unwrap_or(&repo).to_string();
+    let owner = path.split('/').next().unwrap_or("").to_string();
+    let id: String = format!("{}-{}", if lab { "gl" } else { "gh" }, path.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
     let newest = rels.iter().find(|r| !r.draft);
     let mut entry = json!({
         "id": id,
-        "name": catalog::name_from_repo(&repo),
+        "name": catalog::name_from_repo(&path),
         "repo": repo,
         "author": owner,
         "blurb": str_of(&meta, "description"),
         "systems": [os],
-        "hero": format!("https://opengraph.githubassets.com/1/{repo}"),
+        "hero": if lab { String::new() } else { format!("https://opengraph.githubassets.com/1/{repo}") },
         "released": newest.and_then(|r| r.published_at.clone()).unwrap_or_default(),
         "stars": meta.get("stargazers_count").cloned().unwrap_or(Value::Null),
         "custom": true,
     });
+    if lab {
+        entry["host"] = json!("gitlab");
+    }
     if let Some(i) = info.as_ref().and_then(Value::as_object) {
         set_mine_fields(&mut entry, i);
     }
@@ -2800,6 +2853,24 @@ fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     })
 }
 
+/// Whether a code is how this game closes when it's quit normally: "ok" for it in the profile's
+/// exit_codes, or listed in the catalog entry's ok_codes (or its boot profile's).
+fn quit_code(st: &App, id: &str, prof: Option<&profile::Profile>, c: i32) -> bool {
+    let key = (c as u32).to_string();
+    if prof.and_then(|p| p.exit_codes.get(&key).or_else(|| p.exit_codes.get(&c.to_string()))).map(|s| s.trim().eq_ignore_ascii_case("ok")).unwrap_or(false) {
+        return true;
+    }
+    let cat = cached_catalog(st);
+    let Some(e) = catalog::app(&cat, id) else { return false };
+    let listed = [e.get("ok_codes"), e.get("boot").and_then(|b| b.get("ok_codes"))]
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .any(|v| v.as_i64() == Some(c as i64) || v.as_i64() == Some(c as u32 as i64) || v.as_str().map(|s| s.trim() == key || s.trim() == c.to_string()).unwrap_or(false));
+    listed
+}
+
 /// The player's copy for this game: the one they picked, or the one found in their folders. Err
 /// NEED_COPY when the game needs one and there isn't one yet.
 fn game_copy(st: &App, id: &str, g: &Installed, p: &profile::Profile) -> Res<Option<PathBuf>> {
@@ -2847,6 +2918,29 @@ struct SetupOption {
     advanced: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     slider: Option<SliderNow>,
+    /// A value the game wrote itself that isn't one of the choices, as written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    own: Option<String>,
+    /// Key bindings: each action and the keys it's on now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bindings: Option<BindNow>,
+}
+
+#[derive(Serialize)]
+struct BindNow {
+    /// Keys one action can have.
+    max: usize,
+    /// Some action isn't on the game's own keys (Reset to Default does something).
+    changed: bool,
+    actions: Vec<BindRow>,
+}
+
+#[derive(Serialize)]
+struct BindRow {
+    label: String,
+    key: String,
+    keys: Vec<String>,
+    pad: bool,
 }
 
 /// A slider as the window shows it: its range and step, and the value exactly as written now.
@@ -2914,6 +3008,12 @@ fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
                     group: s.group.trim().to_string(),
                     advanced: p.is_advanced(s),
                     slider: s.slider.as_ref().map(|sl| SliderNow { min: sl.min, max: sl.max, step: sl.step(), value: p.slider_now(s, &g.path).unwrap_or_default() }),
+                    own: p.own_value(s, &g.path),
+                    bindings: s.bindings.as_ref().map(|b| BindNow {
+                        max: b.max(),
+                        changed: p.bindings_changed(s, &g.path),
+                        actions: b.actions.iter().zip(p.bindings_now(s, &g.path)).map(|(a, keys)| BindRow { label: a.label.clone(), key: a.key.clone(), keys, pad: a.pad }).collect(),
+                    }),
                 }
             })
             .collect(),
@@ -3066,6 +3166,25 @@ fn set_game_slider(st: State<'_, App>, id: String, setting: String, value: f64) 
         st.save();
     }
     Ok(text)
+}
+
+/// The player set the keys of one action in a key bindings list. Gives back the keys as written.
+#[tauri::command(async)]
+fn set_game_binding(st: State<'_, App>, id: String, setting: String, action: String, keys: Vec<String>) -> Res<Vec<String>> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    if !p.from_boot {
+        let _ = p.prepare(&g.path, g.game_copy.as_deref());
+    }
+    p.set_binding(&g.path, &setting, &action, &keys).map_err(Error::Msg)
+}
+
+/// Reset to Default for a key bindings list.
+#[tauri::command(async)]
+fn reset_game_bindings(st: State<'_, App>, id: String, setting: String) -> Res<()> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    p.reset_bindings(&g.path, &setting).map_err(Error::Msg)
 }
 
 /// A profile's button: open a folder, or clear one (the shader cache).
@@ -3552,6 +3671,7 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         match g.game_copy.as_ref() {
             Some(c) if !c.exists() => out.push(check("bad", "Your copy of the game isn't there anymore", c.display().to_string(), "copy")),
             Some(c) => match profile::check_copy(need, c) {
+                Ok(()) if profile::odd_snes_size(c) => out.push(check("warn", "Your copy of the game may be incomplete", "Its size isn't one a full dump of the cartridge has. If the game won't start, try another copy of your own cartridge.", "copy")),
                 Ok(()) => out.push(check("ok", "Your copy of the game checks out", c.display().to_string(), "")),
                 Err(why) => out.push(check("bad", "Your copy of the game isn't the one it reads", why, "copy")),
             },
@@ -3593,6 +3713,14 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         // A Look kept to one way in after a start that crashed: when that's the wrong one for this
         // game, the Look never shows.
         if look_on {
+            // ReShade didn't start at all last time: the Look never showed.
+            if let Some(r) = looks::never_started(&st.dir, &id) {
+                if r == "only" {
+                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game, so its Look can't show. Play it without the Look.", "clean"));
+                } else {
+                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game. The next time it starts, the Look tries another way in.", ""));
+                }
+            }
             if let Some(r) = looks::kept_route(&st.dir, &id) {
                 let way = if r == "layer" { "Vulkan" } else { "Direct3D" };
                 out.push(check("info", "The Look only tries one way in", "Since a start that crashed, its Look goes in through {way} only. If the Look doesn't show, let it try both ways again.", "lookroute").with("way", way));
@@ -6031,7 +6159,7 @@ pub fn run() {
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, usage::report_preview, usage::my_reports, usage::report_reply,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open,

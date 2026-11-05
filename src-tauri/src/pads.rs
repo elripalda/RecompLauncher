@@ -70,7 +70,7 @@ pub fn parse_sony(r: &[u8], dualsense: bool, bt: bool) -> Option<SonyState> {
             held.push(name);
         }
     }
-    for (bit, name) in [(0x01, "lb"), (0x02, "rb"), (0x10, "view"), (0x20, "menu")] {
+    for (bit, name) in [(0x01, "lb"), (0x02, "rb"), (0x04, "lt"), (0x08, "rt"), (0x10, "view"), (0x20, "menu"), (0x40, "ls"), (0x80, "rs")] {
         if btn1 & bit != 0 {
             held.push(name);
         }
@@ -99,17 +99,17 @@ pub fn parse_switch(r: &[u8]) -> Option<SonyState> {
     match *r.first()? {
         0x30 | 0x21 if r.len() >= 12 => {
             let (right, mid, left) = (r[3], r[4], r[5]);
-            for (bit, name) in [(0x08, "a"), (0x04, "b"), (0x02, "x"), (0x01, "y"), (0x40, "rb")] {
+            for (bit, name) in [(0x08, "a"), (0x04, "b"), (0x02, "x"), (0x01, "y"), (0x40, "rb"), (0x80, "rt")] {
                 if right & bit != 0 {
                     held.push(name);
                 }
             }
-            for (bit, name) in [(0x02, "up"), (0x01, "down"), (0x08, "left"), (0x04, "right"), (0x40, "lb")] {
+            for (bit, name) in [(0x02, "up"), (0x01, "down"), (0x08, "left"), (0x04, "right"), (0x40, "lb"), (0x80, "lt")] {
                 if left & bit != 0 {
                     held.push(name);
                 }
             }
-            for (bit, name) in [(0x01, "view"), (0x02, "menu"), (0x10, "guide")] {
+            for (bit, name) in [(0x01, "view"), (0x02, "menu"), (0x04, "rs"), (0x08, "ls"), (0x10, "guide")] {
                 if mid & bit != 0 {
                     held.push(name);
                 }
@@ -172,24 +172,38 @@ fn read_sony(tx: Sender<Ev>) {
         let mut open: std::collections::HashSet<String> = Default::default();
         let mut first = true;
         let mut last_scan = std::time::Instant::now();
+        let mut seen = input_devices();
+        let mut last_full = std::time::Instant::now();
         loop {
-            // Listing the computer's input devices makes some PCs' mouse hitch, so it's done only
-            // as often as needed: every few seconds while the launcher's window is in front (when
-            // someone may be plugging a controller in), rarely otherwise, and not at all during a
-            // game once a controller is open or the quick menu is off.
+            // Listing the computer's input devices opens each one to read its name, which makes
+            // some PCs' mouse hitch and some wireless headsets crackle. So it's done only when
+            // Windows' own list of input devices changes (a controller plugged in or out): asking
+            // for that list opens nothing. It's looked at every couple of seconds while the
+            // launcher's window is in front, now and then otherwise, and not at all during a game
+            // once a controller is open or the quick menu is off.
             let wait = if FOCUSED.load(Ordering::Relaxed) {
-                5
+                2
             } else if PLAYING.load(Ordering::Relaxed) && (!QUICK_MENU.load(Ordering::Relaxed) || !open.is_empty()) {
                 u64::MAX
             } else {
-                60
+                10
             };
             if !first && last_scan.elapsed().as_secs() < wait {
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 continue;
             }
-            first = false;
             last_scan = std::time::Instant::now();
+            if !first {
+                let now = input_devices();
+                // Windows didn't answer: the full listing, as before, but only every minute.
+                let blind = now.is_empty() && seen.is_empty();
+                if (blind && last_full.elapsed().as_secs() < 60) || (!blind && now == seen) {
+                    continue;
+                }
+                seen = now;
+            }
+            first = false;
+            last_full = std::time::Instant::now();
             let _ = api.refresh_devices();
             // A Steam Controller is listed (by name only: Steam reads it, and passes its buttons on).
             let steam_pad = api.device_list().any(|d| d.vendor_id() == VALVE && STEAM_PADS.contains(&d.product_id()));
@@ -300,6 +314,42 @@ fn switch_full_reports(dev: &hidapi::HidDevice, usb: bool) {
     let _ = dev.write(&[0x01, 0x00, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40, 0x03, 0x30]);
 }
 
+/// The input devices Windows knows about right now (keyboards, mice, controllers), as handles.
+/// Cheap to ask: no device is opened. Empty when Windows doesn't answer.
+#[cfg(windows)]
+fn input_devices() -> Vec<isize> {
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    #[allow(dead_code)]
+    struct RawDev {
+        h: isize,
+        kind: u32,
+    }
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetRawInputDeviceList(list: *mut RawDev, n: *mut u32, size: u32) -> u32;
+    }
+    let size = std::mem::size_of::<RawDev>() as u32;
+    let mut n = 0u32;
+    // SAFETY: the list is sized from Windows' own count (with room for a few more arriving in
+    // between), and only as many entries as it says it wrote are read.
+    unsafe {
+        if GetRawInputDeviceList(std::ptr::null_mut(), &mut n, size) == u32::MAX {
+            return vec![];
+        }
+        let mut v = vec![RawDev { h: 0, kind: 0 }; n as usize + 8];
+        let mut cap = v.len() as u32;
+        let got = GetRawInputDeviceList(v.as_mut_ptr(), &mut cap, size);
+        if got == u32::MAX {
+            return vec![];
+        }
+        v.truncate(got as usize);
+        let mut hs: Vec<isize> = v.iter().map(|d| d.h).collect();
+        hs.sort_unstable();
+        hs
+    }
+}
+
 #[cfg(not(windows))]
 fn read_sony(_tx: Sender<Ev>) {
     // On Linux the kernel's driver already makes PlayStation controllers ordinary gamepads.
@@ -344,6 +394,10 @@ fn read_gilrs(tx: Sender<Ev>) {
                     Button::North => Some(if nin { "x" } else { "y" }),
                     Button::LeftTrigger => Some("lb"),
                     Button::RightTrigger => Some("rb"),
+                    Button::LeftTrigger2 => Some("lt"),
+                    Button::RightTrigger2 => Some("rt"),
+                    Button::LeftThumb => Some("ls"),
+                    Button::RightThumb => Some("rs"),
                     Button::Select => Some("view"),
                     Button::Start => Some("menu"),
                     Button::Mode => Some("guide"),

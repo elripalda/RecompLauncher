@@ -350,6 +350,24 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
             }
             continue;
         }
+        if let Some(b) = s.bindings.as_ref() {
+            if b.actions.is_empty() || b.actions.iter().any(|a| a.key.trim().is_empty()) {
+                items.push(err(format!("\"{}\": every action in its \"bindings\" needs a \"key\"", s.label), "List the actions, each with the key it has in the file."));
+                continue;
+            }
+            if s.target == "args" {
+                items.push(err(format!("\"{}\": key bindings go in a settings file", s.label), "Put it \"in\" one of your \"config\" files."));
+                continue;
+            }
+            let f = p.config_file(&s.target, dir);
+            let missing: Vec<String> = b.actions.iter().filter(|a| f.as_ref().and_then(|f| f.get(&a.key)).is_none() && !s.defaults.contains_key(&a.key)).map(|a| format!("\"{}\"", a.key)).collect();
+            if missing.is_empty() {
+                items.push(ok(format!("{}: {} actions (key bindings)", s.label, b.actions.len())));
+            } else {
+                items.push(warn(format!("{}: the file has no {}", s.label, missing.join(", ")), "Put the game's own keys in \"defaults\" so each action shows them."));
+            }
+            continue;
+        }
         if s.choices.len() < 2 {
             items.push(warn(format!("\"{}\" has {} choice", s.label, s.choices.len()), "Give it at least two."));
             continue;

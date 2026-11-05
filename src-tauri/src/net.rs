@@ -89,6 +89,8 @@ fn key(url: &str) -> String {
     let path = reqwest::Url::parse(url).map(|u| u.path().to_string()).unwrap_or_default();
     if path.ends_with("/api/gh.php") {
         format!("{h}/gh")
+    } else if path.ends_with("/api/gl.php") {
+        format!("{h}/gl")
     } else {
         h
     }
