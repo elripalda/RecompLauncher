@@ -601,6 +601,8 @@ pub async fn saves_overview(app: AppHandle) -> Res<Value> {
 
 fn overview(app: &AppHandle) -> Value {
     let st = app.state::<App>();
+    // Copies made here while the player's folder was away go to it now that it's back.
+    saves::gather(&st.dir);
     let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let signed = signed_in(&st.dir);
     let mut out = Vec::new();
@@ -618,7 +620,8 @@ fn overview(app: &AppHandle) -> Value {
             "cloudOn": g.cloud, "synced": state.synced_hash, "pending": state.pending.is_some(), "found": found,
         }));
     }
-    json!({ "signedIn": signed, "games": out })
+    let chosen = saves::chosen_root();
+    json!({ "signedIn": signed, "games": out, "root": saves::root(&st.dir), "chosen": chosen, "reachable": chosen.as_ref().map(|p| p.is_dir()).unwrap_or(true) })
 }
 
 #[tauri::command]

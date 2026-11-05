@@ -253,6 +253,15 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
 
 /// Pictures: not asked while the site rests, and only the site not answering at all (or saying
 /// it's busy) makes it rest; one missing or refused picture doesn't.
+/// A picture that didn't come, and why, said once each time the launcher runs: a report about
+/// missing covers then says what stopped them (a refusal, a blocked connection, a page instead).
+pub(crate) fn picture_trouble(url: &str, why: &str) {
+    static SAID: AtomicBool = AtomicBool::new(false);
+    if !SAID.swap(true, Ordering::Relaxed) {
+        crate::trail::note(&format!("Pictures from {} didn't come: {why}", host(url)));
+    }
+}
+
 pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqwest::Response> {
     if resting(url, false) {
         return None;
@@ -261,6 +270,9 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
     match rb.send().await {
         Ok(r) => {
             let code = r.status().as_u16();
+            if !r.status().is_success() {
+                picture_trouble(url, &format!("the site answered {code}"));
+            }
             if matches!(code, 429 | 503) {
                 went_badly(url, retry_after(&r), started);
             } else if r.status().is_success() && key(url) != host(url) {
@@ -274,6 +286,15 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
             Some(r)
         }
         Err(e) => {
+            // What went wrong underneath too (a refused connection, a TLS failure).
+            let mut why = String::new();
+            let mut src = std::error::Error::source(&e);
+            while let Some(x) = src {
+                why = x.to_string();
+                src = x.source();
+            }
+            let kind = if e.is_timeout() { "it took too long" } else if e.is_connect() { "couldn't connect" } else { "the request failed" };
+            picture_trouble(url, &if why.is_empty() { kind.to_string() } else { format!("{kind} ({})", why.chars().take(160).collect::<String>()) });
             if e.is_connect() || e.is_timeout() {
                 went_badly(url, None, started);
             }

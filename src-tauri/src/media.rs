@@ -63,6 +63,9 @@ pub async fn get(http: &reqwest::Client, dir: &Path, url: &str) -> Option<Vec<u8
         return None;
     }
     let b = r.bytes().await.ok()?.to_vec();
+    if !mime(&b).starts_with("image/") {
+        crate::net::picture_trouble(url, "what came back isn't a picture");
+    }
     if mime(&b).starts_with("image/") {
         let _ = tokio::fs::create_dir_all(dir).await;
         let tmp = file.with_extension("tmp");

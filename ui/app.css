@@ -1583,7 +1583,7 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 .gp-amb img{inset:auto;left:-120px;top:-120px;width:calc((100% + 240px) / 6);height:calc((100% + 240px) / 6);transform:scale(6);transform-origin:0 0;filter:blur(15px) saturate(1.5)}
 body.scrolling .tile,body.scrolling .shelf .track>*,body.scrolling .card a,body.scrolling .dl-row{pointer-events:none}
 /* Big grids: tiles out of view aren't drawn at all until they scroll in. */
-#main .grid>.tile{content-visibility:auto;contain-intrinsic-size:auto 320px}
+#main .grid>.tile{content-visibility:auto;contain-intrinsic-size:auto 320px;overflow-clip-margin:24px}
 /* While a game runs, nothing in the launcher moves. */
 body.playing *,body.playing *::before,body.playing *::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important}
 
@@ -1685,7 +1685,20 @@ body.linux .oob-aurora i{filter:none;mix-blend-mode:normal}
 .rdm.open .rdm-b{display:block;padding-top:16px}
 .rdm-b pre{overflow:auto;max-width:100%;background:var(--fill3);padding:10px 12px;border-radius:8px}
 
-/* A controller moving around the desktop view: the control it's on. */
-body.pad-nav .pad-focus{outline:3px solid var(--cyan)!important;outline-offset:3px}
+/* A controller moving around the desktop view: one ring, on the control it's on, in its shape.
+   Room is kept around it when it scrolls into view, so the next row shows too. */
+body.pad-nav{cursor:none}
+body.pad-nav :focus-visible:not(.pad-focus){outline:none!important}
+body.pad-nav .pad-focus{outline:3px solid var(--cyan)!important;outline-offset:2px;scroll-margin:120px 60px}
+/* A cover: the ring is drawn inside its artwork, so the row around it can't cut it off. */
 body.pad-nav .tile-b.pad-focus{outline:none!important}
-body.pad-nav .tile-b.pad-focus .poster{transform:translateY(-5px);box-shadow:0 0 0 3px var(--cyan),0 22px 40px -18px rgba(0,0,0,.9)}
+body.pad-nav .tile-b.pad-focus .poster{transform:none;box-shadow:0 22px 40px -18px rgba(0,0,0,.9)}
+body.pad-nav .tile-b.pad-focus .poster::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 3px var(--cyan);z-index:5;pointer-events:none}
+/* The quick buttons on covers are for the mouse: with a controller, the cover is what's picked. */
+body.pad-nav .qpw{display:none}
+/* A list in a pill: the pill has the ring, not the list's button inside it. */
+body.pad-nav .pill-sel .pad-focus{outline:none!important}
+body.pad-nav .pill-sel:has(.pad-focus){outline:3px solid var(--cyan)!important;outline-offset:2px}
+/* Tight places (the sidebar, menus and lists that scroll): the ring sits just inside the edge. */
+body.pad-nav :is(.side,.menu,.choices,.fb-list,.fb-side,.adopt-list,.set-nav) .pad-focus{outline-offset:-3px}
+body.pad-nav .menu .pad-focus{background:var(--fill3)}

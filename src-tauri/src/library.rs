@@ -187,6 +187,9 @@ pub struct Settings {
     /// Back up saves and settings before every update.
     #[serde(default = "yes")]
     pub backup_before_update: bool,
+    /// A folder the player picked for the copies of their saves (none: the launcher's own).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_dir: Option<PathBuf>,
     /// TV mode's size: "small", "medium" or "large" (empty: picked from the screen).
     #[serde(default)]
     pub tv_size: String,
@@ -278,6 +281,7 @@ impl Default for Settings {
             data_asked: false,
             notify: true,
             backup_before_update: true,
+            save_dir: None,
             tv_size: String::new(),
             sounds: true,
             menu_tips: 0,

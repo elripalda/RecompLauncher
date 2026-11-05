@@ -86,6 +86,151 @@ fn system_for(ext: &str) -> &'static str {
     }
 }
 
+fn read_at(f: &mut fs::File, at: u64, buf: &mut [u8]) -> std::io::Result<()> {
+    use std::io::{Seek, SeekFrom};
+    f.seek(SeekFrom::Start(at))?;
+    f.read_exact(buf)
+}
+
+fn has_bytes(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Which console a disc image is for, from what's inside it: an Xbox or Xbox 360 disc (its XDVDFS
+/// volume, and default.xbe or default.xex at its root), a GameCube or Wii disc (their magic
+/// numbers), a PlayStation disc (ISO 9660 saying PLAYSTATION; its SYSTEM.CNF's BOOT2 line makes it a
+/// PS2 one), a PSP disc, a Saturn or Dreamcast one. "xdvdfs" and "playstation" when it's one of
+/// two, "" when it can't tell (a compressed image, a PC disc).
+pub fn disc_kind(p: &Path) -> &'static str {
+    let Ok(mut f) = fs::File::open(p) else { return "" };
+    let mut head = [0u8; 0x40];
+    if read_at(&mut f, 0, &mut head).is_err() {
+        return "";
+    }
+    if head[0x18..0x1C] == [0x5D, 0x1C, 0x9E, 0xA3] {
+        return "wii";
+    }
+    if head[0x1C..0x20] == [0xC2, 0x33, 0x9F, 0x3D] {
+        return "gc";
+    }
+    for (magic, kind) in [(&b"SEGA SEGASATURN"[..], "saturn"), (&b"SEGA SEGAKATANA"[..], "dc")] {
+        if head.starts_with(magic) || head[0x10..].starts_with(magic) {
+            return kind;
+        }
+    }
+    // Xbox and Xbox 360: the XDVDFS volume, right at the start of a trimmed image (xiso), or after
+    // the video partition of a full one (where that partition ends says which console).
+    for (at, kind) in [(0x1_0000u64, ""), (0x1831_0000, "xbox"), (0xFDA_0000, "x360"), (0x209_0000, "x360")] {
+        let mut m = [0u8; 28];
+        if read_at(&mut f, at, &mut m).is_err() || !m.starts_with(b"MICROSOFT*XBOX*MEDIA") {
+            continue;
+        }
+        if !kind.is_empty() {
+            return kind;
+        }
+        let sector = u32::from_le_bytes([m[20], m[21], m[22], m[23]]) as u64;
+        let size = (u32::from_le_bytes([m[24], m[25], m[26], m[27]]) as usize).min(256 * 1024);
+        let mut dir = vec![0u8; size];
+        if size > 0 && read_at(&mut f, sector * 2048, &mut dir).is_ok() {
+            let low = dir.to_ascii_lowercase();
+            if has_bytes(&low, b"default.xex") {
+                return "x360";
+            }
+            if has_bytes(&low, b"default.xbe") {
+                return "xbox";
+            }
+        }
+        return "xdvdfs";
+    }
+    // ISO 9660, in 2048-byte sectors or raw CD ones (2352 bytes, data after a 16 or 24-byte header).
+    for (ss, off) in [(2048u64, 0u64), (2352, 24), (2352, 16)] {
+        let mut pvd = [0u8; 190];
+        if read_at(&mut f, 16 * ss + off, &mut pvd).is_err() || &pvd[1..6] != b"CD001" {
+            continue;
+        }
+        let sys = String::from_utf8_lossy(&pvd[8..40]).trim().to_ascii_uppercase();
+        if sys.starts_with("PSP GAME") {
+            return "psp";
+        }
+        if !sys.starts_with("PLAYSTATION") {
+            return "";
+        }
+        // SYSTEM.CNF in the root folder: "BOOT2 = cdrom0:\..." on a PS2 disc, "BOOT = cdrom:\..." on a
+        // PlayStation one.
+        let root = &pvd[156..190];
+        let lba = u32::from_le_bytes([root[2], root[3], root[4], root[5]]) as u64;
+        let len = (u32::from_le_bytes([root[10], root[11], root[12], root[13]]) as u64).min(64 * 1024);
+        for s in 0..len.div_ceil(2048) {
+            let mut dir = [0u8; 2048];
+            if read_at(&mut f, (lba + s) * ss + off, &mut dir).is_err() {
+                break;
+            }
+            let mut i = 0usize;
+            while i + 33 < dir.len() && dir[i] > 0 {
+                let rec = dir[i] as usize;
+                let n = dir[i + 32] as usize;
+                let name = &dir[(i + 33).min(2048)..(i + 33 + n).min(2048)];
+                if name.to_ascii_uppercase().starts_with(b"SYSTEM.CNF") {
+                    let at = u32::from_le_bytes([dir[i + 2], dir[i + 3], dir[i + 4], dir[i + 5]]) as u64;
+                    let mut cnf = [0u8; 256];
+                    if read_at(&mut f, at * ss + off, &mut cnf).is_ok() {
+                        let up = cnf.to_ascii_uppercase();
+                        if has_bytes(&up, b"BOOT2") {
+                            return "ps2";
+                        }
+                        if has_bytes(&up, b"BOOT") {
+                            return "ps1";
+                        }
+                    }
+                    return "playstation";
+                }
+                i += rec.max(1);
+            }
+        }
+        return "playstation";
+    }
+    ""
+}
+
+/// The console a folder the file sits in is named for ("PS2", "Sony - PlayStation 2", "xbox"): the
+/// nearest such folder. "" when none is.
+pub fn folder_kind(p: &Path) -> &'static str {
+    const WORDS: [(&str, &str); 25] = [
+        ("xbox 360", "x360"), ("xbox360", "x360"), ("x360", "x360"), ("original xbox", "xbox"), ("ogxbox", "xbox"), ("xbox", "xbox"),
+        ("playstation 2", "ps2"), ("playstation2", "ps2"), ("ps2", "ps2"), ("playstation portable", "psp"), ("psp", "psp"),
+        ("playstation 3", "ps3"), ("ps3", "ps3"), ("playstation 1", "ps1"), ("psx", "ps1"), ("ps1", "ps1"), ("psone", "ps1"), ("playstation", "playstation"),
+        ("gamecube", "gc"), ("ngc", "gc"), ("gc", "gc"), ("wii u", "wiiu"), ("wiiu", "wiiu"), ("wii", "wii"), ("dreamcast", "dc"),
+    ];
+    let word = |text: &str, w: &str| {
+        let b = text.as_bytes();
+        text.match_indices(w).any(|(s, _)| {
+            let e = s + w.len();
+            (s == 0 || !b[s - 1].is_ascii_alphanumeric()) && (e >= b.len() || !b[e].is_ascii_alphanumeric())
+        })
+    };
+    for dir in p.ancestors().skip(1) {
+        let Some(n) = dir.file_name().and_then(|n| n.to_str()) else { continue };
+        let n = n.to_lowercase().replace(['_', '-'], " ");
+        if let Some((_, k)) = WORDS.iter().find(|(w, _)| word(&n, w)) {
+            return *k;
+        }
+    }
+    ""
+}
+
+/// A disc image's console: what's inside it says, and where it says one of two, the folder it's in
+/// picks (an Xbox disc in a folder named "Xbox 360").
+fn disc_system(p: &Path, ext: &str) -> &'static str {
+    let inside = if ext == "iso" { disc_kind(p) } else { "" };
+    let folder = folder_kind(p);
+    match inside {
+        "" => folder,
+        "xdvdfs" if matches!(folder, "xbox" | "x360") => folder,
+        "playstation" if matches!(folder, "ps1" | "ps2") => folder,
+        k => k,
+    }
+}
+
 /// Consoles whose games come on cartridges (or as cartridge files): a disc image is never one of theirs.
 const CART_ORIGINS: [&str; 13] = ["n64", "snes", "nes", "gb", "gbc", "gba", "ds", "3ds", "vb", "genesis", "s32x", "switch", "amiga"];
 
@@ -98,13 +243,24 @@ fn fits(rom: &RomFile, origin: &str) -> bool {
     if origin.is_empty() || origin == "other" || origin == "arcade" {
         return true;
     }
-    // Files found before the launcher told cartridges apart: their type says it now.
+    // Files found before the launcher told cartridges apart: their type says it now, or, for a
+    // disc image, the folder it's kept in ("PS2", "Xbox").
     let ext = rom.path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-    let sys = if rom.system.is_empty() { system_for(&ext) } else { rom.system.as_str() };
-    if sys.is_empty() {
-        return !CART_ORIGINS.contains(&origin);
+    let sys = if !rom.system.is_empty() {
+        rom.system.as_str()
+    } else {
+        match system_for(&ext) {
+            "" if DISC.contains(&ext.as_str()) => folder_kind(&rom.path),
+            s => s,
+        }
+    };
+    match sys {
+        "" => !CART_ORIGINS.contains(&origin),
+        // One of two: an Xbox or Xbox 360 disc, a PlayStation or PS2 one.
+        "xdvdfs" => matches!(origin, "xbox" | "x360"),
+        "playstation" => matches!(origin, "ps1" | "ps2"),
+        _ => sys == origin || matches!((sys, origin), ("gb", "gbc") | ("gbc", "gb")),
     }
-    sys == origin || matches!((sys, origin), ("gb", "gbc") | ("gbc", "gb"))
 }
 
 /// One file: a ROM, a disc image, or an Xbox 360 game's default.xex (which stands for its folder).
@@ -126,7 +282,13 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
         let (title, region) = n64_header(p).unwrap_or((stem.clone(), String::new()));
         Some(RomFile { path: p.to_path_buf(), system: "n64".into(), title, region, size })
     } else if is_disc && size > 50 * 1024 * 1024 {
-        Some(RomFile { path: p.to_path_buf(), system: system_for(&ext).into(), title: stem, region: String::new(), size })
+        // A disc image's file type rarely says its console (an .iso is any of them): what's inside
+        // it, or the folder it's kept in, does.
+        let system = match system_for(&ext) {
+            "" => disc_system(p, &ext),
+            s => s,
+        };
+        Some(RomFile { path: p.to_path_buf(), system: system.into(), title: stem, region: String::new(), size })
     } else if is_cart && size >= 8 * 1024 {
         Some(RomFile { path: p.to_path_buf(), system: system_for(&ext).into(), title: stem, region: String::new(), size })
     } else if ext == "xex" && stem.eq_ignore_ascii_case("default") {
@@ -526,6 +688,71 @@ mod tests {
         r.sort_by(|x, y| x.title.cmp(&y.title));
         let t: Vec<(&str, &str)> = r.iter().map(|x| (x.title.as_str(), x.region.as_str())).collect();
         assert_eq!(t, vec![("Banjo-Kazooie", "Europe"), ("SUPER MARIO 64", "Japan"), ("ZELDA MAJORA'S MASK", "US")]);
+    }
+
+    #[test]
+    fn disc_images_say_their_console() {
+        let d = tmp("discs");
+        // A PS2 DVD: ISO 9660 that says PLAYSTATION, its SYSTEM.CNF with a BOOT2 line.
+        let mut ps2 = vec![0u8; 2048 * 22];
+        let pvd = 16 * 2048;
+        ps2[pvd] = 1;
+        ps2[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
+        ps2[pvd + 8..pvd + 19].copy_from_slice(b"PLAYSTATION");
+        ps2[pvd + 156 + 2..pvd + 156 + 6].copy_from_slice(&18u32.to_le_bytes());
+        ps2[pvd + 156 + 10..pvd + 156 + 14].copy_from_slice(&2048u32.to_le_bytes());
+        let rec = 18 * 2048;
+        ps2[rec] = 46;
+        ps2[rec + 2..rec + 6].copy_from_slice(&20u32.to_le_bytes());
+        ps2[rec + 32] = 12;
+        ps2[rec + 33..rec + 45].copy_from_slice(b"SYSTEM.CNF;1");
+        let cnf = b"BOOT2 = cdrom0:\\SLUS_203.12;1\r\nVER";
+        ps2[20 * 2048..20 * 2048 + cnf.len()].copy_from_slice(cnf);
+        fs::write(d.join("game.iso"), &ps2).unwrap();
+        assert_eq!(disc_kind(&d.join("game.iso")), "ps2");
+        // The same with a PlayStation BOOT line.
+        let mut ps1 = ps2.clone();
+        ps1[20 * 2048..20 * 2048 + 4].copy_from_slice(b"BOOT");
+        ps1[20 * 2048 + 4] = b' ';
+        fs::write(d.join("ps1.iso"), &ps1).unwrap();
+        assert_eq!(disc_kind(&d.join("ps1.iso")), "ps1");
+        // An Xbox disc, trimmed: XDVDFS at 0x10000, default.xbe in its root folder.
+        let mut xb = vec![0u8; 0x1_0000 + 2048 * 40];
+        xb[0x1_0000..0x1_0014].copy_from_slice(b"MICROSOFT*XBOX*MEDIA");
+        xb[0x1_0014..0x1_0018].copy_from_slice(&36u32.to_le_bytes());
+        xb[0x1_0018..0x1_001C].copy_from_slice(&2048u32.to_le_bytes());
+        xb[36 * 2048 + 14..36 * 2048 + 25].copy_from_slice(b"default.xbe");
+        fs::write(d.join("xbox.iso"), &xb).unwrap();
+        assert_eq!(disc_kind(&d.join("xbox.iso")), "xbox");
+        // A GameCube disc.
+        let mut gc = vec![0u8; 4096];
+        gc[0x1C..0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
+        fs::write(d.join("gc.iso"), &gc).unwrap();
+        assert_eq!(disc_kind(&d.join("gc.iso")), "gc");
+        fs::write(d.join("pc.iso"), vec![0u8; 4096]).unwrap();
+        assert_eq!(disc_kind(&d.join("pc.iso")), "");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn folders_named_for_a_console() {
+        assert_eq!(folder_kind(Path::new("D:/Roms/PS2/Black (USA).iso")), "ps2");
+        assert_eq!(folder_kind(Path::new("/home/me/roms/Sony - PlayStation 2/Black/Black.iso")), "ps2");
+        assert_eq!(folder_kind(Path::new("E:/Games/Xbox/Black (USA)/Black.iso")), "xbox");
+        assert_eq!(folder_kind(Path::new("E:/Games/Xbox 360/Black.iso")), "x360");
+        assert_eq!(folder_kind(Path::new("E:/Games/psx/Driver 2.iso")), "ps1");
+        // The nearest folder that names one.
+        assert_eq!(folder_kind(Path::new("E:/xbox/backups/ps2/Black.iso")), "ps2");
+        assert_eq!(folder_kind(Path::new("E:/Games/Black.iso")), "");
+        assert_eq!(folder_kind(Path::new("E:/Gamecube Stuff/gcc/Black.iso")), "gc");
+        // A PS2 disc never matches an original Xbox recomp; one of two only matches those two.
+        let r = |p: &str, sys: &str| RomFile { path: PathBuf::from(p), system: sys.into(), title: "Black".into(), region: String::new(), size: 1 << 30 };
+        assert!(!fits(&r("D:/Roms/PS2/Black (USA).iso", "ps2"), "xbox"));
+        assert!(fits(&r("D:/Roms/PS2/Black (USA).iso", "ps2"), "ps2"));
+        assert!(!fits(&r("D:/Roms/PS2/Black (USA).iso", ""), "xbox"));
+        assert!(fits(&r("E:/Black.iso", "xdvdfs"), "xbox"));
+        assert!(!fits(&r("E:/Black.iso", "xdvdfs"), "ps2"));
+        assert!(fits(&r("E:/Black.iso", ""), "xbox"));
     }
 
     #[test]

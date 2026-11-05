@@ -401,8 +401,67 @@ pub struct Copy {
     pub played: u64,
 }
 
+/// A folder the player picked for the copies (another drive, a NAS, a folder Drive or OneDrive
+/// keeps in sync): each game's copies in a folder of their own inside it.
+static ROOT: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+pub fn set_root(p: Option<PathBuf>) {
+    *ROOT.write().unwrap() = p.filter(|p| !p.as_os_str().is_empty());
+}
+
+/// The player's folder, when they picked one.
+pub fn chosen_root() -> Option<PathBuf> {
+    ROOT.read().unwrap().clone()
+}
+
+/// Where the copies go: the player's folder, or the launcher's own when none is picked or it can't
+/// be reached right now (a drive that's unplugged, a network folder that's offline). Those copies
+/// are kept here meanwhile, and nothing waits on the missing folder.
+pub fn root(app_dir: &Path) -> PathBuf {
+    match chosen_root() {
+        Some(p) if p.is_dir() => p,
+        _ => app_dir.join("saves"),
+    }
+}
+
 pub fn dir_of(app_dir: &Path, id: &str) -> PathBuf {
-    app_dir.join("saves").join(id)
+    root(app_dir).join(id)
+}
+
+/// The copies moved from one folder to another, each file checked by its size before the old one
+/// goes. Nothing is deleted when a file doesn't arrive whole: what's left behind stays where it was.
+pub fn move_copies(from: &Path, to: &Path) -> io::Result<usize> {
+    fs::create_dir_all(to)?;
+    let mut moved = 0;
+    for game in fs::read_dir(from).into_iter().flatten().flatten() {
+        let src = game.path();
+        if !src.is_dir() {
+            continue;
+        }
+        let dst = to.join(game.file_name());
+        fs::create_dir_all(&dst)?;
+        let mut whole = true;
+        for f in fs::read_dir(&src)?.flatten() {
+            let (a, b) = (f.path(), dst.join(f.file_name()));
+            if !a.is_file() || f.file_name() == "state.json" {
+                continue;
+            }
+            let len = a.metadata()?.len();
+            if !b.exists() || b.metadata().map(|m| m.len()).unwrap_or(0) != len {
+                fs::copy(&a, &b)?;
+            }
+            if b.metadata().map(|m| m.len()).unwrap_or(u64::MAX) == len {
+                let _ = fs::remove_file(&a);
+            } else {
+                whole = false;
+            }
+        }
+        if whole {
+            let _ = fs::remove_dir(&src);
+            moved += 1;
+        }
+    }
+    Ok(moved)
 }
 
 /// What the launcher remembers about a game's saves and its cloud copies.
@@ -419,14 +478,39 @@ pub struct State {
     pub pending: Option<String>,
 }
 
+/// This PC's notes about a game's saves stay in the launcher's own folder, even with the copies
+/// somewhere else: a folder other PCs keep in sync too would mix up theirs.
+fn state_file(app_dir: &Path, id: &str) -> PathBuf {
+    app_dir.join("saves").join(id).join("state.json")
+}
+
 pub fn state(app_dir: &Path, id: &str) -> State {
-    fs::read(dir_of(app_dir, id).join("state.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    let read = |p: PathBuf| fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    // One from before the copies moved, beside them.
+    read(state_file(app_dir, id)).or_else(|| read(dir_of(app_dir, id).join("state.json"))).unwrap_or_default()
 }
 
 pub fn set_state(app_dir: &Path, id: &str, s: &State) {
-    let d = dir_of(app_dir, id);
-    let _ = fs::create_dir_all(&d);
-    let _ = fs::write(d.join("state.json"), serde_json::to_vec_pretty(s).unwrap_or_default());
+    let f = state_file(app_dir, id);
+    if let Some(d) = f.parent() {
+        let _ = fs::create_dir_all(d);
+    }
+    let _ = fs::write(f, serde_json::to_vec_pretty(s).unwrap_or_default());
+}
+
+/// Copies made in the launcher's own folder while the player's folder couldn't be reached go to
+/// it once it's back. This PC's notes stay.
+pub fn gather(app_dir: &Path) {
+    let Some(to) = chosen_root().filter(|p| p.is_dir()) else { return };
+    let from = app_dir.join("saves");
+    let has_copies = fs::read_dir(&from).into_iter().flatten().flatten().any(|g| fs::read_dir(g.path()).into_iter().flatten().flatten().any(|f| f.file_name() != "state.json"));
+    if has_copies {
+        if let Ok(n) = move_copies(&from, &to) {
+            if n > 0 {
+                crate::trail::note(&format!("Saves: copies made while the backup folder was away went to it ({n} games)"));
+            }
+        }
+    }
 }
 
 fn read_manifest(zip_file: &Path) -> Option<Manifest> {
@@ -768,7 +852,7 @@ pub fn watch_end(w: Watch) -> Vec<String> {
 /// The size of each game's copies on this PC.
 pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
-    for e in fs::read_dir(app_dir.join("saves")).into_iter().flatten().flatten() {
+    for e in fs::read_dir(root(app_dir)).into_iter().flatten().flatten() {
         let id = e.file_name().to_string_lossy().to_string();
         out.insert(id.clone(), list(app_dir, &id).iter().map(|c| c.size).sum());
     }

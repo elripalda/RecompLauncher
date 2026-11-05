@@ -14,6 +14,7 @@ pub mod devtools;
 pub mod discord;
 pub mod extract;
 pub mod files;
+pub mod flatpak;
 pub mod gamebanana;
 pub mod info;
 pub mod ingame;
@@ -752,6 +753,13 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
     let mut kept = false;
     let mut uninstaller = false;
     if delete_files {
+        // A Flatpak the launcher installed from the game's bundle goes with it.
+        if !cfg!(windows) && flatpak::available() {
+            let bundle = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }).filter(|e| e.extension().map(|x| x.eq_ignore_ascii_case("flatpak")).unwrap_or(false));
+            if let Some(app_id) = bundle.and_then(|b| flatpak::app_id(&b)).or_else(|| flatpak::bundle_in(&g.path).map(|(_, a)| a)) {
+                flatpak::remove(&app_id);
+            }
+        }
         // Only ever a game's own folder right inside a library. A game the player brought over
         // from somewhere else keeps its folder, and so does anything shared like Downloads.
         // Or a folder the launcher made for it (named after it) in a library folder since removed.
@@ -1645,6 +1653,14 @@ fn headless_script(exe: &Path) -> bool {
     n > 0 && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!") && !head.contains(&0)
 }
 
+/// A line of numbers a game prints about how it's running (frame times, shader and pipeline
+/// counts): "shader libraries missing (left to a worker)" there is a count, not something it needs.
+/// Lowercased already.
+fn stats_line(l: &str) -> bool {
+    const WORDS: [&str; 12] = ["vk_pipeline", "frametime", "fast links", "lookups", "pipelines swapped", "cache hits", "shader cache", "fps", "frames in", " ms,", "telemetry", "[stats]"];
+    WORDS.iter().any(|w| l.contains(w))
+}
+
 // Games being started right now, so a second Play while the first is still on its way does nothing.
 static STARTING: Mutex<Vec<String>> = Mutex::new(Vec::new());
 struct Starting(String);
@@ -1879,9 +1895,29 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         // The same for a start script without a "#!" line (or an extension): Linux won't run one
         // on its own ("Exec format error").
         "sh" if !cfg!(windows) => shell_script(&exe),
-        _ if !cfg!(windows) && headless_script(&exe) => {
+        // A Windows script (.bat, .cmd) has no "#!" line either, but it's for Windows' own command
+        // prompt: it goes through Proton below, never the shell.
+        _ if !cfg!(windows) && !matches!(ext.as_str(), "exe" | "cmd" | "bat" | "flatpak") && headless_script(&exe) => {
             trail::note(format!("Play {id}: a start script without a #! line, through the shell"));
             shell_script(&exe)
+        }
+        // A Flatpak bundle: Linux can't run the file itself. Installed for this user the first
+        // time (with what it needs from Flathub), then started through Flatpak.
+        "flatpak" if !cfg!(windows) => {
+            if !flatpak::available() {
+                return Err(Error::Msg("This build comes as a Flatpak, and Flatpak isn't on this PC. Install Flatpak from your system's software center, or switch to another build on the game's page.".into()));
+            }
+            let app_id = flatpak::app_id(&exe).ok_or_else(|| Error::Msg("This Flatpak file doesn't say which app it holds, so it can't be installed. Switch to another build on the game's page.".into()))?;
+            if !flatpak::installed(&app_id) {
+                trail::note(format!("Play {id}: installing its Flatpak ({app_id})"));
+                let _ = app.emit("note", "Installing its Flatpak for the first time. It can take a few minutes; the game starts when it's done.");
+                if let Err(e) = flatpak::install(&exe) {
+                    trail::note(format!("Play {id}: its Flatpak didn't install: {e}"));
+                    return Err(Error::Msg(format!("Flatpak couldn't install it: {e}")));
+                }
+                trail::note(format!("Play {id}: its Flatpak is installed"));
+            }
+            flatpak::command(&app_id)
         }
         // A Windows program (or script) on Linux: through Proton (or Wine).
         "exe" | "cmd" | "bat" if !cfg!(windows) => match proton::runner() {
@@ -1960,6 +1996,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let mut child = spawned.map_err(|e| {
         if is_blocked(&e) {
             defender_msg(e, &shown)
+        } else if let Some(why) = not_a_program(&exe).filter(|_| matches!(e.raw_os_error(), Some(8) | Some(193))) {
+            // A disc image, an archive or a document set as the program (by hand, most often).
+            Error::Msg(why.into())
         } else if !cfg!(windows) && e.raw_os_error() == Some(8) {
             Error::Msg(format!("{shown} isn't built for this PC's processor (Exec format error). Pick the build for your system on the game's page, or choose another program in Troubleshoot."))
         } else {
@@ -3732,7 +3771,7 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         // It said it's missing something (its game files, most often).
         let missing = text.lines().rev().take(80).find(|l| {
             let l = l.to_lowercase();
-            l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing")
+            !stats_line(&l) && (l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing"))
         });
         let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
         let said = |w: &str| text.lines().rev().take(120).any(|l| l.contains(w));
@@ -3945,6 +3984,10 @@ fn set_manual(st: State<'_, App>, id: String, manual: Option<library::ManualSetu
         }
         if m.name.contains(['/', '\\']) {
             return Err(Error::Msg("A file name can't have folders in it.".into()));
+        }
+        // The program has to be one: a disc image picked here is the game's copy, not its program.
+        if let Some(why) = m.exe.as_deref().and_then(not_a_program) {
+            return Err(Error::Msg(why.into()));
         }
     }
     let mut l = st.lib.lock().unwrap();
@@ -4222,7 +4265,7 @@ fn overlay_action(app: AppHandle, action: String) {
 pub(crate) fn not_a_program(p: &Path) -> Option<&'static str> {
     let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
-        "iso" | "cue" | "chd" | "cso" | "gcm" | "rvz" | "wbfs" | "wia" | "gcz" | "xci" | "nsp" | "nca" | "wad" | "wux" | "wud" | "rpx" | "xex" | "xbe" | "elf" | "z64" | "n64" | "v64" | "sfc" | "smc" | "gba" | "nds" | "3ds" | "cia" | "pkg" =>
+        "iso" | "img" | "mdf" | "nrg" | "gdi" | "pbp" | "cue" | "chd" | "cso" | "gcm" | "rvz" | "wbfs" | "wia" | "gcz" | "xci" | "nsp" | "nca" | "wad" | "wux" | "wud" | "rpx" | "xex" | "xbe" | "elf" | "z64" | "n64" | "v64" | "sfc" | "smc" | "gba" | "nds" | "3ds" | "cia" | "pkg" =>
             Some("That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup."),
         "zip" | "7z" | "rar" | "gz" | "xz" | "tar" =>
             Some("That's a compressed file, not a program. Unpack it first, then pick the program inside."),
@@ -5335,10 +5378,58 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     }
     let mut l = st.lib.lock().unwrap();
     let told = l.settings.tray_told;
+    // The saves folder changes only through its own button (the copies move with it).
+    let save_dir = l.settings.save_dir.clone();
     l.settings = settings;
     l.settings.tray_told |= told;
+    l.settings.save_dir = save_dir;
     l.save(&st.dir)?;
     Ok(())
+}
+
+/// Where the copies of the player's saves go: a folder they pick (another drive, a NAS, a folder
+/// Drive, OneDrive or Dropbox keeps in sync), or none for the launcher's own. The copies already
+/// made move along, each checked before the old one goes.
+#[tauri::command(async)]
+fn saves_set_root(st: State<'_, App>, path: Option<String>) -> Res<Value> {
+    let to = path.map(PathBuf::from).filter(|p| !p.as_os_str().is_empty());
+    let own = st.dir.join("saves");
+    if let Some(p) = &to {
+        if !p.is_absolute() {
+            return Err(Error::Msg("Pick folders, not names.".into()));
+        }
+        if p.starts_with(&own) || p.starts_with(&st.dir) {
+            return Err(Error::Msg("That's inside the launcher's own folder. Pick a folder of yours, on any drive.".into()));
+        }
+        let probe = p.join(".recomplauncher-check");
+        if std::fs::create_dir_all(p).and_then(|_| std::fs::write(&probe, b"ok")).is_err() {
+            return Err(Error::Msg("The launcher can't write to that folder. Pick another one.".into()));
+        }
+        let _ = std::fs::remove_file(&probe);
+    }
+    let from = saves::root(&st.dir);
+    let target = to.clone().unwrap_or_else(|| own.clone());
+    let moved = if from != target && from.is_dir() {
+        saves::move_copies(&from, &target).map_err(|e| Error::Msg(format!("Couldn't move the copies there: {e}")))?
+    } else {
+        0
+    };
+    saves::set_root(to.clone());
+    {
+        let mut l = st.lib.lock().unwrap();
+        l.settings.save_dir = to.clone();
+        l.save(&st.dir)?;
+    }
+    trail::note(format!("Saves: copies go to {} now ({moved} games moved)", if to.is_some() { "the player's folder" } else { "the launcher's folder" }));
+    Ok(json!({ "path": saves::root(&st.dir), "custom": to.is_some(), "moved": moved }))
+}
+
+/// Opens the folder the copies of the player's saves are in.
+#[tauri::command(async)]
+fn saves_open_root(app: AppHandle, st: State<'_, App>) -> Res<()> {
+    let p = saves::root(&st.dir);
+    let _ = std::fs::create_dir_all(&p);
+    open_thing(&app, &p.to_string_lossy(), false)
 }
 
 /// Settings back to how they start ("settings"), or first-time setup again ("setup"). Games, their
@@ -5367,6 +5458,7 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
                 share_usage: old.share_usage,
                 share_stats: old.share_stats,
                 data_asked: old.data_asked,
+                save_dir: old.save_dir.clone(),
                 ui: Value::Object(keep),
                 ..Settings::default()
             };
@@ -5951,6 +6043,13 @@ pub fn run() {
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
+            // Save copies in the player's own folder, when they picked one; any made here while it
+            // was away go to it.
+            saves::set_root(lib.settings.save_dir.clone());
+            {
+                let d = dir.clone();
+                std::thread::spawn(move || saves::gather(&d));
+            }
             // On Linux, Windows-only recomps play through Proton once Proton is found: turned on
             // for the player the first time (they can turn it off in Settings → General).
             #[cfg(target_os = "linux")]
@@ -6162,7 +6261,7 @@ pub fn run() {
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open, saves_set_root, saves_open_root,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -6176,6 +6275,14 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn running_stats_are_not_something_missing() {
+        assert!(super::stats_line("[host] vk_pipeline: gpl: 57 fast links (9 by workers; avg 0.01 ms, max 0.13 ms, 0 failed), 16 draws lookups found shader libraries missing (left to a worker)"));
+        assert!(super::stats_line("[host] frametime: 60 s: 3509 frames in 60.0 s, mean 58.5 fps"));
+        assert!(!super::stats_line("error: default.xex is missing"));
+        assert!(!super::stats_line("could not find game data in ./assets"));
+    }
+
     #[test]
     fn a_game_saying_its_files_are_wrong_is_heard() {
         assert!(wrong_copy_line("=== Super Mario Strikers: wrong game data ==="));

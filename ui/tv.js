@@ -368,7 +368,7 @@
         if (!p) return;
         try { S.library[id] = await invoke('locate_game', { id, path: typeof p === 'string' ? p : p.path }); await refreshState(); draw(true); toast(tf('Found {name}.', { name: a.name })); } catch (e) { fail(e); }
       } },
-      { label: t('Remove from Library'), icon: 'bin', run: async () => { try { await invoke('forget_game', { id }); await refreshState(); draw(true); } catch (e) { fail(e); } } },
+      { label: t('Remove from Library'), icon: 'bin', run: async () => { try { await invoke('forget_game', { id }); if (window.keepOut) await window.keepOut(id); await refreshState(); draw(true); } catch (e) { fail(e); } } },
     ], '', head);
     return true;
   };
@@ -1505,6 +1505,7 @@
       let r = {};
       try { r = (await invoke('uninstall', { id, deleteFiles: del })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
       if (window.usageUninstall) window.usageUninstall(id);
+      if (window.keepOut) await window.keepOut(id);
       delete S.updates[id];
       if (TV.sizes && TV.sizes.sizes) delete TV.sizes.sizes[id];
       await refreshState();

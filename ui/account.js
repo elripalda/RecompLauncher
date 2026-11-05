@@ -204,6 +204,14 @@ function blocks(frac, n = 32) {
   const on = frac > 0 ? Math.max(1, Math.round(Math.min(1, frac) * n)) : 0;
   return `<div class="blocks" aria-hidden="true">${Array.from({ length: n }, (_, i) => `<i${i < on ? ' class="on"' : ''}></i>`).join('')}</div>`;
 }
+// Where the copies are kept: the launcher's own folder, or one the player picked (another drive,
+// a NAS, a folder Drive, OneDrive or Dropbox keeps in sync).
+function rootCard(o) {
+  const mine = !!o.chosen;
+  const note = mine && o.reachable === false ? t('Your folder can\'t be reached right now. Copies stay on this PC until it\'s back, then go to it.') : t('Copies of your saves go here. Pick a folder on another drive, a NAS, or one that Drive, OneDrive or Dropbox keeps in sync, and they go there instead.');
+  return `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Backup Folder'))}</b><span><span class="path">${esc(mine ? o.chosen : (o.root || ''))}</span><br>${esc(note)}</span></div>
+    <span class="acts"><button type="button" class="btn sm" data-act="saves-root-open">${esc(t('Open the folder'))}</button><button type="button" class="btn sm" data-act="saves-root-pick">${esc(t('Change'))}</button>${mine ? `<button type="button" class="btn sm" data-act="saves-root-reset">${esc(t('Use the Usual Place'))}</button>` : ''}</span></div></div>`;
+}
 function pageSaves() {
   const o = S.savesAll;
   if (!o) { loadSavesAll(); return `<div class="loading">${esc(t('Loading…'))}</div>`; }
@@ -237,6 +245,7 @@ function pageSaves() {
   return `<div class="page saves-page"><div class="head"><div><h1>${esc(t('Saves'))}</h1><p>${esc(t('After every session the launcher keeps a copy of each game\'s saves. Pick a game to put an older one back.'))}</p></div></div>
     ${o.error ? `<div class="card"><p style="margin:0">${esc(t(o.error))}</p></div>` : ''}
     <div class="mcs">${pcCard}${cloudCard}</div>
+    ${rootCard(o)}
     ${withSaves.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Games'))}</h2></div><div class="slots">${withSaves.map(slot).join('')}</div></section>` : ''}
     ${none.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('No saves yet'))}</h2><span class="muted">${esc(t('Play them once and their saves show up here.'))}</span></div><div class="slots dim">${none.map((x) => { const a = x.a || { id: x.id, name: x.g.name }; return `<button type="button" class="slot-main mini" data-act="saves-game" data-id="${esc(x.id)}"><span class="slot-art">${a.cover ? pic(a.cover) : ''}</span><span class="slot-txt"><b>${esc(a.name)}</b><span>${esc(x.found ? t('Saves found, copied after you play') : t('Not played yet'))}</span></span></button>`; }).join('')}</div></section>` : ''}
     ${empty}</div>`;
@@ -326,6 +335,21 @@ window.accountAct = async (act, el) => {
       return loadSaves(id);
     }
     case 'saves-game': S.nextTab = 'saves'; return go('game', id, el.querySelector('.slot-art'));
+    case 'saves-root-open': return invoke('saves_open_root').catch(fail);
+    case 'saves-root-pick': case 'saves-root-reset': {
+      let path = null;
+      if (act === 'saves-root-pick') {
+        const p = await pickFile({ title: t('A folder for the copies of your saves'), directory: true }).catch(fail);
+        if (!p) return;
+        path = typeof p === 'string' ? p : p.path;
+      }
+      el.disabled = true;
+      let r;
+      try { r = await invoke('saves_set_root', { path }); } catch (e) { el.disabled = false; return fail(e); }
+      S.settings.save_dir = r.custom ? r.path : null;
+      toast(!r.custom ? t('Copies of your saves go to the launcher\'s own folder again.') : r.moved ? tn(r.moved, 'One game\'s copies moved there. New ones go there too.', '{n} games\' copies moved there. New ones go there too.') : t('New copies of your saves go there from now on.'));
+      return loadSavesAll();
+    }
     case 'saves-open': return invoke('saves_open', { id }).catch(fail);
     case 'saves-place': {
       // The player knows better (a game that saves somewhere else): their folder from now on.
