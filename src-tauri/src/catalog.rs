@@ -426,7 +426,76 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).to_string()
 }
 
-fn with_gitlab_assets(repo: &str, mut f: Fetched) -> Fetched {
+/// A release list with files only in its notes and no project number from the site: the number
+/// is needed to download them.
+fn needs_project_id(data: &Value) -> bool {
+    data.as_array()
+        .map(|l| l.iter().any(|r| r.get("assets").and_then(Value::as_array).map(|a| a.is_empty()).unwrap_or(true) && r.get("project_id").and_then(Value::as_u64).is_none()))
+        .unwrap_or(false)
+}
+
+fn put_project_id(data: &mut Value, id: u64) {
+    for r in data.as_array_mut().into_iter().flatten() {
+        if r.get("project_id").and_then(Value::as_u64).is_none() {
+            r["project_id"] = Value::from(id);
+        }
+    }
+}
+
+fn project_ids_file(dir: &Path) -> PathBuf {
+    dir.join("cache/gitlab-projects.json")
+}
+
+/// A GitLab project's number as kept on disk (it never changes).
+fn project_id_on_disk(dir: &Path, path: &str) -> Option<u64> {
+    load(&project_ids_file(dir))?.get(path.to_lowercase())?.as_u64()
+}
+
+/// A GitLab project's number when the site doesn't give it: asked of GitLab once, then kept.
+async fn project_id(http: &reqwest::Client, dir: &Path, path: &str) -> Option<u64> {
+    if let Some(id) = project_id_on_disk(dir, path) {
+        return Some(id);
+    }
+    let url = format!("https://gitlab.com/api/v4/projects/{}", path.replace('/', "%2F"));
+    let r = http.get(&url).timeout(crate::net::QUICK).send().await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    // Only the project asked about.
+    if !v.get("path_with_namespace").and_then(Value::as_str).map(|p| p.eq_ignore_ascii_case(path)).unwrap_or(false) {
+        return None;
+    }
+    let id = v.get("id").and_then(Value::as_u64)?;
+    let file = project_ids_file(dir);
+    let mut all = load(&file).filter(Value::is_object).unwrap_or_else(|| serde_json::json!({}));
+    all[path.to_lowercase()] = Value::from(id);
+    save(&file, &all);
+    crate::trail::note(&format!("GitLab project {path} is number {id}"));
+    Some(id)
+}
+
+/// A GitLab release list made ready to use: its project's number where the site left it out
+/// (asked of GitLab once when `http` is given, else only from disk), and the files its notes link to.
+async fn with_gitlab(http: Option<&reqwest::Client>, dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
+    let Some(path) = gitlab_path(repo) else { return f };
+    if needs_project_id(&f.data) {
+        let id = match http {
+            Some(h) => project_id(h, dir, path).await,
+            None => project_id_on_disk(dir, path),
+        };
+        if let Some(id) = id {
+            put_project_id(&mut f.data, id);
+        }
+    }
+    gitlab_assets(repo, &mut f.data);
+    f
+}
+
+fn with_gitlab_assets(dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
+    if let Some(id) = gitlab_path(repo).filter(|_| needs_project_id(&f.data)).and_then(|p| project_id_on_disk(dir, p)) {
+        put_project_id(&mut f.data, id);
+    }
     gitlab_assets(repo, &mut f.data);
     f
 }
@@ -504,7 +573,8 @@ pub async fn releases(http: &reqwest::Client, dir: &Path, repo: &str, force: boo
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
     let got = cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { LIST_FRESH }, crate::net::QUICK, force, Value::is_array).await;
-    or_github(http, dir, repo, got, force).await.map(|f| with_gitlab_assets(repo, f))
+    let f = or_github(http, dir, repo, got, force).await?;
+    Ok(with_gitlab(Some(http), dir, repo, f).await)
 }
 
 /// For installing or updating: the player's doing, but a copy from the last `secs` seconds (an
@@ -514,7 +584,8 @@ pub async fn releases_within(http: &reqwest::Client, dir: &Path, repo: &str, sec
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
     let got = cached(http, &releases_url(repo), releases_file(dir, repo), secs, crate::net::QUICK, true, Value::is_array).await;
-    or_github(http, dir, repo, got, true).await.map(|f| with_gitlab_assets(repo, f))
+    let f = or_github(http, dir, repo, got, true).await?;
+    Ok(with_gitlab(Some(http), dir, repo, f).await)
 }
 
 /// A recomp's releases as kept on disk (any age), without asking anyone.
@@ -522,7 +593,7 @@ pub fn releases_on_disk(dir: &Path, repo: &str) -> Option<Fetched> {
     if !repo_ok(repo) {
         return None;
     }
-    on_disk(&releases_file(dir, repo), Value::is_array).map(|f| with_gitlab_assets(repo, f))
+    on_disk(&releases_file(dir, repo), Value::is_array).map(|f| with_gitlab_assets(dir, repo, f))
 }
 
 /// Asked again in the background (not the player's doing): a push about a new release.
@@ -530,7 +601,8 @@ pub async fn releases_refresh(http: &reqwest::Client, dir: &Path, repo: &str) ->
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    cached(http, &releases_url(repo), releases_file(dir, repo), 0, crate::net::QUICK, false, Value::is_array).await.map(|f| with_gitlab_assets(repo, f))
+    let f = cached(http, &releases_url(repo), releases_file(dir, repo), 0, crate::net::QUICK, false, Value::is_array).await?;
+    Ok(with_gitlab(Some(http), dir, repo, f).await)
 }
 
 /// The newest release to install: not a draft, and not a pre-release unless that's all there is.
@@ -613,6 +685,15 @@ mod tests {
         let rels: Vec<super::Release> = serde_json::from_value(v).unwrap();
         assert_eq!(crate::assets::pick(&rels[0].assets, "windows", "x64", None).map(|a| a.name.as_str()), Some("Power_Moon_Recomp-0.2.1-windows.zip"));
         assert_eq!(super::percent_decode("Game%20One%2B.zip"), "Game One+.zip");
+        // The number kept on disk fills a list the site sent without one.
+        let d = std::env::temp_dir().join(format!("rl-glid-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(d.join("cache"));
+        super::save(&super::project_ids_file(&d), &serde_json::json!({"g/p": 88379810}));
+        let f = super::Fetched { data: serde_json::json!([{"tag_name": "v1", "body": body, "assets": []}]), offline: false, age: 0 };
+        let f = super::with_gitlab_assets(&d, "gitlab:g/p", f);
+        assert_eq!(f.data[0]["project_id"], 88379810);
+        assert_eq!(f.data[0]["assets"].as_array().unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(&d);
         // Without the project's number there's no address that works: left as it is.
         let mut n = serde_json::json!([{"tag_name": "v1", "body": body, "assets": []}]);
         super::gitlab_assets("gitlab:g/p", &mut n);
