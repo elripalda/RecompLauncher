@@ -345,6 +345,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
     }
+    // The release it ends up from: the one picked, or a newer one when that was taken down.
+    let mut tag_got = rel.tag_name.clone();
     let got = match install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await {
         // The file isn't there anymore (the release was changed after its list was read): the
         // release asked for straight from GitHub, and its file for this PC tried once more.
@@ -353,10 +355,26 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             // A developer swapping a release's files: give it a moment to finish.
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
             let fresh: Vec<Release> = catalog::from_github(&st.http, &st.dir, &repo).await.ok().and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
-            let again = fresh.iter().find(|r| r.tag_name == rel.tag_name).and_then(|r| {
-                let all = assets::all_for(&r.assets, os, arch, pattern);
-                all.iter().copied().find(|a| a.name == asset.name).or_else(|| assets::most_like(&all, &asset.name)).or_else(|| assets::pick(&r.assets, os, arch, pattern)).cloned()
-            });
+            // The release itself gone (taken down and put up again under a new name): the newest
+            // one with a build for this PC.
+            // Not for a version the player picked, and never the one they already have.
+            let same = fresh.iter().find(|r| r.tag_name == rel.tag_name);
+            let have_tag = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
+            let newest_now = if same.is_none() && !pinned && !fresh.is_empty() {
+                fresh.iter().filter(|r| !r.draft && (!r.prerelease || rel.prerelease)).find(|r| assets::pick(&r.assets, os, arch, pattern).is_some()).filter(|r| r.tag_name != have_tag)
+            } else {
+                None
+            };
+            if let Some(r) = newest_now {
+                trail::note(format!("Install {id}: {} isn't there anymore, so {} instead", rel.tag_name, r.tag_name));
+            }
+            let again = same
+                .or(newest_now)
+                .inspect(|r| tag_got = r.tag_name.clone())
+                .and_then(|r| {
+                    let all = assets::all_for(&r.assets, os, arch, pattern);
+                    all.iter().copied().find(|a| a.name == asset.name).or_else(|| assets::most_like(&all, &asset.name)).or_else(|| assets::pick(&r.assets, os, arch, pattern)).cloned()
+                });
             match again {
                 Some(a) => {
                     asset = a;
@@ -451,7 +469,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     // A release that's the game's installer (it builds the game, like TotK-Setup.exe): a new version
     // has to be built again, so its setup runs on the next Play even though the old build is there.
-    let rebuild = boot.as_ref().map(|b| b.is_installer()).unwrap_or(false) && prev.as_ref().map(|p| p.tag != rel.tag_name).unwrap_or(false);
+    let rebuild = boot.as_ref().map(|b| b.is_installer()).unwrap_or(false) && prev.as_ref().map(|p| p.tag != tag_got).unwrap_or(false);
     let setup_done = !rebuild && setup.is_some() && prev.as_ref().map(|p| p.setup_done && p.exe.as_ref().map(|e| !e.is_absolute()).unwrap_or(false)).unwrap_or(false);
     if rebuild && setup.is_some() {
         trail::note(format!("Install {id}: a new version of its installer, it runs again on the next Play"));
@@ -462,7 +480,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         name: str_of(&entry, "name").into(),
         game: prev.as_ref().map(|p| p.game.clone()).unwrap_or_default(),
         repo,
-        tag: rel.tag_name.clone(),
+        tag: tag_got.clone(),
         version: str_of(&entry, "version").into(),
         path: target,
         exe,
@@ -512,7 +530,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     st.save();
     note_download(
         &st.dir,
-        json!({"id": id, "name": str_of(&entry, "name"), "tag": rel.tag_name, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
+        json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
     );
     let mut p = Progress::new(id, "done", 1, 1);
     p.msg = Some(if got.verified { "Checked against GitHub's checksum".into() } else { "GitHub has no checksum for this file".into() });
@@ -1188,11 +1206,23 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
     for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
         let (Some(id), repo) = (a.get("id").and_then(Value::as_str), a.get("repo").and_then(Value::as_str).unwrap_or("")) else { continue };
         let Some(need) = profile::find(dirs.get(id).unwrap_or(&none), repo, a).and_then(|p| p.game) else { continue };
-        // A check on a file every game of its console has (default.xex) can't tell games apart.
-        if need.generic {
+        // A check that can't tell games apart (default.xex, which every game of its console has,
+        // or just "a disc image"): matched by name only, unless the catalog lists its disc IDs.
+        let want: Vec<String> = need.check.ids.iter().map(|i| roms::id_key(i)).filter(|i| i.len() >= 3).chain(roms::copy_ids(a)).collect();
+        let named_ok = out.get(id).map(|r| profile::check_copy(&need, &r.path).is_ok()).unwrap_or(false);
+        if !need.identifies() && want.is_empty() {
+            // Found by its name only: kept when its own check passes (a catalog profile's check on a
+            // common file was never applied to a name, and still isn't).
+            if !need.generic && !named_ok {
+                out.remove(id);
+            }
             continue;
         }
-        if out.get(id).map(|r| profile::check_copy(&need, &r.path).is_ok()).unwrap_or(false) {
+        // By its disc ID: one that's this game's. One that can't be read (a folder, an Xbox disc)
+        // counts only when there's another check that tells it apart.
+        let by_file = need.identifies_by_contents();
+        let id_fits = |p: &Path| want.is_empty() || roms::copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(by_file);
+        if named_ok {
             continue;
         }
         out.remove(id);
@@ -1201,7 +1231,7 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         if let Some(r) = found.iter().find(|r| {
             let matched_by_title = matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2")
                 || (r.system == "switch" && r.size == 0);
-            !matched_by_title && profile::check_copy(&need, &r.path).is_ok()
+            !matched_by_title && id_fits(&r.path) && profile::check_copy(&need, &r.path).is_ok()
         }) {
             out.insert(id.to_string(), r.clone());
         }
@@ -5399,7 +5429,7 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     }
     let body = format!("{head}\nRecompLauncher {} on {} ({})\n\n{}", env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), message);
     let mut form: Vec<(String, String)> = vec![
-        ("app".into(), game.as_ref().map(|g| g.id.clone()).unwrap_or_else(|| "launcher".into())),
+        ("app".into(), game.as_ref().map(|g| g.id.clone()).unwrap_or_else(|| "recomplauncher".into())),
         ("version".into(), game.as_ref().map(|g| g.tag.clone()).unwrap_or_else(|| env!("CARGO_PKG_VERSION").into())),
         ("category".into(), category.into()),
         ("message".into(), body.chars().take(2000).collect()),
@@ -6633,6 +6663,42 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn another_games_disc_isnt_taken_for_this_one() {
+        // Dusklight reads a Twilight Princess disc: a Super Mario Sunshine one in the same folder
+        // isn't it, and neither is a PS2 disc.
+        let d = std::env::temp_dir().join(format!("rl-dusk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let gc = |name: &str, id: &[u8; 6]| {
+            let mut h = vec![0u8; 0x400];
+            h[..6].copy_from_slice(id);
+            h[0x1C..0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
+            let p = d.join(name);
+            std::fs::write(&p, h).unwrap();
+            roms::RomFile { path: p, system: "gc".into(), title: name.trim_end_matches(".iso").into(), region: "US".into(), size: 0x400 }
+        };
+        let sms = gc("Super Mario Sunshine (USA).iso", b"GMSE01");
+        let ps2 = { let p = d.join("Some PS2 Game.iso"); std::fs::write(&p, vec![0u8; 0x400]).unwrap(); roms::RomFile { path: p, system: "ps2".into(), title: "Some PS2 Game".into(), region: "US".into(), size: 0x400 } };
+        let cat = json!({ "apps": [{ "id": "dusklight", "name": "Dusklight", "game": "The Legend of Zelda: Twilight Princess", "origin": "gamecube", "repo": "TwilitRealm/dusklight" }] });
+        let dirs = HashMap::new();
+        assert!(copies_for(&cat, &[sms.clone(), ps2.clone()], &dirs).is_empty());
+        // Its own disc, under any name, is.
+        let tp = gc("disc1.iso", b"GZ2E01");
+        assert_eq!(copies_for(&cat, &[sms, ps2, tp.clone()], &dirs).get("dusklight").map(|r| r.path.clone()), Some(tp.path.clone()));
+        // And picking Sunshine for it is refused.
+        let need = profile::find(Path::new(""), "TwilitRealm/dusklight", &cat["apps"][0]).and_then(|p| p.game).unwrap();
+        assert!(profile::check_copy(&need, &d.join("Super Mario Sunshine (USA).iso")).unwrap_err().contains("GMSE01"));
+        assert!(profile::check_copy(&need, &tp.path).is_ok());
+        // Checks that can't tell games apart: a common file, or nothing but "a disc image".
+        assert!(need.identifies() && !need.identifies_by_contents());
+        let common: profile::GameCopy = serde_json::from_value(json!({ "kind": "folder", "label": "x", "check": { "file": "default.xex" } })).unwrap();
+        assert!(!common.identifies());
+        let own: profile::GameCopy = serde_json::from_value(json!({ "kind": "folder", "label": "x", "check": { "file": "SLUS_203.12" } })).unwrap();
+        assert!(own.identifies_by_contents());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn app_in(dir: &Path, lib: Library) -> App {
         App {

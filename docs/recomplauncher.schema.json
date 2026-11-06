@@ -54,6 +54,14 @@
             "iso9660": {
               "type": "string",
               "description": "A file in the top folder of a PS2 (or any ISO 9660) disc image."
+            },
+            "ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]{3,16}$"
+              },
+              "description": "The disc or cartridge IDs it reads, as on the copy: a GameCube or Wii disc's (GZ2E01, or GZ2 for every region), an N64 cartridge's game code, a PlayStation disc's serial. Another game's copy is refused, and the player's copies are recognised by it."
             }
           },
           "additionalProperties": false

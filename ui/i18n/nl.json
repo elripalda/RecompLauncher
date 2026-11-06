@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "In die map staan alleen afbeeldingen, video's of documenten. Kies de map met je kopie van de game.",
  "That isn't a recomp.": "Dat is geen recomp.",
  "The website didn't take it. Try again later.": "De website nam het niet aan. Probeer het later opnieuw.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Geen recomps gevonden. Zet „Top op Deck” uit om de rest te zien."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Geen recomps gevonden. Zet „Top op Deck” uit om de rest te zien.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Een bestand in de map van de game is in gebruik. Sluit de game en alles wat die map open heeft, en probeer het opnieuw.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows liet de launcher geen bestand in de map van de game wijzigen. Sluit de game, controleer of Windows-beveiliging hem niet blokkeert (Ransomwarebeveiliging) en probeer het opnieuw.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Opslaan in de cloud is voorlopig gepauzeerd. Je opgeslagen games op deze pc zijn veilig.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Opslaan in de cloud is gepauzeerd terwijl we alles naar nieuwe opslag verplaatsen. Je opgeslagen games op deze pc zijn veilig.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Opslaan in de cloud is nu niet beschikbaar. Je opgeslagen games op deze pc zijn veilig.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Deze opgeslagen game is te groot voor opslaan in de cloud (meer dan 95 MB). Hij blijft op deze pc."
 }

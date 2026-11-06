@@ -93,7 +93,7 @@ fn key(url: &str) -> String {
         format!("{h}/gh")
     } else if path.ends_with("/api/gl.php") {
         format!("{h}/gl")
-    } else if path.starts_with("/media/") || url.starts_with(THUMBS) {
+    } else if path.starts_with("/media/") || path.ends_with("/api/thumb.php") || url.starts_with(THUMBS) {
         format!("{h}/pictures")
     } else {
         h

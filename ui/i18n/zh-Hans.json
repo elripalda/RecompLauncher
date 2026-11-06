@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "该文件夹里只有图片、视频或文档。请选择存放你游戏副本的文件夹。",
  "That isn't a recomp.": "这不是重编译游戏。",
  "The website didn't take it. Try again later.": "网站没有接受。请稍后再试。",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "没有匹配的重编译版本。关闭“Deck 畅玩”即可查看其余内容。"
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "没有匹配的重编译版本。关闭“Deck 畅玩”即可查看其余内容。",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "游戏文件夹中的某个文件正在使用中。请关闭游戏以及所有打开了该文件夹的窗口或程序，然后重试。",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows 不允许启动器修改游戏文件夹中的文件。请关闭游戏，检查 Windows 安全中心的“勒索软件防护”是否阻止了它，然后重试。",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "云存档目前已暂停。这台电脑上的存档依然安全。",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "云存档正在迁移到新的存储空间，暂时停用。这台电脑上的存档依然安全。",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "云存档目前不可用。这台电脑上的存档依然安全。",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "此存档太大（超过 95 MB），无法使用云存档。存档会保留在这台电脑上。"
 }

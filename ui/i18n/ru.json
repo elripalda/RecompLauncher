@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "В этой папке только изображения, видео или документы. Выберите папку с вашей копией игры.",
  "That isn't a recomp.": "Это не рекомпиляция.",
  "The website didn't take it. Try again later.": "Сайт это не принял. Повторите попытку позже.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Нет подходящих рекомпиляций. Выключите «Отлично на Deck», чтобы увидеть остальное."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Нет подходящих рекомпиляций. Выключите «Отлично на Deck», чтобы увидеть остальное.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Файл в папке игры сейчас используется. Закройте игру и все окна и программы, где открыта её папка, затем попробуйте снова.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows не дала лаунчеру изменить файл в папке игры. Закройте игру, проверьте, не блокирует ли его «Безопасность Windows» («Защита от программ-шантажистов»), затем попробуйте снова.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Облачные сохранения пока приостановлены. Ваши сохранения на этом компьютере в безопасности.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Облачные сохранения приостановлены, пока мы переносим их в новое хранилище. Ваши сохранения на этом компьютере в безопасности.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Облачные сохранения сейчас недоступны. Ваши сохранения на этом компьютере в безопасности.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Это сохранение слишком большое для облачных сохранений (больше 95 МБ). Оно остаётся на этом компьютере."
 }

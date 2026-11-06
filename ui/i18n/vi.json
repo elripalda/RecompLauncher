@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Thư mục đó chỉ có ảnh, video hoặc tài liệu. Hãy chọn thư mục chứa bản game của bạn.",
  "That isn't a recomp.": "Đó không phải bản recomp.",
  "The website didn't take it. Try again later.": "Trang web không chấp nhận. Hãy thử lại sau.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Không có recomp nào phù hợp. Tắt “Rất tốt trên Deck” để xem phần còn lại."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Không có recomp nào phù hợp. Tắt “Rất tốt trên Deck” để xem phần còn lại.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Một tệp trong thư mục của trò chơi đang được dùng. Hãy đóng trò chơi và mọi thứ đang mở thư mục của nó, rồi thử lại.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows không cho trình khởi chạy thay đổi một tệp trong thư mục của trò chơi. Hãy đóng trò chơi, kiểm tra xem Bảo mật Windows có đang chặn không (Bảo vệ khỏi phần mềm tống tiền), rồi thử lại.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Dữ liệu lưu đám mây hiện đang tạm dừng. Dữ liệu lưu của bạn trên PC này vẫn an toàn.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Dữ liệu lưu đám mây đang tạm dừng trong lúc chúng tôi chuyển sang bộ nhớ lưu trữ mới. Dữ liệu lưu của bạn trên PC này vẫn an toàn.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Hiện không dùng được dữ liệu lưu đám mây. Dữ liệu lưu của bạn trên PC này vẫn an toàn.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Dữ liệu lưu này quá lớn cho dữ liệu lưu đám mây (trên 95 MB). Dữ liệu này được giữ trên PC này."
 }

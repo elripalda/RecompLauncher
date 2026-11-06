@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "In dem Ordner liegen nur Bilder, Videos oder Dokumente. Wähl den Ordner mit deiner Kopie des Spiels.",
  "That isn't a recomp.": "Das ist kein Recomp.",
  "The website didn't take it. Try again later.": "Die Website hat es nicht angenommen. Versuch es später noch mal.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Keine Recomps gefunden. Schalte „Super auf dem Deck“ aus, um den Rest zu sehen."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Keine Recomps gefunden. Schalte „Super auf dem Deck“ aus, um den Rest zu sehen.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Eine Datei im Ordner des Spiels wird gerade verwendet. Schließ das Spiel und alles, was seinen Ordner geöffnet hat, und versuch es dann noch mal.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows hat den Launcher keine Datei im Ordner des Spiels ändern lassen. Schließ das Spiel, prüf, ob die Windows-Sicherheit ihn blockiert (Ransomware-Schutz), und versuch es dann noch mal.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Cloud-Speicherstände sind vorerst pausiert. Deine Spielstände auf diesem PC sind sicher.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Cloud-Speicherstände sind pausiert, während wir sie auf einen neuen Speicher umziehen. Deine Spielstände auf diesem PC sind sicher.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Cloud-Speicherstände sind gerade nicht verfügbar. Deine Spielstände auf diesem PC sind sicher.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Dieser Spielstand ist zu groß für Cloud-Speicherstände (über 95 MB). Er bleibt auf diesem PC."
 }

@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "لا يحتوي هذا المجلد إلا على صور أو فيديوهات أو مستندات. اختر مجلد نسختك من اللعبة.",
  "That isn't a recomp.": "هذه ليست لعبة معاد تجميعها.",
  "The website didn't take it. Try again later.": "لم يقبل الموقع ذلك. حاول مرة أخرى لاحقًا.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "لا توجد ألعاب معاد تجميعها مطابقة. أوقف “رائعة على Deck” لرؤية الباقي."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "لا توجد ألعاب معاد تجميعها مطابقة. أوقف “رائعة على Deck” لرؤية الباقي.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "أحد الملفات في مجلد اللعبة قيد الاستخدام. أغلق اللعبة وأي شيء يفتح مجلدها، ثم حاول مرة أخرى.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "لم يسمح Windows للمشغّل بتغيير ملف في مجلد اللعبة. أغلق اللعبة، وتأكد من أن أمان Windows لا يمنعه (الحماية من برامج الفدية الضارة)، ثم حاول مرة أخرى.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "الحفظ السحابي متوقف مؤقتًا الآن. ملفات الحفظ الموجودة على هذا الكمبيوتر في أمان.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "الحفظ السحابي متوقف مؤقتًا بينما ننقله إلى مساحة تخزين جديدة. ملفات الحفظ الموجودة على هذا الكمبيوتر في أمان.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "الحفظ السحابي غير متاح الآن. ملفات الحفظ الموجودة على هذا الكمبيوتر في أمان.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "ملف الحفظ هذا كبير جدًا على الحفظ السحابي (أكثر من 95 ميجابايت). يُحتفظ به على هذا الكمبيوتر."
 }

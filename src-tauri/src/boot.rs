@@ -20,6 +20,12 @@ pub struct Boot {
     pub kind: String,
     #[serde(default)]
     pub start: Option<String>,
+    /// The program a Linux or Mac build starts with, when it isn't `start` (build/witch-time beside
+    /// build/witch-time.exe, play.sh beside play.bat).
+    #[serde(default)]
+    pub start_linux: Option<String>,
+    #[serde(default)]
+    pub start_macos: Option<String>,
     #[serde(default)]
     pub setup: Option<String>,
     #[serde(default)]
@@ -40,6 +46,30 @@ pub struct Boot {
 pub struct Installer {
     #[serde(default)]
     pub then_start: Option<String>,
+}
+
+/// A program or script on Linux or a Mac: allowed to run.
+pub fn runnable(p: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(m) = std::fs::metadata(p) {
+            let mode = m.permissions().mode();
+            if mode & 0o111 != 0o111 {
+                let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode | 0o755));
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = p;
+}
+
+/// The start a boot profile's JSON names for this system, then its plain one: the programs to try,
+/// first one there wins.
+pub fn starts(b: &Value) -> Vec<String> {
+    let s = |k: &str| b.get(k).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(String::from);
+    let own = if cfg!(target_os = "linux") { s("start_linux") } else if cfg!(target_os = "macos") { s("start_macos") } else { None };
+    own.into_iter().chain(s("start")).collect()
 }
 
 /// A path from the profile, safe inside the game's folder: relative, no `..`.
@@ -106,7 +136,18 @@ fn merge(to: &mut Value, add: &Value) {
 pub fn raw(entry: &Value) -> Option<Value> {
     let id = entry.get("id").and_then(Value::as_str);
     let mut b = match entry.get("boot").filter(|b| b.is_object()) {
-        Some(b) => b.clone(),
+        Some(b) => {
+            let mut b = b.clone();
+            // The catalog's own profile without game settings: the ones this launcher shipped with
+            // stay (they'd be lost otherwise: a profile published for a game's setup says nothing
+            // about its settings).
+            if b.get("settings").is_none() {
+                if let Some(s) = id.and_then(|i| built_in().get(i)).and_then(|p| p.get("settings")).filter(|s| s.is_object()) {
+                    b["settings"] = s.clone();
+                }
+            }
+            b
+        }
         None => built_in().get(id?).cloned()?,
     };
     if let Some(x) = id.and_then(|i| extras().get(i)) {
@@ -125,8 +166,24 @@ impl Boot {
         self.makes.iter().find(|m| rel(m).map(|p| !dir.join(p).exists()).unwrap_or(false)).cloned()
     }
 
-    /// The program to start, when it's there in this folder.
+    /// This system's own start, when the profile names one.
+    fn start_here(&self) -> Option<&str> {
+        if cfg!(target_os = "linux") {
+            self.start_linux.as_deref()
+        } else if cfg!(target_os = "macos") {
+            self.start_macos.as_deref()
+        } else {
+            None
+        }
+    }
+
+    /// The program to start, when it's there in this folder: this system's own first (made
+    /// runnable, since a zip doesn't always keep that), then `start`.
     pub fn start_in(&self, dir: &Path) -> Option<PathBuf> {
+        if let Some(p) = self.start_here().and_then(rel).filter(|p| dir.join(p).is_file()) {
+            runnable(&dir.join(&p));
+            return Some(p);
+        }
         self.start.as_deref().and_then(rel).filter(|p| dir.join(p).is_file())
     }
 
@@ -234,6 +291,41 @@ mod tests {
         assert_eq!(b["files"]["how"], "env");
         let p = crate::profile::from_boot(&b).unwrap();
         assert!(p.start.unwrap().env.contains_key("MP_DISC"));
+    }
+
+    #[test]
+    fn a_published_profile_keeps_the_shipped_settings() {
+        // AC6: the catalog's profile says how it's set up and nothing about settings.
+        let e: Value = serde_json::from_str(r#"{"id":"ac6-recomp","boot":{"kind":"portable","start":"ac6recomp.exe","start_is":"game","files":{"how":"folder","folder":"assets","accepts":"folder or iso","extract":"xdvdfs","contains":["default.xex"]}}}"#).unwrap();
+        let b = raw(&e).unwrap();
+        assert_eq!(b["files"]["folder"], "assets");
+        assert!(b["settings"]["settings"].as_array().is_some_and(|s| s.iter().any(|x| x["id"] == "resolution")));
+        // Its own settings win.
+        let e: Value = serde_json::from_str(r#"{"id":"ac6-recomp","boot":{"kind":"portable","start":"ac6recomp.exe","settings":{"config":[],"settings":[]}}}"#).unwrap();
+        assert_eq!(raw(&e).unwrap()["settings"]["settings"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn a_linux_build_starts_its_own_program() {
+        let e: Value = serde_json::from_str(r#"{"id":"witch-time","boot":{"kind":"portable","start":"build/witch-time.exe","start_linux":"build/witch-time","start_is":"launcher"}}"#).unwrap();
+        let b = Boot::from_entry(&e).unwrap();
+        let d = std::env::temp_dir().join(format!("rl-startlinux-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("build")).unwrap();
+        // Only the Windows one there (played through Proton): that one.
+        std::fs::write(d.join("build/witch-time.exe"), b"MZ").unwrap();
+        assert_eq!(b.start_in(&d).unwrap(), PathBuf::from("build/witch-time.exe"));
+        std::fs::write(d.join("build/witch-time"), b"#!/bin/sh\n").unwrap();
+        if cfg!(target_os = "linux") {
+            assert_eq!(b.start_in(&d).unwrap(), PathBuf::from("build/witch-time"));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(std::fs::metadata(d.join("build/witch-time")).unwrap().permissions().mode() & 0o111, 0o111);
+            }
+            assert_eq!(starts(&e["boot"]), vec!["build/witch-time".to_string(), "build/witch-time.exe".to_string()]);
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

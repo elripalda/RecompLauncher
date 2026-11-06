@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Esa carpeta solo tiene imágenes, vídeos o documentos. Elige la carpeta con tu copia del juego.",
  "That isn't a recomp.": "Eso no es una recomp.",
  "The website didn't take it. Try again later.": "La web no lo ha aceptado. Vuelve a intentarlo más tarde.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "No hay recomps que coincidan. Desactiva «Genial en la Deck» para ver el resto."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "No hay recomps que coincidan. Desactiva «Genial en la Deck» para ver el resto.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Un archivo de la carpeta del juego está en uso. Cierra el juego y lo que tenga su carpeta abierta, y vuelve a intentarlo.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows no ha dejado que el lanzador cambie un archivo de la carpeta del juego. Cierra el juego, comprueba que Seguridad de Windows no lo esté bloqueando (Protección contra ransomware) y vuelve a intentarlo.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Las partidas en la nube están en pausa por ahora. Tus partidas en este PC están a salvo.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Las partidas en la nube están en pausa mientras las trasladamos a un nuevo almacenamiento. Tus partidas en este PC están a salvo.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Las partidas en la nube no están disponibles en este momento. Tus partidas en este PC están a salvo.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Esta partida es demasiado grande para las partidas en la nube (más de 95 MB). Se queda en este PC."
 }

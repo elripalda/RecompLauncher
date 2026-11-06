@@ -2760,16 +2760,24 @@ function morphNode(o, n) {
     o.selectedIndex = i < 0 ? 0 : i;
   }
 }
+// The tile (or download row) the page keeps in place across a redraw: counted among tiles and rows
+// only, since a download adds and takes away buttons that carry the game's id too, and a game shown
+// once on the page first (one in two rows can't be told apart after a row changes).
+const ANCHORS = '.tile[data-id], .dl-row[data-id]';
+const anchorsOf = (main, id) => $$(ANCHORS, main).filter((e) => e.dataset.id === id);
 function scrollAnchor(main) {
   const mr = main.getBoundingClientRect();
-  for (const el of $$('.tile[data-id], .dl-row[data-id]', main)) {
+  let first = null;
+  for (const el of $$(ANCHORS, main)) {
     const r = el.getBoundingClientRect();
     if (r.bottom > mr.top + 60 && r.top < mr.bottom && r.width) {
-      const id = el.dataset.id;
-      return { id, n: $$(`[data-id="${CSS.escape(id)}"]`, main).indexOf(el), y: r.top };
+      const id = el.dataset.id, all = anchorsOf(main, id);
+      const a = { id, n: all.indexOf(el), y: r.top, one: all.length === 1 };
+      if (a.one) return a;
+      first = first || a;
     }
   }
-  return null;
+  return first;
 }
 function render(keepScroll) {
   const main = $('#main'), top = main.scrollTop;
@@ -2790,8 +2798,6 @@ function render(keepScroll) {
   if (S.anim || main.dataset.v !== v) main.innerHTML = html;
   else morph(main, html);
   main.dataset.v = v;
-  if (keepScroll) main.scrollTop = top;
-  if (anchor) { const el = $$(`[data-id="${CSS.escape(anchor.id)}"]`, main)[anchor.n]; if (el) main.scrollTop += el.getBoundingClientRect().top - anchor.y; }
   if (S.anim) {
     main.classList.remove('enter', 'enter-game', 'enter-soft', 'enter-back');
     void main.offsetWidth;
@@ -2807,6 +2813,10 @@ function render(keepScroll) {
   evenGrids(main);
   layoutShelves(main);
   fitTitles(main);
+  // Back to where it was once the page has its final shape (the grids' columns are set just above:
+  // measured before that, a tile is somewhere it won't stay).
+  if (keepScroll) main.scrollTop = top;
+  if (anchor) { const all = anchorsOf(main, anchor.id); const el = anchor.one ? (all.length === 1 ? all[0] : null) : all[anchor.n]; if (el) main.scrollTop += el.getBoundingClientRect().top - anchor.y; }
   moveTabPill();
   if (v === 'game') paintLooks();
   if (typing) { const f = $('#' + typing.id); if (f) { f.focus({ preventScroll: true }); try { f.setSelectionRange(typing.a, typing.b); } catch (e) { /* fine */ } } }
@@ -4178,7 +4188,14 @@ function blocked(id, err) {
   }, t('Blocked by Windows Security'));
   return true;
 }
-const cleanMsg = (m) => t(String(m || '').replace(/^BLOCKED\|[^|]*\|/, ''));
+// Windows' own words for a file it wouldn't let go of (in the PC's language): said plainly.
+const cleanMsg = (m) => {
+  const s = String(m || '').replace(/^BLOCKED\|[^|]*\|/, '');
+  if (S.os !== 'windows') return t(s);
+  if (/\(os error 32\)/.test(s)) return t('A file in its folder is in use. Close the game and anything that has its folder open, then try again.');
+  if (/\(os error 5\)/.test(s)) return t('Windows didn\'t let the launcher change a file in its folder. Close the game, check that Windows Security isn\'t blocking it (Ransomware protection), then try again.');
+  return t(s);
+};
 
 // The last update from inside the launcher didn't go in: its installer, run the usual way, shows
 // what stopped it (an antivirus, a folder Windows protects), or it's downloaded again.
@@ -4890,6 +4907,10 @@ const TS_TEXT = [
   N_('That report isn\'t yours, or it\'s gone.'),
   N_('That setting isn\'t a slider.'),
   N_('That isn\'t a number.'),
+  N_('Cloud saves are paused for now. Your saves on this PC are safe.'),
+  N_('Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.'),
+  N_('Cloud saves aren\'t available right now. Your saves on this PC are safe.'),
+  N_('This save is too big for cloud saves (over 95 MB). It\'s kept on this PC.'),
   N_('It starts {name}, which looks like one of the game\'s tools'),
   N_('It sits in a folder for tools or a setup\'s leftovers ({folder}). Choose the game\'s own program, where its setup installed it.'),
   N_('Windows didn\'t let the launcher write the game\'s files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.'),

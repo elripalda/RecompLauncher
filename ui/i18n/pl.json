@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "W tym folderze są tylko obrazy, filmy lub dokumenty. Wybierz folder z twoją kopią gry.",
  "That isn't a recomp.": "To nie jest port.",
  "The website didn't take it. Try again later.": "Strona tego nie przyjęła. Spróbuj ponownie później.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Brak pasujących portów. Wyłącz „Świetnie na Deck”, aby zobaczyć resztę."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Brak pasujących portów. Wyłącz „Świetnie na Deck”, aby zobaczyć resztę.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Plik w folderze gry jest w użyciu. Zamknij grę i wszystko, co ma otwarty jej folder, a potem spróbuj ponownie.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows nie pozwolił launcherowi zmienić pliku w folderze gry. Zamknij grę, sprawdź, czy Zabezpieczenia Windows go nie blokują (Ochrona przed oprogramowaniem wymuszającym okup), a potem spróbuj ponownie.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Zapisy w chmurze są na razie wstrzymane. Twoje zapisy na tym komputerze są bezpieczne.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Zapisy w chmurze są wstrzymane na czas przenoszenia ich do nowego miejsca przechowywania. Twoje zapisy na tym komputerze są bezpieczne.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Zapisy w chmurze są teraz niedostępne. Twoje zapisy na tym komputerze są bezpieczne.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Ten zapis jest za duży na zapisy w chmurze (ponad 95 MB). Zostaje na tym komputerze."
 }

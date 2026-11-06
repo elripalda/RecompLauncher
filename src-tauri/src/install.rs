@@ -573,7 +573,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         "rar" => crate::gamebanana::extract(file, staging)?,
         "tar.gz" => untar(file, staging, false)?,
         "tar.xz" => untar(file, staging, true)?,
-        "appimage" | "exe" => {
+        "appimage" | "exe" | "msi" => {
             fs::copy(file, staging.join(&name))?;
             #[cfg(unix)]
             {
@@ -656,7 +656,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 11;
+pub const EXE_RULES: u8 = 12;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -664,8 +664,9 @@ pub const EXE_RULES: u8 = 11;
 const TOOL_WORDS: [&str; 24] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
-const BUILD_TOOLS: [&str; 44] = [
+const BUILD_TOOLS: [&str; 49] = [
     "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
+    "tcc", "zig", "sccache", "ccache", "goalc",
     "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
     "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
 ];
@@ -720,7 +721,20 @@ const NOT_A_SETUP: [&str; 14] = ["unins", "uninstall", "uninstaller", "vc", "vcr
 /// program (`game` None) it's the release's own installer (MaddenNFL08-Recompiled-Setup.exe), which
 /// puts the game somewhere else. Beside a game program, it's a first-time setup made for that game
 /// (Tenkaichi3Decomp-setup.exe next to Tenkaichi3Decomp.exe), or one named only "Setup".
+/// A Windows Installer package (.msi).
+pub fn is_msi(p: &Path) -> bool {
+    p.extension().map(|e| e.eq_ignore_ascii_case("msi")).unwrap_or(false)
+}
+
 pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> {
+    // A release that's a Windows Installer package: that's its setup.
+    if os == "windows" {
+        let mut msi: Vec<PathBuf> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_file() && is_msi(p)).collect();
+        msi.sort();
+        if let Some(p) = msi.into_iter().next().and_then(|p| p.strip_prefix(dir).ok().map(Path::to_path_buf)) {
+            return Some(p);
+        }
+    }
     let game_t: Vec<String> = game.and_then(|g| g.file_stem()).and_then(|s| s.to_str()).map(tokens).unwrap_or_default();
     let mut best: Option<(usize, PathBuf)> = None;
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
@@ -765,6 +779,10 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
 
 /// Whether a program's name says it's an installer or first-time setup (see find_setup).
 pub fn looks_like_setup(p: &Path) -> bool {
+    // A Windows Installer package is always one.
+    if is_msi(p) {
+        return true;
+    }
     let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
@@ -1063,6 +1081,20 @@ mod tests {
         sparse(&d.join("Play Monado.bat"), 700);
         sparse(&d.join("monado.exe"), 60_000_000);
         assert_eq!(find_exe(&d, "windows", &["Monado"]).unwrap(), PathBuf::from("Play Monado.bat"));
+    }
+
+    #[test]
+    fn a_windows_installer_package_is_the_setup() {
+        let d = tmp("msi");
+        sparse(&d.join("OpenGOAL-Launcher_2.11.2_x64_en-US.msi"), 9_000_000);
+        assert_eq!(find_setup(&d, "windows", None).unwrap(), PathBuf::from("OpenGOAL-Launcher_2.11.2_x64_en-US.msi"));
+        assert!(looks_like_setup(Path::new("OpenGOAL-Launcher_2.11.2_x64_en-US.msi")));
+        assert!(find_game_exe(&d, "windows", &["OpenGOAL Launcher"]).is_none());
+        assert_eq!(crate::assets::kind("OpenGOAL-Launcher_2.11.2_x64_en-US.msi"), Some("msi"));
+        assert_eq!(crate::assets::describe("OpenGOAL-Launcher_2.11.2_x64_en-US.msi", "windows"), "Installer");
+        // The compiler that comes with it is never the game.
+        sparse(&d.join("goalc.exe"), 9_000_000);
+        assert!(find_game_exe(&d, "windows", &["OpenGOAL Launcher"]).is_none());
     }
 
     #[test]

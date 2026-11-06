@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "그 폴더에는 사진, 동영상, 문서만 있습니다. 게임 사본이 있는 폴더를 고르세요.",
  "That isn't a recomp.": "리컴프가 아닙니다.",
  "The website didn't take it. Try again later.": "웹사이트가 받아들이지 않았습니다. 나중에 다시 시도하세요.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "일치하는 리컴프가 없습니다. 나머지를 보려면 “Deck에서 아주 좋음”을 끄세요."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "일치하는 리컴프가 없습니다. 나머지를 보려면 “Deck에서 아주 좋음”을 끄세요.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "게임 폴더의 파일이 사용 중입니다. 게임을 종료하고 게임 폴더를 열어 둔 창이나 프로그램을 모두 닫은 다음 다시 시도하세요.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows가 런처의 게임 폴더 파일 변경을 허용하지 않았습니다. 게임을 종료하고 Windows 보안(랜섬웨어 방지)에서 차단하고 있지 않은지 확인한 다음 다시 시도하세요.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "클라우드 저장이 당분간 일시 중지되었습니다. 이 PC의 저장 데이터는 안전합니다.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "새 저장소로 옮기는 동안 클라우드 저장이 일시 중지되었습니다. 이 PC의 저장 데이터는 안전합니다.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "지금은 클라우드 저장을 사용할 수 없습니다. 이 PC의 저장 데이터는 안전합니다.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "이 저장 데이터는 클라우드 저장에 올리기에는 너무 큽니다(95MB 초과). 이 PC에 보관됩니다."
 }

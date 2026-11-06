@@ -281,6 +281,10 @@ pub struct Check {
     /// An N64 ROM's revision (1 for a v1.1 release), when the recomp reads one revision only.
     #[serde(default)]
     pub n64_rev: Option<u8>,
+    /// The disc or cartridge IDs it reads (`GZ2E01`, or `GZ2` for every region): a GameCube or
+    /// Wii disc's, an N64 cartridge's game code, a PlayStation disc's serial (crate::roms::copy_id).
+    #[serde(default)]
+    pub ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -679,7 +683,6 @@ pub fn from_boot(b: &Value) -> Option<Profile> {
     if copy.is_none() && settings.is_empty() {
         return None;
     }
-    let start = s(b, "start");
     // `files.how: "env"`: the copy reaches the game through an environment variable it reads
     // (`files.env`, e.g. STRIKERS_DATA), a disc image or a folder alike.
     let mut env = BTreeMap::new();
@@ -691,7 +694,7 @@ pub fn from_boot(b: &Value) -> Option<Profile> {
     }
     Some(Profile {
         format: 1,
-        start: copy.as_ref().map(|(_, args)| Start { program: vec![start], args: args.clone(), env: env.clone() }),
+        start: copy.as_ref().map(|(_, args)| Start { program: crate::boot::starts(b), args: args.clone(), env: env.clone() }),
         game: copy.map(|(g, _)| g),
         config,
         settings,
@@ -804,6 +807,7 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
                 n64_region: s(f, "region").to_ascii_uppercase(),
                 n64_id: s(f, "n64_id").to_ascii_uppercase(),
                 n64_rev: f.get("n64_rev").and_then(Value::as_u64).map(|v| v as u8),
+                ids: f.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default(),
             },
             into: if how == "folder" { into } else { String::new() },
             name,
@@ -1245,6 +1249,7 @@ impl Profile {
             .map(|p| install.join(p))
             .find(|p| p.is_file())
             .or_else(|| if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) })?;
+        crate::boot::runnable(&exe);
         Some((exe, self.args_for(install, game, picks)))
     }
 
@@ -1821,6 +1826,26 @@ pub fn packed(g: &GameCopy, p: &Path) -> Option<String> {
     (p.is_file() && ["7z", "zip", "rar"].contains(&ext.as_str()) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!(".{ext}"))).then_some(ext)
 }
 
+impl GameCopy {
+    /// Whether its check tells this game's copy from another game's of the same console: a file
+    /// only this game has, a disc ID. "Any disc image" or "any N64 ROM" doesn't, so
+    /// it isn't used to find the game among the player's copies.
+    /// A catalog boot profile's file checks are common files (`generic`): only an ID counts there.
+    pub fn identifies(&self) -> bool {
+        self.identifies_by_contents() || self.check.ids.iter().any(|i| crate::roms::id_key(i).len() >= 3)
+    }
+
+    /// Told apart by what's in it (a file only this game has, its N64 cartridge code), not an ID.
+    pub fn identifies_by_contents(&self) -> bool {
+        let c = &self.check;
+        let own = |f: &str| !f.is_empty() && !COMMON_FILES.iter().any(|x| f.eq_ignore_ascii_case(x));
+        !c.n64_id.is_empty() || (!self.generic && (own(&c.file) || own(&c.xdvdfs) || own(&c.iso9660)))
+    }
+}
+
+/// Files every game of a console has, so they can't tell one game from another.
+const COMMON_FILES: [&str; 9] = ["default.xex", "default.xbe", "eboot.bin", "param.sfo", "system.cnf", "main.npdm", "main", "main.dol", "boot.bin"];
+
 pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     let folder = p.is_dir();
     // A game packed in an archive: unpacked first (set_game_copy does that for .7z and .zip).
@@ -1873,6 +1898,15 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     }
     if !g.check.iso9660.is_empty() && !iso9660_has(p, &g.check.iso9660) {
         return Err("That disc image isn't the release this recomp reads.".into());
+    }
+    // A disc ID that isn't one of this game's (a copy whose ID can't be read isn't refused).
+    let ids: Vec<String> = g.check.ids.iter().map(|i| crate::roms::id_key(i)).filter(|i| i.len() >= 3).collect();
+    if !ids.is_empty() {
+        if let Some(id) = crate::roms::copy_id(p) {
+            if !ids.iter().any(|w| id.starts_with(w.as_str())) {
+                return Err(format!("That's a different game's disc image (its ID is {id})."));
+            }
+        }
     }
     if !g.check.xdvdfs.is_empty() && !xdvdfs_has(p, &g.check.xdvdfs) {
         return Err(if xdvdfs_part(p).is_none() {

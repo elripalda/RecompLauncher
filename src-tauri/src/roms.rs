@@ -705,6 +705,19 @@ mod tests {
     }
 
     #[test]
+    fn a_disc_from_another_region_is_told() {
+        // Eternal Darkness reads the European disc (GEDP01) only.
+        let d = tmp("gedp");
+        let disc = |id: &[u8; 6]| { let mut h = vec![0u8; 0x400]; h[..6].copy_from_slice(id); h[0x1C..0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]); h };
+        fs::write(d.join("usa.iso"), disc(b"GEDE01")).unwrap();
+        fs::write(d.join("eur.iso"), disc(b"GEDP01")).unwrap();
+        let app = serde_json::json!({ "id": "eternaldarknessrecomp", "copy_ids": ["GEDP01"] });
+        assert_eq!(fits_copy_ids(&app, &d.join("usa.iso")), Err("GEDE01".to_string()));
+        assert!(fits_copy_ids(&app, &d.join("eur.iso")).is_ok());
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
     fn prefers_exact_game_paths_over_ambiguous_case_matches() {
         let root = tmp("case-match");
         let upper = root.join("PARAM.SFO");

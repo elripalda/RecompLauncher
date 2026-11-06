@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Ce dossier ne contient que des images, des vidéos ou des documents. Choisissez le dossier de votre copie du jeu.",
  "That isn't a recomp.": "Ce n'est pas une recomp.",
  "The website didn't take it. Try again later.": "Le site ne l'a pas accepté. Réessayez plus tard.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Aucune recomp ne correspond. Désactivez « Super sur le Deck » pour voir le reste."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Aucune recomp ne correspond. Désactivez « Super sur le Deck » pour voir le reste.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Un fichier du dossier du jeu est en cours d'utilisation. Fermez le jeu et tout ce qui a son dossier ouvert, puis réessayez.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows n'a pas laissé le lanceur modifier un fichier du dossier du jeu. Fermez le jeu, vérifiez que Sécurité Windows ne le bloque pas (Protection contre les ransomwares), puis réessayez.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Les sauvegardes dans le cloud sont en pause pour le moment. Vos sauvegardes sur ce PC sont en sécurité.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Les sauvegardes dans le cloud sont en pause pendant que nous les transférons vers un nouvel espace de stockage. Vos sauvegardes sur ce PC sont en sécurité.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Les sauvegardes dans le cloud ne sont pas disponibles pour le moment. Vos sauvegardes sur ce PC sont en sécurité.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Cette sauvegarde est trop volumineuse pour les sauvegardes dans le cloud (plus de 95 Mo). Elle est conservée sur ce PC."
 }

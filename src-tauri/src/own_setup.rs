@@ -205,9 +205,16 @@ pub fn spawn(p: &Path) -> std::io::Result<Started> {
 pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
     let dir = p.parent().map(Path::to_path_buf).unwrap_or_default();
     // A Windows setup on Linux runs through Proton (or Wine), like a Windows game does.
+    // A Windows Installer package goes through Windows' installer (msiexec /i).
+    let msi = crate::install::is_msi(p);
     #[cfg(not(windows))]
     let mut c = if crate::proton::is_windows_program(p) {
         match (crate::proton::runner(), crate::proton::data_dir()) {
+            (Some(r), Some(data)) if msi => {
+                let mut c = crate::proton::std_command(&r, &data, Path::new("msiexec"));
+                c.arg("/i").arg(p);
+                c
+            }
             (Some(r), Some(data)) => crate::proton::std_command(&r, &data, p),
             _ => return Err(std::io::Error::other("it's a Windows program, and running it on Linux needs Proton or Wine (Steam's Proton is enough)")),
         }
@@ -215,7 +222,13 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
         std::process::Command::new(p)
     };
     #[cfg(windows)]
-    let mut c = std::process::Command::new(p);
+    let mut c = if msi {
+        let mut c = std::process::Command::new("msiexec");
+        c.arg("/i").arg(p);
+        c
+    } else {
+        std::process::Command::new(p)
+    };
     crate::sysenv::clean_std(&mut c);
     if let Some(x) = copy {
         c.arg(x);
@@ -463,6 +476,13 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
             }
         }
     }
+    // Installed for every user (a Windows Installer package puts it in Program Files, keeping the
+    // files' own dates, so "made since" can't find it): the program it names, in its folder there.
+    if !usable(&g) {
+        if let Some(p) = want.as_deref().and_then(in_program_files) {
+            g.exe = Some(p);
+        }
+    }
     // A program that isn't the one the game's profile names is a tool from the download, never
     // the game: rather than start it, the player is asked to pick the game.
     if want.is_some() && !usable(&g) {
@@ -608,6 +628,33 @@ pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<Pat
         }
     }
     best.map(|b| b.1)
+}
+
+/// `file` in a folder of Program Files (either one, on any drive) or of the user's own programs
+/// folder: OpenGOAL-Launcher.exe in Program Files\OpenGOAL-Launcher.
+fn in_program_files(file: &str) -> Option<PathBuf> {
+    let want = file.to_lowercase();
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for d in crate::files::drives() {
+        roots.push(d.path.join("Program Files"));
+        roots.push(d.path.join("Program Files (x86)"));
+    }
+    if let Some(l) = std::env::var_os("LOCALAPPDATA") {
+        roots.push(PathBuf::from(l).join("Programs"));
+    }
+    for root in roots {
+        for e in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+            if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            for f in std::fs::read_dir(e.path()).into_iter().flatten().flatten() {
+                if f.file_name().to_string_lossy().to_lowercase() == want && f.path().is_file() {
+                    return Some(f.path());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// A folder the search for a built program goes into (its name, lowercased): not a hidden one, and

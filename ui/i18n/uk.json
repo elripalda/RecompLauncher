@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "У цій папці лише зображення, відео або документи. Вибери папку зі своєю копією гри.",
  "That isn't a recomp.": "Це не рекомпіляція.",
  "The website didn't take it. Try again later.": "Сайт це не прийняв. Спробуй ще раз пізніше.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Немає відповідних рекомпіляцій. Вимкніть «Чудово на Deck», щоб побачити решту."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Немає відповідних рекомпіляцій. Вимкніть «Чудово на Deck», щоб побачити решту.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Файл у папці гри зараз використовується. Закрий гру та всі вікна й програми, де відкрито її папку, і спробуй ще раз.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows не дала лаунчеру змінити файл у папці гри. Закрий гру, перевір, чи не блокує його «Безпека Windows» («Захист від зловмисних програм із вимогою викупу»), і спробуй ще раз.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Хмарні збереження поки призупинено. Твої збереження на цьому комп'ютері в безпеці.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Хмарні збереження призупинено, поки ми переносимо їх до нового сховища. Твої збереження на цьому комп'ютері в безпеці.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Хмарні збереження зараз недоступні. Твої збереження на цьому комп'ютері в безпеці.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Це збереження завелике для хмарних збережень (понад 95 МБ). Воно залишається на цьому комп'ютері."
 }

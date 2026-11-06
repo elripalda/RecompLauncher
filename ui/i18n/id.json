@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Folder itu hanya berisi gambar, video, atau dokumen. Pilih folder salinan game-mu.",
  "That isn't a recomp.": "Itu bukan recomp.",
  "The website didn't take it. Try again later.": "Situs web tidak menerimanya. Coba lagi nanti.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Tidak ada recomp yang cocok. Matikan “Mantap di Deck” untuk melihat sisanya."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Tidak ada recomp yang cocok. Matikan “Mantap di Deck” untuk melihat sisanya.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Ada file di folder game yang sedang dipakai. Tutup game-nya dan apa pun yang sedang membuka foldernya, lalu coba lagi.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows tidak mengizinkan launcher mengubah file di folder game. Tutup game-nya, pastikan Keamanan Windows tidak memblokirnya (Perlindungan ransomware), lalu coba lagi.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Save cloud dijeda untuk sementara. Save kamu di PC ini aman.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Save cloud dijeda selagi kami memindahkannya ke penyimpanan baru. Save kamu di PC ini aman.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Save cloud tidak tersedia sekarang. Save kamu di PC ini aman.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Save ini terlalu besar untuk save cloud (lebih dari 95 MB). Save ini tetap di PC ini."
 }

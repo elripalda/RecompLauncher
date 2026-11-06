@@ -85,7 +85,7 @@ const X64: [&str; 5] = ["x64", "x86_64", "amd64", "win64", "64bit"];
 /// What kind of file it is, by its ending, and whether this system can use it as a build.
 pub fn kind(name: &str) -> Option<&'static str> {
     let n = name.to_lowercase();
-    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".dmg", "dmg")] {
+    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".msi", "msi"), (".dmg", "dmg")] {
         if n.ends_with(end) {
             return Some(k);
         }
@@ -95,7 +95,7 @@ pub fn kind(name: &str) -> Option<&'static str> {
 
 fn usable(os: &str, k: &str) -> bool {
     match os {
-        "windows" => matches!(k, "zip" | "7z" | "rar" | "exe"),
+        "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
         _ => matches!(k, "zip" | "dmg"),
     }
@@ -184,6 +184,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("windows", "zip") => 12,
         ("windows", "7z") => 10,
         ("windows", "exe") => 6,
+        ("windows", "msi") => 2,
         ("linux", "appimage") => 14,
         ("linux", "tar.gz") => 12,
         ("linux", "zip") => 8,
@@ -225,6 +226,12 @@ pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
     if v.iter().any(|(_, a)| !server(a)) {
         v.retain(|(_, a)| !server(a));
     }
+    // A Windows Installer package only when there's nothing else for this PC: not one more form
+    // of build to ask about.
+    let msi = |a: &Asset| a.name.to_lowercase().ends_with(".msi");
+    if v.iter().any(|(_, a)| !msi(a)) {
+        v.retain(|(_, a)| !msi(a));
+    }
     // When a release says which files are for this system, a file that says nothing is for another.
     if v.iter().any(|(_, a)| says_os(&a.name, os)) {
         v.retain(|(_, a)| says_os(&a.name, os));
@@ -249,6 +256,7 @@ pub fn describe(name: &str, os: &str) -> &'static str {
         (_, _) if has(&["flatpak"]) => "Flatpak",
         ("linux", "appimage") => "AppImage",
         ("linux", _) => "Linux Folder",
+        ("windows", "msi") => "Installer",
         ("windows", "exe") if has(&["setup", "installer", "install"]) => if bit32 { "32-Bit Installer" } else { "Installer" },
         ("windows", "exe") => if bit32 { "32-Bit Program" } else { "Program" },
         ("windows", _) => if bit32 { "32-Bit Portable" } else { "Portable" },

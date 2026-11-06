@@ -5,7 +5,17 @@
   "repo": "TwilitRealm/dusklight",
   "game": {
     "kind": "iso",
-    "label": "Your Twilight Princess GameCube or Wii disc image (.iso or .rvz), any region except Wii Korea"
+    "label": "Your Twilight Princess GameCube or Wii disc image (.iso or .rvz), any region except Wii Korea",
+    "check": {
+      "ids": [
+        "GZ2E",
+        "GZ2P",
+        "GZ2J",
+        "RZDE",
+        "RZDP",
+        "RZDJ"
+      ]
+    }
   },
   "start": {
     "program": [

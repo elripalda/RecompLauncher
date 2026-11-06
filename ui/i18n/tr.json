@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Bu klasörde yalnızca resim, video veya belge var. Oyun kopyanızın bulunduğu klasörü seçin.",
  "That isn't a recomp.": "Bu bir recomp değil.",
  "The website didn't take it. Try again later.": "Web sitesi bunu kabul etmedi. Daha sonra tekrar deneyin.",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "Eşleşen recomp yok. Diğerlerini görmek için “Deck'te harika” seçeneğini kapat."
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Eşleşen recomp yok. Diğerlerini görmek için “Deck'te harika” seçeneğini kapat.",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "Oyunun klasöründeki bir dosya kullanımda. Oyunu ve oyunun klasörünü açık tutan her şeyi kapatıp yeniden deneyin.",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows, başlatıcının oyunun klasöründeki bir dosyayı değiştirmesine izin vermedi. Oyunu kapatın, Windows Güvenliği'nin engellemediğinden emin olun (Fidye yazılımı koruması), sonra yeniden deneyin.",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "Bulut kayıtları şimdilik duraklatıldı. Bu bilgisayardaki kayıtlarınız güvende.",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Yeni bir depolama alanına taşıma sürerken bulut kayıtları duraklatıldı. Bu bilgisayardaki kayıtlarınız güvende.",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "Bulut kayıtları şu an kullanılamıyor. Bu bilgisayardaki kayıtlarınız güvende.",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Bu kayıt bulut kayıtları için çok büyük (95 MB üzeri). Bu bilgisayarda tutuluyor."
 }

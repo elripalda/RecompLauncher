@@ -2135,5 +2135,11 @@
  "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "โฟลเดอร์นั้นมีแค่รูปภาพ วิดีโอ หรือเอกสาร เลือกโฟลเดอร์ที่มีสำเนาเกมของคุณ",
  "That isn't a recomp.": "นั่นไม่ใช่ Recomp",
  "The website didn't take it. Try again later.": "เว็บไซต์ไม่รับ ลองอีกครั้งภายหลัง",
- "No recomps match. Turn off “Great on Deck” to see the rest.": "ไม่มี Recomp ที่ตรงกัน ปิด “ดีมากบน Deck” เพื่อดูที่เหลือ"
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "ไม่มี Recomp ที่ตรงกัน ปิด “ดีมากบน Deck” เพื่อดูที่เหลือ",
+ "A file in its folder is in use. Close the game and anything that has its folder open, then try again.": "มีไฟล์ในโฟลเดอร์ของเกมที่กำลังถูกใช้งานอยู่ ปิดเกมและทุกอย่างที่เปิดโฟลเดอร์ของเกมไว้ แล้วลองอีกครั้ง",
+ "Windows didn't let the launcher change a file in its folder. Close the game, check that Windows Security isn't blocking it (Ransomware protection), then try again.": "Windows ไม่ยอมให้ตัวเปิดเกมแก้ไขไฟล์ในโฟลเดอร์ของเกม ปิดเกม ตรวจสอบว่าความปลอดภัยของ Windows ไม่ได้บล็อกไว้ (การป้องกันแรนซัมแวร์) แล้วลองอีกครั้ง",
+ "Cloud saves are paused for now. Your saves on this PC are safe.": "ตอนนี้หยุดเซฟบนคลาวด์ไว้ชั่วคราว เซฟบนพีซีเครื่องนี้ยังปลอดภัยดี",
+ "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "หยุดเซฟบนคลาวด์ไว้ชั่วคราวระหว่างที่เราย้ายไปยังพื้นที่จัดเก็บใหม่ เซฟบนพีซีเครื่องนี้ยังปลอดภัยดี",
+ "Cloud saves aren't available right now. Your saves on this PC are safe.": "ตอนนี้ใช้เซฟบนคลาวด์ไม่ได้ เซฟบนพีซีเครื่องนี้ยังปลอดภัยดี",
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "เซฟนี้ใหญ่เกินไปสำหรับเซฟบนคลาวด์ (เกิน 95 MB) จะเก็บไว้บนพีซีเครื่องนี้"
 }
