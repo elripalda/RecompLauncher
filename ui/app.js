@@ -3693,11 +3693,14 @@ function menuRows(items) {
     return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}</button>`;
   }).join('');
 }
-function menu(at, items) {
+function menu(at, items, returnFocus = at instanceof Element ? at : null) {
   closeMenu();
   const m = document.createElement('div');
   m.className = 'menu';
   m.setAttribute('role', 'menu');
+  // Keep focus on the control that opened the menu when an action closes it. Removing the
+  // focused menu item can make WebView2 scroll the page to its top.
+  m.returnFocus = returnFocus;
   const stack = [];
   const show = (list, title) => {
     m.innerHTML = (title ? `<button type="button" class="m-back" data-back="1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>${esc(title)}</button><hr>` : '') + menuRows(list);
@@ -5446,7 +5449,16 @@ document.addEventListener('click', (e) => {
   const g = e.target.closest('[data-go]');
   if (g) { e.preventDefault(); if (['home', 'discover', 'library', 'achievements', 'downloads', 'shots', 'saves', 'settings'].includes(g.dataset.go) || g.dataset.go.startsWith('plug:')) { if (g.closest('.side')) { if (g.dataset.go === 'discover') S.find.genre = ''; if (g.dataset.go === 'shots') S.shotsGame = ''; } go(g.dataset.go); } return; }
   const a = e.target.closest('[data-act]');
-  if (a && a.tagName !== 'SELECT') { if (a.closest('.menu')) closeMenu(); act(a, e); }
+  if (a && a.tagName !== 'SELECT') {
+    const m = a.closest('.menu');
+    if (m) {
+      const main = $('#main'), top = main && main.scrollTop;
+      closeMenu();
+      if (m.returnFocus && m.returnFocus.isConnected) m.returnFocus.focus({ preventScroll: true });
+      if (main && main.scrollTop !== top) main.scrollTop = top;
+    }
+    act(a, e);
+  }
 });
 document.addEventListener('change', (e) => {
   const s = e.target.closest('select[data-act]');
@@ -5584,7 +5596,10 @@ document.addEventListener('contextmenu', (e) => {
   }
   const g = e.target.closest('[data-id]');
   const id = g && g.dataset.id;
-  if (id && (byId(id) || S.library[id])) return menu(at, gameMenu(id));
+  if (id && (byId(id) || S.library[id])) {
+    const returnFocus = e.target.closest('button, a, [tabindex]') || g.querySelector('button, a, [tabindex]');
+    return menu(at, gameMenu(id), returnFocus);
+  }
   menu(at, [{ act: 'refresh', label: t('Refresh'), icon: 'refresh' }, { act: 'go-settings', label: t('Settings'), icon: 'gear' }, { act: 'about', label: t('About RecompLauncher'), icon: 'info' }]);
 });
 $('#brand').addEventListener('click', () => aboutModal());
