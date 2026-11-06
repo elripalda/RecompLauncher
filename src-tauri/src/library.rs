@@ -89,6 +89,14 @@ pub struct Installed {
     /// Settings passed on the command line: setting id -> choice.
     #[serde(default)]
     pub picks: BTreeMap<String, usize>,
+    /// Settings the player put on Match My Screen: they follow the monitor, written again before
+    /// Play when its size changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub screen_fit: Vec<String>,
+    /// The monitor's size ("3440x1440") when Match My Screen last wrote it: written again only when
+    /// the monitor changes, so a size the player set in the game's own menu stays.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub screen_size: String,
     /// Sliders passed on the command line: setting id -> the value as written.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub slider_vals: BTreeMap<String, String>,
@@ -118,6 +126,9 @@ pub struct Installed {
     /// Where the player says the game saves (Saves, Change): ahead of everything else.
     #[serde(default)]
     pub save_place: Option<String>,
+    /// More folders the player added (a launcher with several games, each saving in its own).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub more_save_places: Vec<String>,
     /// A picture the player picked for its cover (a copy in the launcher's covers folder).
     #[serde(default)]
     pub cover_file: Option<PathBuf>,

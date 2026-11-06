@@ -607,7 +607,7 @@ pub fn name_tokens(s: &str) -> Vec<String> {
     tokens(s)
 }
 
-fn tokens(s: &str) -> Vec<String> {
+pub fn tokens(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
     let cs: Vec<char> = s.chars().collect();
@@ -645,7 +645,7 @@ const LAUNCH_WORDS: [&str; 5] = ["launch", "launcher", "play", "start", "run"];
 const NOT_A_LAUNCH: [&str; 8] = ["debug", "test", "safe", "sin", "without", "no", "build", "clean"];
 
 /// Words at the end of a recomp's name that aren't the game's, and small words, for initials.
-const TAIL_WORDS: [&str; 10] = ["recomp", "recompiled", "decomp", "decompiled", "pc", "port", "native", "online", "edition", "windows"];
+pub const TAIL_WORDS: [&str; 10] = ["recomp", "recompiled", "decomp", "decompiled", "pc", "port", "native", "online", "edition", "windows"];
 const SMALL_WORDS: [&str; 6] = ["of", "the", "a", "and", "in", "to"];
 
 /// A program kept for when the main one doesn't work: "inFAMOUS Second Son (classic).exe".
@@ -669,7 +669,7 @@ const BUILD_TOOLS: [&str; 44] = [
     "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
 ];
 /// Folders a release keeps its tools, or leftovers from building, in.
-const TOOL_DIRS: [&str; 13] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm"];
+pub const TOOL_DIRS: [&str; 13] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.

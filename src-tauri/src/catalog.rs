@@ -17,8 +17,11 @@ pub fn base() -> String {
     crate::net::base()
 }
 
-/// How long the list and each recomp's release info are used before asking again.
-pub const LIST_FRESH: u64 = 6 * 3600;
+/// How long the list is used before asking again: an hour, so a recomp the store just added shows
+/// soon after.
+pub const LIST_FRESH: u64 = 3600;
+/// How long each recomp's release info is used before asking again.
+pub const RELEASES_FRESH: u64 = 6 * 3600;
 /// How long what players say about each recomp is used before asking again.
 pub const COUNTS_FRESH: u64 = 3600;
 
@@ -187,7 +190,7 @@ fn list_ok(v: &Value) -> bool {
 }
 
 /// The list. `force`: the player pressed Refresh. Otherwise it's asked for once per launch, and
-/// only when the copy on disk is more than six hours old; everything after that reads the disk.
+/// only when the copy on disk is more than an hour old; everything after that reads the disk.
 pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<Fetched, Error> {
     if !force && LIST_ASKED.load(Ordering::Relaxed) {
         if let Some(f) = on_disk(&list_file(dir), list_ok) {
@@ -572,7 +575,7 @@ pub async fn releases(http: &reqwest::Client, dir: &Path, repo: &str, force: boo
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    let got = cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { LIST_FRESH }, crate::net::QUICK, force, Value::is_array).await;
+    let got = cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { RELEASES_FRESH }, crate::net::QUICK, force, Value::is_array).await;
     let f = or_github(http, dir, repo, got, force).await?;
     Ok(with_gitlab(Some(http), dir, repo, f).await)
 }

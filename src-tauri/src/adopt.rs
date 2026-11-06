@@ -358,6 +358,74 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
     Ok(out)
 }
 
+/// "I Already Have It" on a game's page: is the folder the player picked this recomp? The program
+/// its profile starts is in it (or in the one folder inside it), or, with no profile, a program
+/// named like the recomp is. The folder that holds the game, its program, and whether it fits.
+pub fn check_folder(dir: &Path, entry: &Value, names: &[String], os: &str) -> (PathBuf, Option<PathBuf>, bool) {
+    let mut roots = vec![dir.to_path_buf()];
+    // The game one level down (a zip unpacked into a folder of its own): the folder inside.
+    let inside: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| !p.file_name().map(|n| n.to_string_lossy().starts_with('.')).unwrap_or(true)).collect();
+    if inside.len() == 1 && inside[0].is_dir() {
+        roots.insert(0, inside[0].clone());
+    }
+    let repo = entry.get("repo").and_then(Value::as_str).unwrap_or("");
+    let n: Vec<&str> = names.iter().map(String::as_str).filter(|x| !x.is_empty()).collect();
+    for root in &roots {
+        if let Some(start) = crate::profile::find(root, repo, entry).and_then(|p| p.start) {
+            if let Some(prog) = start.program.iter().map(|p| p.trim_start_matches("{install}/").to_string()).find(|p| root.join(p).is_file()) {
+                return (root.clone(), Some(PathBuf::from(prog)), true);
+            }
+            continue;
+        }
+        // On Linux a Windows build counts too: it plays through Proton.
+        let found = install::find_exe(root, os, &n).or_else(|| (os == "linux").then(|| install::find_exe(root, "windows", &n)).flatten());
+        if let Some(exe) = found {
+            // Words that are in many recomps' names ("Recompiled", "Port", "Edition") don't count.
+            let want: Vec<String> = n.iter().flat_map(|x| install::tokens(x)).filter(|t| t.len() > 2 && t != "the" && !install::TAIL_WORDS.contains(&t.as_str())).collect();
+            let stem = exe.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let squashed: String = stem.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+            let named = install::tokens(&stem).iter().any(|t| want.contains(t)) || want.iter().any(|w| w.len() >= 4 && squashed.contains(w.as_str()));
+            let rel = exe.strip_prefix(root).map(Path::to_path_buf).unwrap_or(exe);
+            if named {
+                return (root.clone(), Some(rel), true);
+            }
+        }
+    }
+    // Not it, as far as can be told: its best program, for Use It Anyway.
+    let root = roots[0].clone();
+    let exe = install::find_exe(&root, os, &n).or_else(|| (os == "linux").then(|| install::find_exe(&root, "windows", &n)).flatten()).map(|e| e.strip_prefix(&root).map(Path::to_path_buf).unwrap_or(e));
+    (root, exe, false)
+}
+
+/// The command for it: the folder, its program, whether it's this recomp, and the release it's on
+/// (not known for a folder: the next update offers itself).
+#[tauri::command(async)]
+pub async fn adopt_check(st: State<'_, App>, id: String, path: String) -> Res<Value> {
+    let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
+    let entry = catalog::app(&cat, &id).cloned().ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?;
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err(Error::Msg("That folder couldn't be found.".into()));
+    }
+    if crate::library::shared_folder(&dir, &st.lib.lock().unwrap().settings.all_libraries()) {
+        return Err(Error::Msg(SHARED.into()));
+    }
+    if st.lib.lock().unwrap().installed.get(&id).map(|g| !g.local).unwrap_or(false) {
+        return Err(Error::Msg("It's already in your Library.".into()));
+    }
+    let names = names(&cat, &id);
+    let os = crate::assets::os_now();
+    let (root, exe, fits) = tokio::task::spawn_blocking(move || check_folder(&dir, &entry, &names, os)).await.map_err(|e| Error::Msg(e.to_string()))?;
+    // Already another game's folder in the Library (or inside one, or holding one): two games in
+    // one folder would update and uninstall each other.
+    let taken = st.lib.lock().unwrap().installed.values().find(|g| !g.path.as_os_str().is_empty() && (g.path == root || root.starts_with(&g.path) || g.path.starts_with(&root))).map(|g| g.name.clone());
+    if let Some(name) = taken {
+        return Ok(serde_json::json!({ "path": root, "taken": name }));
+    }
+    let proton = os == "linux" && exe.as_ref().map(|e| crate::proton::is_windows_program(e)).unwrap_or(false);
+    Ok(serde_json::json!({ "path": root, "exe": exe, "fits": fits, "tag": "", "proton": proton }))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Adopt {
     pub id: String,
@@ -365,6 +433,9 @@ pub struct Adopt {
     pub exe: Option<PathBuf>,
     #[serde(default)]
     pub tag: String,
+    /// A Windows build on Linux (from a game's page, I Already Have It): it plays through Proton.
+    #[serde(default)]
+    pub proton: bool,
 }
 
 /// Add them to the Library where they are. -> the ones added. (Moving them is move_game, after.)
@@ -404,6 +475,7 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
                 // Played somewhere else before: its setup, if it has one, already ran.
                 setup_checked: true,
                 exe_rules: install::EXE_RULES,
+                proton: it.proton,
                 ..Default::default()
             };
             l.installed.insert(it.id.clone(), g.clone());
@@ -427,6 +499,60 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_folder_the_player_already_has_is_checked() {
+        let d = std::env::temp_dir().join(format!("rl-adopt-check-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let os = crate::assets::os_now();
+        let prog = if os == "windows" { "Zelda64Recompiled.exe" } else { "Zelda64Recompiled" };
+        let names = vec!["Zelda 64: Recompiled".to_string(), "Zelda64Recomp".to_string(), "Majora's Mask".to_string()];
+        let entry = json!({ "id": "z64", "repo": "Zelda64Recomp/Zelda64Recomp" });
+        // Its program right there, and one folder down.
+        let right = d.join("right");
+        std::fs::create_dir_all(&right).unwrap();
+        let mut body = b"#!/bin/sh\n".to_vec();
+        body.resize(4096, b' ');
+        std::fs::write(right.join(prog), &body).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(right.join(prog), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let (root, exe, fits) = check_folder(&right, &entry, &names, os);
+        assert!(fits && root == right && exe == Some(PathBuf::from(prog)));
+        let outer = d.join("outer");
+        std::fs::create_dir_all(&outer).unwrap();
+        std::fs::rename(&right, outer.join("Zelda64Recomp-v1.2")).unwrap();
+        let (root, _, fits) = check_folder(&outer, &entry, &names, os);
+        assert!(fits && root == outer.join("Zelda64Recomp-v1.2"));
+        // Another game's folder: not it, and its program is still offered for Use It Anyway.
+        let wrong = d.join("wrong");
+        std::fs::create_dir_all(&wrong).unwrap();
+        let other = if os == "windows" { "SonicUnleashed.exe" } else { "SonicUnleashed" };
+        std::fs::write(wrong.join(other), &body).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(wrong.join(other), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let (_, exe, fits) = check_folder(&wrong, &entry, &names, os);
+        assert!(!fits);
+        assert_eq!(exe, Some(PathBuf::from(other)));
+        // Another recomp's program with a word every recomp has ("Recompiled"): not it.
+        let banjo = d.join("banjo");
+        std::fs::create_dir_all(&banjo).unwrap();
+        let bprog = if os == "windows" { "BanjoRecompiled.exe" } else { "BanjoRecompiled" };
+        std::fs::write(banjo.join(bprog), &body).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(banjo.join(bprog), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        assert!(!check_folder(&banjo, &entry, &names, os).2);
+        // With a profile: its start program decides.
+        let prof = d.join("prof");
+        std::fs::create_dir_all(prof.join("bin")).unwrap();
+        std::fs::write(prof.join("bin/game.exe"), b"MZ").unwrap();
+        let entry2 = json!({ "id": "x", "boot": { "start": { "program": ["bin/game.exe"] } } });
+        let has_start = crate::profile::find(&prof, "", &entry2).and_then(|p| p.start).is_some();
+        if has_start {
+            let (_, exe, fits) = check_folder(&prof, &entry2, &["Other".to_string()], os);
+            assert!(fits && exe == Some(PathBuf::from("bin/game.exe")));
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn cat() -> Value {
         json!({"apps": [

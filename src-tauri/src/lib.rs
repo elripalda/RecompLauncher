@@ -481,6 +481,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         proton: os == "windows" && assets::os_now() == "linux",
         picks: prev.as_ref().map(|p| p.picks.clone()).unwrap_or_default(),
+        screen_fit: prev.as_ref().map(|p| p.screen_fit.clone()).unwrap_or_default(),
+        screen_size: prev.as_ref().map(|p| p.screen_size.clone()).unwrap_or_default(),
         slider_vals: prev.as_ref().map(|p| p.slider_vals.clone()).unwrap_or_default(),
         args: prev.as_ref().map(|p| p.args.clone()).unwrap_or_default(),
         auto_update: prev.as_ref().map(|p| p.auto_update).unwrap_or(false),
@@ -490,6 +492,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         cloud: prev.as_ref().and_then(|p| p.cloud),
         found_saves: prev.as_ref().map(|p| p.found_saves.clone()).unwrap_or_default(),
         save_place: prev.as_ref().and_then(|p| p.save_place.clone()),
+        more_save_places: prev.as_ref().map(|p| p.more_save_places.clone()).unwrap_or_default(),
         cover_file: prev.as_ref().and_then(|p| p.cover_file.clone()),
         hero_file: prev.as_ref().and_then(|p| p.hero_file.clone()),
         logo_file: prev.as_ref().and_then(|p| p.logo_file.clone()),
@@ -1601,8 +1604,9 @@ async fn install_vcredist(st: State<'_, App>) -> Res<String> {
         trail::note(format!("Visual C++ runtime: installer closed with {code:?}"));
         match code {
             Some(5) | Some(1223) => Err(Error::Msg("Windows needs your permission to install it. Press the button again and choose Yes when Windows asks.".into())),
-            // 1638: a newer one is already there.
-            Some(0) | Some(1638) => Ok("installed".into()),
+            Some(0) => Ok("installed".into()),
+            // 1638: it's already there (this one or a newer one): what's missing is something else.
+            Some(1638) => Ok("already".into()),
             Some(3010) | Some(1641) => Ok("restart".into()),
             Some(1602) => Err(Error::Msg("The installer was cancelled.".into())),
             _ => Err(Error::Msg("The Visual C++ installer didn't finish. Run it from microsoft.com to see why.".into())),
@@ -1676,6 +1680,7 @@ static RUN_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 
 pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let st = app.state::<App>();
+    read_screen(app);
     if st.moving.lock().unwrap().contains(id) {
         return Err(Error::Msg(MOVING.into()));
     }
@@ -1724,6 +1729,18 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         }
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
+    // Settings on Match My Screen: the monitor's size now, when the monitor changed since it was
+    // last written (a size picked in the game's own menu stays otherwise).
+    let monitor = screen_now().map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
+    if let (Some(p), false, false) = (prof.as_ref(), g.screen_fit.is_empty(), monitor.is_empty() || monitor == g.screen_size) {
+        for k in p.follow_screen(&g.path, &g.screen_fit) {
+            trail::note(&format!("Settings: {k} set to this screen ({monitor})"));
+        }
+        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+            x.screen_size = monitor.clone();
+        }
+        st.save();
+    }
     let mut args: Vec<String> = vec![];
     let mut game_env: Vec<(String, String)> = vec![];
     note_pad();
@@ -2888,8 +2905,27 @@ fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     profile::find(&g.path, &g.repo, &entry).map(|mut p| {
         p.slider_vals = g.slider_vals.clone();
+        p.add_screen_choices(screen_now());
         p
     })
+}
+
+/// The main monitor's size in pixels, for Match My Screen: read when the launcher starts, when a
+/// game's settings open, and before each Play.
+static SCREEN: Mutex<Option<(u32, u32)>> = Mutex::new(None);
+
+fn screen_now() -> Option<(u32, u32)> {
+    *SCREEN.lock().unwrap()
+}
+
+fn read_screen(app: &AppHandle) {
+    let m = app.primary_monitor().ok().flatten().or_else(|| app.get_webview_window("main").and_then(|w| w.current_monitor().ok().flatten())).or_else(|| app.available_monitors().ok().and_then(|l| l.into_iter().next()));
+    if let Some(m) = m {
+        let s = m.size();
+        if s.width > 0 && s.height > 0 {
+            *SCREEN.lock().unwrap() = Some((s.width, s.height));
+        }
+    }
 }
 
 /// Whether a code is how this game closes when it's quit normally: "ok" for it in the profile's
@@ -2963,6 +2999,9 @@ struct SetupOption {
     /// Key bindings: each action and the keys it's on now.
     #[serde(skip_serializing_if = "Option::is_none")]
     bindings: Option<BindNow>,
+    /// Its last choice is the launcher's Match My Screen, writing this size or shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    screen: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -3021,7 +3060,8 @@ struct Setup {
 
 /// What the launcher can set up for a game: its copy and its settings. None for games it can't.
 #[tauri::command(async)]
-fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
+fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
+    read_screen(&app);
     let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
     let p = profile_of(&st, &id, &g)?;
     let cur = p.current(&g.path, &g.picks);
@@ -3035,6 +3075,9 @@ fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
             .iter()
             .zip(cur)
             .map(|(s, (i, applies))| {
+                // On Match My Screen, and the screen's size is also one of the listed ones: Match My Screen.
+                let last = s.choices.len().saturating_sub(1);
+                let i = if s.screen.is_some() && g.screen_fit.contains(&s.id) && i != last && s.choices.get(i).map(|c| c.set == s.choices[last].set).unwrap_or(false) { last } else { i };
                 // The launcher's own settings wait for the file the game makes on its first start.
                 let ready = !p.from_boot || s.target == "args" || p.config_file(&s.target, &g.path).map(|f| f.existed).unwrap_or(false);
                 SetupOption {
@@ -3048,6 +3091,7 @@ fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
                     advanced: p.is_advanced(s),
                     slider: s.slider.as_ref().map(|sl| SliderNow { min: sl.min, max: sl.max, step: sl.step(), value: p.slider_now(s, &g.path).unwrap_or_default() }),
                     own: p.own_value(s, &g.path),
+                    screen: s.screen.clone(),
                     bindings: s.bindings.as_ref().map(|b| BindNow {
                         max: b.max(),
                         changed: p.bindings_changed(s, &g.path),
@@ -3168,10 +3212,23 @@ fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
 }
 
 #[tauri::command(async)]
-fn set_game_setting(st: State<'_, App>, id: String, setting: String, choice: usize) -> Res<()> {
+fn set_game_setting(app: AppHandle, st: State<'_, App>, id: String, setting: String, choice: usize) -> Res<()> {
+    read_screen(&app);
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     let s = p.settings.iter().find(|s| s.id == setting).ok_or_else(|| Error::Msg("That isn't one of its settings.".into()))?;
+    // Match My Screen is remembered, so it follows the monitor; any other choice stops that.
+    let fit = s.screen.is_some() && choice + 1 == s.choices.len();
+    if fit != g.screen_fit.contains(&setting) || fit {
+        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
+            x.screen_fit.retain(|k| k != &setting);
+            if fit {
+                x.screen_fit.push(setting.clone());
+                x.screen_size = screen_now().map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
+            }
+        }
+        st.save();
+    }
     if s.target == "args" {
         if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
             x.picks.insert(setting.clone(), choice.min(s.choices.len().saturating_sub(1)));
@@ -3598,6 +3655,36 @@ static CLEAN_START: Mutex<Vec<String>> = Mutex::new(Vec::new());
 #[tauri::command(async)]
 fn clean_start_next(id: String) {
     CLEAN_START.lock().unwrap().push(id);
+}
+
+/// The files a game's program loads that aren't on this PC (the DLLs it needs on Windows, the
+/// libraries it links to on Linux): for the crash window, when Windows said one was missing.
+#[tauri::command(async)]
+fn missing_files(st: State<'_, App>, id: String) -> Vec<String> {
+    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return vec![] };
+    let prof = if g.manual.is_some() { None } else { profile_of(&st, &id, &g) };
+    let exe = g
+        .manual
+        .as_ref()
+        .and_then(|m| m.exe.clone())
+        .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
+        .or_else(|| prof.as_ref().and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e)))
+        .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
+    match exe.filter(|e| e.is_file()) {
+        Some(e) => missing_libraries(&e, &g.path).into_iter().take(8).collect(),
+        None => vec![],
+    }
+}
+
+/// Before a picked copy is set up: the ID read off the disc or cartridge when the catalog lists the
+/// ones this recomp is made for and it isn't one of them, with those. None when it fits, when the
+/// catalog lists none, or when the copy's ID can't be read.
+#[tauri::command(async)]
+fn copy_check(st: State<'_, App>, id: String, path: String) -> Option<Value> {
+    let cat = cached_catalog(&st);
+    let a = catalog::app(&cat, &id)?;
+    let found = roms::fits_copy_ids(a, Path::new(&path)).err()?;
+    Some(serde_json::json!({ "found": found, "want": roms::copy_ids(a) }))
 }
 
 /// What could be keeping a game from starting: its files, Windows, what it needs on the PC, the
@@ -4392,7 +4479,7 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
 async fn get_releases(app: AppHandle, st: State<'_, App>, repo: String, force: bool) -> Res<catalog::Fetched> {
     if !force {
         if let Some(f) = catalog::releases_on_disk(&st.dir, &repo) {
-            if f.age >= catalog::LIST_FRESH && !net::resting(&format!("{}/api/gh.php", catalog::base()), false) {
+            if f.age >= catalog::RELEASES_FRESH && !net::resting(&format!("{}/api/gh.php", catalog::base()), false) {
                 let (app, repo) = (app.clone(), repo.clone());
                 tauri::async_runtime::spawn(async move {
                     let st = app.state::<App>();
@@ -5432,6 +5519,76 @@ fn saves_open_root(app: AppHandle, st: State<'_, App>) -> Res<()> {
     open_thing(&app, &p.to_string_lossy(), false)
 }
 
+/// Linux: tools for the Wine prefix every Windows game here shares, for what a game's setup says
+/// is missing: Winetricks ("winetricks"), a Windows program run in it ("run", an installer for a
+/// runtime), or its folder ("folder"). Gives back what happened.
+#[tauri::command]
+async fn wine_tools(app: AppHandle, st: State<'_, App>, what: String, path: Option<String>) -> Res<String> {
+    if cfg!(windows) {
+        let _ = (&app, &path);
+        return Err(Error::Msg("Wine tools are for Linux.".into()));
+    }
+    let r = proton::runner().ok_or_else(|| Error::Msg("Windows games need Proton or Wine on this PC first. Settings → General → GE-Proton installs it in one press.".into()))?;
+    match what.as_str() {
+        "folder" => {
+            let d = proton::prefix_dir(&r, &st.dir);
+            if !d.is_dir() {
+                return Err(Error::Msg("There's no Wine prefix yet. Play a Windows game here once and it's made.".into()));
+            }
+            open_thing(&app, &d.to_string_lossy(), false)?;
+            Ok("open".into())
+        }
+        "run" => {
+            let p = PathBuf::from(path.unwrap_or_default());
+            let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if !p.is_file() || !["exe", "msi"].contains(&ext.as_str()) {
+                return Err(Error::Msg("Pick a Windows program or installer (.exe or .msi).".into()));
+            }
+            // An .msi goes through Windows' installer, in the prefix.
+            let mut c = if ext == "msi" {
+                let mut c = proton::std_command(&r, &st.dir, Path::new("msiexec"));
+                c.arg("/i").arg(&p);
+                c
+            } else {
+                proton::std_command(&r, &st.dir, &p)
+            };
+            sysenv::clean_std(&mut c);
+            c.current_dir(p.parent().unwrap_or(Path::new("/"))).spawn().map_err(|e| Error::Msg(format!("Couldn't start it: {e}")))?;
+            trail::note(&format!("Wine tools: ran {} in the prefix ({})", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), r.name()));
+            Ok("started".into())
+        }
+        "winetricks" => {
+            // Not on this PC (a Steam Deck): the launcher keeps its own copy of the script.
+            let own = st.dir.join("tools").join("winetricks");
+            if !matches!(r, proton::Runner::Umu(..)) && !own.is_file() && proton::winetricks_command(&r, &st.dir, None).is_err() {
+                let url = "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks";
+                if let Ok(resp) = net::send(st.http.get(url).timeout(std::time::Duration::from_secs(60)), url, false).await {
+                    if resp.status().is_success() {
+                        if let Ok(b) = resp.bytes().await {
+                            if b.starts_with(b"#!") {
+                                let _ = std::fs::create_dir_all(own.parent().unwrap());
+                                if std::fs::write(&own, &b).is_ok() {
+                                    #[cfg(unix)]
+                                    {
+                                        use std::os::unix::fs::PermissionsExt;
+                                        let _ = std::fs::set_permissions(&own, std::fs::Permissions::from_mode(0o755));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let mut c = proton::winetricks_command(&r, &st.dir, Some(&own)).map_err(Error::Msg)?;
+            sysenv::clean_std(&mut c);
+            c.spawn().map_err(|e| Error::Msg(format!("Couldn't open Winetricks: {e}")))?;
+            trail::note(&format!("Wine tools: Winetricks opened ({})", r.name()));
+            Ok("open".into())
+        }
+        _ => Err(Error::Msg("That isn't one of the Wine tools.".into())),
+    }
+}
+
 /// Settings back to how they start ("settings"), or first-time setup again ("setup"). Games, their
 /// saves, the library folders and pinned games all stay.
 #[tauri::command(async)]
@@ -6261,8 +6418,8 @@ pub fn run() {
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open, saves_set_root, saves_open_root,
-            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, copy_check, wine_tools,
+            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
         .expect("RecompLauncher couldn't start")

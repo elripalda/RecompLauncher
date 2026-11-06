@@ -840,3 +840,13 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-capture-in b{font:700 semi-expanded 32px Archivo,sans-serif;animation:kwait 1.2s ease-in-out infinite}
 .tv-capture-in small{font-size:20px;color:var(--tvsoft,#a9c1d4)}
 @keyframes kwait{50%{opacity:.55}}
+/* Where a recomp's project stands: ended (red), on hold (amber), quiet (grey). */
+.tv-badge.left.state{color:#06121a;backdrop-filter:none}.tv-badge.state.ended{background:#ff7a7a}.tv-badge.state.paused{background:#f5b83d}
+.tv-badge.left.state.low{top:52px}.tv-dk .tv-badge.left.state{left:8px;top:8px;font-size:13px;padding:3px 9px}.tv-dk .tv-badge.left.state.low{top:38px}
+.tv-g-chips span.tv-st.ended{color:#ff9a9a;background:rgba(255,122,122,.14);border-color:rgba(255,122,122,.45)}
+.tv-g-chips span.tv-st.paused{color:#ffcf70;background:rgba(245,184,61,.14);border-color:rgba(245,184,61,.45)}
+.tv-g-chips span.tv-st.quiet{color:rgba(var(--tvinkrgb,244,248,252),.7)}
+.tv-stnote{display:flex;flex-direction:column;gap:4px;max-width:760px;margin:14px 0 0;padding:14px 18px;border-radius:16px;font-size:17px;line-height:1.4;border:1px solid}
+.tv-stnote span{opacity:.82}
+.tv-stnote.ended{background:rgba(255,122,122,.1);border-color:rgba(255,122,122,.4)}.tv-stnote.ended b{color:#ff9a9a}
+.tv-stnote.paused{background:rgba(245,184,61,.1);border-color:rgba(245,184,61,.4)}.tv-stnote.paused b{color:#ffcf70}

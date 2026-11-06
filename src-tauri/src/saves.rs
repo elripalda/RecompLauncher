@@ -55,8 +55,15 @@ pub struct Spot {
 /// Where a game's saves are, best first: the developer's file, the catalog, what was noticed while
 /// it ran, else its own folder.
 pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
-    if let Some(t) = g.save_place.as_ref().filter(|t| !t.trim().is_empty()) {
-        return vec![Spot { template: t.trim().to_string(), from: "player" }];
+    // The player's own folders: one, or several (a launcher with more than one game in it).
+    let mut mine: Vec<String> = vec![];
+    for t in g.save_place.iter().chain(g.more_save_places.iter()).map(|t| t.trim()).filter(|t| !t.is_empty()) {
+        if !mine.iter().any(|m| m == t) {
+            mine.push(t.to_string());
+        }
+    }
+    if !mine.is_empty() {
+        return mine.into_iter().map(|template| Spot { template, from: "player" }).collect();
     }
     let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
     // Places the launcher once saw the game write to, without the ones that turned out to hold
@@ -69,6 +76,25 @@ pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
         }
     }
     vec![Spot { template: "{install}".into(), from: "game" }]
+}
+
+/// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
+/// them already, or inside one or around one (its files would be in two places).
+pub fn add_place(now: &[String], dir: &Path, g: &Installed) -> Result<Vec<String>, String> {
+    let t = templatize_for(dir, g);
+    let new = resolve_for(&t, g);
+    for old in now {
+        let o = resolve_for(old, g);
+        if *old == t || o == new {
+            return Err("That folder is already one of its save folders.".into());
+        }
+        if new.starts_with(&o) || o.starts_with(&new) {
+            return Err("That folder is inside one of its save folders, or holds one. Pick folders side by side.".into());
+        }
+    }
+    let mut out = now.to_vec();
+    out.push(t);
+    Ok(out)
 }
 
 /// A template on this PC.
@@ -861,6 +887,32 @@ pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn several_save_folders_the_player_picked() {
+        let d = std::env::temp_dir().join(format!("rl-saves-many-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        for sub in ["TT-Xbox/saves", "ROTK-Xbox/saves"] {
+            fs::create_dir_all(d.join(sub)).unwrap();
+        }
+        fs::write(d.join("TT-Xbox/saves/slot1.sav"), b"tt").unwrap();
+        fs::write(d.join("ROTK-Xbox/saves/slot1.sav"), b"rotk").unwrap();
+        let mut g = game(&d);
+        let one = add_place(&[], &d.join("TT-Xbox/saves"), &g).unwrap();
+        let two = add_place(&one, &d.join("ROTK-Xbox/saves"), &g).unwrap();
+        assert_eq!(two, vec!["{install}/TT-Xbox/saves".to_string(), "{install}/ROTK-Xbox/saves".to_string()]);
+        assert!(add_place(&two, &d.join("TT-Xbox/saves"), &g).is_err());
+        assert!(add_place(&two, &d.join("TT-Xbox"), &g).is_err());
+        g.save_place = Some(two[0].clone());
+        g.more_save_places = vec![two[1].clone()];
+        let s = spots(&["{install}/dev".into()], &[], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/TT-Xbox/saves", "player"), ("{install}/ROTK-Xbox/saves", "player")]);
+        // Both folders' files go in the backup, kept apart.
+        let mut from: Vec<usize> = collect(&s, &g).iter().map(|e| e.spot).collect();
+        from.sort();
+        assert_eq!(from, vec![0, 1]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn a_downloaded_runtime_is_never_a_save_place() {
         use crate::library::Installed;

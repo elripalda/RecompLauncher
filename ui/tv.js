@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['library', N_('Library')], ['achievements', N_('Achievements')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['library', N_('Library')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -325,8 +325,10 @@
   function poster(a, key, sub) {
     const st = status(a), j = S.jobs[a.id];
     const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${esc(t('Soon'))}</span>` : sreqBadge(a) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left">${esc(t('Installed'))}</span>` : '');
+    const ps = projectState(a), left = /tv-badge left|tv-badge sreq/.test(badge);
+    const stb = ps && ps.kind !== 'quiet' ? `<span class="tv-badge left state ${ps.kind}${left ? ' low' : ''}">${esc(t(STATE_NAME[ps.kind]))}</span>` : '';
     return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(a.cover))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
-      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
+      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${stb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
   }
 
@@ -443,7 +445,7 @@
     if (mine.length) return { list: mine.slice(0, DOCK_MAX), kind: 'mine' };
     // Nothing installed yet: the games picked for the top of Home, in their order.
     const picked = window.bannerApps && bannerApps();
-    return picked ? { list: turnkeyFirst(picked), kind: 'banner' } : { list: turnkeyFirst(oneEach(pool().sort(byDl)).slice(0, 10)), kind: 'top' };
+    return picked ? { list: turnkeyFirst(picked), kind: 'banner' } : { list: turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 10)), kind: 'top' };
   }
   function pageHome() {
     const d = dockList(), list = d.list;
@@ -452,7 +454,7 @@
     const rows = [];
     // Below the dock, a press of down away: the rest of Home.
     if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
-    const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !haveAny(a)).sort(byDl));
+    const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
     if (owned.length) rows.push(row('own', t('Found in your folders'), owned.map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
     const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
@@ -463,7 +465,7 @@
     const upd = recentlyUpdated(pool()).slice(0, 14);
     if (upd.length) rows.push(row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')));
     rows.push(row('new', t('Just added'), turnkeyFirst(oneEach(pool().sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
-    if (d.kind !== 'top') rows.push(row('top', t('Most played'), turnkeyFirst(oneEach(pool().sort(byDl)).slice(0, 14)).map((a) => poster(a, 't:' + a.id)).join('')));
+    if (d.kind !== 'top') rows.push(row('top', t('Most played'), turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 14)).map((a) => poster(a, 't:' + a.id)).join('')));
     // Covers: every game in the dock fits across, smaller when there are more of them. Wide
     // pictures: as many as fit, and the row slides.
     const wide = (S.settings.ui || {}).tv_dock === 'wide';
@@ -863,8 +865,13 @@
 
   // Discover's Sort & Filter: the order, a console, and a way back to everything.
   function discoverRedraw() { TV.swap = true; TV.focusKey = TV.focusKey || 'g:@filter'; TV.gridShown = {}; draw(true); setScroll(0, true); }
+  // Runs On: on Linux the same choice as the desktop's, kept between launches.
+  const runsNow = () => (S.os === 'linux' ? runsPick() : TV.druns || '');
+  const setRunsNow = (k) => (S.os === 'linux' ? saveUi({ runs_linux: k }, true) : Promise.resolve((TV.druns = k)));
   function tvFilter() {
     const apps = pool(), org = TV.dorigin || '', srt = TV.dsort || 'popular';
+    const pickRuns = () => sheet(t('Runs On'), runsList().map(([k, n]) => ({ label: t(n), icon: runsNow() === k ? 'check' : '', run: () => { setRunsNow(k); TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
+    const runsName = t((runsList().find(([k]) => k === runsNow()) || runsList()[0])[1]);
     const SORTS = [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
     const pickShow = () => sheet(t('Show'), SHOWS.map(([k, n]) => ({ label: t(n), icon: (TV.dshow || '') === k ? 'check' : '', run: () => { TV.dshow = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const origins = ((S.cat && S.cat.origins) || []).map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
@@ -874,13 +881,15 @@
     for (const a of apps) for (const tg of tagsOf(a)) tagN[tg] = (tagN[tg] || 0) + 1;
     const pickTag = () => sheet(t('Tag'), [{ label: t('Any'), icon: TV.dtag ? '' : 'check', run: () => { TV.dtag = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } }].concat(Object.keys(tagN).sort((x, y) => tagN[y] - tagN[x]).map((tg) => ({ label: tg, sub: tn(tagN[tg], '1 recomp', '{n} recomps'), icon: tg === TV.dtag ? 'check' : '', run: () => { TV.dtag = tg; TV.focusKey = 'g:@filter'; discoverRedraw(); } }))));
     sheet(t('Sort & Filter'), [
+      ...(S.os === 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Sort'), sub: (SORTS.find(([k]) => k === srt) || SORTS[0])[1], icon: 'layers', run: pickSort },
       { label: t('Console'), sub: org ? originName(org) : t('Any'), icon: 'pad', run: pickConsole },
       { label: t('Tag'), sub: TV.dtag || t('Any'), icon: 'pin', run: pickTag },
       { label: t('Show'), sub: t((SHOWS.find(([k]) => k === (TV.dshow || '')) || SHOWS[0])[1]), icon: 'layers', run: pickShow },
       { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      ...(S.os !== 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Search'), sub: TV.dq ? TV.dq : t('Find a game by name'), icon: 'search', run: tvSearch },
-      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dsort = ''; TV.genre = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dsort = ''; TV.genre = ''; if (runsNow()) setRunsNow(''); TV.focusKey = 'g:@filter'; discoverRedraw(); } },
     ]);
   }
   // Search with the controller: an on-screen keyboard (a keyboard types straight in too). The games
@@ -948,21 +957,24 @@
     // "Easy Setup" is a chip of its own, before the genres.
     // Search, a console and the order narrow it further (Sort & Filter).
     const q = fold((TV.dq || '').trim()), org = TV.dorigin || '', srt = TV.dsort || 'popular';
-    const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDl;
-    const found = oneEach(apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : !g || a.genre === g))
+    const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDlConsolesFirst;
+    const each = apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
-      .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)))
+      .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && runsFits(a, runsNow()))
       .filter((a) => !q || fold(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`).includes(q))
-      .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y)), srt === 'new');
+      .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
+    // Every version counts, not every tile.
+    const count = recompCount(each);
+    const found = oneEach(each, srt === 'new');
     // Discover's own order (no sort picked): turnkey recomps first.
     const list = TV.dsort ? found : turnkeyFirst(found);
-    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0);
+    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (runsNow() ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
     const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
-      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), list.length === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: list.length, os: OS_NAME[S.os] }))}${chips}
+      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
         <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]])}`;
   }
@@ -1148,7 +1160,10 @@
     const modsOk = !!(S.mods[id] && S.mods[id] !== 'loading');
     const dv = devOf(a);
     const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc)
-      .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : []);
+      .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : [])
+    const ps = projectState(a);
+    const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${esc(t(STATE_PILL[ps.kind]))}</span>`;
+    const stNote = ps && ps.kind !== 'quiet' ? `<p class="tv-stnote ${ps.kind}"><b>${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></p>` : '';;
     const checks = readyRows(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
@@ -1160,6 +1175,7 @@
     const acts = [
       mainButton(a, 'g-main'),
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
+      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('I Already Have It')), { id, icon: 'folder' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
       verGroup(a) ? btn('g-vers', 'versions', esc(tn(verGroup(a).list.length, '1 version', '{n} versions')), { id, icon: 'layers' }) : '',
       g ? btn('g-shots', 'shots', esc(t('Screenshots')), { id, icon: 'shot' }) : '',
@@ -1183,11 +1199,12 @@
     return `${backdrop(a, 'game')}${gameBar()}
       ${region(`<div class="tv-game">
         <div class="tv-g-main">
-          <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}</div>
+          <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${stChip}</div>
           ${titleOf(a)}
           ${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>
+          ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
           ${about}${checkBlock}${shotRow}
         </div>
@@ -1435,6 +1452,7 @@
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),
       ...(TV.view === 'game' && onPage && verGroup(a) ? [{ label: tn(verGroup(a).list.length, '1 version', '{n} versions'), sub: t('Pick which one this page is for'), icon: 'layers', run: () => pickVersion(id) }] : []),
       ...(g && !S.running.has(id) ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
+      ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Discover'), sub: t('It shows in Discover and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Discover'), sub: t('It won\'t show in Discover or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
         { gap: true, label: t('Saves'), sub: t('Back them up, or put an older one back'), icon: 'save', run: () => go('gsaves', id) },
         ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and Looks'), icon: 'gear', run: () => go('gsettings', id) }] : []),
@@ -1787,6 +1805,11 @@
       items = [{ run: () => playGame(id) }, { run: () => { if (TV.view === 'gsettings' && TV.arg === id) draw(true); else go('gsettings', id); } }];
       body = `<div class="bigdisc">${label}</div><div class="tt"><span class="ok${r.verified ? '' : ' plain'}">${esc(r.text || t('Checked'))}</span><h2>${esc(t('Ready to play'))}</h2><p>${esc(tf('{name} is set up with your copy.', { name: a.name }))}</p></div>
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Play'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Settings'))}</span></button></div>`;
+    } else if (TS.stage === 'wrong') {
+      const w = TS.wrong || {};
+      items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }, { run: () => tsBegin(TS.path, true) }];
+      body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('This Looks Like Another Copy'))}</h2><p>${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))} ${esc(t('Another region or version of the game may not work with it.'))}</p></div>
+        <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }];
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
@@ -1798,7 +1821,13 @@
     const f = $('[data-sheet]', el);
     if (f) focus(f, true);
   }
-  async function tsBegin(path) {
+  async function tsBegin(path, anyway) {
+    if (!anyway) {
+      let w = null;
+      try { w = await invoke('copy_check', { id: TS.id, path }); } catch (e) { /* can't tell: go ahead */ }
+      if (!TS.id) return;
+      if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
+    }
     Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
     try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
@@ -2287,6 +2316,7 @@
       case 'shots': await loadAllShots(); return go('shots', id);
       case 'mods': return go('mods', id);
       case 'gsettings': return go('gsettings', id);
+      case 'haveit': sfx('select'); return window.haveIt(id);
       case 'pick-copy': case 'setup': sfx('select'); return tvSetup(id);
       case 'setupreq': return tvSetupReq(id);
       case 'addlib': sfx('select'); await addToLibrary(id); TV.focusKey = 'g-main'; return draw(true);

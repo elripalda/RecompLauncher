@@ -593,7 +593,9 @@ pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<Pat
                 let name = e.file_name().to_string_lossy().to_lowercase();
                 let Ok(ft) = e.file_type() else { continue };
                 if ft.is_dir() {
-                    if d < depth && !skip.contains(&name.as_str()) && !name.starts_with('.') {
+                    // Not a setup's leftovers or tools (temp\…\build, deps): a half-built copy
+                    // there doesn't have what the game needs beside it.
+                    if d < depth && !skip.contains(&name.as_str()) && search_into(&name) {
                         stack.push((e.path(), d + 1));
                     }
                 } else if name == want {
@@ -606,6 +608,12 @@ pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<Pat
         }
     }
     best.map(|b| b.1)
+}
+
+/// A folder the search for a built program goes into (its name, lowercased): not a hidden one, and
+/// not a setup's leftovers or tools.
+fn search_into(name: &str) -> bool {
+    !name.starts_with('.') && !crate::install::TOOL_DIRS.contains(&name)
 }
 
 /// Name words that say nothing about which game it is.
@@ -809,6 +817,15 @@ fn pick(list: &[Value], names: &[&str], since: SystemTime, ours: &Path, then: Op
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_setups_leftovers_are_not_searched() {
+        assert!(!super::search_into("temp"));
+        assert!(!super::search_into("tools"));
+        assert!(!super::search_into(".cache"));
+        assert!(super::search_into("build"));
+        assert!(super::search_into("totk"));
+    }
+
     use super::*;
 
     #[test]

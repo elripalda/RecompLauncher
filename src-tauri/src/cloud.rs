@@ -683,6 +683,41 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
         }
         None => None,
     };
+    g.more_save_places.clear();
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// One more folder where the game saves (a launcher with several games in it, each saving in its
+/// own folder): the ones it has now stay, and backups and cloud saves cover all of them.
+#[tauri::command(async)]
+pub fn saves_add_place(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
+    let g = game(&st, &id)?;
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        return Err(Error::Msg("That folder couldn't be found.".into()));
+    }
+    let now: Vec<String> = spots_of(&st, &id, &g).into_iter().filter(|s| s.from != "game").map(|s| s.template).collect();
+    let list = saves::add_place(&now, &p, &g).map_err(Error::Msg)?;
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.save_place = list.first().cloned();
+    g.more_save_places = list.get(1..).map(<[String]>::to_vec).unwrap_or_default();
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// One of the player's save folders taken off the list (the last one: back to the usual place).
+#[tauri::command(async)]
+pub fn saves_remove_place(st: State<'_, App>, id: String, template: String) -> Res<Installed> {
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let mut list: Vec<String> = g.save_place.iter().chain(g.more_save_places.iter()).filter(|t| t.trim() != template.trim()).cloned().collect();
+    list.dedup();
+    g.save_place = list.first().cloned();
+    g.more_save_places = list.get(1..).map(<[String]>::to_vec).unwrap_or_default();
     let g = g.clone();
     let _ = l.save(&st.dir);
     Ok(g)

@@ -364,6 +364,9 @@ pub struct Setting {
     /// Key bindings instead of choices: the game's actions and the keys each one is on.
     #[serde(default)]
     pub bindings: Option<Bindings>,
+    /// The launcher's own last choice, Match My Screen, was added (with the size or shape it writes).
+    #[serde(skip)]
+    pub screen: Option<String>,
 }
 
 /// Key bindings in a settings file, one key per action (`key.cross=Space`, same key rules as
@@ -1533,6 +1536,148 @@ impl Profile {
     }
 }
 
+// ---------- Match My Screen ----------
+
+impl Profile {
+    /// A last choice, Match My Screen, on each setting that writes a resolution (width and height
+    /// keys, or one "WxH" value) or a screen shape (a number like 1.777, or "16:9"), when all its
+    /// choices are plain values in one format: the main monitor's size or shape, written the way
+    /// the other choices are. Settings with named choices ("Stretch") are left as they are.
+    pub fn add_screen_choices(&mut self, screen: Option<(u32, u32)>) {
+        let Some((w, h)) = screen.filter(|(w, h)| *w >= 320 && *h >= 200) else { return };
+        for st in self.settings.iter_mut() {
+            if st.target == "args" || st.slider.is_some() || st.bindings.is_some() || st.choices.len() < 2 || st.screen.is_some() {
+                continue;
+            }
+            if let Some((set, shown)) = screen_values(st, w, h) {
+                st.choices.push(Choice { label: format!("Match my screen \u{b7} {shown}"), set, args: vec![] });
+                st.screen = Some(shown);
+            }
+        }
+    }
+
+    /// Before Play, after the monitor changed: the settings the player put on Match My Screen get
+    /// its size or shape now, where the file doesn't have it already. Gives back the ones it wrote.
+    pub fn follow_screen(&self, install: &Path, ids: &[String]) -> Vec<String> {
+        let mut out = vec![];
+        for st in self.settings.iter().filter(|s| s.screen.is_some() && ids.contains(&s.id)) {
+            let last = st.choices.len() - 1;
+            let Some(f) = self.config_file(&st.target, install).filter(|f| f.existed) else { continue };
+            let on = st.choices[last].set.iter().all(|(k, v)| f.get(k).map(|x| same(&x, v)).unwrap_or(false));
+            if !on && self.pick(install, &st.id, last).is_ok() {
+                out.push(st.id.clone());
+            }
+        }
+        out
+    }
+}
+
+/// The common name of a screen's shape ("21:9" for 3440x1440), or its own when none is close.
+pub fn shape_name(w: u32, h: u32) -> String {
+    const SHAPES: [(u32, u32); 9] = [(4, 3), (5, 4), (3, 2), (16, 10), (5, 3), (16, 9), (21, 9), (32, 10), (32, 9)];
+    let r = w as f64 / h as f64;
+    let (best, err) = SHAPES.iter().map(|&(a, b)| ((a, b), ((a as f64 / b as f64) - r).abs() / r)).fold(((0, 0), f64::MAX), |m, x| if x.1 < m.1 { x } else { m });
+    if err <= 0.035 {
+        return format!("{}:{}", best.0, best.1);
+    }
+    let g = gcd(w, h);
+    format!("{}:{}", w / g, h / g)
+}
+
+fn gcd(a: u32, b: u32) -> u32 {
+    if b == 0 { a.max(1) } else { gcd(b, a % b) }
+}
+
+/// What Match My Screen writes on this setting, and what it shows ("3440\u{d7}1440", "21:9"); None
+/// when its choices aren't all plain sizes or shapes in one format.
+fn screen_values(st: &Setting, w: u32, h: u32) -> Option<(BTreeMap<String, String>, String)> {
+    let keys: Vec<&String> = st.choices[0].set.keys().collect();
+    if keys.is_empty() || st.choices.iter().any(|c| !c.args.is_empty() || c.set.keys().collect::<Vec<_>>() != keys) {
+        return None;
+    }
+    let plain = |v: &str| -> Option<u32> { let v = v.trim(); (!v.is_empty() && v.len() <= 5 && v.bytes().all(|b| b.is_ascii_digit())).then(|| v.parse().ok()).flatten() };
+    let size = format!("{w}\u{d7}{h}");
+    let hint = |k: &str, words: &[&str]| { let k = k.to_ascii_lowercase(); words.iter().any(|w| k.contains(w)) };
+    if keys.len() == 2 {
+        // Width and height in their own keys: whole numbers, the width the bigger one in each.
+        let (a, b) = (keys[0], keys[1]);
+        let mut pairs = vec![];
+        for c in &st.choices {
+            pairs.push((plain(&c.set[a])?, plain(&c.set[b])?));
+        }
+        let fits = |p: &[(u32, u32)]| p.iter().all(|&(x, y)| y >= 200 && x <= 16384 && (x as f64 / y as f64) >= 1.2 && (x as f64 / y as f64) <= 4.0);
+        let flipped: Vec<(u32, u32)> = pairs.iter().map(|&(x, y)| (y, x)).collect();
+        let named = |k: &str, end: char| hint(k, &["width", "height", "res", "size"]) || k.to_ascii_lowercase().ends_with(end) || k.to_ascii_lowercase().ends_with(if end == 'x' { 'w' } else { 'h' });
+        let (wk, hk) = if fits(&pairs) { (a, b) } else if fits(&flipped) { (b, a) } else { return None };
+        if !named(wk, 'x') || !named(hk, 'y') {
+            return None;
+        }
+        return Some((BTreeMap::from([(wk.clone(), w.to_string()), (hk.clone(), h.to_string())]), size));
+    }
+    if keys.len() != 1 {
+        return None;
+    }
+    let k = keys[0];
+    // A text value in the file's own syntax keeps its quotes ("\"1280x720\"" in TOML or JSON): read
+    // inside them, and written with the same ones.
+    let unq = |v: &str| -> (String, String) {
+        let v = v.trim();
+        for q in ["\"", "'"] {
+            if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
+                return (v[1..v.len() - 1].trim().to_string(), q.to_string());
+            }
+        }
+        (v.to_string(), String::new())
+    };
+    let parsed: Vec<(String, String)> = st.choices.iter().map(|c| unq(&c.set[k])).collect();
+    let q = parsed[0].1.clone();
+    if parsed.iter().any(|(_, x)| *x != q) {
+        return None;
+    }
+    let vals: Vec<&str> = parsed.iter().map(|(v, _)| v.as_str()).collect();
+    // "1280x720": the same separator in each (x, X, the times sign or *, with or without spaces).
+    let split = |v: &str| -> Option<(String, String, String)> {
+        let i = v.find(|c: char| !c.is_ascii_digit())?;
+        let j = v.rfind(|c: char| !c.is_ascii_digit())?;
+        let j = j + v[j..].chars().next()?.len_utf8();
+        let (x, sep, y) = (&v[..i], &v[i..j], &v[j..]);
+        let mid = sep.trim();
+        (plain(x).is_some() && plain(y).is_some() && ["x", "X", "\u{d7}", "*"].contains(&mid)).then(|| (x.to_string(), sep.to_string(), y.to_string()))
+    };
+    if let Some(first) = split(vals[0]) {
+        if vals.iter().all(|v| split(v).map(|p| p.1 == first.1 && plain(&p.0).unwrap_or(0) > plain(&p.2).unwrap_or(u32::MAX)).unwrap_or(false)) {
+            return Some((BTreeMap::from([(k.clone(), format!("{q}{w}{}{h}{q}", first.1))]), size));
+        }
+        return None;
+    }
+    let shape = shape_name(w, h);
+    // "16:9": a shape, written the same way.
+    let ratio = |v: &str| -> Option<String> { let (x, y) = v.split_once(':')?; (plain(x).is_some() && plain(y).is_some()).then(|| v[x.len()..v.len() - y.len()].to_string()) };
+    if let Some(sep) = ratio(vals[0]) {
+        if vals.iter().all(|v| ratio(v).as_deref() == Some(sep.as_str())) {
+            let (x, y) = shape.split_once(':')?;
+            return Some((BTreeMap::from([(k.clone(), format!("{q}{x}{sep}{y}{q}"))]), shape));
+        }
+        return None;
+    }
+    // 1.777: a shape as a number, on a setting that says it's one, with as many decimals as the others.
+    if !hint(k, &["aspect", "ratio", "shape"]) && !hint(&st.label, &["aspect", "ratio", "shape"]) && !hint(&st.id, &["aspect", "ratio", "shape"]) {
+        return None;
+    }
+    let num = |v: &str| -> Option<(f64, usize)> {
+        let d = v.split_once('.').map(|(_, f)| f.len()).unwrap_or(0);
+        (v.bytes().all(|b| b.is_ascii_digit() || b == b'.') && v.matches('.').count() <= 1).then(|| v.parse::<f64>().ok().filter(|x| (1.0..=4.0).contains(x)).map(|x| (x, d))).flatten()
+    };
+    let mut decimals = 0;
+    for v in &vals {
+        decimals = decimals.max(num(v)?.1);
+    }
+    if decimals == 0 {
+        return None;
+    }
+    Some((BTreeMap::from([(k.clone(), format!("{q}{:.*}{q}", decimals, w as f64 / h as f64))]), shape))
+}
+
 // ---------- the player's copy ----------
 
 fn read_at(f: &mut std::fs::File, at: u64, n: usize) -> Option<Vec<u8>> {
@@ -2045,6 +2190,50 @@ mod tests {
         std::fs::write(&f, "[Display]\nscale = 1.5\n").unwrap();
         assert_eq!(p.own_value(&p.settings[0], &d).as_deref(), Some("1.5"));
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Display]\nscale = 1.5\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn match_my_screen_is_offered_in_the_settings_format() {
+        let d = tmp("screen");
+        let f = d.join("config.toml");
+        std::fs::write(&f, "[Video]\nwidth = 1280\nheight = 720\nres = \"1280x720\"\naspect = 1.777\nmode = \"stretch\"\nshape = \"16:9\"\n").unwrap();
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "settings":[
+              {"id":"size","label":"Resolution","choices":[{"label":"720p","set":{"Video/width":"1280","Video/height":"720"}},{"label":"1080p","set":{"Video/width":"1920","Video/height":"1080"}}]},
+              {"id":"res","label":"Resolution","choices":[{"label":"720p","set":{"Video/res":"\"1280x720\""}},{"label":"1080p","set":{"Video/res":"\"1920x1080\""}}]},
+              {"id":"aspect","label":"Aspect ratio","choices":[{"label":"16:9","set":{"Video/aspect":"1.777"}},{"label":"4:3","set":{"Video/aspect":"1.333"}}]},
+              {"id":"mode","label":"Widescreen","choices":[{"label":"Stretch","set":{"Video/mode":"stretch"}},{"label":"Hor+","set":{"Video/mode":"hor+"}}]},
+              {"id":"shape","label":"Screen","choices":[{"label":"16:9","set":{"Video/shape":"\"16:9\""}},{"label":"4:3","set":{"Video/shape":"\"4:3\""}}]},
+              {"id":"scale","label":"UI scale","choices":[{"label":"Small","set":{"Video/scale":"1.25"}},{"label":"Big","set":{"Video/scale":"1.5"}}]}
+            ]}"#).unwrap();
+        p.add_screen_choices(Some((3440, 1440)));
+        let last = |i: usize| p.settings[i].choices.last().unwrap().clone();
+        assert_eq!(last(0).label, "Match my screen \u{b7} 3440\u{d7}1440");
+        assert_eq!(last(0).set, BTreeMap::from([("Video/width".to_string(), "3440".to_string()), ("Video/height".to_string(), "1440".to_string())]));
+        assert_eq!(last(1).set["Video/res"], "\"3440x1440\"");
+        assert_eq!(last(2).set["Video/aspect"], "2.389");
+        assert_eq!(p.settings[2].screen.as_deref(), Some("21:9"));
+        assert_eq!(last(4).set["Video/shape"], "\"21:9\"");
+        // Named choices, and numbers that aren't a shape: nothing added.
+        assert_eq!(p.settings[3].choices.len(), 2);
+        assert_eq!(p.settings[5].choices.len(), 2);
+        // Picked: written in the same format; on another monitor, written again before Play.
+        p.pick(&d, "res", 2).unwrap();
+        p.pick(&d, "aspect", 2).unwrap();
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(text.contains("res = \"3440x1440\""), "{text}");
+        assert_eq!(p.current(&d, &BTreeMap::new())[1].0, 2);
+        let mut q: Profile = p.clone();
+        q.settings.iter_mut().for_each(|s| { if s.screen.is_some() { s.choices.pop(); s.screen = None; } });
+        q.add_screen_choices(Some((5120, 1440)));
+        assert_eq!(q.follow_screen(&d, &["res".to_string(), "aspect".to_string()]), vec!["res".to_string(), "aspect".to_string()]);
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(text.contains("res = \"5120x1440\"") && text.contains("aspect = 3.556"), "{text}");
+        // Nothing changed: nothing written.
+        assert!(q.follow_screen(&d, &["res".to_string()]).is_empty());
+        assert_eq!(shape_name(1920, 1200), "16:10");
+        assert_eq!(shape_name(2560, 1080), "21:9");
         let _ = std::fs::remove_dir_all(&d);
     }
 

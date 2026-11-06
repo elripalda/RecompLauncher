@@ -260,11 +260,43 @@ pub async fn install_ge(
     Ok(tag)
 }
 
+/// The version an umu-run says it is ("umu-launcher version 1.2.9 (…)"), asked once.
+fn umu_version(umu: &Path) -> Option<(u32, u32, u32)> {
+    static V: std::sync::OnceLock<Option<(u32, u32, u32)>> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        let out = std::process::Command::new(umu).arg("--version").stdin(std::process::Stdio::null()).output().ok()?;
+        version_in(&format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    })
+}
+
+fn version_in(text: &str) -> Option<(u32, u32, u32)> {
+    let i = text.find("version")?;
+    let mut n = text[i + 7..].trim_start().split(|c: char| !c.is_ascii_digit() && c != '.').next()?.split('.').map(|x| x.parse::<u32>().ok());
+    Some((n.next()??, n.next().flatten().unwrap_or(0), n.next().flatten().unwrap_or(0)))
+}
+
+/// A Proton built for a newer Steam runtime than Proton 9's ("soldier" and "sniper"): its
+/// toolmanifest asks for another one (GE-Proton 11 asks for steamrt4).
+fn newer_runtime(proton: &Path) -> bool {
+    let Ok(m) = std::fs::read_to_string(proton.join("toolmanifest.vdf")) else { return false };
+    let id = m.lines().find(|l| l.contains("require_tool_appid")).and_then(|l| l.split('"').filter(|x| !x.is_empty() && x.chars().all(|c| c.is_ascii_digit())).next().map(str::to_string));
+    matches!(id.as_deref(), Some(x) if x != "1628350" && x != "1391110")
+}
+
 /// The best way to start a Windows program on this PC, if there's one.
 pub fn runner() -> Option<Runner> {
     let proton = protons().into_iter().next();
     if let Some(umu) = on_path("umu-run") {
-        return Some(Runner::Umu(umu, proton.map(|p| p.0)));
+        // An umu-run older than 1.4 can't set up the runtime a newer Proton needs ("Failed to
+        // match … with a container runtime"): that Proton runs on its own instead.
+        let old = proton.as_ref().map(|p| newer_runtime(&p.0)).unwrap_or(false) && umu_version(&umu).map(|v| v < (1, 4, 0)).unwrap_or(false);
+        if !old {
+            return Some(Runner::Umu(umu, proton.map(|p| p.0)));
+        }
+        static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            crate::trail::note("Proton: this PC's umu-run is too old for the newest Proton, so Proton runs on its own");
+        }
     }
     if let Some((p, root)) = proton {
         return Some(Runner::Proton(p, root));
@@ -303,6 +335,56 @@ pub fn std_command(r: &Runner, data: &Path, exe: &Path) -> std::process::Command
     }
 }
 
+/// The shared prefix's folder (its drive_c is inside), for the player to look in.
+pub fn prefix_dir(r: &Runner, data: &Path) -> PathBuf {
+    let base = data.join("proton");
+    match r {
+        Runner::Wine(_) => base.join("wine"),
+        _ => base.join("pfx"),
+    }
+}
+
+/// Winetricks on the shared prefix, with the Wine the games run with, so what the player adds
+/// there is there for every Windows game played here. umu-run brings its own Winetricks; with
+/// Proton or Wine, `winetricks` is the one on this PC (or the one the launcher keeps, `own`).
+pub fn winetricks_command(r: &Runner, data: &Path, own: Option<&Path>) -> Result<std::process::Command, String> {
+    let base = data.join("proton");
+    let _ = std::fs::create_dir_all(&base);
+    if !matches!(r, Runner::Umu(..)) && on_path("zenity").is_none() && on_path("kdialog").is_none() {
+        return Err("Winetricks needs zenity or kdialog to show its window. Install zenity from your distro's packages, then try again.".into());
+    }
+    let tricks = || on_path("winetricks").or_else(|| own.filter(|p| p.is_file()).map(Path::to_path_buf)).ok_or_else(|| "Winetricks isn't on this PC. Install winetricks from your distro's packages, then try again.".to_string());
+    match r {
+        Runner::Umu(umu, proton) => {
+            let mut c = std::process::Command::new(umu);
+            c.arg("winetricks").arg("--gui").env("WINEPREFIX", base.join("pfx")).env("GAMEID", "umu-default");
+            if let Some(p) = proton {
+                c.env("PROTONPATH", p);
+            }
+            Ok(c)
+        }
+        Runner::Proton(p, _) => {
+            // Proton makes the prefix the first time it runs something: before that there's nothing to change.
+            if !base.join("pfx").is_dir() {
+                return Err("Play a Windows game here once first: that makes the Wine prefix Winetricks works on.".into());
+            }
+            let bin = ["files/bin", "dist/bin"].iter().map(|b| p.join(b)).find(|b| b.join("wine").is_file()).ok_or("This Proton's own Wine couldn't be found.")?;
+            let wine = if bin.join("wine64").is_file() { bin.join("wine64") } else { bin.join("wine") };
+            // Proton's own Wine, set up the way Protontricks does it.
+            let top = bin.parent().unwrap_or(&bin).to_path_buf();
+            let dlls = std::env::join_paths([top.join("lib64/wine"), top.join("lib/wine")]).unwrap_or_default();
+            let mut c = std::process::Command::new(tricks()?);
+            c.arg("--gui").env("WINEPREFIX", base.join("pfx")).env("WINE", &wine).env("WINELOADER", &wine).env("WINESERVER", bin.join("wineserver")).env("WINEDLLPATH", dlls);
+            Ok(c)
+        }
+        Runner::Wine(w) => {
+            let mut c = std::process::Command::new(tricks()?);
+            c.arg("--gui").env("WINEPREFIX", base.join("wine")).env("WINE", w);
+            Ok(c)
+        }
+    }
+}
+
 /// The launcher's data folder (where the shared prefix is), once it's known.
 pub fn data_dir() -> Option<PathBuf> {
     DATA.get().cloned()
@@ -315,7 +397,39 @@ pub fn is_windows_program(p: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn umu_versions_and_runtimes() {
+        assert_eq!(super::version_in("umu-launcher version 1.2.9 (3.14.2 (main, Dec 5 2025))"), Some((1, 2, 9)));
+        assert_eq!(super::version_in("umu-launcher version 1.4.4"), Some((1, 4, 4)));
+        assert_eq!(super::version_in("nothing here"), None);
+        let d = std::env::temp_dir().join("rl-proton-manifest");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("toolmanifest.vdf"), "\"manifest\"\n{\n  \"version\" \"2\"\n  \"commandline\" \"/proton %verb%\"\n  \"require_tool_appid\" \"1628350\"\n}\n").unwrap();
+        assert!(!super::newer_runtime(&d));
+        std::fs::write(d.join("toolmanifest.vdf"), "\"manifest\"\n{\n  \"require_tool_appid\" \"3810310\"\n}\n").unwrap();
+        assert!(super::newer_runtime(&d));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
     use super::*;
+
+    #[test]
+    fn winetricks_works_on_the_shared_prefix() {
+        let base = std::env::temp_dir().join(format!("rl-wt-{}", std::process::id()));
+        let proton = base.join("GE-Proton10");
+        std::fs::create_dir_all(proton.join("files/bin")).unwrap();
+        std::fs::write(proton.join("files/bin/wine"), b"").unwrap();
+        let r = Runner::Proton(proton.clone(), base.join("steam"));
+        assert_eq!(prefix_dir(&r, &base), base.join("proton/pfx"));
+        assert_eq!(prefix_dir(&Runner::Wine(PathBuf::from("/usr/bin/wine")), &base), base.join("proton/wine"));
+        // umu-run brings its own Winetricks, on the same prefix the games use.
+        if let Ok(c) = winetricks_command(&Runner::Umu(PathBuf::from("/usr/bin/umu-run"), Some(proton.clone())), &base, None) {
+            let env: Vec<_> = c.get_envs().filter_map(|(k, v)| Some((k.to_string_lossy().to_string(), v?.to_string_lossy().to_string()))).collect();
+            assert!(env.contains(&("WINEPREFIX".into(), base.join("proton/pfx").to_string_lossy().to_string())));
+            assert_eq!(c.get_args().next().map(|a| a.to_string_lossy().to_string()).as_deref(), Some("winetricks"));
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn finds_the_windows_user_folder() {

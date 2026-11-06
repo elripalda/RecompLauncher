@@ -425,6 +425,15 @@ pub fn report_form(id: &str, verdict: &str, sys: &str, note: &str, version: &str
     })
 }
 
+/// A report from Linux or a Steam Deck on a Windows build played through Proton says so, next to
+/// where it was played.
+pub fn mark_proton(form: &mut ReportForm, proton: bool) {
+    if proton && !form.fields.iter().any(|(k, _)| *k == "proton") {
+        let at = form.fields.iter().position(|(k, _)| *k == "sys").map(|i| i + 1).unwrap_or(form.fields.len());
+        form.fields.insert(at, ("proton", "true".into()));
+    }
+}
+
 /// The report as multipart/form-data.
 pub fn multipart(form: &ReportForm, boundary: &str) -> Vec<u8> {
     let mut out = Vec::new();
@@ -474,7 +483,10 @@ pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Optio
     let dir = st.dir.clone();
     let pc = tokio::task::spawn_blocking(move || pc_info(&dir)).await.unwrap_or_default();
     let attach = if log.unwrap_or(false) { report_log(&st, &id) } else { None };
-    let form = report_form(&id, &verdict, sys_now(), note.as_deref().unwrap_or(""), &version, &specs_line(&pc), attach).map_err(Error::Msg)?;
+    let mut form = report_form(&id, &verdict, sys_now(), note.as_deref().unwrap_or(""), &version, &specs_line(&pc), attach).map_err(Error::Msg)?;
+    // On Linux, a Windows build: it ran through Proton.
+    let proton = !cfg!(windows) && st.lib.lock().unwrap().installed.get(&id).map(|g| g.proton).unwrap_or(false);
+    mark_proton(&mut form, proton);
     let boundary = format!("----RecompLauncher{}", (0..12).map(|_| format!("{:02x}", rand_byte())).collect::<String>());
     let url = pc_api();
     let mut req = st
@@ -555,6 +567,14 @@ mod tests {
         assert!(report_form("g", "runs", "windows", "", "v1.2", "Windows 11", None).is_ok());
         assert!(report_form("g", "great", "windows", "", "v1.2", "Windows 11", None).is_err());
         // Version and specs go every time, even empty.
+        let mut p = report_form("g", "runs", "deck", "", "", "", None).unwrap();
+        mark_proton(&mut p, true);
+        let names: Vec<&str> = p.fields.iter().map(|(k, _)| *k).collect();
+        assert_eq!(names[names.iter().position(|k| *k == "sys").unwrap() + 1], "proton");
+        assert!(String::from_utf8(multipart(&p, "b")).unwrap().contains("name=\"proton\"\r\n\r\ntrue\r\n"));
+        let mut n = report_form("g", "runs", "linux", "", "", "", None).unwrap();
+        mark_proton(&mut n, false);
+        assert!(!n.fields.iter().any(|(k, _)| *k == "proton"));
         let f = report_form("g", "runs", "deck", "", "", "", None).unwrap();
         let names: Vec<&str> = f.fields.iter().map(|(k, _)| *k).collect();
         assert!(names.contains(&"version") && names.contains(&"specs") && names.contains(&"sys") && names.contains(&"note"));

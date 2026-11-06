@@ -170,7 +170,10 @@ function savesTab(a) {
   if (!s || s === 'loading') { if (!s) loadSaves(id); return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading…'))}</p></div></div>`; }
   if (s.error) return `<div class="stack"><div class="card"><p style="margin:0">${esc(t(s.error))}</p></div></div>`;
   const signed = s.signedIn, on = s.cloudOn === true;
-  const where = s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${p.from === 'found' ? `<button type="button" class="btn sm" data-act="saves-forget" data-id="${esc(id)}">${esc(t('Not right?'))}</button>` : ''}${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button></span></div>`).join('');
+  // Several folders the player picked (a launcher with more than one game): each can come off the list.
+  const many = s.spots.filter((p) => p.from === 'player').length > 1;
+  const where = s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${p.from === 'found' ? `<button type="button" class="btn sm" data-act="saves-forget" data-id="${esc(id)}">${esc(t('Not right?'))}</button>` : ''}${many ? `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>` : `${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`}</span></div>`).join('')
+    + `<div class="set-row"><div class="k"><b>${esc(t('Saves in more than one folder?'))}</b><span>${esc(t('For a launcher with several games in it, each saving in its own folder. Backups and cloud saves cover every folder.'))}</span></div><span class="acts">${many ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place-add" data-id="${esc(id)}">${esc(t('Add a Folder'))}</button></span></div>`;
   const cloudCard = !signed
     ? `<div class="card acc-cloud"><div class="acc-hero">${CLOUD_ICON}<div><b>${esc(t('Cloud saves'))}</b><span>${esc(t('Sign in to back this game\'s saves up to your account and play on with them on any PC.'))}</span></div></div><div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="acc-create">${esc(t('Create an account'))}</button><button type="button" class="btn main" data-act="acc-signin">${esc(t('Sign in'))}</button></div></div>`
     : `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? (s.offline ? t('On. The website can\'t be reached right now; copies go up when it can.') : s.pending ? t('On. The newest copy goes up next time the launcher can reach the website.') : t('On. After you play, its saves go to your account.')) : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>
@@ -360,6 +363,14 @@ window.accountAct = async (act, el) => {
       return loadSaves(id);
     }
     case 'saves-place-reset': try { S.library[id] = await invoke('saves_set_place', { id, path: null }); } catch (e) { return fail(e); } return loadSaves(id);
+    case 'saves-place-add': {
+      const p = await pickFile({ title: t('Another folder where the game keeps its saves'), directory: true }).catch(fail);
+      if (!p) return;
+      try { S.library[id] = await invoke('saves_add_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+      toast(t('Added. Backups and cloud saves cover that folder too.'));
+      return loadSaves(id);
+    }
+    case 'saves-place-remove': try { S.library[id] = await invoke('saves_remove_place', { id, template: el.dataset.t || '' }); } catch (e) { return fail(e); } return loadSaves(id);
     case 'saves-forget': try { S.library[id] = await invoke('saves_forget_found', { id }); } catch (e) { return fail(e); } return loadSaves(id);
     case 'saves-restore': {
       const v = await ask(t('Put this save back?'), `<p>${esc(t('The game goes back to this save. What\'s there now is kept as a copy first, so you can switch back.'))}</p>`,

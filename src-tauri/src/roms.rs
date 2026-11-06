@@ -142,27 +142,52 @@ pub fn disc_kind(p: &Path) -> &'static str {
         }
         return "xdvdfs";
     }
-    // ISO 9660, in 2048-byte sectors or raw CD ones (2352 bytes, data after a 16 or 24-byte header).
+    match iso_kind(&mut f) {
+        Iso::Psp => "psp",
+        Iso::PlayStation(Some(cnf)) => {
+            let up = cnf.to_ascii_uppercase();
+            if has_bytes(&up, b"BOOT2") {
+                "ps2"
+            } else if has_bytes(&up, b"BOOT") {
+                "ps1"
+            } else {
+                "playstation"
+            }
+        }
+        Iso::PlayStation(None) => "playstation",
+        Iso::Other => "",
+    }
+}
+
+enum Iso {
+    Psp,
+    /// A PlayStation or PS2 disc, with the start of its SYSTEM.CNF when it has one.
+    PlayStation(Option<[u8; 256]>),
+    Other,
+}
+
+/// An ISO 9660 disc, in 2048-byte sectors or raw CD ones (2352 bytes, data after a 16 or 24-byte
+/// header): a PSP one, or a PlayStation one with its SYSTEM.CNF ("BOOT2 = cdrom0:\..." on a PS2
+/// disc, "BOOT = cdrom:\..." on a PlayStation one).
+fn iso_kind(f: &mut fs::File) -> Iso {
     for (ss, off) in [(2048u64, 0u64), (2352, 24), (2352, 16)] {
         let mut pvd = [0u8; 190];
-        if read_at(&mut f, 16 * ss + off, &mut pvd).is_err() || &pvd[1..6] != b"CD001" {
+        if read_at(f, 16 * ss + off, &mut pvd).is_err() || &pvd[1..6] != b"CD001" {
             continue;
         }
         let sys = String::from_utf8_lossy(&pvd[8..40]).trim().to_ascii_uppercase();
         if sys.starts_with("PSP GAME") {
-            return "psp";
+            return Iso::Psp;
         }
         if !sys.starts_with("PLAYSTATION") {
-            return "";
+            return Iso::Other;
         }
-        // SYSTEM.CNF in the root folder: "BOOT2 = cdrom0:\..." on a PS2 disc, "BOOT = cdrom:\..." on a
-        // PlayStation one.
         let root = &pvd[156..190];
         let lba = u32::from_le_bytes([root[2], root[3], root[4], root[5]]) as u64;
         let len = (u32::from_le_bytes([root[10], root[11], root[12], root[13]]) as u64).min(64 * 1024);
         for s in 0..len.div_ceil(2048) {
             let mut dir = [0u8; 2048];
-            if read_at(&mut f, (lba + s) * ss + off, &mut dir).is_err() {
+            if read_at(f, (lba + s) * ss + off, &mut dir).is_err() {
                 break;
             }
             let mut i = 0usize;
@@ -173,23 +198,99 @@ pub fn disc_kind(p: &Path) -> &'static str {
                 if name.to_ascii_uppercase().starts_with(b"SYSTEM.CNF") {
                     let at = u32::from_le_bytes([dir[i + 2], dir[i + 3], dir[i + 4], dir[i + 5]]) as u64;
                     let mut cnf = [0u8; 256];
-                    if read_at(&mut f, at * ss + off, &mut cnf).is_ok() {
-                        let up = cnf.to_ascii_uppercase();
-                        if has_bytes(&up, b"BOOT2") {
-                            return "ps2";
-                        }
-                        if has_bytes(&up, b"BOOT") {
-                            return "ps1";
-                        }
-                    }
-                    return "playstation";
+                    return Iso::PlayStation(read_at(f, at * ss + off, &mut cnf).is_ok().then_some(cnf));
                 }
                 i += rec.max(1);
             }
         }
-        return "playstation";
+        return Iso::PlayStation(None);
     }
-    ""
+    Iso::Other
+}
+
+/// A disc or cartridge ID the way the catalog's "copy_ids" lists them: upper case, letters and
+/// digits only ("SLUS-203.12" is "SLUS20312").
+pub fn id_key(s: &str) -> String {
+    s.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_uppercase()).collect()
+}
+
+/// The game's own ID, read off the player's copy: an N64 cartridge's game code ("NZSE"), a
+/// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a PlayStation or
+/// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"). None when the file doesn't carry one this
+/// reads (a CHD, a folder, another console).
+pub fn copy_id(p: &Path) -> Option<String> {
+    if !p.is_file() {
+        return None;
+    }
+    let mut f = fs::File::open(p).ok()?;
+    let mut head = [0u8; 0x60];
+    read_at(&mut f, 0, &mut head).ok()?;
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    if N64.contains(&ext.as_str()) || matches!([head[0], head[1], head[2], head[3]], [0x80, 0x37, 0x12, 0x40] | [0x37, 0x80, 0x40, 0x12] | [0x40, 0x12, 0x37, 0x80]) {
+        let mut h = [0u8; 0x40];
+        h.copy_from_slice(&head[..0x40]);
+        match [h[0], h[1], h[2], h[3]] {
+            [0x80, 0x37, 0x12, 0x40] => {}
+            [0x37, 0x80, 0x40, 0x12] => h.chunks_mut(2).for_each(|c| c.swap(0, 1)),
+            [0x40, 0x12, 0x37, 0x80] => h.chunks_mut(4).for_each(|c| c.reverse()),
+            _ => return None,
+        }
+        return game_code(&h[0x3B..0x3F]);
+    }
+    // GameCube and Wii: the disc's header, at the start of a plain image, or where WBFS, CISO and
+    // WIA/RVZ images keep a copy of it.
+    let at = match &head[..4] {
+        b"WBFS" => 0x200,
+        b"CISO" => 0x8000,
+        b"WIA\x01" | b"RVZ\x01" => 0x58,
+        _ => 0,
+    };
+    let mut disc = [0u8; 0x20];
+    if read_at(&mut f, at, &mut disc).is_ok() && (disc[0x18..0x1C] == [0x5D, 0x1C, 0x9E, 0xA3] || disc[0x1C..0x20] == [0xC2, 0x33, 0x9F, 0x3D]) {
+        return game_code(&disc[..6]);
+    }
+    if let Iso::PlayStation(Some(cnf)) = iso_kind(&mut f) {
+        return ps_serial(&cnf);
+    }
+    None
+}
+
+/// Letters and digits only, or None.
+fn game_code(b: &[u8]) -> Option<String> {
+    b.iter().all(u8::is_ascii_alphanumeric).then(|| String::from_utf8_lossy(b).to_ascii_uppercase())
+}
+
+/// The serial in SYSTEM.CNF's BOOT or BOOT2 line: "BOOT2 = cdrom0:\SLUS_203.12;1" is SLUS20312.
+fn ps_serial(cnf: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(cnf);
+    let line = text.lines().find(|l| l.trim_start().to_ascii_uppercase().starts_with("BOOT"))?;
+    let file = line.split(['\\', ':', '/']).next_back()?.split(';').next()?.trim();
+    let key = id_key(file);
+    (key.len() >= 6 && key.len() <= 12 && key.chars().take(4).all(|c| c.is_ascii_alphabetic())).then_some(key)
+}
+
+/// Whether the player's copy is one this recomp is made for, by the catalog's "copy_ids" (a list,
+/// or a single ID; a shorter one, like "GZLE", fits every disc that starts with it). Ok when the
+/// catalog lists none or the copy's ID can't be read; otherwise the ID that was read.
+pub fn fits_copy_ids(app: &Value, p: &Path) -> Result<(), String> {
+    let want = copy_ids(app);
+    if want.is_empty() {
+        return Ok(());
+    }
+    match copy_id(p) {
+        Some(id) if !want.iter().any(|w| id.starts_with(w.as_str())) => Err(id),
+        _ => Ok(()),
+    }
+}
+
+pub fn copy_ids(app: &Value) -> Vec<String> {
+    let v = app.get("copy_ids");
+    let list: Vec<&str> = match v {
+        Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).collect(),
+        Some(Value::String(s)) => vec![s.as_str()],
+        _ => vec![],
+    };
+    list.into_iter().map(id_key).filter(|k| k.len() >= 3).collect()
 }
 
 /// The console a folder the file sits in is named for ("PS2", "Sony - PlayStation 2", "xbox"): the
@@ -565,6 +666,8 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
             .iter()
             .filter(|r| fits(r, origin))
             .filter(|r| matches(game, r))
+            // Its catalog entry lists the discs or cartridges it's made for: one with another ID isn't it.
+            .filter(|r| fits_copy_ids(a, &r.path).is_ok())
             // A US dump first: most recomps are built against it.
             .max_by_key(|r| (r.region == "US") as u8);
         if let Some(r) = pick {
@@ -688,6 +791,64 @@ mod tests {
         r.sort_by(|x, y| x.title.cmp(&y.title));
         let t: Vec<(&str, &str)> = r.iter().map(|x| (x.title.as_str(), x.region.as_str())).collect();
         assert_eq!(t, vec![("Banjo-Kazooie", "Europe"), ("SUPER MARIO 64", "Japan"), ("ZELDA MAJORA'S MASK", "US")]);
+    }
+
+    #[test]
+    fn copies_say_their_game_id() {
+        let d = tmp("ids");
+        // N64: the game code in the header, in any byte order.
+        let mut n = rom("z64", "ZELDA MAJORA'S MASK", b'E');
+        n[0x3B..0x3E].copy_from_slice(b"NZS");
+        fs::write(d.join("mm.z64"), &n).unwrap();
+        assert_eq!(copy_id(&d.join("mm.z64")).as_deref(), Some("NZSE"));
+        let mut v = n.clone();
+        v.chunks_mut(2).for_each(|c| c.swap(0, 1));
+        fs::write(d.join("mm.v64"), &v).unwrap();
+        assert_eq!(copy_id(&d.join("mm.v64")).as_deref(), Some("NZSE"));
+        // GameCube: the ID at the start, plain and inside a CISO image.
+        let mut gc = vec![0u8; 0x400];
+        gc[..6].copy_from_slice(b"GZLE01");
+        gc[0x1C..0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
+        fs::write(d.join("tww.iso"), &gc).unwrap();
+        assert_eq!(copy_id(&d.join("tww.iso")).as_deref(), Some("GZLE01"));
+        let mut ciso = vec![0u8; 0x8000];
+        ciso[..4].copy_from_slice(b"CISO");
+        ciso.extend_from_slice(&gc);
+        fs::write(d.join("tww.ciso"), &ciso).unwrap();
+        assert_eq!(copy_id(&d.join("tww.ciso")).as_deref(), Some("GZLE01"));
+        // PS2: the serial in SYSTEM.CNF.
+        let mut ps2 = vec![0u8; 2048 * 22];
+        let pvd = 16 * 2048;
+        ps2[pvd] = 1;
+        ps2[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
+        ps2[pvd + 8..pvd + 19].copy_from_slice(b"PLAYSTATION");
+        ps2[pvd + 156 + 2..pvd + 156 + 6].copy_from_slice(&18u32.to_le_bytes());
+        ps2[pvd + 156 + 10..pvd + 156 + 14].copy_from_slice(&2048u32.to_le_bytes());
+        let rec = 18 * 2048;
+        ps2[rec] = 46;
+        ps2[rec + 2..rec + 6].copy_from_slice(&20u32.to_le_bytes());
+        ps2[rec + 32] = 12;
+        ps2[rec + 33..rec + 45].copy_from_slice(b"SYSTEM.CNF;1");
+        let cnf = b"BOOT2 = cdrom0:\\SLUS_203.12;1\r\nVER = 1.00";
+        ps2[20 * 2048..20 * 2048 + cnf.len()].copy_from_slice(cnf);
+        fs::write(d.join("ps2.iso"), &ps2).unwrap();
+        assert_eq!(copy_id(&d.join("ps2.iso")).as_deref(), Some("SLUS20312"));
+        // Against the catalog: listed, a shorter ID that starts it, another one, and none listed.
+        let app = |ids: Value| serde_json::json!({ "id": "x", "copy_ids": ids });
+        assert!(fits_copy_ids(&app(serde_json::json!(["SLUS-203.12"])), &d.join("ps2.iso")).is_ok());
+        assert!(fits_copy_ids(&app(serde_json::json!("GZLE")), &d.join("tww.iso")).is_ok());
+        assert_eq!(fits_copy_ids(&app(serde_json::json!(["GZLP01"])), &d.join("tww.iso")), Err("GZLE01".to_string()));
+        assert!(fits_copy_ids(&serde_json::json!({ "id": "x" }), &d.join("tww.iso")).is_ok());
+        // A file with no ID it reads can't be told apart, so it's fine.
+        fs::write(d.join("other.chd"), b"MComprHD").unwrap();
+        assert!(fits_copy_ids(&app(serde_json::json!(["GZLE01"])), &d.join("other.chd")).is_ok());
+        // The scan leaves out a copy with another ID.
+        let cat = serde_json::json!({ "apps": [{ "id": "mm", "game": "Zelda Majora's Mask", "origin": "n64", "copy_ids": ["NZSP"] }] });
+        let found = vec![RomFile { path: d.join("mm.z64"), system: "n64".into(), title: "ZELDA MAJORA'S MASK".into(), region: "US".into(), size: 0 }];
+        assert!(match_catalog(&cat, &found).is_empty());
+        let cat = serde_json::json!({ "apps": [{ "id": "mm", "game": "Zelda Majora's Mask", "origin": "n64", "copy_ids": ["NZSE"] }] });
+        assert!(match_catalog(&cat, &found).contains_key("mm"));
+        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
