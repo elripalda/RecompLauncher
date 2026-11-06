@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Adicionada. Os backups e os saves na nuvem também cobrem essa pasta.",
  "It shows in Discover and on Home again": "Ele aparece de novo no Descobrir e no Início",
  "It won't show in Discover or on Home": "Ele não vai aparecer no Descobrir nem no Início",
- "Where its drive_c folder is": "Onde fica o drive_c dele"
+ "Where its drive_c folder is": "Onde fica o drive_c dele",
+ "We'll email you when it comes out.": "Você vai receber um e-mail quando ele sair.",
+ "Great on Deck: Steam Deck players say it plays great": "Ótimo no Deck: jogadores de Steam Deck dizem que roda muito bem",
+ "Deck": "Deck",
+ "We'll Email You": "Avisaremos por e-mail",
+ "Notify Me": "Avise-me",
+ "Great on Deck": "Ótimo no Deck",
+ "You won't get an email about it.": "Você não vai receber e-mail sobre ele.",
+ "Learn More": "Saiba mais",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} agora está em Descobrir. Sua cópia passou para lá.",
+ "Windows couldn't read it from its drive": "o Windows não conseguiu lê-lo da unidade",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "O Windows não conseguiu ler parte do jogo da unidade enquanto ele rodava. Isso acontece quando uma pasta de rede ou uma unidade USB cai por um instante. Mova-o para uma unidade interna deste PC (Mover para outra unidade, no menu dele) e jogue de novo.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Essa pasta está vazia. Escolha a pasta com a sua cópia do jogo.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Essa pasta só tem imagens, vídeos ou documentos. Escolha a pasta com a sua cópia do jogo.",
+ "That isn't a recomp.": "Isso não é um recomp.",
+ "The website didn't take it. Try again later.": "O site não aceitou. Tente de novo mais tarde.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Nenhuma recomp corresponde. Desligue “Ótimo no Deck” para ver o resto."
 }

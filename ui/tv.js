@@ -40,6 +40,7 @@
     layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
     history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/><path d="M12 8v4.5l3 2"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
     chevL: '<path d="m15 5-7 7 7 7"/>',
@@ -324,11 +325,13 @@
   // A cover, with its name under it.
   function poster(a, key, sub) {
     const st = status(a), j = S.jobs[a.id];
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${esc(t('Soon'))}</span>` : sreqBadge(a) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left">${esc(t('Installed'))}</span>` : '');
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : sreqBadge(a) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left">${esc(t('Installed'))}</span>` : '');
+    const vers = TV.view !== 'library' && !j && verGroup(a);
+    const deckb = greatOnDeck(a) && !j ? `<span class="tv-deckb${vers ? ' up' : ''}" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(16)}${esc(t('Deck'))}</span>` : '';
     const ps = projectState(a), left = /tv-badge left|tv-badge sreq/.test(badge);
     const stb = ps && ps.kind !== 'quiet' ? `<span class="tv-badge left state ${ps.kind}${left ? ' low' : ''}">${esc(t(STATE_NAME[ps.kind]))}</span>` : '';
     return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(a.cover))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
-      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${stb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
+      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${stb}${deckb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
   }
 
@@ -402,7 +405,7 @@
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
       case 'installed': { const su = S.setup[id]; if (needsSetup(a) && !setupDone(id)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
-      case 'soon': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>`;
+      case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
       default: return isSaved(id) ? btn(key, 'install', esc(t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
     }
@@ -447,6 +450,14 @@
     const picked = window.bannerApps && bannerApps();
     return picked ? { list: turnkeyFirst(picked), kind: 'banner' } : { list: turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 10)), kind: 'top' };
   }
+  // Notes from the RecompStore team, under the header: B or the X closes one for good.
+  function tvNotes() {
+    // One at a time, in the room beside the game's name (closing it brings the next).
+    const n = notesShown()[0];
+    if (!n) return '';
+    const link = httpsOnly(n.link);
+    return `<div class="tv-notes"><div class="tv-tnote ${esc(n.tone || 'cyan')}" role="note"><div class="tn-top"><span class="tn-l">RecompLauncher</span><button type="button" class="tv-btn sm tv-tnote-x" data-f data-key="note:x:${esc(n.id)}" data-tvact="notex" data-n="${esc(n.id)}" aria-label="${esc(t('Close'))}">${svg('stop', 20)}</button></div><p dir="auto">${esc(n.body)}</p>${link ? `<div class="tn-acts"><button type="button" class="tv-btn sm" data-f data-key="note:l:${esc(n.id)}" data-tvact="noteurl" data-url="${esc(link)}"><span>${esc(n.linkText || t('Learn More'))}</span></button></div>` : ''}</div></div>`;
+  }
   function pageHome() {
     const d = dockList(), list = d.list;
     const sel = list.find((a) => a.id === TV.hero) || (TV.heroBelow && TV.hero ? libAppOf(TV.hero) : null) || list[0];
@@ -481,7 +492,7 @@
     const label = d.kind === 'pinned' ? t('Pinned') : d.kind === 'mine' ? t('Continue playing') : d.kind === 'banner' ? t('Featured') : t('Most played recomps');
     const hintList = TV.sort ? [['dpad', t('Move')], ['A', t('Done')], ['B', t('Cancel')]] : [['A', t('Select')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]];
     return `${backdrop(sel, 'home')}${bar()}
-      ${region(`<div class="tv-home1"><div class="tv-hero" id="tv-hero">${sel ? heroText(sel, S.library[sel.id], true) : `<h1 class="tv-h1">${esc(t('Welcome'))}</h1>`}</div>
+      ${region(`<div class="tv-home1">${tvNotes()}<div class="tv-hero" id="tv-hero">${sel ? heroText(sel, S.library[sel.id], true) : `<h1 class="tv-h1">${esc(t('Welcome'))}</h1>`}</div>
         <section class="tv-dock${TV.sort ? ' sorting' : ''}" style="--dw:${w}px;--dg:${gap}px"><h3>${esc(label)}</h3><div class="tv-rowview"><div class="tv-row tv-dockrow" data-row="dock">${dock}</div></div></section>
         ${rows.length ? `<div class="tv-down" aria-hidden="true">${svg('chevD', 34)}</div>` : ''}</div>${rows.join('')}`, 'home')}
       ${hints(hintList)}`;
@@ -887,9 +898,10 @@
       { label: t('Tag'), sub: TV.dtag || t('Any'), icon: 'pin', run: pickTag },
       { label: t('Show'), sub: t((SHOWS.find(([k]) => k === (TV.dshow || '')) || SHOWS[0])[1]), icon: 'layers', run: pickShow },
       { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      ...(onHandheld() ? [{ label: t('Great on Deck'), sub: TV.ddeck ? t('On') : t('Off'), icon: 'pad', run: () => { TV.ddeck = !TV.ddeck; TV.focusKey = 'g:@filter'; discoverRedraw(); } }] : []),
       ...(S.os !== 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Search'), sub: TV.dq ? TV.dq : t('Find a game by name'), icon: 'search', run: tvSearch },
-      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dsort = ''; TV.genre = ''; if (runsNow()) setRunsNow(''); TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.ddeck = false; TV.dsort = ''; TV.genre = ''; if (runsNow()) setRunsNow(''); TV.focusKey = 'g:@filter'; discoverRedraw(); } },
     ]);
   }
   // Search with the controller: an on-screen keyboard (a keyboard types straight in too). The games
@@ -961,7 +973,7 @@
     const each = apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
-      .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && runsFits(a, runsNow()))
+      .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
       .filter((a) => !q || fold(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`).includes(q))
       .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
     // Every version counts, not every tile.
@@ -969,7 +981,7 @@
     const found = oneEach(each, srt === 'new');
     // Discover's own order (no sort picked): turnkey recomps first.
     const list = TV.dsort ? found : turnkeyFirst(found);
-    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (runsNow() ? 1 : 0);
+    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (runsNow() ? 1 : 0) + (TV.ddeck && onHandheld() ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
     const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
@@ -1162,6 +1174,7 @@
     const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc)
       .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : [])
     const ps = projectState(a);
+    const deckChip = greatOnDeck(a) ? `<span class="tv-st deck">${DECK_ICON(18)}${esc(t('Great on Deck'))}</span>` : '';
     const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${esc(t(STATE_PILL[ps.kind]))}</span>`;
     const stNote = ps && ps.kind !== 'quiet' ? `<p class="tv-stnote ${ps.kind}"><b>${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></p>` : '';;
     const checks = readyRows(a);
@@ -1199,7 +1212,7 @@
     return `${backdrop(a, 'game')}${gameBar()}
       ${region(`<div class="tv-game">
         <div class="tv-g-main">
-          <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${stChip}</div>
+          <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${deckChip}${stChip}</div>
           ${titleOf(a)}
           ${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
@@ -1934,7 +1947,8 @@
     const pick = (k) => k && $(`.tv-stage:not(.leaving) > :not(.tv-sheet) [data-key="${CSS.escape(k)}"]`, root);
     // Where focus goes: back where it was, else the page's main button, its first item, or the
     // section's tab. If the page was still loading when it got the tab, its first item once it's there.
-    const first = $('.tv-region .tv-btn.main[data-f]:not([disabled])', root) || $('.tv-region [data-f]:not([disabled])', root);
+    // (The team's notes on top of Home are never where it starts.)
+    const first = $('.tv-region .tv-btn.main[data-f]:not([disabled])', root) || $('.tv-region [data-f]:not([disabled]):not([data-key^="note:"])', root);
     let want = (TV.sheet && topSheet() && ($('[data-f].f', topSheet()) || $('[data-f]', topSheet()))) || (TV.parked && first) || pick(prevKey) || pick(TV.focusKey) || (TV.view === 'library' && TV.flowId && pick('L:' + TV.flowId)) || first;
     TV.parked = false;
     if (!want) { want = $('.tv-tab.on', root) || $('.tv-back', root) || $('[data-f]', root); TV.parked = true; }
@@ -1951,6 +1965,13 @@
     if (el.className !== cls) { el.className = cls; el.innerHTML = m === 'grid' ? '<i class="sky"></i><i class="sun"></i><i class="floor"></i>' : m === 'drift' ? '<i class="d1"></i><i class="d2"></i><i class="d3"></i>' : '<i class="a1"></i><i class="a2"></i><i class="a3"></i>'; }
   }
   window.tvRefresh = () => soon();
+  // A game moved to another id (one added by link, now on the official list): the page on and
+  // the pages behind it follow.
+  window.tvRemap = (from, to) => {
+    if (TV.arg === from) TV.arg = to;
+    if (TV.hero === from) TV.hero = to;
+    for (const b of TV.back) if (b.arg === from) b.arg = to;
+  };
   window.tvGoto = (view, id) => {
     if (!TV.on) return;
     if (view === 'shots') { loadAllShots().then(() => go('shots', id || null)); }
@@ -1958,6 +1979,7 @@
   };
 
   const focused = () => $('.tv-stage:not(.leaving) [data-f].f', root);
+  const r0 = (e) => e.getBoundingClientRect();
 
   function focus(el, instant) {
     if (!el) return;
@@ -2183,6 +2205,17 @@
       if (n) return focus(n);
       if (rowEl.classList.contains('tv-row') || rowEl.classList.contains('tv-nav')) return;
     }
+    // Home: up from the row of your games stops at the team's note first, when there is one.
+    // Down from it goes back to the game you were on.
+    if (dir === 'up' && !TV.sheet && cur.closest('.tv-dock')) {
+      const note = $('.tv-stage:not(.leaving) .tv-notes [data-tvact="noteurl"]', root) || $('.tv-stage:not(.leaving) .tv-notes [data-f]', root);
+      if (note) { TV.noteFrom = cur.dataset.key; return focus(note); }
+    }
+    if (dir === 'down' && !TV.sheet && cur.closest('.tv-notes')) {
+      const below = $$('[data-f]', cur.closest('.tv-notes')).find((e) => r0(e).top >= r0(cur).bottom - 4);
+      const dock = (TV.noteFrom && $(`.tv-stage:not(.leaving) .tv-dock [data-key="${CSS.escape(TV.noteFrom)}"]`, root)) || $('.tv-stage:not(.leaving) .tv-dock [data-f]', root);
+      if (below || dock) return focus(below || dock);
+    }
     // Rows remember where you were; coming back lands there.
     const fromRow = cur.closest('.tv-row');
     if (fromRow) TV.row[fromRow.dataset.row] = cur.dataset.key;
@@ -2316,6 +2349,9 @@
       case 'shots': await loadAllShots(); return go('shots', id);
       case 'mods': return go('mods', id);
       case 'gsettings': return go('gsettings', id);
+      case 'notify': sfx('select'); return toggleNotify(id).then(() => draw(true));
+      case 'notex': sfx('back'); return closeNote(el.dataset.n).then(() => draw(true));
+      case 'noteurl': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
       case 'haveit': sfx('select'); return window.haveIt(id);
       case 'pick-copy': case 'setup': sfx('select'); return tvSetup(id);
       case 'setupreq': return tvSetupReq(id);

@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Ditambahkan. Cadangan dan save cloud juga mencakup folder itu.",
  "It shows in Discover and on Home again": "Muncul lagi di Jelajahi dan Beranda",
  "It won't show in Discover or on Home": "Tidak akan muncul di Jelajahi atau Beranda",
- "Where its drive_c folder is": "Tempat drive_c berada"
+ "Where its drive_c folder is": "Tempat drive_c berada",
+ "We'll email you when it comes out.": "Kami akan mengirim email saat game ini keluar.",
+ "Great on Deck: Steam Deck players say it plays great": "Mantap di Deck: pemain Steam Deck bilang berjalan lancar",
+ "Deck": "Deck",
+ "We'll Email You": "Kami akan kirim email",
+ "Notify Me": "Beri tahu saya",
+ "Great on Deck": "Mantap di Deck",
+ "You won't get an email about it.": "Kamu tidak akan menerima email soal ini.",
+ "Learn More": "Pelajari lebih lanjut",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} sekarang ada di Jelajahi. Salinanmu sudah dipindahkan ke sana.",
+ "Windows couldn't read it from its drive": "Windows tidak bisa membacanya dari drive-nya",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows tidak bisa membaca sebagian game dari drive-nya saat sedang berjalan. Ini terjadi saat folder jaringan atau drive USB terputus sebentar. Pindahkan ke drive di dalam PC ini (“Pindahkan ke drive lain” di menunya), lalu main lagi.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Folder itu kosong. Pilih folder salinan game-mu.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Folder itu hanya berisi gambar, video, atau dokumen. Pilih folder salinan game-mu.",
+ "That isn't a recomp.": "Itu bukan recomp.",
+ "The website didn't take it. Try again later.": "Situs web tidak menerimanya. Coba lagi nanti.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Tidak ada recomp yang cocok. Matikan “Mantap di Deck” untuk melihat sisanya."
 }

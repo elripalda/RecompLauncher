@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "已新增。備份和雲端存檔也會涵蓋該資料夾。",
  "It shows in Discover and on Home again": "它會重新在「探索」和首頁中顯示",
  "It won't show in Discover or on Home": "它不會在「探索」或首頁中顯示",
- "Where its drive_c folder is": "它的 drive_c 所在位置"
+ "Where its drive_c folder is": "它的 drive_c 所在位置",
+ "We'll email you when it comes out.": "遊戲推出時我們會寄電子郵件通知您。",
+ "Great on Deck: Steam Deck players say it plays great": "Deck 暢玩：Steam Deck 玩家表示執行順暢",
+ "Deck": "Deck",
+ "We'll Email You": "會以電子郵件通知",
+ "Notify Me": "通知我",
+ "Great on Deck": "Deck 暢玩",
+ "You won't get an email about it.": "您不會收到相關電子郵件。",
+ "Learn More": "了解更多",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} 現已在「探索」上架。您的副本已轉到該項目。",
+ "Windows couldn't read it from its drive": "Windows 無法從磁碟機讀取它",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "遊戲執行時，Windows 無法從磁碟機讀取它的部分內容。網路資料夾或 USB 磁碟機短暫中斷時就會發生這種情況。請把它移到這台電腦內建的磁碟機（在它的選單中選擇「移到其他磁碟機」），然後再玩。",
+ "That folder is empty. Pick the folder with your copy of the game.": "這個資料夾是空的。請選擇存放您遊戲副本的資料夾。",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "這個資料夾裡只有圖片、影片或文件。請選擇存放您遊戲副本的資料夾。",
+ "That isn't a recomp.": "這不是重新編譯遊戲。",
+ "The website didn't take it. Try again later.": "網站沒有接受。請稍後再試。",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "沒有符合的重新編譯版本。關閉「Deck 暢玩」即可查看其餘內容。"
 }

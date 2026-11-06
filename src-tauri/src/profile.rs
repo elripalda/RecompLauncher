@@ -1687,6 +1687,48 @@ fn read_at(f: &mut std::fs::File, at: u64, n: usize) -> Option<Vec<u8>> {
     Some(b)
 }
 
+#[derive(Debug, PartialEq)]
+enum Holds {
+    Nothing,
+    OnlyMedia,
+    Files,
+}
+
+/// What a folder picked as the player's copy holds, a few levels down: nothing, only pictures,
+/// videos and documents, or other files. Windows' own notes about a folder don't count.
+fn folder_holds(p: &Path) -> Holds {
+    let mut stack = vec![(p.to_path_buf(), 0usize)];
+    let (mut seen, mut any) = (0usize, false);
+    while let Some((d, depth)) = stack.pop() {
+        // A folder it can't read, or one deeper than it looks, might have the game in it.
+        let Ok(list) = std::fs::read_dir(&d) else { return Holds::Files };
+        for e in list.flatten() {
+            seen += 1;
+            if seen > 5000 {
+                return Holds::Files;
+            }
+            let path = e.path();
+            if path.is_dir() {
+                if depth >= 4 {
+                    return Holds::Files;
+                }
+                stack.push((path, depth + 1));
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            if matches!(name.as_str(), "desktop.ini" | "thumbs.db" | ".ds_store") {
+                continue;
+            }
+            any = true;
+            let ext = path.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if !NOT_A_GAME.contains(&ext.as_str()) {
+                return Holds::Files;
+            }
+        }
+    }
+    if any { Holds::OnlyMedia } else { Holds::Nothing }
+}
+
 /// A file in the top folder of an ISO 9660 disc image (PlayStation 2 and most others).
 fn iso9660_has(path: &Path, name: &str) -> bool {
     let Ok(mut f) = std::fs::File::open(path) else { return false };
@@ -1797,6 +1839,15 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     if folder {
         if !g.check.file.is_empty() && !p.join(&g.check.file).is_file() && !std::fs::read_dir(p).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&g.check.file)) {
             return Err(format!("That folder doesn't have {}.", g.check.file));
+        }
+        // With nothing more to check by: a folder with nothing in it, or only pictures and videos
+        // (the launcher's own screenshots folder, say), is never anyone's game.
+        if g.check.file.is_empty() {
+            match folder_holds(p) {
+                Holds::Nothing => return Err("That folder is empty. Pick the folder with your copy of the game.".into()),
+                Holds::OnlyMedia => return Err("That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.".into()),
+                Holds::Files => {}
+            }
         }
         return Ok(());
     }
@@ -2234,6 +2285,29 @@ mod tests {
         assert!(q.follow_screen(&d, &["res".to_string()]).is_empty());
         assert_eq!(shape_name(1920, 1200), "16:10");
         assert_eq!(shape_name(2560, 1080), "21:9");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_folder_with_no_game_in_it_is_refused() {
+        let d = tmp("nogamefolder");
+        let need = GameCopy { kind: "folder".into(), ..Default::default() };
+        let empty = d.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(check_copy(&need, &empty).unwrap_err().contains("empty"));
+        // The launcher's screenshots: pictures only.
+        let shots = d.join("Pictures/RecompLauncher/Some Game");
+        std::fs::create_dir_all(&shots).unwrap();
+        std::fs::write(shots.join("shot 1.png"), b"png").unwrap();
+        std::fs::write(d.join("Pictures/RecompLauncher/desktop.ini"), b"[x]").unwrap();
+        assert!(check_copy(&need, &d.join("Pictures/RecompLauncher")).unwrap_err().contains("pictures"));
+        let game = d.join("game");
+        std::fs::create_dir_all(game.join("us")).unwrap();
+        std::fs::write(game.join("default.xex"), b"XEX2").unwrap();
+        assert!(check_copy(&need, &game).is_ok());
+        // Deeper than it looks: let through.
+        std::fs::create_dir_all(d.join("deep/a/b/c/d/e")).unwrap();
+        assert!(check_copy(&need, &d.join("deep")).is_ok());
         let _ = std::fs::remove_dir_all(&d);
     }
 

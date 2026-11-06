@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "تمت الإضافة. تشمل النسخ الاحتياطية والحفظ السحابي ذلك المجلد أيضًا.",
  "It shows in Discover and on Home again": "ستعود للظهور في «استكشاف» و«الرئيسية»",
  "It won't show in Discover or on Home": "لن تظهر في «استكشاف» أو «الرئيسية»",
- "Where its drive_c folder is": "مكان drive_c"
+ "Where its drive_c folder is": "مكان drive_c",
+ "We'll email you when it comes out.": "سنرسل إليك بريدًا إلكترونيًا عند صدورها.",
+ "Great on Deck: Steam Deck players say it plays great": "رائعة على Deck: يقول لاعبو Steam Deck إنها تعمل بشكل رائع",
+ "Deck": "Deck",
+ "We'll Email You": "سنراسلك عبر البريد",
+ "Notify Me": "أعلمني",
+ "Great on Deck": "رائعة على Deck",
+ "You won't get an email about it.": "لن تصلك رسالة بريد إلكتروني بشأنها.",
+ "Learn More": "معرفة المزيد",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} موجودة الآن في «استكشاف». انتقلت نسختك إليها.",
+ "Windows couldn't read it from its drive": "لم يتمكن Windows من قراءتها من محرك الأقراص الخاص بها",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "لم يتمكن Windows من قراءة جزء من اللعبة من محرك الأقراص الخاص بها أثناء تشغيلها. يحدث ذلك عندما ينقطع مجلد شبكة أو محرك أقراص USB للحظة. انقلها إلى محرك أقراص داخل هذا الكمبيوتر («النقل إلى محرك أقراص آخر» في قائمتها)، ثم العب مرة أخرى.",
+ "That folder is empty. Pick the folder with your copy of the game.": "هذا المجلد فارغ. اختر مجلد نسختك من اللعبة.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "لا يحتوي هذا المجلد إلا على صور أو فيديوهات أو مستندات. اختر مجلد نسختك من اللعبة.",
+ "That isn't a recomp.": "هذه ليست لعبة معاد تجميعها.",
+ "The website didn't take it. Try again later.": "لم يقبل الموقع ذلك. حاول مرة أخرى لاحقًا.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "لا توجد ألعاب معاد تجميعها مطابقة. أوقف “رائعة على Deck” لرؤية الباقي."
 }

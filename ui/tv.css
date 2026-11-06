@@ -850,3 +850,18 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-stnote span{opacity:.82}
 .tv-stnote.ended{background:rgba(255,122,122,.1);border-color:rgba(255,122,122,.4)}.tv-stnote.ended b{color:#ff9a9a}
 .tv-stnote.paused{background:rgba(245,184,61,.1);border-color:rgba(245,184,61,.4)}.tv-stnote.paused b{color:#ffcf70}
+/* Great on Deck, Notify Me and the team's notes. */
+.tv-deckb{position:absolute;right:12px;bottom:12px;z-index:2;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:15px;font-weight:700;color:#fff;background:#1a9fff}
+.tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
+.tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
+.tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
+.tv-btn.notify-on{background:transparent;border:2px solid rgba(52,242,232,.6);color:#34F2E8}
+.tv-home1>.tv-notes{position:absolute;top:6px;right:0;width:500px;z-index:2}
+.tv-tnote{display:flex;flex-direction:column;gap:6px;padding:10px 10px 14px 20px;border-radius:18px;background:rgba(var(--tvrgb),.78);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);border-left:5px solid #34F2E8;box-shadow:0 12px 34px rgba(0,0,0,.28)}
+.tv-tnote.gold{border-left-color:#f5c518}.tv-tnote.violet{border-left-color:#a98bff}
+.tv-tnote .tn-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tv-tnote .tn-l{font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.tv-tnote p{margin:0 10px 0 0;font-size:19px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tv-tnote .tn-acts{display:flex;margin-top:6px}
+.tv-tnote .tv-btn.sm{min-height:0;height:46px;padding:0 20px;font-size:17px}
+.tv-tnote .tv-tnote-x{width:46px;padding:0;justify-content:center}

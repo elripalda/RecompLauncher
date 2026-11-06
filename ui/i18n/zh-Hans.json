@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "已添加。备份和云存档也会涵盖该文件夹。",
  "It shows in Discover and on Home again": "它会重新在“发现”和主页中显示",
  "It won't show in Discover or on Home": "它不会在“发现”或主页中显示",
- "Where its drive_c folder is": "它的 drive_c 所在位置"
+ "Where its drive_c folder is": "它的 drive_c 所在位置",
+ "We'll email you when it comes out.": "游戏推出时我们会发邮件通知你。",
+ "Great on Deck: Steam Deck players say it plays great": "Deck 畅玩：Steam Deck 玩家表示运行流畅",
+ "Deck": "Deck",
+ "We'll Email You": "会发邮件通知你",
+ "Notify Me": "通知我",
+ "Great on Deck": "Deck 畅玩",
+ "You won't get an email about it.": "你不会收到相关邮件。",
+ "Learn More": "了解更多",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} 现已上架“发现”。你的副本已转到该条目。",
+ "Windows couldn't read it from its drive": "Windows 无法从驱动器读取它",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "游戏运行时，Windows 无法从驱动器读取它的部分内容。网络文件夹或 USB 驱动器短暂断开时就会这样。请把它移到这台电脑内置的驱动器上（在它的菜单中选择“移动到其他驱动器”），然后再玩。",
+ "That folder is empty. Pick the folder with your copy of the game.": "该文件夹是空的。请选择存放你游戏副本的文件夹。",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "该文件夹里只有图片、视频或文档。请选择存放你游戏副本的文件夹。",
+ "That isn't a recomp.": "这不是重编译游戏。",
+ "The website didn't take it. Try again later.": "网站没有接受。请稍后再试。",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "没有匹配的重编译版本。关闭“Deck 畅玩”即可查看其余内容。"
 }

@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Toegevoegd. Back-ups en opslaan in de cloud dekken die map nu ook.",
  "It shows in Discover and on Home again": "Hij wordt weer getoond in Ontdekken en op Start",
  "It won't show in Discover or on Home": "Hij wordt niet getoond in Ontdekken of op Start",
- "Where its drive_c folder is": "Waar zijn drive_c staat"
+ "Where its drive_c folder is": "Waar zijn drive_c staat",
+ "We'll email you when it comes out.": "Je krijgt een e-mail zodra hij uitkomt.",
+ "Great on Deck: Steam Deck players say it plays great": "Top op Deck: Steam Deck-spelers zeggen dat het prima loopt",
+ "Deck": "Deck",
+ "We'll Email You": "We mailen je",
+ "Notify Me": "Laat het me weten",
+ "Great on Deck": "Top op Deck",
+ "You won't get an email about it.": "Je krijgt er geen e-mail over.",
+ "Learn More": "Meer info",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} staat nu in Ontdekken. Je exemplaar is daarnaar overgezet.",
+ "Windows couldn't read it from its drive": "Windows kon hem niet van zijn schijf lezen",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows kon een deel van de game niet van de schijf lezen terwijl hij draaide. Dat gebeurt als een netwerkmap of USB-schijf even wegvalt. Verplaats hem naar een schijf in deze pc (via Naar een andere schijf verplaatsen in het menu) en speel opnieuw.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Die map is leeg. Kies de map met je kopie van de game.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "In die map staan alleen afbeeldingen, video's of documenten. Kies de map met je kopie van de game.",
+ "That isn't a recomp.": "Dat is geen recomp.",
+ "The website didn't take it. Try again later.": "De website nam het niet aan. Probeer het later opnieuw.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Geen recomps gevonden. Zet „Top op Deck” uit om de rest te zien."
 }

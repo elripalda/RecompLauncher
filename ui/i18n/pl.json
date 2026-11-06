@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Dodano. Kopie zapasowe i zapisy w chmurze obejmują też ten folder.",
  "It shows in Discover and on Home again": "Znów będzie widoczna w sekcji Odkrywaj i na Stronie głównej",
  "It won't show in Discover or on Home": "Nie będzie widoczna w sekcji Odkrywaj ani na Stronie głównej",
- "Where its drive_c folder is": "Gdzie jest jego drive_c"
+ "Where its drive_c folder is": "Gdzie jest jego drive_c",
+ "We'll email you when it comes out.": "Wyślemy ci e-mail, gdy wyjdzie.",
+ "Great on Deck: Steam Deck players say it plays great": "Świetnie na Deck: gracze na Steam Deck mówią, że działa świetnie",
+ "Deck": "Deck",
+ "We'll Email You": "Wyślemy e-mail",
+ "Notify Me": "Powiadom mnie",
+ "Great on Deck": "Świetnie na Deck",
+ "You won't get an email about it.": "Nie dostaniesz w tej sprawie e-maila.",
+ "Learn More": "Dowiedz się więcej",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} jest już w sekcji Odkrywaj. Twoja kopia została tam przeniesiona.",
+ "Windows couldn't read it from its drive": "Windows nie mógł go odczytać z dysku",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows nie mógł odczytać części gry z dysku w trakcie jej działania. Dzieje się tak, gdy folder sieciowy albo dysk USB na chwilę się rozłączy. Przenieś grę na dysk wewnętrzny tego komputera (Przenieś na inny dysk w jej menu), a potem zagraj ponownie.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Ten folder jest pusty. Wybierz folder z twoją kopią gry.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "W tym folderze są tylko obrazy, filmy lub dokumenty. Wybierz folder z twoją kopią gry.",
+ "That isn't a recomp.": "To nie jest port.",
+ "The website didn't take it. Try again later.": "Strona tego nie przyjęła. Spróbuj ponownie później.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Brak pasujących portów. Wyłącz „Świetnie na Deck”, aby zobaczyć resztę."
 }

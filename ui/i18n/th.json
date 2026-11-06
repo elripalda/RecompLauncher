@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "เพิ่มแล้ว ข้อมูลสำรองและเซฟบนคลาวด์ครอบคลุมโฟลเดอร์นั้นด้วย",
  "It shows in Discover and on Home again": "แสดงในหน้าค้นพบและหน้าแรกอีกครั้ง",
  "It won't show in Discover or on Home": "จะไม่แสดงในหน้าค้นพบหรือหน้าแรก",
- "Where its drive_c folder is": "ที่อยู่ของ drive_c"
+ "Where its drive_c folder is": "ที่อยู่ของ drive_c",
+ "We'll email you when it comes out.": "เราจะส่งอีเมลถึงคุณเมื่อเกมออก",
+ "Great on Deck: Steam Deck players say it plays great": "ดีมากบน Deck: ผู้เล่น Steam Deck บอกว่าเล่นได้ดีมาก",
+ "Deck": "Deck",
+ "We'll Email You": "จะส่งอีเมลแจ้ง",
+ "Notify Me": "แจ้งเตือนฉัน",
+ "Great on Deck": "ดีมากบน Deck",
+ "You won't get an email about it.": "คุณจะไม่ได้รับอีเมลเรื่องนี้",
+ "Learn More": "ดูเพิ่มเติม",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} อยู่ในหน้าค้นพบแล้ว สำเนาของคุณย้ายไปอยู่ที่นั่นแล้ว",
+ "Windows couldn't read it from its drive": "Windows อ่านข้อมูลจากไดรฟ์ไม่ได้",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows อ่านบางส่วนของเกมจากไดรฟ์ไม่ได้ระหว่างที่เกมทำงานอยู่ เกิดขึ้นได้เมื่อโฟลเดอร์เครือข่ายหรือไดรฟ์ USB หลุดไปชั่วขณะ ย้ายเกมไปไว้ในไดรฟ์ภายในพีซีเครื่องนี้ (ย้ายไปไดรฟ์อื่น ในเมนูของเกม) แล้วเล่นอีกครั้ง",
+ "That folder is empty. Pick the folder with your copy of the game.": "โฟลเดอร์นั้นว่างเปล่า เลือกโฟลเดอร์ที่มีสำเนาเกมของคุณ",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "โฟลเดอร์นั้นมีแค่รูปภาพ วิดีโอ หรือเอกสาร เลือกโฟลเดอร์ที่มีสำเนาเกมของคุณ",
+ "That isn't a recomp.": "นั่นไม่ใช่ Recomp",
+ "The website didn't take it. Try again later.": "เว็บไซต์ไม่รับ ลองอีกครั้งภายหลัง",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "ไม่มี Recomp ที่ตรงกัน ปิด “ดีมากบน Deck” เพื่อดูที่เหลือ"
 }

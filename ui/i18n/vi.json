@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Đã thêm. Bản sao lưu và dữ liệu lưu đám mây cũng bao gồm thư mục đó.",
  "It shows in Discover and on Home again": "Nó lại hiện trong Khám phá và trên Trang chủ",
  "It won't show in Discover or on Home": "Nó sẽ không hiện trong Khám phá hay trên Trang chủ",
- "Where its drive_c folder is": "Nơi chứa drive_c của nó"
+ "Where its drive_c folder is": "Nơi chứa drive_c của nó",
+ "We'll email you when it comes out.": "Chúng tôi sẽ gửi email cho bạn khi trò chơi ra mắt.",
+ "Great on Deck: Steam Deck players say it plays great": "Rất tốt trên Deck: người chơi Steam Deck nói chạy rất tốt",
+ "Deck": "Deck",
+ "We'll Email You": "Sẽ gửi email cho bạn",
+ "Notify Me": "Thông báo cho tôi",
+ "Great on Deck": "Rất tốt trên Deck",
+ "You won't get an email about it.": "Bạn sẽ không nhận email về trò chơi này.",
+ "Learn More": "Tìm hiểu thêm",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} đã có trong Khám phá. Bản của bạn đã được chuyển sang đó.",
+ "Windows couldn't read it from its drive": "Windows không đọc được nó từ ổ đĩa",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows không đọc được một phần trò chơi từ ổ đĩa khi đang chạy. Điều này xảy ra khi thư mục mạng hoặc ổ USB bị mất kết nối trong giây lát. Hãy chuyển nó sang một ổ đĩa bên trong PC này (Chuyển sang ổ đĩa khác, trong menu của nó), rồi chơi lại.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Thư mục đó trống. Hãy chọn thư mục chứa bản game của bạn.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Thư mục đó chỉ có ảnh, video hoặc tài liệu. Hãy chọn thư mục chứa bản game của bạn.",
+ "That isn't a recomp.": "Đó không phải bản recomp.",
+ "The website didn't take it. Try again later.": "Trang web không chấp nhận. Hãy thử lại sau.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Không có recomp nào phù hợp. Tắt “Rất tốt trên Deck” để xem phần còn lại."
 }

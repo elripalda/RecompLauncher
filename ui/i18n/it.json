@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Aggiunta. Backup e salvataggi nel cloud includono anche quella cartella.",
  "It shows in Discover and on Home again": "Ricompare in Scopri e nella Home",
  "It won't show in Discover or on Home": "Non comparirà in Scopri né nella Home",
- "Where its drive_c folder is": "Dove si trova il suo drive_c"
+ "Where its drive_c folder is": "Dove si trova il suo drive_c",
+ "We'll email you when it comes out.": "Ti manderemo un'email quando esce.",
+ "Great on Deck: Steam Deck players say it plays great": "Ottimo su Deck: chi gioca su Steam Deck dice che gira benissimo",
+ "Deck": "Deck",
+ "We'll Email You": "Riceverai un'email",
+ "Notify Me": "Avvisami",
+ "Great on Deck": "Ottimo su Deck",
+ "You won't get an email about it.": "Non riceverai nessuna email al riguardo.",
+ "Learn More": "Scopri di più",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} ora è in Scopri. La tua copia è passata alla sua scheda.",
+ "Windows couldn't read it from its drive": "Windows non è riuscito a leggerlo dalla sua unità",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows non è riuscito a leggere parte del gioco dalla sua unità mentre era in esecuzione. Succede quando una cartella di rete o un'unità USB si scollega per un momento. Spostalo su un'unità interna di questo PC («Sposta su un'altra unità», nel suo menu), poi gioca di nuovo.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Quella cartella è vuota. Scegli la cartella con la tua copia del gioco.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Quella cartella contiene solo immagini, video o documenti. Scegli la cartella con la tua copia del gioco.",
+ "That isn't a recomp.": "Questo non è un recomp.",
+ "The website didn't take it. Try again later.": "Il sito non l'ha accettato. Riprova più tardi.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Nessun recomp corrisponde. Disattiva “Ottimo su Deck” per vedere il resto."
 }

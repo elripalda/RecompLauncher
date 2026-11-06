@@ -227,17 +227,28 @@ fn mine_file(dir: &Path) -> PathBuf {
     dir.join("my-recomps.json")
 }
 
+/// Held while the list of games added by link is read, changed and written back, so two changes
+/// at once never undo each other.
+pub static MINE_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The recomps the player added themselves, as catalog entries.
 pub fn mine(dir: &Path) -> Vec<Value> {
     std::fs::read(mine_file(dir)).ok().and_then(|b| serde_json::from_slice::<Vec<Value>>(&b).ok()).unwrap_or_default()
 }
 
+/// Written to a new file that then takes the old one's place, so a launcher closed (or updated)
+/// halfway through never leaves the list cut short.
 pub fn save_mine(dir: &Path, list: &[Value]) -> std::io::Result<()> {
-    std::fs::write(mine_file(dir), serde_json::to_vec_pretty(list).unwrap_or_default())
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let f = mine_file(dir);
+    let tmp = f.with_extension(format!("json.{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(list).unwrap_or_default())?;
+    std::fs::rename(&tmp, &f)
 }
 
-/// The catalog with the player's own recomps added after it (one the catalog has since listed
-/// itself, by the same repo, stays the catalog's).
+/// The catalog with the player's own recomps added after it. One the catalog lists under the same
+/// id is the catalog's; one whose repo it lists under another id stays too, so a copy the player
+/// has keeps its page and updates until it moves over to the catalog's (merge_mine in lib.rs).
 pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     mark_hosts(&mut cat);
     let list = mine(dir);
@@ -252,10 +263,8 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     }
     let apps = cat["apps"].as_array_mut().unwrap();
     for e in list {
-        let repo = e.get("repo").and_then(Value::as_str).unwrap_or("").to_lowercase();
         let id = e.get("id").and_then(Value::as_str).unwrap_or("");
-        let listed = apps.iter().any(|a| a.get("id").and_then(Value::as_str) == Some(id) || (!repo.is_empty() && a.get("repo").and_then(Value::as_str).map(|r| r.to_lowercase()) == Some(repo.clone())));
-        if !listed {
+        if !apps.iter().any(|a| a.get("id").and_then(Value::as_str) == Some(id)) {
             apps.push(e);
         }
     }
@@ -310,6 +319,67 @@ pub fn name_from_repo(repo: &str) -> String {
 pub async fn report_counts(http: &reqwest::Client, dir: &Path, force: bool) -> Result<Fetched, Error> {
     let fresh = if force { 0 } else { COUNTS_FRESH };
     cached(http, &format!("{}/api/pc.php?a=counts", base()), dir.join("cache/pc-counts.json"), fresh, crate::net::QUICK, force, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
+}
+
+/// How each recomp plays, by where it was played (the site's scores): Steam Deck players' score
+/// and how many of them said, for "Great on Deck". Kept an hour, like the counts.
+pub async fn play_scores(http: &reqwest::Client, dir: &Path, force: bool) -> Result<Fetched, Error> {
+    let fresh = if force { 0 } else { COUNTS_FRESH };
+    cached(http, &format!("{}/api/play.php?a=scores", base()), dir.join("cache/play-scores.json"), fresh, crate::net::QUICK, force, |v| v.get("pc").is_some_and(|p| p.is_object() || p.as_array().is_some_and(Vec::is_empty))).await
+}
+
+/// Of the scores, the Steam Deck ones: id -> {score, n}.
+pub fn deck_scores(scores: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    for (id, v) in scores.get("pc").and_then(Value::as_object).into_iter().flatten() {
+        if let Some(d) = v.get("sys").and_then(|s| s.get("deck")).filter(|d| d.is_object()) {
+            let score = d.get("score").and_then(Value::as_f64).unwrap_or(0.0);
+            let n = d.get("n").and_then(Value::as_u64).unwrap_or(0);
+            out.insert(id.clone(), serde_json::json!({ "score": score, "n": n }));
+        }
+    }
+    Value::Object(out)
+}
+
+/// The RecompStore team's notes for the top of Discover: each with its id, text, a link (https
+/// only, else none) and its color (cyan, gold or violet). Nothing when the site can't be reached.
+pub async fn team_notes(http: &reqwest::Client) -> Vec<Value> {
+    let url = format!("{}/api/notes.php", base());
+    let Ok(r) = crate::net::send(http.get(&url).timeout(crate::net::QUICK), &url, false).await else { return vec![] };
+    if !r.status().is_success() {
+        return vec![];
+    }
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    notes_from(&v)
+}
+
+pub fn notes_from(v: &Value) -> Vec<Value> {
+    if !v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+        return vec![];
+    }
+    let text = |n: &Value, k: &str, max: usize| n.get(k).and_then(Value::as_str).map(|s| s.trim().chars().take(max).collect::<String>()).unwrap_or_default();
+    v.get("notes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|n| {
+            let id = match n.get("id") {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Number(x)) => x.to_string(),
+                _ => return None,
+            };
+            let body = text(n, "body", 400);
+            if id.is_empty() || body.is_empty() {
+                return None;
+            }
+            let link = text(n, "link", 500);
+            let link = if link.starts_with("https://") && !link.contains(char::is_whitespace) { link } else { String::new() };
+            let tone = text(n, "tone", 12);
+            let tone = if ["cyan", "gold", "violet"].contains(&tone.as_str()) { tone } else { "cyan".into() };
+            Some(serde_json::json!({ "id": id, "body": body, "link": link, "linkText": if link.is_empty() { String::new() } else { text(n, "linkText", 60) }, "tone": tone }))
+        })
+        .take(5)
+        .collect()
 }
 
 /// One recomp's player reports: the counts and the newest reports, with the PC each was played on.
@@ -776,6 +846,26 @@ mod tests {
         assert!(!again.offline);
         assert_eq!(full.load(std::sync::atomic::Ordering::SeqCst), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deck_scores_and_team_notes() {
+        let scores = serde_json::json!({ "ok": true, "pc": {
+            "a": { "score": 90, "n": 10, "sys": { "windows": { "score": 92, "n": 8 }, "deck": { "score": 85, "n": 3 } } },
+            "b": { "score": 60, "n": 4, "sys": { "windows": { "score": 60, "n": 4 } } } } });
+        let d = deck_scores(&scores);
+        assert_eq!(d["a"], serde_json::json!({ "score": 85.0, "n": 3 }));
+        assert!(d.get("b").is_none());
+        let notes = notes_from(&serde_json::json!({ "ok": true, "notes": [
+            { "id": 7, "body": "We just added Discord, join us", "link": "https://discord.gg/x", "linkText": "Join", "tone": "violet" },
+            { "id": "n2", "body": "Maintenance tonight", "link": "http://example.com", "tone": "red" },
+            { "id": "n3", "body": "" } ] }));
+        assert_eq!(notes.len(), 2);
+        assert_eq!((notes[0]["id"].as_str(), notes[0]["link"].as_str(), notes[0]["tone"].as_str()), (Some("7"), Some("https://discord.gg/x"), Some("violet")));
+        // Only https links; an unknown color is cyan.
+        assert_eq!((notes[1]["link"].as_str(), notes[1]["linkText"].as_str(), notes[1]["tone"].as_str()), (Some(""), Some(""), Some("cyan")));
+        assert!(notes_from(&serde_json::json!({ "ok": true, "notes": [] })).is_empty());
+        assert!(notes_from(&serde_json::json!({ "ok": false })).is_empty());
     }
 
     #[test]

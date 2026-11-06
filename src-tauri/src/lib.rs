@@ -599,6 +599,18 @@ async fn report_counts(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
     Ok(catalog::report_counts(&st.http, &st.dir, force.unwrap_or(false)).await?.data.get("counts").cloned().unwrap_or(Value::Null))
 }
 
+/// Steam Deck players' scores for each recomp (id -> {score, n}), for "Great on Deck".
+#[tauri::command]
+async fn deck_scores(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
+    Ok(catalog::deck_scores(&catalog::play_scores(&st.http, &st.dir, force.unwrap_or(false)).await?.data))
+}
+
+/// The RecompStore team's notes for the top of Discover (none when the site can't be reached).
+#[tauri::command]
+async fn team_notes(st: State<'_, App>) -> Res<Vec<Value>> {
+    Ok(catalog::team_notes(&st.http).await)
+}
+
 /// One recomp's player reports, for its page.
 #[tauri::command]
 async fn play_reports(st: State<'_, App>, id: String, force: Option<bool>) -> Res<Value> {
@@ -1195,6 +1207,122 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         }
     }
     out
+}
+
+/// A game the player added by its link that the list now has itself (the same repo, under the
+/// list's own id): their copy becomes the list's, where it is, with its version, settings, save
+/// backups, play time, mods, favorites and pins, so nothing has to be installed again. Not while
+/// it's playing, downloading or moving (next time), and not when the list's one is installed too
+/// (both stay). Gives back the ones moved over: (their id, the list's id, its name).
+pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)> {
+    let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let list = catalog::mine(&st.dir);
+    if list.is_empty() {
+        return vec![];
+    }
+    let apps: Vec<&Value> = cat.get("apps").and_then(Value::as_array).map(|a| a.iter().filter(|x| !x.get("custom").and_then(Value::as_bool).unwrap_or(false)).collect()).unwrap_or_default();
+    let (mut keep, mut out) = (vec![], vec![]);
+    for e in list {
+        let old = str_of(&e, "id").to_string();
+        let repo = str_of(&e, "repo").to_lowercase();
+        let Some(o) = apps.iter().find(|a| !repo.is_empty() && str_of(a, "repo").to_lowercase() == repo && str_of(a, "id") != old) else {
+            keep.push(e);
+            continue;
+        };
+        let new = str_of(o, "id").to_string();
+        // Not while either one is installing, updating, running, moving, being set up or getting
+        // mods, nor while the chosen saves folder can't be reached (its backups would stay behind):
+        // it's tried again the next time the list comes in.
+        let busy = [&old, &new].iter().any(|i| st.jobs.lock().unwrap().contains_key(*i) || st.running.lock().unwrap().contains_key(*i) || st.moving.lock().unwrap().contains(*i) || setup_busy(i) || mods_busy(i))
+            || saves::chosen_root().is_some_and(|p| !p.is_dir());
+        let had = {
+            let mut l = st.lib.lock().unwrap();
+            let had = l.installed.contains_key(&old);
+            if busy || (had && l.installed.contains_key(&new)) {
+                None
+            } else {
+                if let Some(mut g) = l.installed.remove(&old) {
+                    g.id = new.clone();
+                    l.installed.insert(new.clone(), g);
+                }
+                if let Some(m) = l.mods.remove(&old) {
+                    l.mods.entry(new.clone()).or_insert(m);
+                }
+                if let Some(v) = l.seen_versions.remove(&old) {
+                    l.seen_versions.entry(new.clone()).or_insert(v);
+                }
+                rename_id(&mut l.settings.ui, &old, &new);
+                Some(had)
+            }
+        };
+        let Some(had) = had else {
+            keep.push(e);
+            continue;
+        };
+        // Its save backups and this PC's notes about them, and its Look. What the official one
+        // already has stays as it is.
+        let mut dirs = vec![(saves::dir_of(&st.dir, &old), saves::dir_of(&st.dir, &new)), (st.dir.join("saves").join(&old), st.dir.join("saves").join(&new)), (st.dir.join("looks").join(&old), st.dir.join("looks").join(&new))];
+        dirs.dedup();
+        for (from, to) in dirs {
+            if let Err(err) = move_into(&from, &to) {
+                trail::note(format!("{new}: couldn't move all of {} to {} ({err})", from.display(), to.display()));
+            }
+        }
+        trail::note(format!("{old}: the list has it now as {new}; {}", if had { "the copy here moved over to it" } else { "the list's one is used from now on" }));
+        out.push((old, new, str_of(o, "name").to_string()));
+    }
+    if !out.is_empty() {
+        // The library first: if the list can't be written, the next time finds it moved already.
+        st.save();
+        if let Err(err) = catalog::save_mine(&st.dir, &keep) {
+            trail::note(format!("Couldn't save the list of games added by link ({err})"));
+        }
+    }
+    out
+}
+
+/// A folder's things moved into another; ones the other already has stay where they were.
+fn move_into(from: &Path, to: &Path) -> std::io::Result<()> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    if !to.exists() {
+        return std::fs::rename(from, to);
+    }
+    let mut left = 0;
+    for e in std::fs::read_dir(from)?.flatten() {
+        let dest = to.join(e.file_name());
+        if dest.exists() || std::fs::rename(e.path(), &dest).is_err() {
+            left += 1;
+        }
+    }
+    if left == 0 {
+        let _ = std::fs::remove_dir(from);
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("{left} left where they were")))
+    }
+}
+
+/// A game's id changed (`old` to `new`) in the player's own settings: lists of ids (favorites,
+/// pins, hidden games) and maps keyed by id (covers, names, choices kept per game).
+fn rename_id(v: &mut Value, old: &str, new: &str) {
+    match v {
+        Value::String(s) if s == old => *s = new.to_string(),
+        Value::Array(a) => {
+            a.iter_mut().for_each(|x| rename_id(x, old, new));
+            // A list that had both keeps one.
+            let mut seen = false;
+            a.retain(|x| x.as_str() != Some(new) || !std::mem::replace(&mut seen, true));
+        }
+        Value::Object(o) => {
+            if let Some(x) = o.remove(old) {
+                o.entry(new.to_string()).or_insert(x);
+            }
+            o.values_mut().for_each(|x| rename_id(x, old, new));
+        }
+        _ => {}
+    }
 }
 
 /// After a fresh catalog: tell the player about new recomps for games they own.
@@ -2282,6 +2410,10 @@ fn note_pad() {
 static SETUP_RUN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+fn setup_busy(id: &str) -> bool {
+    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id))
+}
+
 fn setup_stopped(id: &str, run: u64) -> bool {
     SETUP_RUN.lock().unwrap().as_ref().and_then(|m| m.get(id).copied()) != Some(run)
 }
@@ -2324,6 +2456,11 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         let fail = |text: String| {
             if !stopped() {
                 emit(SetupEv { step: "error".into(), text, ..Default::default() })
+            }
+            if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
+                if m.get(&id) == Some(&run) {
+                    m.remove(&id);
+                }
             }
         };
         // 1. Is it the right game?
@@ -2856,10 +2993,13 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
     if let Some(i) = info.as_ref().and_then(Value::as_object) {
         set_mine_fields(&mut entry, i);
     }
-    let mut list = catalog::mine(&st.dir);
-    list.retain(|e| str_of(e, "id") != id);
-    list.push(entry.clone());
-    catalog::save_mine(&st.dir, &list)?;
+    {
+        let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
+        let mut list = catalog::mine(&st.dir);
+        list.retain(|e| str_of(e, "id") != id);
+        list.push(entry.clone());
+        catalog::save_mine(&st.dir, &list)?;
+    }
     Ok(json!({"id": id, "known": false, "name": str_of(&entry, "name")}))
 }
 
@@ -2882,6 +3022,7 @@ fn set_mine_fields(entry: &mut Value, i: &serde_json::Map<String, Value>) {
 /// Edit Game Info: the player changes a game they added themselves.
 #[tauri::command(async)]
 fn update_mine(st: State<'_, App>, id: String, info: Value) -> Res<()> {
+    let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let mut list = catalog::mine(&st.dir);
     let e = list.iter_mut().find(|e| str_of(e, "id") == id).ok_or_else(|| Error::Msg("Only games you added yourself can be changed.".into()))?;
     if let Some(i) = info.as_object() {
@@ -2894,6 +3035,7 @@ fn update_mine(st: State<'_, App>, id: String, info: Value) -> Res<()> {
 /// Take a recomp the player added by its link back out (when it isn't installed).
 #[tauri::command(async)]
 fn remove_github(st: State<'_, App>, id: String) -> Res<()> {
+    let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let mut list = catalog::mine(&st.dir);
     list.retain(|e| str_of(e, "id") != id);
     catalog::save_mine(&st.dir, &list)?;
@@ -4449,7 +4591,8 @@ fn net_state() -> Value {
 #[tauri::command]
 async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<catalog::Fetched> {
     if !force {
-        if let Some((f, stale)) = catalog::catalog_now(&st.dir) {
+        if let Some((mut f, stale)) = catalog::catalog_now(&st.dir) {
+            merged_mine(&app, &st, &mut f.data);
             if stale {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -4465,11 +4608,25 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
             return Ok(f);
         }
     }
-    let f = catalog::catalog(&st.http, &st.dir, force).await?;
+    let mut f = catalog::catalog(&st.http, &st.dir, force).await?;
+    merged_mine(&app, &st, &mut f.data);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
     }
     Ok(f)
+}
+
+/// merge_mine, with the list sent to the window without the entries moved over, and the window
+/// told ("mine-merged") so it reads the Library again and says so.
+fn merged_mine(app: &AppHandle, st: &App, data: &mut Value) {
+    let merged = merge_mine(st, data);
+    if merged.is_empty() {
+        return;
+    }
+    if let Some(a) = data.get_mut("apps").and_then(Value::as_array_mut) {
+        a.retain(|x| !merged.iter().any(|(old, _, _)| str_of(x, "id") == old));
+    }
+    let _ = app.emit("mine-merged", merged.iter().map(|(from, to, name)| json!({ "from": from, "to": to, "name": name })).collect::<Vec<_>>());
 }
 
 /// A recomp's releases for its page. Without `force`, the copy on disk comes back at once and,
@@ -4954,10 +5111,16 @@ async fn gb_install(app: AppHandle, st: State<'_, App>, id: String, mod_id: u64,
 
 /// A game's mods change one at a time (installs and removals wait their turn), so two never
 /// write the same files or the same ModsDB.ini at once.
+static MOD_TURNS: std::sync::OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = std::sync::OnceLock::new();
+
 async fn mod_turn(id: &str) -> tokio::sync::OwnedMutexGuard<()> {
-    static TURNS: std::sync::OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = std::sync::OnceLock::new();
-    let m = TURNS.get_or_init(Default::default).lock().unwrap().entry(id.to_string()).or_default().clone();
+    let m = MOD_TURNS.get_or_init(Default::default).lock().unwrap().entry(id.to_string()).or_default().clone();
     m.lock_owned().await
+}
+
+/// A mod is going in or coming out for this game right now.
+fn mods_busy(id: &str) -> bool {
+    MOD_TURNS.get().and_then(|t| t.lock().unwrap().get(id).cloned()).is_some_and(|m| m.try_lock().is_err())
 }
 
 /// The files a mod put in, and the files the game's other mods use.
@@ -6418,7 +6581,7 @@ pub fn run() {
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, copy_check, wine_tools,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -6470,6 +6633,87 @@ mod tests {
     }
 
     use super::*;
+
+    fn app_in(dir: &Path, lib: Library) -> App {
+        App {
+            dir: dir.to_path_buf(),
+            http: reqwest::Client::new(),
+            lib: Mutex::new(lib),
+            jobs: Mutex::default(),
+            running: Mutex::default(),
+            pids: Mutex::default(),
+            started: Mutex::default(),
+            download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
+            moving: Mutex::default(),
+            overlay_open: AtomicBool::new(false),
+            looked: Mutex::new(HashSet::new()),
+            headless: AtomicBool::new(false),
+        }
+    }
+
+    #[test]
+    fn a_game_added_by_link_moves_over_when_the_list_has_it() {
+        let d = std::env::temp_dir().join(format!("rl-merge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mine = json!([{ "id": "gh-me-game", "repo": "Me/Game", "name": "My Game", "custom": true }, { "id": "gh-me-other", "repo": "me/other", "custom": true }]);
+        catalog::save_mine(&d, mine.as_array().unwrap()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("gh-me-game".into(), Installed { id: "gh-me-game".into(), name: "My Game".into(), tag: "v1.2".into(), path: d.join("games/game"), played_secs: 3600, ..Default::default() });
+        lib.settings.ui = json!({ "favs": ["gh-me-game", "x", "game"], "names": { "gh-me-game": "Mine" }, "lang": "en" });
+        std::fs::create_dir_all(saves::dir_of(&d, "gh-me-game")).unwrap();
+        std::fs::write(saves::dir_of(&d, "gh-me-game").join("1.zip"), b"save").unwrap();
+        // Backups from the official one, installed once before.
+        std::fs::create_dir_all(saves::dir_of(&d, "game")).unwrap();
+        std::fs::write(saves::dir_of(&d, "game").join("2.zip"), b"save").unwrap();
+        let st = app_in(&d, lib);
+        let cat = catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game", "name": "Game" }] }));
+        // Until it moves over, the player's own entry stays beside the list's.
+        assert!(cat["apps"].as_array().unwrap().iter().any(|a| a["id"] == "gh-me-game"));
+        // Busy downloading: next time.
+        st.jobs.lock().unwrap().insert("gh-me-game".into(), Arc::new(AtomicBool::new(false)));
+        assert!(merge_mine(&st, &cat).is_empty());
+        st.jobs.lock().unwrap().clear();
+        // The official one installing: next time too.
+        st.jobs.lock().unwrap().insert("game".into(), Arc::new(AtomicBool::new(false)));
+        assert!(merge_mine(&st, &cat).is_empty());
+        st.jobs.lock().unwrap().clear();
+        assert_eq!(merge_mine(&st, &cat), vec![("gh-me-game".to_string(), "game".to_string(), "Game".to_string())]);
+        let l = st.lib.lock().unwrap().clone();
+        let g = &l.installed["game"];
+        assert!(!l.installed.contains_key("gh-me-game"));
+        assert_eq!((g.id.as_str(), g.tag.as_str(), g.played_secs, g.path.clone()), ("game", "v1.2", 3600, d.join("games/game")));
+        assert_eq!(l.settings.ui["favs"], json!(["game", "x"]));
+        assert_eq!(l.settings.ui["names"]["game"], "Mine");
+        assert_eq!(l.settings.ui["lang"], "en");
+        assert!(saves::dir_of(&d, "game").join("1.zip").is_file() && saves::dir_of(&d, "game").join("2.zip").is_file());
+        assert!(!saves::dir_of(&d, "gh-me-game").exists());
+        // The one the list doesn't have stays the player's.
+        let left = catalog::mine(&d);
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0]["id"], "gh-me-other");
+        // Nothing more to do the next time.
+        assert!(merge_mine(&st, &catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game" }] }))).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn both_installed_both_stay() {
+        let d = std::env::temp_dir().join(format!("rl-merge2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "gh-me-game", "repo": "me/game", "custom": true }]).as_array().unwrap()).unwrap();
+        let mut lib = Library::default();
+        for id in ["gh-me-game", "game"] {
+            lib.installed.insert(id.into(), Installed { id: id.into(), path: d.join(id), ..Default::default() });
+        }
+        let st = app_in(&d, lib);
+        let cat = catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game" }] }));
+        assert!(merge_mine(&st, &cat).is_empty());
+        assert_eq!(st.lib.lock().unwrap().installed.len(), 2);
+        assert_eq!(catalog::mine(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn followed_developers_news_once_per_version() {

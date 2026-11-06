@@ -64,7 +64,10 @@ pub fn wild(pattern: &str, name: &str) -> bool {
 
 /// The words in a file name: `Zelda64Recompiled-v1.2.2-Linux-X64.zip` -> zelda64recompiled, v1, 2, 2, linux, x64, zip.
 fn words(name: &str) -> Vec<String> {
+    // "x86_64" and "x86-64" are one word (64-bit), not "x86" (32-bit) and "64".
     name.to_lowercase()
+        .replace("x86_64", "x64")
+        .replace("x86-64", "x64")
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| !w.is_empty())
         .map(str::to_string)
@@ -187,8 +190,8 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         _ => 4,
     };
     // A game's server (for playing online) comes with some releases: the game itself comes first,
-    // and the server only when it's all there is.
-    if w.iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv")) {
+    // and the server only when it's all there is. The same for an editor or tools beside the game.
+    if w.iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv" | "editor" | "tools" | "toolkit" | "sdk" | "modkit" | "devkit")) {
         s = (s - 60).max(1);
     }
     s
@@ -292,6 +295,21 @@ mod tests {
 
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new() }
+    }
+
+    #[test]
+    fn sixty_four_bit_names_and_editor_builds() {
+        // x86_64 is 64-bit, not 32.
+        assert_eq!(describe("orchid-v0.7.5-windows-x86_64.zip", "windows"), "Portable");
+        assert_eq!(describe("game-win32.zip", "windows"), "32-Bit Portable");
+        assert!(other_arch("game-linux-x86_64.AppImage", "arm64"));
+        assert!(!other_arch("game-linux-x86_64.AppImage", "x64"));
+        // The game before its editor.
+        let r = [a("fm-editor-v0.3.1-preview.1-windows.zip"), a("memories-pc-v0.3.1-preview.1-windows.zip")];
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "memories-pc-v0.3.1-preview.1-windows.zip");
+        assert_eq!(all_for(&r, "windows", "x64", None).len(), 2);
+        // An editor alone is still picked.
+        assert_eq!(pick(&r[..1], "windows", "x64", None).unwrap().name, "fm-editor-v0.3.1-preview.1-windows.zip");
     }
 
     #[test]

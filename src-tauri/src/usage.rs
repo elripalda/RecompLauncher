@@ -507,6 +507,39 @@ pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Optio
     Ok(v)
 }
 
+/// The Coming Soon games the signed-in player asked to hear about (one email when each comes out).
+/// Empty when they aren't signed in.
+#[tauri::command]
+pub async fn notifies(app: AppHandle) -> Res<Vec<String>> {
+    let st = app.state::<App>();
+    let Some(t) = token(&st.dir) else { return Ok(vec![]) };
+    let url = pc_api();
+    let req = st.http.get(&url).query(&[("a", "notifies")]).bearer_auth(&t).header("X-RL-Token", t.as_str()).timeout(crate::net::QUICK);
+    let r = crate::net::send(req, &url, true).await?;
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    Ok(v.get("apps").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default())
+}
+
+/// Notify Me on a Coming Soon game: on (one email when it comes out) or off. The site's own words
+/// when it says no (an email that isn't confirmed yet, say).
+#[tauri::command]
+pub async fn notify(app: AppHandle, id: String, on: bool) -> Res<bool> {
+    let st = app.state::<App>();
+    let t = token(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = pc_api();
+    let body = format!("a=notify&app={id}&on={}", if on { 1 } else { 0 });
+    let req = st.http.post(&url).header("Content-Type", "application/x-www-form-urlencoded").body(body).bearer_auth(&t).header("X-RL-Token", t.as_str()).timeout(crate::net::QUICK);
+    let r = crate::net::send(req, &url, true).await?;
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if !v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("The website didn't take it. Try again later.").to_string()));
+    }
+    Ok(v.get("on").and_then(|x| x.as_bool().or_else(|| x.as_i64().map(|n| n != 0))).unwrap_or(on))
+}
+
 /// The signed-in player's reports, with what developers answered.
 #[tauri::command]
 pub async fn my_reports(app: AppHandle) -> Res<Value> {

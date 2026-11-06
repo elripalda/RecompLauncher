@@ -1598,7 +1598,7 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 @keyframes glowIn{from{opacity:0;transform:scale(.9)}to{opacity:.55;transform:scale(1)}}
 .poster.wide .wbg{filter:none;transform:none;inset:-4%;width:108%;height:108%}
 .gp-amb img{inset:auto;left:-120px;top:-120px;width:calc((100% + 240px) / 6);height:calc((100% + 240px) / 6);transform:scale(6);transform-origin:0 0;filter:blur(15px) saturate(1.5)}
-body.scrolling .tile,body.scrolling .shelf .track>*,body.scrolling .card a,body.scrolling .dl-row{pointer-events:none}
+#main.scrolling>*,#main.scrolling .viewport>.track{pointer-events:none}
 /* Big grids: tiles out of view aren't drawn at all until they scroll in. */
 #main .grid>.tile{content-visibility:auto;contain-intrinsic-size:auto 320px;overflow-clip-margin:24px}
 /* While a game runs, nothing in the launcher moves. */
@@ -1720,3 +1720,20 @@ body.pad-nav .pill-sel:has(.pad-focus){outline:3px solid var(--cyan)!important;o
 body.pad-nav :is(.side,.menu,.choices,.fb-list,.fb-side,.adopt-list,.set-nav) .pad-focus{outline-offset:-3px}
 body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .modal ul.lacks{margin:-2px 0 6px;padding-left:20px;line-height:1.65;color:var(--ink)}
+/* Great on Deck (Steam blue), Notify Me, and the team's notes on top of Discover. */
+.badge.deck{top:auto;bottom:9px;right:9px;color:#fff;background:#1a9fff;gap:4px;padding:0 8px}.badge.deck.up{bottom:39px}
+.tag.deck{color:#1a9fff;background:rgba(26,159,255,.1);border-color:rgba(26,159,255,.42)}
+.toggle.deck-t svg{color:#1a9fff}
+.badge.soon svg{margin-right:-1px}
+.btn.notify-on{background:transparent;color:var(--cyan);border:1.5px solid rgba(52,242,232,.6)}
+.btn.notify-on svg{color:var(--cyan)}
+.tnotes{display:flex;flex-direction:column;gap:10px;margin:0 0 22px}
+.tnote{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--cyan)}
+.tnote.gold{border-left-color:#f5c518}.tnote.violet{border-left-color:#a98bff}
+.tnote .tn-l{flex:none;font:800 10.5px Figtree,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.tnote p{flex:1;min-width:0;margin:0;font-size:14px;line-height:1.45}
+.tnote .tn-x{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--dim)}
+.tnote .tn-x:hover{color:var(--ink);background:var(--fill2)}
+.tnote .tn-x svg{width:14px;height:14px}
+@media (max-width:700px){.tnote{flex-wrap:wrap}.tnote p{flex-basis:100%;order:3}}
+body.light .tag.deck{color:#0b6fbf}

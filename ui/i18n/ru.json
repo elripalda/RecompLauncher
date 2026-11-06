@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Добавлено. Резервные копии и облачные сохранения теперь охватывают и эту папку.",
  "It shows in Discover and on Home again": "Она снова показывается в «Обзоре» и на Главной",
  "It won't show in Discover or on Home": "Она не будет показываться в «Обзоре» и на Главной",
- "Where its drive_c folder is": "Где находится его drive_c"
+ "Where its drive_c folder is": "Где находится его drive_c",
+ "We'll email you when it comes out.": "Мы пришлём письмо, когда она выйдет.",
+ "Great on Deck: Steam Deck players say it plays great": "Отлично на Deck: игроки на Steam Deck говорят, что работает отлично",
+ "Deck": "Deck",
+ "We'll Email You": "Пришлём письмо",
+ "Notify Me": "Уведомить меня",
+ "Great on Deck": "Отлично на Deck",
+ "You won't get an email about it.": "Письма об этом не будет.",
+ "Learn More": "Подробнее",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} теперь в «Обзоре». Ваша копия перешла туда.",
+ "Windows couldn't read it from its drive": "Windows не смогла прочитать её с диска",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows не смогла прочитать часть игры с диска во время работы. Так бывает, когда сетевая папка или USB-накопитель ненадолго отключается. Перенесите игру на внутренний диск этого компьютера («Перенести на другой диск» в её меню) и запустите снова.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Эта папка пуста. Выберите папку с вашей копией игры.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "В этой папке только изображения, видео или документы. Выберите папку с вашей копией игры.",
+ "That isn't a recomp.": "Это не рекомпиляция.",
+ "The website didn't take it. Try again later.": "Сайт это не принял. Повторите попытку позже.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Нет подходящих рекомпиляций. Выключите «Отлично на Deck», чтобы увидеть остальное."
 }

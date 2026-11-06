@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Додано. Резервні копії та хмарні збереження тепер охоплюють і цю папку.",
  "It shows in Discover and on Home again": "Вона знову показується в «Огляді» та на Головній",
  "It won't show in Discover or on Home": "Вона не показуватиметься в «Огляді» та на Головній",
- "Where its drive_c folder is": "Де його drive_c"
+ "Where its drive_c folder is": "Де його drive_c",
+ "We'll email you when it comes out.": "Ми надішлемо лист, коли вона вийде.",
+ "Great on Deck: Steam Deck players say it plays great": "Чудово на Deck: гравці на Steam Deck кажуть, що працює чудово",
+ "Deck": "Deck",
+ "We'll Email You": "Надішлемо лист",
+ "Notify Me": "Повідомити мене",
+ "Great on Deck": "Чудово на Deck",
+ "You won't get an email about it.": "Листа про це не буде.",
+ "Learn More": "Докладніше",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} тепер в «Огляді». Твоя копія перейшла туди.",
+ "Windows couldn't read it from its drive": "Windows не змогла прочитати її з диска",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows не змогла прочитати частину гри з диска під час роботи. Так буває, коли мережева папка або USB-накопичувач ненадовго відключається. Перенеси гру на внутрішній диск цього комп'ютера («Перенести на інший диск» у її меню) і запусти знову.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Ця папка порожня. Вибери папку зі своєю копією гри.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "У цій папці лише зображення, відео або документи. Вибери папку зі своєю копією гри.",
+ "That isn't a recomp.": "Це не рекомпіляція.",
+ "The website didn't take it. Try again later.": "Сайт це не прийняв. Спробуй ще раз пізніше.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Немає відповідних рекомпіляцій. Вимкніть «Чудово на Deck», щоб побачити решту."
 }

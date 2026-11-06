@@ -637,12 +637,13 @@ pub fn tokens(s: &str) -> Vec<String> {
 
 // A game's own dedicated server (for hosting online play) is never the game, and neither is its
 // installer.
-const NOT_THE_GAME: [&str; 17] = ["unins", "uninstall", "setup", "install", "crash", "crashpad", "redist", "vcredist", "helper", "updater", "update", "dxsetup", "vc", "elevate", "report", "server", "dedicated"];
+// "instal" also covers other languages' installers ("Instalar", "Instalador", "Instalacja").
+const NOT_THE_GAME: [&str; 18] = ["unins", "uninstall", "setup", "install", "instal", "crash", "crashpad", "redist", "vcredist", "helper", "updater", "update", "dxsetup", "vc", "elevate", "report", "server", "dedicated"];
 
 /// Words that start a launch script's name: "Launch Madden NFL 08.bat", "Play.cmd".
 const LAUNCH_WORDS: [&str; 5] = ["launch", "launcher", "play", "start", "run"];
 /// Scripts that are for something else: debugging, a test, or playing without the launcher.
-const NOT_A_LAUNCH: [&str; 8] = ["debug", "test", "safe", "sin", "without", "no", "build", "clean"];
+const NOT_A_LAUNCH: [&str; 11] = ["debug", "test", "safe", "sin", "without", "no", "build", "clean", "diagnostic", "diagnostics", "benchmark"];
 
 /// Words at the end of a recomp's name that aren't the game's, and small words, for initials.
 pub const TAIL_WORDS: [&str; 10] = ["recomp", "recompiled", "decomp", "decompiled", "pc", "port", "native", "online", "edition", "windows"];
@@ -655,7 +656,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 10;
+pub const EXE_RULES: u8 = 11;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -711,7 +712,7 @@ pub fn is_script(p: &Path) -> bool {
 
 /// Words in the name of a program that has to run once before the game: its installer, or the
 /// first-time setup that unpacks the game's files from the player's copy.
-const SETUP_WORDS: [&str; 5] = ["setup", "install", "installer", "unpack", "firstrun"];
+const SETUP_WORDS: [&str; 9] = ["setup", "install", "installer", "unpack", "firstrun", "instalar", "instalador", "installation", "instalacja"];
 /// Installers that come with a game but aren't for it: runtimes, drivers and uninstallers.
 const NOT_A_SETUP: [&str; 14] = ["unins", "uninstall", "uninstaller", "vc", "vcredist", "redist", "dxsetup", "directx", "dotnet", "netfx", "webview2", "vulkan", "driver", "runtime"];
 
@@ -1045,6 +1046,23 @@ mod tests {
     fn sparse(p: &Path, len: u64) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::File::create(p).unwrap().set_len(len).unwrap();
+    }
+
+    #[test]
+    fn installers_in_other_languages_and_diagnostic_scripts() {
+        // An installer named in Portuguese is the setup, not the game.
+        let d = tmp("gowhd");
+        sparse(&d.join("Instalar God of War Collection.exe"), 4_000_000);
+        let names = ["God of War Collection (VitaRT)", "GOD-OF-WAR-HD-COLLECTION", "God of War Collection"];
+        assert!(find_exe(&d, "windows", &names).is_none());
+        assert_eq!(find_setup(&d, "windows", None).unwrap(), PathBuf::from("Instalar God of War Collection.exe"));
+        assert!(looks_like_setup(Path::new("Instalador Juego.exe")));
+        // A start script for diagnostics isn't how the game starts.
+        let d = tmp("monado");
+        sparse(&d.join("Play Monado (stutter diagnostics).bat"), 900);
+        sparse(&d.join("Play Monado.bat"), 700);
+        sparse(&d.join("monado.exe"), 60_000_000);
+        assert_eq!(find_exe(&d, "windows", &["Monado"]).unwrap(), PathBuf::from("Play Monado.bat"));
     }
 
     #[test]

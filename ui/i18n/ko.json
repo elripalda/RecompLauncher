@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "추가했습니다. 백업과 클라우드 저장에 그 폴더도 포함됩니다.",
  "It shows in Discover and on Home again": "탐색과 홈에 다시 표시됩니다",
  "It won't show in Discover or on Home": "탐색과 홈에 표시되지 않습니다",
- "Where its drive_c folder is": "drive_c가 있는 곳"
+ "Where its drive_c folder is": "drive_c가 있는 곳",
+ "We'll email you when it comes out.": "출시되면 이메일로 알려 드립니다.",
+ "Great on Deck: Steam Deck players say it plays great": "Deck에서 아주 좋음: Steam Deck 플레이어가 아주 잘 돌아간다고 답함",
+ "Deck": "Deck",
+ "We'll Email You": "이메일로 알려 드릴게요",
+ "Notify Me": "알림 받기",
+ "Great on Deck": "Deck에서 아주 좋음",
+ "You won't get an email about it.": "이 게임에 대한 이메일은 받지 않습니다.",
+ "Learn More": "자세히 알아보기",
+ "{name} is on Discover now. Your copy moved over to it.": "{name}이(가) 이제 탐색에 있습니다. 설치한 사본은 그 항목으로 옮겨졌습니다.",
+ "Windows couldn't read it from its drive": "Windows가 드라이브에서 읽지 못했습니다",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "실행 중에 Windows가 드라이브에서 게임 일부를 읽지 못했습니다. 네트워크 폴더나 USB 드라이브 연결이 잠시 끊기면 이런 일이 생깁니다. 이 PC 내부 드라이브로 옮긴 다음(메뉴의 “다른 드라이브로 이동”) 다시 플레이하세요.",
+ "That folder is empty. Pick the folder with your copy of the game.": "그 폴더는 비어 있습니다. 게임 사본이 있는 폴더를 고르세요.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "그 폴더에는 사진, 동영상, 문서만 있습니다. 게임 사본이 있는 폴더를 고르세요.",
+ "That isn't a recomp.": "리컴프가 아닙니다.",
+ "The website didn't take it. Try again later.": "웹사이트가 받아들이지 않았습니다. 나중에 다시 시도하세요.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "일치하는 리컴프가 없습니다. 나머지를 보려면 “Deck에서 아주 좋음”을 끄세요."
 }

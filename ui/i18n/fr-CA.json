@@ -456,5 +456,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Ajouté. Les copies de sauvegarde et les sauvegardes dans le cloud couvrent aussi ce dossier.",
  "It shows in Discover and on Home again": "Il réapparaît dans Découvrir et sur l'Accueil",
  "It won't show in Discover or on Home": "Il n'apparaîtra plus dans Découvrir ni sur l'Accueil",
- "Where its drive_c folder is": "Là où se trouve son drive_c"
+ "Where its drive_c folder is": "Là où se trouve son drive_c",
+ "We'll email you when it comes out.": "Nous vous enverrons un courriel à sa sortie.",
+ "Great on Deck: Steam Deck players say it plays great": "Super sur le Deck : les joueurs sur Steam Deck disent que ça tourne très bien",
+ "Deck": "Deck",
+ "We'll Email You": "Vous recevrez un courriel",
+ "Notify Me": "Me prévenir",
+ "Great on Deck": "Super sur le Deck",
+ "You won't get an email about it.": "Vous ne recevrez pas de courriel à ce sujet.",
+ "Learn More": "En savoir plus",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} est maintenant dans Découvrir. Votre copie y a été rattachée.",
+ "Windows couldn't read it from its drive": "Windows n'a pas pu le lire depuis son lecteur",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows n'a pas pu lire une partie du jeu depuis son lecteur pendant qu'il tournait. Cela arrive quand un dossier réseau ou un lecteur USB se déconnecte un instant. Déplacez-le vers un lecteur interne de ce PC (« Déplacer vers un autre lecteur », dans son menu), puis relancez le jeu.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Ce dossier est vide. Choisissez le dossier de votre copie du jeu.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Ce dossier ne contient que des images, des vidéos ou des documents. Choisissez le dossier de votre copie du jeu.",
+ "That isn't a recomp.": "Ce n'est pas une recomp.",
+ "The website didn't take it. Try again later.": "Le site ne l'a pas accepté. Réessayez plus tard.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Aucune recomp ne correspond. Désactivez « Super sur le Deck » pour voir le reste."
 }

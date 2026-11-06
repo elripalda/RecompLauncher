@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "Eklendi. Yedekler ve bulut kayıtları artık o klasörü de kapsıyor.",
  "It shows in Discover and on Home again": "Keşfet'te ve Ana sayfada yeniden görünür",
  "It won't show in Discover or on Home": "Keşfet'te veya Ana sayfada görünmez",
- "Where its drive_c folder is": "drive_c'nin bulunduğu yer"
+ "Where its drive_c folder is": "drive_c'nin bulunduğu yer",
+ "We'll email you when it comes out.": "Çıktığında size e-posta göndereceğiz.",
+ "Great on Deck: Steam Deck players say it plays great": "Deck'te harika: Steam Deck oyuncuları harika çalıştığını söylüyor",
+ "Deck": "Deck",
+ "We'll Email You": "E-postayla bildireceğiz",
+ "Notify Me": "Bana haber ver",
+ "Great on Deck": "Deck'te harika",
+ "You won't get an email about it.": "Bununla ilgili e-posta almayacaksınız.",
+ "Learn More": "Daha fazla bilgi",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} artık Keşfet'te. Kopyanız oraya taşındı.",
+ "Windows couldn't read it from its drive": "Windows onu sürücüsünden okuyamadı",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "Windows, oyun çalışırken bir kısmını sürücüsünden okuyamadı. Bu, bir ağ klasörünün ya da USB sürücünün bağlantısı bir anlığına koptuğunda olur. Oyunu bu bilgisayarın içindeki bir sürücüye taşıyın (menüsündeki Başka bir sürücüye taşı ile), sonra tekrar oynayın.",
+ "That folder is empty. Pick the folder with your copy of the game.": "Bu klasör boş. Oyun kopyanızın bulunduğu klasörü seçin.",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "Bu klasörde yalnızca resim, video veya belge var. Oyun kopyanızın bulunduğu klasörü seçin.",
+ "That isn't a recomp.": "Bu bir recomp değil.",
+ "The website didn't take it. Try again later.": "Web sitesi bunu kabul etmedi. Daha sonra tekrar deneyin.",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "Eşleşen recomp yok. Diğerlerini görmek için “Deck'te harika” seçeneğini kapat."
 }

@@ -23,6 +23,8 @@ async function loadAccount(fresh) {
   if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; }
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
+  // Notify Me: the games they're waiting on (none when signed out).
+  if (window.afterSignIn && !S.account.offline) window.afterSignIn();
 }
 
 // ---------- your reports ----------
@@ -66,19 +68,20 @@ function renderAccountBits() {
 const SIGN = { timer: null, sheet: null };
 function stopSignIn() {
   clearTimeout(SIGN.timer); SIGN.timer = null;
+  if (window.notifyForget) window.notifyForget();
   invoke('account_cancel').catch(() => {});
 }
 // Desktop: the browser opens on the page that says yes, and the code is shown in case it's needed
 // on another device. Big Picture mode: the code and a QR code for a phone.
 async function signIn(create) {
   let s;
-  try { s = await invoke('account_start', { create: !!create }); } catch (e) { return fail(e); }
+  try { s = await invoke('account_start', { create: !!create }); } catch (e) { if (window.notifyForget) window.notifyForget(); return fail(e); }
   const tv = inTV() && window.tvSignIn;
   let box, setStatus;
   const done = (user) => {
     clearTimeout(SIGN.timer); SIGN.timer = null;
     if (SIGN.sheet) { SIGN.sheet.close(true); SIGN.sheet = null; }
-    if (box) box.remove();
+    if (box) { box.dataset.ok = '1'; box.remove(); }
     toast(tf('Signed in as {name}.', { name: (user && user.username) || '' }));
     loadAccount(true);
   };
@@ -93,10 +96,10 @@ async function signIn(create) {
       <p class="signin-st" data-st><span class="spinr"></span>${esc(t('Waiting for you to sign in…'))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="open">${esc(t('Open the browser again'))}</button></div></div>`, (x) => {
       if (x.dataset.x === 'open') invoke('open_url', { url: s.url }).catch(fail);
-      if (x.dataset.x === 'again') { box.remove(); signIn(create); }
+      if (x.dataset.x === 'again') { box.dataset.ok = '1'; box.remove(); signIn(create); }
     }, t('Sign in'));
     // Closed some other way (Cancel, Esc, clicking outside): stop waiting.
-    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); if (SIGN.timer) stopSignIn(); } }).observe(document.body, { childList: true });
+    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); if (SIGN.timer) stopSignIn(); else if (!box.dataset.ok && window.notifyForget) window.notifyForget(); } }).observe(document.body, { childList: true });
     setStatus = (m, again) => { const st = $('[data-st]', box); if (st) st.innerHTML = esc(m) + (again ? ` <button type="button" class="linkish" data-x="again">${esc(t('Get a new code'))}</button>` : ''); };
   }
   const until = Date.now() + s.expires * 1000;
@@ -120,6 +123,7 @@ async function signOut() {
   S.saves = {};
   toast(t('Signed out. Your saves stay on this PC.'));
   renderAccountBits();
+  if (window.afterSignIn) window.afterSignIn();
 }
 
 // ---------- Settings > Account ----------
@@ -383,7 +387,7 @@ window.accountAct = async (act, el) => {
   return null;
 };
 
-T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; renderAccountBits(); } else loadAccount(true); });
+T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
 T.event.listen('saves', ({ payload }) => { if (S.view === 'saves') loadSavesAll(); if (payload && payload.id) { delete S.saves[payload.id]; if (S.view === 'game' && S.arg === payload.id && S.tab === 'saves') loadSaves(payload.id); } });
 
 // Who's signed in: what's remembered first, then the website's answer.

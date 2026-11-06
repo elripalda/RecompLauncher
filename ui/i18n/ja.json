@@ -2119,5 +2119,21 @@
  "Added. Backups and cloud saves cover that folder too.": "追加しました。バックアップとクラウドセーブはそのフォルダーも対象になります。",
  "It shows in Discover and on Home again": "「見つける」とホームに再び表示されます",
  "It won't show in Discover or on Home": "「見つける」とホームに表示されなくなります",
- "Where its drive_c folder is": "drive_c がある場所"
+ "Where its drive_c folder is": "drive_c がある場所",
+ "We'll email you when it comes out.": "リリースされたらメールでお知らせします。",
+ "Great on Deck: Steam Deck players say it plays great": "Deck で快適：Steam Deck のプレイヤーが快適と回答",
+ "Deck": "Deck",
+ "We'll Email You": "メールでお知らせします",
+ "Notify Me": "通知を受け取る",
+ "Great on Deck": "Deck で快適",
+ "You won't get an email about it.": "これについてのメールは届きません。",
+ "Learn More": "詳しく見る",
+ "{name} is on Discover now. Your copy moved over to it.": "{name} が「見つける」に登場しました。インストール済みのゲームはそちらに引き継がれました。",
+ "Windows couldn't read it from its drive": "Windows がドライブから読み込めませんでした",
+ "Windows couldn't read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.": "実行中に、Windows がゲームの一部をドライブから読み込めませんでした。ネットワークフォルダーや USB ドライブの接続が一瞬切れると起こります。この PC 内蔵のドライブに移動して（メニューの「別のドライブに移動」）、もう一度プレイしてください。",
+ "That folder is empty. Pick the folder with your copy of the game.": "そのフォルダーは空です。ゲームのコピーがあるフォルダーを選んでください。",
+ "That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.": "そのフォルダーには画像、動画、ドキュメントしか入っていません。ゲームのコピーがあるフォルダーを選んでください。",
+ "That isn't a recomp.": "それはリコンパイル版ではありません。",
+ "The website didn't take it. Try again later.": "Web サイトで受け付けられませんでした。しばらくしてからもう一度お試しください。",
+ "No recomps match. Turn off “Great on Deck” to see the rest.": "一致するリコンパイル版がありません。「Deck で快適」をオフにすると残りが表示されます。"
 }
