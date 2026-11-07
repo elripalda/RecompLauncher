@@ -1,5 +1,9 @@
 # Works with RecompLauncher
 
+For multiple discs, DLC slots and explicitly conditional shared keys, see
+[Named Easy Setup inputs](SETUP-INPUTS.md). That extension is limited to game inputs and three
+shared key types. BIOS/firmware management and multidisc hashing are explicitly deferred.
+
 RecompLauncher can set your recomp up for the player. They drop in their disc image, watch it get
 checked and set up, change your video settings on the game's page, and press Play. They never
 open a config file or your own launcher.

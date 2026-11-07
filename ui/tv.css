@@ -865,3 +865,18 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-tnote .tn-acts{display:flex;margin-top:6px}
 .tv-tnote .tv-btn.sm{min-height:0;height:46px;padding:0 20px;font-size:17px}
 .tv-tnote .tv-tnote-x{width:46px;padding:0;justify-content:center}
+.tv-setup[data-stage="inputs"]{gap:0;padding:60px 120px;align-items:stretch;justify-content:center}
+.ni-tv-layout{position:relative;display:grid;grid-template-columns:400px minmax(0,1fr);align-items:center;gap:90px;width:100%;height:100%;min-height:0}
+.ni-tv-art{position:relative;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:44px}
+.ni-tv-art .ni-disc-summary{font-size:21px;color:var(--tvmuted,#A9B4C4);text-align:center;margin:0}
+.ni-tv{position:relative;max-height:100%;color:var(--tvink,#F4F8FC);width:100%;max-width:1200px;margin:auto;gap:24px}
+.ni-tv .ni-heading h2{font-size:36px}
+.ni-tv .ni-heading p,.ni-tv .ni-footer p{font-size:19px;color:var(--tvmuted,#A9B4C4)}
+.ni-tv .ni-scroll{max-height:660px;padding-right:18px}
+.ni-tv .ni-row{min-height:76px;gap:18px;border-color:var(--tvline,rgba(244,248,252,.08))}
+.ni-tv .ni-name b{font-size:22px}
+.ni-tv .ni-name span,.ni-tv .ni-group h3{font-size:18px;color:var(--tvmuted,#A9B4C4)}
+.ni-tv .btn{font-size:19px;padding:12px 20px;min-height:50px;border-radius:8px}
+.ni-tv .btn:focus,.ni-tv .btn.f{outline:3px solid var(--cyan);outline-offset:3px}
+.ni-tv .ni-optional-toggle{font-size:21px;min-height:60px;padding:12px}
+.ni-tv .ni-optional-toggle.f{outline:3px solid var(--cyan);outline-offset:2px}

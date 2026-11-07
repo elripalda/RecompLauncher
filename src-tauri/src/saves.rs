@@ -212,6 +212,7 @@ pub fn holds_programs(dir: &Path) -> bool {
 
 fn is_save_file(name: &str, size: u64) -> bool {
     let n = name.to_lowercase();
+    if n.starts_with(".recomplauncher-input-") { return false; }
     if n.ends_with(".bin") && size > BIN_SAVE_MAX {
         return false;
     }
@@ -350,6 +351,7 @@ pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
             }
             found.clear();
         }
+        found.retain(|(_, abs, _)| !crate::inputs::excluded(g, abs));
         found.sort();
         out.extend(found.into_iter().map(|(rel, abs, size)| Entry { spot: i, rel, abs, size }));
     }
@@ -710,6 +712,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         if let Some(d) = dest.parent() {
             fs::create_dir_all(d)?;
         }
+        if crate::inputs::excluded(g, &dest) { continue; }
         let tmp = dest.with_extension("rl-part");
         io::copy(&mut e, &mut fs::File::create(&tmp)?)?;
         fs::rename(&tmp, &dest)?;

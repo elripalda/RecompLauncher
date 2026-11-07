@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Named Easy Setup — fixture preview</title>
+<link rel="stylesheet" href="/ui/app.css">
+<link rel="stylesheet" href="/ui/tv.css">
+<body>
+<script>
+// Fixture only: the actual renderer/CSS, no application state or user files.
+const t = x => x, tf = (s,v) => s.replace(/\{(\w+)\}/g,(_,k)=>v[k]);
+const esc = x => String(x ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const baseName = s => s.split(/[\\/]/).pop();
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 4 4 10-10"/></svg>';
+const DISC_S = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/></svg>';
+</script>
+<script src="/ui/setup-inputs.js"></script>
+<script>
+const params = new URLSearchParams(location.search), tv = params.has('tv');
+const inputs = [1,2,3,4].map(n=>({id:'disc'+n,label:'Lost Odyssey — Disc '+n,role:'disc',file:true,active:true,path:n<4?'D:/Games/Lost Odyssey/Disc '+n+'.iso':null}));
+inputs.push(...[1,2,3].map(n=>({id:'dlc'+n,label:['Thousand Years of Dreams','Seeker of the Deep','Triple Bonus Pack'][n-1],role:'dlc',optional:true,file:true,active:true,path:null})));
+const su = {inputs};
+const previewState = {}, previewGame = {name:'Lost Odyssey',game:'Lost Odyssey'};
+let finished = false;
+document.body.innerHTML = tv ? '<div class="tv-stage"><div class="tv-sheet tv-setup" data-stage="inputs"><div class="ni-shell"></div></div></div>' : '<div class="scrim"><div class="modal su ni-modal"><div class="ni-shell"></div></div></div>';
+if(tv) { const stage=document.querySelector('.tv-stage'); const resize=()=>stage.style.transform='translate(-50%,-50%) scale('+Math.min(innerWidth/1920,innerHeight/1080)+')'; onresize=resize; resize(); }
+const panel=document.querySelector('.ni-shell');
+function draw(){const scroll=panel.querySelector('.ni-scroll')?.scrollTop||0;panel.innerHTML=finished ? '<div class="su-r"><div class="ni-heading"><h2>Example setup complete</h2><p>This preview uses simulated files. Nothing was imported.</p></div><button type="button" class="btn main" data-ni="reset">Try again</button></div>' : namedInputsShell('fixture',su,previewState,previewGame,tv);const list=panel.querySelector('.ni-scroll');if(list)list.scrollTop=scroll;}
+draw();
+panel.onclick = e => { const b=e.target.closest('[data-ni]'); if(!b || b.disabled)return; const act=b.dataset.ni;if(act==='toggle-optional')previewState.extras=!previewState.extras; if(act==='run')finished=true; if(act==='reset')finished=false; const r=inputs.find(x=>x.id===b.dataset.input); if(r&&act==='file')r.path='D:/Games/Lost Odyssey/'+r.label+'.iso'; if(r&&act==='clear')r.path=null; draw(); };
+</script>
