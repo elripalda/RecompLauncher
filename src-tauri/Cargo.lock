@@ -4471,6 +4471,7 @@ dependencies = [
  "hex",
  "hidapi",
  "image",
+ "plist",
  "qrcode",
  "regex-lite",
  "reqwest 0.12.28",
