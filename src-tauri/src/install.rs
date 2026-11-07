@@ -452,12 +452,16 @@ fn unzip(file: &Path, to: &Path) -> Result<(), Error> {
             let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(mode & 0o777 | 0o600));
         }
     }
-    // Links are installed last, so no archive entry can write through an earlier link.
+    // Make every link's parent before installing any links. Otherwise a later link could
+    // follow an earlier link chain while creating its parent, before final validation.
     #[cfg(unix)]
-    for (dest, target) in links {
+    for (dest, _) in &links {
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
         }
+    }
+    #[cfg(unix)]
+    for (dest, target) in links {
         std::os::unix::fs::symlink(target, dest)?;
     }
     validate_links(to, to)?;
@@ -1473,6 +1477,16 @@ mod mac_archive_tests {
     }
 
     #[test]
+    fn mac_archive_link_chains_cannot_create_paths_outside_staging() {
+        let d = temp("link-chain-write");
+        let bytes = archive(&[], &[("a", "."), ("b", "a/.."), ("b/escaped/probe", ".")]);
+        fs::write(d.join("game.zip"), bytes).unwrap();
+        fs::create_dir(d.join("stage")).unwrap();
+        assert!(unzip(&d.join("game.zip"), &d.join("stage")).is_err());
+        assert!(!d.join("escaped").exists(), "reject the chain before creating any outside path");
+    }
+
+    #[test]
     fn mac_update_does_not_follow_existing_destination_links() {
         let d = temp("destination-link");
         fs::create_dir_all(d.join("installed")).unwrap();
@@ -1543,6 +1557,18 @@ mod mac_discovery_tests {
         assert_eq!(program_choice(&app.join("Contents/MacOS/Engine"), "macos"), Some(app.join("Contents/MacOS/Engine")));
         assert!(program_choice(&app, "linux").is_none());
         assert!(program_choice(&d.join("Missing.app"), "macos").is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn mac_manual_setup_starts_the_selected_bundle() {
+        let d = temp("manual-setup");
+        let app = bundle(&d, "Engine");
+        let g = crate::library::Installed { path: d.clone(), ..Default::default() };
+        let manual = crate::library::ManualSetup { exe: Some(PathBuf::from("My Game.app")), how: "none".into(), ..Default::default() };
+        let (exe, args) = crate::manual_plan(&g, &manual).unwrap().unwrap();
+        assert_eq!(exe, app.join("Contents/MacOS/Engine"));
+        assert!(args.is_empty());
     }
 
     #[test]

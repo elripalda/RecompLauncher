@@ -4639,9 +4639,7 @@ fn manual_plan(g: &Installed, m: &library::ManualSetup) -> Res<Option<(PathBuf, 
         .or_else(|| g.exe.clone())
         .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
         .ok_or_else(|| Error::Msg("Set Up By Hand doesn't have a program to start yet. Pick it there.".into()))?;
-    if !exe.is_file() {
-        return Err(Error::Msg(format!("{} isn't in its folder anymore (an update may have renamed it). Pick the program again in Set Up By Hand.", exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())));
-    }
+    let exe = install::program_choice(&exe, assets::os_now()).ok_or_else(|| Error::Msg(format!("{} isn't an available program anymore (an update may have renamed it). Pick the program again in Set Up By Hand.", exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())))?;
     let mut args = vec![];
     if let Some(c) = m.copy.as_ref() {
         if !c.exists() {
@@ -4748,6 +4746,10 @@ fn set_manual(st: State<'_, App>, id: String, manual: Option<library::ManualSetu
     // folder moves.
     let mut manual = manual;
     if let Some(e) = manual.as_mut().and_then(|m| m.exe.as_mut()) {
+        let path = if e.is_absolute() { e.clone() } else { g.path.join(&*e) };
+        if assets::os_now() == "macos" && macos::is_bundle(&path) {
+            *e = install::program_choice(&path, "macos").ok_or_else(|| Error::Msg("That app doesn't contain a program for this Mac.".into()))?;
+        }
         if let Ok(rel) = e.strip_prefix(&g.path) {
             *e = rel.to_path_buf();
         }
