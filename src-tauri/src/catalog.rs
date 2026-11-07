@@ -620,7 +620,12 @@ pub(crate) async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) 
     save(&file, &v);
     // Not the site's copy: its tag no longer goes with it.
     let _ = std::fs::remove_file(tag_file(&file));
-    crate::trail::note(&format!("Release info for {repo} came from GitHub (the site couldn't be reached)"));
+    // Said once each time the launcher runs, so it doesn't crowd a report's newest lines (and the
+    // site doesn't take it for the reason a game closed).
+    static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        crate::trail::note(&format!("note: release info comes from GitHub this time (the site was slow or busy), first for {repo}"));
+    }
     Ok(Fetched { data: v, offline: false, age: 0 })
 }
 

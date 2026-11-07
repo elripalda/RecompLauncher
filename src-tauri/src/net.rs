@@ -205,7 +205,7 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
         gate.until = Some(until);
         (secs, gate.fails)
     };
-    crate::trail::note(&format!("{k} had trouble; asking again in {secs}s"));
+    crate::trail::note(&format!("note: {k} was slow or busy; asking again in {secs}s"));
     // Offline only once it's more than one hiccup (a slow answer, one refused request): a single
     // miss shouldn't put the whole launcher in offline mode.
     if is_api(&k) && fails >= 2 {
@@ -258,7 +258,7 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
 pub(crate) fn picture_trouble(url: &str, why: &str) {
     static SAID: AtomicBool = AtomicBool::new(false);
     if !SAID.swap(true, Ordering::Relaxed) {
-        crate::trail::note(&format!("Pictures from {} didn't come: {why}", host(url)));
+        crate::trail::note(&format!("note: pictures from {} didn't load ({why})", host(url)));
     }
 }
 

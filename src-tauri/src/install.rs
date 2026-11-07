@@ -656,19 +656,21 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 12;
+pub const EXE_RULES: u8 = 13;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
 /// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 24] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool"];
+const TOOL_WORDS: [&str; 26] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
-const BUILD_TOOLS: [&str; 49] = [
+const BUILD_TOOLS: [&str; 57] = [
     "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
     "tcc", "zig", "sccache", "ccache", "goalc",
     "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
     "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
+    // Disc and package converters a release brings along for the player's copy.
+    "chd2gdi", "gdi2chd", "chdman", "maxcso", "extract-xiso", "xdvdfs", "hactool", "nsz",
 ];
 /// Folders a release keeps its tools, or leftovers from building, in.
 pub const TOOL_DIRS: [&str; 13] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm"];
@@ -681,11 +683,12 @@ pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     // A build tool by its whole name (ninja.exe, cmake, python3.exe).
     let whole = rel.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     let whole = whole.strip_suffix(".exe").unwrap_or(&whole);
-    if BUILD_TOOLS.contains(&whole) || whole.starts_with("python3.") || whole.starts_with("llvm-") || whole.starts_with("clang") {
+    // A cross compiler names its target first: x86_64-w64-mingw32-clang++.exe.
+    if BUILD_TOOLS.contains(&whole) || whole.starts_with("python3.") || whole.starts_with("llvm-") || whole.contains("clang") || whole.ends_with("-gcc") || whole.ends_with("-g++") {
         return true;
     }
     // A tool word, or a name that ends in one (hactool, gt3tool), that isn't part of the game's name.
-    if tokens(stem).iter().any(|t| !want.contains(t) && (TOOL_WORDS.contains(&t.as_str()) || t == "tool" || t == "tools" || (t.len() > 4 && (t.ends_with("tool") || t.ends_with("tools"))))) {
+    if tokens(stem).iter().any(|t| !want.contains(t) && (TOOL_WORDS.contains(&t.as_str()) || t == "tool" || t == "tools" || t.ends_with("bktr") || (t.len() > 4 && (t.ends_with("tool") || t.ends_with("tools"))))) {
         return true;
     }
     // In a tools folder, or a hidden one (.tools, .sdk): leftovers from building, not the game.
@@ -1051,6 +1054,11 @@ mod tests {
         assert!(!looks_like_tool(Path::new("build/totk.exe"), &["TotK Recomp"]));
         assert!(looks_like_tool(Path::new("temp/zelda totk-1/build/totk.exe"), &["TotK Recomp"]));
         assert!(looks_like_tool(Path::new("hactool.exe"), &["XCX Recomp"]));
+        // From players' logs: a patcher, a disc converter, a cross compiler.
+        assert!(looks_like_tool(Path::new("Sf2Bktr.exe"), &["SF2Recomp"]));
+        assert!(looks_like_tool(Path::new("chd2gdi.exe"), &["Street-Alpha-3-Dreamcast-Recomp"]));
+        assert!(looks_like_tool(Path::new("x86_64-w64-mingw32-clang++.exe"), &["TotK Recomp"]));
+
         assert!(looks_like_tool(Path::new("bin/ninja.exe"), &["XCX Recomp"]));
         assert!(looks_like_tool(Path::new("toolchain/python3.12"), &["Some Game"]));
         assert!(!looks_like_tool(Path::new("Ninja Gaiden.exe"), &["Ninja Gaiden Recomp"]));
