@@ -856,6 +856,14 @@ pub fn find_game_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     find_exe(dir, os, names).filter(|e| !looks_like_tool(e, names))
 }
 
+/// Normalize a manual program selection to the executable stored in the library.
+pub fn program_choice(path: &Path, os: &str) -> Option<PathBuf> {
+    if os == "macos" && crate::macos::is_bundle(path) {
+        return crate::macos::bundle_executable(path, crate::assets::arch_now());
+    }
+    path.is_file().then(|| path.to_path_buf())
+}
+
 /// A Windows script a release can start the game with (a .bat or .cmd).
 pub fn is_script(p: &Path) -> bool {
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
@@ -1525,6 +1533,16 @@ mod mac_discovery_tests {
         let d = temp("metadata");
         bundle(&d, "Engine");
         assert_eq!(find_game_exe(&d, "macos", &["My Game"]), Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn mac_manual_selection_resolves_bundle_and_keeps_file_choices() {
+        let d = temp("manual");
+        let app = bundle(&d, "Engine");
+        assert_eq!(program_choice(&app, "macos"), Some(app.join("Contents/MacOS/Engine")));
+        assert_eq!(program_choice(&app.join("Contents/MacOS/Engine"), "macos"), Some(app.join("Contents/MacOS/Engine")));
+        assert!(program_choice(&app, "linux").is_none());
+        assert!(program_choice(&d.join("Missing.app"), "macos").is_none());
     }
 
     #[test]

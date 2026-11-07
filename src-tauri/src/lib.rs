@@ -277,7 +277,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         return Err(Error::Msg(format!("This recomp has no {os_name} version yet.")));
     }
     let mut asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
-        .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
+        .ok_or_else(|| Error::Msg(if os == "macos" && rel.assets.iter().any(|a| assets::kind(&a.name) == Some("dmg")) {
+            "This release uses a Mac disk image (.dmg). Automatic game installation currently requires a Mac ZIP release.".into()
+        } else {
+            format!("The latest release ({}) has no {os_name} version.", rel.tag_name)
+        }))?
         .clone();
     // Several builds that fit this PC equally (one per region, say), or in different forms (an
     // AppImage and a plain folder, a portable zip and an installer): the one the player picked, the
@@ -5017,6 +5021,7 @@ pub(crate) fn not_a_program(p: &Path) -> Option<&'static str> {
             Some("That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup."),
         "zip" | "7z" | "rar" | "gz" | "xz" | "tar" =>
             Some("That's a compressed file, not a program. Unpack it first, then pick the program inside."),
+        "dmg" => Some("That's a disk image. Install the application from it, then choose the application."),
         "txt" | "md" | "pdf" | "json" | "toml" | "ini" | "cfg" | "log" | "png" | "jpg" | "jpeg" | "dll" | "so" | "sav" | "dat" =>
             Some("That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage)."),
         _ => None,
@@ -5027,10 +5032,11 @@ pub(crate) fn not_a_program(p: &Path) -> Option<&'static str> {
 fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
     let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    let p = PathBuf::from(&path);
-    if !p.is_file() {
-        return Err(Error::Msg("That file doesn't exist.".into()));
-    }
+    let p = install::program_choice(Path::new(&path), assets::os_now()).ok_or_else(|| Error::Msg(if assets::os_now() == "macos" && macos::is_bundle(Path::new(&path)) {
+        "That app has no runnable program for this Mac. Choose an Apple Silicon or universal Mac app.".into()
+    } else {
+        "That file doesn't exist.".into()
+    }))?;
     if let Some(why) = not_a_program(&p) {
         return Err(Error::Msg(why.into()));
     }
@@ -5298,9 +5304,8 @@ async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
 /// `max_age` seconds.
 pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
     let v = version_json(st, max_age, player).await?;
-    // Linux has its own build (an AppImage), listed under "linux". A list without one has no
-    // update for Linux yet.
-    let v = if cfg!(windows) { v } else { linux_entry(&v).unwrap_or(Value::Null) };
+    // Each non-Windows platform needs its own published build; never offer another OS's update.
+    let v = launcher_platform_entry(&v, assets::os_now(), assets::arch_now()).unwrap_or(Value::Null);
     let newest = str_of(&v, "version").to_string();
     let mut v = v;
     // Older than the list's "min": the update isn't optional any more.
@@ -5342,6 +5347,30 @@ fn linux_entry(v: &Value) -> Option<Value> {
 fn older_version(offer: &str, have: &str) -> bool {
     let num = |s: &str| s.trim().trim_start_matches(['v', 'V']).starts_with(|c: char| c.is_ascii_digit());
     num(offer) && num(have) && version_key(offer) < version_key(have)
+}
+
+fn launcher_platform_entry(v: &Value, os: &str, arch: &str) -> Option<Value> {
+    match os {
+        "windows" => Some(v.clone()),
+        "linux" => linux_entry(v),
+        "macos" => {
+            let mac = v.get("macos")?;
+            if str_of(mac, "url").is_empty() || ![arch, "universal"].contains(&str_of(mac, "arch")) {
+                return None;
+            }
+            let mut out = v.clone();
+            for key in ["linux", "macos", "url", "sha256", "min"] {
+                out.as_object_mut()?.remove(key);
+            }
+            for key in ["version", "url", "sha256", "notes", "min"] {
+                if let Some(value) = mac.get(key) {
+                    out[key] = value.clone();
+                }
+            }
+            Some(out)
+        }
+        _ => None,
+    }
 }
 
 /// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0 < 0.5.1: a beta comes before its release.
@@ -5821,6 +5850,14 @@ fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
                 continue;
             }
             if p.is_dir() {
+                if os == "macos" && macos::is_bundle(&p) {
+                    if let Some(exe) = macos::bundle_executable(&p, assets::arch_now()) {
+                        if let Ok(rel) = exe.strip_prefix(&g.path) {
+                            out.push(rel.to_string_lossy().to_string());
+                        }
+                    }
+                    continue;
+                }
                 if depth < 3 {
                     stack.push((p, depth + 1));
                 }
@@ -6007,9 +6044,13 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.
     let appimage = if cfg!(target_os = "linux") { std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()) } else { None };
-    let v = if cfg!(windows) { v } else { linux_entry(&v).unwrap_or(Value::Null) };
+    let v = launcher_platform_entry(&v, assets::os_now(), assets::arch_now()).unwrap_or(Value::Null);
     let file_url = str_of(&v, "url").to_string();
     let ok_host = file_url.starts_with("https://github.com/") || file_url.starts_with(&format!("{}/", net::SITE)) || file_url.starts_with(&format!("{}/", catalog::base().trim_end_matches('/')));
+    if cfg!(target_os = "macos") {
+        // Mac builds are downloaded and installed by the player; no in-place updater yet.
+        return open_thing(&app, if ok_host { &file_url } else { &page }, true);
+    }
     if !(cfg!(windows) || appimage.is_some()) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
@@ -7407,6 +7448,29 @@ mod tests {
         assert!(runs_here(&json!({"systems": [], "assets": {}}), "windows"));
         assert!(runs_here(&json!({"systems": ["linux"], "assets": {"windows": "x.zip"}}), "windows"));
         assert!(runs_here(&json!({"name": "no info"}), "macos"));
+    }
+
+    #[test]
+    fn mac_launcher_updates_do_not_use_linux_or_windows_entries() {
+        let feed = json!({"version":"2.0", "url":"https://example.com/windows.exe", "min":"2.0", "linux":{"url":"https://example.com/linux.AppImage"}});
+        assert!(launcher_platform_entry(&feed, "macos", "arm64").is_none());
+        assert_eq!(launcher_platform_entry(&feed, "windows", "x64").unwrap()["url"], "https://example.com/windows.exe");
+        assert_eq!(launcher_platform_entry(&feed, "linux", "x64").unwrap()["url"], "https://example.com/linux.AppImage");
+    }
+
+    #[test]
+    fn mac_launcher_update_requires_matching_architecture_and_own_minimum() {
+        let feed = json!({"version":"2.0", "min":"2.0", "notes":"shared notes", "macos":{"arch":"arm64", "url":"https://example.com/mac.dmg", "sha256":"abc", "version":"1.5"}});
+        let mac = launcher_platform_entry(&feed, "macos", "arm64").unwrap();
+        assert_eq!(mac["url"], "https://example.com/mac.dmg");
+        assert_eq!(mac["version"], "1.5");
+        assert_eq!(mac["notes"], "shared notes");
+        assert!(mac.get("min").is_none(), "Windows minimum must not force a Mac update");
+        assert!(launcher_platform_entry(&feed, "macos", "x64").is_none());
+        let universal = json!({"version":"2.1", "macos":{"arch":"universal", "url":"https://example.com/mac.zip", "min":"1.0"}});
+        assert_eq!(launcher_platform_entry(&universal, "macos", "x64").unwrap()["min"], "1.0");
+        assert_eq!(launcher_platform_entry(&universal, "macos", "arm64").unwrap()["version"], "2.1");
+        assert!(launcher_platform_entry(&json!({"macos":{"arch":"arm64"}}), "macos", "arm64").is_none());
     }
 
     #[test]

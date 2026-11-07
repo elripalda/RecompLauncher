@@ -97,7 +97,8 @@ fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
-        _ => matches!(k, "zip" | "dmg"),
+        "macos" => k == "zip",
+        _ => false,
     }
 }
 
@@ -300,6 +301,13 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mac_zip_is_installable_but_dmg_is_not() {
+        let files = [a("Game-macOS.dmg"), a("Game-macOS.zip")];
+        assert_eq!(all_for(&files, "macos", "arm64", None).iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
+        assert!(pick(&files[..1], "macos", "arm64", None).is_none());
+    }
 
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new() }

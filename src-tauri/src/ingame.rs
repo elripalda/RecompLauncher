@@ -63,7 +63,7 @@ pub fn capture(pid: Option<u32>, name: &str) -> Result<PathBuf, Error> {
 
 #[cfg(not(windows))]
 pub fn capture(_pid: Option<u32>, _name: &str) -> Result<PathBuf, Error> {
-    Err(Error::Msg("Screenshots come to Linux in a later build.".into()))
+    Err(Error::Msg(if cfg!(target_os = "macos") { "In-game screenshot capture is not available on Mac yet." } else { "Screenshots come to Linux in a later build." }.into()))
 }
 
 /// The game playing right now (the most recently started one).
@@ -112,6 +112,9 @@ pub fn notify(app: &AppHandle, title: &str, body: &str) {
 }
 
 pub fn show_overlay(app: &AppHandle) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
     let Some((id, name, _, started)) = current(app) else { return };
     let Some(w) = app.get_webview_window("overlay") else { return };
     if let Ok(Some(m)) = app.primary_monitor() {
@@ -153,7 +156,7 @@ pub fn set_hotkeys(app: &AppHandle, on: bool, menu: bool) {
     use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
-    if !on {
+    if !on || cfg!(target_os = "macos") {
         return;
     }
     let shot = Shortcut::new(None, Code::F12);

@@ -1123,7 +1123,7 @@
     if (!S.allShots) loadAllShots().then(() => TV.on && TV.view === 'shots' && draw(true));
     const name = id ? (S.library[id] || {}).name || '' : '';
     return `${backdrop(id ? byId(id) : null, 'dim')}${gameBar()}
-      ${region(`${pageHead(id ? tf('{name}: screenshots', { name }) : t('Screenshots'), list.length ? tn(list.length, '1 screenshot. Share one and paste it anywhere.', '{n} screenshots. Share one and paste it anywhere.') : t('None yet. Press View + RB while you play, or F12 on a keyboard.'))}
+      ${region(`${pageHead(id ? tf('{name}: screenshots', { name }) : t('Screenshots'), list.length ? tn(list.length, '1 screenshot. Share one and paste it anywhere.', '{n} screenshots. Share one and paste it anywhere.') : S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. Press View + RB while you play, or F12 on a keyboard.'))}
         ${list.length ? grid(list, 'sh', { min: 380, gap: 30, cls: 'shots', item: (x, i) => `<div class="tv-cell"><button type="button" class="tv-shot" data-f data-key="sh:${i}" data-shot-i="${i}"><img src="${esc(fileSrc(x.path))}" alt="" loading="lazy"></button><span class="tv-name">${esc(id ? when(x.time) : x.game)}</span></div>` }) : ''}`, 'top')}
       ${hints([['A', t('View')], ['X', t('Share')], ['B', t('Back')]])}`;
   }
@@ -1680,7 +1680,8 @@
         : rows.slice(0, 400).map((e) => {
           const g = TB.games[e.path];
           const icon = e.dir ? (e.kind === 'game' ? 'disc' : 'folder') : g || e.kind === 'disc' ? 'disc' : 'file';
-          return item('tb:e:' + e.path, `${svg(icon, 24)}<span class="k">${esc(e.name)}${g ? `<small class="tb-game">${esc(g.name)}</small>` : !e.dir && e.size ? `<small>${esc(fmtB(e.size))}</small>` : ''}</span>${e.dir ? svg('chevR', 22) : ''}`, () => (e.dir ? tbGo(e.path) : tbPick(e.path)), g ? 'has' : '');
+          const folder = e.dir && !fbProgramBundle(o, e);
+          return item('tb:e:' + e.path, `${svg(icon, 24)}<span class="k">${esc(e.name)}${g ? `<small class="tb-game">${esc(g.name)}</small>` : !e.dir && e.size ? `<small>${esc(fmtB(e.size))}</small>` : ''}</span>${folder ? svg('chevR', 22) : ''}`, () => (folder ? tbGo(e.path) : tbPick(e.path)), g ? 'has' : '');
         }).join('');
     const refresh = item('tb:refresh', `${svg('refresh', 24)}<span class="k">${esc(t('Refresh'))}</span>`, () => tbGo(TB.path, 'tb:refresh'));
     const useHere = o.directory ? item('tb:use', `<span class="k">${esc(t('Use this folder'))}<small>${esc(TB.path)}</small></span>`, () => tbPick(TB.path), 'main') : '';
