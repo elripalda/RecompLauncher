@@ -304,6 +304,14 @@ pub fn runner() -> Option<Runner> {
     on_path("wine").map(Runner::Wine)
 }
 
+/// Proton's controller helper for desktop windows (Xalia) crashes some games' start ("An item with
+/// the same key has already been added"). Off, unless the player turned it on themselves.
+fn no_xalia(c: &mut std::process::Command) {
+    if std::env::var_os("PROTON_USE_XALIA").is_none() {
+        c.env("PROTON_USE_XALIA", "0");
+    }
+}
+
 /// The command that starts `exe` through `r`, with the shared prefix in `data`.
 pub fn command(r: &Runner, data: &Path, exe: &Path) -> tokio::process::Command {
     tokio::process::Command::from(std_command(r, data, exe))
@@ -317,6 +325,7 @@ pub fn std_command(r: &Runner, data: &Path, exe: &Path) -> std::process::Command
         Runner::Umu(umu, proton) => {
             let mut c = std::process::Command::new(umu);
             c.arg(exe).env("WINEPREFIX", base.join("pfx")).env("GAMEID", "umu-default");
+            no_xalia(&mut c);
             if let Some(p) = proton {
                 c.env("PROTONPATH", p);
             }
@@ -325,6 +334,7 @@ pub fn std_command(r: &Runner, data: &Path, exe: &Path) -> std::process::Command
         Runner::Proton(p, root) => {
             let mut c = std::process::Command::new(p.join("proton"));
             c.arg("run").arg(exe).env("STEAM_COMPAT_DATA_PATH", &base).env("STEAM_COMPAT_CLIENT_INSTALL_PATH", root);
+            no_xalia(&mut c);
             c
         }
         Runner::Wine(w) => {

@@ -515,6 +515,40 @@ mod imp {
             .iter()
             .any(|k| reg_dword(HKLM, k, "Installed") == Some(1))
     }
+
+    /// The installed Visual C++ runtime's version (major, minor, build), when Windows says.
+    pub fn vcredist_version() -> Option<(u32, u32, u32)> {
+        [r"SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64", r"SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"]
+            .iter()
+            .find_map(|k| Some((reg_dword(HKLM, k, "Major")?, reg_dword(HKLM, k, "Minor")?, reg_dword(HKLM, k, "Bld").unwrap_or(0))))
+    }
+
+    const GPU_PREFS: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
+
+    /// Windows' own graphics choice for one program (Settings → System → Display → Graphics):
+    /// this program on the faster graphics card. For a laptop with two.
+    pub fn prefer_fast_gpu(exe: &Path) -> std::io::Result<()> {
+        use std::os::windows::process::CommandExt;
+        let ok = std::process::Command::new("reg")
+            .args(["add", &format!(r"HKCU\{GPU_PREFS}"), "/v"])
+            .arg(win_path(exe))
+            .args(["/t", "REG_SZ", "/d", "GpuPreference=2;", "/f"])
+            .creation_flags(0x0800_0000)
+            .status()?
+            .success();
+        if ok { Ok(()) } else { Err(std::io::Error::other("Windows didn't save the choice")) }
+    }
+
+    /// The program is set to the faster graphics card already.
+    pub fn prefers_fast_gpu(exe: &Path) -> bool {
+        reg_str(HKCU, GPU_PREFS, &win_path(exe)).map(|v| v.contains("GpuPreference=2")).unwrap_or(false)
+    }
+
+    /// The path as Windows writes it (a profile's program can come with forward slashes), which is
+    /// how Windows matches the program to the choice.
+    fn win_path(p: &Path) -> String {
+        p.to_string_lossy().replace('/', "\\")
+    }
 }
 
 #[cfg(test)]

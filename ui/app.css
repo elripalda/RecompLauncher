@@ -1801,3 +1801,6 @@ body.light .ds-panel{box-shadow:0 14px 40px rgba(14,22,38,.16)}
 .project-picker .mh-f{align-items:stretch}
 .project-options{width:100%;height:auto;min-height:180px;resize:none}
 .project-options option{padding:8px;white-space:normal}
+/* The setup asking again: which files the copy picked before didn't have. */
+.su-note{margin:4px 0 0;padding:10px 12px;border-radius:12px;background:rgba(255,184,77,.1);border:1px solid rgba(255,184,77,.3);color:#ffd9a0;font-size:13.5px}
+body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}

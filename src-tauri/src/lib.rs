@@ -354,7 +354,13 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
             // A developer swapping a release's files: give it a moment to finish.
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-            let fresh: Vec<Release> = catalog::from_github(&st.http, &st.dir, &repo).await.ok().and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
+            // GitHub's own list, or the site's freshest copy when GitHub won't answer (its hourly
+            // limit for this PC, say).
+            let fresh_from = match catalog::from_github(&st.http, &st.dir, &repo).await {
+                Ok(f) => Some(f),
+                Err(_) => catalog::releases(&st.http, &st.dir, &repo, true).await.ok().filter(|f| !f.offline),
+            };
+            let fresh: Vec<Release> = fresh_from.and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
             // The release itself gone (taken down and put up again under a new name): the newest
             // one with a build for this PC.
             // Not for a version the player picked, and never the one they already have.
@@ -378,9 +384,15 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             match again {
                 Some(a) => {
                     asset = a;
-                    install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await?
+                    install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await.map_err(|e| match e {
+                        Error::Msg(m) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => Error::Msg(format!("{m} Its developer took that file down or renamed it. Try again in a few minutes, or pick another version on the game's page.")),
+                        e => e,
+                    })?
                 }
-                None => return Err(Error::Msg(m)),
+                None => {
+                    trail::note(format!("Install {id}: {m}"));
+                    return Err(Error::Msg(format!("{m} Its developer took that file down or renamed it. Try again in a few minutes, or pick another version on the game's page.")));
+                }
             }
         }
         r => r?,
@@ -1201,6 +1213,10 @@ async fn fs_list(st: State<'_, App>, path: String) -> Res<FolderView> {
 /// The player's games that have recomps: by name, and for recomps the launcher sets up, by
 /// looking inside each disc image or game folder for the files that game has.
 fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathBuf>) -> HashMap<String, roms::RomFile> {
+    // A game the launcher installed isn't anyone's copy of itself (its own programs are refused by
+    // the copy's checks).
+    let found: Vec<roms::RomFile> = found.iter().filter(|r| !dirs.values().any(|d| !d.as_os_str().is_empty() && &r.path == d)).cloned().collect();
+    let found = &found[..];
     let mut out = roms::match_catalog(cat, found);
     let none = PathBuf::new();
     for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
@@ -1821,6 +1837,74 @@ fn headless_script(exe: &Path) -> bool {
     n > 0 && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!") && !head.contains(&0)
 }
 
+/// A Windows start script (.bat, .cmd) that only starts one program in the game's folder: that
+/// program and the arguments it's given. None for anything more (a loop, a choice, several steps).
+fn bat_target(script: &Path) -> Option<(PathBuf, Vec<String>)> {
+    let low = script.extension()?.to_string_lossy().to_ascii_lowercase();
+    if low != "bat" && low != "cmd" {
+        return None;
+    }
+    let dir = script.parent()?;
+    let text = std::fs::read(script).ok().filter(|b| b.len() < 16_000).map(|b| String::from_utf8_lossy(&b).to_string())?;
+    let mut found = None;
+    for line in text.lines().map(str::trim) {
+        let l = line.trim_start_matches('@');
+        let w = l.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+        if l.is_empty() || l.starts_with("::") || ["rem", "echo", "title", "popd", "setlocal", "endlocal", "exit", "pause", "chcp", "cls"].contains(&w.as_str()) {
+            continue;
+        }
+        // Into the script's own folder only ("cd /d %~dp0"); into another folder, the program
+        // after it is somewhere else: not a plain start script.
+        if w == "cd" || w == "pushd" || w.starts_with("cd/") || w.starts_with("cd\\") {
+            let to: String = l[w.len()..].trim().trim_start_matches("/d").trim().trim_matches('"').to_string();
+            if to.is_empty() || to.eq_ignore_ascii_case("%~dp0") || to == "." {
+                continue;
+            }
+            return None;
+        }
+        // Output sent somewhere, or a second command on the line: more than a start.
+        if l.contains(['>', '<', '|', '&']) {
+            return None;
+        }
+        // Anything that decides or repeats: not a plain start script.
+        if ["if", "for", "goto", "call", "set", "choice"].contains(&w.as_str()) || l.starts_with(':') || found.is_some() {
+            return None;
+        }
+        // "start "" Game.exe" or "start /wait Game.exe": the program after it.
+        let mut parts = split_args(l);
+        if parts.first().map(|p| p.eq_ignore_ascii_case("start")).unwrap_or(false) {
+            parts.remove(0);
+            while parts.first().map(|p| p.starts_with('/') || p.is_empty()).unwrap_or(false) {
+                parts.remove(0);
+            }
+        }
+        let prog = parts.first()?.replace("%~dp0", "").replace("%cd%", "").replace('\\', "/");
+        if !prog.to_ascii_lowercase().ends_with(".exe") {
+            return None;
+        }
+        let path = dir.join(prog.trim_start_matches("./").trim_start_matches('/'));
+        if prog.contains("..") || prog.contains(':') || !path.is_file() || !path.starts_with(dir) {
+            return None;
+        }
+        // The script's folder (%~dp0) as the real folder; %* (what the script was given) dropped;
+        // any other variable can't be known here.
+        let here = format!("{}{}", dir.display(), std::path::MAIN_SEPARATOR);
+        let mut args = vec![];
+        for a in &parts[1..] {
+            if a == "%*" {
+                continue;
+            }
+            let a = a.replace("%~dp0", &here);
+            if a.contains('%') {
+                return None;
+            }
+            args.push(a);
+        }
+        found = Some((path, args));
+    }
+    found
+}
+
 /// A line of numbers a game prints about how it's running (frame times, shader and pipeline
 /// counts): "shader libraries missing (left to a worker)" there is a count, not something it needs.
 /// Lowercased already.
@@ -1939,7 +2023,8 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
                 }
                 st.save();
                 let label = p.game.as_ref().map(|c| c.label.clone()).unwrap_or_default();
-                return Err(Error::Msg(format!("NEED_COPY|{label}")));
+                // What wasn't in it goes along, so the setup can say which files to look for.
+                return Err(Error::Msg(format!("NEED_COPY|{label}|{}", missing.join(", "))));
             }
             // Its update, when it needs one: put in beside the copy, or asked for.
             if let Some(up) = p.game.as_ref().and_then(|c| c.update.as_ref()) {
@@ -2058,6 +2143,18 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // A Windows script (.cmd, .bat) on Linux: the build's own Linux start script beside it when it
     // has one (a profile written for Windows names Launcher.cmd; the Linux build has launcher.sh).
     let exe = if !cfg!(windows) && matches!(exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("cmd" | "bat")) { linux_twin(&exe).unwrap_or(exe) } else { exe };
+    // A Windows script that only starts the game's program (Play.bat: "Game.exe --flag"): on Linux
+    // that program goes through Proton itself, with the script's arguments. A script through
+    // Proton's own launcher doesn't always start.
+    let exe = match (!cfg!(windows)).then(|| bat_target(&exe)).flatten() {
+        Some((target, mut first)) => {
+            trail::note(format!("Play {id}: {} starts {}; that goes through Proton itself", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+            first.append(&mut args);
+            args = first;
+            target
+        }
+        None => exe,
+    };
     // A Python script starts through its interpreter.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     let mut cmd = match ext.as_str() {
@@ -2177,6 +2274,15 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let mut child = spawned.map_err(|e| {
         if is_blocked(&e) {
             defender_msg(e, &shown)
+        } else if ext == "py" && e.kind() == std::io::ErrorKind::NotFound {
+            // A Python game, and Python isn't on this PC (Windows' py launcher comes with it).
+            Error::Msg(format!("{shown} is a Python program, and Python 3 isn't on this PC. Install it from python.org (on Windows, tick \"Add python.exe to PATH\" in its installer), then press Play again."))
+        } else if e.raw_os_error() == Some(1455) && cfg!(windows) {
+            // ERROR_COMMITMENT_LIMIT: memory and the page file together are full.
+            Error::Msg(format!("Windows ran out of memory to start {shown}. Close other games and apps, and check that the page file is on (Advanced system settings → Performance → Virtual memory), then press Play again."))
+        } else if e.raw_os_error() == Some(5) && cfg!(windows) {
+            // Access denied on starting it: an antivirus holding the file, most often.
+            Error::Msg(format!("Windows didn't let {shown} start. Your antivirus may be blocking it: allow the game's folder in it (or restore the file if it was quarantined), then press Play again."))
         } else if let Some(why) = not_a_program(&exe).filter(|_| matches!(e.raw_os_error(), Some(8) | Some(193))) {
             // A disc image, an archive or a document set as the program (by hand, most often).
             Error::Msg(why.into())
@@ -2505,7 +2611,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
             return fail("That file isn't there anymore.".into());
         }
         if let Some(need) = &p.game {
-            if let Err(e) = profile::check_copy(need, &copy) {
+            if let Err(e) = copy_ok(need, &copy, &g.path, true) {
                 return fail(e);
             }
         }
@@ -3128,6 +3234,26 @@ fn quit_code(st: &App, id: &str, prof: Option<&profile::Profile>, c: i32) -> boo
     listed
 }
 
+/// A copy just picked (`fresh`) that's the game's own folder, or a folder around it (the folder
+/// games are installed in), isn't the player's copy of the game: refused with a plain reason. Not
+/// when the game reads its files from its own folder (`into: "."`, or a disc the launcher unpacks
+/// there), and never for a copy set up before (an adopted game inside the player's copy). Then
+/// the copy's own checks.
+fn copy_ok(need: &profile::GameCopy, copy: &Path, install: &Path, fresh: bool) -> Result<(), String> {
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let (c, i) = (canon(copy), canon(install));
+    let reads_own = need.into.trim().trim_matches(['/', '\\']) == "." || !need.extract.is_empty();
+    if fresh && !install.as_os_str().is_empty() {
+        if c == i && !reads_own {
+            return Err("That's the game's own folder, where the launcher installed it. Pick your copy of the game: the disc image or the folder with the original game's files.".into());
+        }
+        if c != i && i.starts_with(&c) {
+            return Err("That's the folder the launcher installs games into. Pick your copy of the game: the disc image or the folder with the original game's files.".into());
+        }
+    }
+    profile::check_copy(need, copy)
+}
+
 /// The player's copy for this game: the one they picked, or the one found in their folders. Err
 /// NEED_COPY when the game needs one and there isn't one yet.
 fn game_copy(st: &App, id: &str, g: &Installed, p: &profile::Profile) -> Res<Option<PathBuf>> {
@@ -3144,7 +3270,7 @@ fn game_copy(st: &App, id: &str, g: &Installed, p: &profile::Profile) -> Res<Opt
         }
         // Picked before this version of the launcher could check it (a wrong ROM, say): checked
         // again now, and asked for again when it isn't the right one.
-        if let Err(why) = profile::check_copy(need, &c) {
+        if let Err(why) = copy_ok(need, &c, &g.path, false) {
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                 x.game_copy = None;
             }
@@ -3382,7 +3508,7 @@ fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
                 copy = up.to_path_buf();
             }
         }
-        profile::check_copy(need, &copy).map_err(Error::Msg)?;
+        copy_ok(need, &copy, &g.path, true).map_err(Error::Msg)?;
     }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
         x.game_copy = Some(copy.clone());
@@ -3841,18 +3967,65 @@ fn clean_start_next(id: String) {
 
 /// The files a game's program loads that aren't on this PC (the DLLs it needs on Windows, the
 /// libraries it links to on Linux): for the crash window, when Windows said one was missing.
-#[tauri::command(async)]
-fn missing_files(st: State<'_, App>, id: String) -> Vec<String> {
-    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return vec![] };
-    let prof = if g.manual.is_some() { None } else { profile_of(&st, &id, &g) };
-    let exe = g
-        .manual
+/// The program that starts the game: the player's own pick, the profile's, or the one installed.
+fn started_exe(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    let prof = if g.manual.is_some() { None } else { profile_of(st, id, g) };
+    g.manual
         .as_ref()
         .and_then(|m| m.exe.clone())
         .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
         .or_else(|| prof.as_ref().and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e)))
-        .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
-    match exe.filter(|e| e.is_file()) {
+        .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)))
+        .filter(|e| e.is_file())
+}
+
+#[derive(Serialize)]
+struct GpuChoice {
+    /// Graphics cards in this PC (a laptop often has two: the built-in one and a faster one).
+    cards: usize,
+    /// The game is set to the faster one already.
+    fast: bool,
+}
+
+/// For the crash window: whether "Use the Faster Graphics Card" can help this game.
+#[tauri::command(async)]
+fn gpu_choice(st: State<'_, App>, id: String) -> GpuChoice {
+    #[cfg(windows)]
+    {
+        let exe = st.lib.lock().unwrap().installed.get(&id).cloned().and_then(|g| started_exe(&st, &id, &g));
+        // A game started through a script: Windows' choice goes with a program, so it can't help.
+        let script = exe.as_ref().map(|e| install::is_script(e)).unwrap_or(true);
+        GpuChoice { cards: if script { 0 } else { win::gpus().len() }, fast: exe.map(|e| win::prefers_fast_gpu(&e)).unwrap_or(false) }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (st, id);
+        GpuChoice { cards: 0, fast: false }
+    }
+}
+
+/// Windows starts the game on the faster graphics card from now on.
+#[tauri::command(async)]
+fn prefer_fast_gpu(st: State<'_, App>, id: String) -> Res<()> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let exe = started_exe(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher couldn't tell which program starts the game.".into()))?;
+    #[cfg(windows)]
+    {
+        win::prefer_fast_gpu(&exe).map_err(|e| Error::Msg(format!("Windows didn't save it: {e}")))?;
+        trail::note(format!("{id}: set to the faster graphics card"));
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = exe;
+        Err(Error::Msg("This is for Windows.".into()))
+    }
+}
+
+#[tauri::command(async)]
+fn missing_files(st: State<'_, App>, id: String) -> Vec<String> {
+    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return vec![] };
+    match started_exe(&st, &id, &g) {
         Some(e) => missing_libraries(&e, &g.path).into_iter().take(8).collect(),
         None => vec![],
     }
@@ -3967,6 +4140,9 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     if cfg!(windows) {
         match pc.vcredist {
             Some(false) => out.push(check("bad", "The Visual C++ runtime isn't installed", "Almost every Windows recomp needs it.", "vcredist")),
+            // Installed, but older than recomps built with today's Visual Studio need: they close
+            // with "a DLL it needs is too old".
+            Some(true) if pc.vcredist_old.is_some() => out.push(check("warn", "The Visual C++ runtime is out of date", "Newer recomps need a newer one than this PC has. Updating it is quick.", "vcredist")),
             Some(true) => out.push(check("ok", "The Visual C++ runtime is installed", "", "")),
             None => {}
         }
@@ -3978,7 +4154,7 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     if let Some(need) = prof.as_ref().and_then(|p| p.game.as_ref()) {
         match g.game_copy.as_ref() {
             Some(c) if !c.exists() => out.push(check("bad", "Your copy of the game isn't there anymore", c.display().to_string(), "copy")),
-            Some(c) => match profile::check_copy(need, c) {
+            Some(c) => match copy_ok(need, c, &g.path, false) {
                 Ok(()) if profile::odd_snes_size(c) => out.push(check("warn", "Your copy of the game may be incomplete", "Its size isn't one a full dump of the cartridge has. If the game won't start, try another copy of your own cartridge.", "copy")),
                 Ok(()) => out.push(check("ok", "Your copy of the game checks out", c.display().to_string(), "")),
                 Err(why) => out.push(check("bad", "Your copy of the game isn't the one it reads", why, "copy")),
@@ -5310,7 +5486,7 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
         form.push(("name[]".into(), "launcher-details.txt".into()));
         form.push(("text[]".into(), run));
     }
-    if let Some(t) = trail::tail(24_000) {
+    if let Some(t) = trail::tail_for(&id, 24_000) {
         form.push(("name[]".into(), "launcher-trail.txt".into()));
         form.push(("text[]".into(), t));
     }
@@ -5490,7 +5666,7 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
         }
         form.push(("name[]".into(), "launcher-and-pc.txt".into()));
         form.push(("text[]".into(), txt));
-        if let Some(t) = trail::tail(24_000) {
+        if let Some(t) = game.as_ref().map(|g| trail::tail_for(&g.id, 24_000)).unwrap_or_else(|| trail::tail(24_000)) {
             form.push(("name[]".into(), "launcher-trail.txt".into()));
             form.push(("text[]".into(), t));
         }
@@ -6630,7 +6806,7 @@ pub fn run() {
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -6644,6 +6820,62 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_plain_start_script_gives_its_program() {
+        let d = std::env::temp_dir().join(format!("rl-bat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("bin")).unwrap();
+        std::fs::write(d.join("bin/Game.exe"), b"MZ").unwrap();
+        std::fs::write(d.join("Play.bat"), "@echo off\r\ncd /d %~dp0\r\nstart \"\" \"bin\\Game.exe\" --fullscreen %*\r\n").unwrap();
+        let (exe, args) = super::bat_target(&d.join("Play.bat")).unwrap();
+        assert_eq!(exe, d.join("bin/Game.exe"));
+        assert_eq!(args, vec!["--fullscreen"]);
+        // More than one step, or a choice: left to Proton as it is.
+        std::fs::write(d.join("Two.bat"), "Game1.exe\r\nbin\\Game.exe\r\n").unwrap();
+        assert!(super::bat_target(&d.join("Two.bat")).is_none());
+        std::fs::write(d.join("If.bat"), "if exist x goto a\r\nbin\\Game.exe\r\n").unwrap();
+        assert!(super::bat_target(&d.join("If.bat")).is_none());
+        // Output sent to a file, a second command, or another folder first: left as it is.
+        std::fs::write(d.join("Log.bat"), "bin\\Game.exe > log.txt 2>&1\r\n").unwrap();
+        assert!(super::bat_target(&d.join("Log.bat")).is_none());
+        std::fs::write(d.join("Cd.bat"), "cd bin\r\nGame.exe\r\n").unwrap();
+        assert!(super::bat_target(&d.join("Cd.bat")).is_none());
+        // The script's folder in an argument becomes the real folder.
+        std::fs::write(d.join("Root.bat"), "bin\\Game.exe --root \"%~dp0data\" -w\r\n").unwrap();
+        let (_, args) = super::bat_target(&d.join("Root.bat")).unwrap();
+        assert_eq!(args, vec!["--root".to_string(), format!("{}{}data", d.display(), std::path::MAIN_SEPARATOR), "-w".to_string()]);
+        // A program outside the game's folder: never.
+        std::fs::write(d.parent().unwrap().join(format!("rl-evil-{}.exe", std::process::id())), b"MZ").unwrap();
+        std::fs::write(d.join("Out.bat"), format!("..\\rl-evil-{}.exe\r\n", std::process::id())).unwrap();
+        assert!(super::bat_target(&d.join("Out.bat")).is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_games_own_folder_or_program_is_never_its_copy() {
+        let d = std::env::temp_dir().join(format!("rl-own-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let game = d.join("Recomp Library/mm3d-dekui");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("Dekui.exe"), vec![0u8; 64]).unwrap();
+        std::fs::write(game.join("data.bin"), b"x").unwrap();
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        assert!(super::copy_ok(&need, &game, &game, true).unwrap_err().contains("own folder"));
+        assert!(super::copy_ok(&need, &d.join("Recomp Library"), &game, true).unwrap_err().contains("installs games into"));
+        assert!(super::copy_ok(&need, &game.join("Dekui.exe"), &game, true).unwrap_err().contains("program"));
+        // A game that reads its files from its own folder (or unpacks the disc there): its folder is fine.
+        let own = crate::profile::GameCopy { kind: "iso_or_folder".into(), into: ".".into(), ..Default::default() };
+        assert!(super::copy_ok(&own, &game, &game, true).is_ok());
+        // Set up before (an adopted game inside the player's copy): not turned away now.
+        assert!(super::copy_ok(&need, &d.join("Recomp Library"), &game, false).is_ok());
+        // A copy somewhere else is checked as before.
+        let mine = d.join("My Games/mm3d.3ds");
+        std::fs::create_dir_all(mine.parent().unwrap()).unwrap();
+        std::fs::write(&mine, b"3ds").unwrap();
+        assert!(super::copy_ok(&need, &mine, &game, true).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn running_stats_are_not_something_missing() {
         assert!(super::stats_line("[host] vk_pipeline: gpl: 57 fast links (9 by workers; avg 0.01 ms, max 0.13 ms, 0 failed), 16 draws lookups found shader libraries missing (left to a worker)"));

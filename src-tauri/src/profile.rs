@@ -1888,6 +1888,11 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     if NOT_A_GAME.contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) {
         return Err("That's a picture, document or video, not your copy of the game. Pick the game file itself.".into());
     }
+    // A program (the recomp's own .exe, a .dll beside it): never the player's copy, unless the copy
+    // it asks for is a program of that kind.
+    if PROGRAMS.contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) {
+        return Err("That's a program, not your copy of the game. Pick the game file itself.".into());
+    }
     if ["rvz", "wia", "gcz", "wbfs", "chd", "cso", "zso", "nkit"].contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!("{ext} ")) {
         let dolphin = ["rvz", "wia", "gcz", "wbfs", "nkit"].contains(&ext.as_str());
         return Err(if dolphin {
@@ -1944,6 +1949,7 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
 }
 
 /// Kinds of file that are never a game: pictures, documents, videos, shortcuts.
+const PROGRAMS: [&str; 9] = ["exe", "dll", "so", "appimage", "msi", "bat", "cmd", "sh", "pyd"];
 const NOT_A_GAME: [&str; 24] = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "tif", "tiff", "ico", "txt", "pdf", "doc", "docx", "rtf", "html", "htm", "url", "lnk", "mp4", "mkv", "avi", "mov"];
 
 /// An NKit image under a plain .iso name: NKit writes "NKIT" at 0x200 of the GameCube and Wii
