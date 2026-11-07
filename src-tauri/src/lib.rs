@@ -524,7 +524,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
-        l.installed.insert(id.into(), rec);
+        l.put(id, rec);
         l.settings.asked_location = true;
     }
     st.save();
@@ -812,7 +812,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
             }
         }
     }
-    st.lib.lock().unwrap().installed.remove(&id);
+    st.lib.lock().unwrap().forget(&id);
     st.save();
     Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller}))
 }
@@ -1271,9 +1271,12 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
             if busy || (had && l.installed.contains_key(&new)) {
                 None
             } else {
+                if let Some(a) = l.arts.remove(&old) {
+                    l.arts.entry(new.clone()).or_insert(a);
+                }
                 if let Some(mut g) = l.installed.remove(&old) {
                     g.id = new.clone();
-                    l.installed.insert(new.clone(), g);
+                    l.put(&new, g);
                 }
                 if let Some(m) = l.mods.remove(&old) {
                     l.mods.entry(new.clone()).or_insert(m);
@@ -3069,6 +3072,7 @@ fn remove_github(st: State<'_, App>, id: String) -> Res<()> {
     let mut list = catalog::mine(&st.dir);
     list.retain(|e| str_of(e, "id") != id);
     catalog::save_mine(&st.dir, &list)?;
+    art::drop_set(&st, &id);
     Ok(())
 }
 
@@ -5594,6 +5598,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "site": catalog::base(),
         "thumbs": net::THUMBS,
         "library": l.installed,
+        "arts": l.arts,
         "settings": l.settings,
         "roms": l.roms,
         "running": running,
@@ -5876,7 +5881,7 @@ fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
 /// Takes a game out of the Library without touching any files (its folder is gone anyway).
 #[tauri::command(async)]
 fn forget_game(st: State<'_, App>, id: String) -> Res<()> {
-    st.lib.lock().unwrap().installed.remove(&id);
+    st.lib.lock().unwrap().forget(&id);
     st.save();
     Ok(())
 }

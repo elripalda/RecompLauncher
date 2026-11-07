@@ -138,7 +138,8 @@ function accountSection(group, row) {
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
-      <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`)
+      <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`
+      + row(t('Ask for Each New Game'), t('Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`))
     + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
 }
@@ -265,25 +266,32 @@ window.loadSavesAll = loadSavesAll;
 // save from another PC, or asks which to keep. false: don't start it.
 async function ask(title, text, buttons) {
   if (inTV() && window.tvAsk) {
-    const i = await window.tvAsk(title, buttons.map((b) => ({ label: b.label, sub: b.sub, icon: b.icon })));
-    return i == null || i < 0 ? null : buttons[i].v;
+    // A button marked last (one that changes things for good) goes to the end of the list, away from the first focus.
+    const list = buttons.filter((b) => !b.last).concat(buttons.filter((b) => b.last));
+    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, icon: b.icon })));
+    return i == null || i < 0 ? null : list[i].v;
   }
   return new Promise((res) => {
     let picked = null;
-    const box = modal(`<h2>${esc(title)}</h2>${text}<div class="acts grid2">${buttons.map((b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`).join('')}</div>`, (x, close) => {
+    const box = modal(`<h2>${esc(title)}</h2>${text}<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map((b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`).join('')}</div>`, (x, close) => {
       const i = Number(String(x.dataset.x).slice(1));
       if (!isNaN(i) && buttons[i]) { picked = buttons[i].v; close(); }
     }, title);
+    // The button marked focus starts focused (not one that changes things for good, which may come first).
+    const f = buttons.findIndex((b) => b.focus);
+    if (f >= 0) { const el = box.querySelector(`[data-x="b${f}"]`); if (el) el.focus(); }
     new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
   });
 }
 async function beforePlay(id) {
   const g = S.library[id];
   if (!g || !(S.account && S.account.signedIn)) return true;
-  if (g.cloud == null) {
+  // Asked once per game, unless the player said not to ask (Settings, Account).
+  if (g.cloud == null && (S.settings.ui || {}).cloud_ask !== false) {
     const v = await ask(tf('Cloud saves for {name}?', { name: g.name }), `<p>${esc(t('After you play, its saves go to your account, so they\'re safe and ready on any PC. You can change this on its Saves tab.'))}</p>`,
-      [{ label: t('Not now'), sub: t('Its saves stay on this PC'), icon: 'chevL', v: 'no' }, { label: t('Turn on'), sub: t('Back them up to your account'), icon: 'check', v: 'yes', main: true }]);
+      [{ label: t('Don\'t Ask Again'), v: 'never', last: true }, { label: t('Not now'), sub: t('Its saves stay on this PC'), icon: 'chevL', v: 'no', focus: true }, { label: t('Turn on'), sub: t('Back them up to your account'), icon: 'check', v: 'yes', main: true }]);
     if (v == null) return false;
+    if (v === 'never') { await saveUi({ cloud_ask: false }); toast(t('Games won\'t ask about cloud saves anymore. Turn it back on in Settings → Account.')); }
     try { S.library[id] = await invoke('saves_cloud', { id, on: v === 'yes' }); } catch (e) { fail(e); }
     savesChanged(id);
     if (v !== 'yes') return true;
@@ -314,6 +322,7 @@ window.accountAct = async (act, el) => {
     case 'acc-create': return signIn(true);
     case 'acc-signout': return signOut();
     case 'acc-retry': el.disabled = true; await loadAccount(true); if (S.account && !S.account.offline) toast(t('Connected again.')); return render(true);
+    case 'acc-cloud-ask': { const on = (S.settings.ui || {}).cloud_ask !== false; await saveUi({ cloud_ask: !on }); return render(true); }
     case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
     case 'myrep-load': return loadMyReports();
     case 'myrep-send': {

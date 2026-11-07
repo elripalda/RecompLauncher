@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Облачные сохранения пока приостановлены. Ваши сохранения на этом компьютере в безопасности.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Облачные сохранения приостановлены, пока мы переносим их в новое хранилище. Ваши сохранения на этом компьютере в безопасности.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Облачные сохранения сейчас недоступны. Ваши сохранения на этом компьютере в безопасности.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Это сохранение слишком большое для облачных сохранений (больше 95 МБ). Оно остаётся на этом компьютере."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Это сохранение слишком большое для облачных сохранений (больше 95 МБ). Оно остаётся на этом компьютере.",
+ "Your Description": "Ваше описание",
+ "Edit": "Изменить",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Введите часть названия игры и выберите её из списка. Нажмите на обложку или фон, чтобы увидеть все изображения, или используйте свои.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Введите часть названия игры и выберите её из списка. Нажмите на обложку или фон, чтобы использовать свои изображения. С вашим собственным ключом SteamGridDB (Настройки → Игры и папки) изображения подтягиваются сами.",
+ "Type a bit of the game's name": "Введите часть названия игры",
+ "Logos ({n})": "Логотипы ({n})",
+ "Look up another name…": "Искать по другому названию…",
+ "Yours": "Ваше",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "В SteamGridDB для этой игры таких нет. Поищите по другому названию или используйте своё изображение.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Используйте своё изображение или добавьте собственный ключ SteamGridDB в Настройки → Игры и папки, чтобы получать изображения.",
+ "Ask for Each New Game": "Спрашивать для каждой новой игры",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Выкл.: игры, которые вы запускаете впервые, хранят сохранения на этом ПК, не спрашивая. Облачные сохранения для игры всё равно можно включить на её вкладке «Сохранения».",
+ "Don't Ask Again": "Больше не спрашивать",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Игры больше не будут спрашивать об облачных сохранениях. Включить снова можно в Настройки → Аккаунт.",
+ "Info": "Сведения",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "Ваши собственные слова об игре: что это, как вы в неё играете, что угодно. Показываются на её странице.",
+ "That isn't a game.": "Это не игра."
 }

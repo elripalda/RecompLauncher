@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "云存档目前已暂停。这台电脑上的存档依然安全。",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "云存档正在迁移到新的存储空间，暂时停用。这台电脑上的存档依然安全。",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "云存档目前不可用。这台电脑上的存档依然安全。",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "此存档太大（超过 95 MB），无法使用云存档。存档会保留在这台电脑上。"
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "此存档太大（超过 95 MB），无法使用云存档。存档会保留在这台电脑上。",
+ "Your Description": "你的描述",
+ "Edit": "编辑",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "输入游戏名称的一部分，然后从列表中选择。点击封面或背景可查看所有图片，也可以使用你自己的图片。",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "输入游戏名称的一部分，然后从列表中选择。点击封面或背景可使用你自己的图片。有了你自己的 SteamGridDB 密钥（设置 → 游戏和文件夹），图片会自动获取。",
+ "Type a bit of the game's name": "输入游戏名称的一部分",
+ "Logos ({n})": "标志 ({n})",
+ "Look up another name…": "换个名称查找…",
+ "Yours": "你的",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB 没有这款游戏的此类图片。换个名称查找，或使用你自己的图片。",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "使用你自己的图片，或在 设置 → 游戏和文件夹 中添加你自己的 SteamGridDB 密钥来获取图片。",
+ "Ask for Each New Game": "每款新游戏都询问",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "关闭：首次游玩的游戏会直接把存档保留在这台电脑上，不再询问。你仍可在游戏的“存档”标签页为它开启云存档。",
+ "Don't Ask Again": "不再询问",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "游戏将不再询问云存档。可在 设置 → 账户 中重新开启。",
+ "Info": "信息",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "你自己对这款游戏的描述：它是什么、你怎么玩、什么都行。会显示在它的页面上。",
+ "That isn't a game.": "这不是游戏。"
 }

@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Хмарні збереження поки призупинено. Твої збереження на цьому комп'ютері в безпеці.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Хмарні збереження призупинено, поки ми переносимо їх до нового сховища. Твої збереження на цьому комп'ютері в безпеці.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Хмарні збереження зараз недоступні. Твої збереження на цьому комп'ютері в безпеці.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Це збереження завелике для хмарних збережень (понад 95 МБ). Воно залишається на цьому комп'ютері."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Це збереження завелике для хмарних збережень (понад 95 МБ). Воно залишається на цьому комп'ютері.",
+ "Your Description": "Ваш опис",
+ "Edit": "Змінити",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Введіть частину назви гри та виберіть її зі списку. Натисніть на обкладинку або фон, щоб побачити всі зображення, або використайте свої.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Введіть частину назви гри та виберіть її зі списку. Натисніть на обкладинку або фон, щоб використати свої зображення. З вашим власним ключем SteamGridDB (Налаштування → Ігри та папки) зображення з’являються самі.",
+ "Type a bit of the game's name": "Введіть частину назви гри",
+ "Logos ({n})": "Логотипи ({n})",
+ "Look up another name…": "Шукати за іншою назвою…",
+ "Yours": "Ваше",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "У SteamGridDB для цієї гри таких немає. Пошукайте за іншою назвою або використайте своє зображення.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Використайте своє зображення або додайте власний ключ SteamGridDB у Налаштування → Ігри та папки, щоб отримувати зображення.",
+ "Ask for Each New Game": "Питати для кожної нової гри",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Вимк.: ігри, які ви запускаєте вперше, зберігають збереження на цьому ПК без запитань. Хмарні збереження для гри все одно можна ввімкнути на її вкладці «Збереження».",
+ "Don't Ask Again": "Більше не питати",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Ігри більше не питатимуть про хмарні збереження. Увімкнути знову можна в Налаштування → Обліковий запис.",
+ "Info": "Відомості",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "Ваші власні слова про гру: що це, як ви в неї граєте, що завгодно. Показуються на її сторінці.",
+ "That isn't a game.": "Це не гра."
 }

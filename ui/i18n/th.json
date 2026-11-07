@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "ตอนนี้หยุดเซฟบนคลาวด์ไว้ชั่วคราว เซฟบนพีซีเครื่องนี้ยังปลอดภัยดี",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "หยุดเซฟบนคลาวด์ไว้ชั่วคราวระหว่างที่เราย้ายไปยังพื้นที่จัดเก็บใหม่ เซฟบนพีซีเครื่องนี้ยังปลอดภัยดี",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "ตอนนี้ใช้เซฟบนคลาวด์ไม่ได้ เซฟบนพีซีเครื่องนี้ยังปลอดภัยดี",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "เซฟนี้ใหญ่เกินไปสำหรับเซฟบนคลาวด์ (เกิน 95 MB) จะเก็บไว้บนพีซีเครื่องนี้"
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "เซฟนี้ใหญ่เกินไปสำหรับเซฟบนคลาวด์ (เกิน 95 MB) จะเก็บไว้บนพีซีเครื่องนี้",
+ "Your Description": "คำอธิบายของคุณ",
+ "Edit": "แก้ไข",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "พิมพ์ชื่อเกมบางส่วนแล้วเลือกจากรายการ คลิกหน้าปกหรือพื้นหลังเพื่อดูรูปทั้งหมด หรือใช้รูปของคุณเอง",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "พิมพ์ชื่อเกมบางส่วนแล้วเลือกจากรายการ คลิกหน้าปกหรือพื้นหลังเพื่อใช้รูปของคุณเอง เมื่อมีคีย์ SteamGridDB ของคุณเอง (การตั้งค่า → เกมและโฟลเดอร์) รูปจะมาเอง",
+ "Type a bit of the game's name": "พิมพ์ชื่อเกมบางส่วน",
+ "Logos ({n})": "โลโก้ ({n})",
+ "Look up another name…": "ค้นหาด้วยชื่ออื่น…",
+ "Yours": "ของคุณ",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB ไม่มีรายการเหล่านี้สำหรับเกมนี้ ลองค้นหาด้วยชื่ออื่น หรือใช้รูปของคุณเอง",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "ใช้รูปของคุณเอง หรือเพิ่มคีย์ SteamGridDB ของคุณเองใน การตั้งค่า → เกมและโฟลเดอร์ เพื่อรับรูป",
+ "Ask for Each New Game": "ถามทุกครั้งที่มีเกมใหม่",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "ปิด: เกมที่คุณเล่นครั้งแรกจะเก็บเซฟไว้ในพีซีเครื่องนี้โดยไม่ถาม คุณยังเปิดเซฟบนคลาวด์ให้เกมได้ที่แท็บเซฟของเกมนั้น",
+ "Don't Ask Again": "ไม่ต้องถามอีก",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "เกมจะไม่ถามเรื่องเซฟบนคลาวด์อีกแล้ว เปิดกลับได้ที่ การตั้งค่า → บัญชี",
+ "Info": "ข้อมูล",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "คำพูดของคุณเองเกี่ยวกับเกม: เกมนี้คืออะไร คุณเล่นอย่างไร หรืออะไรก็ได้ แสดงในหน้าของเกม",
+ "That isn't a game.": "นี่ไม่ใช่เกม"
 }

@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "클라우드 저장이 당분간 일시 중지되었습니다. 이 PC의 저장 데이터는 안전합니다.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "새 저장소로 옮기는 동안 클라우드 저장이 일시 중지되었습니다. 이 PC의 저장 데이터는 안전합니다.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "지금은 클라우드 저장을 사용할 수 없습니다. 이 PC의 저장 데이터는 안전합니다.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "이 저장 데이터는 클라우드 저장에 올리기에는 너무 큽니다(95MB 초과). 이 PC에 보관됩니다."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "이 저장 데이터는 클라우드 저장에 올리기에는 너무 큽니다(95MB 초과). 이 PC에 보관됩니다.",
+ "Your Description": "내 설명",
+ "Edit": "편집",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "게임 이름의 일부를 입력하고 목록에서 고르세요. 커버나 배경을 클릭하면 모든 이미지를 볼 수 있고, 내 이미지를 사용할 수도 있습니다.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "게임 이름의 일부를 입력하고 목록에서 고르세요. 커버나 배경을 클릭하면 내 이미지를 사용할 수 있습니다. 내 SteamGridDB 키(설정 → 게임 및 폴더)가 있으면 이미지가 자동으로 들어옵니다.",
+ "Type a bit of the game's name": "게임 이름의 일부를 입력하세요",
+ "Logos ({n})": "로고 ({n})",
+ "Look up another name…": "다른 이름으로 찾기…",
+ "Yours": "내 이미지",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB에 이 게임의 항목이 없습니다. 다른 이름으로 찾거나 내 이미지를 사용하세요.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "내 이미지를 사용하거나, 설정 → 게임 및 폴더에서 내 SteamGridDB 키를 추가하면 이미지를 받을 수 있습니다.",
+ "Ask for Each New Game": "새 게임마다 묻기",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "끔: 처음 플레이하는 게임은 묻지 않고 이 PC에 저장 데이터를 보관합니다. 게임의 저장 데이터 탭에서 클라우드 저장을 켤 수도 있습니다.",
+ "Don't Ask Again": "다시 묻지 않기",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "게임이 더 이상 클라우드 저장에 대해 묻지 않습니다. 설정 → 계정에서 다시 켤 수 있습니다.",
+ "Info": "정보",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "게임에 대한 나만의 말: 어떤 게임인지, 어떻게 플레이하는지, 무엇이든. 게임 페이지에 표시됩니다.",
+ "That isn't a game.": "게임이 아닙니다."
 }

@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "クラウドセーブは現在一時停止しています。この PC のセーブデータは安全です。",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "新しいストレージへの移行のため、クラウドセーブを一時停止しています。この PC のセーブデータは安全です。",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "現在クラウドセーブは利用できません。この PC のセーブデータは安全です。",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "このセーブデータはクラウドセーブには大きすぎます（95 MB 超）。この PC に残ります。"
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "このセーブデータはクラウドセーブには大きすぎます（95 MB 超）。この PC に残ります。",
+ "Your Description": "あなたの説明",
+ "Edit": "編集",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "ゲーム名の一部を入力して、リストから選んでください。カバーや背景をクリックするとすべての画像を見られます。自分の画像も使えます。",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "ゲーム名の一部を入力して、リストから選んでください。カバーや背景をクリックすると自分の画像を使えます。自分の SteamGridDB キー（設定 → ゲームとフォルダー）があれば、画像は自動で届きます。",
+ "Type a bit of the game's name": "ゲーム名の一部を入力",
+ "Logos ({n})": "ロゴ ({n})",
+ "Look up another name…": "別の名前で探す…",
+ "Yours": "自分の画像",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB にはこのゲームのものがありません。別の名前で探すか、自分の画像を使ってください。",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "自分の画像を使うか、設定 → ゲームとフォルダーで自分の SteamGridDB キーを追加すると画像を取得できます。",
+ "Ask for Each New Game": "新しいゲームごとに確認",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "オフ：初めて遊ぶゲームは、確認せずにこの PC にセーブデータを保存します。各ゲームの「セーブデータ」タブでクラウドセーブをオンにすることもできます。",
+ "Don't Ask Again": "今後は確認しない",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "ゲームはクラウドセーブについて確認しなくなります。設定 → アカウントで再びオンにできます。",
+ "Info": "情報",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "ゲームについてのあなた自身の言葉：どんなゲームか、どう遊んでいるか、何でも。ゲームのページに表示されます。",
+ "That isn't a game.": "これはゲームではありません。"
 }

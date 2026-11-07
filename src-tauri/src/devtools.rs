@@ -128,7 +128,8 @@ pub(crate) fn add_folder(st: &App, path: String, exe_pick: Option<PathBuf>, tag:
         local: true,
         ..Default::default()
     };
-    l.installed.insert(id, g.clone());
+    l.put(&id, g);
+    let g = l.installed[&id].clone();
     drop(l);
     st.save();
     Ok(g)

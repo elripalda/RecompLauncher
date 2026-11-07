@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Bulut kayıtları şimdilik duraklatıldı. Bu bilgisayardaki kayıtlarınız güvende.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Yeni bir depolama alanına taşıma sürerken bulut kayıtları duraklatıldı. Bu bilgisayardaki kayıtlarınız güvende.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Bulut kayıtları şu an kullanılamıyor. Bu bilgisayardaki kayıtlarınız güvende.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Bu kayıt bulut kayıtları için çok büyük (95 MB üzeri). Bu bilgisayarda tutuluyor."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Bu kayıt bulut kayıtları için çok büyük (95 MB üzeri). Bu bilgisayarda tutuluyor.",
+ "Your Description": "Senin açıklaman",
+ "Edit": "Düzenle",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Oyunun adının bir kısmını yaz ve listeden seç. Tüm görselleri görmek için kapağa veya arka plana tıkla ya da kendi resimlerini kullan.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Oyunun adının bir kısmını yaz ve listeden seç. Kendi resimlerini kullanmak için kapağa veya arka plana tıkla. Kendi SteamGridDB anahtarınla (Ayarlar → Oyunlar ve klasörler) görseller kendiliğinden gelir.",
+ "Type a bit of the game's name": "Oyunun adının bir kısmını yaz",
+ "Logos ({n})": "Logolar ({n})",
+ "Look up another name…": "Başka bir adla ara…",
+ "Yours": "Senin",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB’de bu oyun için bunlardan hiç yok. Başka bir adla ara ya da kendi resmini kullan.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Kendi resmini kullan ya da görsel almak için Ayarlar → Oyunlar ve klasörler bölümüne kendi SteamGridDB anahtarını ekle.",
+ "Ask for Each New Game": "Her yeni oyunda sor",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Kapalı: ilk kez oynadığın oyunlar sormadan kayıtlarını bu bilgisayarda tutar. Bir oyun için bulut kayıtlarını yine de onun Kayıtlar sekmesinden açabilirsin.",
+ "Don't Ask Again": "Bir daha sorma",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Oyunlar artık bulut kayıtlarını sormayacak. Ayarlar → Hesap bölümünden yeniden açabilirsin.",
+ "Info": "Bilgi",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "Oyun hakkında kendi sözlerin: ne olduğu, nasıl oynadığın, ne istersen. Sayfasında gösterilir.",
+ "That isn't a game.": "Bu bir oyun değil."
 }

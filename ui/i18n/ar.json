@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "الحفظ السحابي متوقف مؤقتًا الآن. ملفات الحفظ الموجودة على هذا الكمبيوتر في أمان.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "الحفظ السحابي متوقف مؤقتًا بينما ننقله إلى مساحة تخزين جديدة. ملفات الحفظ الموجودة على هذا الكمبيوتر في أمان.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "الحفظ السحابي غير متاح الآن. ملفات الحفظ الموجودة على هذا الكمبيوتر في أمان.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "ملف الحفظ هذا كبير جدًا على الحفظ السحابي (أكثر من 95 ميجابايت). يُحتفظ به على هذا الكمبيوتر."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "ملف الحفظ هذا كبير جدًا على الحفظ السحابي (أكثر من 95 ميجابايت). يُحتفظ به على هذا الكمبيوتر.",
+ "Your Description": "وصفك",
+ "Edit": "تعديل",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "اكتب جزءًا من اسم اللعبة واخترها من القائمة. انقر على الغلاف أو الخلفية لرؤية كل الصور، أو استخدم صورك الخاصة.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "اكتب جزءًا من اسم اللعبة واخترها من القائمة. انقر على الغلاف أو الخلفية لاستخدام صورك الخاصة. مع مفتاح SteamGridDB الخاص بك (الإعدادات ← الألعاب والمجلدات)، تأتي الصور تلقائيًا.",
+ "Type a bit of the game's name": "اكتب جزءًا من اسم اللعبة",
+ "Logos ({n})": "الشعارات ({n})",
+ "Look up another name…": "ابحث باسم آخر…",
+ "Yours": "صورتك",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "لا يوجد في SteamGridDB أي من هذه لهذه اللعبة. ابحث باسم آخر، أو استخدم صورتك الخاصة.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "استخدم صورتك الخاصة، أو أضف مفتاح SteamGridDB الخاص بك في الإعدادات ← الألعاب والمجلدات للحصول على الصور.",
+ "Ask for Each New Game": "اسأل عند كل لعبة جديدة",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "متوقف: الألعاب التي تلعبها لأول مرة تحتفظ بملفات حفظها على هذا الكمبيوتر دون أن تسأل. لا يزال بإمكانك تشغيل الحفظ السحابي للعبة من تبويب ملفات الحفظ الخاص بها.",
+ "Don't Ask Again": "لا تسأل مرة أخرى",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "لن تسأل الألعاب عن الحفظ السحابي بعد الآن. أعد تشغيله من الإعدادات ← الحساب.",
+ "Info": "معلومات",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "كلماتك الخاصة عن اللعبة: ما هي، وكيف تلعبها، وأي شيء آخر. تظهر في صفحتها.",
+ "That isn't a game.": "هذه ليست لعبة."
 }

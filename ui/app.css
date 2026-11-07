@@ -1737,3 +1737,64 @@ body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .tnote .tn-x svg{width:14px;height:14px}
 @media (max-width:700px){.tnote{flex-wrap:wrap}.tnote p{flex-basis:100%;order:3}}
 body.light .tag.deck{color:#0b6fbf}
+
+/* Type-ahead lists under a field (Add From GitHub's Game, Choose Art's other name). */
+.sugg-host{position:relative}
+.sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;max-height:300px;overflow-y:auto;padding:5px;border-radius:12px;background:var(--card);box-shadow:0 0 0 1px var(--line2),0 16px 40px rgba(0,0,0,.45)}
+.sg-it{display:flex;align-items:baseline;gap:8px;width:100%;padding:8px 10px;border-radius:8px;text-align:left;color:var(--text)}
+.sg-it b{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-it span{color:var(--dim);font-size:12.5px;white-space:nowrap}
+.sg-it small{margin-left:auto;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.sg-it:hover,.sg-it.on{background:var(--fill2)}
+.sg-it.on{box-shadow:inset 0 0 0 1px var(--cyan)}
+/* The background with the logo over it, as the game's page shows them. */
+.gi-hero{position:relative}
+.gi-hero.empty{background:var(--fill2)}
+.gi-heroimg{position:absolute;inset:0}
+.gi-logo{position:absolute;left:5%;bottom:10%;width:34%;height:46%;display:flex;align-items:flex-end;pointer-events:none}
+.gi-hero .gi-logo img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 4px 14px rgba(0,0,0,.55))}
+/* Choose Art: looking up another name, the player's own picture first. */
+.ap-search{margin-bottom:12px}
+.ap-search .field{width:100%}
+.ap-mine{position:relative}
+.ap-mine small{position:absolute;left:6px;top:6px;padding:2px 7px;border-radius:999px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;font-weight:700}
+.ap-grid.logo .ap-it{aspect-ratio:2/1}
+/* Customize, Info: the player's own words about the game. */
+.cz-desc{width:100%;min-height:110px;resize:vertical;line-height:1.5;font:inherit;padding:10px 12px}
+.cz-name .cz-lab+.cz-desc{margin-top:6px}
+.own-about .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.own-about p{white-space:pre-line}
+/* Discover's pinned search and filters: slides in under the window's top once the page's own scroll away. */
+.dstick{position:absolute;top:0;left:0;right:0;z-index:19;height:66px;padding:0 160px 0 40px;display:flex;align-items:center;justify-content:center;background:var(--bg);border-bottom:1px solid var(--line);box-shadow:0 10px 30px -18px rgba(0,0,0,.7);transform:translateY(-104%);opacity:0;pointer-events:none;transition:transform .32s var(--ease),opacity .22s ease}
+.dstick.on{transform:none;opacity:1;pointer-events:auto}
+body.light .dstick{box-shadow:0 10px 30px -20px rgba(14,22,38,.35)}
+body.tv-on .dstick{display:none}
+.mainwrap.stick-on .topbar.solid{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom-color:transparent}
+.mainwrap.stick-on .topbar{pointer-events:none}
+.ds-in{display:flex;align-items:center;gap:10px;width:100%;max-width:1180px}
+.ds-q{position:relative;flex:1 1 300px;min-width:180px;max-width:460px}
+.ds-q input{width:100%;height:42px;border-radius:21px;border:1px solid var(--line2);background:var(--card);padding:0 44px 0 44px;color:var(--ink);font:500 14px Figtree,sans-serif;outline:0;transition:border-color .2s,box-shadow .2s,background .2s}
+.ds-q input::placeholder{color:var(--dim)}
+.ds-q input::-webkit-search-cancel-button{display:none}
+.ds-q input:focus{border-color:rgba(52,242,232,.5);box-shadow:0 0 0 4px rgba(52,242,232,.1);background:var(--card2)}
+.ds-q>svg{position:absolute;left:15px;top:11px;color:var(--dim);pointer-events:none}
+.ds-q .clear{position:absolute;right:5px;top:5px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:var(--dim)}
+.ds-q .clear:hover{background:var(--fill2);color:var(--ink)}
+.ds-ctl{display:flex;align-items:center;gap:10px;flex:none}
+.ds-ctl .pill-sel{flex:none}
+.ds-more-w{position:relative;flex:none;margin-left:auto}
+.ds-more{height:42px;padding:0 16px;border-radius:21px;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--card);color:var(--muted);font:600 13.5px Figtree,sans-serif;transition:border-color .15s,background-color .15s,color .15s}
+.ds-more:hover,.ds-more[aria-expanded="true"]{border-color:var(--line3);background:var(--card2);color:var(--ink)}
+.ds-more:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.ds-n{min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:grid;place-items:center;background:var(--cyan);color:#06121c;font-size:11.5px;font-weight:800}
+.ds-panel{position:absolute;top:calc(100% + 12px);right:0;width:300px;padding:12px;border-radius:18px;background:var(--card);border:1px solid var(--line2);box-shadow:0 18px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:12px;transform-origin:top right;animation:dropin .16s var(--ease)}
+.ds-panel[hidden]{display:none}
+body.light .ds-panel{box-shadow:0 14px 40px rgba(14,22,38,.16)}
+.ds-list{display:flex;flex-direction:column;gap:8px}
+.ds-list+.ds-list{padding-top:12px;border-top:1px solid var(--line)}
+.ds-list .pill-sel,.ds-list .toggle{width:100%;justify-content:space-between}
+.ds-list .pill-sel .drop{margin-left:auto}
+.ds-list .toggle .switch{margin-left:auto}
+.ds-panel .ds-narrow{display:none}
+@media (max-width:1280px){.ds-ctl .ds-wide{display:none}.ds-panel .ds-narrow{display:flex}}
+@media (max-width:1060px){.dstick{padding-left:28px}.ds-q{flex-basis:200px}}

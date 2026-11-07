@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Save cloud dijeda untuk sementara. Save kamu di PC ini aman.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Save cloud dijeda selagi kami memindahkannya ke penyimpanan baru. Save kamu di PC ini aman.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Save cloud tidak tersedia sekarang. Save kamu di PC ini aman.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Save ini terlalu besar untuk save cloud (lebih dari 95 MB). Save ini tetap di PC ini."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Save ini terlalu besar untuk save cloud (lebih dari 95 MB). Save ini tetap di PC ini.",
+ "Your Description": "Deskripsimu",
+ "Edit": "Edit",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Ketik sebagian nama game dan pilih dari daftar. Klik sampul atau latar untuk melihat semua gambar, atau pakai gambarmu sendiri.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Ketik sebagian nama game dan pilih dari daftar. Klik sampul atau latar untuk memakai gambarmu sendiri. Dengan kunci SteamGridDB milikmu (Pengaturan → Game dan folder), gambar datang dengan sendirinya.",
+ "Type a bit of the game's name": "Ketik sebagian nama game",
+ "Logos ({n})": "Logo ({n})",
+ "Look up another name…": "Cari nama lain…",
+ "Yours": "Milikmu",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB tidak punya satu pun untuk game ini. Cari nama lain, atau pakai gambarmu sendiri.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Pakai gambarmu sendiri, atau tambahkan kunci SteamGridDB milikmu di Pengaturan → Game dan folder untuk mendapatkan gambar.",
+ "Ask for Each New Game": "Tanya untuk setiap game baru",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Mati: game yang kamu mainkan pertama kali menyimpan save-nya di PC ini tanpa bertanya. Kamu tetap bisa menyalakan save cloud untuk satu game di tab Save-nya.",
+ "Don't Ask Again": "Jangan tanya lagi",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Game tidak akan bertanya soal save cloud lagi. Nyalakan lagi di Pengaturan → Akun.",
+ "Info": "Info",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "Kata-katamu sendiri tentang game ini: apa itu, cara kamu memainkannya, apa saja. Ditampilkan di halamannya.",
+ "That isn't a game.": "Itu bukan game."
 }

@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Cloud-Speicherstände sind vorerst pausiert. Deine Spielstände auf diesem PC sind sicher.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Cloud-Speicherstände sind pausiert, während wir sie auf einen neuen Speicher umziehen. Deine Spielstände auf diesem PC sind sicher.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Cloud-Speicherstände sind gerade nicht verfügbar. Deine Spielstände auf diesem PC sind sicher.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Dieser Spielstand ist zu groß für Cloud-Speicherstände (über 95 MB). Er bleibt auf diesem PC."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Dieser Spielstand ist zu groß für Cloud-Speicherstände (über 95 MB). Er bleibt auf diesem PC.",
+ "Your Description": "Deine Beschreibung",
+ "Edit": "Bearbeiten",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Tippe einen Teil des Spielnamens ein und wähle es aus der Liste. Klicke auf das Cover oder den Hintergrund, um alle Bilder zu sehen, oder nimm deine eigenen Bilder.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Tippe einen Teil des Spielnamens ein und wähle es aus der Liste. Klicke auf das Cover oder den Hintergrund, um deine eigenen Bilder zu nehmen. Mit deinem eigenen SteamGridDB-Schlüssel (Einstellungen → Spiele und Ordner) kommen die Bilder von selbst.",
+ "Type a bit of the game's name": "Tippe einen Teil des Spielnamens ein",
+ "Logos ({n})": "Logos ({n})",
+ "Look up another name…": "Nach einem anderen Namen suchen…",
+ "Yours": "Deins",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB hat davon nichts für dieses Spiel. Suche nach einem anderen Namen oder nimm dein eigenes Bild.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Nimm dein eigenes Bild oder füge deinen eigenen SteamGridDB-Schlüssel unter Einstellungen → Spiele und Ordner hinzu, um Bilder zu bekommen.",
+ "Ask for Each New Game": "Bei jedem neuen Spiel fragen",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Aus: Spiele, die du zum ersten Mal spielst, behalten ihre Spielstände ohne Nachfrage auf diesem PC. Du kannst Cloud-Speicherstände für ein Spiel trotzdem auf seinem Tab „Spielstände“ einschalten.",
+ "Don't Ask Again": "Nicht mehr fragen",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Spiele fragen nicht mehr nach Cloud-Speicherständen. Unter Einstellungen → Konto schaltest du es wieder ein.",
+ "Info": "Info",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "Deine eigenen Worte zum Spiel: was es ist, wie du es spielst, alles Mögliche. Wird auf seiner Seite angezeigt.",
+ "That isn't a game.": "Das ist kein Spiel."
 }

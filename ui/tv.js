@@ -1219,7 +1219,7 @@
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
-          ${about}${checkBlock}${shotRow}
+          ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}
         </div>
         ${aside}
       </div>${(() => { const like = moreLike(a); return like.length ? row('like', t('More like this'), like.map((x) => poster(x, 'm:' + x.id)).join('')) : ''; })()}`, 'game')}

@@ -22,7 +22,7 @@ const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N
 
 const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
-  library: {}, settings: {}, running: new Set(), settingUp: new Set(), jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
+  library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general',
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false },
@@ -176,7 +176,7 @@ async function removeFromLibrary(id) {
   await saveUi({ saved: s2, found_skip: skip }, true);
   // One added by its link goes away altogether.
   const a = byId(id);
-  if (a && a.custom && !S.library[id]) { await invoke('remove_github', { id }).catch(() => {}); await loadCatalog(false); }
+  if (a && a.custom && !S.library[id]) { await invoke('remove_github', { id }).catch(() => {}); if (S.arts) delete S.arts[id]; await loadCatalog(false); }
   render(true);
 }
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
@@ -418,13 +418,15 @@ function applyCover(a, id) {
   // "TotK Recomp"), unless the player named it themselves.
   const nm = (ui.names || {})[id] || (ui.game_names && a.game ? a.game : '');
   if (nm) { if (a._name === undefined) a._name = a.name; a.name = nm; } else if (a._name !== undefined) { a.name = a._name; delete a._name; }
-  const c = (S.library[id] || {}).cover_file;
+  // On the installed game, or kept for one that isn't (Customize from Discover, or uninstalled).
+  const own = S.library[id] || (S.arts || {})[id] || {};
+  const c = own.cover_file;
   if (c) { if (a._cov === undefined) a._cov = a.cover || ''; a.cover = 'local:' + c; } else if (a._cov !== undefined) { a.cover = a._cov; delete a._cov; }
-  const h = (S.library[id] || {}).hero_file;
+  const h = own.hero_file;
   if (h) { if (a._hero === undefined) a._hero = a.hero || ''; a.hero = 'local:' + h; } else if (a._hero !== undefined) { a.hero = a._hero; delete a._hero; }
-  const l = (S.library[id] || {}).logo_file;
+  const l = own.logo_file;
   if (l) { if (a._logo === undefined) a._logo = a.logo || ''; a.logo = 'local:' + l; } else if (a._logo !== undefined) { a.logo = a._logo; delete a._logo; }
-  const ic = (S.library[id] || {}).icon_file;
+  const ic = own.icon_file;
   if (ic) { if (a._icon === undefined) a._icon = a.icon || ''; a.icon = 'local:' + ic; } else if (a._icon !== undefined) { a.icon = a._icon; delete a._icon; }
   return a;
 }
@@ -833,6 +835,13 @@ function devShotView(id, i) {
   });
   draw(m);
 }
+// The player's own words about a game (Customize, Info): on its page, above everything about it.
+const ownAbout = (id) => String(((S.settings.ui || {}).abouts || {})[id] || '').trim();
+function ownAboutCard(id) {
+  const txt = ownAbout(id);
+  if (!txt) return '';
+  return `<div class="card own-about"><div class="card-h" style="margin-bottom:10px"><h3>${esc(t('Your Description'))}</h3><button type="button" class="btn sm" data-act="customize" data-id="${esc(id)}">${esc(t('Edit'))}</button></div>${txt.split(/\n\s*\n/).map((p) => `<p dir="auto">${esc(p.trim())}</p>`).join('')}</div>`;
+}
 function aboutCard(a) {
   if (a.about && (a.about.summary || aboutFacts(a.about).length)) return igdbCard(a.about);
   const i = S.info[a.id];
@@ -1006,6 +1015,19 @@ function discoverList() {
 }
 
 const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class="sel" data-act="runs-sel">${runsList().map(([k, n]) => `<option value="${k}"${runsPick() === k ? ' selected' : ''}>${esc(t(n))}</option>`).join('')}</select></label>`;
+// Discover's controls: on the page, and again in the bar pinned to the top once those scroll away.
+const sortOpts = () => [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
+const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n]) => `<option value="${esc(k)}"${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
+const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name])], f.origin, cls);
+const genreSel = (f, genres, cls) => pillSel(t('Genre'), 'genre-sel', [['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])], f.genre, cls);
+const showSel = (f) => pillSel(t('Show'), 'show-sel', SHOWS.map(([k, n]) => [k, t(n)]), f.show || '');
+const tagSel = (f) => pillSel(t('Tag'), 'tag-sel', [['', t('Any')], ...allTags().map((k) => [k, k])], f.tag || '');
+const discToggles = (f) => `<button type="button" class="toggle" role="switch" aria-checked="${!!f.easy}" data-act="easy-f">${DISC_S}${esc(t('Easy Setup'))}<span class="switch" aria-hidden="true"></span></button>
+      <button type="button" class="toggle" role="switch" aria-checked="${!!f.mp}" data-act="mp-f">${esc(t('Multiplayer'))}<span class="switch" aria-hidden="true"></span></button>
+      <button type="button" class="toggle" role="switch" aria-checked="${!!f.great}" data-act="great"><span class="dot-great" aria-hidden="true"></span>${esc(t('Plays great'))}<span class="switch" aria-hidden="true"></span></button>
+      ${onHandheld() ? `<button type="button" class="toggle deck-t" role="switch" aria-checked="${!!f.deckgreat}" data-act="deck-f">${DECK_ICON(15)}${esc(t('Great on Deck'))}<span class="switch" aria-hidden="true"></span></button>` : ''}
+      <button type="button" class="toggle" role="switch" aria-checked="${!!S.settings.hide_ai}" data-act="toggle" data-k="hide_ai">${esc(t('Hide AI-assisted'))}<span class="switch" aria-hidden="true"></span></button>`;
+const discGenres = () => { const apps = visible(); return Object.keys(GENRES).filter((k) => apps.some((a) => a.genre === k)); };
 function pageDiscover() {
   wantCounts();
   if (!S.cat) return `<div class="loading">${esc(t('Loading…'))}</div>`;
@@ -1017,23 +1039,81 @@ function pageDiscover() {
       <label class="bigsearch"><span class="sr">${esc(t('Search recomps'))}</span>${SEARCH}<input id="dq" type="search" placeholder="${esc(t('Search games, recomps or developers'))}" value="${esc(S.q)}" autocomplete="off" spellcheck="false"><button type="button" class="clear" data-act="clear-q" aria-label="${esc(t('Clear the search'))}"${q ? '' : ' hidden'}>${XMARK}</button></label></div>
     ${notesBars()}
     <div class="dctl rows"><div class="grp">
-      <div class="seg big" role="radiogroup" aria-label="${esc(t('Sort'))}">${[['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${f.sort === k}" data-act="sort" data-k="${k}">${esc(n)}</button>`).join('')}</div>
+      <div class="seg big" role="radiogroup" aria-label="${esc(t('Sort'))}">${sortOpts().map(([k, n]) => `<button type="button" role="radio" aria-checked="${f.sort === k}" data-act="sort" data-k="${k}">${esc(n)}</button>`).join('')}</div>
     </div><div class="grp">
-      ${S.os === 'linux' ? runsSel() : ''}<label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="origin">${[['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name])].map(([k, n]) => `<option value="${esc(k)}"${f.origin === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
-      <label class="pill-sel">${esc(t('Genre'))}<select class="sel" data-act="genre-sel">${[['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])].map(([k, n]) => `<option value="${esc(k)}"${f.genre === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
-      <label class="pill-sel">${esc(t('Show'))}<select class="sel" data-act="show-sel">${SHOWS.map(([k, n]) => `<option value="${k}"${(f.show || '') === k ? ' selected' : ''}>${esc(t(n))}</option>`).join('')}</select></label>
+      ${S.os === 'linux' ? runsSel() : ''}${originSel(f)}
+      ${genreSel(f, genres)}
+      ${showSel(f)}
       ${S.os === 'linux' ? '' : runsSel()}
-      <label class="pill-sel">${esc(t('Tag'))}<select class="sel" data-act="tag-sel">${[['', t('Any')], ...allTags().map((k) => [k, k])].map(([k, n]) => `<option value="${esc(k)}"${(f.tag || '') === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+      ${tagSel(f)}
     </div><div class="grp">
-      <button type="button" class="toggle" role="switch" aria-checked="${!!f.easy}" data-act="easy-f">${DISC_S}${esc(t('Easy Setup'))}<span class="switch" aria-hidden="true"></span></button>
-      <button type="button" class="toggle" role="switch" aria-checked="${!!f.mp}" data-act="mp-f">${esc(t('Multiplayer'))}<span class="switch" aria-hidden="true"></span></button>
-      <button type="button" class="toggle" role="switch" aria-checked="${!!f.great}" data-act="great"><span class="dot-great" aria-hidden="true"></span>${esc(t('Plays great'))}<span class="switch" aria-hidden="true"></span></button>
-      ${onHandheld() ? `<button type="button" class="toggle deck-t" role="switch" aria-checked="${!!f.deckgreat}" data-act="deck-f">${DECK_ICON(15)}${esc(t('Great on Deck'))}<span class="switch" aria-hidden="true"></span></button>` : ''}
-      <button type="button" class="toggle" role="switch" aria-checked="${!!S.settings.hide_ai}" data-act="toggle" data-k="hide_ai">${esc(t('Hide AI-assisted'))}<span class="switch" aria-hidden="true"></span></button>
+      ${discToggles(f)}
     </div></div>
     ${f.tag ? `<div class="chips tagchips"><button type="button" class="chip on" data-act="clear-tag" aria-label="${esc(t('Clear the search'))}">${esc(t('Tag'))}: ${esc(f.tag)} ${XMARK}</button></div>` : ''}
     <div id="dlist">${discoverGrid()}</div>
   </div>`;
+}
+// Discover's search and main filters, pinned to the top once the page's own scroll out of view, so
+// they're always at hand further down. The rest are under Filters. Outside the page (in the window's
+// frame), so a redraw of the page doesn't touch it, and only on Discover.
+const SLIDERS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>';
+function stickExtras(f) { return [f.show, f.tag, f.easy, f.mp, f.great, onHandheld() && f.deckgreat, S.settings.hide_ai].filter(Boolean).length; }
+function paintStick() {
+  let b = document.getElementById('dstick');
+  if (S.view !== 'discover' || !S.cat || !$('#dlist')) {
+    if (b) { b.remove(); $('.mainwrap').classList.remove('stick-on'); }
+    return;
+  }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'dstick'; b.className = 'dstick'; b.inert = true;
+    b.setAttribute('data-tauri-drag-region', '');
+    b.innerHTML = `<div class="ds-in" data-tauri-drag-region>
+      <label class="ds-q"><span class="sr">${esc(t('Search recomps'))}</span>${SEARCH}<input id="dqs" type="search" placeholder="${esc(t('Search games, recomps or developers'))}" autocomplete="off" spellcheck="false"><button type="button" class="clear" data-act="clear-q" aria-label="${esc(t('Clear the search'))}" hidden>${XMARK}</button></label>
+      <div class="ds-ctl"></div>
+      <div class="ds-more-w"><button type="button" class="ds-more" data-act="ds-more" aria-expanded="false" aria-haspopup="true">${SLIDERS}<span>${esc(t('Filter'))}</span><b class="ds-n" hidden></b></button><div class="ds-panel" hidden></div></div>
+    </div>`;
+    $('.mainwrap').append(b);
+    b.dataset.lang = curLang();
+  }
+  const f = S.find, genres = discGenres();
+  const key = JSON.stringify([curLang(), f, !!S.settings.hide_ai, runsPick(), (S.cat.origins || []).length, genres, allTags().length, S.os]);
+  if (b.dataset.k !== key) {
+    b.dataset.k = key;
+    $('.ds-ctl', b).innerHTML = pillSel(t('Sort'), 'sort-sel', sortOpts(), f.sort) + originSel(f) + genreSel(f, genres, 'ds-wide');
+    $('.ds-panel', b).innerHTML = `<div class="ds-list">${genreSel(f, genres, 'ds-narrow')}${showSel(f)}${runsSel()}${tagSel(f)}</div><div class="ds-list">${discToggles(f)}</div>`;
+    const n = stickExtras(f), nb = $('.ds-n', b);
+    nb.hidden = !n; nb.textContent = n ? fmtNum(n) : '';
+    if (window.syncDrops) window.syncDrops();
+  }
+  const q = $('#dqs', b);
+  if (document.activeElement !== q && q.value !== S.q) q.value = S.q;
+  $('.clear', b).hidden = !S.q.trim();
+  stickCheck();
+}
+// On once the page's own controls are above the top of the view.
+function stickCheck() {
+  const b = document.getElementById('dstick');
+  if (!b) return;
+  const c = $('#main .dctl');
+  const on = !!c && c.getBoundingClientRect().bottom < $('#main').getBoundingClientRect().top + 12;
+  if (b.classList.contains('on') === on) return;
+  b.classList.toggle('on', on);
+  b.inert = !on;
+  $('.mainwrap').classList.toggle('stick-on', on);
+  if (!on) {
+    stickPanel(false);
+    // Typing up there and scrolled back: the page's own field takes over.
+    if (document.activeElement && document.activeElement.id === 'dqs') { const d = $('#dq'); if (d) { d.focus({ preventScroll: true }); d.setSelectionRange(d.value.length, d.value.length); } }
+  }
+}
+function stickPanel(open) {
+  const b = document.getElementById('dstick');
+  if (!b) return;
+  const p = $('.ds-panel', b), btn = $('.ds-more', b);
+  if (open == null) open = p.hidden;
+  p.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
 }
 // Every tag in the list, the most used first.
 function allTags() {
@@ -1466,6 +1546,7 @@ function gameBody(a) {
       ${inst ? playCard(inst) : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
+      ${ownAboutCard(id)}
       ${versionsCard(a)}
       ${feats.length ? `<div class="feat">${feats.map((ft) => `<span>${esc(ft)}</span>`).join('')}</div>` : ''}
       ${aboutCard(a)}
@@ -2784,6 +2865,7 @@ function render(keepScroll) {
   const v = S.view;
   // Typing in a search: it keeps its text, caret and focus across a redraw.
   const ae = document.activeElement, typing = ae && (ae.id === 'dq' || ae.id === 'lq') ? { id: ae.id, v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
+  if (ae && ae.id === 'dqs') S.q = ae.value;
   if (typing) { if (typing.id === 'dq') S.q = typing.v; else S.lq = typing.v; }
   const gp = $('.gp', main);
   // A plugin's page keeps running while the rest of the window is redrawn.
@@ -2809,6 +2891,7 @@ function render(keepScroll) {
   renderSide();
   paintIsland();
   paintTileCtl();
+  paintStick();
   $('#offline').hidden = !offNow();
   evenGrids(main);
   layoutShelves(main);
@@ -2818,6 +2901,7 @@ function render(keepScroll) {
   if (keepScroll) main.scrollTop = top;
   if (anchor) { const all = anchorsOf(main, anchor.id); const el = anchor.one ? (all.length === 1 ? all[0] : null) : all[anchor.n]; if (el) main.scrollTop += el.getBoundingClientRect().top - anchor.y; }
   moveTabPill();
+  stickCheck();
   if (v === 'game') paintLooks();
   if (typing) { const f = $('#' + typing.id); if (f) { f.focus({ preventScroll: true }); try { f.setSelectionRange(typing.a, typing.b); } catch (e) { /* fine */ } } }
 }
@@ -3023,8 +3107,11 @@ function updateDiscover() {
   if (ai) ai.setAttribute('aria-checked', String(!!S.settings.hide_ai));
   const h = $('.dhead h1');
   if (h) h.textContent = S.q.trim() ? t('Search') : f.genre ? t(GENRES[f.genre]) : t('Discover');
+  const vals = { origin: f.origin || '', 'genre-sel': f.genre || '', 'show-sel': f.show || '' };
+  for (const sl of $$('#main .dctl select[data-act]')) if (sl.dataset.act in vals && sl.value !== vals[sl.dataset.act]) sl.value = vals[sl.dataset.act];
   if (window.syncDrops) window.syncDrops();
   morphList($('#dlist'), discoverGrid());
+  paintStick();
 }
 function updateLibrary() {
   if (S.view !== 'library' || !$('#llist')) return render(true);
@@ -3130,7 +3217,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
+  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
   document.body.classList.toggle('linux', S.os === 'linux');
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
@@ -3781,6 +3868,8 @@ function gameMenu(id) {
     ...(g ? [{ act: 'fav', id, label: favs().includes(id) ? t('Remove from Favorites') : t('Add to Favorites'), icon: 'star' }] : []),
     ...(!g && isSaved(id) ? [{ act: 'unsave', id, label: t('Remove from Library'), icon: 'bin' }] : []),
     ...(x && !x.custom ? [isHidden(id) ? { act: 'unhide', id, label: t('Show in Discover'), icon: 'hide' } : { act: 'hide', id, label: t('Hide from Discover'), icon: 'hide' }] : []),
+    // Its own pictures and words before it's installed too (they stay when it is).
+    ...(!g && x ? [{ act: 'customize', id, label: t('Customize…'), icon: 'shot' }] : []),
     ...(g ? ['-',
       { label: t('Manage'), icon: 'gear', sub: [
         { act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update },
@@ -4761,60 +4850,146 @@ function githubModal() {
 
 // Consoles to pick from: the catalog's, then the usual ones.
 const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pc', 'PC']];
-function consoleOptions(cur) {
+function consoleList() {
   const seen = new Set(), out = [];
   for (const o of (S.cat && S.cat.origins) || []) if (!seen.has(o.name.toLowerCase())) { seen.add(o.name.toLowerCase()); seen.add(o.id); out.push([o.id, o.name]); }
   for (const [id, n] of MORE_CONSOLES) if (!seen.has(id) && !seen.has(n.toLowerCase())) { seen.add(id); out.push([id, n]); }
-  out.sort((a, b) => a[1].localeCompare(b[1]));
-  return `<option value="">${esc(t('Not sure'))}</option>` + out.map(([id, n]) => `<option value="${esc(id)}"${id === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  return out.sort((a, b) => a[1].localeCompare(b[1]));
+}
+function consoleOptions(cur) {
+  return `<option value="">${esc(t('Not sure'))}</option>` + consoleList().map(([id, n]) => `<option value="${esc(id)}"${id === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
+}
+
+// A list under a text field as you type, to pick from instead of guessing the exact name: Up and
+// Down then Enter, or a click. `find(q, later)` gives the first list and can send a longer one later.
+function suggestBox(input, find, pick) {
+  const box = document.createElement('div');
+  box.className = 'sugg'; box.hidden = true; box.setAttribute('role', 'listbox');
+  input.setAttribute('autocomplete', 'off'); input.setAttribute('aria-autocomplete', 'list');
+  input.parentElement.classList.add('sugg-host');
+  input.after(box);
+  let items = [], at = -1, seq = 0, tmr;
+  const draw = () => {
+    box.hidden = !items.length;
+    box.innerHTML = items.map((x, i) => `<button type="button" role="option" class="sg-it${i === at ? ' on' : ''}" data-i="${i}" aria-selected="${i === at}" tabindex="-1"><b>${esc(x.label)}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}${x.kind ? `<small>${esc(x.kind)}</small>` : ''}</button>`).join('');
+  };
+  const run = async () => {
+    const q = input.value.trim(), my = ++seq;
+    if (q.length < 2) { items = []; return draw(); }
+    // The longer list can come before the first one is shown (an answer kept from before).
+    let late = null, shown = false;
+    const got = await find(q, (more) => { if (my !== seq) return; late = more; if (shown && document.activeElement === input) { items = more; draw(); } });
+    if (my !== seq || document.activeElement !== input) return;
+    shown = true;
+    items = late || got || []; at = -1; draw();
+  };
+  input.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(run, 160); });
+  input.addEventListener('keydown', (e) => {
+    if (box.hidden || !items.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); at = (at + 1) % items.length; draw(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); at = at <= 0 ? items.length - 1 : at - 1; draw(); }
+    else if (e.key === 'Enter' && at >= 0) { e.preventDefault(); e.stopPropagation(); choose(at); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); items = []; draw(); }
+  });
+  box.addEventListener('mousedown', (e) => e.preventDefault());
+  box.addEventListener('click', (e) => { e.stopPropagation(); const b = e.target.closest('[data-i]'); if (b) choose(+b.dataset.i); });
+  input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) { clearTimeout(tmr); seq++; items = []; draw(); } }, 150));
+  function choose(i) { const x = items[i]; clearTimeout(tmr); items = []; draw(); seq++; if (x) pick(x); }
+}
+
+// Games to pick by a bit of their name: the ones in Discover first (with their console), consoles
+// that fit, then SteamGridDB's (with the player's own key).
+function gameFinder(key, { consoles = true, sgdbOnly = false } = {}) {
+  return async (q, later) => {
+    const ql = q.toLowerCase(), words = ql.split(/\s+/).filter(Boolean);
+    const fits = (n) => { const l = n.toLowerCase(), ws = l.split(/[^\p{L}\p{N}]+/u).filter(Boolean); return l.includes(ql) || words.every((w) => ws.some((x) => x.startsWith(w))); };
+    const seen = new Set(), local = [];
+    if (!sgdbOnly) {
+      for (const a of (S.cat && S.cat.apps) || []) {
+        const n = String(a.game || '').trim();
+        if (!n || seen.has(n.toLowerCase()) || !fits(n)) continue;
+        seen.add(n.toLowerCase());
+        local.push({ label: n, sub: a.origin ? originName(a.origin) : '', game: n, origin: a.origin || '' });
+      }
+      local.sort((x, y) => (y.label.toLowerCase().startsWith(ql) - x.label.toLowerCase().startsWith(ql)) || x.label.localeCompare(y.label));
+    }
+    const cons = consoles && !sgdbOnly ? consoleList().filter(([, n]) => fits(n)).slice(0, 2).map(([id, n]) => ({ kind: t('Console'), label: n, origin: id })) : [];
+    const first = [...local.slice(0, 6), ...cons];
+    if (key) {
+      invoke('art_search', { term: q, key }).then((r) => {
+        const more = (r || []).filter((x) => x && x.name && !seen.has(String(x.name).toLowerCase())).slice(0, 6)
+          .map((x) => ({ kind: 'SteamGridDB', label: String(x.name), sub: x.year ? String(x.year) : '', game: String(x.name), sgdb: x.id }));
+        if (more.length) later([...first, ...more]);
+      }).catch(() => {});
+    }
+    return first;
+  };
 }
 
 // The game's details to check before it's added (`link`) or to change after (`id`): name, which
-// game it is, its console and its art.
+// game it is (picked from a list as you type), its console and its art (SteamGridDB's, or the
+// player's own pictures).
 function gameInfoModal({ link, info, id }) {
   const key = (S.settings.ui || {}).sgdb_key || '';
   const cur = { name: info.name || '', game: info.game || '', origin: info.origin || '', cover: info.cover || '', hero: info.hero || '', logo: info.logo || '' };
-  let art = { covers: [], heroes: [], logos: [] };
+  // Pictures from this PC picked here, by kind: { src, data }. They're kept with the game.
+  const own = {};
+  const art = { covers: [], heroes: [], logos: [] };
   const take = (a, fresh) => {
-    art = { covers: (a && a.covers) || [], heroes: (a && a.heroes) || [], logos: (a && a.logos) || [] };
-    if (art.covers.length && (!cur.cover || link || fresh)) cur.cover = artUrl(art.covers[0]);
-    if (art.heroes.length && (!cur.hero || link || fresh)) cur.hero = artUrl(art.heroes[0]);
-    if (art.logos.length && (!cur.logo || link || fresh)) cur.logo = artUrl(art.logos[0]);
+    art.covers = (a && a.covers) || []; art.heroes = (a && a.heroes) || []; art.logos = (a && a.logos) || [];
+    for (const [k, list] of [['cover', art.covers], ['hero', art.heroes], ['logo', art.logos]]) {
+      if (own[k] && cur[k] === own[k].data) continue;
+      if (list.length && (!cur[k] || link || fresh)) cur[k] = artUrl(list[0]);
+    }
   };
   take(info.art);
   if (link && !cur.hero) cur.hero = info.hero_default || '';
   const sim = info.similar ? `<div class="gi-sim"><span>${esc(tf('This looks like {name}, which is already in Discover.', { name: info.similar.name }))}</span><button type="button" class="btn sm" data-x="similar">${esc(t('See It'))}</button></div>` : '';
+  const hint = key ? t('Type a bit of the game\'s name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.')
+    : t('Type a bit of the game\'s name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.');
   const m = modal(`<h2>${esc(link ? t('Check the Details') : t('Edit Game Info'))}</h2>${sim}
-    <div class="gi"><div class="gi-cover" id="gi-cover"${key ? ' data-x="choose" title="' + esc(t('Choose Art…')) + '"' : ''}></div>
+    <div class="gi"><div class="gi-cover" id="gi-cover" data-x="choose" title="${esc(t('Choose Art…'))}"></div>
       <div class="gi-fields">
         <label><span>${esc(t('Name'))}</span><input class="field" id="gi-name" value="${esc(cur.name)}" maxlength="120" spellcheck="false"></label>
-        <label><span>${esc(t('Game'))}</span><input class="field" id="gi-game" value="${esc(cur.game)}" maxlength="120" spellcheck="false" placeholder="${esc(t('The game it\'s a recomp of'))}"></label>
+        <label><span>${esc(t('Game'))}</span><input class="field" id="gi-game" value="${esc(cur.game)}" maxlength="120" spellcheck="false" placeholder="${esc(t('Type a bit of the game\'s name'))}"></label>
         <label><span>${esc(t('Console'))}</span><select class="field sel" id="gi-origin" aria-label="${esc(t('Console'))}">${consoleOptions(cur.origin)}</select></label>
       </div></div>
-    <div class="gi-hero" id="gi-hero" aria-label="${esc(t('Background'))}"${key ? ' data-x="choose" title="' + esc(t('Choose Art…')) + '"' : ''}></div>
-    ${key ? `<p class="muted gi-hint" id="gi-status">${esc(t('Art follows the Game name. Click the cover or background to pick others.'))}</p>`
-      : `<p class="muted gi-hint">${esc(t('Add your own SteamGridDB key in Settings → Games and folders to get covers and backgrounds.'))}</p>`}
+    <div class="gi-hero" id="gi-hero" aria-label="${esc(t('Background'))}" data-x="choose" title="${esc(t('Choose Art…'))}"><div class="gi-heroimg" id="gi-heroimg"></div><div class="gi-logo" id="gi-logo"></div></div>
+    <p class="muted gi-hint" id="gi-status">${esc(hint)}</p>
     <p class="err" id="gi-err" hidden>${esc(info.art_error || '')}</p>
-    <div class="acts ${key ? 'grid3' : 'grid2'}"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button>${key ? `<button type="button" class="btn" data-x="choose">${esc(t('Choose Art…'))}</button>` : ''}<button type="button" class="btn main" data-x="yes">${esc(link ? t('Add to Library') : t('Save'))}</button></div>`, async (x, close) => {
+    <div class="acts grid3"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn" data-x="choose">${esc(t('Choose Art…'))}</button><button type="button" class="btn main" data-x="yes">${esc(link ? t('Add to Library') : t('Save'))}</button></div>`, async (x, close) => {
     const err = $('#gi-err', m);
     const read = () => { cur.name = $('#gi-name', m).value.trim(); cur.game = $('#gi-game', m).value.trim(); cur.origin = $('#gi-origin', m).value; };
     switch (x.dataset.x) {
       case 'similar': close(); return go('game', info.similar.id);
-      case 'choose': if (!art.covers.length && !art.heroes.length) return; return artPicker(art, cur, () => paint());
+      case 'choose': return artPicker(art, cur, own, { id: id || null, key, game: () => ($('#gi-game', m).value.trim() || $('#gi-name', m).value.trim()) }, () => paint());
       case 'yes': {
         read();
         if (!cur.name) return $('#gi-name', m).focus();
         x.disabled = true;
+        // The player's own pictures aren't web addresses: they're kept for the game once it's in.
+        const mine = Object.keys(own).filter((k) => own[k] && cur[k] === own[k].data);
+        const sent = Object.assign({}, cur);
+        for (const k of mine) sent[k] = '';
         try {
+          let gid = id;
           if (link) {
-            const r = await invoke('add_github', { link, info: cur });
+            const r = await invoke('add_github', { link, info: sent });
+            gid = r.id;
+            for (const k of gid ? mine : []) await window.ownArt.save(gid, k, own[k]);
             close();
             await loadCatalog(false);
             if (!r.known && !S.library[r.id]) await saveUi({ saved: Object.assign({}, saved(), { [r.id]: Math.floor(Date.now() / 1000) }) }, true);
             toast(tf('{name} is in your Library. Install it whenever you like.', { name: r.name }));
             go('game', r.id);
           } else {
-            await invoke('update_mine', { id, info: cur });
+            // Own pictures don't touch the web art kept for the game (it's there again if they're taken off).
+            for (const k of ['cover', 'hero', 'logo']) if (mine.includes(k) || !sent[k]) delete sent[k];
+            await invoke('update_mine', { id, info: sent });
+            for (const k of mine) await window.ownArt.save(gid, k, own[k]);
+            // Web art picked here for a kind that had the player's own picture: that picture steps aside.
+            const had = S.library[id] || (S.arts || {})[id] || {};
+            for (const k of ['cover', 'hero', 'logo']) if (!mine.includes(k) && sent[k] && sent[k] !== info[k] && had[k + '_file']) await window.ownArt.clear(id, k);
             close();
             await loadCatalog(false);
             render(true);
@@ -4824,30 +4999,47 @@ function gameInfoModal({ link, info, id }) {
       }
     }
   }, link ? t('Check the Details') : t('Edit Game Info'));
+  // What shows: the player's own picture for a kind until other art is picked here.
+  const shown = (k) => { const f = id && (S.library[id] || (S.arts || {})[id] || {})[k + '_file']; return f && cur[k] === (info[k] || '') ? 'local:' + f : cur[k]; };
   function paint() {
     const box = $('#gi-cover', m);
-    box.innerHTML = cur.cover ? pic(cur.cover) : `<span>${esc(cur.name.slice(0, 2).toUpperCase())}</span>`;
-    const hero = $('#gi-hero', m);
-    hero.innerHTML = cur.hero ? pic(cur.hero) : '';
-    hero.hidden = !cur.hero;
-    for (const b of $$('[data-x="choose"]', m)) b.disabled = !art.covers.length && !art.heroes.length;
+    box.innerHTML = shown('cover') ? pic(shown('cover')) : `<span>${esc(cur.name.slice(0, 2).toUpperCase())}</span>`;
+    $('#gi-heroimg', m).innerHTML = shown('hero') ? pic(shown('hero')) : '';
+    $('#gi-logo', m).innerHTML = shown('logo') ? pic(shown('logo')) : '';
+    $('#gi-hero', m).classList.toggle('empty', !shown('hero'));
   }
   // Art follows the Game name: a new name finds its art on its own (with a SteamGridDB key).
   let looked = (cur.game || cur.name).trim().toLowerCase();
-  const refind = async () => {
-    const g = ($('#gi-game', m).value.trim() || $('#gi-name', m).value.trim());
-    if (!key || !g || g.toLowerCase() === looked) return;
-    looked = g.toLowerCase();
-    const err = $('#gi-err', m), st = $('#gi-status', m);
-    err.hidden = true; st.textContent = t('Finding art…');
+  const status = (txt) => { $('#gi-status', m).textContent = txt; };
+  let artSeq = 0;
+  const artBy = async (g, sgdb) => {
+    if (!key) return;
+    const err = $('#gi-err', m), my = ++artSeq;
+    err.hidden = true; status(t('Finding art…'));
     try {
-      take(await invoke('github_art', { game: g, sgdbKey: key }), true);
+      const a = sgdb ? await invoke('art_for', { sgdb, key }) : await invoke('github_art', { game: g, sgdbKey: key });
+      if (my !== artSeq) return; // a newer pick is on its way
+      take(a, true);
       paint();
       if (!art.covers.length) { err.textContent = t('SteamGridDB has no art under that name. Try the game\'s full name.'); err.hidden = false; }
-    } catch (e) { err.textContent = String(e && e.message ? e.message : e); err.hidden = false; }
-    st.textContent = t('Art follows the Game name. Click the cover or background to pick others.');
+    } catch (e) { if (my === artSeq) { err.textContent = String(e && e.message ? e.message : e); err.hidden = false; } }
+    if (my === artSeq) status(hint);
+  };
+  const refind = () => {
+    const g = ($('#gi-game', m).value.trim() || $('#gi-name', m).value.trim());
+    if (!g || g.toLowerCase() === looked) return;
+    looked = g.toLowerCase();
+    artBy(g);
   };
   $('#gi-game', m).addEventListener('change', refind);
+  suggestBox($('#gi-game', m), gameFinder(key), (x) => {
+    if (x.origin) { $('#gi-origin', m).value = x.origin; if (window.syncDrops) window.syncDrops(); }
+    // A console picked: the bit typed to find it isn't the game's name.
+    if (!x.game) { $('#gi-game', m).value = ''; looked = $('#gi-name', m).value.trim().toLowerCase(); return; }
+    $('#gi-game', m).value = x.game;
+    looked = x.game.toLowerCase();
+    artBy(x.game, x.sgdb);
+  });
   paint();
   const e = $('#gi-err', m); e.hidden = !info.art_error;
   $('#gi-name', m).focus();
@@ -4907,6 +5099,7 @@ const TS_TEXT = [
   N_('That report isn\'t yours, or it\'s gone.'),
   N_('That setting isn\'t a slider.'),
   N_('That isn\'t a number.'),
+  N_('That isn\'t a game.'),
   N_('Cloud saves are paused for now. Your saves on this PC are safe.'),
   N_('Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.'),
   N_('Cloud saves aren\'t available right now. Your saves on this PC are safe.'),
@@ -5107,38 +5300,69 @@ const artThumb = (x) => (typeof x === 'string' ? x : (x && (x.thumb || x.url)) |
 // Columns for a grid of n that never leave one alone on the last row.
 const evenCols = (n, tries) => tries.find((c) => n <= c || n % c !== 1) || tries[0];
 
-// Every cover and background SteamGridDB has for the game, to pick from.
-function artPicker(art, cur, done) {
-  const sel = { cover: cur.cover, hero: cur.hero };
-  let tab = art.covers.length ? 'cover' : 'hero';
+// Every cover, background and logo SteamGridDB has for the game, to pick from, and the player's
+// own pictures from this PC. Another name can be looked up (a bit of it is enough).
+function artPicker(shared, cur, own, opt, done) {
+  // Art looked up here under another name is used only with Use These.
+  const art = { covers: shared.covers || [], heroes: shared.heroes || [], logos: shared.logos || [] };
+  let seq = 0;
+  const sel = { cover: cur.cover, hero: cur.hero, logo: cur.logo };
+  const yours = Object.assign({}, own);
+  const KS = { cover: ['covers', N_('Covers ({n})')], hero: ['heroes', N_('Backgrounds ({n})')], logo: ['logos', N_('Logos ({n})')] };
+  let tab = 'cover';
   const m = modal(`<h2>${esc(t('Choose Art'))}</h2>
-    <div class="seg ap-tabs" role="radiogroup" aria-label="${esc(t('Choose Art'))}">
-      <button type="button" role="radio" data-x="tab" data-k="cover">${esc(tf('Covers ({n})', { n: art.covers.length }))}</button>
-      <button type="button" role="radio" data-x="tab" data-k="hero">${esc(tf('Backgrounds ({n})', { n: art.heroes.length }))}</button>
-    </div>
+    ${opt.key ? `<div class="ap-search"><input class="field" id="ap-q" type="search" value="${esc(opt.game() || '')}" spellcheck="false" placeholder="${esc(t('Look up another name…'))}" aria-label="${esc(t('Look up another name…'))}"></div>` : ''}
+    <div class="seg ap-tabs" role="radiogroup" aria-label="${esc(t('Choose Art'))}">${Object.keys(KS).map((k) => `<button type="button" role="radio" data-x="tab" data-k="${k}"></button>`).join('')}</div>
     <div class="ap-grid" id="ap-grid"></div>
-    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="use">${esc(t('Use These'))}</button></div>`, (x, close) => {
-    if (x.dataset.x === 'tab') { tab = x.dataset.k; return draw(); }
-    if (x.dataset.x === 'pick') { sel[tab] = x.dataset.u; return draw(); }
-    if (x.dataset.x === 'use') { Object.assign(cur, sel); close(); done(); }
+    <div class="acts grid3"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn" data-x="file">${esc(t('Your Picture…'))}</button><button type="button" class="btn main" data-x="use">${esc(t('Use These'))}</button></div>`, async (x, close) => {
+    switch (x.dataset.x) {
+      case 'tab': tab = x.dataset.k; return draw();
+      case 'pick': sel[tab] = x.dataset.u; return draw();
+      case 'mine': if (yours[tab]) sel[tab] = yours[tab].data; return draw();
+      case 'file': {
+        const p = await pickFile({ title: t('A picture'), directory: false, multiple: false, filters: [{ name: t('Pictures'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }] }).catch(fail);
+        if (!p) return;
+        try { yours[tab] = await window.ownArt.open(opt.id, tab, typeof p === 'string' ? p : p.path); sel[tab] = yours[tab].data; draw(); } catch (e) { fail(e); }
+        return;
+      }
+      case 'use': {
+        Object.assign(cur, sel);
+        Object.assign(shared, art);
+        for (const k of Object.keys(KS)) { if (yours[k] && sel[k] === yours[k].data) own[k] = yours[k]; else delete own[k]; }
+        close(); done();
+      }
+    }
   }, t('Choose Art'));
   m.querySelector('.modal').classList.add('ap');
   function draw() {
-    for (const b of $$('[data-x="tab"]', m)) b.setAttribute('aria-checked', String(b.dataset.k === tab));
-    const list = tab === 'cover' ? art.covers : art.heroes;
+    for (const b of $$('[data-x="tab"]', m)) { const k = b.dataset.k; b.textContent = tf(KS[k][1], { n: (art[KS[k][0]] || []).length + (yours[k] ? 1 : 0) }); b.setAttribute('aria-checked', String(k === tab)); }
+    const list = art[KS[tab][0]] || [];
     const g = $('#ap-grid', m);
-    g.className = 'ap-grid ' + tab;
-    g.style.setProperty('--cols', evenCols(list.length, tab === 'cover' ? [5, 4, 6, 3] : [2, 3]));
-    g.innerHTML = list.length ? list.map((x) => { const u = artUrl(x); return `<button type="button" class="ap-it${u === sel[tab] ? ' on' : ''}" data-x="pick" data-u="${esc(u)}" aria-pressed="${u === sel[tab]}">${pic(artThumb(x))}</button>`; }).join('')
-      : `<p class="muted">${esc(t('SteamGridDB has none of these for this game.'))}</p>`;
+    g.className = 'ap-grid ' + (tab === 'logo' ? 'sq logo' : tab);
+    const n = list.length + (yours[tab] ? 1 : 0);
+    g.style.setProperty('--cols', evenCols(n, tab === 'cover' ? [5, 4, 6, 3] : tab === 'logo' ? [4, 3, 5] : [2, 3]));
+    const mineTile = yours[tab] ? `<button type="button" class="ap-it ap-mine${yours[tab].data === sel[tab] ? ' on' : ''}" data-x="mine" aria-pressed="${yours[tab].data === sel[tab]}">${pic(yours[tab].data)}<small>${esc(t('Yours'))}</small></button>` : '';
+    g.innerHTML = n ? mineTile + list.map((x) => { const u = artUrl(x); return `<button type="button" class="ap-it${u === sel[tab] ? ' on' : ''}" data-x="pick" data-u="${esc(u)}" aria-pressed="${u === sel[tab]}">${pic(artThumb(x))}</button>`; }).join('')
+      : `<p class="muted">${esc(opt.key ? t('SteamGridDB has none of these for this game. Look up another name, or use your own picture.') : t('Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.'))}</p>`;
   }
+  // Another name: picked from SteamGridDB's list as you type, its art in place of what's shown.
+  const q = $('#ap-q', m);
+  if (q) suggestBox(q, gameFinder(opt.key, { sgdbOnly: true }), async (x) => {
+    q.value = x.label;
+    const g = $('#ap-grid', m), my = ++seq;
+    g.innerHTML = `<p class="muted">${esc(t('Loading…'))}</p>`;
+    try { const a = await invoke('art_for', { sgdb: x.sgdb, key: opt.key }); if (my !== seq) return; art.covers = a.covers || []; art.heroes = a.heroes || []; art.logos = a.logos || []; } catch (e) { if (my !== seq) return; fail(e); }
+    if (m.isConnected) draw();
+  });
   draw();
 }
 
 function editInfo(id) {
   const a = byId(id);
   if (!a || !a.custom) return;
-  gameInfoModal({ id, info: { name: a.name, game: a.game, origin: a.origin, cover: a.cover, hero: a.hero, logo: a.logo } });
+  // The list entry's own values (not the player's pictures or name shown over them).
+  const web = (k, u) => (a[k] !== undefined ? a[k] : u);
+  gameInfoModal({ id, info: { name: web('_name', a.name), game: a.game, origin: a.origin, cover: web('_cov', a.cover), hero: web('_hero', a.hero), logo: web('_logo', a.logo) } });
 }
 function renameModal(id) {
   const a = libApp(S.library[id] || { id, name: id }), names = Object.assign({}, (S.settings.ui || {}).names);
@@ -5184,7 +5408,8 @@ async function act(el, e) {
     case 'slide-step': return showSlide((S.slide || 0) + Number(el.dataset.d));
     case 'shelf': { const sh = el.closest('.shelf'); S.shelf[sh.dataset.shelf] = (S.shelf[sh.dataset.shelf] || 0) + Number(el.dataset.d); return layoutShelves(sh.parentElement); }
     case 'sort': S.find.sort = el.dataset.k; S.find.picked = true; return updateDiscover();
-    case 'clear-q': { S.q = ''; const q = $('#dq'); if (q) { q.value = ''; q.focus(); } return refreshList('dq'); }
+    case 'clear-q': { S.q = ''; const top = el.closest('#dstick'); for (const id of ['dq', 'dqs']) { const q = $('#' + id); if (q) q.value = ''; } const q = $(top ? '#dqs' : '#dq'); if (q) q.focus(); return refreshList('dq'); }
+    case 'ds-more': return stickPanel();
     case 'pin': { const p = (S.settings.ui || {}).pins || []; const on = p.includes(id); await saveUi({ pins: on ? p.filter((x) => x !== id) : [...p, id] }); return toast(on ? t('Unpinned.') : t('Pinned to the sidebar.')); }
     case 'fav': { const f = (S.settings.ui || {}).favs || []; const on = f.includes(id); await saveUi({ favs: on ? f.filter((x) => x !== id) : [...f, id] }); toast(on ? t('Removed from Favorites.') : t('Added to Favorites.')); return render(true); }
     case 'update-all': {
@@ -5441,6 +5666,7 @@ async function act(el, e) {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.menu')) closeMenu();
+  if (!e.target.closest('.ds-more-w') && !e.target.closest('.dropmenu') && $('#dstick .ds-panel:not([hidden])')) stickPanel(false);
   const link = e.target.closest('[data-url]:not([data-act])');
   if (link) { e.preventDefault(); invoke('open_url', { url: link.dataset.url }).catch(fail); return; }
   const g = e.target.closest('[data-go]');
@@ -5453,6 +5679,7 @@ document.addEventListener('change', (e) => {
   if (!s) return;
   if (s.dataset.act === 'gsel') return setGameSetting(s.dataset.id, s.dataset.k, s.value);
   if (s.dataset.act === 'lang') return setLanguage(s.value);
+  if (s.dataset.act === 'sort-sel') { S.find.sort = s.value; S.find.picked = true; return updateDiscover(); }
   if (s.dataset.act === 'origin') { S.find.origin = s.value; return updateDiscover(); }
   if (s.dataset.act === 'genre-sel') { S.find.genre = s.value; return updateDiscover(); }
   if (s.dataset.act === 'tag-sel') { S.find.tag = s.value; return render(true); }
@@ -5464,7 +5691,7 @@ document.addEventListener('change', (e) => {
 });
 function focusSearch() {
   if (S.view !== 'discover' && S.view !== 'library') go('discover');
-  setTimeout(() => { const q = $('#dq') || $('#lq'); if (q) { q.focus(); q.select(); } }, 60);
+  setTimeout(() => { const q = $('#dstick.on #dqs') || $('#dq') || $('#lq'); if (q) { q.focus(); q.select(); } }, 60);
 }
 document.addEventListener('keydown', (e) => {
   // The setup dialog: Escape closes it, and Tab stays inside it.
@@ -5494,7 +5721,11 @@ document.addEventListener('keydown', (e) => {
   const typing = e.target.closest && e.target.closest('input, textarea, select');
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'f')) { e.preventDefault(); focusSearch(); }
   else if (e.key === '/' && !typing) { e.preventDefault(); focusSearch(); }
-  else if (e.key === 'Escape') { if ($('.menu')) closeMenu(); else if (e.target.id === 'dq' || e.target.id === 'lq') { e.target.value = ''; if (e.target.id === 'dq') S.q = ''; else S.lq = ''; refreshList(e.target.id); e.target.blur(); } }
+  else if (e.key === 'Escape') {
+    if ($('.menu')) closeMenu();
+    else if ($('#dstick .ds-panel:not([hidden])') && !$('.drop.open')) { stickPanel(false); const m = $('#dstick .ds-more'); if (m) m.focus(); }
+    else if (e.target.id === 'dq' || e.target.id === 'dqs' || e.target.id === 'lq') { const id = e.target.id === 'lq' ? 'lq' : 'dq'; e.target.value = ''; if (id === 'dq') { S.q = ''; const o = $(e.target.id === 'dq' ? '#dqs' : '#dq'); if (o) o.value = ''; } else S.lq = ''; refreshList(id); e.target.blur(); }
+  }
   else if (e.altKey && e.key === 'ArrowLeft') back();
 });
 document.addEventListener('mouseup', (e) => { if (e.button === 3) back(); });
@@ -5503,7 +5734,7 @@ function refreshList(which) {
   const box = which === 'dq' ? $('#dlist') : $('#llist');
   if (!box) return render(true);
   morphList(box, which === 'dq' ? discoverGrid() : libraryGrid());
-  if (which === 'dq') { const h = $('.dhead h1'); if (h) h.textContent = S.q.trim() ? t('Search') : S.find.genre ? t(GENRES[S.find.genre]) : t('Discover'); const c = $('.bigsearch .clear'); if (c) c.hidden = !S.q.trim(); }
+  if (which === 'dq') { const h = $('.dhead h1'); if (h) h.textContent = S.q.trim() ? t('Search') : S.find.genre ? t(GENRES[S.find.genre]) : t('Discover'); const c = $('.bigsearch .clear'); if (c) c.hidden = !S.q.trim(); const c2 = $('#dstick .clear'); if (c2) c2.hidden = !S.q.trim(); }
 }
 let qTimer, tileTimer;
 document.addEventListener('input', (e) => {
@@ -5525,6 +5756,8 @@ document.addEventListener('input', (e) => {
     setTimeout(() => { const q = $('#dq'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 30);
     return;
   }
+  if (id === 'dq' || id === 'dqs') { const o = $(id === 'dq' ? '#dqs' : '#dq'); if (o) o.value = e.target.value; }
+  if (id === 'dqs') { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value; refreshList('dq'); }, 120); return; }
   if (id !== 'dq' && id !== 'lq') return;
   clearTimeout(qTimer);
   qTimer = setTimeout(() => { if (id === 'dq') S.q = e.target.value; else S.lq = e.target.value; refreshList(id); }, 120);
@@ -5533,6 +5766,7 @@ $('#isl').addEventListener('click', () => go('downloads'));
 // Past the top of a page, the window's buttons get a bar behind them.
 $('#main').addEventListener('scroll', () => {
   const s = $('#main').scrollTop > 10; const bar = $('.topbar'); if (bar.classList.contains('solid') !== s) bar.classList.toggle('solid', s);
+  if (S.view === 'discover') stickCheck();
   // While it scrolls, tiles passing under the pointer don't light up (that redraw is what made
   // scrolling stutter); they do again a moment after it stops. Marked on the page itself, not the
   // whole window: with hundreds of tiles, a mark on the window made every one of them be looked

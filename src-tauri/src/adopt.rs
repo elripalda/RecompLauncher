@@ -478,7 +478,7 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
                 proton: it.proton,
                 ..Default::default()
             };
-            l.installed.insert(it.id.clone(), g.clone());
+            l.put(&it.id, g.clone());
             added.push(g);
         }
     }

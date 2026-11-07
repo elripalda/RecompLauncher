@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Os dados guardados na nuvem estão em pausa por agora. Os teus dados guardados neste PC estão seguros.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Os dados guardados na nuvem estão em pausa enquanto os transferimos para um novo armazenamento. Os teus dados guardados neste PC estão seguros.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Os dados guardados na nuvem não estão disponíveis neste momento. Os teus dados guardados neste PC estão seguros.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Estes dados são demasiado grandes para os dados guardados na nuvem (mais de 95 MB). Ficam neste PC."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Estes dados são demasiado grandes para os dados guardados na nuvem (mais de 95 MB). Ficam neste PC.",
+ "Your Description": "A tua descrição",
+ "Edit": "Editar",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Escreve parte do nome do jogo e escolhe-o na lista. Clica na capa ou no fundo para ver todas as imagens, ou usa as tuas próprias imagens.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Escreve parte do nome do jogo e escolhe-o na lista. Clica na capa ou no fundo para usar as tuas próprias imagens. Com a tua própria chave do SteamGridDB (Definições → Jogos e pastas), as imagens chegam sozinhas.",
+ "Type a bit of the game's name": "Escreve parte do nome do jogo",
+ "Logos ({n})": "Logótipos ({n})",
+ "Look up another name…": "Procurar outro nome…",
+ "Yours": "Tua",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "O SteamGridDB não tem nenhuma destas para este jogo. Procura outro nome ou usa a tua própria imagem.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Usa a tua própria imagem ou adiciona a tua própria chave do SteamGridDB em Definições → Jogos e pastas para obter imagens.",
+ "Ask for Each New Game": "Perguntar em cada jogo novo",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Desligado: os jogos que jogas pela primeira vez mantêm os dados guardados neste PC sem perguntar. Podes ainda ligar os dados guardados na nuvem para um jogo no separador Dados guardados.",
+ "Don't Ask Again": "Não perguntar mais",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Os jogos já não vão perguntar sobre os dados guardados na nuvem. Liga de novo em Definições → Conta.",
+ "Info": "Informações",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "As tuas próprias palavras sobre o jogo: o que é, como o jogas, qualquer coisa. Aparece na página dele.",
+ "That isn't a game.": "Isso não é um jogo."
 }

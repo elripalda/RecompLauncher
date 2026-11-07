@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "雲端存檔目前已暫停。這台電腦上的存檔依然安全。",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "雲端存檔正在移轉到新的儲存空間，暫時停用。這台電腦上的存檔依然安全。",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "雲端存檔目前無法使用。這台電腦上的存檔依然安全。",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "此存檔太大（超過 95 MB），無法使用雲端存檔。存檔會保留在這台電腦上。"
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "此存檔太大（超過 95 MB），無法使用雲端存檔。存檔會保留在這台電腦上。",
+ "Your Description": "您的描述",
+ "Edit": "編輯",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "輸入遊戲名稱的一部分，然後從清單中選擇。點選封面或背景可查看所有圖片，也可以使用您自己的圖片。",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "輸入遊戲名稱的一部分，然後從清單中選擇。點選封面或背景可使用您自己的圖片。有了您自己的 SteamGridDB 金鑰（設定 → 遊戲和資料夾），圖片會自動取得。",
+ "Type a bit of the game's name": "輸入遊戲名稱的一部分",
+ "Logos ({n})": "標誌 ({n})",
+ "Look up another name…": "換個名稱尋找…",
+ "Yours": "您的",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB 沒有這款遊戲的此類圖片。換個名稱尋找，或使用您自己的圖片。",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "使用您自己的圖片，或在 設定 → 遊戲和資料夾 中新增您自己的 SteamGridDB 金鑰來取得圖片。",
+ "Ask for Each New Game": "每款新遊戲都詢問",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "關閉：首次遊玩的遊戲會直接把存檔保留在這台電腦上，不再詢問。您仍可在遊戲的「存檔」分頁為它開啟雲端存檔。",
+ "Don't Ask Again": "不再詢問",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "遊戲將不再詢問雲端存檔。可在 設定 → 帳戶 中重新開啟。",
+ "Info": "資訊",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "您自己對這款遊戲的描述：它是什麼、您怎麼玩、什麼都行。會顯示在它的頁面上。",
+ "That isn't a game.": "這不是遊戲。"
 }

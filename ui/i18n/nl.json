@@ -2141,5 +2141,22 @@
  "Cloud saves are paused for now. Your saves on this PC are safe.": "Opslaan in de cloud is voorlopig gepauzeerd. Je opgeslagen games op deze pc zijn veilig.",
  "Cloud saves are paused while we move them to new storage. Your saves on this PC are safe.": "Opslaan in de cloud is gepauzeerd terwijl we alles naar nieuwe opslag verplaatsen. Je opgeslagen games op deze pc zijn veilig.",
  "Cloud saves aren't available right now. Your saves on this PC are safe.": "Opslaan in de cloud is nu niet beschikbaar. Je opgeslagen games op deze pc zijn veilig.",
- "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Deze opgeslagen game is te groot voor opslaan in de cloud (meer dan 95 MB). Hij blijft op deze pc."
+ "This save is too big for cloud saves (over 95 MB). It's kept on this PC.": "Deze opgeslagen game is te groot voor opslaan in de cloud (meer dan 95 MB). Hij blijft op deze pc.",
+ "Your Description": "Jouw beschrijving",
+ "Edit": "Bewerken",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.": "Typ een deel van de naam van de game en kies hem uit de lijst. Klik op de cover of achtergrond om alle afbeeldingen te zien, of gebruik je eigen afbeeldingen.",
+ "Type a bit of the game's name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.": "Typ een deel van de naam van de game en kies hem uit de lijst. Klik op de cover of achtergrond om je eigen afbeeldingen te gebruiken. Met je eigen SteamGridDB-sleutel (Instellingen → Games en mappen) komen afbeeldingen vanzelf.",
+ "Type a bit of the game's name": "Typ een deel van de naam van de game",
+ "Logos ({n})": "Logo’s ({n})",
+ "Look up another name…": "Zoek op een andere naam…",
+ "Yours": "Van jou",
+ "SteamGridDB has none of these for this game. Look up another name, or use your own picture.": "SteamGridDB heeft hiervan niets voor deze game. Zoek op een andere naam of gebruik je eigen afbeelding.",
+ "Use your own picture, or add your own SteamGridDB key in Settings → Games and folders to get art.": "Gebruik je eigen afbeelding of voeg je eigen SteamGridDB-sleutel toe bij Instellingen → Games en mappen om afbeeldingen te krijgen.",
+ "Ask for Each New Game": "Bij elke nieuwe game vragen",
+ "Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.": "Uit: games die je voor het eerst speelt, bewaren hun opgeslagen games zonder te vragen op deze pc. Je kunt opslaan in de cloud voor een game nog steeds aanzetten op het tabblad Opgeslagen games.",
+ "Don't Ask Again": "Niet meer vragen",
+ "Games won't ask about cloud saves anymore. Turn it back on in Settings → Account.": "Games vragen niet meer naar opslaan in de cloud. Zet het weer aan bij Instellingen → Account.",
+ "Info": "Info",
+ "Your own words about the game: what it is, how you play it, anything. Shown on its page.": "Je eigen woorden over de game: wat het is, hoe je het speelt, wat dan ook. Te zien op de pagina van de game.",
+ "That isn't a game.": "Dat is geen game."
 }
