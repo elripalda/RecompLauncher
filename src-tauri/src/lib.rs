@@ -17,6 +17,7 @@ pub mod files;
 pub mod flatpak;
 pub mod gamebanana;
 pub mod info;
+pub mod inputs;
 pub mod ingame;
 pub mod install;
 pub mod library;
@@ -393,7 +394,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // An update: keep a copy of the player's saves and settings first.
     if let (Some(p), true) = (&prev, backup_first) {
         report(Progress::new(id, "backup", 0, 0));
-        let (dir, files, bdir) = (p.path.clone(), p.files.clone(), backups_dir(p));
+        let (dir, files, bdir) = (p.path.clone(), inputs::release_files(p), backups_dir(p));
         let _ = tokio::task::spawn_blocking(move || manage::backup(&dir, &files, &bdir, 5)).await;
     }
 
@@ -497,6 +498,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         sessions: prev.as_ref().map(|p| p.sessions.clone()).unwrap_or_default(),
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
+        setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
+        inputs_ready: String::new(),
+        input_staged: prev.as_ref().map(|p| p.input_staged.clone()).unwrap_or_default(),
+        input_stamps: prev.as_ref().map(|p| p.input_stamps.clone()).unwrap_or_default(),
         proton: os == "windows" && assets::os_now() == "linux",
         picks: prev.as_ref().map(|p| p.picks.clone()).unwrap_or_default(),
         screen_fit: prev.as_ref().map(|p| p.screen_fit.clone()).unwrap_or_default(),
@@ -991,7 +996,7 @@ async fn backup_now(st: State<'_, App>, id: String) -> Res<Option<manage::Backup
     if g.local {
         return Ok(None);
     }
-    tokio::task::spawn_blocking(move || manage::backup(&g.path, &g.files, &backups_dir(&g), 5)).await.map_err(|e| Error::Msg(e.to_string()))?
+    tokio::task::spawn_blocking(move || manage::backup(&g.path, &inputs::release_files(&g), &backups_dir(&g), 5)).await.map_err(|e| Error::Msg(e.to_string()))?
 }
 
 #[tauri::command]
@@ -1873,6 +1878,14 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
     let prof = if manual.is_some() { None } else { profile_of(&st, id, &g) };
+    if let Some(p) = prof.as_ref().filter(|p| !p.inputs.is_empty()) {
+        inputs::validate(p).map_err(Error::Msg)?;
+        if !inputs::ready(p, &g, &st.dir) {
+            return Err(Error::Msg("NEED_COPY|Finish choosing this game's files in Easy Setup.".into()));
+        }
+        let mut staged = g.clone();
+        inputs::stage(p, &mut staged, &st.dir).map_err(Error::Msg)?;
+    }
     // Its own installer or first-time setup, the first time: that opens instead of the game.
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
     // still runs the release's setup first.)
@@ -2439,9 +2452,12 @@ fn note_pad() {
 // Each setup run has its own number; cancelling, or starting another for the same game, ends it.
 static SETUP_RUN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+// A cancelled named-input worker may still be finishing a file copy. Keep its mutation lock
+// until it actually exits, rather than allowing an immediate retry to race its staging journal.
+static INPUT_WORKERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn setup_busy(id: &str) -> bool {
-    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id))
+    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id)) || INPUT_WORKERS.lock().unwrap().iter().any(|x| x == id)
 }
 
 fn setup_stopped(id: &str, run: u64) -> bool {
@@ -2472,6 +2488,7 @@ struct SetupEv {
 fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> Res<()> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    if !p.inputs.is_empty() { return Err(Error::Msg("Use the named-input Easy Setup screen for this game.".into())); }
     let copy = PathBuf::from(&path);
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -2697,7 +2714,7 @@ fn easy_setup(st: State<'_, App>) -> Vec<String> {
                     let id = x.get("id")?.as_str()?;
                     let repo = x.get("repo").and_then(Value::as_str).unwrap_or("");
                     let p = profile::find(dirs.get(id).unwrap_or(&none), repo, x)?;
-                    p.game.is_some().then(|| id.to_string())
+                    (p.game.is_some() || !p.inputs.is_empty()).then(|| id.to_string())
                 })
                 .collect()
         })
@@ -3076,6 +3093,7 @@ fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+        p.input_paths = inputs::available(&p, g, &st.dir);
         p.slider_vals = g.slider_vals.clone();
         p.add_screen_choices(screen_now());
         p
@@ -3212,6 +3230,9 @@ struct SetupAction {
 
 #[derive(Serialize)]
 struct Setup {
+    inputs: Vec<inputs::Row>,
+    inputs_error: Option<String>,
+    inputs_ready: bool,
     /// The player's copy is asked for, and how.
     needs: Option<String>,
     kind: String,
@@ -3239,7 +3260,10 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
     let cur = p.current(&g.path, &g.picks);
     let up = p.game.as_ref().and_then(|c| c.update.as_ref());
     Some(Setup {
-        needs: p.game.as_ref().map(|x| x.label.clone()),
+        inputs: inputs::rows(&p, &g, &st.dir).unwrap_or_default(),
+        inputs_error: inputs::validate(&p).err(),
+        inputs_ready: inputs::ready(&p, &g, &st.dir),
+        needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
         copy: g.game_copy.clone().filter(|c| c.exists()).or_else(|| p.already_in_place(&g.path)),
         settings: p
@@ -3281,6 +3305,138 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         update_folder: up.map(|u| u.wants_folder()).unwrap_or(false),
         update_file: up.map(|u| u.wants_file()).unwrap_or(false),
     })
+}
+
+/// Pick/clear a named file. Shared keys are imported only through an active project declaration.
+#[tauri::command(async)]
+fn setup_input_set(st: State<'_, App>, id: String, input: String, path: Option<String>) -> Res<()> {
+    if setup_busy(&id) || st.running.lock().unwrap().contains_key(&id) { return Err(Error::Msg("Close the game or stop setup first.".into())); }
+    let mut g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
+    inputs::validate(&p).map_err(Error::Msg)?;
+    let declared = p.inputs.iter().find(|i| i.id == input).ok_or_else(|| Error::Msg("Unknown setup input.".into()))?;
+    let row = inputs::rows(&p, &g, &st.dir).map_err(Error::Msg)?.into_iter().find(|r| r.id == input).unwrap();
+    if !row.active { return Err(Error::Msg("That input isn't required by the selected game files.".into())); }
+    if !declared.shared.is_empty() {
+        if st.running.lock().unwrap().len() > 0 || SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| !m.is_empty()) || !INPUT_WORKERS.lock().unwrap().is_empty() {
+            return Err(Error::Msg("Close running games and stop setup before replacing shared keys.".into()));
+        }
+        if let Some(path) = path {
+            inputs::import_key(&st.dir, &declared.shared, Path::new(&path)).map_err(Error::Msg)?;
+            let games: Vec<_> = st.lib.lock().unwrap().installed.values().cloned().collect();
+            for other in games.into_iter().filter(|other| other.id != id) {
+                if let Some(profile) = profile_of(&st, &other.id, &other) {
+                    let uses = inputs::rows(&profile, &other, &st.dir).unwrap_or_default().iter().any(|r| r.active && r.shared == declared.shared);
+                    if uses {
+                        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&other.id) {
+                            x.inputs_ready.clear();
+                            if profile.game.is_none() { x.game_copy = None; }
+                        }
+                    }
+                }
+            }
+        } else {
+            return Err(Error::Msg("Remove shared keys from the shared-key controls.".into()));
+        }
+    } else if let Some(path) = path {
+        let path = PathBuf::from(path);
+        if !path.is_absolute() { return Err(Error::Msg("Choose an absolute file or folder path.".into())); }
+        g.setup_inputs.insert(input.clone(), path);
+        if !inputs::rows(&p, &g, &st.dir).map_err(Error::Msg)?.iter().any(|r| r.id == input && r.path.is_some()) {
+            return Err(Error::Msg("That file or folder doesn't match this input's declared format.".into()));
+        }
+        // One source cannot silently satisfy two disc/DLC slots. Identity hashing is deferred.
+        let chosen = g.setup_inputs[&input].canonicalize().map_err(|_| Error::Msg("Couldn't open that input.".into()))?;
+        if g.setup_inputs.iter().any(|(k, v)| k != &input && v.canonicalize().ok().as_ref() == Some(&chosen)) {
+            return Err(Error::Msg("That file is already selected for another input.".into()));
+        }
+    } else {
+        g.setup_inputs.remove(&input);
+    }
+    g.inputs_ready.clear();
+    if p.game.is_none() { g.game_copy = None; }
+    st.lib.lock().unwrap().installed.insert(id, g);
+    st.save();
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn setup_key_remove(st: State<'_, App>, id: String, input: String) -> Res<()> {
+    if st.running.lock().unwrap().len() > 0 || SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| !m.is_empty()) || !INPUT_WORKERS.lock().unwrap().is_empty() {
+        return Err(Error::Msg("Close running games and stop setup before removing shared keys.".into()));
+    }
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
+    let resource = p.inputs.iter().find(|i| i.id == input && !i.shared.is_empty()).ok_or_else(|| Error::Msg("Unknown shared key input.".into()))?.shared.clone();
+    let games: Vec<_> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    for other in games {
+        if let Some(profile) = profile_of(&st, &other.id, &other) {
+            for key in profile.inputs.iter().filter(|k| k.shared == resource) {
+                inputs::remove_key(&profile, &other, &st.dir, &key.id).map_err(Error::Msg)?;
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&other.id) {
+                    x.inputs_ready.clear();
+                    if profile.game.is_none() { x.game_copy = None; }
+                }
+            }
+        }
+    }
+    st.save();
+    Ok(())
+}
+
+/// Multi-input setup deliberately does not read/hash whole discs. Projects validate content.
+#[tauri::command(async)]
+fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
+    if setup_busy(&id) || st.running.lock().unwrap().contains_key(&id) { return Err(Error::Msg("Close the game or stop setup first.".into())); }
+    let mut g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let mut p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
+    if p.inputs.is_empty() { return Err(Error::Msg("This profile doesn't declare named inputs.".into())); }
+    p.input_paths = inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
+    if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
+    let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
+    INPUT_WORKERS.lock().unwrap().push(id.clone());
+    let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
+    SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
+    let dir = st.dir.clone();
+    std::thread::spawn(move || {
+        let stopped = || setup_stopped(&id, run);
+        let emit = |step: &str, pct: f32, text: String| { let _ = app.emit("setup", SetupEv { id: id.clone(), step: step.into(), pct, text, extras: p.prepare.is_some(), ..Default::default() }); };
+        let result = (|| -> Result<(), String> {
+            emit("read", 0.0, "Checking the selected files".into());
+            if stopped() { return Err("Stopped.".into()); }
+            let placed = inputs::stage_cancellable(&p, &mut g, &dir, &stopped);
+            // Remember managed destinations even after a failed preparation, so retry is safe.
+            let st = app.state::<App>();
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) { x.input_staged = g.input_staged.clone(); x.input_stamps = g.input_stamps.clone(); }
+            st.save();
+            placed?;
+            emit("verify", 1.0, "Files selected. Disc checksums haven't been verified.".into());
+            if let Some(pr) = &p.prepare {
+                let mut pr = pr.clone();
+                // Omit an argument containing an absent optional/conditional token. Put flags in
+                // the same argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
+                pr.args = inputs::arguments(&pr.args, &p.input_paths, false);
+                let copy = g.game_copy.as_deref().unwrap_or(&g.path);
+                run_prepare(&pr, &g.path, copy, &|pct, text| emit("extras", pct, text), &stopped)?;
+            }
+            if stopped() { return Err("Stopped.".into()); }
+            let current = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or("The game was removed during setup.")?;
+            if inputs::signature(&p, &current, &dir)? != signature { return Err("The selected files changed. Run setup again.".into()); }
+            p.prepare(&g.path, g.game_copy.as_deref()).map_err(|_| "Couldn't write the game's settings.")?;
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
+                x.inputs_ready = signature;
+                if p.game.is_none() { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
+            }
+            st.save();
+            Ok(())
+        })();
+        if !stopped() {
+            match result { Ok(()) => emit("done", 1.0, "Files are set up. Disc checksums haven't been verified.".into()), Err(why) => emit("error", 0.0, why) }
+        }
+        if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() { if m.get(&id) == Some(&run) { m.remove(&id); } }
+        INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
+    });
+    Ok(())
 }
 
 /// The player picked the game's update.
@@ -6609,7 +6765,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
-            game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
+            game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
