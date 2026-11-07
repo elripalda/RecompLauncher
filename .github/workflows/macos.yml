@@ -1,0 +1,59 @@
+name: macOS checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple-silicon:
+    name: Build and test (macOS Apple Silicon)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - run: npm ci
+      - name: Check Mac picker behavior and JavaScript syntax
+        run: |
+          node --test tests/macos-ui.test.cjs
+          node --check ui/app.js
+          node --check ui/tv.js
+      - name: Run Rust tests
+        run: npm test -- --locked --target aarch64-apple-darwin
+      - name: Build app and disk image
+        run: npm run build:macos -- --ci -- --locked
+      - name: Package app without losing permissions or links
+        run: |
+          mkdir -p artifacts
+          bundle=src-tauri/target/aarch64-apple-darwin/release/bundle
+          codesign --verify --deep --strict "$bundle/macos/RecompLauncher.app"
+          ditto -c -k --sequesterRsrc --keepParent "$bundle/macos/RecompLauncher.app" artifacts/RecompLauncher-macOS-arm64.zip
+          cp "$bundle"/dmg/*.dmg artifacts/
+          cd artifacts
+          shasum -a 256 *.zip *.dmg > SHA256SUMS
+      - name: Upload test builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-apple-silicon
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14

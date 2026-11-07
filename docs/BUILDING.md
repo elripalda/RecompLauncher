@@ -22,6 +22,51 @@ released installer also has RecompLauncher's own install screens; to add them, i
 [NSIS](https://nsis.sourceforge.io) (with its folder on your PATH) and run `python tools/brand-installer.py src-tauri/target/release`
 after the build.
 
+### macOS (initial Apple Silicon support)
+
+Install Xcode Command Line Tools, Rust and Node.js 20 or newer, then run:
+
+```sh
+npm ci
+npm test -- --locked
+npm run build:macos -- -- --locked
+```
+
+This builds `aarch64-apple-darwin`. The application and disk image are in
+`src-tauri/target/aarch64-apple-darwin/release/bundle/macos/` and `bundle/dmg/`.
+The platform configuration also makes `npm run build` produce an app and disk image on a Mac.
+The deployment target is macOS 11; this is a build target, not a claim that every older macOS
+release has been tested. Intel launcher builds are not part of this initial support.
+
+The **macOS checks** workflow tests and builds on an Apple Silicon `macos-15` runner.
+Its `macos-apple-silicon` artifact contains a ZIP, a DMG and SHA-256 checksums, retained for
+14 days. These are test builds: the workflow does not publish releases, and does not use an
+Apple Developer ID certificate or notarization. The app is ad-hoc signed. ZIP packaging uses
+`ditto` to preserve the application's links and permissions.
+
+For game installation, this first version supports Mac ZIP releases containing an `.app` or
+a native executable. A ZIP containing only another ZIP is treated as a packaging wrapper,
+with a bounded nesting depth. Archives inside the application are left alone. ARM64 and
+universal game executables are supported on Apple Silicon; Intel-only games and Windows/Linux
+games are not translated. Game releases available only as a DMG are not installed automatically.
+The launcher's own DMG is a separate, supported distribution format.
+
+Choose Program accepts a Mac `.app`; the launcher reads `CFBundleExecutable` from its
+`Contents/Info.plist`. A game update replaces the complete app bundle rather than merging its
+contents. Saves/settings beside the bundle and in the game's normal Application Support folder
+are retained. Changes made inside the application bundle are replaced with the developer's
+release; games should keep player data outside their signed bundle.
+
+Launcher updates on Mac are manual downloads. A Windows/Linux-only version feed must not
+offer an update on Mac. To advertise a Mac release, the site can add a `macos` entry with
+`arch: "arm64"` (or `"universal"`), `url`, `sha256`, and optional `version`, `notes` and `min`.
+No Mac release is advertised until that entry exists. The site's release feed and signing
+credentials are managed separately from this repository.
+
+In-game screenshot capture, visual effects and platform-specific overlays are not implemented
+for Mac in this release. Controller and game compatibility depend on the individual recomp;
+a successful launcher build does not establish compatibility for every catalog entry.
+
 A build you make yourself won't be byte-for-byte the same file as a release (the compiler stamps
 times and paths into it), so its checksum won't match. The code it's built from is this code.
 
