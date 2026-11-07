@@ -1583,6 +1583,7 @@ function gameBody(a) {
     body = `<div class="stack"><div class="card">
       <div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>
       <div class="set-row"><div class="k"><b>${esc(t('Shortcuts'))}</b><span>${esc(S.steam ? t('Start it from your desktop or from Steam, with its art. Play time still counts here.') : t('Start it from your desktop. Play time still counts here.'))}</span></div><div class="acts"><button type="button" class="btn" data-act="desktop" data-id="${esc(id)}">${esc(t('Add to desktop'))}</button>${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(id)}">${esc(t('Add to Steam'))}</button>` : ''}</div></div>
+      <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
@@ -3300,8 +3301,14 @@ for (const ev of ['pointerover', 'focusin']) {
   });
 }
 
+let updateCheckRevision = 0;
 async function checkUpdates(loud) {
-  try { S.updates = await invoke('check_updates', { force: !!loud }); } catch (e) { if (loud) fail(e); return false; }
+  const revision = updateCheckRevision;
+  try {
+    const updates = await invoke('check_updates', { force: !!loud });
+    if (revision !== updateCheckRevision) return false;
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local));
+  } catch (e) { if (loud) fail(e); return false; }
   renderSide();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
   if (S.view === 'downloads') render(true);
@@ -3872,7 +3879,8 @@ function gameMenu(id) {
     ...(!g && x ? [{ act: 'customize', id, label: t('Customize…'), icon: 'shot' }] : []),
     ...(g ? ['-',
       { label: t('Manage'), icon: 'gear', sub: [
-        { act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update },
+        { act: 'project-association', id, label: t('Project association…'), icon: 'layers' },
+        ...(!g.local ? [{ act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update }] : []),
         { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
@@ -5399,6 +5407,7 @@ async function act(el, e) {
   const a = el.dataset.act, id = el.dataset.id;
   if (/^(acc|saves|myrep)-/.test(a) && window.accountAct) return window.accountAct(a, el);
   if (/^beta-/.test(a) && window.moreAct) return window.moreAct(a, el);
+  if (a === 'project-association') return changeProject(id);
   if (a === 'adopt' && window.adoptAct) return window.adoptAct(a, el);
   switch (a) {
     case 'open': e.preventDefault(); closeMenu(); return go('game', id, el.closest('.tile') ? el : null);

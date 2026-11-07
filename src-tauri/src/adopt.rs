@@ -495,6 +495,116 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
     Ok(added)
 }
 
+/// Change the catalog association without installing or touching the game's folder.
+/// An empty project means the player maintains this installation themselves.
+#[tauri::command(async)]
+pub fn set_project(st: State<'_, App>, id: String, project: String) -> Res<Installed> {
+    change_project(&st, &id, &project, &crate::cached_catalog(&st))
+}
+
+fn associated_game(g: &Installed, id: &str, entry: Option<&Value>) -> Installed {
+    let mut next = g.clone();
+    next.id = id.into();
+    next.repo = entry.map(|e| crate::str_of(e, "repo").to_string()).unwrap_or_default();
+    next.local = entry.is_none();
+    next.tag = if next.local { "own".into() } else { String::new() };
+    next.version.clear();
+    next.asset.clear();
+    next.sha256.clear();
+    next.size = 0;
+    next.verified = false;
+    next.pinned = false;
+    next.auto_update = false;
+    next.exe_rules = install::EXE_RULES;
+    // These describe files supplied by the previous project's release. Treat the files as
+    // the player's own until an explicit installation supplies a new manifest.
+    next.files.clear();
+    next.setup = None;
+    next.setup_done = false;
+    next.setup_checked = true;
+    // Remote saves belong to the old project. Keep local backups, and ask before using the
+    // new project's cloud saves instead of silently uploading to a different namespace.
+    next.cloud = None;
+    next
+}
+
+pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) -> Res<Installed> {
+    let entry = if project.is_empty() {
+        None
+    } else {
+        Some(catalog::app(cat, project).filter(|e| !crate::str_of(e, "repo").is_empty())
+            .ok_or_else(|| Error::Msg("That project isn't in the catalog. Refresh it and try again.".into()))?)
+    };
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get(old).cloned().ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
+    if (entry.is_some() && old == project && !g.local) || (entry.is_none() && g.local && g.tag == "own") {
+        return Ok(g);
+    }
+    let new = if entry.is_some() {
+        project.to_string()
+    } else {
+        let base = format!("own-{}", crate::library::folder_name(old));
+        let mut id = base.clone();
+        let mut n = 2;
+        while l.installed.contains_key(&id) {
+            id = format!("{base}-{n}");
+            n += 1;
+        }
+        id
+    };
+    if new != old && l.installed.contains_key(&new) {
+        return Err(Error::Msg("That project is already in your Library. Its installation won't be replaced.".into()));
+    }
+    if [old, new.as_str()].iter().any(|id| st.running.lock().unwrap().contains_key(*id)
+        || st.jobs.lock().unwrap().contains_key(*id) || st.moving.lock().unwrap().contains(*id)
+        || crate::STARTING.lock().unwrap().iter().any(|starting| starting == *id)
+        || crate::setup_busy(id) || crate::mods_busy(id)) {
+        return Err(Error::Msg("Stop the game and wait for its downloads, setup and file operations before changing its project.".into()));
+    }
+    if crate::saves::chosen_root().is_some_and(|p| !p.is_dir()) {
+        return Err(Error::Msg("Connect your save backup drive before changing the project.".into()));
+    }
+    let next = associated_game(&g, &new, entry);
+    // Library ids also key backups and looks. Rename them before committing the library;
+    // reject collisions, and roll back if moving data or saving the library fails.
+    let mut dirs = vec![
+        (crate::saves::dir_of(&st.dir, old), crate::saves::dir_of(&st.dir, &new)),
+        (st.dir.join("saves").join(old), st.dir.join("saves").join(&new)),
+        (st.dir.join("looks").join(old), st.dir.join("looks").join(&new)),
+    ];
+    dirs.dedup();
+    dirs.retain(|(from, to)| from != to && from.exists());
+    if dirs.iter().any(|(_, to)| to.exists()) {
+        return Err(Error::Msg("The selected project already has backup or look data. Nothing was changed.".into()));
+    }
+    let mut moved = Vec::new();
+    for (from, to) in &dirs {
+        if let Err(err) = std::fs::rename(from, to) {
+            for (from, to) in moved.iter().rev() { let _ = std::fs::rename(to, from); }
+            return Err(err.into());
+        }
+        moved.push((from, to));
+    }
+    let before = l.clone();
+    l.installed.remove(old);
+    l.installed.insert(new.clone(), next.clone());
+    l.project_aliases.remove(&new);
+    for target in l.project_aliases.values_mut() {
+        if target == old { *target = new.clone(); }
+    }
+    if new != old { l.project_aliases.insert(old.to_string(), new.clone()); }
+    if let Some(mods) = l.mods.remove(old) { l.mods.insert(new.clone(), mods); }
+    if let Some(art) = l.arts.remove(old) { l.arts.insert(new.clone(), art); }
+    l.seen_versions.remove(old);
+    crate::rename_id(&mut l.settings.ui, old, &new);
+    if let Err(err) = l.save(&st.dir) {
+        *l = before;
+        for (from, to) in moved.iter().rev() { let _ = std::fs::rename(to, from); }
+        return Err(err.into());
+    }
+    Ok(next)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
