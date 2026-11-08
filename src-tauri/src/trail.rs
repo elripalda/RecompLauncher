@@ -41,7 +41,21 @@ pub fn tail_for(id: &str, bytes: usize) -> Option<String> {
     let text = String::from_utf8_lossy(&b[b.len().saturating_sub(600_000)..]).to_string();
     let mine: Vec<&str> = text.lines().filter(|l| mentions(l, id)).collect();
     let mine = &mine[mine.len().saturating_sub(80)..];
-    Some(format!("== {id} ==\n{}\n\n== Everything, newest ==\n{all}", mine.join("\n")))
+    Some(format!("== {id} ==\n{}\n\n== Everything, newest ==\n{}", mine.join("\n"), since_start(&all)))
+}
+
+/// Only the lines since the launcher last started (from its "started on" line), so other days'
+/// games stay out of a report.
+fn since_start(all: &str) -> &str {
+    let mut at = None;
+    let mut pos = 0;
+    for l in all.split_inclusive('\n') {
+        if l.contains("  RecompLauncher ") && l.contains(" started on ") {
+            at = Some(pos);
+        }
+        pos += l.len();
+    }
+    &all[at.unwrap_or(0)..]
 }
 
 /// The line is about this game: its id on its own, not inside another id.
@@ -71,5 +85,12 @@ mod tests {
         assert!(mentions("12:00:00 UTC  Add to Steam (sos-ps5): written", "sos-ps5"));
         assert!(!mentions("12:00:00 UTC  Play sos-ps5-demo: x.exe", "sos-ps5"));
         assert!(!mentions("12:00:00 UTC  Play octr-nitrofueled-pc: Crash.exe", "nitrofueled"));
+    }
+
+    #[test]
+    fn everything_is_since_the_last_start() {
+        let all = "09:00:00 UTC  RecompLauncher 0.90.0 started on windows\n09:01:00 UTC  Play a: a.exe\n10:00:00 UTC  RecompLauncher 0.90.0 started on windows\n10:01:00 UTC  Play b: b.exe\n";
+        assert_eq!(since_start(all), "10:00:00 UTC  RecompLauncher 0.90.0 started on windows\n10:01:00 UTC  Play b: b.exe\n");
+        assert_eq!(since_start("x\ny\n"), "x\ny\n");
     }
 }

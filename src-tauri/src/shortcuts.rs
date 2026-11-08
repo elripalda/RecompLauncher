@@ -300,10 +300,31 @@ pub fn steam_running() -> bool {
     }
     #[cfg(not(windows))]
     {
-        let mut c = std::process::Command::new("pgrep");
-        crate::sysenv::clean_std(&mut c);
-        c.args(["-x", "steam"]).output().map(|o| o.status.success()).unwrap_or(false)
+        // Steam's own process (named "steam", or its ubuntu12_32/steam program, as SteamOS starts
+        // it), or its pid file pointing at a process that's still there. Any of them still open
+        // means Steam can still write its shortcuts back over the new one on the way out.
+        let pid_live = dirs::home_dir()
+            .and_then(|h| fs::read_to_string(h.join(".steam/steam.pid")).ok())
+            .and_then(|p| p.trim().parse::<u32>().ok())
+            .map(|p| fs::read_to_string(format!("/proc/{p}/cmdline")).map(|c| steam_process("", &c)).unwrap_or(false))
+            .unwrap_or(false);
+        pid_live
+            || fs::read_dir("/proc").into_iter().flatten().flatten().any(|e| {
+                let name = e.file_name();
+                let Some(n) = name.to_str().filter(|n| n.bytes().all(|b| b.is_ascii_digit())) else { return false };
+                let comm = fs::read_to_string(format!("/proc/{n}/comm")).unwrap_or_default();
+                let cmd = fs::read_to_string(format!("/proc/{n}/cmdline")).unwrap_or_default();
+                steam_process(comm.trim(), &cmd)
+            })
     }
+}
+
+/// Is this process Steam itself (its comm name and command line)? Not the launcher's own children,
+/// helpers or the steam-runtime that games run in.
+#[cfg(not(windows))]
+fn steam_process(comm: &str, cmdline: &str) -> bool {
+    let prog = cmdline.split('\0').next().unwrap_or("");
+    comm == "steam" || prog.ends_with("ubuntu12_32/steam") || prog.ends_with("/steam/steam") && !prog.contains("steam-runtime")
 }
 
 #[cfg(windows)]
@@ -408,7 +429,7 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if !steam_running() {
             // Steam writes its files on the way out; give it a moment.
-            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
             return Ok(());
         }
     }

@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Nyalakan lagi",
  "The crash window shows for it again.": "Jendela crash muncul lagi untuk game ini.",
  "The crash window is off for some of its exits": "Jendela crash dimatikan untuk beberapa cara game ini tertutup",
- "You said you closed it yourself when it closed with code {code}.": "Kamu bilang kamu menutupnya sendiri saat tertutup dengan kode {code}."
+ "You said you closed it yourself when it closed with code {code}.": "Kamu bilang kamu menutupnya sendiri saat tertutup dengan kode {code}.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} sudah di-uninstall. Salinan gamemu ada di dalam foldernya, jadi disimpan di {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Game ini datang dengan salinan {files} yang lebih lama daripada milik Windows, dan memakainya. Pindahkan ke samping agar game memakai versi Windows yang lebih baru.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Driver grafismu sudah usang (Vulkan-nya {version}; recomp butuh 1.3 atau lebih baru). Perbarui dari NVIDIA, AMD, atau Intel, lalu main lagi.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Game ini butuh {files}, yang dibuatnya sendiri dari salinan gamemu. Siapkan salinan gamemu (atau jalankan setup-nya), lalu main lagi.",
+ "Move Them Aside": "Pindahkan ke samping",
+ "Moved aside: {files}. Press Play to try it.": "Dipindahkan ke samping: {files}. Tekan Main untuk mencoba.",
+ "Nothing needed moving.": "Tidak ada yang perlu dipindahkan.",
+ "It came with old copies of files Windows has newer ones of": "Game ini datang dengan salinan lama file yang versi barunya ada di Windows",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: game memakai ini, bukan versi Windows yang lebih baru, dan bisa tertutup dengan \"DLL yang dibutuhkan terlalu lama\". Memindahkannya ke samping akan memperbaikinya.",
+ "Your graphics driver is out of date": "Driver grafismu sudah usang",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Vulkan-nya versi {version}; recomp butuh 1.3 atau lebih baru. Perbarui driver grafismu dari NVIDIA, AMD, atau Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Tidak ada: {files}. Game membuatnya sendiri dari salinan gamemu, lewat setup-nya. Siapkan salinan gamemu (atau jalankan setup-nya), lalu tekan Main lagi.",
+ "Your Windows user folder's name has letters some games can't read": "Nama folder pengguna Windows-mu punya huruf yang tidak bisa dibaca beberapa game",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Beberapa recomp menyimpan save dan pengaturan di folder penggunamu ({folder}) dan tidak bisa membukanya jika namanya punya aksen atau huruf di luar bahasa Inggris. Kalau game langsung tertutup, mungkin itu sebabnya: beri tahu pengembangnya.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} sudah di-uninstall, tapi foldernya tetap ada: salinan gamemu ada di dalamnya dan tidak bisa dipindahkan. Foldernya di {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Salinan gamemu ada di dalam foldernya, jadi disimpan di {path}."
 }

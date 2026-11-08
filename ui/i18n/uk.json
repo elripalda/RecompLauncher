@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Увімкнути знову",
  "The crash window shows for it again.": "Вікно збою знову з’являтиметься для цієї гри.",
  "The crash window is off for some of its exits": "Вікно збою вимкнене для деяких варіантів закриття",
- "You said you closed it yourself when it closed with code {code}.": "Ви вказали, що закрили гру самі, коли вона закрилася з кодом {code}."
+ "You said you closed it yourself when it closed with code {code}.": "Ви вказали, що закрили гру самі, коли вона закрилася з кодом {code}.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} видалено. Твоя копія гри лежала в її папці, тож її збережено в {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Вона прийшла зі старішими копіями {files}, ніж є у Windows, і використовує їх. Відклади їх убік, і вона використовуватиме новіші з Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Твій графічний драйвер застарів (його Vulkan — {version}; рекомпам потрібен 1.3 або новіший). Онови його з сайту NVIDIA, AMD чи Intel і запусти знову.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Їй потрібні {files}, які вона створює сама з твоєї копії гри. Налаштуй свою копію гри (або запусти її встановлення) і запусти знову.",
+ "Move Them Aside": "Відкласти вбік",
+ "Moved aside: {files}. Press Play to try it.": "Відкладено вбік: {files}. Натисни «Грати», щоб спробувати.",
+ "Nothing needed moving.": "Нічого не треба було відкладати.",
+ "It came with old copies of files Windows has newer ones of": "Вона прийшла зі старими копіями файлів, новіші версії яких є у Windows",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: гра використовує їх замість новіших із Windows і може закриватися з помилкою «потрібна DLL застара». Якщо відкласти їх убік, це виправиться.",
+ "Your graphics driver is out of date": "Твій графічний драйвер застарів",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Його Vulkan — версії {version}; рекомпам потрібен 1.3 або новіший. Онови графічний драйвер із сайту NVIDIA, AMD чи Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Бракує: {files}. Гра створює їх сама з твоєї копії гри під час встановлення. Налаштуй свою копію гри (або запусти її встановлення) і знову натисни «Грати».",
+ "Your Windows user folder's name has letters some games can't read": "У назві твоєї папки користувача Windows є літери, які деякі ігри не можуть прочитати",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Деякі рекомпи зберігають збереження й налаштування у твоїй папці користувача ({folder}) і не можуть її відкрити, якщо в її назві є діакритика чи неанглійські літери. Якщо гра одразу закривається, причина може бути в цьому: повідом її розробника.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} видалено, але її папка лишилася: у ній твоя копія гри, і її не вдалося перенести. Папка в {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Твоя копія гри лежала в її папці, тож її збережено в {path}."
 }

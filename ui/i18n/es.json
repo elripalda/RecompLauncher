@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Volver a activarla",
  "The crash window shows for it again.": "La ventana de cierre inesperado vuelve a aparecer para este juego.",
  "The crash window is off for some of its exits": "La ventana de cierre inesperado está desactivada para algunos de sus cierres",
- "You said you closed it yourself when it closed with code {code}.": "Dijiste que lo cerraste tú cuando se cerró con el código {code}."
+ "You said you closed it yourself when it closed with code {code}.": "Dijiste que lo cerraste tú cuando se cerró con el código {code}.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} se ha desinstalado. Tu copia del juego estaba dentro de su carpeta, así que se ha guardado en {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Venía con copias de {files} más antiguas que las de Windows, y usa esas en su lugar. Apártalas y usará las más nuevas de Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Tu controlador gráfico está desactualizado (su Vulkan es {version}; los recomps necesitan 1.3 o posterior). Actualízalo desde NVIDIA, AMD o Intel y vuelve a jugar.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Necesita {files}, que crea él mismo a partir de tu copia del juego. Configura tu copia del juego (o ejecuta su instalación) y vuelve a jugar.",
+ "Move Them Aside": "Apartarlos",
+ "Moved aside: {files}. Press Play to try it.": "Apartados: {files}. Pulsa Jugar para probar.",
+ "Nothing needed moving.": "No había nada que apartar.",
+ "It came with old copies of files Windows has newer ones of": "Venía con copias antiguas de archivos de los que Windows tiene versiones más nuevas",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: el juego usa estos en lugar de los más nuevos de Windows, y puede cerrarse con «una DLL que necesita es demasiado antigua». Apartarlos lo soluciona.",
+ "Your graphics driver is out of date": "Tu controlador gráfico está desactualizado",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Su Vulkan es la versión {version}; los recomps necesitan 1.3 o posterior. Actualiza tu controlador gráfico desde NVIDIA, AMD o Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Falta: {files}. El juego los crea él mismo a partir de tu copia del juego, con su instalación. Configura tu copia del juego (o ejecuta su instalación) y vuelve a pulsar Jugar.",
+ "Your Windows user folder's name has letters some games can't read": "El nombre de tu carpeta de usuario de Windows tiene letras que algunos juegos no pueden leer",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Algunos recomps guardan partidas y ajustes en tu carpeta de usuario ({folder}) y no pueden abrirla si su nombre tiene tildes o letras que no son del inglés. Si se cierra enseguida, puede ser por eso: díselo a su desarrollador.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} se ha desinstalado, pero su carpeta se ha quedado: tu copia del juego está dentro y no se pudo mover. Está en {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Tu copia del juego estaba dentro de su carpeta, así que se ha guardado en {path}."
 }

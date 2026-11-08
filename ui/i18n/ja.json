@@ -2180,5 +2180,21 @@
  "Turn It Back On": "元に戻す",
  "The crash window shows for it again.": "このゲームでクラッシュ画面がまた表示されます。",
  "The crash window is off for some of its exits": "一部の終了ではクラッシュ画面がオフになっています",
- "You said you closed it yourself when it closed with code {code}.": "コード {code} で終了したときは自分で閉じた、と設定されています。"
+ "You said you closed it yourself when it closed with code {code}.": "コード {code} で終了したときは自分で閉じた、と設定されています。",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} をアンインストールしました。ゲームのコピーがそのフォルダーの中にあったので、{path} に残してあります。",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Windows のものより古い {files} が同梱されていて、そちらを使っています。脇に移すと、Windows の新しいものを使うようになります。",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "グラフィックドライバーが古くなっています（Vulkan が {version}。リコンプには 1.3 以降が必要です）。NVIDIA、AMD、Intel から更新して、もう一度プレイしてください。",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "{files} が必要で、これはゲームのコピーから自分で作ります。ゲームのコピーをセットアップ（またはそのセットアップを実行）してから、もう一度プレイしてください。",
+ "Move Them Aside": "脇に移す",
+ "Moved aside: {files}. Press Play to try it.": "脇に移しました：{files}。プレイを押して試してください。",
+ "Nothing needed moving.": "移す必要のあるものはありませんでした。",
+ "It came with old copies of files Windows has newer ones of": "Windows に新しい版があるファイルの古いコピーが同梱されています",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}：ゲームは Windows の新しいものではなくこれらを使い、「必要な DLL が古すぎる」で終了することがあります。脇に移せば直ります。",
+ "Your graphics driver is out of date": "グラフィックドライバーが古くなっています",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Vulkan のバージョンが {version} です。リコンプには 1.3 以降が必要です。NVIDIA、AMD、Intel からグラフィックドライバーを更新してください。",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "見つかりません：{files}。ゲームがそのセットアップで、ゲームのコピーから自分で作ります。ゲームのコピーをセットアップ（またはそのセットアップを実行）してから、もう一度プレイを押してください。",
+ "Your Windows user folder's name has letters some games can't read": "Windows のユーザーフォルダー名に、一部のゲームが読めない文字が含まれています",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "一部のリコンプはセーブや設定をユーザーフォルダー（{folder}）に保存しますが、名前にアクセント記号や英語以外の文字があると開けません。すぐに終了する場合はそれが原因かもしれません。開発者に知らせてください。",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} をアンインストールしましたが、フォルダーは残っています。ゲームのコピーが中にあり、移せませんでした。場所は {path} です。",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "ゲームのコピーがそのフォルダーの中にあったので、{path} に残してあります。"
 }

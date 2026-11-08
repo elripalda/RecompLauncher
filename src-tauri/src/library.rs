@@ -370,6 +370,7 @@ impl Library {
         if let Some(a) = self.arts.remove(id) {
             a.onto(&mut g);
         }
+        g.exe = g.exe.map(|e| unix_path(&g.path, e));
         self.installed.insert(id.to_string(), g);
     }
 
@@ -416,6 +417,18 @@ pub fn shared_folder(p: &Path, libs: &[PathBuf]) -> bool {
 }
 
 impl Library {
+    /// Programs written the Windows way (issn-windows\\Game.exe) on Linux or a Mac: their path
+    /// the way this system reads it.
+    fn tidy_paths(&mut self) {
+        for g in self.installed.values_mut() {
+            let base = g.path.clone();
+            g.exe = g.exe.take().map(|e| unix_path(&base, e));
+            if let Some(m) = g.manual.as_mut() {
+                m.exe = m.exe.take().map(|e| unix_path(&base, e));
+            }
+        }
+    }
+
     pub fn load(dir: &Path) -> Library {
         let p = dir.join("library.json");
         let mut l = match std::fs::read(&p) {
@@ -449,6 +462,7 @@ impl Library {
             let _ = std::fs::rename(&broken, dir.join("library.recovered.json"));
             let _ = l.save(dir);
         }
+        l.tidy_paths();
         l
     }
 
@@ -503,6 +517,23 @@ pub fn now() -> u64 {
 }
 
 /// The folder name for a game: its catalog id, kept to safe characters.
+/// `child` is inside `parent` (not the folder itself), comparing names the way the system does
+/// (any case on Windows); a path that steps back up (..) never counts.
+pub fn inside(child: &Path, parent: &Path) -> bool {
+    use std::path::Component;
+    if child.components().any(|c| c == Component::ParentDir) {
+        return false;
+    }
+    let names = |p: &Path| -> Vec<String> {
+        p.components()
+            .filter(|c| !matches!(c, Component::CurDir))
+            .map(|c| { let s = c.as_os_str().to_string_lossy().to_string(); if cfg!(windows) { s.to_lowercase() } else { s } })
+            .collect()
+    };
+    let (c, p) = (names(child), names(parent));
+    c.len() > p.len() && c[..p.len()] == p[..]
+}
+
 pub fn folder_name(id: &str) -> String {
     let s: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
     if s.is_empty() || s.chars().all(|c| c == '-') {
@@ -514,6 +545,22 @@ pub fn folder_name(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(not(windows))]
+    fn a_windows_path_reads_on_linux() {
+        let d = std::env::temp_dir().join(format!("rl-unix-{}", std::process::id()));
+        let base = d.join("issn-windows");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("inFAMOUS Second Son.exe"), b"MZ").unwrap();
+        // The folder's own name repeated, the Windows way: found where it is.
+        assert_eq!(super::unix_path(&base, std::path::PathBuf::from("issn-windows\\inFAMOUS Second Son.exe")), std::path::PathBuf::from("inFAMOUS Second Son.exe"));
+        // Plain backslashes become slashes.
+        assert_eq!(super::unix_path(&base, std::path::PathBuf::from("bin\\game.exe")), std::path::PathBuf::from("bin/game.exe"));
+        // A Linux path is left alone.
+        assert_eq!(super::unix_path(&base, std::path::PathBuf::from("bin/game")), std::path::PathBuf::from("bin/game"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn a_games_own_pictures_stay_when_it_leaves_and_come_back_with_it() {
         let mut l = Library::default();
@@ -577,9 +624,43 @@ mod tests {
     }
 
     #[test]
+    fn inside_a_folder() {
+        assert!(inside(Path::new("/g/tst/rom/a.nds"), Path::new("/g/tst")));
+        assert!(!inside(Path::new("/g/tst"), Path::new("/g/tst")));
+        assert!(!inside(Path::new("/g/tst/../x.iso"), Path::new("/g/tst")));
+        assert!(!inside(Path::new("/g/tst2/a.iso"), Path::new("/g/tst")));
+    }
+
+    #[test]
     fn folder_names() {
         assert_eq!(folder_name("zelda64recomp"), "zelda64recomp");
         assert_eq!(folder_name("../x"), "---x");
         assert_eq!(folder_name("."), "game");
     }
+}
+
+/// A game's program as this system reads its path: on Linux or a Mac, backslashes become slashes,
+/// and a path that repeats the game's own folder name (issn-windows/issn-windows/Game.exe, from a
+/// layout that's since changed) is found where it is, when it's there.
+pub fn unix_path(base: &Path, e: PathBuf) -> PathBuf {
+    if cfg!(windows) || e.is_absolute() {
+        return e;
+    }
+    let s = e.to_string_lossy();
+    if !s.contains('\\') {
+        return e;
+    }
+    let fixed = PathBuf::from(s.replace('\\', "/"));
+    if base.join(&fixed).exists() {
+        return fixed;
+    }
+    let own = base.file_name().map(|n| n.to_owned());
+    let mut parts = fixed.components();
+    if let (Some(first), Some(own)) = (parts.next(), own) {
+        let rest: PathBuf = parts.collect();
+        if first.as_os_str() == own.as_os_str() && base.join(&rest).exists() {
+            return rest;
+        }
+    }
+    fixed
 }

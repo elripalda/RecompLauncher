@@ -305,6 +305,20 @@ pub async fn download(
             Err(e) => return Err(e.into()),
         };
         if !r.status().is_success() {
+            // GitHub's busy moments (502, 503, 504, or "slow down"): wait a little longer each time and
+            // ask again, from where it got to.
+            if busy_answer(r.status().as_u16()) && tries < 5 {
+                let wait = Instant::now() + Duration::from_secs(2u64 << (tries - 1).min(4));
+                while Instant::now() < wait {
+                    if cancelled() {
+                        drop(out);
+                        let _ = tokio::fs::remove_file(&part).await;
+                        return Err(Error::Cancelled);
+                    }
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+                continue;
+            }
             if r.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
                 done = 0;
                 hash = Sha256::new();
@@ -533,6 +547,11 @@ pub fn site_of(url: &str) -> String {
 }
 
 /// What a download site's error means, naming the site it came from.
+/// An answer that means the site is busy for a moment (worth asking again after a short wait).
+pub fn busy_answer(code: u16) -> bool {
+    matches!(code, 429 | 500 | 502 | 503 | 504)
+}
+
 pub fn answered(code: u16, url: &str, file: &str) -> String {
     let site = site_of(url);
     match code {
@@ -656,7 +675,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 13;
+pub const EXE_RULES: u8 = 14;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -664,16 +683,20 @@ pub const EXE_RULES: u8 = 13;
 const TOOL_WORDS: [&str; 26] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
-const BUILD_TOOLS: [&str; 57] = [
+const BUILD_TOOLS: [&str; 63] = [
     "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
     "tcc", "zig", "sccache", "ccache", "goalc",
     "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
     "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
     // Disc and package converters a release brings along for the player's copy.
     "chd2gdi", "gdi2chd", "chdman", "maxcso", "extract-xiso", "xdvdfs", "hactool", "nsz",
+    // Recompilers a release brings to build the game from the player's copy.
+    "nxlift", "xbe_recomp", "xenonrecomp", "xenonanalyse", "n64recomp", "ps2recomp",
 ];
 /// Folders a release keeps its tools, or leftovers from building, in.
-pub const TOOL_DIRS: [&str; 13] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm"];
+/// "Tools" in other languages too: ferramentas (Portuguese), herramientas (Spanish), outils
+/// (French), werkzeuge (German), strumenti (Italian), narzedzia (Polish), gereedschap (Dutch).
+pub const TOOL_DIRS: [&str; 21] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
@@ -915,6 +938,12 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn busy_answers_are_asked_again() {
+        assert!(busy_answer(504) && busy_answer(503) && busy_answer(429));
+        assert!(!busy_answer(404) && !busy_answer(403) && !busy_answer(416));
+    }
     use std::io::Write as _;
 
     fn tmp(name: &str) -> PathBuf {
@@ -1058,6 +1087,10 @@ mod tests {
         assert!(looks_like_tool(Path::new("Sf2Bktr.exe"), &["SF2Recomp"]));
         assert!(looks_like_tool(Path::new("chd2gdi.exe"), &["Street-Alpha-3-Dreamcast-Recomp"]));
         assert!(looks_like_tool(Path::new("x86_64-w64-mingw32-clang++.exe"), &["TotK Recomp"]));
+        // A tools folder in Portuguese, and recompilers.
+        assert!(looks_like_tool(Path::new("ferramentas/bin/unzbic.exe"), &["ocarina-recomp"]));
+        assert!(looks_like_tool(Path::new("nxlift.exe"), &["pokopia-native"]));
+        assert!(looks_like_tool(Path::new("xbe_recomp.exe"), &["Live Recompiled"]));
 
         assert!(looks_like_tool(Path::new("bin/ninja.exe"), &["XCX Recomp"]));
         assert!(looks_like_tool(Path::new("toolchain/python3.12"), &["Some Game"]));

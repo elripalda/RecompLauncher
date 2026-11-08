@@ -253,7 +253,7 @@ pub fn restore(zip_file: &Path, dir: &Path) -> Result<usize, Error> {
 pub struct PcCheck {
     /// Microsoft Visual C++ runtime (2015 to 2022, x64): almost every Windows recomp needs it.
     pub vcredist: Option<bool>,
-    /// Its version, when it's older than games built with today's Visual Studio need (14.40).
+    /// Its version, when it's older than games built with today's Visual Studio need (14.44).
     pub vcredist_old: Option<String>,
     pub vulkan: Option<bool>,
     /// vkBasalt, for looks on Linux.
@@ -277,7 +277,7 @@ pub fn pc_check() -> PcCheck {
     #[cfg(windows)]
     {
         c.vcredist = Some(crate::win::has_vcredist());
-        c.vcredist_old = crate::win::vcredist_version().filter(|&(a, b, _)| a == 14 && b < 40).map(|(a, b, d)| format!("{a}.{b}.{d}"));
+        c.vcredist_old = crate::win::vcredist_version().filter(|&(a, b, _)| a == 14 && b < 44).map(|(a, b, d)| format!("{a}.{b}.{d}"));
         let sys = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
         c.vulkan = Some(Path::new(&sys).join("System32").join("vulkan-1.dll").is_file());
         c.build_tools = Some(crate::win::has_build_tools());

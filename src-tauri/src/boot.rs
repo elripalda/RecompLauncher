@@ -227,6 +227,61 @@ impl Boot {
     pub fn is_installer(&self) -> bool {
         self.kind == "installer"
     }
+
+    /// The profile for the build that's installed. A Linux or Mac build (not one run through
+    /// Proton) has no use for a Windows setup or installer it names (TotK-Setup.exe beside its
+    /// AppImage): those are left out, and it starts like any game.
+    pub fn for_build(mut self, windows_build: bool) -> Boot {
+        if windows_build {
+            return self;
+        }
+        let win = |s: &str| { let l = s.to_lowercase(); [".exe", ".bat", ".cmd", ".msi"].iter().any(|x| l.ends_with(x)) };
+        if self.setup.as_deref().map(win).unwrap_or(false) {
+            self.setup = None;
+        }
+        if self.installer.as_ref().and_then(|i| i.then_start.as_deref()).map(win).unwrap_or(false) {
+            self.installer = None;
+            if self.kind == "installer" {
+                self.kind = "portable".into();
+            }
+        }
+        if self.setup.is_none() {
+            self.makes.clear();
+        }
+        self
+    }
+}
+
+/// A game's boot profile for the build that's installed (see `for_build`).
+pub fn of_build(dir: &Path, id: &str, windows_build: bool) -> Option<Boot> {
+    of(dir, id).map(|b| b.for_build(windows_build))
+}
+
+/// The installed build is a Windows one (on Windows, or through Proton).
+pub fn windows_build(proton: bool) -> bool {
+    cfg!(windows) || proton
+}
+
+/// A file name against the name a profile gives (any case). `*` stands for any text, for names
+/// that carry a version ("Play Pokopia *.cmd").
+pub fn name_fits(pattern: &str, name: &str) -> bool {
+    let (p, n) = (pattern.to_lowercase(), name.to_lowercase());
+    if !p.contains('*') {
+        return p == n;
+    }
+    let parts: Vec<&str> = p.split('*').collect();
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if !n.starts_with(first) || n.len() < first.len() + last.len() || !n.ends_with(last) {
+        return false;
+    }
+    let mut rest = &n[first.len()..n.len() - last.len()];
+    for mid in &parts[1..parts.len() - 1] {
+        match rest.find(mid) {
+            Some(i) => rest = &rest[i + mid.len()..],
+            None => return false,
+        }
+    }
+    true
 }
 
 /// A game's boot profile, from the catalog the launcher last loaded.
@@ -238,6 +293,24 @@ pub fn of(dir: &Path, id: &str) -> Option<Boot> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_linux_build_skips_a_windows_installer() {
+        let e: Value = serde_json::from_str(r#"{"id":"totk-pc-recomp","boot":{"kind":"installer","setup":"TotK-Setup.exe","installer":{"then_start":"totk.exe"}}}"#).unwrap();
+        let b = Boot::from_entry(&e).unwrap().for_build(false);
+        assert!(!b.is_installer() && b.setup.is_none() && b.then_name().is_none());
+        let b = Boot::from_entry(&e).unwrap().for_build(true);
+        assert!(b.is_installer() && b.then_name().as_deref() == Some("totk.exe"));
+    }
+
+    #[test]
+    fn names_with_a_version_fit() {
+        assert!(name_fits("Play Pokopia *.cmd", "play pokopia 1.0.5.cmd"));
+        assert!(name_fits("totk.exe", "TotK.exe"));
+        assert!(!name_fits("Play Pokopia *.cmd", "Play Pokopia.cmd.bak"));
+        assert!(!name_fits("a*b*c", "ac"));
+        assert!(name_fits("a*b*c", "axbyc"));
+    }
 
     #[test]
     fn reads_boot_profiles() {

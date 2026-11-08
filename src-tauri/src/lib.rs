@@ -11,6 +11,7 @@ pub mod boot;
 pub mod catalog;
 pub mod cloud;
 pub mod devtools;
+pub mod dllcheck;
 pub mod discord;
 pub mod extract;
 pub mod files;
@@ -460,7 +461,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
     let exe = exe.or_else(|| install::find_game_exe(&target, os, &names));
     // The catalog's boot profile says which program starts it, unless the player picked one.
-    let boot = boot::Boot::from_entry(&entry);
+    let boot = boot::Boot::from_entry(&entry).map(|b| b.for_build(os == "windows"));
     let picked = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
     let exe = match boot.as_ref().and_then(|b| b.start_in(&target)) {
         Some(s) if !picked => Some(s),
@@ -469,7 +470,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // A release that's an installer for the game it builds (totk.exe): any other program in it is
     // one of its tools (a shader translator, say), never the game.
     let exe = match (boot.as_ref().and_then(|b| b.then_name()), exe) {
-        (Some(w), Some(e)) if !picked && e.file_name().map(|n| n.to_string_lossy().to_lowercase() != w).unwrap_or(true) => None,
+        (Some(w), Some(e)) if !picked && e.file_name().map(|n| !boot::name_fits(&w, &n.to_string_lossy())).unwrap_or(true) => None,
         (_, e) => e,
     };
     // A program that has to run once first: the release's installer, or a setup beside the game.
@@ -563,14 +564,28 @@ fn os_for(st: &App, entry: &Value, id: &str) -> &'static str {
         return here;
     }
     let l = st.lib.lock().unwrap();
-    if l.installed.get(id).map(|g| g.proton).unwrap_or(false) {
-        return "windows";
+    // Installed: the system of the build the player has. A Linux build stays Linux for updates and
+    // the versions list, whatever the list says the recomp is for (it may not know about the
+    // Linux build yet).
+    if let Some(g) = l.installed.get(id) {
+        if g.proton {
+            return "windows";
+        }
+        if looks_linux(&g.asset) {
+            return "linux";
+        }
     }
     if l.settings.proton && !runs_here(entry, "linux") && runs_here(entry, "windows") {
         "windows"
     } else {
         here
     }
+}
+
+/// A release file that says it's for Linux (its name, or an AppImage).
+fn looks_linux(asset: &str) -> bool {
+    let n = asset.to_lowercase();
+    !n.is_empty() && (n.contains("linux") || n.ends_with(".appimage") || n.ends_with(".flatpak"))
 }
 
 /// A folder in `dir` (or `dir` itself), up to `depth` levels down, that has every one of `want`
@@ -797,6 +812,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
     let mut left: Vec<String> = vec![];
     let mut kept = false;
     let mut uninstaller = false;
+    let mut kept_copy: Option<PathBuf> = None;
+    let mut copy_stuck = false;
     if delete_files {
         // A Flatpak the launcher installed from the game's bundle goes with it.
         if !cfg!(windows) && flatpak::available() {
@@ -811,9 +828,28 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
         let in_lib = g.path.parent().map(|p| libs.iter().any(|l| library::same_path(l, p))).unwrap_or(false);
         let made_here = !g.asset.is_empty() && g.path.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&library::folder_name(&id))).unwrap_or(false);
         let ok = (in_lib || made_here) && !library::shared_folder(&g.path, &libs) && g.path.is_dir();
+        // The player's own files (their copy of the game, its update) kept inside the game's
+        // folder are theirs: moved out to "Game Copies" beside it first, and if one can't be, the
+        // folder stays. Only files: a folder there is the launcher's unpack of their disc.
+        let mut keep_failed = false;
         if ok {
+            for c in [g.game_copy.as_ref(), g.update_copy.as_ref()].into_iter().flatten() {
+                if !(library::inside(c, &g.path) && c.is_file() && !c.is_symlink()) {
+                    continue;
+                }
+                match save_copy_out(&g.path, &id, c) {
+                    Some(to) => {
+                        trail::note(format!("Uninstall {id}: kept the player's file in {}", to.display()));
+                        kept_copy.get_or_insert(to);
+                    }
+                    None => keep_failed = true,
+                }
+            }
+        }
+        if ok && !keep_failed {
             left = remove_game_folder(&g.path);
         } else if g.path.is_dir() {
+            copy_stuck = keep_failed;
             kept = true;
         }
         // A game its own installer put somewhere else (Program Files): its own uninstaller, the
@@ -826,7 +862,33 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
     }
     st.lib.lock().unwrap().forget(&id);
     st.save();
-    Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller}))
+    Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck}))
+}
+
+/// Move the player's copy out of a game folder that's about to go, to "Game Copies/<id>" beside
+/// it (same drive, so it's a quick rename). Where it went, or None if it couldn't move.
+fn save_copy_out(game: &Path, id: &str, copy: &Path) -> Option<PathBuf> {
+    let dir = game.parent()?.join("Game Copies").join(library::folder_name(id));
+    std::fs::create_dir_all(&dir).ok()?;
+    let name = copy.file_name()?;
+    let mut to = dir.join(name);
+    let mut n = 2;
+    while to.exists() {
+        let p = Path::new(name);
+        let stem = p.file_stem().unwrap_or(name).to_string_lossy();
+        to = dir.join(match p.extension().filter(|_| copy.is_file()) {
+            Some(x) => format!("{stem} ({n}).{}", x.to_string_lossy()),
+            None => format!("{} ({n})", name.to_string_lossy()),
+        });
+        n += 1;
+    }
+    if std::fs::rename(copy, &to).is_err() {
+        // Nothing moved: leave no empty folders behind.
+        let _ = std::fs::remove_dir(&dir);
+        let _ = std::fs::remove_dir(dir.parent()?);
+        return None;
+    }
+    Some(to)
 }
 
 /// Deletes a game's folder, sturdier than one remove_dir_all: files marked read-only (as some zips
@@ -1628,7 +1690,7 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
     let icon = ga.icon.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     let name = shown_name(&st, &id, &g).await;
     let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art).inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
-    trail::note(format!("Add to Steam ({id}): written for {n} account(s)"));
+    trail::note(format!("Add to Steam ({id}): written for {n} account(s) in {}{}", dirs::home_dir().and_then(|h| steam.strip_prefix(h).ok().map(|r| format!("~/{}", r.display()))).unwrap_or_else(|| steam.display().to_string()), if was_running { "" } else { " (Steam was closed)" }));
     if was_running {
         shortcuts::start_steam(&steam);
     }
@@ -1943,7 +2005,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // A game whose release is its installer, with a new version to build: its setup runs even when
     // it's set up by hand (that only says how it starts). A program picked by hand in what the
     // setup leaves behind while it builds (a temp folder) is let go: the setup finds the new one.
-    let installer = boot::of(&st.dir, id).map(|b| b.is_installer()).unwrap_or(false);
+    let installer = boot::of_build(&st.dir, id, boot::windows_build(g.proton)).map(|b| b.is_installer()).unwrap_or(false);
     let rebuild = installer && manual.is_some() && !g.setup_done && g.setup.is_some();
     if rebuild {
         let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit('/').next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
@@ -4016,6 +4078,65 @@ fn prefer_fast_gpu(st: State<'_, App>, id: String) -> Res<()> {
     }
 }
 
+/// The folders a game's DLLs are looked for in: its program's, and its own.
+fn dll_dirs(st: &App, id: &str, g: &Installed) -> Vec<PathBuf> {
+    let mut v = vec![];
+    if let Some(d) = started_exe(st, id, g).and_then(|e| e.parent().map(Path::to_path_buf)) {
+        v.push(d);
+    }
+    if !v.contains(&g.path) {
+        v.push(g.path.clone());
+    }
+    v
+}
+
+/// What's old for this game: its folders against Windows' System32 and SysWOW64, by its program's
+/// kind (64- or 32-bit).
+fn dll_findings(st: &App, id: &str, g: &Installed) -> dllcheck::Findings {
+    let root = PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()));
+    let dirs = dll_dirs(st, id, g);
+    let x64 = started_exe(st, id, g).and_then(|e| dllcheck::pe_x64(&e)).unwrap_or(true);
+    dllcheck::check(&dirs.iter().map(PathBuf::as_path).collect::<Vec<_>>(), &root.join("System32"), &root.join("SysWOW64"), x64)
+}
+
+/// The game sets itself up from the player's copy (the launcher's Easy Setup knows it): files it
+/// can't find that its release never had are ones it makes then.
+fn makes_its_files(st: &App, id: &str, g: &Installed) -> bool {
+    profile_of(st, id, g).map(|p| p.game.is_some()).unwrap_or(false)
+}
+
+/// For "a DLL it needs is too old": old copies the game came with, an old Visual C++ runtime, an
+/// old Vulkan loader (an old graphics driver). Windows only; empty elsewhere.
+#[tauri::command(async)]
+fn dll_check(st: State<'_, App>, id: String) -> dllcheck::Findings {
+    if !cfg!(windows) {
+        return dllcheck::Findings::default();
+    }
+    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return dllcheck::Findings::default() };
+    dll_findings(&st, &id, &g)
+}
+
+/// The old copies set aside (renamed .old), so the game uses Windows' newer ones. The ones moved.
+#[tauri::command(async)]
+fn dll_aside(st: State<'_, App>, id: String) -> Res<Vec<String>> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let moved = dllcheck::set_aside(&dll_findings(&st, &id, &g).old_paths);
+    trail::note(format!("{id}: old copies set aside (renamed .old): {}", moved.join(", ")));
+    Ok(moved)
+}
+
+/// The files it can't find, when they're all ones the game makes itself from the player's copy
+/// (none came with its release, and it sets itself up from a copy). Empty otherwise.
+#[tauri::command(async)]
+fn missing_made(st: State<'_, App>, id: String) -> Vec<String> {
+    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return vec![] };
+    if !makes_its_files(&st, &id, &g) {
+        return vec![];
+    }
+    let Some(e) = started_exe(&st, &id, &g) else { return vec![] };
+    dllcheck::made_by_game(&missing_libraries(&e, &g.path), &g.files)
+}
+
 #[tauri::command(async)]
 fn missing_files(st: State<'_, App>, id: String) -> Vec<String> {
     let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return vec![] };
@@ -4039,7 +4160,7 @@ fn copy_check(st: State<'_, App>, id: String, path: String) -> Option<Value> {
 /// What could be keeping a game from starting: its files, Windows, what it needs on the PC, the
 /// player's copy, its setup, its folder, and what it printed last time.
 #[tauri::command(async)]
-fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
+fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Check>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let mut out: Vec<Check> = vec![];
     // Its folder.
@@ -4051,6 +4172,12 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     // Letters outside English in the path: many recomps on Windows can't open files there.
     if cfg!(windows) && !g.path.to_string_lossy().is_ascii() {
         out.push(check("warn", "Its folder's path has letters some games can't read", "Many recomps can't open files in a folder whose path has accents or letters outside English. Move it to a folder with plain letters, like C:\\Recomp Library.", "move"));
+    }
+    // The Windows user folder's name, where many keep saves and settings (AppData, Documents).
+    if cfg!(windows) && g.path.to_string_lossy().is_ascii() {
+        if let Some(home) = dirs::home_dir().filter(|h| !h.to_string_lossy().is_ascii()) {
+            out.push(check("warn", "Your Windows user folder's name has letters some games can't read", "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.", "").with("folder", home.display().to_string()));
+        }
     }
     // The program it starts (set up by hand: the one the player picked).
     let prof = if g.manual.is_some() { None } else { profile_of(&st, &id, &g) };
@@ -4107,7 +4234,12 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         let low: Vec<String> = lacking.iter().map(|d| d.to_lowercase()).collect();
         let vc = low.iter().any(|d| d.starts_with("msvcp") || d.starts_with("vcruntime") || d.starts_with("concrt") || d.starts_with("vcomp"));
         let dx = low.iter().any(|d| d.starts_with("d3dx9_") || d.starts_with("d3dx10_") || d.starts_with("d3dx11_") || d.starts_with("xinput1_3") || d.starts_with("x3daudio") || d.starts_with("xaudio2_7") || d.starts_with("d3dcompiler_4"));
-        let (detail, fix) = if vc {
+        let made = if makes_its_files(&st, &id, &g) { dllcheck::made_by_game(&lacking, &g.files) } else { vec![] };
+        let (detail, fix) = if !made.is_empty() {
+            // Files the game makes from the player's copy (it translates the disc into them):
+            // reinstalling won't bring them back; setting up the copy does.
+            ("Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.", "setup")
+        } else if vc {
             ("Missing: {files}. It needs the Visual C++ runtime, and part of it is missing.", "vcredist")
         } else if dx {
             ("Missing: {files}. It needs the older DirectX runtime (June 2010), which Windows doesn't come with.", "dxruntime")
@@ -4117,6 +4249,19 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
             ("Missing: {files}. Install them with your system's package manager (the names are a good search), then press Play again.", "")
         };
         out.push(check("bad", "It needs files that aren't on this PC", detail, fix).with("files", lacking.iter().take(8).cloned().collect::<Vec<_>>().join(", ")));
+    }
+    // Old copies of runtime DLLs it came with, and an old Vulkan loader: "a DLL it needs is too old".
+    // Old copies are often harmless (many games bring their own runtime), so they're only raised
+    // when it last closed with "a DLL it needs is too old" (0xC0000139).
+    if cfg!(windows) {
+        let f = dll_findings(&st, &id, &g);
+        let too_old = matches!(code, Some(-1073741511) | Some(3221225785));
+        if too_old && !f.old_copies.is_empty() {
+            out.push(check("warn", "It came with old copies of files Windows has newer ones of", "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.", "dllaside").with("files", f.old_copies.join(", ")));
+        }
+        if let Some(v) = f.vulkan_old {
+            out.push(check("warn", "Your graphics driver is out of date", "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.", "driver").with("version", v));
+        }
     }
     // A folder OneDrive keeps in sync: files can be online-only, and syncing locks them.
     if cfg!(windows) && g.path.to_string_lossy().to_lowercase().contains("\\onedrive") {
@@ -4910,7 +5055,7 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
             let at = |tag: &str| rels.iter().position(|r| same_tag(&r.tag_name, tag));
             if let Some(i) = at(&t) {
                 let r = &rels[i];
-                let newer = at(&g.tag).map(|j| i < j).unwrap_or(true);
+                let newer = at(&g.tag).map(|j| i < j).unwrap_or_else(|| !older_version(&r.tag_name, &g.tag));
                 if !g.pinned && !same_tag(&r.tag_name, &g.tag) && newer && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
                     out.insert(g.id.clone(), r.tag_name.clone());
                 }
@@ -4918,7 +5063,8 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
             }
         }
         if let Some(r) = catalog::latest_for(&rels, &g.tag) {
-            if !g.pinned && r.tag_name != g.tag && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
+            let known = rels.iter().any(|x| same_tag(&x.tag_name, &g.tag));
+            if !g.pinned && r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
                 out.insert(g.id.clone(), r.tag_name.clone());
             }
         }
@@ -5026,11 +5172,20 @@ fn linux_entry(v: &Value) -> Option<Value> {
     Some(out)
 }
 
+/// The release on offer is an older version than the one the player has (a version from somewhere
+/// else, like a game's own site, that isn't among its GitHub releases). Only when both read as
+/// version numbers.
+fn older_version(offer: &str, have: &str) -> bool {
+    let num = |s: &str| s.trim().trim_start_matches(['v', 'V']).starts_with(|c: char| c.is_ascii_digit());
+    num(offer) && num(have) && version_key(offer) < version_key(have)
+}
+
 /// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0 < 0.5.1: a beta comes before its release.
 fn version_key(s: &str) -> (u64, u64, u64, u64, u64, u64) {
     let s = s.trim().trim_start_matches(['v', 'V']);
     let (core, pre) = s.split_once('-').unwrap_or((s, ""));
-    let mut n = core.split('.').map(|p| p.trim().parse::<u64>().unwrap_or(0));
+    // Each part's leading digits ("10a" is 10).
+    let mut n = core.split('.').map(|p| p.trim().chars().take_while(char::is_ascii_digit).collect::<String>().parse::<u64>().unwrap_or(0));
     let (a, b, c) = (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0));
     if pre.is_empty() {
         return (a, b, c, 1, 0, 0);
@@ -6792,7 +6947,7 @@ pub fn run() {
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -6806,6 +6961,29 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_older_release_isnt_an_update() {
+        assert!(super::older_version("0.42", "1.0"));
+        assert!(super::older_version("v0.9.1", "1.0.0"));
+        assert!(!super::older_version("1.1", "1.0"));
+        assert!(!super::older_version("nightly-2026", "1.0"));
+        assert!(super::older_version("v1.9", "v1.10a"));
+    }
+
+    #[test]
+    fn the_players_copy_moves_out_before_uninstall() {
+        let d = std::env::temp_dir().join(format!("rl-keep-{}", std::process::id()));
+        let game = d.join("pokemon-platinum");
+        std::fs::create_dir_all(game.join("rom")).unwrap();
+        std::fs::write(game.join("rom/platinum.nds"), b"x").unwrap();
+        std::fs::create_dir_all(d.join("Game Copies/pokemon-platinum")).unwrap();
+        std::fs::write(d.join("Game Copies/pokemon-platinum/platinum.nds"), b"old").unwrap();
+        let to = super::save_copy_out(&game, "pokemon-platinum", &game.join("rom/platinum.nds")).unwrap();
+        assert_eq!(to, d.join("Game Copies/pokemon-platinum/platinum (2).nds"));
+        assert!(to.is_file() && !game.join("rom/platinum.nds").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn a_plain_start_script_gives_its_program() {
         let d = std::env::temp_dir().join(format!("rl-bat-{}", std::process::id()));

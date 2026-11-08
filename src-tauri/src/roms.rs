@@ -219,6 +219,10 @@ pub fn id_key(s: &str) -> String {
 /// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"). None when the file doesn't carry one this
 /// reads (a CHD, a folder, another console).
 pub fn copy_id(p: &Path) -> Option<String> {
+    // An extracted Xbox 360 disc: its default.xex says the title.
+    if p.is_dir() {
+        return xex_title(&mut fs::File::open(p.join("default.xex")).ok()?, 0);
+    }
     if !p.is_file() {
         return None;
     }
@@ -251,6 +255,64 @@ pub fn copy_id(p: &Path) -> Option<String> {
     }
     if let Iso::PlayStation(Some(cnf)) = iso_kind(&mut f) {
         return ps_serial(&cnf);
+    }
+    // Xbox 360: the title ID in default.xex, a picked one or the one on the disc image.
+    if head.starts_with(b"XEX2") {
+        return xex_title(&mut f, 0);
+    }
+    if let Some(at) = x360_default_xex(&mut f) {
+        return xex_title(&mut f, at);
+    }
+    None
+}
+
+/// The title ID ("454107EC") in an Xbox 360 program's header (XEX2) starting at `at`: in its
+/// execution info (optional header 0x00040006), after the media ID and two versions.
+fn xex_title(f: &mut fs::File, at: u64) -> Option<String> {
+    let be = |b: &[u8], i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    let mut head = [0u8; 0x18];
+    read_at(f, at, &mut head).ok()?;
+    if &head[..4] != b"XEX2" {
+        return None;
+    }
+    let count = be(&head, 0x14).min(64) as usize;
+    let mut opt = vec![0u8; count * 8];
+    read_at(f, at + 0x18, &mut opt).ok()?;
+    let info = opt.chunks(8).find(|c| be(c, 0) == 0x0004_0006).map(|c| be(c, 4) as u64)?;
+    let mut e = [0u8; 16];
+    read_at(f, at + info, &mut e).ok()?;
+    let id = be(&e, 12);
+    (id != 0).then(|| format!("{id:08X}"))
+}
+
+/// Where default.xex starts on an Xbox 360 disc image (its XDVDFS root folder), trimmed or full.
+fn x360_default_xex(f: &mut fs::File) -> Option<u64> {
+    for part in [0u64, 0x2080000, 0xFD90000] {
+        let mut m = [0u8; 28];
+        if read_at(f, part + 32 * 2048, &mut m).is_err() || !m.starts_with(b"MICROSOFT*XBOX*MEDIA") {
+            continue;
+        }
+        let le = |i: usize| u32::from_le_bytes([m[i], m[i + 1], m[i + 2], m[i + 3]]) as u64;
+        let (sector, size) = (le(20), le(24).min(256 * 1024) as usize);
+        let mut t = vec![0u8; size];
+        read_at(f, part + sector * 2048, &mut t).ok()?;
+        let mut pos = 0usize;
+        while pos + 14 <= t.len() {
+            if t[pos] == 0xFF && t[pos + 1] == 0xFF {
+                pos = (pos / 2048 + 1) * 2048;
+                continue;
+            }
+            let nl = t[pos + 13] as usize;
+            if nl == 0 || pos + 14 + nl > t.len() {
+                break;
+            }
+            let start = u32::from_le_bytes([t[pos + 4], t[pos + 5], t[pos + 6], t[pos + 7]]) as u64;
+            if t[pos + 14..pos + 14 + nl].eq_ignore_ascii_case(b"default.xex") && t[pos + 12] & 0x10 == 0 {
+                return Some(part + start * 2048);
+            }
+            pos = (pos + 14 + nl + 3) & !3;
+        }
+        return None;
     }
     None
 }
@@ -680,6 +742,42 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tiny XEX2 header with an execution info carrying this title ID.
+    fn xex(title: u32) -> Vec<u8> {
+        let mut b = vec![0u8; 0x100];
+        b[..4].copy_from_slice(b"XEX2");
+        b[0x14..0x18].copy_from_slice(&1u32.to_be_bytes());
+        b[0x18..0x1C].copy_from_slice(&0x0004_0006u32.to_be_bytes());
+        b[0x1C..0x20].copy_from_slice(&0x28u32.to_be_bytes());
+        b[0x28 + 12..0x28 + 16].copy_from_slice(&title.to_be_bytes());
+        b
+    }
+
+    #[test]
+    fn xbox_360_title_ids_are_read() {
+        let d = std::env::temp_dir().join(format!("rl-xex-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("disc")).unwrap();
+        std::fs::write(d.join("disc/default.xex"), xex(0x4541_07EC)).unwrap();
+        assert_eq!(copy_id(&d.join("disc")).as_deref(), Some("454107EC"));
+        assert_eq!(copy_id(&d.join("disc/default.xex")).as_deref(), Some("454107EC"));
+        // A trimmed disc image: the volume at sector 32, its root folder at sector 40 naming
+        // default.xex at sector 48.
+        let mut img = vec![0u8; 50 * 2048];
+        img[32 * 2048..32 * 2048 + 20].copy_from_slice(b"MICROSOFT*XBOX*MEDIA");
+        img[32 * 2048 + 20..32 * 2048 + 24].copy_from_slice(&40u32.to_le_bytes());
+        img[32 * 2048 + 24..32 * 2048 + 28].copy_from_slice(&2048u32.to_le_bytes());
+        let r = 40 * 2048;
+        img[r + 4..r + 8].copy_from_slice(&48u32.to_le_bytes());
+        img[r + 8..r + 12].copy_from_slice(&0x40u32.to_le_bytes());
+        img[r + 13] = 11;
+        img[r + 14..r + 25].copy_from_slice(b"default.xex");
+        img[r + 28..r + 2048].fill(0xFF);
+        img[48 * 2048..48 * 2048 + 0x100].copy_from_slice(&xex(0x4541_07EC));
+        std::fs::write(d.join("nfs.iso"), &img).unwrap();
+        assert_eq!(copy_id(&d.join("nfs.iso")).as_deref(), Some("454107EC"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn tmp(n: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("rl-roms-{n}-{}", std::process::id()));

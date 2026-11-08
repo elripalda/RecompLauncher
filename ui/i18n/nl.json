@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Weer aanzetten",
  "The crash window shows for it again.": "Het crashvenster verschijnt weer voor deze game.",
  "The crash window is off for some of its exits": "Het crashvenster staat uit voor sommige manieren waarop hij sluit",
- "You said you closed it yourself when it closed with code {code}.": "Je zei dat je hem zelf sloot toen hij met code {code} sloot."
+ "You said you closed it yourself when it closed with code {code}.": "Je zei dat je hem zelf sloot toen hij met code {code} sloot.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} is verwijderd. Je kopie van de game stond in de map ervan, dus die is bewaard in {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Het kwam met oudere kopieën van {files} dan Windows heeft, en gebruikt die in plaats daarvan. Zet ze opzij en het gebruikt de nieuwere van Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Je grafische driver is verouderd (de Vulkan ervan is {version}; recomps hebben 1.3 of nieuwer nodig). Werk hem bij via NVIDIA, AMD of Intel en speel opnieuw.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Het heeft {files} nodig, die het zelf maakt van je kopie van de game. Stel je gamekopie in (of start de setup ervan) en speel opnieuw.",
+ "Move Them Aside": "Opzijzetten",
+ "Moved aside: {files}. Press Play to try it.": "Opzijgezet: {files}. Druk op Spelen om het te proberen.",
+ "Nothing needed moving.": "Er hoefde niets opzij.",
+ "It came with old copies of files Windows has newer ones of": "Het kwam met oude kopieën van bestanden waarvan Windows nieuwere heeft",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: de game gebruikt deze in plaats van de nieuwere van Windows, en kan sluiten met \"een DLL die het nodig heeft is te oud\". Ze opzijzetten lost dat op.",
+ "Your graphics driver is out of date": "Je grafische driver is verouderd",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "De Vulkan ervan is versie {version}; recomps hebben 1.3 of nieuwer nodig. Werk je grafische driver bij via NVIDIA, AMD of Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Ontbreekt: {files}. De game maakt ze zelf van je kopie van de game, met de setup ervan. Stel je gamekopie in (of start de setup ervan) en druk dan opnieuw op Spelen.",
+ "Your Windows user folder's name has letters some games can't read": "De naam van je Windows-gebruikersmap heeft letters die sommige games niet kunnen lezen",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Sommige recomps bewaren saves en instellingen in je gebruikersmap ({folder}) en kunnen die niet openen als de naam accenten of niet-Engelse letters heeft. Sluit het meteen af, dan kan dat de reden zijn: laat het de ontwikkelaar weten.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} is verwijderd, maar de map is gebleven: je kopie van de game staat erin en kon niet worden verplaatst. Hij staat in {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Je kopie van de game stond in de map ervan, dus die is bewaard in {path}."
 }

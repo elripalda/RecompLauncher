@@ -56,7 +56,7 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         // its engine (CTR Nitro-Fueled, BotW Native), and "Crash" in a game's name doesn't read as
         // a crash handler. One outside its folder, or one the player picked, stays.
         let outside = g.exe.as_ref().map(|e| e.is_absolute()).unwrap_or(false);
-        let boot = crate::boot::of(&st.dir, id);
+        let boot = crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton));
         if !outside && g.exe_rules != u8::MAX {
             if let Some(e) = boot.as_ref().and_then(|b| b.start_in(&g.path)).or_else(|| install::find_game_exe(&g.path, os, &nr)) {
                 // Launch options were for the program it started before (a path to the game's files
@@ -73,7 +73,7 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         // the download that isn't that one is a tool, not the game, so the setup runs first.
         let mut redo = false;
         if let Some(want) = boot.as_ref().and_then(|b| b.then_start()).and_then(|t| t.file_name().map(|n| n.to_string_lossy().to_lowercase())) {
-            let wrong = |e: &PathBuf| e.file_name().map(|n| n.to_string_lossy().to_lowercase() != want).unwrap_or(true);
+            let wrong = |e: &PathBuf| e.file_name().map(|n| !crate::boot::name_fits(&want, &n.to_string_lossy())).unwrap_or(true);
             if g.exe.as_ref().map(|e| wrong(e) || !g.path.join(e).is_file()).unwrap_or(false) || (g.exe.is_none() && g.setup_done) {
                 // Left on a tool from the download (an older launcher's guess): the game it built,
                 // if it can be found, else its setup again (which picks up where it got to).
@@ -123,7 +123,7 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     // Set up, but the game it builds wasn't found then (the setup was still going, say): looked
     // for again, and when it's nowhere, its setup opens again to finish.
     if g.setup_done && g.exe.is_none() {
-        if let Some(want) = crate::boot::of(&st.dir, id).and_then(|b| b.then_name()) {
+        if let Some(want) = crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).and_then(|b| b.then_name()) {
             let since = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.installed_at);
             let mut near: Vec<PathBuf> = [Some(g.path.clone()), g.path.parent().map(Path::to_path_buf)].into_iter().flatten().collect();
             near.extend(player_places(st));
@@ -146,7 +146,7 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     }
     // Its setup ran, but what it makes isn't there (closed early, or the disc wasn't picked): it
     // hasn't finished, so it opens again instead of the game starting only to quit.
-    if g.setup_done && g.setup.is_some() && crate::boot::of(&st.dir, id).and_then(|b| b.not_made(&g.path)).is_some() {
+    if g.setup_done && g.setup.is_some() && crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).and_then(|b| b.not_made(&g.path)).is_some() {
         if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
             r.setup_done = false;
         }
@@ -155,7 +155,7 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     }
     // Updated before the launcher knew to run an installer again (the game it built is older than
     // the update): its setup runs once for this version, so the new version gets built.
-    if g.setup_done && g.setup.is_some() && crate::boot::of(&st.dir, id).map(|b| b.is_installer()).unwrap_or(false) {
+    if g.setup_done && g.setup.is_some() && crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).map(|b| b.is_installer()).unwrap_or(false) {
         let mark = st.dir.join("rebuilt").join(format!("{id}@{}", g.tag.replace(['/', '\\', ':'], "_")));
         let built = g.exe.as_ref().filter(|e| !e.is_absolute()).map(|e| g.path.join(e)).and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok());
         let updated = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.updated_at);
@@ -377,7 +377,7 @@ pub fn attach_built(st: &App, dir: &Path) -> Vec<(String, PathBuf, PathBuf)> {
         l.installed
             .values()
             .filter(|g| !g.local && !g.exe.as_ref().map(|e| g.path.join(e).is_file()).unwrap_or(false))
-            .filter_map(|g| crate::boot::of(&st.dir, &g.id).and_then(|b| b.then_name()).map(|w| (g.id.clone(), w)))
+            .filter_map(|g| crate::boot::of_build(&st.dir, &g.id, crate::boot::windows_build(g.proton)).and_then(|b| b.then_name()).map(|w| (g.id.clone(), w)))
             .collect()
     };
     let mut out = vec![];
@@ -390,7 +390,7 @@ pub fn attach_built(st: &App, dir: &Path) -> Vec<(String, PathBuf, PathBuf)> {
                 let n = e.file_name().to_string_lossy().to_lowercase();
                 if t.is_dir() && depth < 3 && !n.starts_with('.') {
                     stack.push((e.path(), depth + 1));
-                } else if t.is_file() && n == want {
+                } else if t.is_file() && crate::boot::name_fits(&want, &n) {
                     hit = Some(e.path());
                 }
             }
@@ -435,10 +435,10 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
     let os = crate::assets::os_now();
     let n = names(&g);
     let nr: Vec<&str> = n.iter().map(String::as_str).collect();
-    let want = crate::boot::of(&st.dir, id).and_then(|b| b.then_start()).and_then(|t| t.file_name().map(|n| n.to_string_lossy().to_lowercase()));
+    let want = crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).and_then(|b| b.then_start()).and_then(|t| t.file_name().map(|n| n.to_string_lossy().to_lowercase()));
     let usable = |g: &Installed| {
         g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e)).unwrap_or(false)
-            && want.as_ref().map(|w| g.exe.as_ref().and_then(|e| e.file_name()).map(|n| n.to_string_lossy().to_lowercase() == *w).unwrap_or(false)).unwrap_or(true)
+            && want.as_ref().map(|w| g.exe.as_ref().and_then(|e| e.file_name()).map(|n| crate::boot::name_fits(w, &n.to_string_lossy())).unwrap_or(false)).unwrap_or(true)
     };
     let installer = g.exe.as_ref().map(|e| e.is_absolute()).unwrap_or(true);
     if !usable(&g) {
@@ -446,7 +446,7 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
     }
     // An installer: where it put the game. Looked at again after an update too, in case it moved.
     if installer && (!usable(&g) || g.exe.as_ref().map(|e| e.is_absolute()).unwrap_or(false)) {
-        let then = crate::boot::of(&st.dir, id).and_then(|b| b.then_start());
+        let then = crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).and_then(|b| b.then_start());
         if let Some((exe, args)) = installed_elsewhere(&nr, since, &g.path, then.as_deref()) {
             g.exe = Some(exe);
             if g.args.trim().is_empty() {
@@ -618,7 +618,7 @@ pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<Pat
                     if d < depth && !skip.contains(&name.as_str()) && search_into(&name) {
                         stack.push((e.path(), d + 1));
                     }
-                } else if name == want {
+                } else if crate::boot::name_fits(&want, &name) {
                     let made = e.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
                     if made >= since && best.as_ref().map(|b| made > b.0).unwrap_or(true) {
                         best = Some((made, e.path()));
@@ -648,7 +648,7 @@ fn in_program_files(file: &str) -> Option<PathBuf> {
                 continue;
             }
             for f in std::fs::read_dir(e.path()).into_iter().flatten().flatten() {
-                if f.file_name().to_string_lossy().to_lowercase() == want && f.path().is_file() {
+                if crate::boot::name_fits(&want, &f.file_name().to_string_lossy()) && f.path().is_file() {
                     return Some(f.path());
                 }
             }

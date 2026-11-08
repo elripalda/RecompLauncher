@@ -517,5 +517,21 @@
  "Turn It Back On": "La réactiver",
  "The crash window shows for it again.": "La fenêtre de plantage s’affiche de nouveau pour ce jeu.",
  "The crash window is off for some of its exits": "La fenêtre de plantage est désactivée pour certaines de ses fermetures",
- "You said you closed it yourself when it closed with code {code}.": "Vous avez dit l’avoir fermé vous-même quand il s’est fermé avec le code {code}."
+ "You said you closed it yourself when it closed with code {code}.": "Vous avez dit l’avoir fermé vous-même quand il s’est fermé avec le code {code}.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} est désinstallé. Ta copie du jeu était dans son dossier, elle est donc conservée dans {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Il est venu avec des copies de {files} plus anciennes que celles de Windows, et les utilise à leur place. Mets-les de côté et il utilisera les plus récentes de Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Ton pilote graphique n'est pas à jour (son Vulkan est en {version} ; les recomps ont besoin de la 1.3 ou plus). Mets-le à jour depuis NVIDIA, AMD ou Intel, puis rejoue.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Il a besoin de {files}, qu'il crée lui-même à partir de ta copie du jeu. Configure ta copie du jeu (ou lance son installation), puis rejoue.",
+ "Move Them Aside": "Mettre de côté",
+ "Moved aside: {files}. Press Play to try it.": "Mis de côté : {files}. Appuie sur Jouer pour essayer.",
+ "Nothing needed moving.": "Rien n'avait besoin d'être mis de côté.",
+ "It came with old copies of files Windows has newer ones of": "Il est venu avec d'anciennes copies de fichiers dont Windows a des versions plus récentes",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files} : le jeu les utilise à la place des versions plus récentes de Windows, et peut se fermer avec « une DLL nécessaire est trop ancienne ». Les mettre de côté règle ça.",
+ "Your graphics driver is out of date": "Ton pilote graphique n'est pas à jour",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Son Vulkan est en version {version} ; les recomps ont besoin de la 1.3 ou plus. Mets à jour ton pilote graphique depuis NVIDIA, AMD ou Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Manquant : {files}. Le jeu les crée lui-même à partir de ta copie du jeu, avec son installation. Configure ta copie du jeu (ou lance son installation), puis appuie de nouveau sur Jouer.",
+ "Your Windows user folder's name has letters some games can't read": "Le nom de ton dossier utilisateur Windows contient des lettres que certains jeux ne savent pas lire",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Certains recomps gardent leurs sauvegardes et réglages dans ton dossier utilisateur ({folder}) et ne peuvent pas l'ouvrir quand son nom contient des accents ou des lettres non anglaises. S'il se ferme tout de suite, c'est peut-être pour ça : préviens son développeur.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} est désinstallé, mais son dossier est resté : ta copie du jeu est dedans et n'a pas pu être déplacée. Il est dans {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Ta copie du jeu était dans son dossier, elle est donc conservée dans {path}."
 }

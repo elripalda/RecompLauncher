@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Bật lại",
  "The crash window shows for it again.": "Cửa sổ báo lỗi sẽ hiện lại cho trò chơi này.",
  "The crash window is off for some of its exits": "Cửa sổ báo lỗi đang tắt cho một số kiểu đóng của trò chơi",
- "You said you closed it yourself when it closed with code {code}.": "Bạn đã nói bạn tự đóng khi nó đóng với mã {code}."
+ "You said you closed it yourself when it closed with code {code}.": "Bạn đã nói bạn tự đóng khi nó đóng với mã {code}.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "Đã gỡ {name}. Bản sao trò chơi của bạn nằm trong thư mục của nó, nên đã được giữ lại tại {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Nó đi kèm các bản {files} cũ hơn bản của Windows và dùng chúng thay thế. Hãy để chúng sang một bên để nó dùng bản mới hơn của Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Trình điều khiển đồ họa của bạn đã cũ (Vulkan của nó là {version}; recomp cần 1.3 trở lên). Hãy cập nhật từ NVIDIA, AMD hoặc Intel rồi chơi lại.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Nó cần {files}, những tệp nó tự tạo từ bản sao trò chơi của bạn. Hãy thiết lập bản sao trò chơi (hoặc chạy trình cài đặt của nó) rồi chơi lại.",
+ "Move Them Aside": "Để sang một bên",
+ "Moved aside: {files}. Press Play to try it.": "Đã để sang một bên: {files}. Nhấn Chơi để thử.",
+ "Nothing needed moving.": "Không có gì cần để sang một bên.",
+ "It came with old copies of files Windows has newer ones of": "Nó đi kèm các bản cũ của những tệp mà Windows có bản mới hơn",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: trò chơi dùng các tệp này thay vì bản mới hơn của Windows, và có thể đóng với lỗi \"một DLL cần thiết quá cũ\". Để chúng sang một bên sẽ khắc phục được.",
+ "Your graphics driver is out of date": "Trình điều khiển đồ họa của bạn đã cũ",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Vulkan của nó là phiên bản {version}; recomp cần 1.3 trở lên. Hãy cập nhật trình điều khiển đồ họa từ NVIDIA, AMD hoặc Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Thiếu: {files}. Trò chơi tự tạo chúng từ bản sao trò chơi của bạn bằng trình cài đặt của nó. Hãy thiết lập bản sao trò chơi (hoặc chạy trình cài đặt của nó) rồi nhấn Chơi lại.",
+ "Your Windows user folder's name has letters some games can't read": "Tên thư mục người dùng Windows của bạn có chữ cái mà một số trò chơi không đọc được",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Một số recomp lưu dữ liệu chơi và cài đặt trong thư mục người dùng của bạn ({folder}) và không mở được nếu tên có dấu hoặc chữ ngoài tiếng Anh. Nếu nó đóng ngay, có thể là do vậy: hãy báo cho nhà phát triển.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "Đã gỡ {name}, nhưng thư mục của nó vẫn còn: bản sao trò chơi của bạn nằm bên trong và không chuyển ra được. Thư mục ở {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Bản sao trò chơi của bạn nằm trong thư mục của nó, nên đã được giữ lại tại {path}."
 }

@@ -2180,5 +2180,21 @@
  "Turn It Back On": "重新開啟",
  "The crash window shows for it again.": "這款遊戲的當機視窗會重新出現。",
  "The crash window is off for some of its exits": "部分關閉方式的當機視窗已關閉",
- "You said you closed it yourself when it closed with code {code}.": "您說過，它以代碼 {code} 關閉時是您自己關的。"
+ "You said you closed it yourself when it closed with code {code}.": "您說過，它以代碼 {code} 關閉時是您自己關的。",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} 已解除安裝。你的遊戲副本在它的資料夾裡，所以已保留在 {path}。",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "它附帶的 {files} 比 Windows 的舊，而且用的是這些。把它們移到一旁，它就會使用 Windows 較新的版本。",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "你的顯示卡驅動程式已過時（其 Vulkan 為 {version}；重編譯遊戲需要 1.3 或更新）。請從 NVIDIA、AMD 或 Intel 更新，然後再玩一次。",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "它需要 {files}，這些是它根據你的遊戲副本自行產生的。請設定你的遊戲副本（或執行它的安裝程式），然後再玩一次。",
+ "Move Them Aside": "移到一旁",
+ "Moved aside: {files}. Press Play to try it.": "已移到一旁：{files}。按「開始遊戲」試試看。",
+ "Nothing needed moving.": "沒有需要移開的檔案。",
+ "It came with old copies of files Windows has newer ones of": "它附帶了一些舊檔案，Windows 有較新的版本",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}：遊戲使用這些而不是 Windows 較新的版本，可能會因「所需的 DLL 太舊」而關閉。把它們移到一旁即可解決。",
+ "Your graphics driver is out of date": "你的顯示卡驅動程式已過時",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "其 Vulkan 版本為 {version}；重編譯遊戲需要 1.3 或更新。請從 NVIDIA、AMD 或 Intel 更新顯示卡驅動程式。",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "缺少：{files}。遊戲會透過它的安裝程式，根據你的遊戲副本自行產生這些檔案。請設定你的遊戲副本（或執行它的安裝程式），然後再按「開始遊戲」。",
+ "Your Windows user folder's name has letters some games can't read": "你的 Windows 使用者資料夾名稱含有某些遊戲無法讀取的字元",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "有些重編譯遊戲把存檔和設定放在你的使用者資料夾（{folder}）中，名稱含有重音或非英文字母時無法開啟。如果它立即關閉，可能就是這個原因：請告訴它的開發者。",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} 已解除安裝，但它的資料夾還在：你的遊戲副本在裡面，無法移出。它位於 {path}。",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "你的遊戲副本在它的資料夾裡，所以已保留在 {path}。"
 }

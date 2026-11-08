@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Włącz ponownie",
  "The crash window shows for it again.": "Okno awarii znów będzie się pokazywać dla tej gry.",
  "The crash window is off for some of its exits": "Okno awarii jest wyłączone dla niektórych sposobów zamknięcia",
- "You said you closed it yourself when it closed with code {code}.": "Powiedziałeś, że sam ją zamknąłeś, gdy zamknęła się z kodem {code}."
+ "You said you closed it yourself when it closed with code {code}.": "Powiedziałeś, że sam ją zamknąłeś, gdy zamknęła się z kodem {code}.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} odinstalowano. Twoja kopia gry była w jej folderze, więc została zachowana w {path}.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Przyszła ze starszymi kopiami {files} niż ma Windows i używa ich zamiast nowszych. Odłóż je na bok, a użyje nowszych z Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Twój sterownik grafiki jest nieaktualny (jego Vulkan to {version}; recompy potrzebują 1.3 lub nowszego). Zaktualizuj go od NVIDIA, AMD lub Intel, a potem zagraj ponownie.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Potrzebuje {files}, które tworzy sama z twojej kopii gry. Skonfiguruj swoją kopię gry (albo uruchom jej instalator), a potem zagraj ponownie.",
+ "Move Them Aside": "Odłóż na bok",
+ "Moved aside: {files}. Press Play to try it.": "Odłożono na bok: {files}. Naciśnij Graj, żeby spróbować.",
+ "Nothing needed moving.": "Nie było czego odkładać.",
+ "It came with old copies of files Windows has newer ones of": "Przyszła ze starymi kopiami plików, których nowsze wersje ma Windows",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: gra używa ich zamiast nowszych z Windows i może się zamknąć z komunikatem „potrzebna biblioteka DLL jest za stara”. Odłożenie ich na bok to naprawia.",
+ "Your graphics driver is out of date": "Twój sterownik grafiki jest nieaktualny",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Jego Vulkan to wersja {version}; recompy potrzebują 1.3 lub nowszego. Zaktualizuj sterownik grafiki od NVIDIA, AMD lub Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Brakuje: {files}. Gra tworzy je sama z twojej kopii gry, swoim instalatorem. Skonfiguruj swoją kopię gry (albo uruchom jej instalator), a potem znowu naciśnij Graj.",
+ "Your Windows user folder's name has letters some games can't read": "Nazwa twojego folderu użytkownika Windows ma litery, których niektóre gry nie potrafią odczytać",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Niektóre recompy trzymają zapisy i ustawienia w twoim folderze użytkownika ({folder}) i nie mogą go otworzyć, gdy jego nazwa ma znaki diakrytyczne lub litery spoza angielskiego. Jeśli gra od razu się zamyka, to może być powód: daj znać jej twórcy.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} odinstalowano, ale jej folder został: jest w nim twoja kopia gry, której nie dało się przenieść. Jest w {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Twoja kopia gry była w jej folderze, więc została zachowana w {path}."
 }

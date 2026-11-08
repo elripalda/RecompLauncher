@@ -2180,5 +2180,21 @@
  "Turn It Back On": "Wieder einschalten",
  "The crash window shows for it again.": "Das Absturzfenster erscheint für das Spiel wieder.",
  "The crash window is off for some of its exits": "Das Absturzfenster ist für manche Arten, wie es sich schließt, aus",
- "You said you closed it yourself when it closed with code {code}.": "Du hast gesagt, dass du es selbst geschlossen hast, als es mit Code {code} beendet wurde."
+ "You said you closed it yourself when it closed with code {code}.": "Du hast gesagt, dass du es selbst geschlossen hast, als es mit Code {code} beendet wurde.",
+ "{name} is uninstalled. Your copy of the game was inside its folder, so it's kept in {path}.": "{name} ist deinstalliert. Deine Kopie des Spiels lag in seinem Ordner, deshalb wurde sie in {path} aufbewahrt.",
+ "It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows' newer ones.": "Es kam mit älteren Kopien von {files}, als Windows sie hat, und nutzt diese stattdessen. Schieb sie beiseite, dann nutzt es die neueren von Windows.",
+ "Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.": "Dein Grafiktreiber ist veraltet (sein Vulkan ist {version}; Recomps brauchen 1.3 oder neuer). Aktualisiere ihn bei NVIDIA, AMD oder Intel und spiel dann noch mal.",
+ "It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.": "Es braucht {files}, die es selbst aus deiner Kopie des Spiels erstellt. Richte deine Spielkopie ein (oder starte sein Setup) und spiel dann noch mal.",
+ "Move Them Aside": "Beiseiteschieben",
+ "Moved aside: {files}. Press Play to try it.": "Beiseitegeschoben: {files}. Drück auf Spielen, um es zu versuchen.",
+ "Nothing needed moving.": "Es musste nichts beiseitegeschoben werden.",
+ "It came with old copies of files Windows has newer ones of": "Es kam mit alten Kopien von Dateien, die Windows in neuerer Version hat",
+ "{files}: the game uses these instead of Windows' newer ones, and may close with \"a DLL it needs is too old\". Moving them aside fixes that.": "{files}: Das Spiel nutzt diese statt der neueren von Windows und kann mit „eine benötigte DLL ist zu alt“ schließen. Sie beiseitezuschieben behebt das.",
+ "Your graphics driver is out of date": "Dein Grafiktreiber ist veraltet",
+ "Its Vulkan is version {version}; recomps need 1.3 or newer. Update your graphics driver from NVIDIA, AMD or Intel.": "Sein Vulkan ist Version {version}; Recomps brauchen 1.3 oder neuer. Aktualisiere deinen Grafiktreiber bei NVIDIA, AMD oder Intel.",
+ "Missing: {files}. The game makes them itself from your copy of the game, with its setup. Set up your game copy (or run its setup), then press Play again.": "Fehlt: {files}. Das Spiel erstellt sie selbst aus deiner Kopie des Spiels, mit seinem Setup. Richte deine Spielkopie ein (oder starte sein Setup) und drück dann noch mal auf Spielen.",
+ "Your Windows user folder's name has letters some games can't read": "Der Name deines Windows-Benutzerordners hat Buchstaben, die manche Spiele nicht lesen können",
+ "Some recomps keep saves and settings in your user folder ({folder}) and can't open it when its name has accents or letters outside English. If it closes right away, that may be why: tell its developer.": "Manche Recomps legen Spielstände und Einstellungen in deinem Benutzerordner ({folder}) ab und können ihn nicht öffnen, wenn sein Name Akzente oder nicht-englische Buchstaben hat. Wenn es sich sofort schließt, kann das der Grund sein: Sag es seinem Entwickler.",
+ "{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn't be moved out. It's in {path}.": "{name} ist deinstalliert, aber sein Ordner ist geblieben: Deine Kopie des Spiels liegt darin und konnte nicht verschoben werden. Er ist in {path}.",
+ "Your copy of the game was inside its folder, so it's kept in {path}.": "Deine Kopie des Spiels lag in seinem Ordner, deshalb wurde sie in {path} aufbewahrt."
 }
