@@ -245,6 +245,12 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
 fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Vec<Item>) -> u8 {
     let mut level = 0u8;
     // Level 1: start and game
+    if !p.inputs.is_empty() {
+        match crate::inputs::validate(p) {
+            Ok(()) => items.push(ok(format!("{} named setup inputs; multidisc hashing deferred", p.inputs.len()))),
+            Err(why) => items.push(err("Invalid named setup inputs", why)),
+        }
+    }
     match p.start.as_ref() {
         None => items.push(warn("No \"start\"", "Play starts the program the launcher found, with no arguments of yours.")),
         Some(s) if s.program.is_empty() => items.push(err("\"start.program\" is empty", "List the path of your program, from the top of your release.")),

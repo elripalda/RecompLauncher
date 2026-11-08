@@ -1132,7 +1132,7 @@ function discoverGrid() {
 function libFilterOk() {
   const f = S.lib.filter;
   const any = f === 'update' ? Object.keys(S.updates).some((id) => S.library[id])
-    : f === 'setup' ? Object.values(S.library).some((g) => S.easy.has(g.id) && !g.game_copy)
+    : f === 'setup' ? Object.values(S.library).some(needsCopySetup)
       : f === 'fav' ? favs().length > 0 : f === 'saved' || f === 'inst' ? savedItems().length > 0 : true;
   if (!any) S.lib.filter = 'all';
   if (S.lib.origin && !Object.values(S.library).some((g) => (byId(g.id) || {}).origin === S.lib.origin)) S.lib.origin = '';
@@ -1149,7 +1149,7 @@ function libList() {
   if (S.lib.filter === 'inst') list = list.filter((x) => !x.saved);
   if (S.lib.filter === 'update') list = list.filter((x) => S.updates[x.g.id]);
   // Installed games still waiting for the player's copy (as its count says); saved ones are under Not Installed.
-  if (S.lib.filter === 'setup') list = list.filter((x) => !x.saved && S.easy.has(x.g.id) && !x.g.game_copy);
+  if (S.lib.filter === 'setup') list = list.filter((x) => !x.saved && needsCopySetup(x.g));
   if (S.lib.filter === 'fav') list = list.filter((x) => favs().includes(x.g.id));
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
   if (q) list = list.filter((x) => fold([x.a.name, x.a.game].join(' ')).includes(q));
@@ -1179,7 +1179,7 @@ function pageLibrary() {
       <h2>${esc(t('Nothing installed yet'))}</h2><p>${esc(t('Pick a recomp in Discover and install it. It shows up here, ready to play.'))}</p><div class="acts"><button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button><button type="button" class="btn main" data-go="discover">${esc(t('Discover recomps'))}</button>${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}</div></div></div>`;
   }
   const n = Object.keys(S.updates).filter((id) => S.library[id]).length;
-  const setup = Object.values(S.library).filter((g) => S.easy.has(g.id) && !g.game_copy).length;
+  const setup = Object.values(S.library).filter(needsCopySetup).length;
   const nf = favs().length;
   // Consoles the player's games are from: a filter once there's more than one.
   const origins = [...new Set(Object.values(S.library).map((g) => (byId(g.id) || {}).origin).filter(Boolean))];
@@ -1697,7 +1697,12 @@ async function pickCopy(id, folder) {
   return true;
 }
 // The game's update, when it needs one beside the copy and it isn't in yet.
-function needUpdate(su) { return !!(su && su.update && !su.update_copy && !su.update_optional); }
+function needsCopySetup(g) {
+  const su = S.setup[g.id];
+  const named = su && su !== 'loading' && su.inputs?.length ? !su.inputs_ready : Object.keys(g.setup_inputs || {}).length > 0 && !g.inputs_ready;
+  return S.easy.has(g.id) && (!g.game_copy || named);
+}
+function needUpdate(su) { return !!(su && ((su.inputs?.length && !su.inputs_ready) || su.inputs_error || (su.update && !su.update_copy && !su.update_optional))); }
 async function pickUpdate(id, folder) {
   const p = await pickFile(folder ? { title: t('The update\'s folder'), directory: true } : { title: t('The game\'s update'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] }).catch(fail);
   if (!p) return null;
@@ -1714,6 +1719,7 @@ async function setupModal(id) {
   if (S.setup[id] === undefined || S.setup[id] === 'loading') { try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; } }
   const su = S.setup[id];
   if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
+  if (su.inputs?.length || su.inputs_error) return namedSetup(id);
   closeSetup(true);
   Object.assign(SU, { id, stage: needUpdate(su) && su.copy ? 'update' : 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: S.setupNote && S.setupNote.id === id ? S.setupNote.text : '' });
   S.setupNote = null;
@@ -1749,7 +1755,7 @@ async function suAct(b) {
       if (p) suBegin(typeof p === 'string' ? p : p.path);
       return;
     }
-    case 'again': SU.stage = 'pick'; SU.err = ''; return suDraw();
+    case 'again': if (S.setup[id]?.inputs?.length) return namedSetup(id); SU.stage = 'pick'; SU.err = ''; return suDraw();
     case 'anyway': return suBegin(SU.path, true);
     case 'manual': { const gid = SU.id; closeSetup(true); return manualModal(gid); }
     case 'ufile': case 'ufolder': {

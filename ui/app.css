@@ -588,6 +588,39 @@ body.mini-side .island{--side-w:76px}
 .su-ok{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 13px;border-radius:15px;background:rgba(52,242,232,.12);color:var(--cyan);font-weight:700;font-size:12.5px;align-self:flex-start}
 .su-ok.plain{background:var(--fill2);color:var(--muted)}
 .su-r .picks .btn{width:100%}
+.modal.ni-modal{width:min(960px,94vw);max-height:90vh;padding:0;overflow:hidden}
+.ni-layout{min-height:520px;max-height:90vh;grid-template-columns:320px minmax(0,1fr)}
+.ni-layout .ni-content{max-height:90vh;padding:34px 30px;overflow:hidden}
+.ni-art .ni-disc-summary{position:absolute;bottom:24px;left:20px;right:20px;text-align:center;font-size:13px;color:var(--muted);margin:0}
+.ni-content,.ni-tv{display:flex;flex-direction:column;min-height:0;gap:18px}
+.ni-heading{padding-right:20px;flex-shrink:0}
+.ni-heading h2{font-size:25px;margin:0 0 6px}
+.ni-heading p,.ni-footer p{color:var(--muted);margin:0;font-size:13px}
+.ni-scroll{overflow-y:auto;min-height:0;padding:0 6px 4px 0;flex:1}
+.ni-group + .ni-group{margin-top:20px}
+.ni-group h3{font-size:13px;color:var(--muted);margin:0 0 8px;font-weight:650}
+.ni-row{display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 0;border-bottom:1px solid var(--line)}
+.ni-status{display:grid;place-items:center;width:22px;flex-shrink:0;color:var(--dim)}
+.ni-row.selected .ni-status{color:var(--cyan)}
+.ni-status svg{width:18px;height:18px}
+.ni-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ni-name b{font-size:14px;overflow-wrap:anywhere}
+.ni-name span{font-size:12px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ni-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:52%}
+.ni-actions .btn{min-height:34px}
+.ni-optional{margin-top:16px}
+.ni-optional-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;text-align:left;color:var(--ink);font-size:13px;font-weight:600;border-radius:8px;padding:8px 4px}
+.ni-optional-toggle:hover{background:var(--fill2)}
+.ni-optional-count{color:var(--muted);font-weight:400;margin-left:8px}
+.ni-optional-toggle svg{flex-shrink:0;transition:transform .18s var(--ease)}
+.ni-optional-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+.ni-optional .ni-group h3{display:none}
+.ni-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-top:4px;flex-shrink:0}
+.ni-footer p{max-width:48ch;line-height:1.5}
+.ni-footer .btn{flex-shrink:0}
+.ni-notice p{margin:0 0 10px;color:var(--muted)}
+@media(max-width:1060px){.ni-modal .ni-layout{grid-template-columns:1fr;grid-template-rows:180px minmax(0,1fr);min-height:0;height:min(760px,90vh)}.ni-layout .ni-art{min-height:0}.ni-art .sdisc{width:120px;height:120px;margin-bottom:30px}.ni-art .drive{bottom:26px;left:20%;right:20%}.ni-art .ni-disc-summary{bottom:5px;font-size:12px}.ni-layout .ni-content{max-height:none;padding:22px 26px}}
+@media(max-width:600px){.ni-layout .ni-content{padding:20px 18px}.ni-row{flex-wrap:wrap}.ni-name{min-width:55%}.ni-actions{margin-left:34px;max-width:100%;justify-content:flex-start}.ni-footer{align-items:stretch;flex-direction:column;gap:10px}}
 .su-err{color:#ffc2c2}
 
 /* ---------- moving in ---------- */

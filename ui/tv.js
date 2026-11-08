@@ -1765,7 +1765,7 @@
     const su = S.setup[id];
     if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
     if (TV.sheet) closeSheet();
-    Object.assign(TS, { id, stage: su.copy && su.update && !su.update_copy && !su.update_optional ? 'update' : 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
+    Object.assign(TS, { id, stage: su.inputs?.length || su.inputs_error ? 'inputs' : su.copy && su.update && !su.update_copy && !su.update_optional ? 'update' : 'pick', named: {}, step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
     tsDraw();
     sfx('open');
   }
@@ -1776,12 +1776,15 @@
     let el = $('.tv-setup:not(.out)', st);
     const prevKey = (focused() || {}).dataset?.key;
     if (!el) { el = document.createElement('div'); el.className = 'tv-sheet tv-setup'; st.append(el); }
+    const namedScroll = $('.ni-scroll', el)?.scrollTop || 0;
     const cov = a.cover ? media(a.cover) : '';
     const label = `<div class="lab">${cov ? `<img src="${esc(cov)}" alt="">` : ''}</div><div class="sheen"></div><div class="hub"></div><div class="hole"></div>`;
     let items = [], body = '';
     const it = (label, sub, run, cls = '') => { items.push({ run }); const i = items.length - 1; return `<button type="button" class="tv-item ${cls}" data-f data-key="ts:${i}" data-sheet="${i}"><span class="k">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`; };
     const pickIt = async (folder) => { const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(TS.id)).catch(fail); if (p) tsBegin(typeof p === 'string' ? p : p.path); else tsDraw(); };
-    if (TS.stage === 'pick') {
+    if (TS.stage === 'inputs') {
+      body = namedInputsShell(id, su, TS.named, a, true);
+    } else if (TS.stage === 'pick') {
       const own = S.owned[id];
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
         <div class="opts">${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? it(t('Choose a disc image'), t('An .iso of your disc'), () => pickIt(false)) : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
@@ -1824,11 +1827,28 @@
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('This Looks Like Another Copy'))}</h2><p>${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))} ${esc(t('Another region or version of the game may not work with it.'))}</p></div>
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
-      items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }];
+      items = [{ run: () => { TS.stage = S.setup[id]?.inputs?.length ? 'inputs' : 'pick'; TS.named = {}; setTimeout(tsDraw, 0); } }];
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
+    if (TS.stage === 'inputs') {
+      $('.ni-scroll', el).scrollTop = namedScroll;
+      $$('[data-ni]', el).forEach((b) => {
+        if (b.disabled || b.closest('[hidden]')) return;
+        const at = items.length, act = b.dataset.ni, input = b.dataset.input;
+        b.dataset.f = ''; b.dataset.key = 'ni:' + at; b.dataset.sheet = at;
+        items.push({ run: async () => {
+          const pending = namedInputsAction(id, act, input, TS.named); tsDraw();
+          const result = await pending;
+          if (TS.id !== id) return;
+          if (result === 'run') {
+            Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' }); tsDraw();
+            try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e?.message || e); tsDraw(); }
+          } else { tsDraw(); const restore = $(`[data-key="ni:${at}"]`, el); if (restore) focus(restore, true); }
+        } });
+      });
+    }
     // B leaves: it stops a setup that's running.
     TV.sheet = { items, keep: TS.stage !== 'ready', prev: TV.sheet ? TV.sheet.prev : prevKey, onClose: () => { if (TS.stage === 'run') invoke('setup_cancel', { id }).catch(() => {}); if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); } TS.id = null; } };
     const f = $('[data-sheet]', el);
@@ -2115,6 +2135,13 @@
     if (down) down.style.opacity = y > 60 ? '0' : '';
   }
   function keepInView(el, instant) {
+    const inputs = el.closest('.ni-scroll');
+    if (inputs) {
+      const top = (el.getBoundingClientRect().top - inputs.getBoundingClientRect().top) / (TV.k || 1) + inputs.scrollTop;
+      if (top < inputs.scrollTop + 12) inputs.scrollTo({ top: Math.max(0, top - 12), behavior: instant ? 'auto' : 'smooth' });
+      else if (top + el.offsetHeight > inputs.scrollTop + inputs.clientHeight - 12) inputs.scrollTo({ top: top + el.offsetHeight - inputs.clientHeight + 12, behavior: instant ? 'auto' : 'smooth' });
+      return;
+    }
     const r = el.closest('.tv-row');
     if (r) {
       const view = r.parentElement, items = $$('[data-f]', r);

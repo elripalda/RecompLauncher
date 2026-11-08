@@ -14,6 +14,11 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Profile {
+    /// Named disc/DLC inputs and explicit key dependencies. See docs/SETUP-INPUTS.md.
+    #[serde(default)]
+    pub inputs: Vec<crate::inputs::Input>,
+    #[serde(skip)]
+    pub input_paths: BTreeMap<String, PathBuf>,
     #[serde(default)]
     pub format: u32,
     /// GitHub repo this built-in profile is for.
@@ -1293,7 +1298,10 @@ impl Profile {
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
         let _w = WineFill::new(self.through_proton(install));
-        self.start.as_ref().map(|s| s.env.iter().filter(|(k, _)| env_name_ok(k)).map(|(k, v)| (k.clone(), fill(v, install, game))).collect()).unwrap_or_default()
+        self.start.as_ref().map(|s| s.env.iter().filter(|(k, _)| env_name_ok(k)).filter_map(|(k, v)| {
+            let value = crate::inputs::expand(&fill(v, install, game), &self.input_paths, self.through_proton(install));
+            (!value.contains("{input:")).then(|| (k.clone(), value))
+        }).collect()).unwrap_or_default()
     }
 
     pub fn command(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Option<(PathBuf, Vec<String>)> {
@@ -1321,7 +1329,7 @@ impl Profile {
             }
             args.extend(self.slider_args(st).into_iter().map(|a| fill(&a, install, game)));
         }
-        args
+        crate::inputs::arguments(&args, &self.input_paths, self.through_proton(install))
     }
 
     /// A command-line slider the player moved: its arguments with the number in place of {value}.

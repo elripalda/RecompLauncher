@@ -135,6 +135,7 @@ fn player_files_within(dir: &Path, release: &[PathBuf]) -> Option<Vec<PathBuf>> 
             }
             let p = e.path();
             let Ok(m) = e.metadata() else { continue };
+            if p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(".recomplauncher-input-") || ["prod.keys", "title.keys", "common.key"].iter().any(|s| n.eq_ignore_ascii_case(s))) { continue; }
             if m.is_dir() {
                 let name = e.file_name().to_string_lossy().to_lowercase();
                 if !DATA_DIRS.contains(&name.as_str()) {

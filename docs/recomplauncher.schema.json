@@ -8,6 +8,40 @@
     "format"
   ],
   "properties": {
+    "inputs": {
+      "type": "array",
+      "maxItems": 32,
+      "description": "Named game/disc/DLC inputs and explicit shared-key requirements. See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
+      "items": {
+        "type": "object",
+        "required": ["id", "label"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+          "label": {"type": "string", "minLength": 1},
+          "role": {"enum": ["game", "disc", "dlc", "update", "key"], "default": "game"},
+          "optional": {"type": "boolean", "default": false},
+          "shared": {"enum": ["switch.prod-keys", "switch.title-keys", "wiiu.common-key"]},
+          "destination": {"type": "string", "pattern": "^(?!/)(?!.*(?:\\\\|:|[{}]))(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//).+[^/]$", "description": "Optional installation-relative file path. No folders, absolute paths, parent components or placeholders."},
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {"enum": ["file", "folder"]},
+                "extensions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9]+$"}},
+                "requires": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "description": "IDs of required shared-key inputs in this manifest, activated only for this selected format."}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "allOf": [
+          {"if": {"required": ["shared"]}, "then": {"required": ["role"], "properties": {"role": {"const": "key"}, "optional": {"const": false}}, "not": {"required": ["formats"]}}, "else": {"required": ["formats"], "properties": {"formats": {"minItems": 1}, "role": {"enum": ["game", "disc", "dlc", "update"]}}}}
+        ],
+        "additionalProperties": false
+      }
+    },
     "$schema": {
       "type": "string"
     },

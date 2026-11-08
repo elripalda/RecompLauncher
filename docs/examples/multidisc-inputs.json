@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "inputs": [
+    {"id": "disc1", "label": "Disc 1", "role": "disc", "formats": [{"type": "file", "extensions": ["iso"]}]},
+    {"id": "disc2", "label": "Disc 2", "role": "disc", "formats": [{"type": "file", "extensions": ["iso"]}]},
+    {"id": "disc3", "label": "Disc 3", "role": "disc", "formats": [{"type": "file", "extensions": ["iso"]}]},
+    {"id": "disc4", "label": "Disc 4", "role": "disc", "formats": [{"type": "file", "extensions": ["iso"]}]},
+    {"id": "dlc1", "label": "DLC pack 1", "role": "dlc", "optional": true, "formats": [{"type": "file"}]},
+    {"id": "dlc2", "label": "DLC pack 2", "role": "dlc", "optional": true, "formats": [{"type": "file"}]},
+    {"id": "dlc3", "label": "DLC pack 3", "role": "dlc", "optional": true, "formats": [{"type": "file"}]}
+  ],
+  "prepare": {
+    "program": ["example-importer.exe"],
+    "args": ["--disc1={input:disc1}", "--disc2={input:disc2}", "--disc3={input:disc3}", "--disc4={input:disc4}", "--dlc1={input:dlc1}", "--dlc2={input:dlc2}", "--dlc3={input:dlc3}"],
+    "label": "Preparing your game",
+    "timeout": 1800
+  },
+  "start": {"program": ["example-game.exe"]}
+}

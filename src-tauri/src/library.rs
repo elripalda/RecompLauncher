@@ -83,6 +83,15 @@ pub struct Installed {
     /// The game's update the player picked, for recomps that need one beside their copy.
     #[serde(default)]
     pub update_copy: Option<PathBuf>,
+    /// Named Easy Setup selections; shared keys are kept separately.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub setup_inputs: BTreeMap<String, PathBuf>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub inputs_ready: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub input_staged: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub input_stamps: BTreeMap<String, String>,
     /// A Windows build, started through Proton on Linux.
     #[serde(default)]
     pub proton: bool,
