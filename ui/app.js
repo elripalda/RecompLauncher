@@ -765,7 +765,7 @@ function readyRows(a) {
     d: su.update_copy ? tf('Set up with {file}', { file: baseName(su.update_copy) }) : su.update,
     fix: su.update_copy || su.update_optional ? '' : `<button type="button" class="btn sm main" data-act="setupdate" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` });
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
-  if (a.origin === 'x360' || (a.requires && a.requires.avx2 && S.os !== 'macos')) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
+  if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
   // A recomp whose own setup builds it on this PC (from a clone of its repo).
   const builds = !!((a.boot && a.boot.clone) || ((S.bootBuiltin || {})[id] || {}).clone);
   if (builds && pc.build_tools != null) rows.push({ k: t('C++ build tools'), v: pc.build_tools, d: pc.build_tools ? t('Installed') : t('Its setup builds the game on your PC with Visual Studio\'s free C++ build tools'), fix: pc.build_tools ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://visualstudio.microsoft.com/visual-cpp-build-tools/">${esc(t('Get them'))}</button>` });
@@ -1604,7 +1604,7 @@ function gameBody(a) {
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
     </div>
     <div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
-      ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div></div>`;
+      ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div></div>`;
   }
   return body + gameRail(a);
 }
@@ -2724,7 +2724,7 @@ function pageSettings() {
     case 'playing': {
       const hh = !!S.handheld, eff = (k) => (st[k] == null ? hh : !!st[k]);
       body = group(t('While Playing'), (hh ? `<p class="set-note">${esc(t('This PC is a handheld, so the launcher keeps out of the way while you play. Change it here.'))}</p>` : '')
-          + row(t('Quick Menu Over Games'), t('Hold View on your controller (or press Ctrl+F12) for screenshots, settings and closing the game. Off: the launcher leaves your controller and keyboard alone while you play.'), sw('quick_menu', st.quick_menu !== false, t('Quick Menu Over Games')))
+          + (S.os === 'macos' ? `<p class="set-note">${esc(t('The in-game quick menu and screenshot capture are not available on Mac yet.'))}</p>` : row(t('Quick Menu Over Games'), t('Hold View on your controller (or press Ctrl+F12) for screenshots, settings and closing the game. Off: the launcher leaves your controller and keyboard alone while you play.'), sw('quick_menu', st.quick_menu !== false, t('Quick Menu Over Games'))))
           + row(t('Minimize the Launcher While Playing'), t('The launcher goes away while a game runs and comes back when it closes.'), sw('minimize_playing', eff('minimize_playing'), t('Minimize the Launcher While Playing')))
           + row(t('Lighter Launcher'), t('Still pictures and no animations, and nothing moves on Home while a game runs. Good for handhelds and older PCs.'), sw('lighter', eff('lighter'), t('Lighter Launcher'))));
       break;
@@ -2764,7 +2764,7 @@ function pageSettings() {
         ${pc.vkbasalt != null ? `<div class="set-row"><div class="k"><b>vkBasalt</b><span>${esc(t('Draws looks over games on Linux. It comes from your distro\'s packages, usually as vkbasalt.'))}</span></div>${ok(pc.vkbasalt)}</div>` : ''}
         ${pc.proton != null ? `<div class="set-row"><div class="k"><b>Proton${pc.proton ? ' · ' + esc(pc.proton) : ''}</b><span>${esc(t('Plays recomps that only have a Windows version. Steam\'s Proton, GE-Proton, umu-launcher or Wine.'))}</span></div>${ok(!!pc.proton)}</div>` : ''}
         ${pc.proton ? `<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn sm" data-act="wine-tools">${esc(t('Open'))}</button></div>` : ''}
-        <div class="set-row"><div class="k"><b>AVX2</b><span>${esc(t('Some Xbox 360 recomps need a processor from 2013 or later.'))}</span></div>${ok(pc.avx2)}</div>`) : group(t('Your PC'), `<p class="set-empty">${esc(t('Loading…'))}</p>`);
+        ${S.os === 'macos' ? '' : `<div class="set-row"><div class="k"><b>AVX2</b><span>${esc(t('Some Xbox 360 recomps need a processor from 2013 or later.'))}</span></div>${ok(pc.avx2)}</div>`}`) : group(t('Your PC'), `<p class="set-empty">${esc(t('Loading…'))}</p>`);
       break;
     case 'dev': {
       const locals = Object.values(S.library).filter((g) => g.local && g.tag !== 'own');
@@ -3385,8 +3385,9 @@ function saveSettings(patch, quiet) {
 // pickFile({title, directory, filters, defaultPath}) resolves to a path, or null when cancelled.
 // TV mode draws its own (tv.js); the system's picker is still one click away.
 function systemPicker(opts) {
-  if (T.dialog && T.dialog.open) return T.dialog.open(opts);
-  return invoke('plugin:dialog|open', { options: opts });
+  const { program, ...options } = opts;
+  if (T.dialog && T.dialog.open) return T.dialog.open(options);
+  return invoke('plugin:dialog|open', { options });
 }
 const FB_ICONS = {
   folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/>',
@@ -3425,6 +3426,10 @@ function fbTakes(opts, e) {
   if (!exts.length || exts.includes('*')) return true;
   const x = (e.name.split('.').pop() || '').toLowerCase();
   return exts.includes(x);
+}
+// A bundle is selectable only when choosing a program, never as a ROM or ordinary file.
+function fbProgramBundle(opts, e) {
+  return S.os === 'macos' && !!opts.program && !opts.directory && e.dir && /\.app$/i.test(e.name);
 }
 // Where a picker starts: what it was given, else where this kind of picker was last, else the
 // first game folder, else Downloads.
@@ -3601,7 +3606,7 @@ function fbSelect(i) {
 function fbActivate() {
   const e = fbRows()[FB.sel];
   if (!e) return;
-  if (e.dir) return fbGo(e.path);
+  if (e.dir && !fbProgramBundle(FB.opts, e)) return fbGo(e.path);
   if (!fbTakes(FB.opts, e) && FB_ARCHIVE.test(e.name)) return fbExtract();
   fbPick();
 }
@@ -3609,7 +3614,7 @@ function fbActivate() {
 function fbChoice() {
   const e = fbRows()[FB.sel];
   if (FB.opts.directory) return e && e.dir ? e.path : FB.path;
-  return e && !e.dir && fbTakes(FB.opts, e) ? e.path : '';
+  return e && (!e.dir || fbProgramBundle(FB.opts, e)) && fbTakes(FB.opts, e) ? e.path : '';
 }
 function fbPick() {
   const p = fbChoice();
@@ -4436,7 +4441,7 @@ function pageShots() {
       ${all.length ? `<button type="button" class="btn" data-act="shots-root">${esc(t('Open the folder'))}</button>` : ''}</div>
     ${games.length ? `<div class="chips"><button type="button" class="chip${!S.shotsGame ? ' on' : ''}" data-act="shots-game" data-g="">${esc(t('All'))} ${fmtNum(all.length)}</button>${games.map((g) => `<button type="button" class="chip${S.shotsGame === g.id ? ' on' : ''}" data-act="shots-game" data-g="${esc(g.id)}">${esc(g.name)} ${fmtNum(g.n)}</button>`).join('')}</div>` : ''}
     ${list.length ? `<div class="shotgrid">${list.map((x, i) => `<button type="button" class="shot" data-act="shot-open" data-i="${i}" data-path="${esc(x.path)}"><img src="${esc(fileSrc(x.path))}" alt="" loading="lazy"><span><b>${esc(x.game)}</b><small>${esc(when(x.time))}</small></span></button>`).join('')}</div>`
-      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI.shot}</svg><h2>${esc(t('No screenshots yet'))}</h2><p>${esc(t('While a game is running, press F12 or View + RB. They show up here, ready to share.'))}</p></div>`}
+      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI.shot}</svg><h2>${esc(t('No screenshots yet'))}</h2><p>${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('While a game is running, press F12 or View + RB. They show up here, ready to share.'))}</p></div>`}
   </div>`;
 }
 
@@ -5340,7 +5345,7 @@ async function manualModal(id) {
     const redraw = () => { box.innerHTML = html(); };
     const err = (e) => { const el = $('#mh-err', box); if (el) { el.textContent = String(e && e.message ? e.message : e); el.hidden = false; } };
     switch (x.dataset.x) {
-      case 'exe': { const p = await pickFile({ title: t('The program that starts the game'), defaultPath: g.path, directory: false, multiple: false }).catch(() => null); if (p) { m.exe = typeof p === 'string' ? p : p.path; redraw(); } return; }
+      case 'exe': { const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false }).catch(() => null); if (p) { m.exe = typeof p === 'string' ? p : p.path; redraw(); } return; }
       case 'copy-file': { const p = await pickFile({ title: t('Your game files'), directory: false, multiple: false }).catch(() => null); if (p) { m.copy = typeof p === 'string' ? p : p.path; redraw(); } return; }
       case 'copy-dir': { const p = await pickFile({ title: t('Your game files'), directory: true }).catch(() => null); if (p) { m.copy = typeof p === 'string' ? p : p.path; redraw(); } return; }
       case 'how': m.how = x.dataset.k; return redraw();
@@ -5734,7 +5739,7 @@ async function act(el, e) {
     case 'manual': return manualModal(id);
     case 'setexe': {
       const g = S.library[id];
-      const p = await pickFile({ title: t('The program that starts the game'), defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
+      const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
       if (!p) return;
       try { S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path }); toast(t('Play starts that program now.')); render(true); } catch (err) { fail(err); }
       return;
@@ -6246,7 +6251,7 @@ function confirmProgram(id, name, list, ask) {
     }
     if (x.dataset.x === 'other') {
       const g = S.library[id] || {};
-      const f = await pickFile({ title: t('The program that starts the game'), defaultPath: dirOf(list[sel]) || g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
+      const f = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: dirOf(list[sel]) || g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
       if (!f) return;
       try { S.library[id] = await invoke('set_exe', { id, path: typeof f === 'string' ? f : f.path }); close(); toast(t('Play starts that program now.')); render(true); } catch (e) { fail(e); }
     }
@@ -6261,7 +6266,7 @@ function lostModal(id, name) {
     close();
     if (x.dataset.x !== 'pick') return;
     const g = S.library[id] || {};
-    const f = await pickFile({ title: t('The program that starts the game'), defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
+    const f = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
     if (!f) return;
     try { S.library[id] = await invoke('set_exe', { id, path: typeof f === 'string' ? f : f.path }); toast(t('Play starts that program now.')); render(true); } catch (err) { fail(err); }
   }, t('Find the game'));

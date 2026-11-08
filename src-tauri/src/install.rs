@@ -417,10 +417,26 @@ fn inside(name: &str) -> Option<PathBuf> {
 
 fn unzip(file: &Path, to: &Path) -> Result<(), Error> {
     let mut z = zip::ZipArchive::new(fs::File::open(file)?).map_err(|e| Error::Msg(format!("Couldn't open the zip: {e}")))?;
+    #[cfg(unix)]
+    let mut links = Vec::new();
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| Error::Msg(format!("Couldn't read the zip: {e}")))?;
         let Some(rel) = inside(e.name()) else { continue };
+        // Finder's companion metadata is not part of the application or a packaging wrapper.
+        if rel.components().any(|c| c.as_os_str() == "__MACOSX" || c.as_os_str() == ".DS_Store") {
+            continue;
+        }
         let dest = to.join(rel);
+        #[cfg(unix)]
+        if e.unix_mode().map(|m| m & 0o170000 == 0o120000).unwrap_or(false) {
+            let mut target = String::new();
+            io::Read::read_to_string(&mut io::Read::take(&mut e, 4097), &mut target)?;
+            if target.len() > 4096 || !safe_link(to, &dest, &target) {
+                return Err(Error::Msg("The archive contains a link outside its installation folder.".into()));
+            }
+            links.push((dest, target));
+            continue;
+        }
         if e.is_dir() {
             fs::create_dir_all(&dest)?;
             continue;
@@ -434,6 +450,58 @@ fn unzip(file: &Path, to: &Path) -> Result<(), Error> {
         if let Some(mode) = e.unix_mode() {
             use std::os::unix::fs::PermissionsExt;
             let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(mode & 0o777 | 0o600));
+        }
+    }
+    // Make every link's parent before installing any links. Otherwise a later link could
+    // follow an earlier link chain while creating its parent, before final validation.
+    #[cfg(unix)]
+    for (dest, _) in &links {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    #[cfg(unix)]
+    for (dest, target) in links {
+        std::os::unix::fs::symlink(target, dest)?;
+    }
+    validate_links(to, to)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn safe_link(base: &Path, link: &Path, target: &str) -> bool {
+    if target.is_empty() || target.contains('\\') {
+        return false;
+    }
+    let Some(parent) = link.parent().and_then(|p| p.strip_prefix(base).ok()) else { return false };
+    let mut depth = parent.components().count();
+    for part in Path::new(target).components() {
+        match part {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {},
+            Component::ParentDir if depth > 0 => depth -= 1,
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Also check resolved link chains and the final, unwrapped root. Never recurse through links.
+fn validate_links(dir: &Path, base: &Path) -> Result<(), Error> {
+    let root = fs::canonicalize(base)?;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            if ty.is_symlink() {
+                let target = fs::canonicalize(entry.path()).map_err(|_| Error::Msg("The archive contains a broken or circular link.".into()))?;
+                if !target.starts_with(&root) {
+                    return Err(Error::Msg("The archive contains a link outside its installation folder.".into()));
+                }
+            } else if ty.is_dir() {
+                stack.push(entry.path());
+            }
         }
     }
     Ok(())
@@ -472,7 +540,7 @@ fn untar(file: &Path, to: &Path, xz: bool) -> Result<(), Error> {
 /// The folder the files actually start in: an archive with one folder at the top is that folder.
 fn root(dir: &Path) -> PathBuf {
     let items: Vec<_> = fs::read_dir(dir).map(|r| r.flatten().collect()).unwrap_or_default();
-    if items.len() == 1 && items[0].path().is_dir() {
+    if items.len() == 1 && items[0].file_type().map(|t| t.is_dir()).unwrap_or(false) && !crate::macos::is_bundle(&items[0].path()) {
         root(&items[0].path())
     } else {
         dir.to_path_buf()
@@ -519,20 +587,53 @@ fn overlay(from: &Path, to: &Path) -> io::Result<()> {
         let e = e?;
         let src = e.path();
         let dest = to.join(e.file_name());
-        if src.is_dir() {
-            if dest.is_file() {
+        let ty = e.file_type()?;
+        // A signed app is one unit. Merging leaves obsolete files and can invalidate its seal.
+        if ty.is_dir() && crate::macos::is_bundle(&src) {
+            replace_bundle(&src, &dest)?;
+        } else if ty.is_dir() {
+            if dest.is_file() || fs::symlink_metadata(&dest).map(|m| m.is_symlink()).unwrap_or(false) {
                 patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
             }
             overlay(&src, &dest)?;
         } else {
-            if dest.is_dir() {
+            if fs::symlink_metadata(&dest).map(|m| m.is_symlink()).unwrap_or(false) {
+                patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
+            } else if dest.is_dir() {
                 patient(|| fs::remove_dir_all(&dest)).map_err(|e| denied(e, &dest))?;
             }
             if patient(|| fs::rename(&src, &dest)).is_err() {
+                #[cfg(unix)]
+                if ty.is_symlink() {
+                    if dest.exists() {
+                        fs::remove_file(&dest)?;
+                    }
+                    std::os::unix::fs::symlink(fs::read_link(&src)?, &dest)?;
+                    continue;
+                }
                 patient(|| fs::copy(&src, &dest)).map_err(|e| denied(e, &dest))?;
             }
         }
     }
+    Ok(())
+}
+
+fn replace_bundle(from: &Path, to: &Path) -> io::Result<()> {
+    if fs::symlink_metadata(to).is_err() {
+        return fs::rename(from, to);
+    }
+    // Staging is on the library's drive. Keep the old bundle until the new one is in place;
+    // on a failed rename restore it. A pre-existing backup name is never overwritten.
+    let backup_dir = from.with_extension("app.previous");
+    fs::create_dir(&backup_dir)?;
+    let backup = backup_dir.join("previous");
+    fs::rename(to, &backup)?;
+    if let Err(error) = fs::rename(from, to) {
+        fs::rename(&backup, to)?;
+        let _ = fs::remove_dir(&backup_dir);
+        return Err(error);
+    }
+    let _ = fs::remove_dir_all(backup_dir);
     Ok(())
 }
 
@@ -603,6 +704,16 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         _ => return Err(Error::Msg(format!("{name} can't be installed on this PC"))),
     }
     let from = if strip_top { root(staging) } else { staging.to_path_buf() };
+    #[cfg(target_os = "macos")]
+    let from = if strip_top { unwrap_mac_zip(from, staging)? } else { from };
+    validate_links(&from, &from)?;
+    // Bundles must be self-contained when moved or replaced as a unit.
+    for entry in fs::read_dir(&from)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() && crate::macos::is_bundle(&entry.path()) {
+            validate_links(&entry.path(), &entry.path())?;
+        }
+    }
     let mut files = vec![];
     list(&from, &from, &mut files);
     overlay(&from, target)?;
@@ -610,10 +721,28 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     Ok(files)
 }
 
+#[cfg(target_os = "macos")]
+fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
+    for depth in 0..=3 {
+        let entries = fs::read_dir(&from)?.collect::<Result<Vec<_>, _>>()?;
+        if entries.len() != 1 || !entries[0].file_type()?.is_file() || kind(&entries[0].file_name().to_string_lossy()) != Some("zip") {
+            return Ok(from);
+        }
+        if depth == 3 {
+            return Err(Error::Msg("The download has too many nested ZIP wrappers.".into()));
+        }
+        let layer = staging.join(format!(".mac-wrapper-{depth}"));
+        fs::create_dir(&layer)?;
+        unzip(&entries[0].path(), &layer)?;
+        from = root(&layer);
+    }
+    unreachable!()
+}
+
 fn list(base: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     for e in fs::read_dir(dir).into_iter().flatten().flatten() {
         let p = e.path();
-        if p.is_dir() {
+        if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             list(base, &p, out);
         } else if let Ok(r) = p.strip_prefix(base) {
             out.push(r.to_path_buf());
@@ -675,7 +804,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 15;
+pub const EXE_RULES: u8 = 16;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -729,6 +858,14 @@ pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
 /// player is asked.
 pub fn find_game_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     find_exe(dir, os, names).filter(|e| !looks_like_tool(e, names))
+}
+
+/// Normalize a manual program selection to the executable stored in the library.
+pub fn program_choice(path: &Path, os: &str) -> Option<PathBuf> {
+    if os == "macos" && crate::macos::is_bundle(path) {
+        return crate::macos::bundle_executable(path, crate::assets::arch_now());
+    }
+    path.is_file().then(|| path.to_path_buf())
 }
 
 /// A Windows script a release can start the game with (a .bat or .cmd).
@@ -818,13 +955,13 @@ pub fn is_program(p: &Path, os: &str) -> bool {
     if os == "windows" {
         return n.ends_with(".exe");
     }
-    if n.ends_with(".appimage") || n.ends_with(".x86_64") {
+    if os == "linux" && (n.ends_with(".appimage") || n.ends_with(".x86_64")) {
         return true;
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if n.contains('.') && !n.ends_with(".sh") && !n.ends_with(".bin") {
+        if os != "macos" && n.contains('.') && !n.ends_with(".sh") && !n.ends_with(".bin") {
             return false;
         }
         if !fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false) {
@@ -837,7 +974,11 @@ pub fn is_program(p: &Path, os: &str) -> bool {
             return true;
         }
         let here = if crate::assets::arch_now() == "arm64" { "arm64" } else { "x64" };
-        if let Some(a) = crate::proton::elf_arch(p) {
+        if os == "macos" {
+            if crate::macos::is_executable(p, here) {
+                return true;
+            }
+        } else if let Some(a) = crate::proton::elf_arch(p) {
             return a == here;
         }
         let mut head = [0u8; 2];
@@ -873,7 +1014,16 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
-            let p = e.path();
+            let mut p = e.path();
+            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
+                continue;
+            }
+            let bundle_name = if os == "macos" && crate::macos::is_bundle(&p) {
+                let name = p.file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let Some(exe) = crate::macos::bundle_executable(&p, crate::assets::arch_now()) else { continue };
+                p = exe;
+                Some(name)
+            } else { None };
             if p.is_dir() {
                 if depth < 4 {
                     stack.push((p, depth + 1));
@@ -884,7 +1034,7 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             if !script && !is_program(&p, os) {
                 continue;
             }
-            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let stem = bundle_name.as_deref().unwrap_or_else(|| p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
             let t = tokens(stem);
             // A word that's in the game's own name doesn't count: Crash Team Racing isn't a crash
             // handler.
@@ -904,7 +1054,7 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
                 }
                 s = 44 - depth as i64 * 12 + named * 30 + 40;
             } else {
-                let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+                let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
                 s = (size.max(1) as f64).log2() as i64 * 2 - depth as i64 * 12 + named * 30;
                 // The game's own launcher (BotWLauncher.exe) sets things up and starts the engine,
                 // so it goes ahead of the engine. A bare Launcher.exe doesn't, and neither does a
@@ -1219,5 +1369,259 @@ mod answer_tests {
         let m = super::answered(500, "https://files3.eu.example.com/1/items/x/Pack.zip", "Pack.zip");
         assert!(m.starts_with("example.com had a problem"), "{m}");
         assert!(super::answered(404, "https://github.com/a/b/releases/download/v1/x.zip", "x.zip").starts_with("github.com doesn't have"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod mac_archive_tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+    use std::os::unix::fs::PermissionsExt;
+
+    fn temp(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("rl-mac-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn archive(files: &[(&str, &[u8], u32)], links: &[(&str, &str)]) -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, bytes, mode) in files {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default().unix_permissions(*mode)).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        for (name, target) in links {
+            zip.add_symlink(*name, *target, zip::write::SimpleFileOptions::default()).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    fn app_zip(extra: &[(&str, &[u8], u32)]) -> Vec<u8> {
+        let mut files: Vec<(&str, &[u8], u32)> = vec![
+            ("Game.app/Contents/Info.plist", b"metadata", 0o644),
+            ("Game.app/Contents/MacOS/Game", b"program", 0o755),
+            ("Game.app/Contents/Frameworks/Engine.framework/Versions/A/Engine", b"library", 0o755),
+        ];
+        files.extend_from_slice(extra);
+        archive(&files, &[
+            ("Game.app/Contents/Frameworks/Engine.framework/Versions/Current", "A"),
+            ("Game.app/Contents/Frameworks/Engine.framework/Engine", "Versions/Current/Engine"),
+        ])
+    }
+
+    #[test]
+    fn mac_app_keeps_bundle_and_framework_links() {
+        let d = temp("bundle");
+        fs::write(d.join("game.zip"), app_zip(&[])).unwrap();
+        let target = d.join("installed");
+        let files = unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        assert_eq!(fs::read(target.join("Game.app/Contents/MacOS/Game")).unwrap(), b"program");
+        assert_eq!(fs::metadata(target.join("Game.app/Contents/MacOS/Game")).unwrap().permissions().mode() & 0o111, 0o111);
+        let link = target.join("Game.app/Contents/Frameworks/Engine.framework/Versions/Current");
+        assert_eq!(fs::read_link(&link).unwrap(), PathBuf::from("A"));
+        assert_eq!(fs::read(target.join("Game.app/Contents/Frameworks/Engine.framework/Engine")).unwrap(), b"library");
+        assert!(files.contains(&PathBuf::from("Game.app/Contents/Frameworks/Engine.framework/Versions/Current")));
+        assert!(!files.iter().any(|p| p.to_string_lossy().contains("Current/Engine")), "file inventory must not follow links");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn mac_nested_zip_wrapper_is_unpacked_but_game_data_is_not() {
+        let d = temp("nested");
+        let data = archive(&[("level.bin", b"level", 0o644)], &[]);
+        let inner = app_zip(&[("Game.app/Contents/Resources/data.zip", &data, 0o644)]);
+        let outer = archive(&[("release/game.zip", &inner, 0o644), ("__MACOSX/._game.zip", b"metadata", 0o644)], &[]);
+        fs::write(d.join("outer.zip"), outer).unwrap();
+        unpack(&d.join("outer.zip"), &d.join("installed"), &d.join("stage")).unwrap();
+        assert!(d.join("installed/Game.app/Contents/MacOS/Game").is_file());
+        assert_eq!(fs::read(d.join("installed/Game.app/Contents/Resources/data.zip")).unwrap(), data);
+        assert!(!d.join("installed/Game.app/Contents/Resources/level.bin").exists());
+    }
+
+    #[test]
+    fn mac_app_update_replaces_old_bundle_and_keeps_saves() {
+        let d = temp("update");
+        let target = d.join("installed");
+        fs::write(d.join("game.zip"), app_zip(&[("Game.app/Contents/Resources/obsolete", b"old", 0o644)])).unwrap();
+        unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        fs::write(target.join("save.sav"), b"player progress").unwrap();
+        fs::write(d.join("game.zip"), app_zip(&[])).unwrap();
+        unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        assert!(!target.join("Game.app/Contents/Resources/obsolete").exists());
+        assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"player progress");
+        assert!(fs::read_link(target.join("Game.app/Contents/Frameworks/Engine.framework/Versions/Current")).is_ok());
+    }
+
+    #[test]
+    fn mac_archive_rejects_links_outside_staging() {
+        for (label, link) in [("absolute", "/tmp"), ("relative", "../../outside")] {
+            let d = temp(label);
+            let bytes = archive(&[("Game.app/Contents/Info.plist", b"info", 0o644)], &[("Game.app/escape", link)]);
+            fs::write(d.join("game.zip"), bytes).unwrap();
+            assert!(unpack(&d.join("game.zip"), &d.join("installed"), &d.join("stage")).is_err());
+            assert!(!d.join("installed").exists(), "invalid archive must not be installed");
+        }
+    }
+
+    #[test]
+    fn mac_archive_does_not_write_through_archive_links() {
+        let d = temp("link-child");
+        let outside = d.join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("sentinel"), b"safe").unwrap();
+        let bytes = archive(&[("link/sentinel", b"changed", 0o644)], &[("link", outside.to_str().unwrap())]);
+        fs::write(d.join("game.zip"), bytes).unwrap();
+        assert!(unpack(&d.join("game.zip"), &d.join("installed"), &d.join("stage")).is_err());
+        assert_eq!(fs::read(outside.join("sentinel")).unwrap(), b"safe");
+    }
+
+    #[test]
+    fn mac_archive_link_chains_cannot_create_paths_outside_staging() {
+        let d = temp("link-chain-write");
+        let bytes = archive(&[], &[("a", "."), ("b", "a/.."), ("b/escaped/probe", ".")]);
+        fs::write(d.join("game.zip"), bytes).unwrap();
+        fs::create_dir(d.join("stage")).unwrap();
+        assert!(unzip(&d.join("game.zip"), &d.join("stage")).is_err());
+        assert!(!d.join("escaped").exists(), "reject the chain before creating any outside path");
+    }
+
+    #[test]
+    fn mac_update_does_not_follow_existing_destination_links() {
+        let d = temp("destination-link");
+        fs::create_dir_all(d.join("installed")).unwrap();
+        fs::create_dir_all(d.join("outside")).unwrap();
+        fs::write(d.join("outside/sentinel"), b"safe").unwrap();
+        std::os::unix::fs::symlink(d.join("outside"), d.join("installed/data")).unwrap();
+        let bytes = archive(&[("data/sentinel", b"new", 0o644), ("Game", b"program", 0o755)], &[]);
+        fs::write(d.join("game.zip"), bytes).unwrap();
+        unpack(&d.join("game.zip"), &d.join("installed"), &d.join("stage")).unwrap();
+        assert_eq!(fs::read(d.join("outside/sentinel")).unwrap(), b"safe");
+        assert_eq!(fs::read(d.join("installed/data/sentinel")).unwrap(), b"new");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod mac_discovery_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn temp(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("rl-mac-detect-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn mach(cpu: u32, filetype: u32) -> Vec<u8> {
+        let mut bytes = vec![0u8; 32];
+        bytes[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        bytes[4..8].copy_from_slice(&cpu.to_le_bytes());
+        bytes[12..16].copy_from_slice(&filetype.to_le_bytes());
+        bytes
+    }
+
+    fn native_cpu() -> u32 {
+        if crate::assets::arch_now() == "arm64" { 0x0100000c } else { 0x01000007 }
+    }
+
+    fn program(p: &Path, bytes: &[u8]) {
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, bytes).unwrap();
+        fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn bundle(d: &Path, declared: &str) -> PathBuf {
+        let app = d.join("My Game.app");
+        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        fs::write(app.join("Contents/Info.plist"), format!("<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleExecutable</key><string>{declared}</string></dict></plist>")).unwrap();
+        program(&app.join("Contents/MacOS/Engine"), &mach(native_cpu(), 2));
+        let mut helper = mach(native_cpu(), 2);
+        helper.resize(100_000, 0);
+        program(&app.join("Contents/MacOS/MyGameHelper"), &helper);
+        app
+    }
+
+    #[test]
+    fn mac_detection_uses_bundle_metadata_instead_of_largest_helper() {
+        let d = temp("metadata");
+        bundle(&d, "Engine");
+        assert_eq!(find_game_exe(&d, "macos", &["My Game"]), Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn mac_manual_selection_resolves_bundle_and_keeps_file_choices() {
+        let d = temp("manual");
+        let app = bundle(&d, "Engine");
+        assert_eq!(program_choice(&app, "macos"), Some(app.join("Contents/MacOS/Engine")));
+        assert_eq!(program_choice(&app.join("Contents/MacOS/Engine"), "macos"), Some(app.join("Contents/MacOS/Engine")));
+        assert!(program_choice(&app, "linux").is_none());
+        assert!(program_choice(&d.join("Missing.app"), "macos").is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn mac_manual_setup_starts_the_selected_bundle() {
+        let d = temp("manual-setup");
+        let app = bundle(&d, "Engine");
+        let g = crate::library::Installed { path: d.clone(), ..Default::default() };
+        let manual = crate::library::ManualSetup { exe: Some(PathBuf::from("My Game.app")), how: "none".into(), ..Default::default() };
+        let (exe, args) = crate::manual_plan(&g, &manual).unwrap().unwrap();
+        assert_eq!(exe, app.join("Contents/MacOS/Engine"));
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn mac_detection_does_not_guess_inside_invalid_bundle() {
+        for declared in ["Missing", "../Engine", "/Engine"] {
+            let d = temp(&format!("invalid-{}", declared.replace('/', "_")));
+            bundle(&d, declared);
+            assert!(find_game_exe(&d, "macos", &["My Game"]).is_none());
+        }
+    }
+
+    #[test]
+    fn mac_detection_accepts_native_mach_programs_with_dots() {
+        let d = temp("native");
+        let exe = d.join("Game.v1");
+        program(&exe, &mach(native_cpu(), 2));
+        assert!(is_program(&exe, "macos"));
+        assert!(!is_program(&exe, "linux"));
+        assert_eq!(find_game_exe(&d, "macos", &["Game"]), Some(PathBuf::from("Game.v1")));
+    }
+
+    #[test]
+    fn mac_detection_accepts_universal_programs() {
+        let d = temp("universal");
+        let mut fat = vec![0u8; 112];
+        fat[..4].copy_from_slice(&[0xca, 0xfe, 0xba, 0xbe]);
+        fat[4..8].copy_from_slice(&2u32.to_be_bytes());
+        for (entry, offset, cpu) in [(8, 48, 0x01000007u32), (28, 80, 0x0100000cu32)] {
+            fat[entry..entry + 4].copy_from_slice(&cpu.to_be_bytes());
+            fat[entry + 8..entry + 12].copy_from_slice(&(offset as u32).to_be_bytes());
+            fat[entry + 12..entry + 16].copy_from_slice(&32u32.to_be_bytes());
+            fat[offset..offset + 32].copy_from_slice(&mach(cpu, 2));
+        }
+        program(&d.join("Game"), &fat);
+        assert!(is_program(&d.join("Game"), "macos"));
+    }
+
+    #[test]
+    fn mac_detection_rejects_libraries_wrong_cpu_and_linux() {
+        let d = temp("not-programs");
+        for (name, bytes) in [
+            ("Library", mach(native_cpu(), 6)),
+            ("OtherCPU", mach(0x01000012, 2)),
+            ("Truncated", vec![0xcf, 0xfa, 0xed, 0xfe]),
+        ] {
+            program(&d.join(name), &bytes);
+            assert!(!is_program(&d.join(name), "macos"), "{name}");
+        }
+        let mut elf = vec![0u8; 20];
+        elf[..4].copy_from_slice(b"\x7fELF");
+        elf[18] = if crate::assets::arch_now() == "arm64" { 0xb7 } else { 0x3e };
+        program(&d.join("LinuxGame"), &elf);
+        assert!(!is_program(&d.join("LinuxGame"), "macos"));
+        assert!(is_program(&d.join("LinuxGame"), "linux"));
     }
 }

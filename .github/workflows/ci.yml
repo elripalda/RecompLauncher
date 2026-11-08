@@ -1,0 +1,102 @@
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            bundles: deb,appimage
+            artifacts: |
+              src-tauri/target/release/bundle/deb/*.deb
+              src-tauri/target/release/bundle/appimage/*.AppImage
+          - os: windows-latest
+            bundles: nsis
+            artifacts: src-tauri/target/release/bundle/nsis/*.exe
+          - os: macos-15
+            bundles: app,dmg
+            artifacts: artifacts/*
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libudev-dev libssl-dev patchelf
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Verify Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
+
+      - name: Run UI tests and JavaScript syntax checks
+        run: |
+          node --test tests/macos-ui.test.cjs tests/setup-inputs.test.cjs
+          node --check ui/app.js
+          node --check ui/tv.js
+          node --check ui/setup-inputs.js
+
+      - name: Run Rust tests
+        run: npm test -- --locked
+
+      - name: Build installers
+        run: npm run build -- --bundles ${{ matrix.bundles }} -- --locked
+        env:
+          # Let AppImage tooling run on hosted runners without FUSE mounts.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+
+      - name: Package Mac app without losing permissions or links
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p artifacts
+          bundle=src-tauri/target/release/bundle
+          codesign --verify --deep --strict "$bundle/macos/RecompLauncher.app"
+          ditto -c -k --sequesterRsrc --keepParent "$bundle/macos/RecompLauncher.app" artifacts/RecompLauncher-macOS-arm64.zip
+          cp "$bundle"/dmg/*.dmg artifacts/
+          cd artifacts
+          shasum -a 256 *.zip *.dmg > SHA256SUMS
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 14
