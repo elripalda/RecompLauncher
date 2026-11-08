@@ -5013,6 +5013,16 @@ fn overlay_action(app: AppHandle, action: String) {
     }
 }
 
+/// What the quick menu should show, for a page that has only just loaded: the event sent when it
+/// opened can arrive before its script does.
+#[tauri::command]
+fn overlay_state(app: AppHandle) -> Option<Value> {
+    if !app.state::<App>().overlay_open.load(Ordering::Relaxed) {
+        return None;
+    }
+    ingame::overlay_payload(&app)
+}
+
 /// The program to start, picked by the player when the launcher's guess was wrong.
 /// A file picked as the game's program that can't be one: a disc image, an archive, a save, a
 /// picture. Why, for the player.
@@ -6384,6 +6394,25 @@ pub fn rest(w: &tauri::WebviewWindow, low: bool) {
     let _ = (w, low);
 }
 
+/// The quick menu's window: a see-through window over the game, hidden until it's asked for.
+/// It's made the first time it's opened, so a launcher that never opens it never pays for a
+/// second WebKit process.
+pub(crate) fn build_overlay(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    let w = tauri::WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("overlay.html".into()))
+        .title("RecompLauncher quick menu")
+        .transparent(true)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .focused(false)
+        .build()?;
+    rest(&w, true);
+    Ok(w)
+}
+
 /// The main window is out of sight (minimized, or closed to the tray).
 static AWAY: AtomicBool = AtomicBool::new(false);
 // Whether the last Play came from Big Picture mode, for RECOMPLAUNCHER_MODE.
@@ -7026,21 +7055,6 @@ pub fn run() {
                     HANDHELD.store(shortcuts::is_handheld(&pc.cpu), Ordering::Relaxed);
                 });
             }
-            // The quick menu: a see-through window over the game, hidden until it's asked for.
-            tauri::WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("overlay.html".into()))
-                .title("RecompLauncher quick menu")
-                .transparent(true)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .shadow(false)
-                .visible(false)
-                .focused(false)
-                .build()?;
-            if let Some(o) = app.get_webview_window("overlay") {
-                rest(&o, true);
-            }
             pads::start(app.handle().clone());
             if let Err(e) = tray::start(app.handle()) {
                 eprintln!("No tray icon: {e}");
@@ -7149,7 +7163,7 @@ pub fn run() {
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
-            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
+            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,

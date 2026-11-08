@@ -30,7 +30,7 @@ function press(n) {
   mark();
 }
 
-T.event.listen('overlay-open', async ({ payload: p }) => {
+async function open(p) {
   await lang();
   document.getElementById('name').textContent = p.name;
   document.getElementById('sub').textContent = tf('Playing for {time} · {total} total', { time: mins(p.session), total: mins(p.played + p.session) });
@@ -40,7 +40,11 @@ T.event.listen('overlay-open', async ({ payload: p }) => {
   mark();
   fit();
   requestAnimationFrame(() => stage.classList.add('in'));
-});
+}
+T.event.listen('overlay-open', ({ payload: p }) => open(p));
+// The window is made the first time it's opened, so this page can start loading after the event
+// was sent: ask the core what to show.
+invoke('overlay_state').then((p) => { if (p) open(p); }).catch(() => {});
 // Controller presses meant for this menu only, and only while it's showing: the launcher's own
 // window gets presses too, and a hidden menu must never act on them (a press of A in Big Picture
 // mode would otherwise pick "Screenshots and library" here).
