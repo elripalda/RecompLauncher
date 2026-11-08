@@ -93,17 +93,15 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
     let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
-    // NVIDIA's driver and the libraries an AppImage carries are where the web view's default
-    // renderer most often leaves the window blank, so those get the one that works everywhere.
+    // NVIDIA's driver is where the web view's default renderer most often leaves the window
+    // blank, so it gets the one that works everywhere. An AppImage used to get it too, but on a
+    // working GPU that made every frame far more expensive (the hero animation burned ~90% CPU
+    // on a desktop); keep the safe path for AppImages only where there is no render node to use.
     let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
     let appimage = std::env::var_os("APPIMAGE").is_some();
     // The player's choice in Settings → Appearance wins over the guess; their own variables win over both.
     let mode = data.map(|d| graphics_mode(&d)).unwrap_or_default();
-    let safe_way = match mode.as_str() {
-        "fast" => false,
-        "safe" => true,
-        _ => gamescope || from_steam || nvidia || appimage,
-    };
+    let safe_way = graphics_safe_way(&mode, gamescope, from_steam, nvidia, appimage, has_hardware_rendering());
     if safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
@@ -148,6 +146,36 @@ fn graphics_mode(data: &std::path::Path) -> String {
         .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
         .and_then(|v| v.pointer("/settings/linux_graphics").and_then(|m| m.as_str()).map(str::to_string))
         .unwrap_or_default()
+}
+
+/// Whether Auto mode has to use WebKit's safe renderer: the cases where its default (DMA-BUF)
+/// renderer is known to leave the window blank. "fast" and "safe" are the player's own choice.
+#[cfg(target_os = "linux")]
+fn graphics_safe_way(mode: &str, gamescope: bool, from_steam: bool, nvidia: bool, appimage: bool, hardware: bool) -> bool {
+    match mode {
+        "fast" => false,
+        "safe" => true,
+        _ => gamescope || from_steam || nvidia || (appimage && !hardware),
+    }
+}
+
+/// A DRM render node means WebKit can draw through the GPU's DMA-BUF path. Without one (a VM,
+/// a remote display, software rendering) the default renderer has nothing to bind to. A node
+/// that can't be opened (a sandbox, a strict permission) is no use either.
+#[cfg(target_os = "linux")]
+fn has_hardware_rendering() -> bool {
+    let software = |k: &str, bad: &[&str]| std::env::var(k).map(|v| bad.contains(&v.as_str())).unwrap_or(false);
+    if software("LIBGL_ALWAYS_SOFTWARE", &["1", "true", "yes"]) || software("GALLIUM_DRIVER", &["llvmpipe", "softpipe", "swrast"]) {
+        return false;
+    }
+    std::fs::read_dir("/dev/dri")
+        .map(|dir| {
+            dir.flatten().any(|e| {
+                let name = e.file_name();
+                name.to_string_lossy().starts_with("renderD") && std::fs::OpenOptions::new().read(true).write(true).open(e.path()).is_ok()
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// The entries of a preload list that are Steam's own (its overlay), space-separated.
@@ -197,6 +225,22 @@ mod tests {
     }
     use super::*;
     use std::collections::HashMap;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn auto_keeps_appimages_on_the_fast_path_when_a_gpu_is_there() {
+        // AMD/Intel desktop AppImage: the default renderer is fine and much cheaper.
+        assert!(!graphics_safe_way("", false, false, false, true, true));
+        // No render node (a VM, a remote display, software rendering): keep the safe renderer.
+        assert!(graphics_safe_way("", false, false, false, true, false));
+        // NVIDIA, Steam and Gaming Mode keep it too.
+        assert!(graphics_safe_way("", false, false, true, true, true));
+        assert!(graphics_safe_way("", false, true, false, false, true));
+        assert!(graphics_safe_way("", true, false, false, false, true));
+        // The player's choice wins over the guess.
+        assert!(!graphics_safe_way("fast", true, true, true, true, true));
+        assert!(graphics_safe_way("safe", false, false, false, false, true));
+    }
 
     #[test]
     fn appimage_folders_are_taken_out() {
