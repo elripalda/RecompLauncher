@@ -615,7 +615,7 @@ const BUILT_IN: &[&str] = &[
     include_str!("../../docs/examples/streetball.json"),
 ];
 
-/// The profile for a game: the developer's own (in the game's folder), the catalog's, a built-in
+/// The profile for a game: the AppImage's embedded file, the folder's own, the catalog's, a built-in
 /// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
@@ -822,12 +822,68 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
     ))
 }
 
+/// A release-owned profile and its source, shared with Developer tools.
+pub(crate) struct ReleaseProfile {
+    pub profile: Profile,
+    pub raw: Value,
+    pub location: String,
+    pub embedded: bool,
+}
+
+/// Rewrite AppImage program entries to the actual container's name. All paths
+/// still resolve from the install directory, never from a temporary mount.
+fn bind_image(raw: &mut Value, image: &Path) -> Option<()> {
+    let name = image.file_name()?.to_str()?;
+    for field in ["start", "prepare"] {
+        if let Some(programs) = raw.get_mut(field).and_then(|v| v.get_mut("program")).and_then(Value::as_array_mut) {
+            for program in programs {
+                if program.as_str().and_then(|s| Path::new(s).extension()).and_then(|s| s.to_str())
+                    .map(|s| s.eq_ignore_ascii_case("appimage")) == Some(true)
+                {
+                    *program = Value::String(name.to_string());
+                }
+            }
+        }
+    }
+    Some(())
+}
+
+/// Embedded metadata belongs to the installed image and wins over a stale
+/// sidecar. Unsupported, missing or unreadable metadata keeps the old fallback.
+pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
+    if dir.as_os_str().is_empty() {
+        return None;
+    }
+    let parse = |bytes: &[u8], image: Option<&Path>| -> Option<ReleaseProfile> {
+        let mut raw: Value = serde_json::from_slice(bytes).ok()?;
+        if let Some(image) = image {
+            bind_image(&mut raw, image)?;
+        }
+        let profile: Profile = serde_json::from_value(raw.clone()).ok()?;
+        if profile.format != 1 {
+            return None;
+        }
+        Some(ReleaseProfile {
+            profile,
+            raw,
+            embedded: image.is_some(),
+            location: image.map(|p| format!("{}!/recomplauncher.json", p.display()))
+                .unwrap_or_else(|| dir.join(crate::appimage::MANIFEST).display().to_string()),
+        })
+    };
+    if let Some(image) = crate::appimage::installed_image(dir) {
+        if let Some(owned) = crate::appimage::manifest(&image).ok().and_then(|b| parse(&b, Some(&image))) {
+            return Some(owned);
+        }
+    }
+    let bytes = std::fs::read(dir.join(crate::appimage::MANIFEST)).ok()?;
+    parse(&bytes, None)
+}
+
 fn find_own(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     let ok = |p: Profile| (p.format == 1).then_some(p);
-    if game_dir.as_os_str().is_empty() {
-        // Not installed: no folder to look in.
-    } else if let Some(p) = std::fs::read(game_dir.join("recomplauncher.json")).ok().and_then(|b| serde_json::from_slice::<Profile>(&b).ok()).and_then(ok) {
-        return Some(p);
+    if let Some(owned) = release_profile(game_dir) {
+        return Some(owned.profile);
     }
     if let Some(p) = entry.get("launcher").and_then(|v| serde_json::from_value::<Profile>(v.clone()).ok()).and_then(ok) {
         return Some(p);
@@ -2050,6 +2106,84 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn appimage_embedded_profile_wins_and_binds_renamed_container() {
+        use crate::appimage::tests::{image, TempDir};
+        let dir = TempDir::new();
+        let path = dir.0.join("Renamed game \u{03b1}.AppImage");
+        let raw = br#"{"format":1,"name":"Embedded game","game":{"label":"embedded"},
+            "start":{"program":["Original.AppImage"],"args":["--disc","{game}"],"env":{"MP_DISC":"{game}"}},
+            "prepare":{"program":["Original.AppImage"],"args":["--prepare"]}}"#;
+        std::fs::write(&path, image(Some(raw), backhand::compression::Compressor::Gzip)).unwrap();
+        std::fs::write(dir.0.join("recomplauncher.json"), r#"{"format":1,"game":{"label":"adjacent"}}"#).unwrap();
+        let entry = serde_json::json!({"launcher":{"format":1,"game":{"label":"catalog"}}});
+        let owned = release_profile(&dir.0).unwrap();
+        assert!(owned.embedded);
+        assert_eq!(owned.raw["name"], "Embedded game");
+        assert!(owned.location.ends_with(".AppImage!/recomplauncher.json"));
+        let profile = find_own(&dir.0, "", &entry).unwrap();
+        assert_eq!(profile.game.unwrap().label, "embedded");
+        let start = profile.start.unwrap();
+        assert_eq!(start.program, ["Renamed game \u{03b1}.AppImage"]);
+        assert_eq!(start.args, ["--disc", "{game}"]);
+        assert_eq!(start.env["MP_DISC"], "{game}");
+        assert_eq!(profile.prepare.unwrap().program, ["Renamed game \u{03b1}.AppImage"]);
+    }
+
+    #[test]
+    fn appimage_invalid_or_missing_metadata_falls_back_to_adjacent_then_catalog() {
+        use crate::appimage::tests::{image, TempDir};
+        let dir = TempDir::new();
+        let entry = serde_json::json!({"launcher":{"format":1,"game":{"label":"catalog"}}});
+        for content in [None, Some(&b"not JSON"[..]), Some(&br#"{"format":2}"#[..]),
+                        Some(&br#"{"format":1,"start":{"program":42}}"#[..])] {
+            std::fs::write(dir.0.join("game.AppImage"), image(content, backhand::compression::Compressor::Xz)).unwrap();
+            let adjacent = dir.0.join("recomplauncher.json");
+            std::fs::write(&adjacent, r#"{"format":1,"game":{"label":"adjacent"}}"#).unwrap();
+            assert_eq!(find_own(&dir.0, "", &entry).unwrap().game.unwrap().label, "adjacent");
+            assert!(!release_profile(&dir.0).unwrap().embedded);
+            std::fs::remove_file(&adjacent).unwrap();
+            assert_eq!(find_own(&dir.0, "", &entry).unwrap().game.unwrap().label, "catalog");
+        }
+    }
+
+    #[test]
+    fn appimage_replacement_is_read_without_a_stale_extracted_copy() {
+        use crate::appimage::tests::{image, TempDir};
+        let dir = TempDir::new();
+        let path = dir.0.join("game.AppImage");
+        for label in ["first", "other"] {
+            let raw = serde_json::json!({"format":1,"game":{"label":label}}).to_string();
+            std::fs::write(&path, image(Some(raw.as_bytes()), backhand::compression::Compressor::Zstd)).unwrap();
+            assert_eq!(find_own(&dir.0, "", &Value::Null).unwrap().game.unwrap().label, label);
+        }
+        assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn appimage_multiple_containers_do_not_override_the_folder_profile() {
+        use crate::appimage::tests::{image, TempDir};
+        let dir = TempDir::new();
+        for name in ["first.AppImage", "second.AppImage"] {
+            std::fs::write(dir.0.join(name), image(Some(br#"{"format":1,"game":{"label":"embedded"}}"#),
+                                                   backhand::compression::Compressor::Gzip)).unwrap();
+        }
+        std::fs::write(dir.0.join("recomplauncher.json"), r#"{"format":1,"game":{"label":"adjacent"}}"#).unwrap();
+        assert_eq!(find_own(&dir.0, "", &Value::Null).unwrap().game.unwrap().label, "adjacent");
+    }
+
+    #[test]
+    fn appimage_plain_folders_keep_existing_fallback_order() {
+        use crate::appimage::tests::TempDir;
+        let dir = TempDir::new();
+        let entry = serde_json::json!({"launcher":{"format":1,"game":{"label":"catalog"}}});
+        assert_eq!(find_own(&dir.0, "", &entry).unwrap().game.unwrap().label, "catalog");
+        std::fs::write(dir.0.join("recomplauncher.json"), r#"{"format":1,"game":{"label":"adjacent"}}"#).unwrap();
+        assert_eq!(find_own(&dir.0, "", &entry).unwrap().game.unwrap().label, "adjacent");
+        assert!(release_profile(Path::new("")).is_none());
+    }
+
 
     #[test]
     fn game_data_profiles_from_the_store() {

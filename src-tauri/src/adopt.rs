@@ -270,7 +270,11 @@ pub async fn adopt_scan(st: State<'_, App>) -> Res<Vec<Found>> {
 
 /// A developer's recomplauncher.json names its repo.
 fn read_repo(dir: &Path) -> String {
-    std::fs::read(dir.join("recomplauncher.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.get("repo").and_then(Value::as_str).map(String::from)).unwrap_or_default()
+    crate::profile::release_profile(dir).map(|p| p.profile.repo)
+        .or_else(|| std::fs::read(dir.join("recomplauncher.json")).ok()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|v| v.get("repo").and_then(Value::as_str).map(String::from)))
+        .unwrap_or_default()
 }
 
 const SHARED: &str = "That folder holds more than the game, like Downloads or a whole drive. Put the game in a folder of its own, then pick that folder.";
@@ -497,6 +501,17 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn appimage_repository_comes_from_the_embedded_profile() {
+        use crate::appimage::tests::{image, TempDir};
+        let dir = TempDir::new();
+        std::fs::write(dir.0.join("game.AppImage"),
+            image(Some(br#"{"format":1,"repo":"developer/game"}"#), backhand::compression::Compressor::Gzip)).unwrap();
+        std::fs::write(dir.0.join("recomplauncher.json"), r#"{"format":1,"repo":"stale/sidecar"}"#).unwrap();
+        assert_eq!(read_repo(&dir.0), "developer/game");
+    }
+
     use super::*;
     use serde_json::json;
 

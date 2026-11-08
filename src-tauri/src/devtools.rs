@@ -56,7 +56,8 @@ fn game_in(dir: &Path, raw: Option<&Value>, name: &str) -> String {
 }
 
 fn read_raw(dir: &Path) -> Option<Value> {
-    std::fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    profile::release_profile(dir).map(|p| p.raw)
+        .or_else(|| std::fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()))
 }
 
 /// The program Play starts: the file's own `start.program`, or the likeliest one in the folder.
@@ -173,12 +174,14 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
     let dir = g.path.clone();
     let file = dir.join(FILE);
+    let embedded = profile::release_profile(&dir).filter(|p| p.embedded);
     let mut items = vec![];
     let mut error = String::new();
     let mut prof: Option<profile::Profile> = None;
-    let has_file = file.is_file();
+    let has_file = file.is_file() || embedded.is_some();
     if has_file {
-        match std::fs::read_to_string(&file) {
+        let text = embedded.as_ref().map(|p| Ok(p.raw.to_string())).unwrap_or_else(|| std::fs::read_to_string(&file));
+        match text {
             Err(e) => error = format!("It can't be read: {e}"),
             Ok(text) => match serde_json::from_str::<Value>(&text) {
                 Err(e) => error = format!("It isn't valid JSON: {e}."),
@@ -204,12 +207,12 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
             },
         }
     }
-    // What's actually used: the folder's own file when it reads, else the catalog's or a built-in one.
+    // What's actually used: embedded metadata, the folder file, then catalog/built-in.
     let cat = crate::cached_catalog(&st);
     let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
     let used = profile::find(&dir, &g.repo, &entry);
     let source = match (&prof, &used) {
-        (Some(p), Some(_)) if p.format == 1 => "folder",
+        (Some(p), Some(_)) if p.format == 1 => if embedded.is_some() { "appimage" } else { "folder" },
         (_, Some(_)) if entry.get("launcher").is_some() => "catalog",
         (_, Some(_)) => "built-in",
         _ => "none",
@@ -234,7 +237,8 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
         ));
         level = check_profile(p, &dir, &g, &mut items);
     }
-    Ok(Report { source, file: file.display().to_string(), has_file, error, level, items })
+    let location = embedded.map(|p| p.location).unwrap_or_else(|| file.display().to_string());
+    Ok(Report { source, file: location, has_file, error, level, items })
 }
 
 /// The checks, top to bottom in the order of the developer guide. Gives back the level reached.
@@ -413,7 +417,7 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
 pub fn dev_starter(st: State<'_, App>, id: String) -> Res<String> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
     let file = g.path.join(FILE);
-    if file.exists() {
+    if file.exists() || profile::release_profile(&g.path).map(|p| p.embedded).unwrap_or(false) {
         return Err(Error::Msg("It already has a recomplauncher.json.".into()));
     }
     let exe = g.exe.as_ref().map(|e| e.to_string_lossy().replace('\\', "/")).unwrap_or_else(|| "game.exe".into());
