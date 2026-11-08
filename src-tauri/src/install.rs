@@ -804,7 +804,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 15;
+pub const EXE_RULES: u8 = 16;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
