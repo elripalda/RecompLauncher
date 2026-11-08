@@ -115,14 +115,36 @@ pub(crate) fn installed_image(dir: &Path) -> Option<PathBuf> {
 
 /// What was read from each AppImage (its size and modified time, and the manifest or why not),
 /// so looking a game's profile up again doesn't open and walk a big image every time.
-type Seen = (u64, Option<std::time::SystemTime>, Result<Vec<u8>, (io::ErrorKind, String)>);
+type Seen = (u64, Option<std::time::SystemTime>, u64, Result<Vec<u8>, (io::ErrorKind, String)>);
+
+/// A quick fingerprint of a file: its first and last 64 KiB. A replaced image can keep the same
+/// size and, on Windows, the same modified time; its start or end still differs.
+fn fingerprint(path: &Path, len: u64) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Ok(mut f) = File::open(path) {
+        let mut buf = vec![0u8; 64 * 1024];
+        let n = f.read(&mut buf).unwrap_or(0);
+        buf[..n].hash(&mut h);
+        if len > 128 * 1024 && f.seek(SeekFrom::End(-(64 * 1024))).is_ok() {
+            let n = f.read(&mut buf).unwrap_or(0);
+            buf[..n].hash(&mut h);
+        } else {
+            let mut rest = vec![];
+            let _ = f.read_to_end(&mut rest);
+            rest.hash(&mut h);
+        }
+    }
+    h.finish()
+}
 static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Seen>>> = std::sync::Mutex::new(None);
 
 pub(crate) fn manifest(path: &Path) -> io::Result<Vec<u8>> {
     let meta = fs::metadata(path)?;
     let (len, modified) = (meta.len(), meta.modified().ok());
-    if let Some((l, m, r)) = SEEN.lock().unwrap().as_ref().and_then(|c| c.get(path)) {
-        if *l == len && *m == modified && modified.is_some() {
+    let print = fingerprint(path, len);
+    if let Some((l, m, fp, r)) = SEEN.lock().unwrap().as_ref().and_then(|c| c.get(path)) {
+        if *l == len && *m == modified && modified.is_some() && *fp == print {
             return r.clone().map_err(|(k, msg)| io::Error::new(k, msg));
         }
     }
@@ -136,7 +158,7 @@ pub(crate) fn manifest(path: &Path) -> io::Result<Vec<u8>> {
     if c.len() > 256 {
         c.clear();
     }
-    c.insert(path.to_path_buf(), (len, modified, kept));
+    c.insert(path.to_path_buf(), (len, modified, print, kept));
     r
 }
 
