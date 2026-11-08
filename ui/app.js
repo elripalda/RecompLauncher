@@ -332,14 +332,12 @@ function fitTitles(root = document) {
   for (const tile of FIT_LATER) if (!tile.isConnected) { FIT_IO.unobserve(tile); FIT_LATER.delete(tile); }
   const els = $$('.tile .t', root);
   if (FIT_IO && els.length > 40) {
-    const vh = innerHeight, now = [];
+    // A big list: measuring each tile here would draw every off-screen one (content-visibility),
+    // which is the very cost this avoids. They're fitted as they come near instead.
     for (const el of els) {
       const tile = el.closest('.tile');
-      const r = tile.getBoundingClientRect();
-      if (r.bottom > -600 && r.top < vh + 600) now.push(el);
-      else if (!FIT_LATER.has(tile)) { FIT_LATER.add(tile); FIT_IO.observe(tile); }
+      if (tile && !FIT_LATER.has(tile)) { FIT_LATER.add(tile); FIT_IO.observe(tile); }
     }
-    fitBatch(now);
   } else fitBatch(els);
   // The small numbers on a game's page: a long date (Russian, Japanese) gets a little smaller
   // instead of cut off.
@@ -1134,9 +1132,41 @@ function allTags() {
   for (const a of visible()) for (const tg of tagsOf(a)) n[tg] = (n[tg] || 0) + 1;
   return Object.keys(n).sort((x, y) => n[y] - n[x] || x.localeCompare(y));
 }
+// A page of Discover's grid. A thousand recomps drawn at once takes the window away for more than
+// a second (inserting every tile, then laying them out); the next page comes as the bottom of the
+// list nears, so the page opens at once and scrolling stays smooth.
+const DISCOVER_PAGE = typeof IntersectionObserver === 'function' ? 120 : 1e9;
+const MORE_IO = typeof IntersectionObserver === 'function' ? new IntersectionObserver((ents) => {
+  if (ents.some((e) => e.isIntersecting)) moreDiscover();
+}, { rootMargin: '1200px 0px' }) : null;
+let MORE_AT = null;
+function watchMore() {
+  if (!MORE_IO) return;
+  const el = S.view === 'discover' ? $('#dlist .more') : null;
+  if (el === MORE_AT) return;
+  if (MORE_AT) MORE_IO.unobserve(MORE_AT);
+  MORE_AT = el && el.isConnected ? el : null;
+  if (MORE_AT) MORE_IO.observe(MORE_AT);
+}
+function moreDiscover() {
+  const box = $('#dlist'), grid = box && $('.grid', box);
+  if (!grid) return;
+  const list = discoverList();
+  const from = Math.min(S.dshow || DISCOVER_PAGE, list.length), to = Math.min(from + DISCOVER_PAGE, list.length);
+  if (to <= from) return;
+  S.dshow = to;
+  grid.insertAdjacentHTML('beforeend', list.slice(from, to).map((a) => tile(a, { quick: true })).join(''));
+  if (to >= list.length) { const more = $('.more', box); if (more) more.remove(); }
+  fitTitles(grid);
+  watchMore();
+}
 function discoverGrid() {
   const f = S.find, list = discoverList();
-  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div><div class="grid" style="margin-top:20px">${list.map((a) => tile(a, { quick: true })).join('')}</div>`
+  // Another search, filter or sort starts again from the first page.
+  const key = JSON.stringify([S.q, S.find, S.settings.hide_ai, runsPick()]);
+  if (S.dkey !== key) { S.dkey = key; S.dshow = DISCOVER_PAGE; }
+  const shown = Math.min(S.dshow || DISCOVER_PAGE, list.length);
+  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div><div class="grid" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map((a) => tile(a, { quick: true })).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}`
     : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p></div>`;
 }
 
@@ -2923,6 +2953,7 @@ function render(keepScroll) {
   if (anchor) { const all = anchorsOf(main, anchor.id); const el = anchor.one ? (all.length === 1 ? all[0] : null) : all[anchor.n]; if (el) main.scrollTop += el.getBoundingClientRect().top - anchor.y; }
   moveTabPill();
   stickCheck();
+  watchMore();
   if (v === 'game') paintLooks();
   if (typing) { const f = $('#' + typing.id); if (f) { f.focus({ preventScroll: true }); try { f.setSelectionRange(typing.a, typing.b); } catch (e) { /* fine */ } } }
 }
@@ -3028,7 +3059,7 @@ function paintIsland() {
 // leaves at least two on the last row.
 function evenGrids(scope) {
   for (const g of $$('.grid, .shotgrid', scope)) {
-    const n = g.children.length, min = g.closest('#llist') ? (Number(getComputedStyle(g.closest('#llist')).getPropertyValue('--tile')) || libTile()) * (g.closest('#llist.wide') ? 1.7 : 1) : g.classList.contains('shotgrid') ? 260 : g.classList.contains('compact') ? 140 : 160;
+    const n = Number(g.dataset.n) || g.children.length, min = g.closest('#llist') ? (Number(getComputedStyle(g.closest('#llist')).getPropertyValue('--tile')) || libTile()) * (g.closest('#llist.wide') ? 1.7 : 1) : g.classList.contains('shotgrid') ? 260 : g.classList.contains('compact') ? 140 : 160;
     const gap = parseFloat(getComputedStyle(g).columnGap) || 20, w = g.clientWidth;
     if (!w) continue;
     const fits = Math.max(1, Math.floor((w + gap) / (min + gap)));
@@ -3097,12 +3128,14 @@ function morphList(box, html) {
     fitTitles(box);
     glideFrom(before);
     reviveSoon(box);
+    watchMore();
   } else {
     box.replaceChildren(...tpl.content.childNodes);
     fresh.push(...$$('.grid > .tile', box));
     evenGrids(box);
     fitTitles(box);
     reviveSoon(box);
+    watchMore();
   }
   if (calm()) return;
   let i = 0;
@@ -3193,6 +3226,8 @@ function go(view, arg, fromEl) {
   if (view === 'game') { S.from = S.view === 'game' ? S.from : S.view; S.tab = S.nextTab || 'overview'; S.nextTab = null; }
   const swap = () => {
     S.view = view; S.arg = arg;
+    // Discover opens at the top, so it starts again from the first page of its list.
+    if (view === 'discover') S.dshow = DISCOVER_PAGE;
     S.anim = view === 'game' ? 'enter-game' : 'enter';
     render();
     $('#main').scrollTop = 0;
