@@ -30,7 +30,18 @@
     btn.setAttribute('aria-label', n ? n + ': ' + txt : txt);
   }
   function dress(sel) {
-    if (sel.__drop || sel.closest('.tv, #tv')) return;
+    if (sel.closest('.tv, #tv')) return;
+    if (sel.__drop) {
+      // A redraw of the page around it took its button away (or showed the list itself again):
+      // both go back as they were.
+      if (sel.__drop.isConnected && sel.nextElementSibling === sel.__drop && sel.classList.contains('sel-hidden')) return;
+      sel.classList.add('sel-hidden');
+      sel.tabIndex = -1;
+      sel.setAttribute('aria-hidden', 'true');
+      if (sel.nextElementSibling !== sel.__drop) sel.after(sel.__drop);
+      sync(sel);
+      return;
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'drop' + (sel.closest('.pill-sel') ? ' in-pill' : '');
@@ -47,8 +58,8 @@
   }
   function dressAll(root) {
     for (const s of (root || document).querySelectorAll('select.sel')) {
-      if (!s.__drop) dress(s);
-      else sync(s);
+      dress(s);
+      sync(s);
     }
   }
   window.syncDrops = () => dressAll(document);
@@ -180,10 +191,14 @@
   document.addEventListener('scroll', (e) => { if (open && !open.menu.contains(e.target)) close(); }, true);
   // Selects added by any render get dressed straight away.
   new MutationObserver((list) => {
-    for (const m of list) for (const n of m.addedNodes) {
-      if (n.nodeType !== 1) continue;
-      if (n.matches('select.sel')) dress(n);
-      else if (n.querySelector) for (const s of n.querySelectorAll('select.sel')) dress(s);
+    for (const m of list) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (n.matches('select.sel')) dress(n);
+        else if (n.querySelector) for (const s of n.querySelectorAll('select.sel')) dress(s);
+      }
+      // A redraw that kept the list but took its button: the button goes back.
+      for (const n of m.removedNodes) if (n.nodeType === 1 && n.__sel && n.__sel.isConnected) dress(n.__sel);
     }
     if (open && !open.btn.isConnected) close();
   }).observe(document.documentElement, { childList: true, subtree: true });

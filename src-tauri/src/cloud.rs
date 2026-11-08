@@ -100,15 +100,43 @@ fn forget(app: &AppHandle) {
     let _ = app.emit("account", json!({"signedIn": false}));
 }
 
+/// Cloud saves paused on the site (it answered 423), or not reachable for them (403, a block in
+/// front of the site): no more uploads until the launcher starts again, and saves stay on this PC.
+static PAUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) fn paused() -> bool {
+    PAUSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+/// What the site says while cloud saves are paused, when it doesn't say it itself.
+const PAUSED_TEXT: &str = "Cloud saves are paused for now. Your saves on this PC are safe.";
+/// Larger than this, a copy isn't sent (the site and what's in front of it refuse bigger ones).
+const MAX_UPLOAD: usize = 95 * 1024 * 1024;
+
 async fn answer(app: &AppHandle, r: reqwest::Response) -> Res<Value> {
     let code = r.status().as_u16();
+    let action = r.url().query_pairs().find(|(k, _)| k == "a").map(|(_, v)| v.to_string()).unwrap_or_default();
+    let cloud = matches!(action.as_str(), "saves" | "save-get" | "save-put" | "save-delete");
     let v: Value = r.json().await.unwrap_or(Value::Null);
+    let said = v.get("error").and_then(Value::as_str).map(str::trim).filter(|w| !w.is_empty() && w.len() <= 300).map(String::from);
+    if code == 423 {
+        PAUSED.store(true, std::sync::atomic::Ordering::Relaxed);
+        return Err(Error::Msg(said.unwrap_or_else(|| PAUSED_TEXT.into())));
+    }
+    // Cloud saves blocked before the site (Cloudflare): not a sign-in problem.
+    if code == 403 && cloud {
+        PAUSED.store(true, std::sync::atomic::Ordering::Relaxed);
+        return Err(Error::Msg(said.unwrap_or_else(|| "Cloud saves aren't available right now. Your saves on this PC are safe.".into())));
+    }
     if code == 401 {
         forget(app);
         return Err(Error::Msg("You were signed out. Sign in again to use cloud saves.".into()));
     }
     // The site having trouble (blocked, busy, down): the same as no connection, so it's quiet.
+    // Unless it says why itself (cloud saves paused for a while, say): then that's what shows,
+    // still as the site being unavailable, so saves waiting to go up are tried again later.
     if crate::net::trouble_status(code) {
+        if let Some(why) = said {
+            return Err(Error::Net(why));
+        }
         return Err(Error::Net("Can't reach recomplauncher.com right now.".into()));
     }
     if code >= 400 || v.get("ok") == Some(&Value::Bool(false)) {
@@ -314,7 +342,20 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
     let path = saves::dir_of(&st.dir, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
+    if paused() {
+        return Err(Error::Msg(PAUSED_TEXT.into()));
+    }
     let body = tokio::fs::read(&path).await?;
+    // Too big to go up: it stays on this PC, and isn't tried again (the next copy is).
+    if body.len() > MAX_UPLOAD {
+        let mut s = saves::state(&st.dir, id);
+        if s.pending.as_deref() == Some(name) {
+            s.pending = None;
+            saves::set_state(&st.dir, id, &s);
+        }
+        crate::trail::note(format!("Cloud saves: {id}'s copy is {} MB, too big to send", body.len() / (1024 * 1024)));
+        return Err(Error::Msg("This save is too big for cloud saves (over 95 MB). It's kept on this PC.".into()));
+    }
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let (made, played) = (man.made.to_string(), man.played.to_string());
     let url = api();
@@ -341,7 +382,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 /// still don't make it are tried again once the site can be asked again (see net.rs).
 pub async fn upload_pending(app: &AppHandle) {
     let st = app.state::<App>();
-    if !signed_in(&st.dir) || crate::net::resting(&api(), false) {
+    if !signed_in(&st.dir) || crate::net::resting(&api(), false) || paused() {
         return;
     }
     let ids: Vec<String> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).map(|g| g.id.clone()).collect();
@@ -356,6 +397,8 @@ pub async fn upload_pending(app: &AppHandle) {
                     no_answer = true;
                     break;
                 }
+                // Paused on the site: the rest wait for the next start.
+                Err(_) if paused() => break,
                 // Refused for this one (full, or the copy is gone): it waits for the next launch,
                 // and the others still go.
                 Err(_) => continue,
@@ -384,6 +427,9 @@ fn retry_pending_later(app: &AppHandle) {
         let wait = crate::net::wait_left(&api()).max((30u64 << n).min(3600));
         tokio::time::sleep(crate::net::spread(wait, 0.3)).await;
         RETRY_PLANNED.store(false, std::sync::atomic::Ordering::SeqCst);
+        if paused() {
+            return;
+        }
         Box::pin(upload_pending(&app)).await;
     });
 }
@@ -402,13 +448,22 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
         let latest = saves::list(&st.dir, id).into_iter().next();
         if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
             if let Err(e) = upload(app, id, &l.name).await {
-                let mut s = saves::state(&st.dir, id);
-                s.pending = Some(l.name.clone());
-                saves::set_state(&st.dir, id, &s);
-                if matches!(e, Error::Net(_)) {
+                let too_big = e.to_string().starts_with("This save is too big");
+                if !too_big {
+                    let mut s = saves::state(&st.dir, id);
+                    s.pending = Some(l.name.clone());
+                    saves::set_state(&st.dir, id, &s);
+                }
+                if matches!(e, Error::Net(_)) && !paused() {
                     retry_pending_later(app);
                 }
-                let _ = app.emit("toast", format!("Your save for {} is backed up on this PC. It goes to the cloud next time: {e}", g.name));
+                // Paused: said once each time the launcher runs, not after every game.
+                static TOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if too_big {
+                    let _ = app.emit("toast", format!("{}: {e}", g.name));
+                } else if !paused() || !TOLD.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    let _ = app.emit("toast", format!("Your save for {} is backed up on this PC. It goes to the cloud next time: {e}", g.name));
+                }
             }
         }
     }
@@ -601,6 +656,8 @@ pub async fn saves_overview(app: AppHandle) -> Res<Value> {
 
 fn overview(app: &AppHandle) -> Value {
     let st = app.state::<App>();
+    // Copies made here while the player's folder was away go to it now that it's back.
+    saves::gather(&st.dir);
     let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let signed = signed_in(&st.dir);
     let mut out = Vec::new();
@@ -618,7 +675,8 @@ fn overview(app: &AppHandle) -> Value {
             "cloudOn": g.cloud, "synced": state.synced_hash, "pending": state.pending.is_some(), "found": found,
         }));
     }
-    json!({ "signedIn": signed, "games": out })
+    let chosen = saves::chosen_root();
+    json!({ "signedIn": signed, "games": out, "root": saves::root(&st.dir), "chosen": chosen, "reachable": chosen.as_ref().map(|p| p.is_dir()).unwrap_or(true) })
 }
 
 #[tauri::command]
@@ -680,6 +738,41 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
         }
         None => None,
     };
+    g.more_save_places.clear();
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// One more folder where the game saves (a launcher with several games in it, each saving in its
+/// own folder): the ones it has now stay, and backups and cloud saves cover all of them.
+#[tauri::command(async)]
+pub fn saves_add_place(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
+    let g = game(&st, &id)?;
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        return Err(Error::Msg("That folder couldn't be found.".into()));
+    }
+    let now: Vec<String> = spots_of(&st, &id, &g).into_iter().filter(|s| s.from != "game").map(|s| s.template).collect();
+    let list = saves::add_place(&now, &p, &g).map_err(Error::Msg)?;
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.save_place = list.first().cloned();
+    g.more_save_places = list.get(1..).map(<[String]>::to_vec).unwrap_or_default();
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// One of the player's save folders taken off the list (the last one: back to the usual place).
+#[tauri::command(async)]
+pub fn saves_remove_place(st: State<'_, App>, id: String, template: String) -> Res<Installed> {
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let mut list: Vec<String> = g.save_place.iter().chain(g.more_save_places.iter()).filter(|t| t.trim() != template.trim()).cloned().collect();
+    list.dedup();
+    g.save_place = list.first().cloned();
+    g.more_save_places = list.get(1..).map(<[String]>::to_vec).unwrap_or_default();
     let g = g.clone();
     let _ = l.save(&st.dir);
     Ok(g)

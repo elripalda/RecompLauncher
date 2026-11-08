@@ -143,6 +143,10 @@ body.tv-on #app{visibility:hidden}
 
 /* lists: downloads, settings, mods */
 .tv-list{display:flex;flex-direction:column;gap:12px;max-width:1300px}
+.tv-subh{margin:14px 0 -2px 4px;font-size:15px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tvdim,#8f9cb0)}
+.tv-subh:first-child{margin-top:0}
+.tv-slbar{height:8px;border-radius:99px;background:rgba(var(--tvinkrgb,244,248,252),.12);overflow:hidden;margin:14px 0 6px}
+.tv-slbar i{display:block;height:100%;border-radius:inherit;background:#34F2E8}
 .tv-item{display:flex;align-items:center;gap:22px;min-height:88px;padding:14px 26px;border-radius:22px;background:rgba(var(--tvinkrgb,244,248,252),.06);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12);text-align:left;font-weight:600;font-size:22px;width:100%}
 .tv-item img,.tv-item .ph{position:static;width:58px;height:86px;border-radius:12px;object-fit:cover;flex:none;background:var(--tvcard)}
 .tv-item .sq{width:64px;height:64px}
@@ -828,3 +832,36 @@ body.playing .tv-stage *{animation-play-state:paused!important}
 body.linux .tv-cell .aura{filter:blur(18px) saturate(1.5)}
 body.linux .tv-setup .glow{filter:blur(56px) saturate(1.4)}
 body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
+.tv-kb-note{margin:10px 0 0;font-size:16px;color:var(--tvdim,#8f9cb0);line-height:1.4}
+
+/* Waiting for a key binding. */
+.tv-capture{position:absolute;inset:0;z-index:30;display:grid;place-items:center;background:rgba(2,4,8,.72);animation:tv-fade .2s ease both}
+.tv-capture-in{display:flex;flex-direction:column;align-items:center;gap:10px;padding:44px 64px;border-radius:24px;background:linear-gradient(180deg,#0e1729,#0b1220);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14)}
+.tv-capture-in b{font:700 semi-expanded 32px Archivo,sans-serif;animation:kwait 1.2s ease-in-out infinite}
+.tv-capture-in small{font-size:20px;color:var(--tvsoft,#a9c1d4)}
+@keyframes kwait{50%{opacity:.55}}
+/* Where a recomp's project stands: ended (red), on hold (amber), quiet (grey). */
+.tv-badge.left.state{color:#06121a;backdrop-filter:none}.tv-badge.state.ended{background:#ff7a7a}.tv-badge.state.paused{background:#f5b83d}
+.tv-badge.left.state.low{top:52px}.tv-dk .tv-badge.left.state{left:8px;top:8px;font-size:13px;padding:3px 9px}.tv-dk .tv-badge.left.state.low{top:38px}
+.tv-g-chips span.tv-st.ended{color:#ff9a9a;background:rgba(255,122,122,.14);border-color:rgba(255,122,122,.45)}
+.tv-g-chips span.tv-st.paused{color:#ffcf70;background:rgba(245,184,61,.14);border-color:rgba(245,184,61,.45)}
+.tv-g-chips span.tv-st.quiet{color:rgba(var(--tvinkrgb,244,248,252),.7)}
+.tv-stnote{display:flex;flex-direction:column;gap:4px;max-width:760px;margin:14px 0 0;padding:14px 18px;border-radius:16px;font-size:17px;line-height:1.4;border:1px solid}
+.tv-stnote span{opacity:.82}
+.tv-stnote.ended{background:rgba(255,122,122,.1);border-color:rgba(255,122,122,.4)}.tv-stnote.ended b{color:#ff9a9a}
+.tv-stnote.paused{background:rgba(245,184,61,.1);border-color:rgba(245,184,61,.4)}.tv-stnote.paused b{color:#ffcf70}
+/* Great on Deck, Notify Me and the team's notes. */
+.tv-deckb{position:absolute;right:12px;bottom:12px;z-index:2;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:15px;font-weight:700;color:#fff;background:#1a9fff}
+.tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
+.tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
+.tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
+.tv-btn.notify-on{background:transparent;border:2px solid rgba(52,242,232,.6);color:#34F2E8}
+.tv-home1>.tv-notes{position:absolute;top:6px;right:0;width:500px;z-index:2}
+.tv-tnote{display:flex;flex-direction:column;gap:6px;padding:10px 10px 14px 20px;border-radius:18px;background:rgba(var(--tvrgb),.78);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);border-left:5px solid #34F2E8;box-shadow:0 12px 34px rgba(0,0,0,.28)}
+.tv-tnote.gold{border-left-color:#f5c518}.tv-tnote.violet{border-left-color:#a98bff}
+.tv-tnote .tn-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tv-tnote .tn-l{font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.tv-tnote p{margin:0 10px 0 0;font-size:19px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tv-tnote .tn-acts{display:flex;margin-top:6px}
+.tv-tnote .tv-btn.sm{min-height:0;height:46px;padding:0 20px;font-size:17px}
+.tv-tnote .tv-tnote-x{width:46px;padding:0;justify-content:center}

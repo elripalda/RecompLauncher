@@ -15,6 +15,7 @@ pub mod devtools;
 pub mod discord;
 pub mod extract;
 pub mod files;
+pub mod flatpak;
 pub mod gamebanana;
 pub mod info;
 pub mod ingame;
@@ -71,8 +72,18 @@ pub enum Error {
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
-        if e.is_connect() || e.is_timeout() {
-            Error::Net("Couldn't reach the internet. Check your connection and try again.".into())
+        // Which site didn't answer, when it's known: one site being down isn't the player's internet.
+        let site = e.url().and_then(|u| u.host_str()).map(|h| h.trim_start_matches("www.").to_string());
+        if e.is_timeout() {
+            match site {
+                Some(h) => Error::Net(format!("{h} took too long to answer. Try again in a minute.")),
+                None => Error::Net("A site took too long to answer. Try again in a minute.".into()),
+            }
+        } else if e.is_connect() {
+            match site {
+                Some(h) => Error::Net(format!("Couldn't reach {h}. Check your connection, or try again in a minute.")),
+                None => Error::Net("Couldn't reach the internet. Check your connection and try again.".into()),
+            }
         } else if e.is_decode() {
             Error::Net("recomplauncher.com sent something unexpected.".into())
         } else {
@@ -167,6 +178,17 @@ async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>
     }
 }
 
+/// The release the store checked and let out for a recomp (its "tag" in the list), if it says.
+fn catalog_tag(entry: &Value) -> Option<String> {
+    entry.get("tag").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
+}
+
+/// The same release name, give or take a leading "v" and letter case.
+fn same_tag(a: &str, b: &str) -> bool {
+    let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).trim_start_matches('.').to_ascii_lowercase();
+    !a.trim().is_empty() && n(a) == n(b)
+}
+
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -190,8 +212,20 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             || (os0 == "linux" && r.assets.iter().any(|a| { let n = a.name.to_lowercase(); (n.contains("linux") || n.ends_with(".appimage")) && assets::pick(std::slice::from_ref(a), "linux", assets::arch_now(), None).is_some() }))
     };
     let mut fell_back = false;
+    // The release the store checked and let out (the list's "tag"): that one, unless the player
+    // picked a version. When it's gone from GitHub or has nothing for this system, the usual rules.
+    let listed = catalog_tag(&entry).and_then(|t| rels.iter().find(|r| !r.draft && same_tag(&r.tag_name, &t))).filter(|r| has_build(r));
+    if let (None, Some(r)) = (&tag, listed) {
+        if r.tag_name != newest.tag_name {
+            trail::note(format!("Install {id}: {} is the version the store let out", r.tag_name));
+        }
+    }
     let rel = match &tag {
         Some(t) => rels.iter().find(|r| &r.tag_name == t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
+        None if listed.is_some() => {
+            fell_back = true;
+            listed.unwrap()
+        }
         None if !has_build(newest) => match rels.iter().filter(|r| !r.draft && (!r.prerelease || newest.prerelease)).find(|r| has_build(r)) {
             Some(r) => {
                 trail::note(format!("Install {id}: {} has no build for this PC, so {} instead", newest.tag_name, r.tag_name));
@@ -295,6 +329,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
 
+    // A GitLab project's files come only from that project on gitlab.com.
+    if !catalog::own_download(&repo, &asset.browser_download_url, rel.project_id) {
+        trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
+        return Err(Error::Msg("That file isn't in this recomp's own releases, so it wasn't downloaded.".into()));
+    }
     // One download at a time; this one waits its turn.
     let permit = match st.download_slot.clone().try_acquire_owned() {
         Ok(p) => p,
@@ -307,6 +346,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
     }
+    // The release it ends up from: the one picked, or a newer one when that was taken down.
+    let mut tag_got = rel.tag_name.clone();
     let got = match install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await {
         // The file isn't there anymore (the release was changed after its list was read): the
         // release asked for straight from GitHub, and its file for this PC tried once more.
@@ -314,17 +355,45 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
             // A developer swapping a release's files: give it a moment to finish.
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-            let fresh: Vec<Release> = catalog::from_github(&st.http, &st.dir, &repo).await.ok().and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
-            let again = fresh.iter().find(|r| r.tag_name == rel.tag_name).and_then(|r| {
-                let all = assets::all_for(&r.assets, os, arch, pattern);
-                all.iter().copied().find(|a| a.name == asset.name).or_else(|| assets::most_like(&all, &asset.name)).or_else(|| assets::pick(&r.assets, os, arch, pattern)).cloned()
-            });
+            // GitHub's own list, or the site's freshest copy when GitHub won't answer (its hourly
+            // limit for this PC, say).
+            let fresh_from = match catalog::from_github(&st.http, &st.dir, &repo).await {
+                Ok(f) => Some(f),
+                Err(_) => catalog::releases(&st.http, &st.dir, &repo, true).await.ok().filter(|f| !f.offline),
+            };
+            let fresh: Vec<Release> = fresh_from.and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
+            // The release itself gone (taken down and put up again under a new name): the newest
+            // one with a build for this PC.
+            // Not for a version the player picked, and never the one they already have.
+            let same = fresh.iter().find(|r| r.tag_name == rel.tag_name);
+            let have_tag = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
+            let newest_now = if same.is_none() && !pinned && !fresh.is_empty() {
+                fresh.iter().filter(|r| !r.draft && (!r.prerelease || rel.prerelease)).find(|r| assets::pick(&r.assets, os, arch, pattern).is_some()).filter(|r| r.tag_name != have_tag)
+            } else {
+                None
+            };
+            if let Some(r) = newest_now {
+                trail::note(format!("Install {id}: {} isn't there anymore, so {} instead", rel.tag_name, r.tag_name));
+            }
+            let again = same
+                .or(newest_now)
+                .inspect(|r| tag_got = r.tag_name.clone())
+                .and_then(|r| {
+                    let all = assets::all_for(&r.assets, os, arch, pattern);
+                    all.iter().copied().find(|a| a.name == asset.name).or_else(|| assets::most_like(&all, &asset.name)).or_else(|| assets::pick(&r.assets, os, arch, pattern)).cloned()
+                });
             match again {
                 Some(a) => {
                     asset = a;
-                    install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await?
+                    install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await.map_err(|e| match e {
+                        Error::Msg(m) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => Error::Msg(format!("{m} Its developer took that file down or renamed it. Try again in a few minutes, or pick another version on the game's page.")),
+                        e => e,
+                    })?
                 }
-                None => return Err(Error::Msg(m)),
+                None => {
+                    trail::note(format!("Install {id}: {m}"));
+                    return Err(Error::Msg(format!("{m} Its developer took that file down or renamed it. Try again in a few minutes, or pick another version on the game's page.")));
+                }
             }
         }
         r => r?,
@@ -411,14 +480,20 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         Some(b) => b.setup_near(&target).or_else(|| install::find_setup(&target, os, exe.as_deref().filter(|e| !e.is_absolute()))),
         None => install::find_setup(&target, os, exe.as_deref().filter(|e| !e.is_absolute())),
     };
-    let setup_done = setup.is_some() && prev.as_ref().map(|p| p.setup_done && p.exe.as_ref().map(|e| !e.is_absolute()).unwrap_or(false)).unwrap_or(false);
+    // A release that's the game's installer (it builds the game, like TotK-Setup.exe): a new version
+    // has to be built again, so its setup runs on the next Play even though the old build is there.
+    let rebuild = boot.as_ref().map(|b| b.is_installer()).unwrap_or(false) && prev.as_ref().map(|p| p.tag != tag_got).unwrap_or(false);
+    let setup_done = !rebuild && setup.is_some() && prev.as_ref().map(|p| p.setup_done && p.exe.as_ref().map(|e| !e.is_absolute()).unwrap_or(false)).unwrap_or(false);
+    if rebuild && setup.is_some() {
+        trail::note(format!("Install {id}: a new version of its installer, it runs again on the next Play"));
+    }
 
     let rec = Installed {
         id: id.into(),
         name: str_of(&entry, "name").into(),
         game: prev.as_ref().map(|p| p.game.clone()).unwrap_or_default(),
         repo,
-        tag: rel.tag_name.clone(),
+        tag: tag_got.clone(),
         version: str_of(&entry, "version").into(),
         path: target,
         exe,
@@ -437,6 +512,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         proton: os == "windows" && assets::os_now() == "linux",
         picks: prev.as_ref().map(|p| p.picks.clone()).unwrap_or_default(),
+        screen_fit: prev.as_ref().map(|p| p.screen_fit.clone()).unwrap_or_default(),
+        screen_size: prev.as_ref().map(|p| p.screen_size.clone()).unwrap_or_default(),
+        slider_vals: prev.as_ref().map(|p| p.slider_vals.clone()).unwrap_or_default(),
         args: prev.as_ref().map(|p| p.args.clone()).unwrap_or_default(),
         auto_update: prev.as_ref().map(|p| p.auto_update).unwrap_or(false),
         local: false,
@@ -445,6 +523,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         cloud: prev.as_ref().and_then(|p| p.cloud),
         found_saves: prev.as_ref().map(|p| p.found_saves.clone()).unwrap_or_default(),
         save_place: prev.as_ref().and_then(|p| p.save_place.clone()),
+        more_save_places: prev.as_ref().map(|p| p.more_save_places.clone()).unwrap_or_default(),
         cover_file: prev.as_ref().and_then(|p| p.cover_file.clone()),
         hero_file: prev.as_ref().and_then(|p| p.hero_file.clone()),
         logo_file: prev.as_ref().and_then(|p| p.logo_file.clone()),
@@ -458,13 +537,13 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
-        l.installed.insert(id.into(), rec);
+        l.put(id, rec);
         l.settings.asked_location = true;
     }
     st.save();
     note_download(
         &st.dir,
-        json!({"id": id, "name": str_of(&entry, "name"), "tag": rel.tag_name, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
+        json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
     );
     let mut p = Progress::new(id, "done", 1, 1);
     p.msg = Some(if got.verified { "Checked against GitHub's checksum".into() } else { "GitHub has no checksum for this file".into() });
@@ -551,6 +630,18 @@ async fn report_counts(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
     Ok(catalog::report_counts(&st.http, &st.dir, force.unwrap_or(false)).await?.data.get("counts").cloned().unwrap_or(Value::Null))
 }
 
+/// Steam Deck players' scores for each recomp (id -> {score, n}), for "Great on Deck".
+#[tauri::command]
+async fn deck_scores(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
+    Ok(catalog::deck_scores(&catalog::play_scores(&st.http, &st.dir, force.unwrap_or(false)).await?.data))
+}
+
+/// The RecompStore team's notes for the top of Discover (none when the site can't be reached).
+#[tauri::command]
+async fn team_notes(st: State<'_, App>) -> Res<Vec<Value>> {
+    Ok(catalog::team_notes(&st.http).await)
+}
+
 /// One recomp's player reports, for its page.
 #[tauri::command]
 async fn play_reports(st: State<'_, App>, id: String, force: Option<bool>) -> Res<Value> {
@@ -608,9 +699,33 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         // Windows refusing a file (access denied) says only that: what it usually means, and what
         // to do about it.
         let r = r.map_err(|e| match e {
-            Error::Io(io) if io.raw_os_error() == Some(5) || io.kind() == std::io::ErrorKind::PermissionDenied => {
-                trail::note(format!("Install {id}: {io}"));
-                Error::Msg("Windows didn't let the launcher write the game's files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.".into())
+            Error::Io(io) => {
+                let code = io.raw_os_error();
+                let win = cfg!(windows);
+                // The drive itself failing to read or write (a failing or unplugged drive, a bad
+                // memory card), out of room, or a folder that vanished part way.
+                let drive = if win { matches!(code, Some(23) | Some(483) | Some(1117) | Some(1392) | Some(1393) | Some(55) | Some(21)) } else { matches!(code, Some(5) | Some(30)) };
+                let full = if win { matches!(code, Some(39) | Some(112)) } else { code == Some(28) };
+                let gone = win && matches!(code, Some(3) | Some(53) | Some(67));
+                if (win && code == Some(5)) || io.kind() == std::io::ErrorKind::PermissionDenied {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg(if win {
+                        "Windows didn't let the launcher write the game's files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.".into()
+                    } else {
+                        "The launcher isn't allowed to write to the library folder. Pick one in your home folder in Settings → Games and Folders.".into()
+                    })
+                } else if drive {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg("The drive couldn't read or write the game's files (a drive error, not the download). Check the drive or memory card is plugged in and healthy, or pick a library folder on another drive in Settings → Games and Folders.".into())
+                } else if full {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg("The drive ran out of space while installing. Free some up, or pick a library folder on another drive in Settings → Games and Folders.".into())
+                } else if gone {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg("A folder the install was using isn't there anymore (a drive was unplugged or renamed, or a network folder dropped). Check the library folder in Settings → Games and Folders and try again.".into())
+                } else {
+                    Error::Io(io)
+                }
             }
             e => e,
         });
@@ -684,6 +799,13 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
     let mut kept = false;
     let mut uninstaller = false;
     if delete_files {
+        // A Flatpak the launcher installed from the game's bundle goes with it.
+        if !cfg!(windows) && flatpak::available() {
+            let bundle = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }).filter(|e| e.extension().map(|x| x.eq_ignore_ascii_case("flatpak")).unwrap_or(false));
+            if let Some(app_id) = bundle.and_then(|b| flatpak::app_id(&b)).or_else(|| flatpak::bundle_in(&g.path).map(|(_, a)| a)) {
+                flatpak::remove(&app_id);
+            }
+        }
         // Only ever a game's own folder right inside a library. A game the player brought over
         // from somewhere else keeps its folder, and so does anything shared like Downloads.
         // Or a folder the launcher made for it (named after it) in a library folder since removed.
@@ -703,7 +825,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
             }
         }
     }
-    st.lib.lock().unwrap().installed.remove(&id);
+    st.lib.lock().unwrap().forget(&id);
     st.save();
     Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller}))
 }
@@ -1092,24 +1214,165 @@ async fn fs_list(st: State<'_, App>, path: String) -> Res<FolderView> {
 /// The player's games that have recomps: by name, and for recomps the launcher sets up, by
 /// looking inside each disc image or game folder for the files that game has.
 fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathBuf>) -> HashMap<String, roms::RomFile> {
+    // A game the launcher installed isn't anyone's copy of itself (its own programs are refused by
+    // the copy's checks).
+    let found: Vec<roms::RomFile> = found.iter().filter(|r| !dirs.values().any(|d| !d.as_os_str().is_empty() && &r.path == d)).cloned().collect();
+    let found = &found[..];
     let mut out = roms::match_catalog(cat, found);
     let none = PathBuf::new();
     for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
         let (Some(id), repo) = (a.get("id").and_then(Value::as_str), a.get("repo").and_then(Value::as_str).unwrap_or("")) else { continue };
         let Some(need) = profile::find(dirs.get(id).unwrap_or(&none), repo, a).and_then(|p| p.game) else { continue };
-        // A check on a file every game of its console has (default.xex) can't tell games apart.
-        if need.generic {
+        // A check that can't tell games apart (default.xex, which every game of its console has,
+        // or just "a disc image"): matched by name only, unless the catalog lists its disc IDs.
+        let want: Vec<String> = need.check.ids.iter().map(|i| roms::id_key(i)).filter(|i| i.len() >= 3).chain(roms::copy_ids(a)).collect();
+        let named_ok = out.get(id).map(|r| profile::check_copy(&need, &r.path).is_ok()).unwrap_or(false);
+        if !need.identifies() && want.is_empty() {
+            // Found by its name only: kept when its own check passes (a catalog profile's check on a
+            // common file was never applied to a name, and still isn't).
+            if !need.generic && !named_ok {
+                out.remove(id);
+            }
             continue;
         }
-        if out.get(id).map(|r| profile::check_copy(&need, &r.path).is_ok()).unwrap_or(false) {
+        // By its disc ID: one that's this game's. One that can't be read (a folder, an Xbox disc)
+        // counts only when there's another check that tells it apart.
+        let by_file = need.identifies_by_contents();
+        let id_fits = |p: &Path| want.is_empty() || roms::copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(by_file);
+        if named_ok {
             continue;
         }
         out.remove(id);
-        if let Some(r) = found.iter().find(|r| profile::check_copy(&need, &r.path).is_ok()) {
+        // Recognized PlayStation and Switch folders are matched by title. Shared files
+        // such as eboot.bin or main.npdm can't identify another game.
+        if let Some(r) = found.iter().find(|r| {
+            let matched_by_title = matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2")
+                || (r.system == "switch" && r.size == 0);
+            !matched_by_title && id_fits(&r.path) && profile::check_copy(&need, &r.path).is_ok()
+        }) {
             out.insert(id.to_string(), r.clone());
         }
     }
     out
+}
+
+/// A game the player added by its link that the list now has itself (the same repo, under the
+/// list's own id): their copy becomes the list's, where it is, with its version, settings, save
+/// backups, play time, mods, favorites and pins, so nothing has to be installed again. Not while
+/// it's playing, downloading or moving (next time), and not when the list's one is installed too
+/// (both stay). Gives back the ones moved over: (their id, the list's id, its name).
+pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)> {
+    let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let list = catalog::mine(&st.dir);
+    if list.is_empty() {
+        return vec![];
+    }
+    let apps: Vec<&Value> = cat.get("apps").and_then(Value::as_array).map(|a| a.iter().filter(|x| !x.get("custom").and_then(Value::as_bool).unwrap_or(false)).collect()).unwrap_or_default();
+    let (mut keep, mut out) = (vec![], vec![]);
+    for e in list {
+        let old = str_of(&e, "id").to_string();
+        let repo = str_of(&e, "repo").to_lowercase();
+        let Some(o) = apps.iter().find(|a| !repo.is_empty() && str_of(a, "repo").to_lowercase() == repo && str_of(a, "id") != old) else {
+            keep.push(e);
+            continue;
+        };
+        let new = str_of(o, "id").to_string();
+        // Not while either one is installing, updating, running, moving, being set up or getting
+        // mods, nor while the chosen saves folder can't be reached (its backups would stay behind):
+        // it's tried again the next time the list comes in.
+        let busy = [&old, &new].iter().any(|i| st.jobs.lock().unwrap().contains_key(*i) || st.running.lock().unwrap().contains_key(*i) || st.moving.lock().unwrap().contains(*i) || setup_busy(i) || mods_busy(i))
+            || saves::chosen_root().is_some_and(|p| !p.is_dir());
+        let had = {
+            let mut l = st.lib.lock().unwrap();
+            let had = l.installed.contains_key(&old);
+            if busy || (had && l.installed.contains_key(&new)) {
+                None
+            } else {
+                if let Some(a) = l.arts.remove(&old) {
+                    l.arts.entry(new.clone()).or_insert(a);
+                }
+                if let Some(mut g) = l.installed.remove(&old) {
+                    g.id = new.clone();
+                    l.put(&new, g);
+                }
+                if let Some(m) = l.mods.remove(&old) {
+                    l.mods.entry(new.clone()).or_insert(m);
+                }
+                if let Some(v) = l.seen_versions.remove(&old) {
+                    l.seen_versions.entry(new.clone()).or_insert(v);
+                }
+                rename_id(&mut l.settings.ui, &old, &new);
+                Some(had)
+            }
+        };
+        let Some(had) = had else {
+            keep.push(e);
+            continue;
+        };
+        // Its save backups and this PC's notes about them, and its Look. What the official one
+        // already has stays as it is.
+        let mut dirs = vec![(saves::dir_of(&st.dir, &old), saves::dir_of(&st.dir, &new)), (st.dir.join("saves").join(&old), st.dir.join("saves").join(&new)), (st.dir.join("looks").join(&old), st.dir.join("looks").join(&new))];
+        dirs.dedup();
+        for (from, to) in dirs {
+            if let Err(err) = move_into(&from, &to) {
+                trail::note(format!("{new}: couldn't move all of {} to {} ({err})", from.display(), to.display()));
+            }
+        }
+        trail::note(format!("{old}: the list has it now as {new}; {}", if had { "the copy here moved over to it" } else { "the list's one is used from now on" }));
+        out.push((old, new, str_of(o, "name").to_string()));
+    }
+    if !out.is_empty() {
+        // The library first: if the list can't be written, the next time finds it moved already.
+        st.save();
+        if let Err(err) = catalog::save_mine(&st.dir, &keep) {
+            trail::note(format!("Couldn't save the list of games added by link ({err})"));
+        }
+    }
+    out
+}
+
+/// A folder's things moved into another; ones the other already has stay where they were.
+fn move_into(from: &Path, to: &Path) -> std::io::Result<()> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    if !to.exists() {
+        return std::fs::rename(from, to);
+    }
+    let mut left = 0;
+    for e in std::fs::read_dir(from)?.flatten() {
+        let dest = to.join(e.file_name());
+        if dest.exists() || std::fs::rename(e.path(), &dest).is_err() {
+            left += 1;
+        }
+    }
+    if left == 0 {
+        let _ = std::fs::remove_dir(from);
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("{left} left where they were")))
+    }
+}
+
+/// A game's id changed (`old` to `new`) in the player's own settings: lists of ids (favorites,
+/// pins, hidden games) and maps keyed by id (covers, names, choices kept per game).
+fn rename_id(v: &mut Value, old: &str, new: &str) {
+    match v {
+        Value::String(s) if s == old => *s = new.to_string(),
+        Value::Array(a) => {
+            a.iter_mut().for_each(|x| rename_id(x, old, new));
+            // A list that had both keeps one.
+            let mut seen = false;
+            a.retain(|x| x.as_str() != Some(new) || !std::mem::replace(&mut seen, true));
+        }
+        Value::Object(o) => {
+            if let Some(x) = o.remove(old) {
+                o.entry(new.to_string()).or_insert(x);
+            }
+            o.values_mut().for_each(|x| rename_id(x, old, new));
+        }
+        _ => {}
+    }
 }
 
 /// After a fresh catalog: tell the player about new recomps for games they own.
@@ -1453,6 +1716,82 @@ async fn repo_readme(st: State<'_, App>, repo: String) -> Res<Option<String>> {
     }
 }
 
+/// Microsoft's Visual C++ runtime (x64), which almost every Windows recomp needs: its official
+/// installer downloaded from Microsoft and run with its own small progress window. "installed",
+/// "restart" (Windows wants a restart to finish) or an error.
+#[tauri::command]
+async fn install_vcredist(st: State<'_, App>) -> Res<String> {
+    #[cfg(not(windows))]
+    {
+        let _ = &st;
+        Err(Error::Msg("The Visual C++ runtime is for Windows.".into()))
+    }
+    #[cfg(windows)]
+    {
+        trail::note("Visual C++ runtime: getting Microsoft's installer");
+        let r = st
+            .http
+            .get("https://aka.ms/vs/17/release/vc_redist.x64.exe")
+            .timeout(std::time::Duration::from_secs(300))
+            .send()
+            .await
+            .map_err(|e| Error::Msg(format!("Couldn't download the Visual C++ runtime: {e}")))?;
+        // Only from Microsoft, wherever the short link leads.
+        let host = r.url().host_str().unwrap_or("").to_ascii_lowercase();
+        if !(host.ends_with(".microsoft.com") || host == "microsoft.com") || !r.status().is_success() {
+            return Err(Error::Msg("Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.".into()));
+        }
+        let bytes = r.bytes().await.map_err(|e| Error::Msg(format!("Couldn't download the Visual C++ runtime: {e}")))?;
+        if bytes.len() < 1 << 20 || &bytes[..2] != b"MZ" {
+            return Err(Error::Msg("Microsoft's download didn't answer as expected. Try again later, or get it from microsoft.com.".into()));
+        }
+        let dir = st.dir.join("cache");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("vc_redist.x64.exe");
+        std::fs::write(&file, &bytes)?;
+        let f2 = file.clone();
+        let code = tokio::task::spawn_blocking(move || -> Result<Option<i32>, Error> {
+            let args = "/install /passive /norestart";
+            let admin = |f: &Path| -> Result<Option<i32>, Error> {
+                match win::run_as_admin(f, args, f.parent().unwrap_or(Path::new("."))) {
+                    Ok(h) => Ok(h.wait()),
+                    // 1223: the player said No when Windows asked.
+                    Err(e) if e.raw_os_error() == Some(1223) => Ok(Some(1223)),
+                    Err(e) => Err(Error::Msg(format!("Windows didn't start the installer: {e}"))),
+                }
+            };
+            let mut c = std::process::Command::new(&f2);
+            c.args(args.split(' '));
+            match c.spawn() {
+                // 5: Windows didn't let it install without asking first. Asked once, the way
+                // Windows asks (the player presses Yes).
+                Ok(mut child) => match child.wait().ok().and_then(|s| s.code()) {
+                    Some(5) => {
+                        trail::note("Visual C++ runtime: the installer needs Windows' permission; asking");
+                        admin(&f2)
+                    }
+                    other => Ok(other),
+                },
+                Err(e) if e.raw_os_error() == Some(740) => admin(&f2),
+                Err(e) => Err(Error::Msg(format!("Couldn't start the installer: {e}"))),
+            }
+        })
+        .await
+        .map_err(|e| Error::Msg(e.to_string()))??;
+        let _ = std::fs::remove_file(&file);
+        trail::note(format!("Visual C++ runtime: installer closed with {code:?}"));
+        match code {
+            Some(5) | Some(1223) => Err(Error::Msg("Windows needs your permission to install it. Press the button again and choose Yes when Windows asks.".into())),
+            Some(0) => Ok("installed".into()),
+            // 1638: it's already there (this one or a newer one): what's missing is something else.
+            Some(1638) => Ok("already".into()),
+            Some(3010) | Some(1641) => Ok("restart".into()),
+            Some(1602) => Err(Error::Msg("The installer was cancelled.".into())),
+            _ => Err(Error::Msg("The Visual C++ installer didn't finish. Run it from microsoft.com to see why.".into())),
+        }
+    }
+}
+
 /// GE-Proton, for Windows recomps on Linux (and for Steam's own games too): the newest one from
 /// its GitHub. Progress comes as "ge_progress".
 #[tauri::command]
@@ -1496,6 +1835,82 @@ fn headless_script(exe: &Path) -> bool {
     n > 0 && !head.starts_with(b"\x7fELF") && !head.starts_with(b"#!") && !head.contains(&0)
 }
 
+/// A Windows start script (.bat, .cmd) that only starts one program in the game's folder: that
+/// program and the arguments it's given. None for anything more (a loop, a choice, several steps).
+fn bat_target(script: &Path) -> Option<(PathBuf, Vec<String>)> {
+    let low = script.extension()?.to_string_lossy().to_ascii_lowercase();
+    if low != "bat" && low != "cmd" {
+        return None;
+    }
+    let dir = script.parent()?;
+    let text = std::fs::read(script).ok().filter(|b| b.len() < 16_000).map(|b| String::from_utf8_lossy(&b).to_string())?;
+    let mut found = None;
+    for line in text.lines().map(str::trim) {
+        let l = line.trim_start_matches('@');
+        let w = l.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+        if l.is_empty() || l.starts_with("::") || ["rem", "echo", "title", "popd", "setlocal", "endlocal", "exit", "pause", "chcp", "cls"].contains(&w.as_str()) {
+            continue;
+        }
+        // Into the script's own folder only ("cd /d %~dp0"); into another folder, the program
+        // after it is somewhere else: not a plain start script.
+        if w == "cd" || w == "pushd" || w.starts_with("cd/") || w.starts_with("cd\\") {
+            let to: String = l[w.len()..].trim().trim_start_matches("/d").trim().trim_matches('"').to_string();
+            if to.is_empty() || to.eq_ignore_ascii_case("%~dp0") || to == "." {
+                continue;
+            }
+            return None;
+        }
+        // Output sent somewhere, or a second command on the line: more than a start.
+        if l.contains(['>', '<', '|', '&']) {
+            return None;
+        }
+        // Anything that decides or repeats: not a plain start script.
+        if ["if", "for", "goto", "call", "set", "choice"].contains(&w.as_str()) || l.starts_with(':') || found.is_some() {
+            return None;
+        }
+        // "start "" Game.exe" or "start /wait Game.exe": the program after it.
+        let mut parts = split_args(l);
+        if parts.first().map(|p| p.eq_ignore_ascii_case("start")).unwrap_or(false) {
+            parts.remove(0);
+            while parts.first().map(|p| p.starts_with('/') || p.is_empty()).unwrap_or(false) {
+                parts.remove(0);
+            }
+        }
+        let prog = parts.first()?.replace("%~dp0", "").replace("%cd%", "").replace('\\', "/");
+        if !prog.to_ascii_lowercase().ends_with(".exe") {
+            return None;
+        }
+        let path = dir.join(prog.trim_start_matches("./").trim_start_matches('/'));
+        if prog.contains("..") || prog.contains(':') || !path.is_file() || !path.starts_with(dir) {
+            return None;
+        }
+        // The script's folder (%~dp0) as the real folder; %* (what the script was given) dropped;
+        // any other variable can't be known here.
+        let here = format!("{}{}", dir.display(), std::path::MAIN_SEPARATOR);
+        let mut args = vec![];
+        for a in &parts[1..] {
+            if a == "%*" {
+                continue;
+            }
+            let a = a.replace("%~dp0", &here);
+            if a.contains('%') {
+                return None;
+            }
+            args.push(a);
+        }
+        found = Some((path, args));
+    }
+    found
+}
+
+/// A line of numbers a game prints about how it's running (frame times, shader and pipeline
+/// counts): "shader libraries missing (left to a worker)" there is a count, not something it needs.
+/// Lowercased already.
+fn stats_line(l: &str) -> bool {
+    const WORDS: [&str; 12] = ["vk_pipeline", "frametime", "fast links", "lookups", "pipelines swapped", "cache hits", "shader cache", "fps", "frames in", " ms,", "telemetry", "[stats]"];
+    WORDS.iter().any(|w| l.contains(w))
+}
+
 // Games being started right now, so a second Play while the first is still on its way does nothing.
 static STARTING: Mutex<Vec<String>> = Mutex::new(Vec::new());
 struct Starting(String);
@@ -1511,6 +1926,7 @@ static RUN_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 
 pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let st = app.state::<App>();
+    read_screen(app);
     if st.moving.lock().unwrap().contains(id) {
         return Err(Error::Msg(MOVING.into()));
     }
@@ -1524,14 +1940,31 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     };
     let g = st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     // Set Up By Hand: the player's own way, instead of the launcher's.
-    let manual = g.manual.clone();
+    let mut manual = g.manual.clone();
+    // A game whose release is its installer, with a new version to build: its setup runs even when
+    // it's set up by hand (that only says how it starts). A program picked by hand in what the
+    // setup leaves behind while it builds (a temp folder) is let go: the setup finds the new one.
+    let installer = boot::of(&st.dir, id).map(|b| b.is_installer()).unwrap_or(false);
+    let rebuild = installer && manual.is_some() && !g.setup_done && g.setup.is_some();
+    if rebuild {
+        let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit('/').next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
+        let leftover = manual.as_ref().and_then(|m| m.exe.as_ref()).map(|e| { let rel = e.strip_prefix(&g.path).unwrap_or(e); install::looks_like_tool(rel, &names) }).unwrap_or(false);
+        if leftover && manual.as_ref().map(|m| m.how == "none" || m.how.is_empty()).unwrap_or(false) {
+            trail::note(format!("Play {id}: set up by hand on a program in its setup's leftovers; the setup builds the new version and the launcher finds it"));
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                x.manual = None;
+            }
+            st.save();
+            manual = None;
+        }
+    }
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
     let prof = if manual.is_some() { None } else { profile_of(&st, id, &g) };
     // Its own installer or first-time setup, the first time: that opens instead of the game.
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
     // still runs the release's setup first.)
-    if manual.is_none() && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
+    if (manual.is_none() || rebuild) && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
         if let Some(setup) = own_setup::pending(&st, id, &g) {
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
@@ -1542,6 +1975,18 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         }
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
+    // Settings on Match My Screen: the monitor's size now, when the monitor changed since it was
+    // last written (a size picked in the game's own menu stays otherwise).
+    let monitor = screen_now().map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
+    if let (Some(p), false, false) = (prof.as_ref(), g.screen_fit.is_empty(), monitor.is_empty() || monitor == g.screen_size) {
+        for k in p.follow_screen(&g.path, &g.screen_fit) {
+            trail::note(&format!("Settings: {k} set to this screen ({monitor})"));
+        }
+        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+            x.screen_size = monitor.clone();
+        }
+        st.save();
+    }
     let mut args: Vec<String> = vec![];
     let mut game_env: Vec<(String, String)> = vec![];
     note_pad();
@@ -1559,7 +2004,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             // for again and again.
             if let (Some(c), false) = (copy.as_deref(), missing.is_empty()) {
                 let want: Vec<String> = p.game.as_ref().map(|gc| gc.contains.iter().filter(|x| !x.contains(['*', '/', '\\'])).map(|x| x.to_lowercase()).collect()).unwrap_or_default();
-                if let Some(inner) = folder_with(c, &want, 2) {
+                if let Some(inner) = folder_with(c, &want, 3) {
                     trail::note(format!("Play {id}: the game's files are in {}, one level down", inner.display()));
                     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                         x.game_copy = Some(inner.clone());
@@ -1576,7 +2021,8 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
                 }
                 st.save();
                 let label = p.game.as_ref().map(|c| c.label.clone()).unwrap_or_default();
-                return Err(Error::Msg(format!("NEED_COPY|{label}")));
+                // What wasn't in it goes along, so the setup can say which files to look for.
+                return Err(Error::Msg(format!("NEED_COPY|{label}|{}", missing.join(", "))));
             }
             // Its update, when it needs one: put in beside the copy, or asked for.
             if let Some(up) = p.game.as_ref().and_then(|c| c.update.as_ref()) {
@@ -1652,7 +2098,8 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         Ok(Some((look, lines, api))) => {
             // A game that can go either way: the way in that last worked for it.
             let (api, route) = looks::route_for(&st.dir, id, api);
-            look_route = route.filter(|_| cfg!(windows));
+            // "only": a game with one way in, looked at after the run all the same (did ReShade start?).
+            look_route = if cfg!(windows) { Some(route.unwrap_or("only")) } else { None };
             match if cfg!(windows) { looks::prepare(&st.dir, id, &exe, look, g.look_amount, lines, api) } else { looks::prepare_vkbasalt(&st.dir, id, look, g.look_amount, lines) } {
                 Ok(r) => Some(r),
                 Err(e) => {
@@ -1694,6 +2141,18 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // A Windows script (.cmd, .bat) on Linux: the build's own Linux start script beside it when it
     // has one (a profile written for Windows names Launcher.cmd; the Linux build has launcher.sh).
     let exe = if !cfg!(windows) && matches!(exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("cmd" | "bat")) { linux_twin(&exe).unwrap_or(exe) } else { exe };
+    // A Windows script that only starts the game's program (Play.bat: "Game.exe --flag"): on Linux
+    // that program goes through Proton itself, with the script's arguments. A script through
+    // Proton's own launcher doesn't always start.
+    let exe = match (!cfg!(windows)).then(|| bat_target(&exe)).flatten() {
+        Some((target, mut first)) => {
+            trail::note(format!("Play {id}: {} starts {}; that goes through Proton itself", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+            first.append(&mut args);
+            args = first;
+            target
+        }
+        None => exe,
+    };
     // A Python script starts through its interpreter.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     let mut cmd = match ext.as_str() {
@@ -1712,9 +2171,29 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         // The same for a start script without a "#!" line (or an extension): Linux won't run one
         // on its own ("Exec format error").
         "sh" if !cfg!(windows) => shell_script(&exe),
-        _ if !cfg!(windows) && headless_script(&exe) => {
+        // A Windows script (.bat, .cmd) has no "#!" line either, but it's for Windows' own command
+        // prompt: it goes through Proton below, never the shell.
+        _ if !cfg!(windows) && !matches!(ext.as_str(), "exe" | "cmd" | "bat" | "flatpak") && headless_script(&exe) => {
             trail::note(format!("Play {id}: a start script without a #! line, through the shell"));
             shell_script(&exe)
+        }
+        // A Flatpak bundle: Linux can't run the file itself. Installed for this user the first
+        // time (with what it needs from Flathub), then started through Flatpak.
+        "flatpak" if !cfg!(windows) => {
+            if !flatpak::available() {
+                return Err(Error::Msg("This build comes as a Flatpak, and Flatpak isn't on this PC. Install Flatpak from your system's software center, or switch to another build on the game's page.".into()));
+            }
+            let app_id = flatpak::app_id(&exe).ok_or_else(|| Error::Msg("This Flatpak file doesn't say which app it holds, so it can't be installed. Switch to another build on the game's page.".into()))?;
+            if !flatpak::installed(&app_id) {
+                trail::note(format!("Play {id}: installing its Flatpak ({app_id})"));
+                let _ = app.emit("note", "Installing its Flatpak for the first time. It can take a few minutes; the game starts when it's done.");
+                if let Err(e) = flatpak::install(&exe) {
+                    trail::note(format!("Play {id}: its Flatpak didn't install: {e}"));
+                    return Err(Error::Msg(format!("Flatpak couldn't install it: {e}")));
+                }
+                trail::note(format!("Play {id}: its Flatpak is installed"));
+            }
+            flatpak::command(&app_id)
         }
         // A Windows program (or script) on Linux: through Proton (or Wine).
         "exe" | "cmd" | "bat" if !cfg!(windows) => match proton::runner() {
@@ -1724,6 +2203,12 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         _ => tokio::process::Command::new(&exe),
     };
     sysenv::clean_tokio(&mut cmd);
+    // Started from a Steam shortcut: Steam's overlay goes back for the game, so Steam Link and
+    // Remote Play can stream its window.
+    #[cfg(target_os = "linux")]
+    if !matches!(ext.as_str(), "exe" | "cmd" | "bat") {
+        sysenv::steam_overlay_for_game(&mut cmd);
+    }
     cmd.args(&args).current_dir(&cwd).kill_on_drop(false);
     // What the game prints, kept for this start: a game that closes right away usually says why
     // there, and the crash report takes it along.
@@ -1787,6 +2272,18 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let mut child = spawned.map_err(|e| {
         if is_blocked(&e) {
             defender_msg(e, &shown)
+        } else if ext == "py" && e.kind() == std::io::ErrorKind::NotFound {
+            // A Python game, and Python isn't on this PC (Windows' py launcher comes with it).
+            Error::Msg(format!("{shown} is a Python program, and Python 3 isn't on this PC. Install it from python.org (on Windows, tick \"Add python.exe to PATH\" in its installer), then press Play again."))
+        } else if e.raw_os_error() == Some(1455) && cfg!(windows) {
+            // ERROR_COMMITMENT_LIMIT: memory and the page file together are full.
+            Error::Msg(format!("Windows ran out of memory to start {shown}. Close other games and apps, and check that the page file is on (Advanced system settings → Performance → Virtual memory), then press Play again."))
+        } else if e.raw_os_error() == Some(5) && cfg!(windows) {
+            // Access denied on starting it: an antivirus holding the file, most often.
+            Error::Msg(format!("Windows didn't let {shown} start. Your antivirus may be blocking it: allow the game's folder in it (or restore the file if it was quarantined), then press Play again."))
+        } else if let Some(why) = not_a_program(&exe).filter(|_| matches!(e.raw_os_error(), Some(8) | Some(193))) {
+            // A disc image, an archive or a document set as the program (by hand, most often).
+            Error::Msg(why.into())
         } else if !cfg!(windows) && e.raw_os_error() == Some(8) {
             Error::Msg(format!("{shown} isn't built for this PC's processor (Exec format error). Pick the build for your system on the game's page, or choose another program in Troubleshoot."))
         } else {
@@ -1875,6 +2372,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         };
         let secs = start.elapsed().as_secs();
         let st = app2.state::<App>();
+        // A game that closes with the same code every time it's quit normally (its profile or the
+        // catalog says which): that's a normal close, not a crash.
+        let code = code.map(|c| if quit_code(&st, &id, prof.as_ref(), c) { 0 } else { c });
         if let Some(route) = look_route {
             looks::after_run(&st.dir, &id, route, secs, code);
         }
@@ -2050,6 +2550,10 @@ fn note_pad() {
 static SETUP_RUN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+fn setup_busy(id: &str) -> bool {
+    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id))
+}
+
 fn setup_stopped(id: &str, run: u64) -> bool {
     SETUP_RUN.lock().unwrap().as_ref().and_then(|m| m.get(id).copied()) != Some(run)
 }
@@ -2093,6 +2597,11 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
             if !stopped() {
                 emit(SetupEv { step: "error".into(), text, ..Default::default() })
             }
+            if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
+                if m.get(&id) == Some(&run) {
+                    m.remove(&id);
+                }
+            }
         };
         // 1. Is it the right game?
         emit(SetupEv { step: "read".into(), ..Default::default() });
@@ -2100,7 +2609,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
             return fail("That file isn't there anymore.".into());
         }
         if let Some(need) = &p.game {
-            if let Err(e) = profile::check_copy(need, &copy) {
+            if let Err(e) = copy_ok(need, &copy, &g.path, true) {
                 return fail(e);
             }
         }
@@ -2450,13 +2959,17 @@ fn cached_catalog(st: &App) -> Value {
 /// art from SteamGridDB when the player gave their key.
 #[tauri::command]
 async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub link. It looks like github.com/owner/name.".into()))?;
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let apps = cat.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
     if let Some(a) = apps.iter().find(|a| str_of(a, "repo").eq_ignore_ascii_case(&repo)) {
         return Ok(json!({"repo": repo, "known": {"id": str_of(a, "id"), "name": str_of(a, "name")}}));
     }
     let os = github_os(&st, &repo).await?;
+    // A GitLab project: only its releases are read (through the site), so its name stands in for
+    // what GitHub would say about it.
+    let lab = catalog::is_gitlab(&repo);
+    let api = if lab { String::new() } else { format!("https://api.github.com/repos/{repo}") };
     let get = |url: String, raw: bool| {
         let mut r = st.http.get(url).timeout(std::time::Duration::from_secs(10));
         if raw {
@@ -2464,22 +2977,28 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         }
         r.send()
     };
-    let (info, readme) = tokio::join!(get(format!("https://api.github.com/repos/{repo}"), false), get(format!("https://api.github.com/repos/{repo}/readme"), true));
-    let info: Value = match info {
-        Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
-        _ => Value::Null,
+    let (info, readme) = if lab {
+        (Value::Null, String::new())
+    } else {
+        let (info, readme) = tokio::join!(get(api.clone(), false), get(format!("{api}/readme"), true));
+        let info: Value = match info {
+            Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
+            _ => Value::Null,
+        };
+        let readme = match readme {
+            Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
+            _ => String::new(),
+        };
+        (info, readme)
     };
-    let readme = match readme {
-        Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
-        _ => String::new(),
-    };
+    let path = catalog::gitlab_path(&repo).unwrap_or(&repo).to_string();
     let desc = str_of(&info, "description").to_string();
     let topics: Vec<String> = info.get("topics").and_then(Value::as_array).map(|l| l.iter().filter_map(|t| t.as_str().map(str::to_string)).collect()).unwrap_or_default();
     // The game: a catalog game the repo names in its own words first, then what its description,
     // README and name point at. With a SteamGridDB key, the first of those SteamGridDB knows,
     // under its name there.
-    let cands = ghinfo::game_candidates(&repo, &desc, &readme);
-    let hay = format!(" {} ", ghinfo::norm(&format!("{} {} {}", repo.replace(['/', '-', '_'], " "), desc, readme.chars().take(1500).collect::<String>())));
+    let cands = ghinfo::game_candidates(&path, &desc, &readme);
+    let hay = format!(" {} ", ghinfo::norm(&format!("{} {} {}", path.replace(['/', '-', '_'], " "), desc, readme.chars().take(1500).collect::<String>())));
     let from_cat = apps
         .iter()
         .filter_map(|a| {
@@ -2522,14 +3041,15 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         "known": Value::Null,
         "os": os,
         // The project's own name; the game it's a recomp of goes in "game" (Show Game Names uses it).
-        "name": catalog::name_from_repo(&repo),
+        "name": catalog::name_from_repo(&path),
         "game": game.unwrap_or_default(),
         "origin": origin,
         "blurb": desc,
         "similar": similar.map(|a| json!({"id": str_of(a, "id"), "name": str_of(a, "name")})),
         "art": art,
         "art_error": art_error,
-        "hero_default": format!("https://opengraph.githubassets.com/1/{repo}"),
+        "hero_default": if lab { String::new() } else { format!("https://opengraph.githubassets.com/1/{repo}") },
+        "host": if lab { "gitlab" } else { "github" },
     }))
 }
 
@@ -2546,11 +3066,12 @@ async fn github_os(st: &App, repo: &str) -> Res<&'static str> {
         return Err(Error::Msg("That repo hasn't put out a release yet, so there's nothing to install.".into()));
     }
     let (here, arch) = (assets::os_now(), assets::arch_now());
-    let proton = here == "linux" && st.lib.lock().unwrap().settings.proton;
     let has = |os: &str| rels.iter().any(|r| !r.draft && assets::pick(&r.assets, os, arch, None).is_some());
     if has(here) {
         Ok(here)
-    } else if proton && has("windows") {
+    } else if here == "linux" && (has("windows") || rels.iter().any(|r| !r.draft && assets::pick(&r.assets, "windows", "x64", None).is_some())) {
+        // A Windows-only one on Linux: added as that, and it plays through Proton (its page offers
+        // to turn Proton on when it's off).
         Ok("windows")
     } else {
         let name = match here {
@@ -2571,7 +3092,7 @@ const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero
 /// { id, known, name }.
 #[tauri::command]
 async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub link. It looks like github.com/owner/name.".into()))?;
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
     if let Some(a) = cat.get("apps").and_then(Value::as_array).and_then(|l| l.iter().find(|a| same(a))) {
@@ -2579,33 +3100,46 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
     }
     let os = github_os(&st, &repo).await?;
     let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, &repo, false).await?.data).unwrap_or_default();
-    // What the repo says about itself, when GitHub answers (it's fine without).
-    let meta: Value = match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
-        Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
-        _ => Value::Null,
+    // What the repo says about itself, when GitHub answers (it's fine without). A GitLab
+    // project's releases are all that's read of it.
+    let lab = catalog::is_gitlab(&repo);
+    let meta: Value = if lab {
+        Value::Null
+    } else {
+        match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
+            Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
+            _ => Value::Null,
+        }
     };
-    let owner = repo.split('/').next().unwrap_or("").to_string();
-    let id: String = format!("gh-{}", repo.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
+    let path = catalog::gitlab_path(&repo).unwrap_or(&repo).to_string();
+    let owner = path.split('/').next().unwrap_or("").to_string();
+    let id: String = format!("{}-{}", if lab { "gl" } else { "gh" }, path.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
     let newest = rels.iter().find(|r| !r.draft);
     let mut entry = json!({
         "id": id,
-        "name": catalog::name_from_repo(&repo),
+        "name": catalog::name_from_repo(&path),
         "repo": repo,
         "author": owner,
         "blurb": str_of(&meta, "description"),
         "systems": [os],
-        "hero": format!("https://opengraph.githubassets.com/1/{repo}"),
+        "hero": if lab { String::new() } else { format!("https://opengraph.githubassets.com/1/{repo}") },
         "released": newest.and_then(|r| r.published_at.clone()).unwrap_or_default(),
         "stars": meta.get("stargazers_count").cloned().unwrap_or(Value::Null),
         "custom": true,
     });
+    if lab {
+        entry["host"] = json!("gitlab");
+    }
     if let Some(i) = info.as_ref().and_then(Value::as_object) {
         set_mine_fields(&mut entry, i);
     }
-    let mut list = catalog::mine(&st.dir);
-    list.retain(|e| str_of(e, "id") != id);
-    list.push(entry.clone());
-    catalog::save_mine(&st.dir, &list)?;
+    {
+        let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
+        let mut list = catalog::mine(&st.dir);
+        list.retain(|e| str_of(e, "id") != id);
+        list.push(entry.clone());
+        catalog::save_mine(&st.dir, &list)?;
+    }
     Ok(json!({"id": id, "known": false, "name": str_of(&entry, "name")}))
 }
 
@@ -2628,6 +3162,7 @@ fn set_mine_fields(entry: &mut Value, i: &serde_json::Map<String, Value>) {
 /// Edit Game Info: the player changes a game they added themselves.
 #[tauri::command(async)]
 fn update_mine(st: State<'_, App>, id: String, info: Value) -> Res<()> {
+    let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let mut list = catalog::mine(&st.dir);
     let e = list.iter_mut().find(|e| str_of(e, "id") == id).ok_or_else(|| Error::Msg("Only games you added yourself can be changed.".into()))?;
     if let Some(i) = info.as_object() {
@@ -2640,16 +3175,78 @@ fn update_mine(st: State<'_, App>, id: String, info: Value) -> Res<()> {
 /// Take a recomp the player added by its link back out (when it isn't installed).
 #[tauri::command(async)]
 fn remove_github(st: State<'_, App>, id: String) -> Res<()> {
+    let _turn = catalog::MINE_TURN.lock().unwrap_or_else(|e| e.into_inner());
     let mut list = catalog::mine(&st.dir);
     list.retain(|e| str_of(e, "id") != id);
     catalog::save_mine(&st.dir, &list)?;
+    art::drop_set(&st, &id);
     Ok(())
 }
 
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    profile::find(&g.path, &g.repo, &entry)
+    profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+        p.slider_vals = g.slider_vals.clone();
+        p.add_screen_choices(screen_now());
+        p
+    })
+}
+
+/// The main monitor's size in pixels, for Match My Screen: read when the launcher starts, when a
+/// game's settings open, and before each Play.
+static SCREEN: Mutex<Option<(u32, u32)>> = Mutex::new(None);
+
+fn screen_now() -> Option<(u32, u32)> {
+    *SCREEN.lock().unwrap()
+}
+
+fn read_screen(app: &AppHandle) {
+    let m = app.primary_monitor().ok().flatten().or_else(|| app.get_webview_window("main").and_then(|w| w.current_monitor().ok().flatten())).or_else(|| app.available_monitors().ok().and_then(|l| l.into_iter().next()));
+    if let Some(m) = m {
+        let s = m.size();
+        if s.width > 0 && s.height > 0 {
+            *SCREEN.lock().unwrap() = Some((s.width, s.height));
+        }
+    }
+}
+
+/// Whether a code is how this game closes when it's quit normally: "ok" for it in the profile's
+/// exit_codes, or listed in the catalog entry's ok_codes (or its boot profile's).
+fn quit_code(st: &App, id: &str, prof: Option<&profile::Profile>, c: i32) -> bool {
+    let key = (c as u32).to_string();
+    if prof.and_then(|p| p.exit_codes.get(&key).or_else(|| p.exit_codes.get(&c.to_string()))).map(|s| s.trim().eq_ignore_ascii_case("ok")).unwrap_or(false) {
+        return true;
+    }
+    let cat = cached_catalog(st);
+    let Some(e) = catalog::app(&cat, id) else { return false };
+    let listed = [e.get("ok_codes"), e.get("boot").and_then(|b| b.get("ok_codes"))]
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .any(|v| v.as_i64() == Some(c as i64) || v.as_i64() == Some(c as u32 as i64) || v.as_str().map(|s| s.trim() == key || s.trim() == c.to_string()).unwrap_or(false));
+    listed
+}
+
+/// A copy just picked (`fresh`) that's the game's own folder, or a folder around it (the folder
+/// games are installed in), isn't the player's copy of the game: refused with a plain reason. Not
+/// when the game reads its files from its own folder (`into: "."`, or a disc the launcher unpacks
+/// there), and never for a copy set up before (an adopted game inside the player's copy). Then
+/// the copy's own checks.
+fn copy_ok(need: &profile::GameCopy, copy: &Path, install: &Path, fresh: bool) -> Result<(), String> {
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let (c, i) = (canon(copy), canon(install));
+    let reads_own = need.into.trim().trim_matches(['/', '\\']) == "." || !need.extract.is_empty();
+    if fresh && !install.as_os_str().is_empty() {
+        if c == i && !reads_own {
+            return Err("That's the game's own folder, where the launcher installed it. Pick your copy of the game: the disc image or the folder with the original game's files.".into());
+        }
+        if c != i && i.starts_with(&c) {
+            return Err("That's the folder the launcher installs games into. Pick your copy of the game: the disc image or the folder with the original game's files.".into());
+        }
+    }
+    profile::check_copy(need, copy)
 }
 
 /// The player's copy for this game: the one they picked, or the one found in their folders. Err
@@ -2668,7 +3265,7 @@ fn game_copy(st: &App, id: &str, g: &Installed, p: &profile::Profile) -> Res<Opt
         }
         // Picked before this version of the launcher could check it (a wrong ROM, say): checked
         // again now, and asked for again when it isn't the right one.
-        if let Err(why) = profile::check_copy(need, &c) {
+        if let Err(why) = copy_ok(need, &c, &g.path, false) {
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                 x.game_copy = None;
             }
@@ -2693,6 +3290,47 @@ struct SetupOption {
     choices: Vec<String>,
     current: usize,
     applies: bool,
+    /// The heading it's under ("" for none).
+    group: String,
+    /// Hidden until the player shows advanced options.
+    advanced: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slider: Option<SliderNow>,
+    /// A value the game wrote itself that isn't one of the choices, as written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    own: Option<String>,
+    /// Key bindings: each action and the keys it's on now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bindings: Option<BindNow>,
+    /// Its last choice is the launcher's Match My Screen, writing this size or shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    screen: Option<String>,
+}
+
+#[derive(Serialize)]
+struct BindNow {
+    /// Keys one action can have.
+    max: usize,
+    /// Some action isn't on the game's own keys (Reset to Default does something).
+    changed: bool,
+    actions: Vec<BindRow>,
+}
+
+#[derive(Serialize)]
+struct BindRow {
+    label: String,
+    key: String,
+    keys: Vec<String>,
+    pad: bool,
+}
+
+/// A slider as the window shows it: its range and step, and the value exactly as written now.
+#[derive(Serialize)]
+struct SliderNow {
+    min: f64,
+    max: f64,
+    step: f64,
+    value: String,
 }
 
 #[derive(Serialize)]
@@ -2725,7 +3363,8 @@ struct Setup {
 
 /// What the launcher can set up for a game: its copy and its settings. None for games it can't.
 #[tauri::command(async)]
-fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
+fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
+    read_screen(&app);
     let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
     let p = profile_of(&st, &id, &g)?;
     let cur = p.current(&g.path, &g.picks);
@@ -2739,9 +3378,29 @@ fn game_setup(st: State<'_, App>, id: String) -> Option<Setup> {
             .iter()
             .zip(cur)
             .map(|(s, (i, applies))| {
+                // On Match My Screen, and the screen's size is also one of the listed ones: Match My Screen.
+                let last = s.choices.len().saturating_sub(1);
+                let i = if s.screen.is_some() && g.screen_fit.contains(&s.id) && i != last && s.choices.get(i).map(|c| c.set == s.choices[last].set).unwrap_or(false) { last } else { i };
                 // The launcher's own settings wait for the file the game makes on its first start.
                 let ready = !p.from_boot || s.target == "args" || p.config_file(&s.target, &g.path).map(|f| f.existed).unwrap_or(false);
-                SetupOption { id: s.id.clone(), label: s.label.clone(), help: s.help.clone(), choices: s.choices.iter().map(|c| c.label.clone()).collect(), current: i, applies: applies && ready }
+                SetupOption {
+                    id: s.id.clone(),
+                    label: s.label.clone(),
+                    help: s.help.clone(),
+                    choices: s.choices.iter().map(|c| c.label.clone()).collect(),
+                    current: i,
+                    applies: applies && ready,
+                    group: s.group.trim().to_string(),
+                    advanced: p.is_advanced(s),
+                    slider: s.slider.as_ref().map(|sl| SliderNow { min: sl.min, max: sl.max, step: sl.step(), value: p.slider_now(s, &g.path).unwrap_or_default() }),
+                    own: p.own_value(s, &g.path),
+                    screen: s.screen.clone(),
+                    bindings: s.bindings.as_ref().map(|b| BindNow {
+                        max: b.max(),
+                        changed: p.bindings_changed(s, &g.path),
+                        actions: b.actions.iter().zip(p.bindings_now(s, &g.path)).map(|(a, keys)| BindRow { label: a.label.clone(), key: a.key.clone(), keys, pad: a.pad }).collect(),
+                    }),
+                }
             })
             .collect(),
         actions: p.actions.iter().map(|a| SetupAction { id: a.id.clone(), label: a.label.clone(), help: a.help.clone(), kind: if a.clear.is_empty() { "open".into() } else { "clear".into() } }).collect(),
@@ -2844,7 +3503,7 @@ fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
                 copy = up.to_path_buf();
             }
         }
-        profile::check_copy(need, &copy).map_err(Error::Msg)?;
+        copy_ok(need, &copy, &g.path, true).map_err(Error::Msg)?;
     }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
         x.game_copy = Some(copy.clone());
@@ -2856,10 +3515,23 @@ fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
 }
 
 #[tauri::command(async)]
-fn set_game_setting(st: State<'_, App>, id: String, setting: String, choice: usize) -> Res<()> {
+fn set_game_setting(app: AppHandle, st: State<'_, App>, id: String, setting: String, choice: usize) -> Res<()> {
+    read_screen(&app);
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     let s = p.settings.iter().find(|s| s.id == setting).ok_or_else(|| Error::Msg("That isn't one of its settings.".into()))?;
+    // Match My Screen is remembered, so it follows the monitor; any other choice stops that.
+    let fit = s.screen.is_some() && choice + 1 == s.choices.len();
+    if fit != g.screen_fit.contains(&setting) || fit {
+        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
+            x.screen_fit.retain(|k| k != &setting);
+            if fit {
+                x.screen_fit.push(setting.clone());
+                x.screen_size = screen_now().map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
+            }
+        }
+        st.save();
+    }
     if s.target == "args" {
         if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
             x.picks.insert(setting.clone(), choice.min(s.choices.len().saturating_sub(1)));
@@ -2873,6 +3545,45 @@ fn set_game_setting(st: State<'_, App>, id: String, setting: String, choice: usi
         let _ = p.prepare(&g.path, g.game_copy.as_deref());
     }
     p.pick(&g.path, &setting, choice).map_err(Error::Msg)
+}
+
+/// The player moved a slider: written into the game's settings file, or kept for the command line.
+/// Gives back the value as written.
+#[tauri::command(async)]
+fn set_game_slider(st: State<'_, App>, id: String, setting: String, value: f64) -> Res<String> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    let s = p.settings.iter().find(|s| s.id == setting).ok_or_else(|| Error::Msg("That isn't one of its settings.".into()))?;
+    if s.target != "args" && !p.from_boot {
+        let _ = p.prepare(&g.path, g.game_copy.as_deref());
+    }
+    let text = p.set_slider(&g.path, &setting, value).map_err(Error::Msg)?;
+    if s.target == "args" {
+        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
+            x.slider_vals.insert(setting, text.clone());
+        }
+        st.save();
+    }
+    Ok(text)
+}
+
+/// The player set the keys of one action in a key bindings list. Gives back the keys as written.
+#[tauri::command(async)]
+fn set_game_binding(st: State<'_, App>, id: String, setting: String, action: String, keys: Vec<String>) -> Res<Vec<String>> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    if !p.from_boot {
+        let _ = p.prepare(&g.path, g.game_copy.as_deref());
+    }
+    p.set_binding(&g.path, &setting, &action, &keys).map_err(Error::Msg)
+}
+
+/// Reset to Default for a key bindings list.
+#[tauri::command(async)]
+fn reset_game_bindings(st: State<'_, App>, id: String, setting: String) -> Res<()> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
+    p.reset_bindings(&g.path, &setting).map_err(Error::Msg)
 }
 
 /// A profile's button: open a folder, or clear one (the shader cache).
@@ -3155,6 +3866,17 @@ fn recent_log(st: State<'_, App>, id: String, since: u64) -> Option<(String, Str
 }
 
 fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
+    let p = recent_log_path(st, id, since)?;
+    let text = std::fs::read(&p).ok()?;
+    let text = String::from_utf8_lossy(&text);
+    let lines: Vec<&str> = text.lines().collect();
+    let tail = lines[lines.len().saturating_sub(60)..].join("\n");
+    Some((p.to_string_lossy().into(), tail))
+}
+
+/// The newest log the launcher knows for a game from its last session (or since `since`): the
+/// game's own, what it printed, or ReShade's.
+pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf> {
     let id = id.to_string();
     let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
     // Not told when it started: the start of its last session (an old log is never "the crash").
@@ -3201,12 +3923,7 @@ fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         (secs + 5 >= since).then_some((t, p))
     });
-    let (_, p) = best?;
-    let text = std::fs::read(&p).ok()?;
-    let text = String::from_utf8_lossy(&text);
-    let lines: Vec<&str> = text.lines().collect();
-    let tail = lines[lines.len().saturating_sub(60)..].join("\n");
-    Some((p.to_string_lossy().into(), tail))
+    best.map(|(_, p)| p)
 }
 
 // ---------- Troubleshoot ----------
@@ -3241,6 +3958,83 @@ static CLEAN_START: Mutex<Vec<String>> = Mutex::new(Vec::new());
 #[tauri::command(async)]
 fn clean_start_next(id: String) {
     CLEAN_START.lock().unwrap().push(id);
+}
+
+/// The files a game's program loads that aren't on this PC (the DLLs it needs on Windows, the
+/// libraries it links to on Linux): for the crash window, when Windows said one was missing.
+/// The program that starts the game: the player's own pick, the profile's, or the one installed.
+fn started_exe(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    let prof = if g.manual.is_some() { None } else { profile_of(st, id, g) };
+    g.manual
+        .as_ref()
+        .and_then(|m| m.exe.clone())
+        .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
+        .or_else(|| prof.as_ref().and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e)))
+        .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)))
+        .filter(|e| e.is_file())
+}
+
+#[derive(Serialize)]
+struct GpuChoice {
+    /// Graphics cards in this PC (a laptop often has two: the built-in one and a faster one).
+    cards: usize,
+    /// The game is set to the faster one already.
+    fast: bool,
+}
+
+/// For the crash window: whether "Use the Faster Graphics Card" can help this game.
+#[tauri::command(async)]
+fn gpu_choice(st: State<'_, App>, id: String) -> GpuChoice {
+    #[cfg(windows)]
+    {
+        let exe = st.lib.lock().unwrap().installed.get(&id).cloned().and_then(|g| started_exe(&st, &id, &g));
+        // A game started through a script: Windows' choice goes with a program, so it can't help.
+        let script = exe.as_ref().map(|e| install::is_script(e)).unwrap_or(true);
+        GpuChoice { cards: if script { 0 } else { win::gpus().len() }, fast: exe.map(|e| win::prefers_fast_gpu(&e)).unwrap_or(false) }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (st, id);
+        GpuChoice { cards: 0, fast: false }
+    }
+}
+
+/// Windows starts the game on the faster graphics card from now on.
+#[tauri::command(async)]
+fn prefer_fast_gpu(st: State<'_, App>, id: String) -> Res<()> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let exe = started_exe(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher couldn't tell which program starts the game.".into()))?;
+    #[cfg(windows)]
+    {
+        win::prefer_fast_gpu(&exe).map_err(|e| Error::Msg(format!("Windows didn't save it: {e}")))?;
+        trail::note(format!("{id}: set to the faster graphics card"));
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = exe;
+        Err(Error::Msg("This is for Windows.".into()))
+    }
+}
+
+#[tauri::command(async)]
+fn missing_files(st: State<'_, App>, id: String) -> Vec<String> {
+    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return vec![] };
+    match started_exe(&st, &id, &g) {
+        Some(e) => missing_libraries(&e, &g.path).into_iter().take(8).collect(),
+        None => vec![],
+    }
+}
+
+/// Before a picked copy is set up: the ID read off the disc or cartridge when the catalog lists the
+/// ones this recomp is made for and it isn't one of them, with those. None when it fits, when the
+/// catalog lists none, or when the copy's ID can't be read.
+#[tauri::command(async)]
+fn copy_check(st: State<'_, App>, id: String, path: String) -> Option<Value> {
+    let cat = cached_catalog(&st);
+    let a = catalog::app(&cat, &id)?;
+    let found = roms::fits_copy_ids(a, Path::new(&path)).err()?;
+    Some(serde_json::json!({ "found": found, "want": roms::copy_ids(a) }))
 }
 
 /// What could be keeping a game from starting: its files, Windows, what it needs on the PC, the
@@ -3341,6 +4135,9 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     if cfg!(windows) {
         match pc.vcredist {
             Some(false) => out.push(check("bad", "The Visual C++ runtime isn't installed", "Almost every Windows recomp needs it.", "vcredist")),
+            // Installed, but older than recomps built with today's Visual Studio need: they close
+            // with "a DLL it needs is too old".
+            Some(true) if pc.vcredist_old.is_some() => out.push(check("warn", "The Visual C++ runtime is out of date", "Newer recomps need a newer one than this PC has. Updating it is quick.", "vcredist")),
             Some(true) => out.push(check("ok", "The Visual C++ runtime is installed", "", "")),
             None => {}
         }
@@ -3352,7 +4149,8 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
     if let Some(need) = prof.as_ref().and_then(|p| p.game.as_ref()) {
         match g.game_copy.as_ref() {
             Some(c) if !c.exists() => out.push(check("bad", "Your copy of the game isn't there anymore", c.display().to_string(), "copy")),
-            Some(c) => match profile::check_copy(need, c) {
+            Some(c) => match copy_ok(need, c, &g.path, false) {
+                Ok(()) if profile::odd_snes_size(c) => out.push(check("warn", "Your copy of the game may be incomplete", "Its size isn't one a full dump of the cartridge has. If the game won't start, try another copy of your own cartridge.", "copy")),
                 Ok(()) => out.push(check("ok", "Your copy of the game checks out", c.display().to_string(), "")),
                 Err(why) => out.push(check("bad", "Your copy of the game isn't the one it reads", why, "copy")),
             },
@@ -3394,6 +4192,14 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         // A Look kept to one way in after a start that crashed: when that's the wrong one for this
         // game, the Look never shows.
         if look_on {
+            // ReShade didn't start at all last time: the Look never showed.
+            if let Some(r) = looks::never_started(&st.dir, &id) {
+                if r == "only" {
+                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game, so its Look can't show. Play it without the Look.", "clean"));
+                } else {
+                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game. The next time it starts, the Look tries another way in.", ""));
+                }
+            }
             if let Some(r) = looks::kept_route(&st.dir, &id) {
                 let way = if r == "layer" { "Vulkan" } else { "Direct3D" };
                 out.push(check("info", "The Look only tries one way in", "Since a start that crashed, its Look goes in through {way} only. If the Look doesn't show, let it try both ways again.", "lookroute").with("way", way));
@@ -3405,10 +4211,17 @@ fn troubleshoot(st: State<'_, App>, id: String) -> Res<Vec<Check>> {
         // It said it's missing something (its game files, most often).
         let missing = text.lines().rev().take(80).find(|l| {
             let l = l.to_lowercase();
-            l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing")
+            !stats_line(&l) && (l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing"))
         });
         let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
-        if let Some(line) = missing {
+        let said = |w: &str| text.lines().rev().take(120).any(|l| l.contains(w));
+        if said("GLIBC_") && said("not found") {
+            // A Linux build made on a newer Linux than this one (SteamOS, an older distro).
+            out.push(check("bad", "Its Linux build needs a newer Linux", "It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game's page, or update your system.", ""));
+        } else if said("--game_data_root") {
+            // An Xbox 360 recomp that takes the game's files from a folder it's given.
+            out.push(check("bad", "It needs to be told where your game files are", "This recomp reads your extracted game from a folder given to it when it starts, and its page doesn't set that up yet. Use Set Up By Hand and pick the folder with your game's files (the one with default.xex).", "manual"));
+        } else if let Some(line) = missing {
             out.push(check("bad", "It says something it needs is missing", line.trim().chars().take(300).collect::<String>(), if needs_copy { "copy" } else { "files" }));
         } else if let Some(line) = text.lines().rev().take(80).find(|l| wrong_copy_line(l)) {
             // It found game files, but not the right ones (another game, a bad dump, a folder one
@@ -3587,6 +4400,12 @@ fn manual_defaults(st: State<'_, App>, id: String) -> Res<library::ManualSetup> 
             m.how = "arg".into();
             m.arg = p.start.as_ref().unwrap().args.iter().map(|a| { let a = a.replace("{game}", "{copy}"); if a.contains(' ') { format!("\"{a}\"") } else { a } }).collect::<Vec<_>>().join(" ");
         }
+        // Nothing known, but the game said last time how it takes its files (Xbox 360 recomps:
+        // --game_data_root): that, ready for the player's folder.
+        _ if std::fs::read_to_string(game_output_path(&st.dir, &id)).map(|t| t.contains("--game_data_root")).unwrap_or(false) => {
+            m.how = "arg".into();
+            m.arg = "--game_data_root {copy}".into();
+        }
         _ => m.how = "none".into(),
     }
     Ok(m)
@@ -3605,6 +4424,10 @@ fn set_manual(st: State<'_, App>, id: String, manual: Option<library::ManualSetu
         }
         if m.name.contains(['/', '\\']) {
             return Err(Error::Msg("A file name can't have folders in it.".into()));
+        }
+        // The program has to be one: a disc image picked here is the game's copy, not its program.
+        if let Some(why) = m.exe.as_deref().and_then(not_a_program) {
+            return Err(Error::Msg(why.into()));
         }
     }
     let mut l = st.lib.lock().unwrap();
@@ -3877,6 +4700,21 @@ fn overlay_action(app: AppHandle, action: String) {
 }
 
 /// The program to start, picked by the player when the launcher's guess was wrong.
+/// A file picked as the game's program that can't be one: a disc image, an archive, a save, a
+/// picture. Why, for the player.
+pub(crate) fn not_a_program(p: &Path) -> Option<&'static str> {
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "iso" | "img" | "mdf" | "nrg" | "gdi" | "pbp" | "cue" | "chd" | "cso" | "gcm" | "rvz" | "wbfs" | "wia" | "gcz" | "xci" | "nsp" | "nca" | "wad" | "wux" | "wud" | "rpx" | "xex" | "xbe" | "elf" | "z64" | "n64" | "v64" | "sfc" | "smc" | "gba" | "nds" | "3ds" | "cia" | "pkg" =>
+            Some("That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup."),
+        "zip" | "7z" | "rar" | "gz" | "xz" | "tar" =>
+            Some("That's a compressed file, not a program. Unpack it first, then pick the program inside."),
+        "txt" | "md" | "pdf" | "json" | "toml" | "ini" | "cfg" | "log" | "png" | "jpg" | "jpeg" | "dll" | "so" | "sav" | "dat" =>
+            Some("That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage)."),
+        _ => None,
+    }
+}
+
 #[tauri::command(async)]
 fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
@@ -3884,6 +4722,9 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     let p = PathBuf::from(&path);
     if !p.is_file() {
         return Err(Error::Msg("That file doesn't exist.".into()));
+    }
+    if let Some(why) = not_a_program(&p) {
+        return Err(Error::Msg(why.into()));
     }
     let outside = !p.starts_with(&g.path);
     // The release's own file when that file is its installer (one Setup.exe and nothing else): it
@@ -3961,7 +4802,8 @@ fn net_state() -> Value {
 #[tauri::command]
 async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<catalog::Fetched> {
     if !force {
-        if let Some((f, stale)) = catalog::catalog_now(&st.dir) {
+        if let Some((mut f, stale)) = catalog::catalog_now(&st.dir) {
+            merged_mine(&app, &st, &mut f.data);
             if stale {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -3977,11 +4819,25 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
             return Ok(f);
         }
     }
-    let f = catalog::catalog(&st.http, &st.dir, force).await?;
+    let mut f = catalog::catalog(&st.http, &st.dir, force).await?;
+    merged_mine(&app, &st, &mut f.data);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
     }
     Ok(f)
+}
+
+/// merge_mine, with the list sent to the window without the entries moved over, and the window
+/// told ("mine-merged") so it reads the Library again and says so.
+fn merged_mine(app: &AppHandle, st: &App, data: &mut Value) {
+    let merged = merge_mine(st, data);
+    if merged.is_empty() {
+        return;
+    }
+    if let Some(a) = data.get_mut("apps").and_then(Value::as_array_mut) {
+        a.retain(|x| !merged.iter().any(|(old, _, _)| str_of(x, "id") == old));
+    }
+    let _ = app.emit("mine-merged", merged.iter().map(|(from, to, name)| json!({ "from": from, "to": to, "name": name })).collect::<Vec<_>>());
 }
 
 /// A recomp's releases for its page. Without `force`, the copy on disk comes back at once and,
@@ -3991,7 +4847,7 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
 async fn get_releases(app: AppHandle, st: State<'_, App>, repo: String, force: bool) -> Res<catalog::Fetched> {
     if !force {
         if let Some(f) = catalog::releases_on_disk(&st.dir, &repo) {
-            if f.age >= catalog::LIST_FRESH && !net::resting(&format!("{}/api/gh.php", catalog::base()), false) {
+            if f.age >= catalog::RELEASES_FRESH && !net::resting(&format!("{}/api/gh.php", catalog::base()), false) {
                 let (app, repo) = (app.clone(), repo.clone());
                 tauri::async_runtime::spawn(async move {
                     let st = app.state::<App>();
@@ -4046,8 +4902,24 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
                 g.tag = tag;
             }
         }
+        let os_g = if g.proton { "windows" } else { assets::os_now() };
+        let entry = catalog::app(&cat, &g.id);
+        let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
+        // The store says which release is out (the list's "tag"): an update only when that changes
+        // to one newer than what's installed. Releases the store is still checking wait on purpose.
+        if let Some(t) = entry.and_then(catalog_tag) {
+            let at = |tag: &str| rels.iter().position(|r| same_tag(&r.tag_name, tag));
+            if let Some(i) = at(&t) {
+                let r = &rels[i];
+                let newer = at(&g.tag).map(|j| i < j).unwrap_or(true);
+                if !g.pinned && !same_tag(&r.tag_name, &g.tag) && newer && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
+                    out.insert(g.id.clone(), r.tag_name.clone());
+                }
+                continue;
+            }
+        }
         if let Some(r) = catalog::latest_for(&rels, &g.tag) {
-            if !g.pinned && r.tag_name != g.tag && assets::pick(&r.assets, if g.proton { "windows" } else { assets::os_now() }, assets::arch_now(), None).is_some() {
+            if !g.pinned && r.tag_name != g.tag && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
                 out.insert(g.id.clone(), r.tag_name.clone());
             }
         }
@@ -4450,10 +5322,16 @@ async fn gb_install(app: AppHandle, st: State<'_, App>, id: String, mod_id: u64,
 
 /// A game's mods change one at a time (installs and removals wait their turn), so two never
 /// write the same files or the same ModsDB.ini at once.
+static MOD_TURNS: std::sync::OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = std::sync::OnceLock::new();
+
 async fn mod_turn(id: &str) -> tokio::sync::OwnedMutexGuard<()> {
-    static TURNS: std::sync::OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = std::sync::OnceLock::new();
-    let m = TURNS.get_or_init(Default::default).lock().unwrap().entry(id.to_string()).or_default().clone();
+    let m = MOD_TURNS.get_or_init(Default::default).lock().unwrap().entry(id.to_string()).or_default().clone();
     m.lock_owned().await
+}
+
+/// A mod is going in or coming out for this game right now.
+fn mods_busy(id: &str) -> bool {
+    MOD_TURNS.get().and_then(|t| t.lock().unwrap().get(id).cloned()).is_some_and(|m| m.try_lock().is_err())
 }
 
 /// The files a mod put in, and the files the game's other mods use.
@@ -4597,7 +5475,7 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
         form.push(("name[]".into(), "launcher-details.txt".into()));
         form.push(("text[]".into(), run));
     }
-    if let Some(t) = trail::tail(24_000) {
+    if let Some(t) = trail::tail_for(&id, 24_000) {
         form.push(("name[]".into(), "launcher-trail.txt".into()));
         form.push(("text[]".into(), t));
     }
@@ -4732,7 +5610,7 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     }
     let body = format!("{head}\nRecompLauncher {} on {} ({})\n\n{}", env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), message);
     let mut form: Vec<(String, String)> = vec![
-        ("app".into(), game.as_ref().map(|g| g.id.clone()).unwrap_or_else(|| "launcher".into())),
+        ("app".into(), game.as_ref().map(|g| g.id.clone()).unwrap_or_else(|| "recomplauncher".into())),
         ("version".into(), game.as_ref().map(|g| g.tag.clone()).unwrap_or_else(|| env!("CARGO_PKG_VERSION").into())),
         ("category".into(), category.into()),
         ("message".into(), body.chars().take(2000).collect()),
@@ -4742,8 +5620,21 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     if attach {
         let dir = st.dir.clone();
         let pc = tokio::task::spawn_blocking(move || usage::pc_info(&dir)).await.unwrap_or_default();
+        // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
+        let drawing = if cfg!(target_os = "linux") {
+            let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
+            let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
+            format!(
+                "Graphics mode: {}{}{}\n",
+                if mode.is_empty() { "auto" } else { &mode },
+                if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
+                if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
+            )
+        } else {
+            String::new()
+        };
         let mut txt = format!(
-            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n\nInstalled games:\n",
+            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
             env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
         );
         {
@@ -4764,7 +5655,7 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
         }
         form.push(("name[]".into(), "launcher-and-pc.txt".into()));
         form.push(("text[]".into(), txt));
-        if let Some(t) = trail::tail(24_000) {
+        if let Some(t) = game.as_ref().map(|g| trail::tail_for(&g.id, 24_000)).unwrap_or_else(|| trail::tail(24_000)) {
             form.push(("name[]".into(), "launcher-trail.txt".into()));
             form.push(("text[]".into(), t));
         }
@@ -4884,6 +5775,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "site": catalog::base(),
         "thumbs": net::THUMBS,
         "library": l.installed,
+        "arts": l.arts,
         "settings": l.settings,
         "roms": l.roms,
         "running": running,
@@ -4948,10 +5840,128 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     }
     let mut l = st.lib.lock().unwrap();
     let told = l.settings.tray_told;
+    // The saves folder changes only through its own button (the copies move with it).
+    let save_dir = l.settings.save_dir.clone();
     l.settings = settings;
     l.settings.tray_told |= told;
+    l.settings.save_dir = save_dir;
     l.save(&st.dir)?;
     Ok(())
+}
+
+/// Where the copies of the player's saves go: a folder they pick (another drive, a NAS, a folder
+/// Drive, OneDrive or Dropbox keeps in sync), or none for the launcher's own. The copies already
+/// made move along, each checked before the old one goes.
+#[tauri::command(async)]
+fn saves_set_root(st: State<'_, App>, path: Option<String>) -> Res<Value> {
+    let to = path.map(PathBuf::from).filter(|p| !p.as_os_str().is_empty());
+    let own = st.dir.join("saves");
+    if let Some(p) = &to {
+        if !p.is_absolute() {
+            return Err(Error::Msg("Pick folders, not names.".into()));
+        }
+        if p.starts_with(&own) || p.starts_with(&st.dir) {
+            return Err(Error::Msg("That's inside the launcher's own folder. Pick a folder of yours, on any drive.".into()));
+        }
+        let probe = p.join(".recomplauncher-check");
+        if std::fs::create_dir_all(p).and_then(|_| std::fs::write(&probe, b"ok")).is_err() {
+            return Err(Error::Msg("The launcher can't write to that folder. Pick another one.".into()));
+        }
+        let _ = std::fs::remove_file(&probe);
+    }
+    let from = saves::root(&st.dir);
+    let target = to.clone().unwrap_or_else(|| own.clone());
+    let moved = if from != target && from.is_dir() {
+        saves::move_copies(&from, &target).map_err(|e| Error::Msg(format!("Couldn't move the copies there: {e}")))?
+    } else {
+        0
+    };
+    saves::set_root(to.clone());
+    {
+        let mut l = st.lib.lock().unwrap();
+        l.settings.save_dir = to.clone();
+        l.save(&st.dir)?;
+    }
+    trail::note(format!("Saves: copies go to {} now ({moved} games moved)", if to.is_some() { "the player's folder" } else { "the launcher's folder" }));
+    Ok(json!({ "path": saves::root(&st.dir), "custom": to.is_some(), "moved": moved }))
+}
+
+/// Opens the folder the copies of the player's saves are in.
+#[tauri::command(async)]
+fn saves_open_root(app: AppHandle, st: State<'_, App>) -> Res<()> {
+    let p = saves::root(&st.dir);
+    let _ = std::fs::create_dir_all(&p);
+    open_thing(&app, &p.to_string_lossy(), false)
+}
+
+/// Linux: tools for the Wine prefix every Windows game here shares, for what a game's setup says
+/// is missing: Winetricks ("winetricks"), a Windows program run in it ("run", an installer for a
+/// runtime), or its folder ("folder"). Gives back what happened.
+#[tauri::command]
+async fn wine_tools(app: AppHandle, st: State<'_, App>, what: String, path: Option<String>) -> Res<String> {
+    if cfg!(windows) {
+        let _ = (&app, &path);
+        return Err(Error::Msg("Wine tools are for Linux.".into()));
+    }
+    let r = proton::runner().ok_or_else(|| Error::Msg("Windows games need Proton or Wine on this PC first. Settings → General → GE-Proton installs it in one press.".into()))?;
+    match what.as_str() {
+        "folder" => {
+            let d = proton::prefix_dir(&r, &st.dir);
+            if !d.is_dir() {
+                return Err(Error::Msg("There's no Wine prefix yet. Play a Windows game here once and it's made.".into()));
+            }
+            open_thing(&app, &d.to_string_lossy(), false)?;
+            Ok("open".into())
+        }
+        "run" => {
+            let p = PathBuf::from(path.unwrap_or_default());
+            let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if !p.is_file() || !["exe", "msi"].contains(&ext.as_str()) {
+                return Err(Error::Msg("Pick a Windows program or installer (.exe or .msi).".into()));
+            }
+            // An .msi goes through Windows' installer, in the prefix.
+            let mut c = if ext == "msi" {
+                let mut c = proton::std_command(&r, &st.dir, Path::new("msiexec"));
+                c.arg("/i").arg(&p);
+                c
+            } else {
+                proton::std_command(&r, &st.dir, &p)
+            };
+            sysenv::clean_std(&mut c);
+            c.current_dir(p.parent().unwrap_or(Path::new("/"))).spawn().map_err(|e| Error::Msg(format!("Couldn't start it: {e}")))?;
+            trail::note(&format!("Wine tools: ran {} in the prefix ({})", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), r.name()));
+            Ok("started".into())
+        }
+        "winetricks" => {
+            // Not on this PC (a Steam Deck): the launcher keeps its own copy of the script.
+            let own = st.dir.join("tools").join("winetricks");
+            if !matches!(r, proton::Runner::Umu(..)) && !own.is_file() && proton::winetricks_command(&r, &st.dir, None).is_err() {
+                let url = "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks";
+                if let Ok(resp) = net::send(st.http.get(url).timeout(std::time::Duration::from_secs(60)), url, false).await {
+                    if resp.status().is_success() {
+                        if let Ok(b) = resp.bytes().await {
+                            if b.starts_with(b"#!") {
+                                let _ = std::fs::create_dir_all(own.parent().unwrap());
+                                if std::fs::write(&own, &b).is_ok() {
+                                    #[cfg(unix)]
+                                    {
+                                        use std::os::unix::fs::PermissionsExt;
+                                        let _ = std::fs::set_permissions(&own, std::fs::Permissions::from_mode(0o755));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let mut c = proton::winetricks_command(&r, &st.dir, Some(&own)).map_err(Error::Msg)?;
+            sysenv::clean_std(&mut c);
+            c.spawn().map_err(|e| Error::Msg(format!("Couldn't open Winetricks: {e}")))?;
+            trail::note(&format!("Wine tools: Winetricks opened ({})", r.name()));
+            Ok("open".into())
+        }
+        _ => Err(Error::Msg("That isn't one of the Wine tools.".into())),
+    }
 }
 
 /// Settings back to how they start ("settings"), or first-time setup again ("setup"). Games, their
@@ -4980,6 +5990,7 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
                 share_usage: old.share_usage,
                 share_stats: old.share_stats,
                 data_asked: old.data_asked,
+                save_dir: old.save_dir.clone(),
                 ui: Value::Object(keep),
                 ..Settings::default()
             };
@@ -5047,7 +6058,7 @@ fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
 /// Takes a game out of the Library without touching any files (its folder is gone anyway).
 #[tauri::command(async)]
 fn forget_game(st: State<'_, App>, id: String) -> Res<()> {
-    st.lib.lock().unwrap().installed.remove(&id);
+    st.lib.lock().unwrap().forget(&id);
     st.save();
     Ok(())
 }
@@ -5439,7 +6450,7 @@ fn wait_for_play(args: &[String]) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
-    sysenv::prepare_start();
+    sysenv::prepare_start(data_dir_early());
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
         return;
     }
@@ -5559,10 +6570,18 @@ pub fn run() {
             }
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
-                .connect_timeout(std::time::Duration::from_secs(8))
+                // Slow DNS or a busy mobile connection can take a while to connect.
+                .connect_timeout(std::time::Duration::from_secs(15))
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
+            // Save copies in the player's own folder, when they picked one; any made here while it
+            // was away go to it.
+            saves::set_root(lib.settings.save_dir.clone());
+            {
+                let d = dir.clone();
+                std::thread::spawn(move || saves::gather(&d));
+            }
             // On Linux, Windows-only recomps play through Proton once Proton is found: turned on
             // for the player the first time (they can turn it off in Settings → General).
             #[cfg(target_os = "linux")]
@@ -5768,14 +6787,14 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, scan_roms, rom_matches,
+            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_open,
-            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
+            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
         .expect("RecompLauncher couldn't start")
@@ -5788,6 +6807,70 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_plain_start_script_gives_its_program() {
+        let d = std::env::temp_dir().join(format!("rl-bat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("bin")).unwrap();
+        std::fs::write(d.join("bin/Game.exe"), b"MZ").unwrap();
+        std::fs::write(d.join("Play.bat"), "@echo off\r\ncd /d %~dp0\r\nstart \"\" \"bin\\Game.exe\" --fullscreen %*\r\n").unwrap();
+        let (exe, args) = super::bat_target(&d.join("Play.bat")).unwrap();
+        assert_eq!(exe, d.join("bin/Game.exe"));
+        assert_eq!(args, vec!["--fullscreen"]);
+        // More than one step, or a choice: left to Proton as it is.
+        std::fs::write(d.join("Two.bat"), "Game1.exe\r\nbin\\Game.exe\r\n").unwrap();
+        assert!(super::bat_target(&d.join("Two.bat")).is_none());
+        std::fs::write(d.join("If.bat"), "if exist x goto a\r\nbin\\Game.exe\r\n").unwrap();
+        assert!(super::bat_target(&d.join("If.bat")).is_none());
+        // Output sent to a file, a second command, or another folder first: left as it is.
+        std::fs::write(d.join("Log.bat"), "bin\\Game.exe > log.txt 2>&1\r\n").unwrap();
+        assert!(super::bat_target(&d.join("Log.bat")).is_none());
+        std::fs::write(d.join("Cd.bat"), "cd bin\r\nGame.exe\r\n").unwrap();
+        assert!(super::bat_target(&d.join("Cd.bat")).is_none());
+        // The script's folder in an argument becomes the real folder.
+        std::fs::write(d.join("Root.bat"), "bin\\Game.exe --root \"%~dp0data\" -w\r\n").unwrap();
+        let (_, args) = super::bat_target(&d.join("Root.bat")).unwrap();
+        assert_eq!(args, vec!["--root".to_string(), format!("{}{}data", d.display(), std::path::MAIN_SEPARATOR), "-w".to_string()]);
+        // A program outside the game's folder: never.
+        std::fs::write(d.parent().unwrap().join(format!("rl-evil-{}.exe", std::process::id())), b"MZ").unwrap();
+        std::fs::write(d.join("Out.bat"), format!("..\\rl-evil-{}.exe\r\n", std::process::id())).unwrap();
+        assert!(super::bat_target(&d.join("Out.bat")).is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_games_own_folder_or_program_is_never_its_copy() {
+        let d = std::env::temp_dir().join(format!("rl-own-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let game = d.join("Recomp Library/mm3d-dekui");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("Dekui.exe"), vec![0u8; 64]).unwrap();
+        std::fs::write(game.join("data.bin"), b"x").unwrap();
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        assert!(super::copy_ok(&need, &game, &game, true).unwrap_err().contains("own folder"));
+        assert!(super::copy_ok(&need, &d.join("Recomp Library"), &game, true).unwrap_err().contains("installs games into"));
+        assert!(super::copy_ok(&need, &game.join("Dekui.exe"), &game, true).unwrap_err().contains("program"));
+        // A game that reads its files from its own folder (or unpacks the disc there): its folder is fine.
+        let own = crate::profile::GameCopy { kind: "iso_or_folder".into(), into: ".".into(), ..Default::default() };
+        assert!(super::copy_ok(&own, &game, &game, true).is_ok());
+        // Set up before (an adopted game inside the player's copy): not turned away now.
+        assert!(super::copy_ok(&need, &d.join("Recomp Library"), &game, false).is_ok());
+        // A copy somewhere else is checked as before.
+        let mine = d.join("My Games/mm3d.3ds");
+        std::fs::create_dir_all(mine.parent().unwrap()).unwrap();
+        std::fs::write(&mine, b"3ds").unwrap();
+        assert!(super::copy_ok(&need, &mine, &game, true).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn running_stats_are_not_something_missing() {
+        assert!(super::stats_line("[host] vk_pipeline: gpl: 57 fast links (9 by workers; avg 0.01 ms, max 0.13 ms, 0 failed), 16 draws lookups found shader libraries missing (left to a worker)"));
+        assert!(super::stats_line("[host] frametime: 60 s: 3509 frames in 60.0 s, mean 58.5 fps"));
+        assert!(!super::stats_line("error: default.xex is missing"));
+        assert!(!super::stats_line("could not find game data in ./assets"));
+    }
+
     #[test]
     fn a_game_saying_its_files_are_wrong_is_heard() {
         assert!(wrong_copy_line("=== Super Mario Strikers: wrong game data ==="));
@@ -5818,6 +6901,123 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn another_games_disc_isnt_taken_for_this_one() {
+        // Dusklight reads a Twilight Princess disc: a Super Mario Sunshine one in the same folder
+        // isn't it, and neither is a PS2 disc.
+        let d = std::env::temp_dir().join(format!("rl-dusk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let gc = |name: &str, id: &[u8; 6]| {
+            let mut h = vec![0u8; 0x400];
+            h[..6].copy_from_slice(id);
+            h[0x1C..0x20].copy_from_slice(&[0xC2, 0x33, 0x9F, 0x3D]);
+            let p = d.join(name);
+            std::fs::write(&p, h).unwrap();
+            roms::RomFile { path: p, system: "gc".into(), title: name.trim_end_matches(".iso").into(), region: "US".into(), size: 0x400 }
+        };
+        let sms = gc("Super Mario Sunshine (USA).iso", b"GMSE01");
+        let ps2 = { let p = d.join("Some PS2 Game.iso"); std::fs::write(&p, vec![0u8; 0x400]).unwrap(); roms::RomFile { path: p, system: "ps2".into(), title: "Some PS2 Game".into(), region: "US".into(), size: 0x400 } };
+        let cat = json!({ "apps": [{ "id": "dusklight", "name": "Dusklight", "game": "The Legend of Zelda: Twilight Princess", "origin": "gamecube", "repo": "TwilitRealm/dusklight" }] });
+        let dirs = HashMap::new();
+        assert!(copies_for(&cat, &[sms.clone(), ps2.clone()], &dirs).is_empty());
+        // Its own disc, under any name, is.
+        let tp = gc("disc1.iso", b"GZ2E01");
+        assert_eq!(copies_for(&cat, &[sms, ps2, tp.clone()], &dirs).get("dusklight").map(|r| r.path.clone()), Some(tp.path.clone()));
+        // And picking Sunshine for it is refused.
+        let need = profile::find(Path::new(""), "TwilitRealm/dusklight", &cat["apps"][0]).and_then(|p| p.game).unwrap();
+        assert!(profile::check_copy(&need, &d.join("Super Mario Sunshine (USA).iso")).unwrap_err().contains("GMSE01"));
+        assert!(profile::check_copy(&need, &tp.path).is_ok());
+        // Checks that can't tell games apart: a common file, or nothing but "a disc image".
+        assert!(need.identifies() && !need.identifies_by_contents());
+        let common: profile::GameCopy = serde_json::from_value(json!({ "kind": "folder", "label": "x", "check": { "file": "default.xex" } })).unwrap();
+        assert!(!common.identifies());
+        let own: profile::GameCopy = serde_json::from_value(json!({ "kind": "folder", "label": "x", "check": { "file": "SLUS_203.12" } })).unwrap();
+        assert!(own.identifies_by_contents());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn app_in(dir: &Path, lib: Library) -> App {
+        App {
+            dir: dir.to_path_buf(),
+            http: reqwest::Client::new(),
+            lib: Mutex::new(lib),
+            jobs: Mutex::default(),
+            running: Mutex::default(),
+            pids: Mutex::default(),
+            started: Mutex::default(),
+            download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
+            moving: Mutex::default(),
+            overlay_open: AtomicBool::new(false),
+            looked: Mutex::new(HashSet::new()),
+            headless: AtomicBool::new(false),
+        }
+    }
+
+    #[test]
+    fn a_game_added_by_link_moves_over_when_the_list_has_it() {
+        let d = std::env::temp_dir().join(format!("rl-merge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mine = json!([{ "id": "gh-me-game", "repo": "Me/Game", "name": "My Game", "custom": true }, { "id": "gh-me-other", "repo": "me/other", "custom": true }]);
+        catalog::save_mine(&d, mine.as_array().unwrap()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("gh-me-game".into(), Installed { id: "gh-me-game".into(), name: "My Game".into(), tag: "v1.2".into(), path: d.join("games/game"), played_secs: 3600, ..Default::default() });
+        lib.settings.ui = json!({ "favs": ["gh-me-game", "x", "game"], "names": { "gh-me-game": "Mine" }, "lang": "en" });
+        std::fs::create_dir_all(saves::dir_of(&d, "gh-me-game")).unwrap();
+        std::fs::write(saves::dir_of(&d, "gh-me-game").join("1.zip"), b"save").unwrap();
+        // Backups from the official one, installed once before.
+        std::fs::create_dir_all(saves::dir_of(&d, "game")).unwrap();
+        std::fs::write(saves::dir_of(&d, "game").join("2.zip"), b"save").unwrap();
+        let st = app_in(&d, lib);
+        let cat = catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game", "name": "Game" }] }));
+        // Until it moves over, the player's own entry stays beside the list's.
+        assert!(cat["apps"].as_array().unwrap().iter().any(|a| a["id"] == "gh-me-game"));
+        // Busy downloading: next time.
+        st.jobs.lock().unwrap().insert("gh-me-game".into(), Arc::new(AtomicBool::new(false)));
+        assert!(merge_mine(&st, &cat).is_empty());
+        st.jobs.lock().unwrap().clear();
+        // The official one installing: next time too.
+        st.jobs.lock().unwrap().insert("game".into(), Arc::new(AtomicBool::new(false)));
+        assert!(merge_mine(&st, &cat).is_empty());
+        st.jobs.lock().unwrap().clear();
+        assert_eq!(merge_mine(&st, &cat), vec![("gh-me-game".to_string(), "game".to_string(), "Game".to_string())]);
+        let l = st.lib.lock().unwrap().clone();
+        let g = &l.installed["game"];
+        assert!(!l.installed.contains_key("gh-me-game"));
+        assert_eq!((g.id.as_str(), g.tag.as_str(), g.played_secs, g.path.clone()), ("game", "v1.2", 3600, d.join("games/game")));
+        assert_eq!(l.settings.ui["favs"], json!(["game", "x"]));
+        assert_eq!(l.settings.ui["names"]["game"], "Mine");
+        assert_eq!(l.settings.ui["lang"], "en");
+        assert!(saves::dir_of(&d, "game").join("1.zip").is_file() && saves::dir_of(&d, "game").join("2.zip").is_file());
+        assert!(!saves::dir_of(&d, "gh-me-game").exists());
+        // The one the list doesn't have stays the player's.
+        let left = catalog::mine(&d);
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0]["id"], "gh-me-other");
+        // Nothing more to do the next time.
+        assert!(merge_mine(&st, &catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game" }] }))).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn both_installed_both_stay() {
+        let d = std::env::temp_dir().join(format!("rl-merge2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "gh-me-game", "repo": "me/game", "custom": true }]).as_array().unwrap()).unwrap();
+        let mut lib = Library::default();
+        for id in ["gh-me-game", "game"] {
+            lib.installed.insert(id.into(), Installed { id: id.into(), path: d.join(id), ..Default::default() });
+        }
+        let st = app_in(&d, lib);
+        let cat = catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game" }] }));
+        assert!(merge_mine(&st, &cat).is_empty());
+        assert_eq!(st.lib.lock().unwrap().installed.len(), 2);
+        assert_eq!(catalog::mine(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn followed_developers_news_once_per_version() {

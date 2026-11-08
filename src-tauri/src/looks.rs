@@ -280,12 +280,32 @@ pub fn kept_route(data: &Path, id: &str) -> Option<String> {
 /// Back to trying both ways in (Troubleshoot, when a Look doesn't show).
 pub fn reset_route(data: &Path, id: &str) {
     let _ = std::fs::remove_file(route_file(data, id));
+    let _ = std::fs::remove_file(data.join("looks").join(id).join("never.txt"));
 }
 
-/// After a game with a look closes: one that went down within seconds tries the next way in.
+/// ReShade didn't start the last time this game ran with its look: the way in it tried then.
+pub fn never_started(data: &Path, id: &str) -> Option<String> {
+    std::fs::read_to_string(data.join("looks").join(id).join("never.txt")).ok().map(|s| s.trim().to_string())
+}
+
+/// After a game with a look closes: one that went down within seconds, or that ran without
+/// ReShade ever starting, tries the next way in ("only": a game with one way in, just noted).
 pub fn after_run(data: &Path, id: &str, route: &str, secs: u64, code: Option<i32>) {
     let crashed = secs < 20 && code.map(|c| c != 0).unwrap_or(false);
-    if !crashed {
+    // ReShade writes its log as soon as it starts: none written during this run means it never did.
+    let dir = data.join("looks").join(id);
+    let since = std::time::SystemTime::now() - std::time::Duration::from_secs(secs + 5);
+    let started = std::fs::metadata(dir.join("ReShade.log")).ok().filter(|m| m.len() > 0).and_then(|m| m.modified().ok()).map(|t| t >= since).unwrap_or(false);
+    let never = !crashed && secs >= 5 && !started;
+    let mark = dir.join("never.txt");
+    if never {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(&mark, route);
+        crate::trail::note(format!("Look for {id}: ReShade didn't start ({route})"));
+    } else if started {
+        let _ = std::fs::remove_file(&mark);
+    }
+    if route == "only" || (!crashed && !never) {
         return;
     }
     // On Windows most games draw with Direct3D, so that way in is tried before Vulkan's.
@@ -820,6 +840,10 @@ mod tests {
     #[test]
     fn a_crashing_look_tries_the_next_way_in() {
         let d = tmp("route");
+        // ReShade started (it wrote its log).
+        let log = d.join("looks").join("g").join("ReShade.log");
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        std::fs::write(&log, "ReShade started").unwrap();
         assert_eq!(route_for(&d, "g", Api::Dxgi), (Api::Dxgi, None));
         assert_eq!(route_for(&d, "g", Api::Both), (Api::Both, Some("both")));
         after_run(&d, "g", "both", 120, Some(1)); // played a while: nothing changes
@@ -830,6 +854,20 @@ mod tests {
         assert_eq!(route_for(&d, "g", Api::Both), (Api::Dxgi, Some("proxy")));
         after_run(&d, "g", "proxy", 300, Some(0));
         assert_eq!(route_for(&d, "g", Api::Both).1, Some("proxy"));
+        assert_eq!(never_started(&d, "g"), None);
+        // Played without ReShade ever starting: the next way in, and Troubleshoot can say so.
+        std::fs::remove_file(&log).unwrap();
+        after_run(&d, "g", "proxy", 60, Some(0));
+        assert_eq!(never_started(&d, "g").as_deref(), Some("proxy"));
+        assert_ne!(route_for(&d, "g", Api::Both).1, Some("proxy"));
+        // A game with one way in: only noted.
+        after_run(&d, "h", "only", 60, Some(0));
+        assert_eq!(never_started(&d, "h").as_deref(), Some("only"));
+        assert_eq!(route_for(&d, "h", Api::Both), (Api::Both, Some("both")));
+        // It started this time: the note goes.
+        std::fs::write(&log, "ReShade started").unwrap();
+        after_run(&d, "g", "both", 60, Some(0));
+        assert_eq!(never_started(&d, "g"), None);
     }
 
     #[test]

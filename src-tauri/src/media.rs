@@ -41,6 +41,12 @@ pub fn mime(bytes: &[u8]) -> &'static str {
     }
 }
 
+/// A picture on recompstore.com at the same place on the launcher's own site.
+fn twin(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("https://recompstore.com/").or_else(|| url.strip_prefix("https://www.recompstore.com/"))?;
+    Some(format!("{}/{rest}", crate::net::base()))
+}
+
 /// The picture, from the cache or the web (then kept).
 pub async fn get(http: &reqwest::Client, dir: &Path, url: &str) -> Option<Vec<u8>> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
@@ -50,12 +56,28 @@ pub async fn get(http: &reqwest::Client, dir: &Path, url: &str) -> Option<Vec<u8
     if let Ok(b) = tokio::fs::read(&file).await {
         return Some(b);
     }
-    // A site that's resting after trouble isn't asked: the picture shows next time.
-    let r = crate::net::send_picture(http.get(url).timeout(std::time::Duration::from_secs(30)), url).await?;
-    if !r.status().is_success() {
-        return None;
+    // A few at a time: a page of covers asked for all at once can meet the site's limit.
+    static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(6);
+    let _slot = SLOTS.acquire().await.ok()?;
+    // Fetched by another request while this one waited.
+    if let Ok(b) = tokio::fs::read(&file).await {
+        return Some(b);
     }
+    // A site that's resting after trouble isn't asked: the picture shows next time.
+    let ask = |u: String| async move { crate::net::send_picture(http.get(&u).timeout(std::time::Duration::from_secs(30)), &u).await.filter(|r| r.status().is_success()) };
+    let mut r = ask(url.to_string()).await;
+    // The store's address blocked or cut off on this PC (some countries' providers do): the same
+    // picture from the launcher's own site, which serves the same files.
+    if r.is_none() {
+        if let Some(t) = twin(url) {
+            r = ask(t).await;
+        }
+    }
+    let r = r?;
     let b = r.bytes().await.ok()?.to_vec();
+    if !mime(&b).starts_with("image/") {
+        crate::net::picture_trouble(url, "what came back isn't a picture");
+    }
     if mime(&b).starts_with("image/") {
         let _ = tokio::fs::create_dir_all(dir).await;
         let tmp = file.with_extension("tmp");
@@ -97,6 +119,12 @@ mod tests {
     fn decodes_addresses() {
         assert_eq!(decode("https%3A%2F%2Frecomplauncher.com%2Fmedia%2Fa%20b.jpg"), "https://recomplauncher.com/media/a b.jpg");
         assert_eq!(decode("100%"), "100%");
+    }
+
+    #[test]
+    fn store_pictures_have_a_twin_on_the_launchers_site() {
+        assert_eq!(twin("https://recompstore.com/media/pc-x-cover.jpg").unwrap(), format!("{}/media/pc-x-cover.jpg", crate::net::base()));
+        assert!(twin("https://cdn.example.com/a.jpg").is_none());
     }
 
     #[test]

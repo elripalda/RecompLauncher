@@ -573,7 +573,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         "rar" => crate::gamebanana::extract(file, staging)?,
         "tar.gz" => untar(file, staging, false)?,
         "tar.xz" => untar(file, staging, true)?,
-        "appimage" | "exe" => {
+        "appimage" | "exe" | "msi" => {
             fs::copy(file, staging.join(&name))?;
             #[cfg(unix)]
             {
@@ -607,7 +607,7 @@ pub fn name_tokens(s: &str) -> Vec<String> {
     tokens(s)
 }
 
-fn tokens(s: &str) -> Vec<String> {
+pub fn tokens(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
     let cs: Vec<char> = s.chars().collect();
@@ -637,15 +637,16 @@ fn tokens(s: &str) -> Vec<String> {
 
 // A game's own dedicated server (for hosting online play) is never the game, and neither is its
 // installer.
-const NOT_THE_GAME: [&str; 17] = ["unins", "uninstall", "setup", "install", "crash", "crashpad", "redist", "vcredist", "helper", "updater", "update", "dxsetup", "vc", "elevate", "report", "server", "dedicated"];
+// "instal" also covers other languages' installers ("Instalar", "Instalador", "Instalacja").
+const NOT_THE_GAME: [&str; 18] = ["unins", "uninstall", "setup", "install", "instal", "crash", "crashpad", "redist", "vcredist", "helper", "updater", "update", "dxsetup", "vc", "elevate", "report", "server", "dedicated"];
 
 /// Words that start a launch script's name: "Launch Madden NFL 08.bat", "Play.cmd".
 const LAUNCH_WORDS: [&str; 5] = ["launch", "launcher", "play", "start", "run"];
 /// Scripts that are for something else: debugging, a test, or playing without the launcher.
-const NOT_A_LAUNCH: [&str; 8] = ["debug", "test", "safe", "sin", "without", "no", "build", "clean"];
+const NOT_A_LAUNCH: [&str; 11] = ["debug", "test", "safe", "sin", "without", "no", "build", "clean", "diagnostic", "diagnostics", "benchmark"];
 
 /// Words at the end of a recomp's name that aren't the game's, and small words, for initials.
-const TAIL_WORDS: [&str; 10] = ["recomp", "recompiled", "decomp", "decompiled", "pc", "port", "native", "online", "edition", "windows"];
+pub const TAIL_WORDS: [&str; 10] = ["recomp", "recompiled", "decomp", "decompiled", "pc", "port", "native", "online", "edition", "windows"];
 const SMALL_WORDS: [&str; 6] = ["of", "the", "a", "and", "in", "to"];
 
 /// A program kept for when the main one doesn't work: "inFAMOUS Second Son (classic).exe".
@@ -655,24 +656,50 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 8;
+pub const EXE_RULES: u8 = 13;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
 /// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 24] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool"];
+const TOOL_WORDS: [&str; 26] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
+/// Programs that build or unpack things, by their whole name: a release that builds the game on
+/// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
+const BUILD_TOOLS: [&str; 57] = [
+    "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
+    "tcc", "zig", "sccache", "ccache", "goalc",
+    "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
+    "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
+    // Disc and package converters a release brings along for the player's copy.
+    "chd2gdi", "gdi2chd", "chdman", "maxcso", "extract-xiso", "xdvdfs", "hactool", "nsz",
+];
 /// Folders a release keeps its tools, or leftovers from building, in.
-const TOOL_DIRS: [&str; 12] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders"];
+pub const TOOL_DIRS: [&str; 13] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
 pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     let want: Vec<String> = names.iter().flat_map(|n| tokens(n)).collect();
     let stem = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if tokens(stem).iter().any(|t| !want.contains(t) && TOOL_WORDS.contains(&t.as_str())) {
+    // A build tool by its whole name (ninja.exe, cmake, python3.exe).
+    let whole = rel.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    let whole = whole.strip_suffix(".exe").unwrap_or(&whole);
+    // A cross compiler names its target first: x86_64-w64-mingw32-clang++.exe.
+    if BUILD_TOOLS.contains(&whole) || whole.starts_with("python3.") || whole.starts_with("llvm-") || whole.contains("clang") || whole.ends_with("-gcc") || whole.ends_with("-g++") {
         return true;
     }
-    rel.parent().map(|d| d.components().any(|c| TOOL_DIRS.contains(&c.as_os_str().to_string_lossy().to_lowercase().as_str()))).unwrap_or(false)
+    // A tool word, or a name that ends in one (hactool, gt3tool), that isn't part of the game's name.
+    if tokens(stem).iter().any(|t| !want.contains(t) && (TOOL_WORDS.contains(&t.as_str()) || t == "tool" || t == "tools" || t.ends_with("bktr") || (t.len() > 4 && (t.ends_with("tool") || t.ends_with("tools"))))) {
+        return true;
+    }
+    // In a tools folder, or a hidden one (.tools, .sdk): leftovers from building, not the game.
+    rel.parent()
+        .map(|d| {
+            d.components().any(|c| {
+                let n = c.as_os_str().to_string_lossy().to_lowercase();
+                (n.starts_with('.') && n != "." && n != "..") || TOOL_DIRS.contains(&n.as_str())
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
@@ -689,7 +716,7 @@ pub fn is_script(p: &Path) -> bool {
 
 /// Words in the name of a program that has to run once before the game: its installer, or the
 /// first-time setup that unpacks the game's files from the player's copy.
-const SETUP_WORDS: [&str; 5] = ["setup", "install", "installer", "unpack", "firstrun"];
+const SETUP_WORDS: [&str; 9] = ["setup", "install", "installer", "unpack", "firstrun", "instalar", "instalador", "installation", "instalacja"];
 /// Installers that come with a game but aren't for it: runtimes, drivers and uninstallers.
 const NOT_A_SETUP: [&str; 14] = ["unins", "uninstall", "uninstaller", "vc", "vcredist", "redist", "dxsetup", "directx", "dotnet", "netfx", "webview2", "vulkan", "driver", "runtime"];
 
@@ -697,7 +724,20 @@ const NOT_A_SETUP: [&str; 14] = ["unins", "uninstall", "uninstaller", "vc", "vcr
 /// program (`game` None) it's the release's own installer (MaddenNFL08-Recompiled-Setup.exe), which
 /// puts the game somewhere else. Beside a game program, it's a first-time setup made for that game
 /// (Tenkaichi3Decomp-setup.exe next to Tenkaichi3Decomp.exe), or one named only "Setup".
+/// A Windows Installer package (.msi).
+pub fn is_msi(p: &Path) -> bool {
+    p.extension().map(|e| e.eq_ignore_ascii_case("msi")).unwrap_or(false)
+}
+
 pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> {
+    // A release that's a Windows Installer package: that's its setup.
+    if os == "windows" {
+        let mut msi: Vec<PathBuf> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_file() && is_msi(p)).collect();
+        msi.sort();
+        if let Some(p) = msi.into_iter().next().and_then(|p| p.strip_prefix(dir).ok().map(Path::to_path_buf)) {
+            return Some(p);
+        }
+    }
     let game_t: Vec<String> = game.and_then(|g| g.file_stem()).and_then(|s| s.to_str()).map(tokens).unwrap_or_default();
     let mut best: Option<(usize, PathBuf)> = None;
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
@@ -742,6 +782,10 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
 
 /// Whether a program's name says it's an installer or first-time setup (see find_setup).
 pub fn looks_like_setup(p: &Path) -> bool {
+    // A Windows Installer package is always one.
+    if is_msi(p) {
+        return true;
+    }
     let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
@@ -760,7 +804,21 @@ pub fn is_program(p: &Path, os: &str) -> bool {
         if n.contains('.') && !n.ends_with(".sh") && !n.ends_with(".bin") {
             return false;
         }
-        return fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false);
+        if !fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false) {
+            return false;
+        }
+        // The run permission alone says little: on a memory card or a drive formatted for Windows
+        // (exFAT, NTFS) every file has it. A program is a Linux one built for this PC's processor,
+        // or a script that says what runs it.
+        if n.ends_with(".sh") {
+            return true;
+        }
+        let here = if crate::assets::arch_now() == "arm64" { "arm64" } else { "x64" };
+        if let Some(a) = crate::proton::elf_arch(p) {
+            return a == here;
+        }
+        let mut head = [0u8; 2];
+        return fs::File::open(p).and_then(|mut f| io::Read::read_exact(&mut f, &mut head)).map(|_| &head == b"#!").unwrap_or(false);
     }
     #[allow(unreachable_code)]
     false
@@ -916,10 +974,19 @@ mod tests {
             let gz = flate2::write::GzEncoder::new(fs::File::create(&tpath).unwrap(), flate2::Compression::fast());
             let mut t = tar::Builder::new(gz);
             let mut h = tar::Header::new_gnu();
-            h.set_size(4);
+            // A Linux program's header: ELF, built for x86-64 (or this PC's ARM64).
+            let mut elf = [0u8; 20];
+            elf[..4].copy_from_slice(b"\x7fELF");
+            elf[18] = if crate::assets::arch_now() == "arm64" { 0xB7 } else { 0x3E };
+            h.set_size(20);
             h.set_mode(0o755);
             h.set_cksum();
-            t.append_data(&mut h, "Game/Game", &b"elf!"[..]).unwrap();
+            t.append_data(&mut h, "Game/Game", &elf[..]).unwrap();
+            let mut r = tar::Header::new_gnu();
+            r.set_size(6);
+            r.set_mode(0o755);
+            r.set_cksum();
+            t.append_data(&mut r, "Game/LICENSE", &b"MIT..."[..]).unwrap();
             t.into_inner().unwrap().finish().unwrap();
         }
         let target = d.join("lib/game");
@@ -927,6 +994,8 @@ mod tests {
         assert!(target.join("Game").is_file());
         #[cfg(unix)]
         assert_eq!(find_exe(&target, "linux", &["Game"]).unwrap(), PathBuf::from("Game"));
+        #[cfg(unix)]
+        assert!(!is_program(&target.join("LICENSE"), "linux"));
     }
 
     #[test]
@@ -984,11 +1053,56 @@ mod tests {
         // A game kept in a folder called build isn't a tool; one in temp is.
         assert!(!looks_like_tool(Path::new("build/totk.exe"), &["TotK Recomp"]));
         assert!(looks_like_tool(Path::new("temp/zelda totk-1/build/totk.exe"), &["TotK Recomp"]));
+        assert!(looks_like_tool(Path::new("hactool.exe"), &["XCX Recomp"]));
+        // From players' logs: a patcher, a disc converter, a cross compiler.
+        assert!(looks_like_tool(Path::new("Sf2Bktr.exe"), &["SF2Recomp"]));
+        assert!(looks_like_tool(Path::new("chd2gdi.exe"), &["Street-Alpha-3-Dreamcast-Recomp"]));
+        assert!(looks_like_tool(Path::new("x86_64-w64-mingw32-clang++.exe"), &["TotK Recomp"]));
+
+        assert!(looks_like_tool(Path::new("bin/ninja.exe"), &["XCX Recomp"]));
+        assert!(looks_like_tool(Path::new("toolchain/python3.12"), &["Some Game"]));
+        assert!(!looks_like_tool(Path::new("Ninja Gaiden.exe"), &["Ninja Gaiden Recomp"]));
+        assert!(looks_like_tool(Path::new("gt3tool"), &["GT3 Revisited"]));
+        assert!(looks_like_tool(Path::new("HacTool.exe"), &["XCX Recomp"]));
+        assert!(looks_like_tool(Path::new(".tools/sdk/win-amd64/bin/rexglue.exe"), &["Table Tennis"]));
+        assert!(!looks_like_tool(Path::new("gt3r"), &["GT3 Revisited"]));
+        assert!(!looks_like_tool(Path::new("ToolKitty.exe"), &["Tool Kitty"]));
     }
 
     fn sparse(p: &Path, len: u64) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::File::create(p).unwrap().set_len(len).unwrap();
+    }
+
+    #[test]
+    fn installers_in_other_languages_and_diagnostic_scripts() {
+        // An installer named in Portuguese is the setup, not the game.
+        let d = tmp("gowhd");
+        sparse(&d.join("Instalar God of War Collection.exe"), 4_000_000);
+        let names = ["God of War Collection (VitaRT)", "GOD-OF-WAR-HD-COLLECTION", "God of War Collection"];
+        assert!(find_exe(&d, "windows", &names).is_none());
+        assert_eq!(find_setup(&d, "windows", None).unwrap(), PathBuf::from("Instalar God of War Collection.exe"));
+        assert!(looks_like_setup(Path::new("Instalador Juego.exe")));
+        // A start script for diagnostics isn't how the game starts.
+        let d = tmp("monado");
+        sparse(&d.join("Play Monado (stutter diagnostics).bat"), 900);
+        sparse(&d.join("Play Monado.bat"), 700);
+        sparse(&d.join("monado.exe"), 60_000_000);
+        assert_eq!(find_exe(&d, "windows", &["Monado"]).unwrap(), PathBuf::from("Play Monado.bat"));
+    }
+
+    #[test]
+    fn a_windows_installer_package_is_the_setup() {
+        let d = tmp("msi");
+        sparse(&d.join("OpenGOAL-Launcher_2.11.2_x64_en-US.msi"), 9_000_000);
+        assert_eq!(find_setup(&d, "windows", None).unwrap(), PathBuf::from("OpenGOAL-Launcher_2.11.2_x64_en-US.msi"));
+        assert!(looks_like_setup(Path::new("OpenGOAL-Launcher_2.11.2_x64_en-US.msi")));
+        assert!(find_game_exe(&d, "windows", &["OpenGOAL Launcher"]).is_none());
+        assert_eq!(crate::assets::kind("OpenGOAL-Launcher_2.11.2_x64_en-US.msi"), Some("msi"));
+        assert_eq!(crate::assets::describe("OpenGOAL-Launcher_2.11.2_x64_en-US.msi", "windows"), "Installer");
+        // The compiler that comes with it is never the game.
+        sparse(&d.join("goalc.exe"), 9_000_000);
+        assert!(find_game_exe(&d, "windows", &["OpenGOAL Launcher"]).is_none());
     }
 
     #[test]

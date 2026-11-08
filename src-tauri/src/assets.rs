@@ -64,7 +64,10 @@ pub fn wild(pattern: &str, name: &str) -> bool {
 
 /// The words in a file name: `Zelda64Recompiled-v1.2.2-Linux-X64.zip` -> zelda64recompiled, v1, 2, 2, linux, x64, zip.
 fn words(name: &str) -> Vec<String> {
+    // "x86_64" and "x86-64" are one word (64-bit), not "x86" (32-bit) and "64".
     name.to_lowercase()
+        .replace("x86_64", "x64")
+        .replace("x86-64", "x64")
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| !w.is_empty())
         .map(str::to_string)
@@ -82,7 +85,7 @@ const X64: [&str; 5] = ["x64", "x86_64", "amd64", "win64", "64bit"];
 /// What kind of file it is, by its ending, and whether this system can use it as a build.
 pub fn kind(name: &str) -> Option<&'static str> {
     let n = name.to_lowercase();
-    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".dmg", "dmg")] {
+    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".msi", "msi"), (".dmg", "dmg")] {
         if n.ends_with(end) {
             return Some(k);
         }
@@ -92,7 +95,7 @@ pub fn kind(name: &str) -> Option<&'static str> {
 
 fn usable(os: &str, k: &str) -> bool {
     match os {
-        "windows" => matches!(k, "zip" | "7z" | "rar" | "exe"),
+        "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
         _ => matches!(k, "zip" | "dmg"),
     }
@@ -116,6 +119,25 @@ fn not_a_build(name: &str) -> bool {
         || w.iter().any(|x| matches!(x.as_str(), "symbols" | "pdb" | "debug" | "dbg" | "source" | "sources" | "src"))
 }
 
+/// Words that tag a file as a build for a console or a phone: never a build for a PC.
+const PLATFORM_TAGS: [&str; 19] = ["switch", "nx", "nsp", "xci", "nro", "android", "apk", "aab", "ios", "ipa", "ps4", "ps5", "vita", "psp", "3ds", "wiiu", "wii", "xbox", "vpk"];
+/// Files for a console or a phone by their ending.
+const PLATFORM_ENDS: [&str; 7] = [".apk", ".ipa", ".nsp", ".xci", ".nro", ".vpk", ".pkg"];
+
+/// A file built for a console or a phone (Game-0.5.3.1-switch.zip, Game-1.0-android-arm64.apk),
+/// never a build for this PC. Only the words after the version count: a game's own name can have
+/// console words in it ("Xbox 360", "Wii"), and with no version to go by the file is left in.
+fn for_other_platform(name: &str) -> bool {
+    let n = name.to_lowercase();
+    if PLATFORM_ENDS.iter().any(|e| n.ends_with(e)) {
+        return true;
+    }
+    static VERSION: std::sync::OnceLock<regex_lite::Regex> = std::sync::OnceLock::new();
+    let re = VERSION.get_or_init(|| regex_lite::Regex::new(r"(?:^|[^a-z0-9])v?\d+(?:\.\d+)+|(?:^|[^a-z0-9])v\d+").unwrap());
+    let Some(m) = re.find(&n) else { return false };
+    words(&n[m.end()..]).iter().any(|w| PLATFORM_TAGS.contains(&w.as_str()))
+}
+
 /// Built for another processor than this one?
 fn other_arch(name: &str, arch: &str) -> bool {
     let w = words(name);
@@ -137,7 +159,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         Some(k) if usable_file(os, name) => k,
         _ => return i32::MIN,
     };
-    if not_a_build(name) || other_arch(name, arch) || other_os(name, os) {
+    if not_a_build(name) || other_arch(name, arch) || other_os(name, os) || for_other_platform(name) {
         return i32::MIN;
     }
     let w = words(name);
@@ -162,14 +184,15 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("windows", "zip") => 12,
         ("windows", "7z") => 10,
         ("windows", "exe") => 6,
+        ("windows", "msi") => 2,
         ("linux", "appimage") => 14,
         ("linux", "tar.gz") => 12,
         ("linux", "zip") => 8,
         _ => 4,
     };
     // A game's server (for playing online) comes with some releases: the game itself comes first,
-    // and the server only when it's all there is.
-    if w.iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv")) {
+    // and the server only when it's all there is. The same for an editor or tools beside the game.
+    if w.iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv" | "editor" | "tools" | "toolkit" | "sdk" | "modkit" | "devkit")) {
         s = (s - 60).max(1);
     }
     s
@@ -203,6 +226,12 @@ pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
     if v.iter().any(|(_, a)| !server(a)) {
         v.retain(|(_, a)| !server(a));
     }
+    // A Windows Installer package only when there's nothing else for this PC: not one more form
+    // of build to ask about.
+    let msi = |a: &Asset| a.name.to_lowercase().ends_with(".msi");
+    if v.iter().any(|(_, a)| !msi(a)) {
+        v.retain(|(_, a)| !msi(a));
+    }
     // When a release says which files are for this system, a file that says nothing is for another.
     if v.iter().any(|(_, a)| says_os(&a.name, os)) {
         v.retain(|(_, a)| says_os(&a.name, os));
@@ -227,6 +256,7 @@ pub fn describe(name: &str, os: &str) -> &'static str {
         (_, _) if has(&["flatpak"]) => "Flatpak",
         ("linux", "appimage") => "AppImage",
         ("linux", _) => "Linux Folder",
+        ("windows", "msi") => "Installer",
         ("windows", "exe") if has(&["setup", "installer", "install"]) => if bit32 { "32-Bit Installer" } else { "Installer" },
         ("windows", "exe") => if bit32 { "32-Bit Program" } else { "Program" },
         ("windows", _) => if bit32 { "32-Bit Portable" } else { "Portable" },
@@ -245,11 +275,18 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
     if let Some(p) = pattern.filter(|p| !p.trim().is_empty()) {
         let best = assets
             .iter()
-            .filter(|a| wild(p, &a.name) && !other_arch(&a.name, arch) && !not_a_build(&a.name))
+            .filter(|a| wild(p, &a.name) && !other_arch(&a.name, arch) && !not_a_build(&a.name) && !for_other_platform(&a.name))
             .filter(|a| usable_file(os, &a.name))
             .max_by_key(|a| score(&a.name, os, arch).max(0));
         if best.is_some() {
             return best;
+        }
+        // The list says what this system's file is called, and nothing in this release is: it has
+        // no build for this system (an older release that does is used instead). Only when the
+        // pattern names a file that's there but for another processor (a list pointing at the ARM
+        // build) is the best guess used.
+        if !assets.iter().any(|a| wild(p, &a.name)) {
+            return None;
         }
     }
     assets
@@ -266,6 +303,21 @@ mod tests {
 
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new() }
+    }
+
+    #[test]
+    fn sixty_four_bit_names_and_editor_builds() {
+        // x86_64 is 64-bit, not 32.
+        assert_eq!(describe("orchid-v0.7.5-windows-x86_64.zip", "windows"), "Portable");
+        assert_eq!(describe("game-win32.zip", "windows"), "32-Bit Portable");
+        assert!(other_arch("game-linux-x86_64.AppImage", "arm64"));
+        assert!(!other_arch("game-linux-x86_64.AppImage", "x64"));
+        // The game before its editor.
+        let r = [a("fm-editor-v0.3.1-preview.1-windows.zip"), a("memories-pc-v0.3.1-preview.1-windows.zip")];
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "memories-pc-v0.3.1-preview.1-windows.zip");
+        assert_eq!(all_for(&r, "windows", "x64", None).len(), 2);
+        // An editor alone is still picked.
+        assert_eq!(pick(&r[..1], "windows", "x64", None).unwrap().name, "fm-editor-v0.3.1-preview.1-windows.zip");
     }
 
     #[test]
@@ -324,10 +376,31 @@ mod tests {
     }
 
     #[test]
-    fn renamed_files_still_found() {
+    fn a_pattern_that_matches_nothing_means_no_build() {
         let r = [a("Game-2.0-win64.zip"), a("Game-2.0-linux.AppImage"), a("Game-2.0-symbols.zip"), a("Source code.zip")];
-        assert_eq!(pick(&r, "windows", "x64", Some("Game-1.*-Windows.zip")).unwrap().name, "Game-2.0-win64.zip");
+        // The list says what the Windows file is called and this release has none: no build here
+        // (an older release that has one is installed instead). Without a pattern, the best guess.
+        assert!(pick(&r, "windows", "x64", Some("Game-1.*-Windows.zip")).is_none());
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "Game-2.0-win64.zip");
         assert_eq!(pick(&r, "linux", "x64", None).unwrap().name, "Game-2.0-linux.AppImage");
+    }
+
+    #[test]
+    fn console_and_phone_builds_are_never_for_a_pc() {
+        // Only a Switch build in the newest release, and the list's pattern matches nothing.
+        assert!(pick(&[a("Marchwind64-0.5.3.1-switch.zip")], "windows", "x64", Some("Marchwind64-*-windows-x64.zip")).is_none());
+        assert!(pick(&[a("Marchwind64-0.5.3.1-switch.zip")], "windows", "x64", None).is_none());
+        assert!(pick(&[a("Marchwind64-0.5.3.1-switch.zip")], "linux", "x64", None).is_none());
+        let r = [a("Game-1.0-android-arm64.apk"), a("Game-1.0-windows-x64.zip")];
+        assert_eq!(pick(&r, "windows", "x64", None).unwrap().name, "Game-1.0-windows-x64.zip");
+        assert_eq!(all_for(&[a("Game-1.0-ps5.zip"), a("Game-1.0-win64.zip")], "windows", "x64", None).len(), 1);
+        assert!(choices(&[a("Game-v2-nx.zip")], "windows", "x64", None).is_empty());
+        // Console words in a game's own name are its name, not a platform.
+        assert_eq!(pick(&[a("Xbox 360 Something-windows.zip")], "windows", "x64", None).unwrap().name, "Xbox 360 Something-windows.zip");
+        assert_eq!(pick(&[a("Wii Sports Recomp-1.2-windows-x64.zip")], "windows", "x64", None).unwrap().name, "Wii Sports Recomp-1.2-windows-x64.zip");
+        assert_eq!(pick(&[a("PS2 Racer 2.0-win64.zip")], "windows", "x64", None).unwrap().name, "PS2 Racer 2.0-win64.zip");
+        // A later version word isn't a platform: xbox360 as one word stays in.
+        assert_eq!(pick(&[a("Game-1.0-xbox360-windows.zip")], "windows", "x64", None).unwrap().name, "Game-1.0-xbox360-windows.zip");
     }
 
     #[test]

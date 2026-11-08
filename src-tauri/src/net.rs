@@ -83,12 +83,18 @@ fn host(url: &str) -> String {
 }
 
 /// What a failure puts to rest: the whole site, except release info (gh.php passes on GitHub's own
-/// trouble with one repo, which says nothing about the site), which rests on its own.
+/// trouble with one repo, which says nothing about the site), which rests on its own, and pictures
+/// (a page of covers asked for at once can meet the site's limit, which says nothing about the
+/// rest of it: the list, updates and reports carry on).
 fn key(url: &str) -> String {
     let h = host(url);
     let path = reqwest::Url::parse(url).map(|u| u.path().to_string()).unwrap_or_default();
     if path.ends_with("/api/gh.php") {
         format!("{h}/gh")
+    } else if path.ends_with("/api/gl.php") {
+        format!("{h}/gl")
+    } else if path.starts_with("/media/") || path.ends_with("/api/thumb.php") || url.starts_with(THUMBS) {
+        format!("{h}/pictures")
     } else {
         h
     }
@@ -178,7 +184,7 @@ fn went_well(url: &str) {
 /// earlier failure was counted don't count again (an outage is one failure, not ten).
 fn went_badly(url: &str, after: Option<u64>, started: Instant) {
     let k = key(url);
-    let secs = {
+    let (secs, fails) = {
         let mut g = GATES.lock().unwrap();
         let gate = g.get_or_insert_with(HashMap::new).entry(k.clone()).or_default();
         let counted = gate.last_fail.map(|t| started < t).unwrap_or(false);
@@ -197,10 +203,12 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
             return;
         }
         gate.until = Some(until);
-        secs
+        (secs, gate.fails)
     };
-    crate::trail::note(&format!("{k} had trouble; asking again in {secs}s"));
-    if is_api(&k) {
+    crate::trail::note(&format!("note: {k} was slow or busy; asking again in {secs}s"));
+    // Offline only once it's more than one hiccup (a slow answer, one refused request): a single
+    // miss shouldn't put the whole launcher in offline mode.
+    if is_api(&k) && fails >= 2 {
         set_offline(true);
     }
 }
@@ -245,6 +253,15 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
 
 /// Pictures: not asked while the site rests, and only the site not answering at all (or saying
 /// it's busy) makes it rest; one missing or refused picture doesn't.
+/// A picture that didn't come, and why, said once each time the launcher runs: a report about
+/// missing covers then says what stopped them (a refusal, a blocked connection, a page instead).
+pub(crate) fn picture_trouble(url: &str, why: &str) {
+    static SAID: AtomicBool = AtomicBool::new(false);
+    if !SAID.swap(true, Ordering::Relaxed) {
+        crate::trail::note(&format!("note: pictures from {} didn't load ({why})", host(url)));
+    }
+}
+
 pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqwest::Response> {
     if resting(url, false) {
         return None;
@@ -253,12 +270,31 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
     match rb.send().await {
         Ok(r) => {
             let code = r.status().as_u16();
+            if !r.status().is_success() {
+                picture_trouble(url, &format!("the site answered {code}"));
+            }
             if matches!(code, 429 | 503) {
                 went_badly(url, retry_after(&r), started);
+            } else if r.status().is_success() && key(url) != host(url) {
+                // Pictures come again: their own rest is over (the site's isn't touched).
+                let mut g = GATES.lock().unwrap();
+                if let Some(gate) = g.get_or_insert_with(HashMap::new).get_mut(&key(url)) {
+                    gate.fails = 0;
+                    gate.until = None;
+                }
             }
             Some(r)
         }
         Err(e) => {
+            // What went wrong underneath too (a refused connection, a TLS failure).
+            let mut why = String::new();
+            let mut src = std::error::Error::source(&e);
+            while let Some(x) = src {
+                why = x.to_string();
+                src = x.source();
+            }
+            let kind = if e.is_timeout() { "it took too long" } else if e.is_connect() { "couldn't connect" } else { "the request failed" };
+            picture_trouble(url, &if why.is_empty() { kind.to_string() } else { format!("{kind} ({})", why.chars().take(160).collect::<String>()) });
             if e.is_connect() || e.is_timeout() {
                 went_badly(url, None, started);
             }
@@ -338,6 +374,18 @@ mod tests {
         }
         let a: Vec<f64> = (0..20).map(|_| random()).collect();
         assert!(a.windows(2).any(|w| w[0] != w[1]));
+    }
+
+    #[test]
+    fn pictures_rest_on_their_own() {
+        let pic = "https://pics-test.example/media/cover.jpg";
+        let api = "https://pics-test.example/api/pc.php";
+        went_badly(pic, Some(60), Instant::now());
+        assert!(resting(pic, false));
+        // The site's list and the rest carry on.
+        assert!(!resting(api, false));
+        went_well(pic);
+        assert!(!resting(pic, false));
     }
 
     #[test]

@@ -32,6 +32,10 @@ pub struct Profile {
     pub exit_codes: BTreeMap<String, String>,
     #[serde(default)]
     pub settings: Vec<Setting>,
+    /// Groups of settings, next to "settings": a whole group can be advanced (hidden until the
+    /// player shows advanced options).
+    #[serde(default)]
+    pub groups: Vec<Group>,
     #[serde(default)]
     pub actions: Vec<Action>,
     /// The recomp's own setup step, run once after the player's copy is picked (and again when
@@ -49,6 +53,10 @@ pub struct Profile {
     /// release's own setup still runs first, and its settings only change files that are there.
     #[serde(skip)]
     pub from_boot: bool,
+    /// The player's slider values for settings on the command line (setting id -> value), from
+    /// the Library: filled in by the launcher, never read from the file.
+    #[serde(skip)]
+    pub slider_vals: BTreeMap<String, String>,
 }
 
 /// A program in the release that sets the game up without showing a window. It may print lines
@@ -273,6 +281,10 @@ pub struct Check {
     /// An N64 ROM's revision (1 for a v1.1 release), when the recomp reads one revision only.
     #[serde(default)]
     pub n64_rev: Option<u8>,
+    /// The disc or cartridge IDs it reads (`GZ2E01`, or `GZ2` for every region): a GameCube or
+    /// Wii disc's, an N64 cartridge's game code, a PlayStation disc's serial (crate::roms::copy_id).
+    #[serde(default)]
+    pub ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -331,6 +343,8 @@ pub struct Setting {
     /// "main" (a settings file's id) or "args" (passed when the game starts).
     #[serde(default = "main", rename = "in")]
     pub target: String,
+    /// What it can be set to. A slider has none.
+    #[serde(default)]
     pub choices: Vec<Choice>,
     /// The game's own values for keys the file doesn't have yet.
     #[serde(default)]
@@ -338,6 +352,234 @@ pub struct Setting {
     /// Only when these keys have these values (otherwise shown greyed out).
     #[serde(default)]
     pub when: BTreeMap<String, String>,
+    /// The heading it's shown under ("Controls"). Settings keep their order: a heading shows where
+    /// the group changes from one setting to the next.
+    #[serde(default)]
+    pub group: String,
+    /// Hidden until the player presses Show Advanced Options (its value stays as it is).
+    #[serde(default)]
+    pub advanced: bool,
+    /// A number on a slider instead of choices.
+    #[serde(default)]
+    pub slider: Option<Slider>,
+    /// For a slider on the command line ("in": "args"): its arguments, with {value} for the number.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Key bindings instead of choices: the game's actions and the keys each one is on.
+    #[serde(default)]
+    pub bindings: Option<Bindings>,
+    /// The launcher's own last choice, Match My Screen, was added (with the size or shape it writes).
+    #[serde(skip)]
+    pub screen: Option<String>,
+}
+
+/// Key bindings in a settings file, one key per action (`key.cross=Space`, same key rules as
+/// "set"), several keys on one action joined with `separator` (`Escape|Return`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Bindings {
+    #[serde(default)]
+    pub separator: String,
+    /// Keys one action can have (2 when not said).
+    #[serde(default)]
+    pub max: usize,
+    pub actions: Vec<BindAction>,
+    /// The launcher's name for a key or button, to the name the game's file uses for it
+    /// (`{"Return": "Enter"}`).
+    #[serde(default)]
+    pub names: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BindAction {
+    pub label: String,
+    pub key: String,
+    /// It takes a controller button too.
+    #[serde(default)]
+    pub pad: bool,
+}
+
+/// Names a key or button goes by, the launcher's own first: a file that already uses one of the
+/// others ("Enter", "Esc") gets that one.
+const KEY_NAMES: &[&[&str]] = &[
+    &["Return", "Enter"],
+    &["Escape", "Esc"],
+    &["Ctrl", "Control", "Ctl"],
+    &["Space", "Spacebar", "Space Bar"],
+    &["Backspace", "Back Space"],
+    &["Delete", "Del"],
+    &["Insert", "Ins"],
+    &["Page Up", "PageUp", "PgUp"],
+    &["Page Down", "PageDown", "PgDn"],
+    &["Up", "Arrow Up", "ArrowUp", "Up Arrow", "UpArrow"],
+    &["Down", "Arrow Down", "ArrowDown", "Down Arrow", "DownArrow"],
+    &["Left", "Arrow Left", "ArrowLeft", "Left Arrow", "LeftArrow"],
+    &["Right", "Arrow Right", "ArrowRight", "Right Arrow", "RightArrow"],
+    &["Mouse Left", "Mouse1", "Mouse 1", "LMB", "Left Mouse", "MouseLeft", "Left Click"],
+    &["Mouse Right", "Mouse2", "Mouse 2", "RMB", "Right Mouse", "MouseRight", "Right Click"],
+    &["Mouse Middle", "Mouse3", "Mouse 3", "MMB", "Middle Mouse", "MouseMiddle", "Middle Click"],
+    &["Mouse 4", "Mouse4", "Mouse Back", "XButton1", "Mouse X1"],
+    &["Mouse 5", "Mouse5", "Mouse Forward", "XButton2", "Mouse X2"],
+    &["Wheel Up", "Mouse Wheel Up", "MWheelUp", "WheelUp", "Scroll Up"],
+    &["Wheel Down", "Mouse Wheel Down", "MWheelDown", "WheelDown", "Scroll Down"],
+    &["A", "Cross"],
+    &["B", "Circle"],
+    &["X", "Square"],
+    &["Y", "Triangle"],
+    &["LB", "L1"],
+    &["RB", "R1"],
+    &["LT", "L2"],
+    &["RT", "R2"],
+    &["LS", "L3"],
+    &["RS", "R3"],
+    &["Back", "Select", "View", "Share", "Create"],
+    &["Start", "Options", "Menu"],
+    &["D-Pad Up", "DPad Up", "DPadUp"],
+    &["D-Pad Down", "DPad Down", "DPadDown"],
+    &["D-Pad Left", "DPad Left", "DPadLeft"],
+    &["D-Pad Right", "DPad Right", "DPadRight"],
+];
+
+impl Bindings {
+    pub fn max(&self) -> usize {
+        if self.max == 0 {
+            2
+        } else {
+            self.max.min(8)
+        }
+    }
+
+    pub fn sep(&self) -> &str {
+        if self.separator.is_empty() {
+            "|"
+        } else {
+            &self.separator
+        }
+    }
+
+    /// The keys in a value as written (`"Escape|Return"`, quotes or not), in their order.
+    pub fn split(&self, v: &str) -> Vec<String> {
+        let v = v.trim();
+        let v = if v.len() >= 2 && (v.starts_with('"') && v.ends_with('"') || v.starts_with('\'') && v.ends_with('\'')) { &v[1..v.len() - 1] } else { v };
+        v.split(self.sep()).map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).collect()
+    }
+
+    /// The name a key is written under: the profile's own name for it, else the one this file
+    /// already uses for that key, else the launcher's.
+    pub fn file_name(&self, name: &str, present: &[String]) -> String {
+        let group: Vec<&str> = KEY_NAMES.iter().find(|g| g.iter().any(|n| n.eq_ignore_ascii_case(name))).map(|g| g.to_vec()).unwrap_or_else(|| vec![name]);
+        let mut tries = vec![name];
+        tries.extend(group.iter().copied().filter(|n| !n.eq_ignore_ascii_case(name)));
+        for n in &tries {
+            if let Some(v) = self.names.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.trim()).filter(|v| !v.is_empty()) {
+                return v.to_string();
+            }
+        }
+        for n in &tries {
+            if let Some(p) = present.iter().find(|p| p.eq_ignore_ascii_case(n)) {
+                return p.clone();
+            }
+        }
+        name.to_string()
+    }
+}
+
+/// A slider: the key it sets (Section/Key in a settings file, like "set"), its range and step, and
+/// how the number is written (printf style: "%.2f", "%d"; "%g" when not said).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Slider {
+    #[serde(default)]
+    pub key: String,
+    pub min: f64,
+    pub max: f64,
+    #[serde(default)]
+    pub step: f64,
+    #[serde(default)]
+    pub format: String,
+    /// The same as the setting's "args", for a slider on the command line.
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+/// A group of settings, by the name they use in "group". `advanced`: the whole group is hidden
+/// until the player shows advanced options.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Group {
+    pub id: String,
+    #[serde(default)]
+    pub advanced: bool,
+}
+
+impl Slider {
+    /// The step it moves by (a hundredth of the range when it doesn't say).
+    pub fn step(&self) -> f64 {
+        if self.step > 0.0 && self.step.is_finite() {
+            self.step
+        } else if self.max > self.min {
+            (self.max - self.min) / 100.0
+        } else {
+            1.0
+        }
+    }
+
+    /// Digits after the point in its step (and its ends), so 0.1 + 0.2 stays 0.3.
+    fn places(&self) -> usize {
+        let p = |x: f64| {
+            let s = format!("{x}");
+            s.split_once('.').map(|(_, d)| d.len()).unwrap_or(0).min(10)
+        };
+        p(self.step()).max(p(self.min)).max(p(self.max))
+    }
+
+    /// A number the player moved it to: on a step, inside its ends.
+    pub fn snap(&self, v: f64) -> f64 {
+        let (lo, hi) = if self.min <= self.max { (self.min, self.max) } else { (self.max, self.min) };
+        let st = self.step();
+        let n = ((v.clamp(lo, hi) - lo) / st).round();
+        let x = (lo + n * st).clamp(lo, hi);
+        let m = 10f64.powi(self.places() as i32);
+        (x * m).round() / m
+    }
+
+    /// The number written its way (printf style).
+    pub fn text(&self, v: f64) -> String {
+        printf(if self.format.trim().is_empty() { "%g" } else { self.format.trim() }, v)
+    }
+}
+
+/// A number in a printf-style format: %d, %i, %f, %.2f, %g, %.3g, %e, with text around it ("%.1fx").
+pub fn printf(fmt: &str, v: f64) -> String {
+    let re = regex_lite::Regex::new(r"%([+]?)(?:\.(\d+))?([dfgieFGE])").unwrap();
+    let Some(c) = re.captures(fmt) else { return gfmt(v, 6) };
+    let plus = !c[1].is_empty();
+    let prec = c.get(2).and_then(|m| m.as_str().parse::<usize>().ok());
+    let body = match &c[3] {
+        "d" | "i" => format!("{}", v.round() as i64),
+        "f" | "F" => format!("{:.*}", prec.unwrap_or(6).min(12), v),
+        "e" | "E" => format!("{:.*e}", prec.unwrap_or(6).min(12), v),
+        _ => gfmt(v, prec.unwrap_or(6).clamp(1, 17)),
+    };
+    let body = if plus && v >= 0.0 { format!("+{body}") } else { body };
+    let m = c.get(0).unwrap();
+    format!("{}{}{}", &fmt[..m.start()], body, &fmt[m.end()..]).replace("%%", "%")
+}
+
+/// C's %g: `sig` significant digits, trailing zeros left off.
+fn gfmt(v: f64, sig: usize) -> String {
+    if v == 0.0 || !v.is_finite() {
+        return if v.is_finite() { "0".into() } else { format!("{v}") };
+    }
+    let exp = v.abs().log10().floor() as i32;
+    if exp < -4 || exp >= sig as i32 {
+        let s = format!("{:.*e}", sig.saturating_sub(1), v);
+        // 1.500000e3 -> 1.5e+03, as C writes it.
+        let (m, e) = s.split_once('e').unwrap_or((&s, "0"));
+        let m = if m.contains('.') { m.trim_end_matches('0').trim_end_matches('.') } else { m };
+        let e: i32 = e.parse().unwrap_or(0);
+        return format!("{m}e{}{:02}", if e < 0 { '-' } else { '+' }, e.abs());
+    }
+    let decimals = (sig as i32 - 1 - exp).max(0) as usize;
+    let s = format!("{:.*}", decimals, v);
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -364,15 +606,17 @@ pub struct Action {
 
 // ---------- finding a profile ----------
 
-/// None ship built in right now: each recomp's own developer adds easy setup to their release.
-/// The two examples in docs/examples are still loaded by the tests.
-#[cfg(not(test))]
-const BUILT_IN: &[&str] = &[];
-#[cfg(test)]
-const BUILT_IN: &[&str] = &[include_str!("../../docs/examples/fifawc14.json"), include_str!("../../docs/examples/streetball.json")];
+/// Launcher-maintained profiles for official releases that ship without one.
+const BUILT_IN: &[&str] = &[
+    include_str!("../boot/dusklight.json"),
+    #[cfg(test)]
+    include_str!("../../docs/examples/fifawc14.json"),
+    #[cfg(test)]
+    include_str!("../../docs/examples/streetball.json"),
+];
 
 /// The profile for a game: the AppImage's embedded file, the folder's own, the catalog's, a built-in
-/// one for its repo (none at the moment), or one made from the catalog's boot profile when that
+/// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))
@@ -439,7 +683,6 @@ pub fn from_boot(b: &Value) -> Option<Profile> {
     if copy.is_none() && settings.is_empty() {
         return None;
     }
-    let start = s(b, "start");
     // `files.how: "env"`: the copy reaches the game through an environment variable it reads
     // (`files.env`, e.g. STRIKERS_DATA), a disc image or a folder alike.
     let mut env = BTreeMap::new();
@@ -451,10 +694,11 @@ pub fn from_boot(b: &Value) -> Option<Profile> {
     }
     Some(Profile {
         format: 1,
-        start: copy.as_ref().map(|(_, args)| Start { program: vec![start], args: args.clone(), env: env.clone() }),
+        start: copy.as_ref().map(|(_, args)| Start { program: crate::boot::starts(b), args: args.clone(), env: env.clone() }),
         game: copy.map(|(g, _)| g),
         config,
         settings,
+        groups: b.get("settings").and_then(|v| v.get("groups")).and_then(|g| serde_json::from_value::<Vec<Group>>(g.clone()).ok()).unwrap_or_default(),
         from_boot: true,
         ..Default::default()
     })
@@ -474,7 +718,12 @@ fn boot_settings(b: &Value) -> (Vec<Config>, Vec<Setting>) {
     let settings: Vec<Setting> = v.get("settings").and_then(|c| serde_json::from_value::<Vec<Setting>>(c.clone()).ok()).unwrap_or_default();
     let settings: Vec<Setting> = settings
         .into_iter()
-        .filter(|st| st.choices.len() >= 2 && (st.target == "args" || config.iter().any(|c| c.id == st.target)))
+        .filter(|st| {
+            (st.choices.len() >= 2
+                || st.slider.as_ref().map(|sl| sl.min < sl.max && (st.target != "args" || st.args.iter().chain(sl.args.iter()).any(|a| a.contains("{value}")))).unwrap_or(false)
+                || st.bindings.as_ref().map(|b| st.target != "args" && !b.actions.is_empty() && b.actions.iter().all(|a| !a.key.trim().is_empty())).unwrap_or(false))
+                && (st.target == "args" || config.iter().any(|c| c.id == st.target))
+        })
         .collect();
     let used: Vec<Config> = config.into_iter().filter(|c| settings.iter().any(|st| st.target == c.id)).collect();
     (used, settings)
@@ -558,6 +807,7 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
                 n64_region: s(f, "region").to_ascii_uppercase(),
                 n64_id: s(f, "n64_id").to_ascii_uppercase(),
                 n64_rev: f.get("n64_rev").and_then(Value::as_u64).map(|v| v as u8),
+                ids: f.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default(),
             },
             into: if how == "folder" { into } else { String::new() },
             name,
@@ -698,6 +948,19 @@ impl Drop for WineFill {
 }
 
 /// Fills in {install}, {documents}, {local}, {config}, {home}, {game} and {pad}.
+/// `{appdata}`: where this system keeps programs' own data, the folder SDL-based games save in
+/// (AppData\\Roaming on Windows, Application Support on a Mac, ~/.local/share on Linux). One word
+/// for all three, so a save copied on one system lands in the right place on another.
+pub fn app_data() -> Option<PathBuf> {
+    if cfg!(windows) {
+        dirs::config_dir()
+    } else if cfg!(target_os = "macos") {
+        dirs::data_dir()
+    } else {
+        dirs::data_local_dir()
+    }
+}
+
 pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     if !t.contains('{') {
         return t.to_string();
@@ -706,6 +969,7 @@ pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     t.replace("{pad}", &PAD.read().unwrap())
         .replace("{install}", &install.to_string_lossy())
         .replace("{documents}", &s(dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents")))))
+        .replace("{appdata}", &s(app_data()))
         .replace("{local}", &s(dirs::data_local_dir()))
         .replace("{config}", &s(dirs::config_dir()))
         .replace("{home}", &s(dirs::home_dir()))
@@ -1041,6 +1305,7 @@ impl Profile {
             .map(|p| install.join(p))
             .find(|p| p.is_file())
             .or_else(|| if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) })?;
+        crate::boot::runnable(&exe);
         Some((exe, self.args_for(install, game, picks)))
     }
 
@@ -1054,8 +1319,163 @@ impl Profile {
             if let Some(c) = picks.get(&st.id).and_then(|i| st.choices.get(*i)) {
                 args.extend(c.args.iter().map(|a| fill(a, install, game)));
             }
+            args.extend(self.slider_args(st).into_iter().map(|a| fill(&a, install, game)));
         }
         args
+    }
+
+    /// A command-line slider the player moved: its arguments with the number in place of {value}.
+    /// Not moved: nothing, so the game keeps its own value.
+    fn slider_args(&self, st: &Setting) -> Vec<String> {
+        let (Some(sl), Some(v)) = (st.slider.as_ref(), self.slider_vals.get(&st.id)) else { return vec![] };
+        let list = if st.args.is_empty() { &sl.args } else { &st.args };
+        list.iter().map(|a| a.replace("{value}", v)).collect()
+    }
+
+    /// Whether a setting is hidden behind Show Advanced Options: itself, or its whole group.
+    pub fn is_advanced(&self, st: &Setting) -> bool {
+        st.advanced || (!st.group.is_empty() && self.groups.iter().any(|g| g.advanced && g.id == st.group))
+    }
+
+    /// A slider's value now, exactly as written: in its file (or the player's, on the command line),
+    /// else the game's default, else its low end. Never rounded or rewritten here.
+    pub fn slider_now(&self, st: &Setting, install: &Path) -> Option<String> {
+        let sl = st.slider.as_ref()?;
+        let un = |x: &str| x.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string();
+        let key = if sl.key.is_empty() { st.id.as_str() } else { sl.key.as_str() };
+        let now = if st.target == "args" { self.slider_vals.get(&st.id).cloned() } else { self.config_file(&st.target, install).and_then(|f| f.get(key)) };
+        Some(now.or_else(|| st.defaults.get(key).cloned()).map(|v| un(&v)).filter(|v| !v.is_empty()).unwrap_or_else(|| sl.text(sl.min)))
+    }
+
+    /// The player moved a slider: the number, on a step and written its way, goes into its file in
+    /// the file's own style (quoted when the value there is). On the command line the caller keeps
+    /// it. Gives back what was written.
+    pub fn set_slider(&self, install: &Path, id: &str, value: f64) -> Result<String, String> {
+        let st = self.settings.iter().find(|s| s.id == id).ok_or("That isn't one of its settings.")?;
+        let sl = st.slider.as_ref().ok_or("That setting isn't a slider.")?;
+        if !value.is_finite() {
+            return Err("That isn't a number.".into());
+        }
+        let text = sl.text(sl.snap(value));
+        if st.target == "args" {
+            return Ok(text);
+        }
+        let key = if sl.key.is_empty() { st.id.as_str() } else { sl.key.as_str() };
+        let mut f = self.config_file(&st.target, install).ok_or("Its settings file couldn't be found.")?;
+        if self.from_boot && !f.existed {
+            return Err("Play the game once first: it makes its settings file then.".into());
+        }
+        let now = f.get(key).map(|v| v.trim().to_string()).unwrap_or_default();
+        let q = now.chars().next().filter(|c| (*c == '"' || *c == '\'') && now.len() >= 2 && now.ends_with(*c));
+        let out = match q {
+            Some(q) => format!("{q}{text}{q}"),
+            None => text.clone(),
+        };
+        f.set(key, &out);
+        f.save().map_err(|e| format!("Couldn't save its settings: {e}"))?;
+        Ok(text)
+    }
+
+    /// A bindings setting's actions now: each one's keys as its file has them (or the game's
+    /// defaults), in order.
+    pub fn bindings_now(&self, st: &Setting, install: &Path) -> Vec<Vec<String>> {
+        let Some(b) = st.bindings.as_ref() else { return vec![] };
+        let f = self.config_file(&st.target, install);
+        b.actions.iter().map(|a| f.as_ref().and_then(|f| f.get(&a.key)).or_else(|| st.defaults.get(&a.key).cloned()).map(|v| b.split(&v)).unwrap_or_default()).collect()
+    }
+
+    /// Whether any action of a bindings setting is on other keys than the game's defaults.
+    pub fn bindings_changed(&self, st: &Setting, install: &Path) -> bool {
+        let Some(b) = st.bindings.as_ref() else { return false };
+        b.actions.iter().zip(self.bindings_now(st, install)).any(|(a, now)| st.defaults.get(&a.key).map(|d| b.split(d) != now).unwrap_or(false))
+    }
+
+    /// A value written the way its file writes them: quoted in JSON and TOML, and in an INI file
+    /// when the value there was.
+    fn bind_text(f: &File, key: &str, text: &str) -> String {
+        match f.format.as_str() {
+            "json" => Value::String(text.to_string()).to_string(),
+            _ => {
+                let now = f.get(key).map(|v| v.trim().to_string()).unwrap_or_default();
+                let q = now.chars().next().filter(|c| (*c == '"' || *c == '\'') && now.len() >= 2 && now.ends_with(*c)).or(if f.format == "toml" { Some('"') } else { None });
+                match q {
+                    Some(q) => format!("{q}{}{q}", text.replace(q, "")),
+                    None => text.to_string(),
+                }
+            }
+        }
+    }
+
+    /// The player set an action's keys. Keys it already had stay as written; new ones get the
+    /// name the file uses for them. Nothing is written when nothing changed. Gives back the keys
+    /// as written.
+    pub fn set_binding(&self, install: &Path, id: &str, action: &str, keys: &[String]) -> Result<Vec<String>, String> {
+        let st = self.settings.iter().find(|s| s.id == id).ok_or("That isn't one of its settings.")?;
+        let b = st.bindings.as_ref().ok_or("That setting isn't a list of keys.")?;
+        let act = b.actions.iter().find(|a| a.key == action).ok_or("That isn't one of its actions.")?;
+        let mut f = self.config_file(&st.target, install).ok_or("Its settings file couldn't be found.")?;
+        if self.from_boot && !f.existed {
+            return Err("Play the game once first: it makes its settings file then.".into());
+        }
+        let now = f.get(&act.key).or_else(|| st.defaults.get(&act.key).cloned()).map(|v| b.split(&v)).unwrap_or_default();
+        // Every name this setting uses already, in the file and in the game's defaults.
+        let present: Vec<String> = b.actions.iter().flat_map(|a| f.get(&a.key).into_iter().chain(st.defaults.get(&a.key).cloned())).flat_map(|v| b.split(&v)).collect();
+        let mut out: Vec<String> = vec![];
+        for k in keys.iter().map(|k| k.trim()).filter(|k| !k.is_empty() && !k.contains(b.sep())) {
+            let name = if present.iter().any(|p| p == k) { k.to_string() } else { b.file_name(k, &present) };
+            if !out.iter().any(|o| o.eq_ignore_ascii_case(&name)) {
+                out.push(name);
+            }
+            if out.len() >= b.max() {
+                break;
+            }
+        }
+        if out == now {
+            return Ok(out);
+        }
+        let text = Self::bind_text(&f, &act.key, &out.join(b.sep()));
+        f.set(&act.key, &text);
+        f.save().map_err(|e| format!("Couldn't save its settings: {e}"))?;
+        Ok(out)
+    }
+
+    /// Reset to Default: every action back on the game's own keys, where the file has others.
+    pub fn reset_bindings(&self, install: &Path, id: &str) -> Result<(), String> {
+        let st = self.settings.iter().find(|s| s.id == id).ok_or("That isn't one of its settings.")?;
+        let b = st.bindings.as_ref().ok_or("That setting isn't a list of keys.")?;
+        let mut f = self.config_file(&st.target, install).ok_or("Its settings file couldn't be found.")?;
+        let mut changed = false;
+        for a in &b.actions {
+            let (Some(d), Some(now)) = (st.defaults.get(&a.key), f.get(&a.key)) else { continue };
+            if b.split(d) != b.split(&now) {
+                let text = Self::bind_text(&f, &a.key, &b.split(d).join(b.sep()));
+                f.set(&a.key, &text);
+                changed = true;
+            }
+        }
+        if changed {
+            f.save().map_err(|e| format!("Couldn't save its settings: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// A value the game wrote itself (in its own menu) that isn't one of a setting's choices: as
+    /// written, to show as it is. Only for a setting whose choices all set the same one key.
+    pub fn own_value(&self, st: &Setting, install: &Path) -> Option<String> {
+        if st.target == "args" || st.slider.is_some() || st.bindings.is_some() || st.choices.is_empty() {
+            return None;
+        }
+        let keys: std::collections::BTreeSet<&String> = st.choices.iter().flat_map(|c| c.set.keys()).collect();
+        if keys.len() != 1 || st.choices.iter().any(|c| c.set.len() != 1) {
+            return None;
+        }
+        let k = keys.into_iter().next()?;
+        let v = self.config_file(&st.target, install)?.get(k)?;
+        if st.choices.iter().any(|c| c.set.get(k).map(|x| same(x, &v)).unwrap_or(false)) {
+            return None;
+        }
+        let v = v.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string();
+        (!v.is_empty()).then_some(v)
     }
 
     /// Which choice each setting is on (the first whose values all match), and whether it applies.
@@ -1096,6 +1516,7 @@ impl Profile {
             if let Some(c) = picks.get(&st.id).and_then(|i| st.choices.get(*i)) {
                 args.extend(c.args.iter().map(|a| fill(a, install, None)));
             }
+            args.extend(self.slider_args(st).into_iter().map(|a| fill(&a, install, None)));
         }
         args
     }
@@ -1110,7 +1531,12 @@ impl Profile {
         let mut out = vec![];
         for c in &self.config {
             let Some(f) = self.config_file(&c.id, install).filter(|f| f.existed) else { continue };
-            let mut keys: Vec<&String> = self.settings.iter().filter(|s| s.target == c.id).flat_map(|s| s.choices.iter().flat_map(|ch| ch.set.keys())).collect();
+            let mut keys: Vec<&String> = self
+                .settings
+                .iter()
+                .filter(|s| s.target == c.id)
+                .flat_map(|s| s.choices.iter().flat_map(|ch| ch.set.keys()).chain(s.slider.as_ref().map(|sl| if sl.key.is_empty() { &s.id } else { &sl.key })).chain(s.bindings.iter().flat_map(|b| b.actions.iter().map(|a| &a.key))))
+                .collect();
             keys.sort();
             keys.dedup();
             for k in keys {
@@ -1171,6 +1597,148 @@ impl Profile {
     }
 }
 
+// ---------- Match My Screen ----------
+
+impl Profile {
+    /// A last choice, Match My Screen, on each setting that writes a resolution (width and height
+    /// keys, or one "WxH" value) or a screen shape (a number like 1.777, or "16:9"), when all its
+    /// choices are plain values in one format: the main monitor's size or shape, written the way
+    /// the other choices are. Settings with named choices ("Stretch") are left as they are.
+    pub fn add_screen_choices(&mut self, screen: Option<(u32, u32)>) {
+        let Some((w, h)) = screen.filter(|(w, h)| *w >= 320 && *h >= 200) else { return };
+        for st in self.settings.iter_mut() {
+            if st.target == "args" || st.slider.is_some() || st.bindings.is_some() || st.choices.len() < 2 || st.screen.is_some() {
+                continue;
+            }
+            if let Some((set, shown)) = screen_values(st, w, h) {
+                st.choices.push(Choice { label: format!("Match my screen \u{b7} {shown}"), set, args: vec![] });
+                st.screen = Some(shown);
+            }
+        }
+    }
+
+    /// Before Play, after the monitor changed: the settings the player put on Match My Screen get
+    /// its size or shape now, where the file doesn't have it already. Gives back the ones it wrote.
+    pub fn follow_screen(&self, install: &Path, ids: &[String]) -> Vec<String> {
+        let mut out = vec![];
+        for st in self.settings.iter().filter(|s| s.screen.is_some() && ids.contains(&s.id)) {
+            let last = st.choices.len() - 1;
+            let Some(f) = self.config_file(&st.target, install).filter(|f| f.existed) else { continue };
+            let on = st.choices[last].set.iter().all(|(k, v)| f.get(k).map(|x| same(&x, v)).unwrap_or(false));
+            if !on && self.pick(install, &st.id, last).is_ok() {
+                out.push(st.id.clone());
+            }
+        }
+        out
+    }
+}
+
+/// The common name of a screen's shape ("21:9" for 3440x1440), or its own when none is close.
+pub fn shape_name(w: u32, h: u32) -> String {
+    const SHAPES: [(u32, u32); 9] = [(4, 3), (5, 4), (3, 2), (16, 10), (5, 3), (16, 9), (21, 9), (32, 10), (32, 9)];
+    let r = w as f64 / h as f64;
+    let (best, err) = SHAPES.iter().map(|&(a, b)| ((a, b), ((a as f64 / b as f64) - r).abs() / r)).fold(((0, 0), f64::MAX), |m, x| if x.1 < m.1 { x } else { m });
+    if err <= 0.035 {
+        return format!("{}:{}", best.0, best.1);
+    }
+    let g = gcd(w, h);
+    format!("{}:{}", w / g, h / g)
+}
+
+fn gcd(a: u32, b: u32) -> u32 {
+    if b == 0 { a.max(1) } else { gcd(b, a % b) }
+}
+
+/// What Match My Screen writes on this setting, and what it shows ("3440\u{d7}1440", "21:9"); None
+/// when its choices aren't all plain sizes or shapes in one format.
+fn screen_values(st: &Setting, w: u32, h: u32) -> Option<(BTreeMap<String, String>, String)> {
+    let keys: Vec<&String> = st.choices[0].set.keys().collect();
+    if keys.is_empty() || st.choices.iter().any(|c| !c.args.is_empty() || c.set.keys().collect::<Vec<_>>() != keys) {
+        return None;
+    }
+    let plain = |v: &str| -> Option<u32> { let v = v.trim(); (!v.is_empty() && v.len() <= 5 && v.bytes().all(|b| b.is_ascii_digit())).then(|| v.parse().ok()).flatten() };
+    let size = format!("{w}\u{d7}{h}");
+    let hint = |k: &str, words: &[&str]| { let k = k.to_ascii_lowercase(); words.iter().any(|w| k.contains(w)) };
+    if keys.len() == 2 {
+        // Width and height in their own keys: whole numbers, the width the bigger one in each.
+        let (a, b) = (keys[0], keys[1]);
+        let mut pairs = vec![];
+        for c in &st.choices {
+            pairs.push((plain(&c.set[a])?, plain(&c.set[b])?));
+        }
+        let fits = |p: &[(u32, u32)]| p.iter().all(|&(x, y)| y >= 200 && x <= 16384 && (x as f64 / y as f64) >= 1.2 && (x as f64 / y as f64) <= 4.0);
+        let flipped: Vec<(u32, u32)> = pairs.iter().map(|&(x, y)| (y, x)).collect();
+        let named = |k: &str, end: char| hint(k, &["width", "height", "res", "size"]) || k.to_ascii_lowercase().ends_with(end) || k.to_ascii_lowercase().ends_with(if end == 'x' { 'w' } else { 'h' });
+        let (wk, hk) = if fits(&pairs) { (a, b) } else if fits(&flipped) { (b, a) } else { return None };
+        if !named(wk, 'x') || !named(hk, 'y') {
+            return None;
+        }
+        return Some((BTreeMap::from([(wk.clone(), w.to_string()), (hk.clone(), h.to_string())]), size));
+    }
+    if keys.len() != 1 {
+        return None;
+    }
+    let k = keys[0];
+    // A text value in the file's own syntax keeps its quotes ("\"1280x720\"" in TOML or JSON): read
+    // inside them, and written with the same ones.
+    let unq = |v: &str| -> (String, String) {
+        let v = v.trim();
+        for q in ["\"", "'"] {
+            if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
+                return (v[1..v.len() - 1].trim().to_string(), q.to_string());
+            }
+        }
+        (v.to_string(), String::new())
+    };
+    let parsed: Vec<(String, String)> = st.choices.iter().map(|c| unq(&c.set[k])).collect();
+    let q = parsed[0].1.clone();
+    if parsed.iter().any(|(_, x)| *x != q) {
+        return None;
+    }
+    let vals: Vec<&str> = parsed.iter().map(|(v, _)| v.as_str()).collect();
+    // "1280x720": the same separator in each (x, X, the times sign or *, with or without spaces).
+    let split = |v: &str| -> Option<(String, String, String)> {
+        let i = v.find(|c: char| !c.is_ascii_digit())?;
+        let j = v.rfind(|c: char| !c.is_ascii_digit())?;
+        let j = j + v[j..].chars().next()?.len_utf8();
+        let (x, sep, y) = (&v[..i], &v[i..j], &v[j..]);
+        let mid = sep.trim();
+        (plain(x).is_some() && plain(y).is_some() && ["x", "X", "\u{d7}", "*"].contains(&mid)).then(|| (x.to_string(), sep.to_string(), y.to_string()))
+    };
+    if let Some(first) = split(vals[0]) {
+        if vals.iter().all(|v| split(v).map(|p| p.1 == first.1 && plain(&p.0).unwrap_or(0) > plain(&p.2).unwrap_or(u32::MAX)).unwrap_or(false)) {
+            return Some((BTreeMap::from([(k.clone(), format!("{q}{w}{}{h}{q}", first.1))]), size));
+        }
+        return None;
+    }
+    let shape = shape_name(w, h);
+    // "16:9": a shape, written the same way.
+    let ratio = |v: &str| -> Option<String> { let (x, y) = v.split_once(':')?; (plain(x).is_some() && plain(y).is_some()).then(|| v[x.len()..v.len() - y.len()].to_string()) };
+    if let Some(sep) = ratio(vals[0]) {
+        if vals.iter().all(|v| ratio(v).as_deref() == Some(sep.as_str())) {
+            let (x, y) = shape.split_once(':')?;
+            return Some((BTreeMap::from([(k.clone(), format!("{q}{x}{sep}{y}{q}"))]), shape));
+        }
+        return None;
+    }
+    // 1.777: a shape as a number, on a setting that says it's one, with as many decimals as the others.
+    if !hint(k, &["aspect", "ratio", "shape"]) && !hint(&st.label, &["aspect", "ratio", "shape"]) && !hint(&st.id, &["aspect", "ratio", "shape"]) {
+        return None;
+    }
+    let num = |v: &str| -> Option<(f64, usize)> {
+        let d = v.split_once('.').map(|(_, f)| f.len()).unwrap_or(0);
+        (v.bytes().all(|b| b.is_ascii_digit() || b == b'.') && v.matches('.').count() <= 1).then(|| v.parse::<f64>().ok().filter(|x| (1.0..=4.0).contains(x)).map(|x| (x, d))).flatten()
+    };
+    let mut decimals = 0;
+    for v in &vals {
+        decimals = decimals.max(num(v)?.1);
+    }
+    if decimals == 0 {
+        return None;
+    }
+    Some((BTreeMap::from([(k.clone(), format!("{q}{:.*}{q}", decimals, w as f64 / h as f64))]), shape))
+}
+
 // ---------- the player's copy ----------
 
 fn read_at(f: &mut std::fs::File, at: u64, n: usize) -> Option<Vec<u8>> {
@@ -1178,6 +1746,48 @@ fn read_at(f: &mut std::fs::File, at: u64, n: usize) -> Option<Vec<u8>> {
     let mut b = vec![0u8; n];
     f.read_exact(&mut b).ok()?;
     Some(b)
+}
+
+#[derive(Debug, PartialEq)]
+enum Holds {
+    Nothing,
+    OnlyMedia,
+    Files,
+}
+
+/// What a folder picked as the player's copy holds, a few levels down: nothing, only pictures,
+/// videos and documents, or other files. Windows' own notes about a folder don't count.
+fn folder_holds(p: &Path) -> Holds {
+    let mut stack = vec![(p.to_path_buf(), 0usize)];
+    let (mut seen, mut any) = (0usize, false);
+    while let Some((d, depth)) = stack.pop() {
+        // A folder it can't read, or one deeper than it looks, might have the game in it.
+        let Ok(list) = std::fs::read_dir(&d) else { return Holds::Files };
+        for e in list.flatten() {
+            seen += 1;
+            if seen > 5000 {
+                return Holds::Files;
+            }
+            let path = e.path();
+            if path.is_dir() {
+                if depth >= 4 {
+                    return Holds::Files;
+                }
+                stack.push((path, depth + 1));
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            if matches!(name.as_str(), "desktop.ini" | "thumbs.db" | ".ds_store") {
+                continue;
+            }
+            any = true;
+            let ext = path.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if !NOT_A_GAME.contains(&ext.as_str()) {
+                return Holds::Files;
+            }
+        }
+    }
+    if any { Holds::OnlyMedia } else { Holds::Nothing }
 }
 
 /// A file in the top folder of an ISO 9660 disc image (PlayStation 2 and most others).
@@ -1272,6 +1882,26 @@ pub fn packed(g: &GameCopy, p: &Path) -> Option<String> {
     (p.is_file() && ["7z", "zip", "rar"].contains(&ext.as_str()) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!(".{ext}"))).then_some(ext)
 }
 
+impl GameCopy {
+    /// Whether its check tells this game's copy from another game's of the same console: a file
+    /// only this game has, a disc ID. "Any disc image" or "any N64 ROM" doesn't, so
+    /// it isn't used to find the game among the player's copies.
+    /// A catalog boot profile's file checks are common files (`generic`): only an ID counts there.
+    pub fn identifies(&self) -> bool {
+        self.identifies_by_contents() || self.check.ids.iter().any(|i| crate::roms::id_key(i).len() >= 3)
+    }
+
+    /// Told apart by what's in it (a file only this game has, its N64 cartridge code), not an ID.
+    pub fn identifies_by_contents(&self) -> bool {
+        let c = &self.check;
+        let own = |f: &str| !f.is_empty() && !COMMON_FILES.iter().any(|x| f.eq_ignore_ascii_case(x));
+        !c.n64_id.is_empty() || (!self.generic && (own(&c.file) || own(&c.xdvdfs) || own(&c.iso9660)))
+    }
+}
+
+/// Files every game of a console has, so they can't tell one game from another.
+const COMMON_FILES: [&str; 9] = ["default.xex", "default.xbe", "eboot.bin", "param.sfo", "system.cnf", "main.npdm", "main", "main.dol", "boot.bin"];
+
 pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     let folder = p.is_dir();
     // A game packed in an archive: unpacked first (set_game_copy does that for .7z and .zip).
@@ -1291,10 +1921,53 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         if !g.check.file.is_empty() && !p.join(&g.check.file).is_file() && !std::fs::read_dir(p).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&g.check.file)) {
             return Err(format!("That folder doesn't have {}.", g.check.file));
         }
+        // With nothing more to check by: a folder with nothing in it, or only pictures and videos
+        // (the launcher's own screenshots folder, say), is never anyone's game.
+        if g.check.file.is_empty() {
+            match folder_holds(p) {
+                Holds::Nothing => return Err("That folder is empty. Pick the folder with your copy of the game.".into()),
+                Holds::OnlyMedia => return Err("That folder only has pictures, videos or documents in it. Pick the folder with your copy of the game.".into()),
+                Holds::Files => {}
+            }
+        }
         return Ok(());
+    }
+    // A compressed disc image (.rvz, .chd...) for a recomp that reads plain ones: said now, rather
+    // than the game failing to read it. One whose label names that kind takes it. An NKit image
+    // keeps .iso at the end (Game.nkit.iso), so its name is looked at too.
+    let mut ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let lower_name = p.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if lower_name.ends_with(".nkit.iso") || lower_name.ends_with(".nkit.gcz") || (ext == "iso" && nkit_image(p)) {
+        ext = "nkit".into();
+    }
+    // A picture, a document or a video picked by mistake: never anyone's game.
+    if NOT_A_GAME.contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) {
+        return Err("That's a picture, document or video, not your copy of the game. Pick the game file itself.".into());
+    }
+    // A program (the recomp's own .exe, a .dll beside it): never the player's copy, unless the copy
+    // it asks for is a program of that kind.
+    if PROGRAMS.contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.name.to_lowercase().ends_with(&format!(".{ext}")) {
+        return Err("That's a program, not your copy of the game. Pick the game file itself.".into());
+    }
+    if ["rvz", "wia", "gcz", "wbfs", "chd", "cso", "zso", "nkit"].contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!("{ext} ")) {
+        let dolphin = ["rvz", "wia", "gcz", "wbfs", "nkit"].contains(&ext.as_str());
+        return Err(if dolphin {
+            format!("That's a compressed .{ext} image, and this recomp reads plain .iso files. Convert it first: in Dolphin, right-click the game, Convert File, and pick ISO.")
+        } else {
+            format!("That's a compressed .{ext} image, and this recomp reads plain .iso files. Convert it to .iso first.")
+        });
     }
     if !g.check.iso9660.is_empty() && !iso9660_has(p, &g.check.iso9660) {
         return Err("That disc image isn't the release this recomp reads.".into());
+    }
+    // A disc ID that isn't one of this game's (a copy whose ID can't be read isn't refused).
+    let ids: Vec<String> = g.check.ids.iter().map(|i| crate::roms::id_key(i)).filter(|i| i.len() >= 3).collect();
+    if !ids.is_empty() {
+        if let Some(id) = crate::roms::copy_id(p) {
+            if !ids.iter().any(|w| id.starts_with(w.as_str())) {
+                return Err(format!("That's a different game's disc image (its ID is {id})."));
+            }
+        }
     }
     if !g.check.xdvdfs.is_empty() && !xdvdfs_has(p, &g.check.xdvdfs) {
         return Err(if xdvdfs_part(p).is_none() {
@@ -1303,8 +1976,13 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
             "That disc image isn't the game this recomp reads.".into()
         });
     }
-    if !g.check.n64_region.is_empty() || !g.check.n64_id.is_empty() || g.check.n64_rev.is_some() {
-        if let Some(h) = n64_header(p) {
+    let wants_n64 = !g.check.n64_region.is_empty() || !g.check.n64_id.is_empty() || g.check.n64_rev.is_some() || [".z64", ".n64", ".v64"].iter().any(|e| g.name.to_lowercase().ends_with(e));
+    if wants_n64 {
+        // An N64 ROM starts with one of three byte patterns; anything else isn't one.
+        let Some(h) = n64_header(p) else {
+            return Err("That isn't an N64 ROM. Pick your game's .z64, .n64 or .v64 file.".into());
+        };
+        {
             if !g.check.n64_id.is_empty() && !h[0x3C..0x3E].eq_ignore_ascii_case(g.check.n64_id.as_bytes()) {
                 return Err("That ROM is a different game.".into());
             }
@@ -1324,6 +2002,29 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Kinds of file that are never a game: pictures, documents, videos, shortcuts.
+const PROGRAMS: [&str; 9] = ["exe", "dll", "so", "appimage", "msi", "bat", "cmd", "sh", "pyd"];
+const NOT_A_GAME: [&str; 24] = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif", "tif", "tiff", "ico", "txt", "pdf", "doc", "docx", "rtf", "html", "htm", "url", "lnk", "mp4", "mkv", "avi", "mov"];
+
+/// An NKit image under a plain .iso name: NKit writes "NKIT" at 0x200 of the GameCube and Wii
+/// images it makes.
+fn nkit_image(p: &Path) -> bool {
+    let Ok(mut f) = std::fs::File::open(p) else { return false };
+    read_at(&mut f, 0x200, 4).map(|b| b == b"NKIT").unwrap_or(false)
+}
+
+/// A SNES ROM whose size isn't one a full dump has (a multiple of 32 KB, plus 512 bytes when it
+/// keeps a copier's header): most likely an incomplete or damaged file. Said, never refused.
+pub fn odd_snes_size(p: &Path) -> bool {
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if ext != "sfc" && ext != "smc" {
+        return false;
+    }
+    let Ok(m) = std::fs::metadata(p) else { return false };
+    let n = m.len();
+    n >= 32 * 1024 && n % 0x8000 != 0 && n % 0x8000 != 512
 }
 
 /// The byte order an N64 ROM is in: 0 for .z64 (as the console reads it), 2 for .v64 (every two
@@ -1562,6 +2263,272 @@ mod tests {
     }
 
     #[test]
+    fn groups_advanced_settings_and_sliders_parse() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,
+            "config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "groups":[{"id":"Advanced","advanced":true}],
+            "settings":[
+              {"id":"fs","label":"Full screen","group":"Display","choices":[{"label":"Off","set":{"Video/fullscreen":"false"}},{"label":"On","set":{"Video/fullscreen":"true"}}]},
+              {"id":"sens","label":"Mouse Sensitivity","group":"Controls","slider":{"key":"Input/mouse_sensitivity","min":0.1,"max":5,"step":0.05,"format":"%.2f"},"defaults":{"Input/mouse_sensitivity":"1.0"}},
+              {"id":"vs","label":"V-Sync","advanced":true,"choices":[{"label":"Off","set":{"Video/vsync":"false"}},{"label":"On","set":{"Video/vsync":"true"}}]},
+              {"id":"tx","label":"Texture Cache","group":"Advanced","choices":[{"label":"Off","set":{"Video/tc":"0"}},{"label":"On","set":{"Video/tc":"1"}}]},
+              {"id":"fov","label":"Field of View","in":"args","args":["--fov","{value}"],"slider":{"min":60,"max":120,"step":5,"format":"%d"}}
+            ]}"#).unwrap();
+        assert_eq!(p.settings.len(), 5);
+        let adv: Vec<bool> = p.settings.iter().map(|s| p.is_advanced(s)).collect();
+        assert_eq!(adv, vec![false, false, true, true, false]);
+        assert_eq!(p.settings[1].group, "Controls");
+        assert!(p.settings[1].choices.is_empty() && p.settings[1].slider.is_some());
+        // A command-line slider: nothing until the player moves it, then its number in {value}.
+        let mut p = p;
+        assert!(p.setting_args(Path::new("/x"), &BTreeMap::new()).is_empty());
+        assert_eq!(p.set_slider(Path::new("/x"), "fov", 93.0).unwrap(), "95");
+        p.slider_vals.insert("fov".into(), "95".into());
+        assert_eq!(p.setting_args(Path::new("/x"), &BTreeMap::new()), vec!["--fov", "95"]);
+    }
+
+    #[test]
+    fn a_slider_leaves_the_games_own_value_alone_until_moved() {
+        let d = tmp("slider");
+        let f = d.join("config.toml");
+        let text = "[Input]\nmouse_sensitivity = 1.37\ninvert = false\n";
+        std::fs::write(&f, text).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "settings":[{"id":"sens","label":"Mouse Sensitivity","slider":{"key":"Input/mouse_sensitivity","min":0.1,"max":5,"step":0.05,"format":"%.2f"},"defaults":{"Input/mouse_sensitivity":"1.0"}}]}"#).unwrap();
+        // Off its step, set from the game's own menu: shown as it is, and reading it writes nothing.
+        assert_eq!(p.slider_now(&p.settings[0], &d).as_deref(), Some("1.37"));
+        let _ = p.current(&d, &BTreeMap::new());
+        let _ = p.kept(&d);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), text);
+        // Moved: on a step, written with its format, the rest of the file as it was.
+        assert_eq!(p.set_slider(&d, "sens", 2.4987).unwrap(), "2.50");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Input]\nmouse_sensitivity = 2.50\ninvert = false\n");
+        assert_eq!(p.slider_now(&p.settings[0], &d).as_deref(), Some("2.50"));
+        // A quoted value stays quoted; past the end goes to the end.
+        std::fs::write(&f, "[Input]\nmouse_sensitivity = \"1.0\"\n").unwrap();
+        assert_eq!(p.set_slider(&d, "sens", 9.0).unwrap(), "5.00");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Input]\nmouse_sensitivity = \"5.00\"\n");
+        // Not in the file yet: the game's default shows.
+        std::fs::write(&f, "[Input]\ninvert = false\n").unwrap();
+        assert_eq!(p.slider_now(&p.settings[0], &d).as_deref(), Some("1.0"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    const KEYS: &str = r#"{"format":1,"config":[{"id":"main","format":"ini","file":[{"path":"{install}/input.ini"}]}],
+        "settings":[{"id":"keys","label":"Keyboard & Mouse","group":"Controls","bindings":{"separator":"|","max":2,"actions":[
+            {"label":"Cross","key":"key.cross"},{"label":"L2","key":"key.l2"},{"label":"Options","key":"key.options"},{"label":"Left Stick Up","key":"key.ls_up"}]},
+            "defaults":{"key.cross":"Space","key.l2":"Mouse Right","key.options":"Escape|Return","key.ls_up":"W"}}]}"#;
+
+    #[test]
+    fn key_bindings_read_and_write_only_what_changed() {
+        let d = tmp("bindings");
+        let f = d.join("input.ini");
+        let text = "[Keys]\nkey.cross=Space\nkey.l2=Mouse Right\nkey.options=Escape|Return\nkey.ls_up=W\n";
+        std::fs::write(&f, text).unwrap();
+        let p: Profile = serde_json::from_str(KEYS).unwrap();
+        let st = &p.settings[0];
+        // Two keys on one action: two chips, in their order.
+        assert_eq!(p.bindings_now(st, &d)[2], vec!["Escape".to_string(), "Return".to_string()]);
+        assert!(!p.bindings_changed(st, &d));
+        // Reading writes nothing, and the same keys set again write nothing either.
+        let _ = p.current(&d, &BTreeMap::new());
+        assert_eq!(p.set_binding(&d, "keys", "key.options", &["Escape".into(), "Return".into()]).unwrap(), vec!["Escape", "Return"]);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), text);
+        // Mouse 4 in place of Return: only that line changes.
+        p.set_binding(&d, "keys", "key.options", &["Escape".into(), "Mouse 4".into()]).unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Keys]\nkey.cross=Space\nkey.l2=Mouse Right\nkey.options=Escape|Mouse 4\nkey.ls_up=W\n");
+        assert!(p.bindings_changed(&p.settings[0], &d));
+        // One cleared: the rest is written.
+        p.set_binding(&d, "keys", "key.options", &["Mouse 4".into()]).unwrap();
+        assert!(std::fs::read_to_string(&f).unwrap().contains("key.options=Mouse 4\n"));
+        // No more than "max" keys.
+        assert_eq!(p.set_binding(&d, "keys", "key.cross", &["Space".into(), "E".into(), "F".into()]).unwrap(), vec!["Space", "E"]);
+        // Reset to Default: back to the game's own keys.
+        p.reset_bindings(&d, "keys").unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), text);
+        // An update keeps them.
+        assert!(p.kept(&d).iter().any(|(_, k, v)| k == "key.options" && v == "Escape|Return"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn key_names_follow_the_file() {
+        let b = Bindings { separator: "|".into(), max: 2, actions: vec![], names: BTreeMap::new() };
+        // The file says Enter: Enter it is.
+        assert_eq!(b.file_name("Return", &["Enter".into(), "W".into()]), "Enter");
+        assert_eq!(b.file_name("Mouse 4", &["Space".into()]), "Mouse 4");
+        assert_eq!(b.file_name("space", &["SPACE".into()]), "SPACE");
+        // The profile's own name wins.
+        let mut names = BTreeMap::new();
+        names.insert("Enter".to_string(), "Return".to_string());
+        names.insert("Mouse 4".to_string(), "MB4".to_string());
+        let b = Bindings { names, ..b };
+        assert_eq!(b.file_name("Return", &["Enter".into()]), "Return");
+        assert_eq!(b.file_name("Mouse 4", &[]), "MB4");
+        assert_eq!(b.split("\"Escape | Return\""), vec!["Escape", "Return"]);
+        assert!(b.split("").is_empty());
+    }
+
+    #[test]
+    fn key_bindings_keep_quotes_in_toml_and_json() {
+        let d = tmp("bindings-q");
+        let f = d.join("input.toml");
+        std::fs::write(&f, "[keys]\ncross = \"Space\"\n").unwrap();
+        let p: Profile = serde_json::from_str(&KEYS.replace("\"ini\"", "\"toml\"").replace("input.ini", "input.toml").replace("\"key.cross\"}", "\"keys/cross\"}")).unwrap();
+        p.set_binding(&d, "keys", "keys/cross", &["Space".into(), "Return".into()]).unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[keys]\ncross = \"Space|Return\"\n");
+        let j = d.join("input.json");
+        std::fs::write(&j, "{\"keys\": {\"cross\": \"1\"}}").unwrap();
+        let p: Profile = serde_json::from_str(&KEYS.replace("\"ini\"", "\"json\"").replace("input.ini", "input.json").replace("\"key.cross\"}", "\"keys/cross\"}")).unwrap();
+        assert_eq!(p.bindings_now(&p.settings[0], &d)[0], vec!["1"]);
+        p.set_binding(&d, "keys", "keys/cross", &["1".into(), "2".into()]).unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&j).unwrap()).unwrap();
+        assert_eq!(v["keys"]["cross"], "1|2");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_profile_without_bindings_is_read_as_before() {
+        let d = tmp("nobind");
+        std::fs::write(d.join("config.toml"), "[Display]\nfullscreen = true\n").unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "settings":[{"id":"fs","label":"Display","choices":[{"label":"Window","set":{"Display/fullscreen":"false"}},{"label":"Full Screen","set":{"Display/fullscreen":"true"}}]}]}"#).unwrap();
+        assert!(p.settings[0].bindings.is_none());
+        assert_eq!(p.current(&d, &BTreeMap::new())[0].0, 1);
+        assert!(p.bindings_now(&p.settings[0], &d).is_empty());
+        assert_eq!(p.own_value(&p.settings[0], &d), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn settings_changed_in_the_game_show_when_read_again() {
+        let d = tmp("reread");
+        let f = d.join("config.toml");
+        std::fs::write(&f, "[Display]\nscale = 1\n").unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "settings":[{"id":"scale","label":"Scale","choices":[{"label":"1x","set":{"Display/scale":"1"}},{"label":"2x","set":{"Display/scale":"2"}}]}]}"#).unwrap();
+        assert_eq!(p.current(&d, &BTreeMap::new())[0].0, 0);
+        // The game changed it in its own menu while it ran.
+        std::fs::write(&f, "[Display]\nscale = 2\n").unwrap();
+        assert_eq!(p.current(&d, &BTreeMap::new())[0].0, 1);
+        // A value that isn't one of the choices: shown as it is, never rewritten.
+        std::fs::write(&f, "[Display]\nscale = 1.5\n").unwrap();
+        assert_eq!(p.own_value(&p.settings[0], &d).as_deref(), Some("1.5"));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[Display]\nscale = 1.5\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn match_my_screen_is_offered_in_the_settings_format() {
+        let d = tmp("screen");
+        let f = d.join("config.toml");
+        std::fs::write(&f, "[Video]\nwidth = 1280\nheight = 720\nres = \"1280x720\"\naspect = 1.777\nmode = \"stretch\"\nshape = \"16:9\"\n").unwrap();
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
+            "settings":[
+              {"id":"size","label":"Resolution","choices":[{"label":"720p","set":{"Video/width":"1280","Video/height":"720"}},{"label":"1080p","set":{"Video/width":"1920","Video/height":"1080"}}]},
+              {"id":"res","label":"Resolution","choices":[{"label":"720p","set":{"Video/res":"\"1280x720\""}},{"label":"1080p","set":{"Video/res":"\"1920x1080\""}}]},
+              {"id":"aspect","label":"Aspect ratio","choices":[{"label":"16:9","set":{"Video/aspect":"1.777"}},{"label":"4:3","set":{"Video/aspect":"1.333"}}]},
+              {"id":"mode","label":"Widescreen","choices":[{"label":"Stretch","set":{"Video/mode":"stretch"}},{"label":"Hor+","set":{"Video/mode":"hor+"}}]},
+              {"id":"shape","label":"Screen","choices":[{"label":"16:9","set":{"Video/shape":"\"16:9\""}},{"label":"4:3","set":{"Video/shape":"\"4:3\""}}]},
+              {"id":"scale","label":"UI scale","choices":[{"label":"Small","set":{"Video/scale":"1.25"}},{"label":"Big","set":{"Video/scale":"1.5"}}]}
+            ]}"#).unwrap();
+        p.add_screen_choices(Some((3440, 1440)));
+        let last = |i: usize| p.settings[i].choices.last().unwrap().clone();
+        assert_eq!(last(0).label, "Match my screen \u{b7} 3440\u{d7}1440");
+        assert_eq!(last(0).set, BTreeMap::from([("Video/width".to_string(), "3440".to_string()), ("Video/height".to_string(), "1440".to_string())]));
+        assert_eq!(last(1).set["Video/res"], "\"3440x1440\"");
+        assert_eq!(last(2).set["Video/aspect"], "2.389");
+        assert_eq!(p.settings[2].screen.as_deref(), Some("21:9"));
+        assert_eq!(last(4).set["Video/shape"], "\"21:9\"");
+        // Named choices, and numbers that aren't a shape: nothing added.
+        assert_eq!(p.settings[3].choices.len(), 2);
+        assert_eq!(p.settings[5].choices.len(), 2);
+        // Picked: written in the same format; on another monitor, written again before Play.
+        p.pick(&d, "res", 2).unwrap();
+        p.pick(&d, "aspect", 2).unwrap();
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(text.contains("res = \"3440x1440\""), "{text}");
+        assert_eq!(p.current(&d, &BTreeMap::new())[1].0, 2);
+        let mut q: Profile = p.clone();
+        q.settings.iter_mut().for_each(|s| { if s.screen.is_some() { s.choices.pop(); s.screen = None; } });
+        q.add_screen_choices(Some((5120, 1440)));
+        assert_eq!(q.follow_screen(&d, &["res".to_string(), "aspect".to_string()]), vec!["res".to_string(), "aspect".to_string()]);
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(text.contains("res = \"5120x1440\"") && text.contains("aspect = 3.556"), "{text}");
+        // Nothing changed: nothing written.
+        assert!(q.follow_screen(&d, &["res".to_string()]).is_empty());
+        assert_eq!(shape_name(1920, 1200), "16:10");
+        assert_eq!(shape_name(2560, 1080), "21:9");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_folder_with_no_game_in_it_is_refused() {
+        let d = tmp("nogamefolder");
+        let need = GameCopy { kind: "folder".into(), ..Default::default() };
+        let empty = d.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(check_copy(&need, &empty).unwrap_err().contains("empty"));
+        // The launcher's screenshots: pictures only.
+        let shots = d.join("Pictures/RecompLauncher/Some Game");
+        std::fs::create_dir_all(&shots).unwrap();
+        std::fs::write(shots.join("shot 1.png"), b"png").unwrap();
+        std::fs::write(d.join("Pictures/RecompLauncher/desktop.ini"), b"[x]").unwrap();
+        assert!(check_copy(&need, &d.join("Pictures/RecompLauncher")).unwrap_err().contains("pictures"));
+        let game = d.join("game");
+        std::fs::create_dir_all(game.join("us")).unwrap();
+        std::fs::write(game.join("default.xex"), b"XEX2").unwrap();
+        assert!(check_copy(&need, &game).is_ok());
+        // Deeper than it looks: let through.
+        std::fs::create_dir_all(d.join("deep/a/b/c/d/e")).unwrap();
+        assert!(check_copy(&need, &d.join("deep")).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn copies_that_cant_be_the_game_are_refused() {
+        let d = tmp("notgame");
+        let jpg = d.join("cover.jpg");
+        std::fs::write(&jpg, b"\xff\xd8\xff\xe0 not a rom").unwrap();
+        let n64 = GameCopy { kind: "iso".into(), name: "game.z64".into(), ..Default::default() };
+        assert!(check_copy(&n64, &jpg).is_err());
+        let bin = d.join("game.bin");
+        std::fs::write(&bin, vec![0u8; 4096]).unwrap();
+        assert!(check_copy(&n64, &bin).unwrap_err().contains("N64"));
+        let disc = GameCopy { kind: "iso".into(), label: "Your disc image (.iso)".into(), ..Default::default() };
+        let nkit = d.join("Game.nkit.iso");
+        std::fs::write(&nkit, vec![0u8; 4096]).unwrap();
+        assert!(check_copy(&disc, &nkit).unwrap_err().contains("nkit"));
+        let mut b = vec![0u8; 0x400];
+        b[0x200..0x204].copy_from_slice(b"NKIT");
+        let hidden = d.join("Game.iso");
+        std::fs::write(&hidden, &b).unwrap();
+        assert!(check_copy(&disc, &hidden).is_err());
+        std::fs::write(&hidden, vec![0u8; 0x400]).unwrap();
+        assert!(check_copy(&disc, &hidden).is_ok());
+        // A SNES ROM of an odd size is said, not refused.
+        let sfc = d.join("game.smc");
+        std::fs::write(&sfc, vec![0u8; 541_184]).unwrap();
+        assert!(odd_snes_size(&sfc));
+        std::fs::write(&sfc, vec![0u8; 524_288 + 512]).unwrap();
+        assert!(!odd_snes_size(&sfc));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn numbers_are_written_printf_style() {
+        assert_eq!(printf("%.2f", 2.5), "2.50");
+        assert_eq!(printf("%d", 94.6), "95");
+        assert_eq!(printf("%g", 0.30000000000000004), "0.3");
+        assert_eq!(printf("%g", 1.0), "1");
+        assert_eq!(printf("%g", 1500000.0), "1.5e+06");
+        assert_eq!(printf("%.1fx", 1.25), "1.2x");
+        let sl = Slider { key: "k".into(), min: 0.1, max: 5.0, step: 0.05, ..Default::default() };
+        assert_eq!(sl.text(sl.snap(0.1 + 0.2)), "0.3");
+        assert_eq!(sl.text(sl.snap(-3.0)), "0.1");
+    }
+
+    #[test]
     fn boot_profiles_become_easy_setup() {
         let b: Value = serde_json::from_str(r#"{"start":"fable2.exe","files":{"how":"flag","flag":"--game_data_root","accepts":"folder","contains":["default.xex"],"what":"Xbox 360 disc, extracted"}}"#).unwrap();
         let p = from_boot(&b).unwrap();
@@ -1602,6 +2569,59 @@ mod tests {
         assert!(f.settings.iter().any(|s| s.id == "resolution"));
         let s = find(Path::new("/nope"), "luckvj/streetball-revival", &Value::Null).unwrap();
         assert_eq!(s.game.unwrap().check.iso9660, "SLUS_206.51");
+    }
+
+    #[test]
+    fn dusklight_official_package_uses_the_launcher_profile() {
+        let install = tmp("dusklight");
+        let program = if cfg!(windows) {
+            "dusklight.exe"
+        } else if cfg!(target_os = "macos") {
+            "Dusklight.app/Contents/MacOS/Dusklight"
+        } else {
+            "Dusklight-v2.0.3-linux-x86_64.AppImage"
+        };
+        let executable = install.join(program);
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, b"").unwrap();
+        let disc = install.join("Twilight Princess.rvz");
+        std::fs::write(&disc, b"").unwrap();
+        let profile = find(&install, "twilitrealm/dusklight", &Value::Null).unwrap();
+        check_copy(profile.game.as_ref().unwrap(), &disc).unwrap();
+        let picks = BTreeMap::new();
+        let (exe, args) = profile.command(&install, Some(&disc), &picks).unwrap();
+        assert_eq!(exe, executable);
+        assert_eq!(args, vec!["--dvd".to_string(), disc.to_string_lossy().into_owned()]);
+
+        let data = install.join("data");
+        std::fs::create_dir(&data).unwrap();
+        std::fs::write(data.join("config.json"), "{}").unwrap();
+        let cap = profile.settings.iter().position(|s| s.id == "fps_cap").unwrap();
+        assert!(!profile.current(&install, &picks)[cap].1);
+        profile.pick(&install, "fps", 1).unwrap();
+        assert!(profile.current(&install, &picks)[cap].1);
+        profile.pick(&install, "fps_cap", 2).unwrap();
+        assert_eq!(profile.config_file("main", &install).unwrap().get("video.maxFrameRate").as_deref(), Some("90"));
+
+        let user_root = "{appdata}";
+        assert!(profile.saves.contains(&format!("{user_root}/TwilitRealm/Dusk/states.json")));
+        let game = crate::library::Installed { path: install.clone(), ..Default::default() };
+        let portable: Vec<_> = profile.saves.into_iter().filter(|path| path.starts_with("{install}/")).collect();
+        let spots = crate::saves::spots(&portable, &[], &game);
+        let card = data.join("MemoryCardA.USA.raw");
+        let states = data.join("states.json");
+        std::fs::write(&card, b"card").unwrap();
+        std::fs::write(&states, b"[]").unwrap();
+        let app = install.join("launcher-data");
+        let backup = crate::saves::backup(&app, "dusklight", &spots, &game).unwrap().unwrap();
+        assert_eq!(backup.files, 2);
+        std::fs::remove_file(&card).unwrap();
+        std::fs::remove_file(&states).unwrap();
+        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
+        assert_eq!(std::fs::read(card).unwrap(), b"card");
+        assert_eq!(std::fs::read(states).unwrap(), b"[]");
+        let _ = std::fs::remove_dir_all(&install);
     }
 
     #[test]

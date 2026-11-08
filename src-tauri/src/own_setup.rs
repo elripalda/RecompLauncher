@@ -40,6 +40,14 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         g.exe_rules = 0;
         g.setup_done = false;
     }
+    // Left on something that can't start (a disc image or an archive picked by mistake): picked
+    // again, or asked.
+    if g.exe.as_ref().map(|e| crate::not_a_program(e).is_some()).unwrap_or(false) {
+        crate::trail::note(format!("Play {id}: its program was set to a file that can't start, picked again"));
+        g.exe = None;
+        g.exe_rules = 0;
+        g.setup_checked = false;
+    }
     if !g.setup_checked || g.exe_rules < install::EXE_RULES {
         let os = crate::assets::os_now();
         let n = names(&g);
@@ -145,6 +153,24 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         st.save();
         g.setup_done = false;
     }
+    // Updated before the launcher knew to run an installer again (the game it built is older than
+    // the update): its setup runs once for this version, so the new version gets built.
+    if g.setup_done && g.setup.is_some() && crate::boot::of(&st.dir, id).map(|b| b.is_installer()).unwrap_or(false) {
+        let mark = st.dir.join("rebuilt").join(format!("{id}@{}", g.tag.replace(['/', '\\', ':'], "_")));
+        let built = g.exe.as_ref().filter(|e| !e.is_absolute()).map(|e| g.path.join(e)).and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok());
+        let updated = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.updated_at);
+        let old_build = built.map(|b| b + std::time::Duration::from_secs(120) < updated).unwrap_or(false);
+        if old_build && !mark.exists() && g.updated_at > g.installed_at {
+            let _ = std::fs::create_dir_all(mark.parent().unwrap());
+            let _ = std::fs::write(&mark, b"");
+            crate::trail::note(format!("Play {id}: its build is older than the {} update, the setup runs once to build it", g.tag));
+            if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
+                r.setup_done = false;
+            }
+            st.save();
+            g.setup_done = false;
+        }
+    }
     if g.setup_done {
         return None;
     }
@@ -179,9 +205,16 @@ pub fn spawn(p: &Path) -> std::io::Result<Started> {
 pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
     let dir = p.parent().map(Path::to_path_buf).unwrap_or_default();
     // A Windows setup on Linux runs through Proton (or Wine), like a Windows game does.
+    // A Windows Installer package goes through Windows' installer (msiexec /i).
+    let msi = crate::install::is_msi(p);
     #[cfg(not(windows))]
     let mut c = if crate::proton::is_windows_program(p) {
         match (crate::proton::runner(), crate::proton::data_dir()) {
+            (Some(r), Some(data)) if msi => {
+                let mut c = crate::proton::std_command(&r, &data, Path::new("msiexec"));
+                c.arg("/i").arg(p);
+                c
+            }
             (Some(r), Some(data)) => crate::proton::std_command(&r, &data, p),
             _ => return Err(std::io::Error::other("it's a Windows program, and running it on Linux needs Proton or Wine (Steam's Proton is enough)")),
         }
@@ -189,7 +222,13 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
         std::process::Command::new(p)
     };
     #[cfg(windows)]
-    let mut c = std::process::Command::new(p);
+    let mut c = if msi {
+        let mut c = std::process::Command::new("msiexec");
+        c.arg("/i").arg(p);
+        c
+    } else {
+        std::process::Command::new(p)
+    };
     crate::sysenv::clean_std(&mut c);
     if let Some(x) = copy {
         c.arg(x);
@@ -437,6 +476,13 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
             }
         }
     }
+    // Installed for every user (a Windows Installer package puts it in Program Files, keeping the
+    // files' own dates, so "made since" can't find it): the program it names, in its folder there.
+    if !usable(&g) {
+        if let Some(p) = want.as_deref().and_then(in_program_files) {
+            g.exe = Some(p);
+        }
+    }
     // A program that isn't the one the game's profile names is a tool from the download, never
     // the game: rather than start it, the player is asked to pick the game.
     if want.is_some() && !usable(&g) {
@@ -567,7 +613,9 @@ pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<Pat
                 let name = e.file_name().to_string_lossy().to_lowercase();
                 let Ok(ft) = e.file_type() else { continue };
                 if ft.is_dir() {
-                    if d < depth && !skip.contains(&name.as_str()) && !name.starts_with('.') {
+                    // Not a setup's leftovers or tools (temp\…\build, deps): a half-built copy
+                    // there doesn't have what the game needs beside it.
+                    if d < depth && !skip.contains(&name.as_str()) && search_into(&name) {
                         stack.push((e.path(), d + 1));
                     }
                 } else if name == want {
@@ -580,6 +628,39 @@ pub fn find_built(file: &str, since: SystemTime, near: &[PathBuf]) -> Option<Pat
         }
     }
     best.map(|b| b.1)
+}
+
+/// `file` in a folder of Program Files (either one, on any drive) or of the user's own programs
+/// folder: OpenGOAL-Launcher.exe in Program Files\OpenGOAL-Launcher.
+fn in_program_files(file: &str) -> Option<PathBuf> {
+    let want = file.to_lowercase();
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for d in crate::files::drives() {
+        roots.push(d.path.join("Program Files"));
+        roots.push(d.path.join("Program Files (x86)"));
+    }
+    if let Some(l) = std::env::var_os("LOCALAPPDATA") {
+        roots.push(PathBuf::from(l).join("Programs"));
+    }
+    for root in roots {
+        for e in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+            if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            for f in std::fs::read_dir(e.path()).into_iter().flatten().flatten() {
+                if f.file_name().to_string_lossy().to_lowercase() == want && f.path().is_file() {
+                    return Some(f.path());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// A folder the search for a built program goes into (its name, lowercased): not a hidden one, and
+/// not a setup's leftovers or tools.
+fn search_into(name: &str) -> bool {
+    !name.starts_with('.') && !crate::install::TOOL_DIRS.contains(&name)
 }
 
 /// Name words that say nothing about which game it is.
@@ -783,6 +864,15 @@ fn pick(list: &[Value], names: &[&str], since: SystemTime, ours: &Path, then: Op
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_setups_leftovers_are_not_searched() {
+        assert!(!super::search_into("temp"));
+        assert!(!super::search_into("tools"));
+        assert!(!super::search_into(".cache"));
+        assert!(super::search_into("build"));
+        assert!(super::search_into("totk"));
+    }
+
     use super::*;
 
     #[test]

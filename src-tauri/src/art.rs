@@ -6,7 +6,7 @@
 //! `data:` address. The picture as it came is kept beside the finished one, with how it was framed,
 //! so Customize can open it again just as it was left.
 
-use crate::library::{folder_name, now, Installed};
+use crate::library::{folder_name, now, ArtSet, Installed, Library};
 use crate::{App, Error, Res};
 use base64::Engine as _;
 use serde_json::{json, Value};
@@ -48,14 +48,75 @@ fn remove_ours(st: &App, p: &Path) {
     }
 }
 
-fn field<'a>(g: &'a mut Installed, kind: &str) -> Option<&'a mut Option<PathBuf>> {
-    match kind {
-        "cover" => Some(&mut g.cover_file),
-        "hero" => Some(&mut g.hero_file),
-        "logo" => Some(&mut g.logo_file),
-        "icon" => Some(&mut g.icon_file),
-        _ => None,
+/// A game that's gone for good (an added recomp taken out, not installed): its own pictures go too.
+pub fn drop_set(st: &App, id: &str) {
+    let gone = {
+        let mut l = st.lib.lock().unwrap();
+        if l.installed.contains_key(id) { None } else { l.arts.remove(id) }
+    };
+    let Some(a) = gone else { return };
+    for f in [&a.cover_file, &a.hero_file, &a.logo_file, &a.icon_file].into_iter().flatten() {
+        remove_ours(st, f);
     }
+    if let Some(f) = &a.icon_file {
+        remove_ours(st, &f.with_extension("ico"));
+    }
+    for e in a.art_edit.values() {
+        if let Some(s) = e.get("src").and_then(Value::as_str) {
+            remove_ours(st, Path::new(s));
+        }
+    }
+    st.save();
+}
+
+/// Where a game's own pictures are kept: on it when it's installed, else beside the Library.
+trait Holder {
+    fn slot(&mut self, kind: &str) -> Option<&mut Option<PathBuf>>;
+    fn edits(&mut self) -> &mut serde_json::Map<String, Value>;
+}
+macro_rules! holder {
+    ($t:ty) => {
+        impl Holder for $t {
+            fn slot(&mut self, kind: &str) -> Option<&mut Option<PathBuf>> {
+                match kind {
+                    "cover" => Some(&mut self.cover_file),
+                    "hero" => Some(&mut self.hero_file),
+                    "logo" => Some(&mut self.logo_file),
+                    "icon" => Some(&mut self.icon_file),
+                    _ => None,
+                }
+            }
+            fn edits(&mut self) -> &mut serde_json::Map<String, Value> {
+                &mut self.art_edit
+            }
+        }
+    };
+}
+holder!(Installed);
+holder!(ArtSet);
+
+/// The game's pictures to change: the installed game's, else its own set (made when it's first
+/// needed).
+fn holder<'a>(l: &'a mut Library, id: &str) -> &'a mut dyn Holder {
+    if l.installed.contains_key(id) {
+        l.installed.get_mut(id).unwrap()
+    } else {
+        l.arts.entry(id.to_string()).or_default()
+    }
+}
+
+/// What the window keeps for the game after a change: the installed game, or its pictures alone
+/// (`art_only`) for one that isn't installed.
+fn after(l: &mut Library, id: &str) -> Value {
+    if let Some(g) = l.installed.get(id) {
+        return serde_json::to_value(g).unwrap_or(Value::Null);
+    }
+    if l.arts.get(id).map(ArtSet::is_empty).unwrap_or(false) {
+        l.arts.remove(id);
+    }
+    let mut v = serde_json::to_value(l.arts.get(id).cloned().unwrap_or_default()).unwrap_or_else(|_| json!({}));
+    v["art_only"] = Value::Bool(true);
+    v
 }
 
 /// A picture to frame: from the player's file (`path`) or the web (`url`, SteamGridDB's or the
@@ -101,7 +162,10 @@ pub async fn art_source(st: State<'_, App>, id: String, kind: String, path: Opti
 /// What Customize needs to open a picture the player framed before: { src, data, x, y, zoom }.
 #[tauri::command]
 pub async fn art_open(st: State<'_, App>, id: String, kind: String) -> Res<Value> {
-    let edit = st.lib.lock().unwrap().installed.get(&id).and_then(|g| g.art_edit.get(&kind).cloned());
+    let edit = {
+        let l = st.lib.lock().unwrap();
+        l.installed.get(&id).map(|g| &g.art_edit).or_else(|| l.arts.get(&id).map(|a| &a.art_edit)).and_then(|e| e.get(&kind).cloned())
+    };
     let Some(mut e) = edit else { return Ok(Value::Null) };
     let src = e.get("src").and_then(Value::as_str).map(PathBuf::from).filter(|p| p.is_file());
     let Some(src) = src else { return Ok(Value::Null) };
@@ -113,15 +177,22 @@ pub async fn art_open(st: State<'_, App>, id: String, kind: String) -> Res<Value
 /// The finished picture from Customize (`data`, a PNG or JPEG `data:` address), with the picture it
 /// was framed from (`src`) and how (`frame`: x, y, zoom). No `data`: back to the usual picture.
 #[tauri::command]
-pub async fn art_save(st: State<'_, App>, id: String, kind: String, data: Option<String>, src: Option<String>, frame: Option<Value>) -> Res<Installed> {
+pub async fn art_save(st: State<'_, App>, id: String, kind: String, data: Option<String>, src: Option<String>, frame: Option<Value>) -> Res<Value> {
     if !KINDS.contains(&kind.as_str()) {
         return Err(Error::Msg("That isn't a kind of picture.".into()));
     }
+    if id.trim().is_empty() || id.len() > 120 || id.contains(['/', '\\']) || id.contains("..") {
+        return Err(Error::Msg("That isn't a game.".into()));
+    }
     let (old_out, old_src) = {
         let mut l = st.lib.lock().unwrap();
-        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-        let out = field(g, &kind).and_then(|f| f.clone());
-        let src = g.art_edit.get(&kind).and_then(|e| e.get("src")).and_then(Value::as_str).map(PathBuf::from);
+        let g = holder(&mut l, &id);
+        let out = g.slot(&kind).and_then(|f| f.clone());
+        let src = g.edits().get(&kind).and_then(|e| e.get("src")).and_then(Value::as_str).map(PathBuf::from);
+        // Only looked at so far: an empty set made for the look isn't kept (the picture may not come through).
+        if l.arts.get(&id).is_some_and(ArtSet::is_empty) {
+            l.arts.remove(&id);
+        }
         (out, src)
     };
     let new_out = match data.as_deref().filter(|d| !d.is_empty()) {
@@ -163,8 +234,8 @@ pub async fn art_save(st: State<'_, App>, id: String, kind: String, data: Option
     }
     let g = {
         let mut l = st.lib.lock().unwrap();
-        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-        if let Some(f) = field(g, &kind) {
+        let g = holder(&mut l, &id);
+        if let Some(f) = g.slot(&kind) {
             *f = new_out.clone();
         }
         match (&new_out, &new_src) {
@@ -177,13 +248,13 @@ pub async fn art_save(st: State<'_, App>, id: String, kind: String, data: Option
                         }
                     }
                 }
-                g.art_edit.insert(kind.clone(), e);
+                g.edits().insert(kind.clone(), e);
             }
             _ => {
-                g.art_edit.remove(&kind);
+                g.edits().remove(&kind);
             }
         }
-        g.clone()
+        after(&mut l, &id)
     };
     st.save();
     Ok(g)

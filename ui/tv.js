@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['library', N_('Library')], ['achievements', N_('Achievements')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['library', N_('Library')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -40,6 +40,7 @@
     layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
     history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/><path d="M12 8v4.5l3 2"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
     chevL: '<path d="m15 5-7 7 7 7"/>',
@@ -231,7 +232,7 @@
       const b = $('.tv-boot', root);
       if (!b || !TV.on) return;
       b.classList.add('out');
-      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
+      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : (S.settings.ui || {}).start_page === 'discover' ? 'discover' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
     }, 3100);
   }
 
@@ -324,9 +325,13 @@
   // A cover, with its name under it.
   function poster(a, key, sub) {
     const st = status(a), j = S.jobs[a.id];
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${esc(t('Soon'))}</span>` : sreqBadge(a) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left">${esc(t('Installed'))}</span>` : '');
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : sreqBadge(a) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left">${esc(t('Installed'))}</span>` : '');
+    const vers = TV.view !== 'library' && !j && verGroup(a);
+    const deckb = greatOnDeck(a) && !j ? `<span class="tv-deckb${vers ? ' up' : ''}" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(16)}${esc(t('Deck'))}</span>` : '';
+    const ps = projectState(a), left = /tv-badge left|tv-badge sreq/.test(badge);
+    const stb = ps && ps.kind !== 'quiet' ? `<span class="tv-badge left state ${ps.kind}${left ? ' low' : ''}">${esc(t(STATE_NAME[ps.kind]))}</span>` : '';
     return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(a.cover))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
-      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
+      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${stb}${deckb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
   }
 
@@ -334,7 +339,8 @@
 
   // The main button: Play, Install, Update, a download's progress, or Back to the game.
   // Setup Required: a yellow badge on the cover until the player says it's set up.
-  const sreqBadge = (a) => needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
+  // Only on a game in the player's Library, as a to-do: nothing that reads as a warning on the rest.
+  const sreqBadge = (a) => S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
   // What a Setup Required recomp needs before it plays, as a sheet: its developer's steps, the
   // README, its folder, and Done, Play (after which Play is back for good).
   function tvSetupReq(id) {
@@ -342,7 +348,7 @@
     if (!a) return;
     const inst = S.library[id];
     const steps = (a.setup_steps || []).filter(Boolean);
-    const readme = a.setup_readme || (a.repo ? `https://github.com/${a.repo}#readme` : '');
+    const readme = a.setup_readme || (a.repo ? window.repoReadme(a.repo) : '');
     const head = `<h3>${esc(tf('Set up {name}', { name: a.name }))}</h3><p class="tv-sreq-p">${esc(t('This one needs a few things on your PC before it plays. Do these once, in order:'))}</p>
       ${steps.length ? `<ol class="tv-sreq-steps">${steps.map((x) => `<li dir="auto">${esc(x)}</li>`).join('')}</ol>` : `<p class="tv-sreq-p">${esc(t('Its developer\'s README has the steps.'))}</p>`}
       ${inst ? '' : `<p class="tv-sreq-p dim">${esc(t('Install it first, then come back here.'))}</p>`}`;
@@ -367,7 +373,7 @@
         if (!p) return;
         try { S.library[id] = await invoke('locate_game', { id, path: typeof p === 'string' ? p : p.path }); await refreshState(); draw(true); toast(tf('Found {name}.', { name: a.name })); } catch (e) { fail(e); }
       } },
-      { label: t('Remove from Library'), icon: 'bin', run: async () => { try { await invoke('forget_game', { id }); await refreshState(); draw(true); } catch (e) { fail(e); } } },
+      { label: t('Remove from Library'), icon: 'bin', run: async () => { try { await invoke('forget_game', { id }); if (window.keepOut) await window.keepOut(id); await refreshState(); draw(true); } catch (e) { fail(e); } } },
     ], '', head);
     return true;
   };
@@ -399,7 +405,7 @@
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
       case 'installed': { const su = S.setup[id]; if (needsSetup(a) && !setupDone(id)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
-      case 'soon': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>`;
+      case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
       default: return isSaved(id) ? btn(key, 'install', esc(t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
     }
@@ -442,7 +448,15 @@
     if (mine.length) return { list: mine.slice(0, DOCK_MAX), kind: 'mine' };
     // Nothing installed yet: the games picked for the top of Home, in their order.
     const picked = window.bannerApps && bannerApps();
-    return picked ? { list: picked, kind: 'banner' } : { list: oneEach(pool().sort(byDl)).slice(0, 10), kind: 'top' };
+    return picked ? { list: turnkeyFirst(picked), kind: 'banner' } : { list: turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 10)), kind: 'top' };
+  }
+  // Notes from the RecompStore team, under the header: B or the X closes one for good.
+  function tvNotes() {
+    // One at a time, in the room beside the game's name (closing it brings the next).
+    const n = notesShown()[0];
+    if (!n) return '';
+    const link = httpsOnly(n.link);
+    return `<div class="tv-notes"><div class="tv-tnote ${esc(n.tone || 'cyan')}" role="note"><div class="tn-top"><span class="tn-l">RecompLauncher</span><button type="button" class="tv-btn sm tv-tnote-x" data-f data-key="note:x:${esc(n.id)}" data-tvact="notex" data-n="${esc(n.id)}" aria-label="${esc(t('Close'))}">${svg('stop', 20)}</button></div><p dir="auto">${esc(n.body)}</p>${link ? `<div class="tn-acts"><button type="button" class="tv-btn sm" data-f data-key="note:l:${esc(n.id)}" data-tvact="noteurl" data-url="${esc(link)}"><span>${esc(n.linkText || t('Learn More'))}</span></button></div>` : ''}</div></div>`;
   }
   function pageHome() {
     const d = dockList(), list = d.list;
@@ -451,16 +465,18 @@
     const rows = [];
     // Below the dock, a press of down away: the rest of Home.
     if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
-    const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !haveAny(a)).sort(byDl));
+    const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
     if (owned.length) rows.push(row('own', t('Found in your folders'), owned.map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
+    const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
+    if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
     if (disc.length >= 2) rows.push(row('disc', t('Drop in your disc'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
     const upd = recentlyUpdated(pool()).slice(0, 14);
     if (upd.length) rows.push(row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')));
-    rows.push(row('new', t('Just added'), oneEach(pool().sort(byNew), true).slice(0, 14).map((a) => poster(a, 'n:' + a.id)).join('')));
-    if (d.kind !== 'top') rows.push(row('top', t('Most played'), oneEach(pool().sort(byDl)).slice(0, 14).map((a) => poster(a, 't:' + a.id)).join('')));
+    rows.push(row('new', t('Just added'), turnkeyFirst(oneEach(pool().sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
+    if (d.kind !== 'top') rows.push(row('top', t('Most played'), turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 14)).map((a) => poster(a, 't:' + a.id)).join('')));
     // Covers: every game in the dock fits across, smaller when there are more of them. Wide
     // pictures: as many as fit, and the row slides.
     const wide = (S.settings.ui || {}).tv_dock === 'wide';
@@ -476,7 +492,7 @@
     const label = d.kind === 'pinned' ? t('Pinned') : d.kind === 'mine' ? t('Continue playing') : d.kind === 'banner' ? t('Featured') : t('Most played recomps');
     const hintList = TV.sort ? [['dpad', t('Move')], ['A', t('Done')], ['B', t('Cancel')]] : [['A', t('Select')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]];
     return `${backdrop(sel, 'home')}${bar()}
-      ${region(`<div class="tv-home1"><div class="tv-hero" id="tv-hero">${sel ? heroText(sel, S.library[sel.id], true) : `<h1 class="tv-h1">${esc(t('Welcome'))}</h1>`}</div>
+      ${region(`<div class="tv-home1">${tvNotes()}<div class="tv-hero" id="tv-hero">${sel ? heroText(sel, S.library[sel.id], true) : `<h1 class="tv-h1">${esc(t('Welcome'))}</h1>`}</div>
         <section class="tv-dock${TV.sort ? ' sorting' : ''}" style="--dw:${w}px;--dg:${gap}px"><h3>${esc(label)}</h3><div class="tv-rowview"><div class="tv-row tv-dockrow" data-row="dock">${dock}</div></div></section>
         ${rows.length ? `<div class="tv-down" aria-hidden="true">${svg('chevD', 34)}</div>` : ''}</div>${rows.join('')}`, 'home')}
       ${hints(hintList)}`;
@@ -860,8 +876,13 @@
 
   // Discover's Sort & Filter: the order, a console, and a way back to everything.
   function discoverRedraw() { TV.swap = true; TV.focusKey = TV.focusKey || 'g:@filter'; TV.gridShown = {}; draw(true); setScroll(0, true); }
+  // Runs On: on Linux the same choice as the desktop's, kept between launches.
+  const runsNow = () => (S.os === 'linux' ? runsPick() : TV.druns || '');
+  const setRunsNow = (k) => (S.os === 'linux' ? saveUi({ runs_linux: k }, true) : Promise.resolve((TV.druns = k)));
   function tvFilter() {
     const apps = pool(), org = TV.dorigin || '', srt = TV.dsort || 'popular';
+    const pickRuns = () => sheet(t('Runs On'), runsList().map(([k, n]) => ({ label: t(n), icon: runsNow() === k ? 'check' : '', run: () => { setRunsNow(k); TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
+    const runsName = t((runsList().find(([k]) => k === runsNow()) || runsList()[0])[1]);
     const SORTS = [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
     const pickShow = () => sheet(t('Show'), SHOWS.map(([k, n]) => ({ label: t(n), icon: (TV.dshow || '') === k ? 'check' : '', run: () => { TV.dshow = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const origins = ((S.cat && S.cat.origins) || []).map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
@@ -871,13 +892,16 @@
     for (const a of apps) for (const tg of tagsOf(a)) tagN[tg] = (tagN[tg] || 0) + 1;
     const pickTag = () => sheet(t('Tag'), [{ label: t('Any'), icon: TV.dtag ? '' : 'check', run: () => { TV.dtag = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } }].concat(Object.keys(tagN).sort((x, y) => tagN[y] - tagN[x]).map((tg) => ({ label: tg, sub: tn(tagN[tg], '1 recomp', '{n} recomps'), icon: tg === TV.dtag ? 'check' : '', run: () => { TV.dtag = tg; TV.focusKey = 'g:@filter'; discoverRedraw(); } }))));
     sheet(t('Sort & Filter'), [
+      ...(S.os === 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Sort'), sub: (SORTS.find(([k]) => k === srt) || SORTS[0])[1], icon: 'layers', run: pickSort },
       { label: t('Console'), sub: org ? originName(org) : t('Any'), icon: 'pad', run: pickConsole },
       { label: t('Tag'), sub: TV.dtag || t('Any'), icon: 'pin', run: pickTag },
       { label: t('Show'), sub: t((SHOWS.find(([k]) => k === (TV.dshow || '')) || SHOWS[0])[1]), icon: 'layers', run: pickShow },
       { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      ...(onHandheld() ? [{ label: t('Great on Deck'), sub: TV.ddeck ? t('On') : t('Off'), icon: 'pad', run: () => { TV.ddeck = !TV.ddeck; TV.focusKey = 'g:@filter'; discoverRedraw(); } }] : []),
+      ...(S.os !== 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Search'), sub: TV.dq ? TV.dq : t('Find a game by name'), icon: 'search', run: tvSearch },
-      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dsort = 'popular'; TV.genre = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.ddeck = false; TV.dsort = ''; TV.genre = ''; if (runsNow()) setRunsNow(''); TV.focusKey = 'g:@filter'; discoverRedraw(); } },
     ]);
   }
   // Search with the controller: an on-screen keyboard (a keyboard types straight in too). The games
@@ -900,6 +924,31 @@
     TV.sheet.onClose = () => { clearTimeout(later); TV.gridShown = {}; TV.focusKey = 'g:@search'; draw(true); setScroll(0, true); };
     show();
   }
+  // Typing a few words with the controller (a report's note): Send once there are `min` letters.
+  window.tvType = ({ title, hint, min = 0, max = 1000, more = '' }) => new Promise((res) => {
+    let text = '', settled = false;
+    const done = (v) => { if (settled) return; settled = true; res(v); };
+    const show = () => {
+      const f = $('#tv-kbq', root); if (f) f.textContent = text;
+      const ph = $('#tv-kbph', root); if (ph) ph.hidden = !!text;
+      const n = $('#tv-kbn', root); if (n) n.textContent = min && text.trim().length < min ? tf('{n} more letters', { n: min - text.trim().length }) : '';
+    };
+    const type = (c) => { if (text.length < max) { text += c; show(); } };
+    const del = () => { text = text.slice(0, -1); show(); };
+    const send = () => {
+      if (text.trim().length < min) { sfx('back'); toast(tf('A few more words, please: at least {n} letters.', { n: min })); return; }
+      TV.sheet.keep = false; done(text.trim()); closeSheet();
+    };
+    const items = KEYS.map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
+      .concat([{ label: t('Space'), cls: 'key wide', run: () => type(' ') }, { label: t('Delete'), cls: 'key wide', icon: 'erase', run: del }, { label: t('Clear'), cls: 'key wide', run: () => { text = ''; show(); } }, { label: t('Send'), cls: 'key wide done', icon: 'check', run: send }]);
+    const head = `<h3>${esc(title)}</h3><div class="tv-kb-field"><span id="tv-kbq"></span><span id="tv-kbph" class="ph">${esc(hint || '')}</span><i class="caret"></i></div><div class="tv-kb-hints"><span>${glyph('y')}${esc(t('Space'))}</span><span>${glyph('x')}${esc(t('Delete'))}</span><span id="tv-kbn"></span></div>${more}`;
+    sheet(title, items, 'kb', head);
+    TV.sheet.keep = true;
+    TV.sheet.kb = { type, del };
+    TV.sheet.keys = (b) => { if (b === 'y') { type(' '); sfx('move'); return true; } if (b === 'x') { del(); sfx('move'); return true; } return false; };
+    TV.sheet.onClose = () => done(null);
+    show();
+  });
   // Achievements, coming soon: what it'll be, Learn More, and Sign In when you aren't.
   function pageAchTV() {
     const signed = !!(S.account && S.account.signedIn);
@@ -919,20 +968,25 @@
     const genres = Object.keys(GENRES).filter((x) => apps.some((a) => a.genre === x));
     // "Easy Setup" is a chip of its own, before the genres.
     // Search, a console and the order narrow it further (Sort & Filter).
-    const q = (TV.dq || '').trim().toLowerCase(), org = TV.dorigin || '', srt = TV.dsort || 'popular';
-    const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDl;
-    const list = oneEach(apps.filter((a) => (g === 'easy' ? S.easy.has(a.id) && !a.soon : g === 'mp' ? isMulti(a) : !g || a.genre === g))
+    const q = fold((TV.dq || '').trim()), org = TV.dorigin || '', srt = TV.dsort || 'popular';
+    const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDlConsolesFirst;
+    const each = apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
-      .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)))
-      .filter((a) => !q || `${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`.toLowerCase().includes(q))
-      .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y)), srt === 'new');
-    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0);
+      .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
+      .filter((a) => !q || fold(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`).includes(q))
+      .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
+    // Every version counts, not every tile.
+    const count = recompCount(each);
+    const found = oneEach(each, srt === 'new');
+    // Discover's own order (no sort picked): turnkey recomps first.
+    const list = TV.dsort ? found : turnkeyFirst(found);
+    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (runsNow() ? 1 : 0) + (TV.ddeck && onHandheld() ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
-    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some((a) => S.easy.has(a.id)) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
+    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
-      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), list.length === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: list.length, os: OS_NAME[S.os] }))}${chips}
+      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
         <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]])}`;
   }
@@ -1118,7 +1172,11 @@
     const modsOk = !!(S.mods[id] && S.mods[id] !== 'loading');
     const dv = devOf(a);
     const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc)
-      .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : []);
+      .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : [])
+    const ps = projectState(a);
+    const deckChip = greatOnDeck(a) ? `<span class="tv-st deck">${DECK_ICON(18)}${esc(t('Great on Deck'))}</span>` : '';
+    const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${esc(t(STATE_PILL[ps.kind]))}</span>`;
+    const stNote = ps && ps.kind !== 'quiet' ? `<p class="tv-stnote ${ps.kind}"><b>${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></p>` : '';;
     const checks = readyRows(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
@@ -1130,6 +1188,7 @@
     const acts = [
       mainButton(a, 'g-main'),
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
+      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('I Already Have It')), { id, icon: 'folder' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
       verGroup(a) ? btn('g-vers', 'versions', esc(tn(verGroup(a).list.length, '1 version', '{n} versions')), { id, icon: 'layers' }) : '',
       g ? btn('g-shots', 'shots', esc(t('Screenshots')), { id, icon: 'shot' }) : '',
@@ -1153,13 +1212,14 @@
     return `${backdrop(a, 'game')}${gameBar()}
       ${region(`<div class="tv-game">
         <div class="tv-g-main">
-          <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}</div>
+          <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${deckChip}${stChip}</div>
           ${titleOf(a)}
           ${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>
+          ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
-          ${about}${checkBlock}${shotRow}
+          ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}
         </div>
         ${aside}
       </div>${(() => { const like = moreLike(a); return like.length ? row('like', t('More like this'), like.map((x) => poster(x, 'm:' + x.id)).join('')) : ''; })()}`, 'game')}
@@ -1227,6 +1287,67 @@
 
   // A game's own settings, set up by the launcher: its copy of the game, then each setting.
   // Left and right (or A) change a setting.
+  // A game's settings: a heading where the group changes, advanced ones after Show Advanced Options,
+  // and sliders that left and right move a step at a time.
+  function tvSettingRows(id, prof) {
+    if (!prof) return [];
+    const open = advOpen(id);
+    let last = '';
+    const rows = prof.settings.filter((o) => open || !o.advanced).map((o) => {
+      const g = o.group || '', head = g && g !== last ? `<div class="tv-subh">${esc(g)}</div>` : '';
+      last = g;
+      // Key bindings: a row for each action, its keys on the right; A changes them.
+      if (o.bindings) {
+        const dupes = window.bindDupes(o);
+        const acts = o.bindings.actions.map((a, ai) => { const d = dupes(a); return `<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gb:${esc(o.id)}:${ai}" data-tvact="bind" data-k="${esc(o.id)}" data-a="${ai}" data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(a.label)}${d.length ? `<small>${esc(tf('Also used by {action}', { action: d.join(', ') }))}</small>` : ''}</span><span class="tv-pill">${esc(a.keys.join(' · ') || t('None'))}</span></button>`; });
+        const reset = `<button type="button" class="tv-item${o.bindings.changed && o.applies ? '' : ' off'}" data-f data-key="gb:${esc(o.id)}:@reset" data-tvact="bindreset" data-k="${esc(o.id)}" data-id="${esc(id)}"${o.bindings.changed && o.applies ? '' : ' disabled'}><span class="k">${esc(t('Reset to Default'))}<small>${esc(o.label)}</small></span></button>`;
+        return head + (o.label && o.label !== g ? `<div class="tv-subh">${esc(o.label)}</div>` : '') + acts.join('') + reset;
+      }
+      const val = o.slider ? o.slider.value : o.own != null ? o.own : (o.choices[o.current] || '');
+      return `${head}<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gs:${esc(o.id)}" data-gset="${esc(o.id)}"${o.slider ? ' data-slide="1"' : ''} data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(o.label)}<small>${esc(o.help)}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(val)}</b>${svg('chevR', 22)}</span></button>`;
+    });
+    if (prof.settings.some((o) => o.advanced)) rows.push(`<button type="button" class="tv-item" data-f data-key="gs:@adv" data-tvact="gadv" data-id="${esc(id)}"><span class="k">${esc(open ? t('Hide Advanced Options') : t('Show Advanced Options'))}</span><span class="tv-pill">${svg(open ? 'chevL' : 'chevR', 20)}</span></button>`);
+    return rows;
+  }
+  // An action's keys: change one, add one, or clear one.
+  function bindSheet(id, k, ai) {
+    const su = S.setup[id], o = su && su !== 'loading' && su.settings.find((x) => x.id === k && x.bindings);
+    const a = o && o.bindings.actions[ai];
+    if (!a) return;
+    const ask = (i) => () => {
+      TV.focusKey = `gb:${k}:${ai}`;
+      window.bindAsk(id, k, ai, i, (act) => {
+        $('.tv-capture', root)?.remove();
+        if (!act) return;
+        const el = document.createElement('div');
+        el.className = 'tv-capture';
+        el.innerHTML = `<div class="tv-capture-in"><b>${esc(act.pad ? t('Press a button, or a key on your keyboard') : t('Press a key on your keyboard'))}</b><small>${esc(act.label)}</small></div>`;
+        stage().append(el);
+      });
+    };
+    const items = a.keys.map((key, i) => ({ label: key, sub: t('Change'), run: ask(i) }));
+    if (a.keys.length < o.bindings.max) items.push({ label: t('Add a Key'), run: ask(a.keys.length) });
+    a.keys.forEach((key, i) => items.push({ label: tf('Clear {key}', { key }), gap: i === 0, run: () => { TV.focusKey = `gb:${k}:${ai}`; return window.bindSet(id, k, ai, a.keys.filter((_, j) => j !== i)); } }));
+    sheet(a.label, items);
+  }
+  // A slider, one step from the value it really has; written a moment after the last press.
+  const tvSlideWrites = {};
+  function stepSlider(el, o, step) {
+    const sl = o.slider, cur = parseFloat(sl.value);
+    const k = ((Number.isFinite(cur) ? cur : sl.min) - sl.min) / sl.step;
+    const n = step > 0 ? Math.floor(k + 1e-9) + 1 : Math.ceil(k - 1e-9) - 1;
+    const places = Math.max(stepPlaces(sl.step), stepPlaces(sl.min)), m = 10 ** places;
+    const v = Math.min(sl.max, Math.max(sl.min, Math.round((sl.min + n * sl.step) * m) / m));
+    sl.value = v.toFixed(places);
+    const b = el.querySelector('.tv-cycle b');
+    if (b) { b.textContent = sl.value; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+    setPanel(el);
+    const id = el.dataset.id, key = id + '|' + o.id;
+    clearTimeout(tvSlideWrites[key]);
+    tvSlideWrites[key] = setTimeout(async () => {
+      try { sl.value = await invoke('set_game_slider', { id, setting: o.id, value: v }); if (b) b.textContent = sl.value; } catch (e) { fail(e); }
+    }, 300);
+  }
   function pageGameSettings(id) {
     const a = byId(id) || { id, name: (S.library[id] || {}).name || id };
     const su = S.setup[id];
@@ -1245,7 +1366,7 @@
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
       prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
       ...lookRows,
-      ...(prof ? prof.settings : []).map((o) => `<button type="button" class="tv-item${o.applies ? '' : ' off'}" data-f data-key="gs:${esc(o.id)}" data-gset="${esc(o.id)}" data-id="${esc(id)}"${o.applies ? '' : ' disabled'}><span class="k">${esc(o.label)}<small>${esc(o.help)}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 22)}</span></button>`),
+      ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
     ].join('') || `<p class="tv-empty">${esc(t('Nothing to set for this game.'))}</p>`;
     const sub = prof && prof.settings.length ? (prof.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings, so they\'re the same in its own launcher.')) : S.os === 'linux' ? t('Looks are drawn over the game. Press Home while you play to turn one off and on.') : t('Looks are drawn over the game. Press Home while you play to fine-tune one.');
@@ -1303,8 +1424,10 @@
     const o = su && su.settings && su.settings.find((x) => x.id === k);
     if (!o || !o.applies) return;
     sfx('move');
+    if (o.slider) return stepSlider(el, o, step);
     const i = (o.current + step + o.choices.length) % o.choices.length;
     o.current = i;
+    o.own = null;
     const b = el.querySelector('.tv-cycle b');
     if (b) { b.textContent = o.choices[i]; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
     setPanel(el);
@@ -1342,6 +1465,7 @@
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),
       ...(TV.view === 'game' && onPage && verGroup(a) ? [{ label: tn(verGroup(a).list.length, '1 version', '{n} versions'), sub: t('Pick which one this page is for'), icon: 'layers', run: () => pickVersion(id) }] : []),
       ...(g && !S.running.has(id) ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
+      ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Discover'), sub: t('It shows in Discover and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Discover'), sub: t('It won\'t show in Discover or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
         { gap: true, label: t('Saves'), sub: t('Back them up, or put an older one back'), icon: 'save', run: () => go('gsaves', id) },
         ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and Looks'), icon: 'gear', run: () => go('gsettings', id) }] : []),
@@ -1412,6 +1536,7 @@
       let r = {};
       try { r = (await invoke('uninstall', { id, deleteFiles: del })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
       if (window.usageUninstall) window.usageUninstall(id);
+      if (window.keepOut) await window.keepOut(id);
       delete S.updates[id];
       if (TV.sizes && TV.sizes.sizes) delete TV.sizes.sizes[id];
       await refreshState();
@@ -1693,6 +1818,11 @@
       items = [{ run: () => playGame(id) }, { run: () => { if (TV.view === 'gsettings' && TV.arg === id) draw(true); else go('gsettings', id); } }];
       body = `<div class="bigdisc">${label}</div><div class="tt"><span class="ok${r.verified ? '' : ' plain'}">${esc(r.text || t('Checked'))}</span><h2>${esc(t('Ready to play'))}</h2><p>${esc(tf('{name} is set up with your copy.', { name: a.name }))}</p></div>
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Play'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Settings'))}</span></button></div>`;
+    } else if (TS.stage === 'wrong') {
+      const w = TS.wrong || {};
+      items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }, { run: () => tsBegin(TS.path, true) }];
+      body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('This Looks Like Another Copy'))}</h2><p>${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))} ${esc(t('Another region or version of the game may not work with it.'))}</p></div>
+        <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }];
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
@@ -1704,7 +1834,13 @@
     const f = $('[data-sheet]', el);
     if (f) focus(f, true);
   }
-  async function tsBegin(path) {
+  async function tsBegin(path, anyway) {
+    if (!anyway) {
+      let w = null;
+      try { w = await invoke('copy_check', { id: TS.id, path }); } catch (e) { /* can't tell: go ahead */ }
+      if (!TS.id) return;
+      if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
+    }
     Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
     try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
@@ -1811,7 +1947,8 @@
     const pick = (k) => k && $(`.tv-stage:not(.leaving) > :not(.tv-sheet) [data-key="${CSS.escape(k)}"]`, root);
     // Where focus goes: back where it was, else the page's main button, its first item, or the
     // section's tab. If the page was still loading when it got the tab, its first item once it's there.
-    const first = $('.tv-region .tv-btn.main[data-f]:not([disabled])', root) || $('.tv-region [data-f]:not([disabled])', root);
+    // (The team's notes on top of Home are never where it starts.)
+    const first = $('.tv-region .tv-btn.main[data-f]:not([disabled])', root) || $('.tv-region [data-f]:not([disabled]):not([data-key^="note:"])', root);
     let want = (TV.sheet && topSheet() && ($('[data-f].f', topSheet()) || $('[data-f]', topSheet()))) || (TV.parked && first) || pick(prevKey) || pick(TV.focusKey) || (TV.view === 'library' && TV.flowId && pick('L:' + TV.flowId)) || first;
     TV.parked = false;
     if (!want) { want = $('.tv-tab.on', root) || $('.tv-back', root) || $('[data-f]', root); TV.parked = true; }
@@ -1828,6 +1965,13 @@
     if (el.className !== cls) { el.className = cls; el.innerHTML = m === 'grid' ? '<i class="sky"></i><i class="sun"></i><i class="floor"></i>' : m === 'drift' ? '<i class="d1"></i><i class="d2"></i><i class="d3"></i>' : '<i class="a1"></i><i class="a2"></i><i class="a3"></i>'; }
   }
   window.tvRefresh = () => soon();
+  // A game moved to another id (one added by link, now on the official list): the page on and
+  // the pages behind it follow.
+  window.tvRemap = (from, to) => {
+    if (TV.arg === from) TV.arg = to;
+    if (TV.hero === from) TV.hero = to;
+    for (const b of TV.back) if (b.arg === from) b.arg = to;
+  };
   window.tvGoto = (view, id) => {
     if (!TV.on) return;
     if (view === 'shots') { loadAllShots().then(() => go('shots', id || null)); }
@@ -1835,6 +1979,7 @@
   };
 
   const focused = () => $('.tv-stage:not(.leaving) [data-f].f', root);
+  const r0 = (e) => e.getBoundingClientRect();
 
   function focus(el, instant) {
     if (!el) return;
@@ -1895,6 +2040,12 @@
     } else if (k) {
       const o = (su.settings || []).find((x) => x.id === k);
       if (!o) return;
+      if (o.slider) {
+        const sl = o.slider, pct = Math.max(0, Math.min(100, ((parseFloat(sl.value) - sl.min) / ((sl.max - sl.min) || 1)) * 100)) || 0;
+        html = `<span class="k">${esc(o.applies ? t('Setting') : t('Not used right now'))}</span><h3>${esc(o.label)}</h3>
+          <div class="val">${svg('chevL', 34)}<b>${esc(sl.value)}</b>${svg('chevR', 34)}</div>
+          <div class="tv-slbar"><i style="width:${pct.toFixed(1)}%"></i></div><p>${esc(o.help)}</p>`;
+      } else
       html = `<span class="k">${esc(o.applies ? t('Setting') : t('Not used right now'))}</span><h3>${esc(o.label)}</h3>
         <div class="val">${svg('chevL', 34)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 34)}</div>
         <div class="dots">${o.choices.map((c, i) => `<i class="${i === o.current ? 'on' : ''}" title="${esc(c)}"></i>`).join('')}</div><p>${esc(o.help)}</p>`;
@@ -2054,6 +2205,17 @@
       if (n) return focus(n);
       if (rowEl.classList.contains('tv-row') || rowEl.classList.contains('tv-nav')) return;
     }
+    // Home: up from the row of your games stops at the team's note first, when there is one.
+    // Down from it goes back to the game you were on.
+    if (dir === 'up' && !TV.sheet && cur.closest('.tv-dock')) {
+      const note = $('.tv-stage:not(.leaving) .tv-notes [data-tvact="noteurl"]', root) || $('.tv-stage:not(.leaving) .tv-notes [data-f]', root);
+      if (note) { TV.noteFrom = cur.dataset.key; return focus(note); }
+    }
+    if (dir === 'down' && !TV.sheet && cur.closest('.tv-notes')) {
+      const below = $$('[data-f]', cur.closest('.tv-notes')).find((e) => r0(e).top >= r0(cur).bottom - 4);
+      const dock = (TV.noteFrom && $(`.tv-stage:not(.leaving) .tv-dock [data-key="${CSS.escape(TV.noteFrom)}"]`, root)) || $('.tv-stage:not(.leaving) .tv-dock [data-f]', root);
+      if (below || dock) return focus(below || dock);
+    }
     // Rows remember where you were; coming back lands there.
     const fromRow = cur.closest('.tv-row');
     if (fromRow) TV.row[fromRow.dataset.row] = cur.dataset.key;
@@ -2187,6 +2349,10 @@
       case 'shots': await loadAllShots(); return go('shots', id);
       case 'mods': return go('mods', id);
       case 'gsettings': return go('gsettings', id);
+      case 'notify': sfx('select'); return toggleNotify(id).then(() => draw(true));
+      case 'notex': sfx('back'); return closeNote(el.dataset.n).then(() => draw(true));
+      case 'noteurl': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
+      case 'haveit': sfx('select'); return window.haveIt(id);
       case 'pick-copy': case 'setup': sfx('select'); return tvSetup(id);
       case 'setupreq': return tvSetupReq(id);
       case 'addlib': sfx('select'); await addToLibrary(id); TV.focusKey = 'g-main'; return draw(true);
@@ -2195,6 +2361,9 @@
       case 'tag': sfx('select'); TV.dtag = el.dataset.tag; TV.genre = ''; TV.dq = ''; TV.dorigin = ''; TV.gridShown = {}; return go('discover');
       case 'dtagclear': sfx('back'); TV.dtag = ''; TV.focusKey = 'g:@filter'; return discoverRedraw();
       case 'dfilter': return tvFilter();
+      case 'bind': return bindSheet(id, el.dataset.k, Number(el.dataset.a));
+      case 'bindreset': { sfx('select'); try { await invoke('reset_game_bindings', { id, setting: el.dataset.k }); } catch (e) { fail(e); } delete S.setup[id]; TV.focusKey = el.dataset.key; return loadSetup(id); }
+      case 'gadv': sfx('select'); await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); TV.focusKey = 'gs:@adv'; return draw(true);
       case 'gaction': {
         const run = async () => { try { const r = await invoke('game_action', { id, action: el.dataset.k }); if (r) toast(t(r)); } catch (e) { fail(e); } };
         const a = ((S.setup[id] || {}).actions || []).find((x) => x.id === el.dataset.k);
@@ -2339,6 +2508,8 @@
     const at = performance.now();
     if (b !== 'menu-hold' && b === lastPad.b && at - lastPad.t < 70) return;
     if (b !== 'menu-hold') lastPad = { b, t: at };
+    // Waiting for a key binding: the press is the answer.
+    if (window.bindPad && b !== 'menu-hold' && window.bindPad(b, kind || S.padKind)) return;
     if (kind && kind !== S.padKind) {
       S.padKind = kind;
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
@@ -2347,6 +2518,11 @@
       // The file browser and the first-run setup take the controller while they're up.
       if (window.fbPad && window.fbPad(b)) return;
       if (window.oobPad && window.oobPad(b)) return;
+      // The desktop view moves with the controller too.
+      if (b !== 'menu-hold' && document.hasFocus() && window.deskPad && window.deskPad(b)) {
+        if (!TV.hinted && !document.querySelector('.oob')) { TV.hinted = true; if (window.toast) toast(t('Hold Menu on your controller to switch to Big Picture mode.')); }
+        return;
+      }
       // A controller on the desktop view: holding Menu (Options) for a second opens TV mode. Not in
       // the first few seconds after the launcher opens, and not while the first-run setup is up.
       if (b === 'menu-hold' && document.hasFocus() && performance.now() - BORN > 3000 && !document.querySelector('.oob')) enter();
@@ -2363,7 +2539,7 @@
     nativeSeen = true;
     if (typeof payload === 'string') pad(payload); else pad(payload.b, payload.kind);
   });
-  const STD = { 0: 'a', 1: 'b', 2: 'x', 3: 'y', 4: 'lb', 5: 'rb', 8: 'view', 9: 'menu', 12: 'up', 13: 'down', 14: 'left', 15: 'right', 16: 'guide' };
+  const STD = { 0: 'a', 1: 'b', 2: 'x', 3: 'y', 4: 'lb', 5: 'rb', 6: 'lt', 7: 'rt', 8: 'view', 9: 'menu', 10: 'ls', 11: 'rs', 12: 'up', 13: 'down', 14: 'left', 15: 'right', 16: 'guide' };
   const held = {};
   const menuAt = {};
   let rep = { b: null, t: 0, n: 0 };

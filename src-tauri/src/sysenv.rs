@@ -89,7 +89,7 @@ pub fn clean_tokio(c: &mut tokio::process::Command) {
 /// launcher's web view can crash on, so it starts itself again without them; and under Gaming
 /// Mode's compositor the web view draws with a renderer that works there.
 #[cfg(target_os = "linux")]
-pub fn prepare_start() {
+pub fn prepare_start(data: Option<std::path::PathBuf>) {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
     let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
@@ -97,8 +97,18 @@ pub fn prepare_start() {
     // renderer most often leaves the window blank, so those get the one that works everywhere.
     let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
     let appimage = std::env::var_os("APPIMAGE").is_some();
-    if (gamescope || from_steam || nvidia || appimage) && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    // The player's choice in Settings → Appearance wins over the guess; their own variables win over both.
+    let mode = data.map(|d| graphics_mode(&d)).unwrap_or_default();
+    let safe_way = match mode.as_str() {
+        "fast" => false,
+        "safe" => true,
+        _ => gamescope || from_steam || nvidia || appimage,
+    };
+    if safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if mode == "safe" && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
     if std::env::var_os("RL_STEAM_CLEAN").is_some() {
         return;
@@ -108,6 +118,12 @@ pub fn prepare_start() {
     let keep_lib = steam_free(&libs, ':', &["steam-runtime", "ubuntu12_32", "ubuntu12_64", "/steamrt", "pressure-vessel"]);
     if keep_pre == preload && keep_lib == libs {
         return;
+    }
+    // Steam's overlay, kept aside for the game: Steam finds the game's window through it (Steam
+    // Link and Remote Play stream that window; without it they show the desktop, often black).
+    let overlay = steam_only(&preload, &["gameoverlayrenderer"]);
+    if !overlay.is_empty() {
+        std::env::set_var("RL_STEAM_OVERLAY", &overlay);
     }
     for (k, v) in [("LD_PRELOAD", keep_pre), ("LD_LIBRARY_PATH", keep_lib)] {
         if v.is_empty() {
@@ -124,6 +140,45 @@ pub fn prepare_start() {
     }
 }
 
+/// Settings → Appearance → Graphics Mode, read from library.json before the window opens.
+#[cfg(target_os = "linux")]
+fn graphics_mode(data: &std::path::Path) -> String {
+    std::fs::read(data.join("library.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v.pointer("/settings/linux_graphics").and_then(|m| m.as_str()).map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// The entries of a preload list that are Steam's own (its overlay), space-separated.
+pub fn steam_only(list: &str, keep: &[&str]) -> String {
+    list.split([' ', ':']).filter(|e| !e.is_empty() && keep.iter().any(|d| e.contains(d))).collect::<Vec<_>>().join(" ")
+}
+
+/// A game started from a Steam shortcut gets Steam's overlay back (the launcher itself runs without
+/// it): its preload, and its Vulkan layer switched on. Nothing changes for a launcher Steam didn't
+/// start.
+#[cfg(target_os = "linux")]
+pub fn steam_overlay_for_game(c: &mut tokio::process::Command) {
+    let Some(overlay) = std::env::var("RL_STEAM_OVERLAY").ok().filter(|o| !o.trim().is_empty()) else { return };
+    // Only the overlay's own files, and only ones that are there.
+    let ok: Vec<&str> = overlay.split(' ').filter(|e| e.ends_with("gameoverlayrenderer.so") && !e.contains("..") && std::path::Path::new(e).is_file()).collect();
+    if ok.is_empty() {
+        return;
+    }
+    let cur = std::env::var("LD_PRELOAD").unwrap_or_default();
+    let mut list: Vec<String> = cur.split([' ', ':']).filter(|e| !e.is_empty()).map(str::to_string).collect();
+    for e in ok {
+        if !list.iter().any(|x| x == e) {
+            list.push(e.to_string());
+        }
+    }
+    c.env("LD_PRELOAD", list.join(" "));
+    if std::env::var_os("ENABLE_VK_LAYER_VALVE_steam_overlay_1").is_none() {
+        c.env("ENABLE_VK_LAYER_VALVE_steam_overlay_1", "1");
+    }
+}
+
 /// A list of paths (or preloads) without Steam's own entries.
 pub fn steam_free(list: &str, sep: char, drop: &[&str]) -> String {
     let sep_s = sep.to_string();
@@ -136,6 +191,8 @@ mod tests {
     fn steam_entries_are_taken_out() {
         assert_eq!(super::steam_free("/tmp/.mount_x/usr/lib:/home/deck/.steam/root/ubuntu12_32/steam-runtime/lib:/usr/lib", ':', &["steam-runtime", "ubuntu12_32"]), "/tmp/.mount_x/usr/lib:/usr/lib");
         assert_eq!(super::steam_free("/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so", ' ', &["gameoverlayrenderer"]), "");
+        // Steam's overlay, kept aside for the game.
+        assert_eq!(super::steam_only("/s/ubuntu12_32/gameoverlayrenderer.so:/s/ubuntu12_64/gameoverlayrenderer.so /x/libother.so", &["gameoverlayrenderer"]), "/s/ubuntu12_32/gameoverlayrenderer.so /s/ubuntu12_64/gameoverlayrenderer.so");
         assert_eq!(super::steam_free("/usr/lib", ':', &["steam-runtime"]), "/usr/lib");
     }
     use super::*;

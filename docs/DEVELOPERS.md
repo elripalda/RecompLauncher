@@ -138,6 +138,24 @@ The same check is how the launcher finds copies in the player's folders, so a di
 
 Leave `game` out if your recomp finds the game itself.
 
+**A second pick: the game's update.** When the game needs something beside the player's copy,
+picked on its own (a title update, or a PS4 update folder kept apart from the game), add `update`
+to `game`. The launcher asks for it after the copy and puts it in your folder:
+
+```json
+"game": {
+  "kind": "folder",
+  "label": "Your game folder (CUSA00341).",
+  "check": { "file": "eboot.bin" },
+  "update": { "into": "update", "label": "Your 1.02 update folder.", "accepts": "folder", "optional": true }
+}
+```
+
+- `into`: the folder inside your release it goes in.
+- `label`: what to ask for.
+- `accepts`: `"file"` (the default), `"folder"` or `"file or folder"`.
+- `optional`: the game plays without it, so the player can skip it.
+
 ### `start`
 
 - `program`: paths inside your release, tried in order. The first one that exists runs.
@@ -247,6 +265,67 @@ Each setting is a row with a list of choices. On a controller, left and right mo
 - **Settings that only apply sometimes.** `when` greys a setting out unless the keys it lists
   match. FIFA's Window size has `"when": { "fullscreen": "false" }`.
 
+**Groups.** Give settings a `group` and a small heading shows where the group changes. Settings
+keep the order you list them in.
+
+```json
+{ "id": "invert", "label": "Invert Camera", "group": "Controls", "choices": [ ... ] }
+```
+
+**Advanced options.** `"advanced": true` hides a setting until the player presses Show Advanced
+Options, at the bottom of the list (the launcher remembers it per game). To hide a whole group,
+list it next to `settings`. Hidden settings keep their values and are still written.
+
+```json
+"groups": [ { "id": "Advanced", "advanced": true } ]
+```
+
+**Sliders.** For a number, use `slider` instead of `choices`. Its `key` is read and written like
+`set` keys (`Section/Key` works too), and `format` says how the number is written (printf style,
+`"%g"` when you leave it out). A value off the step, like 1.37 set in the game's own menu, shows
+as it is and stays until the player moves the slider. Left and right move one step.
+
+```json
+{
+  "id": "sens", "label": "Mouse Sensitivity", "group": "Controls",
+  "slider": { "key": "mouse_sensitivity", "min": 0.1, "max": 5, "step": 0.05, "format": "%.2f" },
+  "defaults": { "mouse_sensitivity": "1.0" }
+}
+```
+
+On the command line, use `"in": "args"` with `args` and `{value}` where the number goes:
+`"args": ["--sens", "{value}"]`. It's passed once the player has moved the slider.
+
+**Key bindings.** For controls kept one action per line (`key.cross=Space`), use `bindings`. Each
+action's `key` is read and written like `set` keys. The game page lists the actions with their
+keys as chips: the player presses a chip (or + for another key, up to `max`, 2 by default) and
+then the key, mouse button or wheel. Several keys on one action are joined with `separator`.
+Only actions the player changes are written, and Reset to Default puts back your `defaults`.
+
+```json
+{
+  "id": "keys", "label": "Keyboard & Mouse", "group": "Controls",
+  "bindings": {
+    "separator": "|", "max": 2,
+    "actions": [
+      { "label": "Cross", "key": "key.cross" },
+      { "label": "Options", "key": "key.options" }
+    ]
+  },
+  "defaults": { "key.cross": "Space", "key.options": "Escape|Return" }
+}
+```
+
+Keys are written as letters, digits, F1 to F12, Space, Return, Escape, Tab, Backspace, Shift,
+Ctrl, Alt, Up, Down, Left, Right, Mouse Left, Mouse Right, Mouse Middle, Mouse 4, Mouse 5, Wheel
+Up and Wheel Down. When your file already uses another name for one of them (Enter for Return),
+that one is kept. To choose your own, add `"names": { "Return": "Enter" }`. `"pad": true` on an
+action lets it take a controller button too (A, B, X, Y or Cross, Circle, Square, Triangle, LB,
+RB, LT, RT, Start, Back, the sticks and the D-pad).
+
+When the game closes, the launcher reads its settings again, so changes made in the game's own
+menu show on its page. A value that isn't one of a setting's choices shows as it is.
+
 Keep labels short and help text to a sentence. Say what it does for the player, not what the
 key is called.
 
@@ -340,10 +419,11 @@ the launcher. For the rest, the player gets a link to the mod's page.
 - `actions`: buttons under the settings. `open` opens one of your folders. `clear` empties one,
   written as a folder name and a subfolder (`"saves/cache"`). The launcher asks first.
 - `exit_codes`: when your game exits with one of these, the player sees your message instead of
-  a crash report.
+  a crash report. `"ok"` instead of a message: that's how your game closes when it's quit
+  normally, so it isn't shown as a crash.
 
 ```json
-"exit_codes": { "252968961": "It couldn't find your copy of the game. Pick it again on the game's page." }
+"exit_codes": { "252968961": "It couldn't find your copy of the game. Pick it again on the game's page.", "1": "ok" }
 ```
 
 ## Level 3: full setup

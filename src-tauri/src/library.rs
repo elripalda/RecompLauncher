@@ -89,6 +89,17 @@ pub struct Installed {
     /// Settings passed on the command line: setting id -> choice.
     #[serde(default)]
     pub picks: BTreeMap<String, usize>,
+    /// Settings the player put on Match My Screen: they follow the monitor, written again before
+    /// Play when its size changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub screen_fit: Vec<String>,
+    /// The monitor's size ("3440x1440") when Match My Screen last wrote it: written again only when
+    /// the monitor changes, so a size the player set in the game's own menu stays.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub screen_size: String,
+    /// Sliders passed on the command line: setting id -> the value as written.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub slider_vals: BTreeMap<String, String>,
     /// The player's own launch options, added after everything else.
     #[serde(default)]
     pub args: String,
@@ -115,6 +126,9 @@ pub struct Installed {
     /// Where the player says the game saves (Saves, Change): ahead of everything else.
     #[serde(default)]
     pub save_place: Option<String>,
+    /// More folders the player added (a launcher with several games, each saving in its own).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub more_save_places: Vec<String>,
     /// A picture the player picked for its cover (a copy in the launcher's covers folder).
     #[serde(default)]
     pub cover_file: Option<PathBuf>,
@@ -184,6 +198,9 @@ pub struct Settings {
     /// Back up saves and settings before every update.
     #[serde(default = "yes")]
     pub backup_before_update: bool,
+    /// A folder the player picked for the copies of their saves (none: the launcher's own).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_dir: Option<PathBuf>,
     /// TV mode's size: "small", "medium" or "large" (empty: picked from the screen).
     #[serde(default)]
     pub tv_size: String,
@@ -233,6 +250,10 @@ pub struct Settings {
     /// handhelds, off otherwise.
     #[serde(default)]
     pub lighter: Option<bool>,
+    /// Linux: how the launcher's window is drawn. "fast" (the graphics card's quickest way),
+    /// "safe" (the way that works everywhere) or empty (picked for this PC). Read at start.
+    #[serde(default)]
+    pub linux_graphics: String,
 }
 
 fn yes() -> bool {
@@ -271,6 +292,7 @@ impl Default for Settings {
             data_asked: false,
             notify: true,
             backup_before_update: true,
+            save_dir: None,
             tv_size: String::new(),
             sounds: true,
             menu_tips: 0,
@@ -278,6 +300,7 @@ impl Default for Settings {
             quick_menu: true,
             minimize_playing: None,
             lighter: None,
+            linux_graphics: String::new(),
         }
     }
 }
@@ -300,6 +323,65 @@ pub struct Library {
     /// Mods the launcher put in, by game id.
     #[serde(default)]
     pub mods: BTreeMap<String, Vec<crate::mods::ModRec>>,
+    /// The player's own pictures for games that aren't installed (Customize from Discover or the
+    /// Library first, or kept when a game is uninstalled): put on the game when it's installed.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub arts: BTreeMap<String, ArtSet>,
+}
+
+/// A game's own pictures without the game: what Customize keeps for it.
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
+pub struct ArtSet {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hero_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub art_edit: serde_json::Map<String, serde_json::Value>,
+}
+
+impl ArtSet {
+    pub fn is_empty(&self) -> bool {
+        self.cover_file.is_none() && self.hero_file.is_none() && self.logo_file.is_none() && self.icon_file.is_none() && self.art_edit.is_empty()
+    }
+    /// A game's pictures, to keep when it leaves the Library.
+    pub fn of(g: &Installed) -> ArtSet {
+        ArtSet { cover_file: g.cover_file.clone(), hero_file: g.hero_file.clone(), logo_file: g.logo_file.clone(), icon_file: g.icon_file.clone(), art_edit: g.art_edit.clone() }
+    }
+    /// Put on a game being installed, where it has none of its own.
+    pub fn onto(self, g: &mut Installed) {
+        g.cover_file = g.cover_file.take().or(self.cover_file);
+        g.hero_file = g.hero_file.take().or(self.hero_file);
+        g.logo_file = g.logo_file.take().or(self.logo_file);
+        g.icon_file = g.icon_file.take().or(self.icon_file);
+        for (k, v) in self.art_edit {
+            g.art_edit.entry(k).or_insert(v);
+        }
+    }
+}
+
+impl Library {
+    /// A game into the Library: pictures the player picked for it before go on it.
+    pub fn put(&mut self, id: &str, mut g: Installed) {
+        if let Some(a) = self.arts.remove(id) {
+            a.onto(&mut g);
+        }
+        self.installed.insert(id.to_string(), g);
+    }
+
+    /// A game out of the Library: its own pictures stay for it.
+    pub fn forget(&mut self, id: &str) -> Option<Installed> {
+        let g = self.installed.remove(id)?;
+        let a = ArtSet::of(&g);
+        if !a.is_empty() {
+            self.arts.insert(id.to_string(), a);
+        }
+        Some(g)
+    }
 }
 
 impl Settings {
@@ -432,6 +514,25 @@ pub fn folder_name(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_games_own_pictures_stay_when_it_leaves_and_come_back_with_it() {
+        let mut l = Library::default();
+        let g = Installed { id: "x".into(), cover_file: Some(PathBuf::from("/c/x-cover.jpg")), ..Default::default() };
+        l.installed.insert("x".into(), g);
+        assert!(l.forget("x").is_some());
+        assert_eq!(l.arts["x"].cover_file, Some(PathBuf::from("/c/x-cover.jpg")));
+        // Picked a logo for it while it wasn't installed, then installed it again.
+        l.arts.get_mut("x").unwrap().logo_file = Some(PathBuf::from("/c/x-logo.png"));
+        l.put("x", Installed { id: "x".into(), ..Default::default() });
+        let g = &l.installed["x"];
+        assert_eq!((g.cover_file.clone(), g.logo_file.clone()), (Some(PathBuf::from("/c/x-cover.jpg")), Some(PathBuf::from("/c/x-logo.png"))));
+        assert!(l.arts.is_empty());
+        // A game without pictures leaves nothing behind.
+        l.installed.insert("y".into(), Installed { id: "y".into(), ..Default::default() });
+        l.forget("y");
+        assert!(!l.arts.contains_key("y"));
+    }
+
     use super::*;
 
     #[test]
