@@ -38,8 +38,8 @@ The platform configuration also makes `npm run build` produce an app and disk im
 The deployment target is macOS 11; this is a build target, not a claim that every older macOS
 release has been tested. Intel launcher builds are not part of this initial support.
 
-The **macOS checks** workflow tests and builds on an Apple Silicon `macos-15` runner.
-Its `macos-apple-silicon` artifact contains a ZIP, a DMG and SHA-256 checksums, retained for
+The **PR checks** workflow tests and builds on an Apple Silicon `macos-15` runner.
+Its `installers-macos-15` artifact contains a ZIP, a DMG and SHA-256 checksums, retained for
 14 days. These are test builds: the workflow does not publish releases, and does not use an
 Apple Developer ID certificate or notarization. The app is ad-hoc signed. ZIP packaging uses
 `ditto` to preserve the application's links and permissions.
@@ -85,16 +85,18 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 
 ## Pull request builds
 
-The `PR checks` GitHub Actions workflow runs the Rust tests and builds installers on
-Windows and Linux for every pull request, pushes to `main`, and manual runs. Download
-the `installers-windows-latest` or `installers-ubuntu-24.04` artifact from a successful
-workflow run for the NSIS `.exe` or Linux `.deb` and `.AppImage` packages. Artifacts
+The `PR checks` GitHub Actions workflow runs the Rust and UI tests and builds installers on
+Windows, Linux and macOS for every pull request, pushes to `main`, and manual runs. Download
+the `installers-windows-latest`, `installers-ubuntu-24.04` or `installers-macos-15` artifact from
+a successful workflow run for the NSIS `.exe`, Linux `.deb` and `.AppImage`, or Mac app ZIP
+and `.dmg` packages. The Mac job builds natively on Apple Silicon, using the default
+`src-tauri/target/release/bundle/` output path before staging its artifacts. Artifacts
 are retained for 14 days; these builds do not publish a release. Windows CI packages
 use Tauri's standard installer screens; the optional branding step above is not run.
 
-A repository administrator must require `Build and test (windows-latest)` and
-`Build and test (ubuntu-24.04)` in the target branch's ruleset to block merging when
-either check fails. The workflow alone does not enforce merge restrictions.
+A repository administrator must require `Build and test (windows-latest)`,
+`Build and test (ubuntu-24.04)` and `Build and test (macos-15)` in the target branch's ruleset
+to block merging when any platform check fails. The workflow alone does not enforce merge restrictions.
 
 ## How it's put together
 
