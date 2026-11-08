@@ -121,6 +121,11 @@ static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Seen>>> 
 pub(crate) fn manifest(path: &Path) -> io::Result<Vec<u8>> {
     let meta = fs::metadata(path)?;
     let (len, modified) = (meta.len(), meta.modified().ok());
+    // Coarse filesystem timestamps can hide rapid rewrites of the same size.
+    // Wait beyond their two-second resolution before trusting or filling the cache.
+    if !modified.and_then(|t| t.elapsed().ok()).map(|age| age >= std::time::Duration::from_secs(2)).unwrap_or(false) {
+        return read_manifest(path);
+    }
     if let Some((l, m, r)) = SEEN.lock().unwrap().as_ref().and_then(|c| c.get(path)) {
         if *l == len && *m == modified && modified.is_some() {
             return r.clone().map_err(|(k, msg)| io::Error::new(k, msg));
@@ -293,11 +298,35 @@ pub(crate) mod tests {
         let dir = TempDir::new();
         let path = dir.0.join("Kept.AppImage");
         fs::write(&path, image(Some(br#"{"format":1}"#), Compressor::Gzip)).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        File::options().write(true).open(&path).unwrap().set_times(fs::FileTimes::new().set_modified(old)).unwrap();
         assert_eq!(manifest(&path).unwrap(), br#"{"format":1}"#);
         // Changed on disk (another size): read again.
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        fs::write(&path, image(Some(br#"{"format":1,"x":2}"#), Compressor::Gzip)).unwrap();
+        let mut changed = image(Some(br#"{"format":1,"x":2}"#), Compressor::Gzip);
+        changed.push(0); // SquashFS padding can otherwise give both images the same size.
+        fs::write(&path, changed).unwrap();
+        File::options().write(true).open(&path).unwrap().set_times(fs::FileTimes::new().set_modified(old)).unwrap();
         assert_eq!(manifest(&path).unwrap(), br#"{"format":1,"x":2}"#);
+    }
+
+    #[test]
+    fn recent_same_size_rewrites_are_read_even_with_the_same_timestamp() {
+        let dir = TempDir::new();
+        let path = dir.0.join("Replaced.AppImage");
+        let first = image(Some(br#"{"format":1,"name":"first"}"#), Compressor::Zstd);
+        let mut other = image(Some(br#"{"format":1,"name":"other"}"#), Compressor::Zstd);
+        // Padding after SquashFS is allowed; keep both files exactly the same size.
+        let len = first.len().max(other.len());
+        let mut first = first;
+        first.resize(len, 0);
+        other.resize(len, 0);
+        fs::write(&path, first).unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(manifest(&path).unwrap(), br#"{"format":1,"name":"first"}"#);
+        fs::write(&path, other).unwrap();
+        File::options().write(true).open(&path).unwrap().set_times(fs::FileTimes::new().set_modified(modified)).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), modified);
+        assert_eq!(manifest(&path).unwrap(), br#"{"format":1,"name":"other"}"#);
     }
 
     #[test]
