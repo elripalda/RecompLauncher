@@ -36,7 +36,7 @@ async function whatsNew() {
   try { v = await invoke('launcher_notes'); } catch (e) { /* offline: next time */ return; }
   await saveUi({ seen_version: S.version });
   if (!v || v.version !== S.version || !v.notes) return;
-  modal(`<div class="whatsnew"><h2>${esc(tf('What\'s new in RecompLauncher {version}', { version: verName(S.version) }))}</h2><div class="md">${md(v.notes)}</div>
+  modal(`<div class="whatsnew"><h2>${esc(tf('What\'s new in RecompLauncher {version}', { version: verName(S.version) }))}</h2><div class="md">${md(v.notes, true)}</div>
     <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Got it'))}</button></div></div>`, () => {}, t('What\'s new'));
 }
 

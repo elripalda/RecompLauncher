@@ -419,6 +419,7 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .md h1,.md h2,.md h3,.md h4{font-size:16.5px;margin:18px 0 8px;color:var(--ink)}
 .md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
 .md p{margin:0 0 12px}.md ul,.md ol{margin:0 0 12px;padding-left:22px}.md li{margin:3px 0}
+.md .md-mention{font-weight:700}.md .md-mention:hover{text-decoration:underline}
 .md code{font:500 13px ui-monospace,Consolas,monospace;background:var(--fill3);padding:1px 5px;border-radius:5px}
 .md pre{background:var(--bg2);padding:12px;border-radius:12px;overflow:auto}.md pre code{background:none;padding:0}
 .md blockquote{margin:0 0 12px;padding-left:12px;border-left:3px solid var(--line3);color:var(--muted)}

@@ -240,14 +240,18 @@ const fail = (e) => toast(t(String(e && e.message ? e.message : e).replace(/^[A-
 
 // Markdown from README sections and release notes, made safe: HTML tags dropped, everything escaped,
 // links opened in the browser.
-function md(src) {
+function md(src, githubMentions = false) {
   const inline = (s) => s
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/__([^_]+)__/g, '<b>$1</b>')
     .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>').replace(/(^|[\s(])_([^_\s][^_]*)_(?=[\s.,)!?]|$)/g, '$1<i>$2</i>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="#" data-url="$2">$1</a>')
-    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="#" data-url="$2">$2</a>');
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="#" data-url="$2">$2</a>')
+    // Link GitHub handles only in text, never inside an existing link, code or HTML attribute.
+    .split(/(<a\b[^>]*>[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>|<[^>]*>)/g)
+    .map((part, i) => !githubMentions || i % 2 ? part : part.replace(/(^|[\s([{,:;!?])@([a-z\d](?:[a-z\d-]{0,37}[a-z\d])?)(?![\w\/-])/gi,
+      '$1<a href="#" class="md-mention" data-url="https://github.com/$2">@$2</a>')).join('');
   const lines = esc(String(src || '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\r/g, '')).split('\n');
   const out = []; let para = [], list = null, code = null;
   const flush = () => { if (para.length) out.push('<p>' + inline(para.join(' ')) + '</p>'); para = []; if (list) { out.push(`</${list}>`); list = null; } };
@@ -2494,7 +2498,7 @@ function updNotes(u) {
   if (u.self) {
     const n = S.selfNotes;
     if (n === undefined) { loadSelfNotes(); return `<p class="muted">${esc(t('Loading the notes…'))}</p>`; }
-    return n && relKey(n.version) === relKey(u.tag) && n.notes ? `<div class="md">${md(n.notes)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
+    return n && relKey(n.version) === relKey(u.tag) && n.notes ? `<div class="md">${md(n.notes, true)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
   }
   if (!u.repo) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
   const r = S.rels[u.repo];
