@@ -93,10 +93,13 @@ jobs:
           cd artifacts
           shasum -a 256 *.zip *.dmg > SHA256SUMS
 
+      # Test builds stay private to the run: they're only kept when someone starts a run by hand.
+      # Releases are built by release.yml, straight into a draft.
       - name: Upload installers
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}
           path: ${{ matrix.artifacts }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3

@@ -1,0 +1,148 @@
+name: Release builds
+
+# Pushing a version tag (v0.90.0-beta.25) builds Windows, Linux and Mac together and puts every
+# file in a draft release for that tag. Nothing is public until the draft is published.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to build (it must already exist)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            bundles: nsis
+          - name: Linux
+            os: ubuntu-24.04
+            bundles: deb,appimage
+          - name: Mac
+            os: macos-15
+            bundles: app,dmg
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libudev-dev libssl-dev patchelf
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --locked
+
+      - name: Build
+        shell: bash
+        run: npm run build -- --bundles ${{ matrix.bundles }} -- --locked
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          # The launcher must start on a PC without the Visual C++ runtime.
+          RUSTFLAGS: ${{ runner.os == 'Windows' && '-C target-feature=+crt-static' || '' }}
+
+      - name: Brand the Windows installer
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          # Tauri keeps its own NSIS; the branding script rebuilds the installer with it.
+          export PATH="$LOCALAPPDATA/tauri/NSIS:$LOCALAPPDATA/tauri/NSIS/Bin:$PATH"
+          python tools/brand-installer.py src-tauri/target/release
+
+      - name: Collect files
+        shell: bash
+        run: |
+          mkdir -p out
+          b=src-tauri/target/release/bundle
+          case "${{ runner.os }}" in
+            Windows) cp "$b"/nsis/*-setup.exe out/ ;;
+            Linux) cp "$b"/deb/*.deb "$b"/appimage/*.AppImage out/ ;;
+            macOS)
+              codesign --verify --deep --strict "$b/macos/RecompLauncher.app"
+              cp "$b"/dmg/*.dmg out/ ;;
+          esac
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 1
+
+  draft:
+    name: Put the files in a draft
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Source zip
+        run: |
+          v="${TAG#v}"
+          git archive --format=zip --prefix="RecompLauncher-$v/" HEAD -o "out/RecompLauncher-$v-source.zip"
+          ls -l out
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${TAG#v}"
+          # v0.90.0-beta.25 -> "RecompLauncher 0.90 Beta 25", notes from docs/PATCH-NOTES-0.90-beta-25.md
+          major_minor=$(echo "$v" | cut -d. -f1-2)
+          beta=$(echo "$v" | sed -n 's/.*-beta\.\([0-9]*\).*/\1/p')
+          title="RecompLauncher $major_minor${beta:+ Beta $beta}"
+          notes="docs/PATCH-NOTES-$major_minor${beta:+-beta-$beta}.md"
+          # The notes file's own heading isn't repeated in the release.
+          if [ -f "$notes" ]; then sed '1{/^# /d}' "$notes" | sed '/./,$!d' > body.md; else : > body.md; fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --draft --prerelease --title "$title" --notes-file body.md --verify-tag
+          fi
