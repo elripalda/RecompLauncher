@@ -675,7 +675,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 14;
+pub const EXE_RULES: u8 = 15;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -683,7 +683,7 @@ pub const EXE_RULES: u8 = 14;
 const TOOL_WORDS: [&str; 26] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
-const BUILD_TOOLS: [&str; 63] = [
+const BUILD_TOOLS: [&str; 66] = [
     "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
     "tcc", "zig", "sccache", "ccache", "goalc",
     "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
@@ -691,7 +691,7 @@ const BUILD_TOOLS: [&str; 63] = [
     // Disc and package converters a release brings along for the player's copy.
     "chd2gdi", "gdi2chd", "chdman", "maxcso", "extract-xiso", "xdvdfs", "hactool", "nsz",
     // Recompilers a release brings to build the game from the player's copy.
-    "nxlift", "xbe_recomp", "xenonrecomp", "xenonanalyse", "n64recomp", "ps2recomp",
+    "nxlift", "xbe_recomp", "xenonrecomp", "xenonanalyse", "n64recomp", "ps2recomp", "ffmpeg", "ffprobe", "ffplay",
 ];
 /// Folders a release keeps its tools, or leftovers from building, in.
 /// "Tools" in other languages too: ferramentas (Portuguese), herramientas (Spanish), outils

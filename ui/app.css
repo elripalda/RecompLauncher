@@ -419,6 +419,7 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .md h1,.md h2,.md h3,.md h4{font-size:16.5px;margin:18px 0 8px;color:var(--ink)}
 .md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
 .md p{margin:0 0 12px}.md ul,.md ol{margin:0 0 12px;padding-left:22px}.md li{margin:3px 0}
+.md .md-mention{font-weight:700}.md .md-mention:hover{text-decoration:underline}
 .md code{font:500 13px ui-monospace,Consolas,monospace;background:var(--fill3);padding:1px 5px;border-radius:5px}
 .md pre{background:var(--bg2);padding:12px;border-radius:12px;overflow:auto}.md pre code{background:none;padding:0}
 .md blockquote{margin:0 0 12px;padding-left:12px;border-left:3px solid var(--line3);color:var(--muted)}
@@ -942,8 +943,10 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .gp.noart .gp-cover{display:none}
 .oob-win{position:absolute;top:6px;right:4px}
 
-/* Out of sight: nothing moves until the window is back. */
-body.away *,body.away *::before,body.away *::after{animation-play-state:paused!important}
+/* Out of sight: nothing moves until the window is back. The hero also rests when another window
+   is in front of the launcher, so an unfocused/covered window doesn't keep drawing its zoom. */
+body.away *,body.away *::before,body.away *::after,body.unfocused *,body.unfocused *::before,body.unfocused *::after{animation-play-state:paused!important}
+body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 
 /* ---------- 0.9: account and cloud saves ---------- */
 .acc-pic{display:inline-block;flex:none;border-radius:50%;object-fit:cover;background:var(--card2)}

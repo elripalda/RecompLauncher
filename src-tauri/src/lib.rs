@@ -2660,7 +2660,7 @@ struct SetupEv {
 fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> Res<()> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
-    if !p.inputs.is_empty() { return Err(Error::Msg("Use the named-input Easy Setup screen for this game.".into())); }
+    if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
     let copy = PathBuf::from(&path);
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -3536,12 +3536,12 @@ fn setup_input_set(st: State<'_, App>, id: String, input: String, path: Option<S
         if !path.is_absolute() { return Err(Error::Msg("Choose an absolute file or folder path.".into())); }
         g.setup_inputs.insert(input.clone(), path);
         if !inputs::rows(&p, &g, &st.dir).map_err(Error::Msg)?.iter().any(|r| r.id == input && r.path.is_some()) {
-            return Err(Error::Msg("That file or folder doesn't match this input's declared format.".into()));
+            return Err(Error::Msg("That file or folder isn't the kind this game asks for here.".into()));
         }
         // One source cannot silently satisfy two disc/DLC slots. Identity hashing is deferred.
         let chosen = g.setup_inputs[&input].canonicalize().map_err(|_| Error::Msg("Couldn't open that input.".into()))?;
         if g.setup_inputs.iter().any(|(k, v)| k != &input && v.canonicalize().ok().as_ref() == Some(&chosen)) {
-            return Err(Error::Msg("That file is already selected for another input.".into()));
+            return Err(Error::Msg("That file is already picked for another slot.".into()));
         }
     } else {
         g.setup_inputs.remove(&input);
@@ -3603,7 +3603,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) { x.input_staged = g.input_staged.clone(); x.input_stamps = g.input_stamps.clone(); }
             st.save();
             placed?;
-            emit("verify", 1.0, "Files selected. Disc checksums haven't been verified.".into());
+            emit("verify", 1.0, "Files selected.".into());
             if let Some(pr) = &p.prepare {
                 let mut pr = pr.clone();
                 // Omit an argument containing an absent optional/conditional token. Put flags in
@@ -3624,7 +3624,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
             Ok(())
         })();
         if !stopped() {
-            match result { Ok(()) => emit("done", 1.0, "Files are set up. Disc checksums haven't been verified.".into()), Err(why) => emit("error", 0.0, why) }
+            match result { Ok(()) => emit("done", 1.0, "Your files are set up.".into()), Err(why) => emit("error", 0.0, why) }
         }
         if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() { if m.get(&id) == Some(&run) { m.remove(&id); } }
         INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
@@ -4522,6 +4522,12 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         } else if said("--game_data_root") {
             // An Xbox 360 recomp that takes the game's files from a folder it's given.
             out.push(check("bad", "It needs to be told where your game files are", "This recomp reads your extracted game from a folder given to it when it starts, and its page doesn't set that up yet. Use Set Up By Hand and pick the folder with your game's files (the one with default.xex).", "manual"));
+        } else if said("Required extensions are missing") || said("Missing required extension: VK_") || said("Unable to create instance") {
+            // Vulkan's own words for a graphics driver that can't run it: not a missing file.
+            out.push(check("bad", "Your graphics driver can't run it", "Vulkan couldn't start with the parts this game needs. Update your graphics driver from NVIDIA, AMD or Intel; on a laptop, make sure it uses its faster graphics card.", "driver"));
+        } else if said("Required extensions are missing") || said("Missing required extension: VK_") || said("Unable to create instance") {
+            // Vulkan's own words for a graphics driver that can't run it: not a missing file.
+            out.push(check("bad", "Your graphics driver can't run it", "Vulkan couldn't start with the parts this game needs. Update your graphics driver from NVIDIA, AMD or Intel; on a laptop, make sure it uses its faster graphics card.", "driver"));
         } else if let Some(line) = missing {
             out.push(check("bad", "It says something it needs is missing", line.trim().chars().take(300).collect::<String>(), if needs_copy { "copy" } else { "files" }));
         } else if let Some(line) = text.lines().rev().take(80).find(|l| wrong_copy_line(l)) {

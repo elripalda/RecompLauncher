@@ -113,7 +113,34 @@ pub(crate) fn installed_image(dir: &Path) -> Option<PathBuf> {
     image
 }
 
+/// What was read from each AppImage (its size and modified time, and the manifest or why not),
+/// so looking a game's profile up again doesn't open and walk a big image every time.
+type Seen = (u64, Option<std::time::SystemTime>, Result<Vec<u8>, (io::ErrorKind, String)>);
+static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Seen>>> = std::sync::Mutex::new(None);
+
 pub(crate) fn manifest(path: &Path) -> io::Result<Vec<u8>> {
+    let meta = fs::metadata(path)?;
+    let (len, modified) = (meta.len(), meta.modified().ok());
+    if let Some((l, m, r)) = SEEN.lock().unwrap().as_ref().and_then(|c| c.get(path)) {
+        if *l == len && *m == modified && modified.is_some() {
+            return r.clone().map_err(|(k, msg)| io::Error::new(k, msg));
+        }
+    }
+    let r = read_manifest(path);
+    let kept = match &r {
+        Ok(b) => Ok(b.clone()),
+        Err(e) => Err((e.kind(), e.to_string())),
+    };
+    let mut c = SEEN.lock().unwrap();
+    let c = c.get_or_insert_with(std::collections::HashMap::new);
+    if c.len() > 256 {
+        c.clear();
+    }
+    c.insert(path.to_path_buf(), (len, modified, kept));
+    r
+}
+
+fn read_manifest(path: &Path) -> io::Result<Vec<u8>> {
     let mut file = File::open(path)?;
     let offset = payload_offset(&mut file)?;
     // Malformed compressed blocks in third-party images must not unwind into
@@ -259,6 +286,18 @@ pub(crate) mod tests {
         bytes[40..48].copy_from_slice(&u64::MAX.to_le_bytes());
         fs::write(&path, bytes).unwrap();
         assert!(manifest(&path).is_err());
+    }
+
+    #[test]
+    fn a_read_image_is_remembered_until_it_changes() {
+        let dir = TempDir::new();
+        let path = dir.0.join("Kept.AppImage");
+        fs::write(&path, image(Some(br#"{"format":1}"#), Compressor::Gzip)).unwrap();
+        assert_eq!(manifest(&path).unwrap(), br#"{"format":1}"#);
+        // Changed on disk (another size): read again.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&path, image(Some(br#"{"format":1,"x":2}"#), Compressor::Gzip)).unwrap();
+        assert_eq!(manifest(&path).unwrap(), br#"{"format":1,"x":2}"#);
     }
 
     #[test]

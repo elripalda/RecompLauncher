@@ -269,6 +269,10 @@ fn destination(install: &Path, rel: &str) -> Result<PathBuf, String> {
     if !parent.canonicalize().map_err(|_| "Couldn't check input destination.")?.starts_with(&root) { return Err("Input destination leaves the installation.".into()); }
     Ok(target)
 }
+/// Files this big (disc images) are placed as a hard link when they can be; smaller ones (DLC,
+/// small data files a game might write to) are always copied.
+pub const LINK_AT_LEAST: u64 = 512 * 1024 * 1024;
+
 pub fn stage(p: &Profile, g: &mut Installed, dir: &Path) -> Result<(), String> {
     stage_cancellable(p, g, dir, &|| false)
 }
@@ -301,8 +305,12 @@ pub fn stage_cancellable(p: &Profile, g: &mut Installed, dir: &Path, stopped: &d
         if target.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink() || m.is_dir()) { return Err("Input destination isn't a regular file.".into()); }
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let temp = target.parent().unwrap().join(format!(".recomplauncher-input-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        // A hard link shares the player's file itself: a game writing to it would change their
+        // original. Only big disc images (read, never written) are linked; anything smaller is
+        // copied.
+        let link_ok = metadata.len() >= LINK_AT_LEAST;
         let result = if i.shared.is_empty() {
-            fs::hard_link(source, &temp).or_else(|_| {
+            (if link_ok { fs::hard_link(source, &temp) } else { Err(std::io::Error::other("copy")) }).or_else(|_| {
                 use std::io::{Read, Write};
                 let mut src = fs::File::open(source)?;
                 let mut dst = fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
@@ -411,6 +419,31 @@ mod tests {
         fs::remove_file(&target).unwrap(); stage(&p, &mut g, &dir).unwrap();
         g.setup_inputs.remove("dlc"); stage(&p, &mut g, &dir).unwrap();
         assert!(!target.exists()); assert!(source.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn changing_a_disc_asks_to_set_up_again() {
+        let p: Profile = serde_json::from_str(include_str!("../../docs/examples/multidisc-inputs.json")).unwrap();
+        let (_, mut g, dir) = fixture();
+        for n in 1..=4 { let path = dir.join(format!("Disc {n}.iso")); fs::write(&path, b"disc").unwrap(); g.setup_inputs.insert(format!("disc{n}"), path); }
+        g.inputs_ready = signature(&p, &g, &dir).unwrap();
+        assert!(ready(&p, &g, &dir));
+        // Another file picked for disc 2: not ready until it's set up again.
+        let other = dir.join("Disc 2 (Rev 1).iso"); fs::write(&other, b"another disc").unwrap();
+        g.setup_inputs.insert("disc2".into(), other);
+        assert!(!ready(&p, &g, &dir));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_game_writing_a_placed_file_leaves_the_players_original() {
+        let (mut p, mut g, dir) = fixture();
+        p.inputs[2].destination = "dlc.bin".into();
+        g.setup_inputs.insert("disc1".into(), dir.clone());
+        let source = dir.join("original-dlc.bin"); fs::write(&source, b"DLC").unwrap();
+        g.setup_inputs.insert("dlc".into(), source.clone());
+        stage(&p, &mut g, &dir).unwrap();
+        fs::write(dir.join("dlc.bin"), b"written by the game").unwrap();
+        assert_eq!(fs::read(&source).unwrap(), b"DLC");
         fs::remove_dir_all(dir).unwrap();
     }
 }

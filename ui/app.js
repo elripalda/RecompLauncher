@@ -240,14 +240,18 @@ const fail = (e) => toast(t(String(e && e.message ? e.message : e).replace(/^[A-
 
 // Markdown from README sections and release notes, made safe: HTML tags dropped, everything escaped,
 // links opened in the browser.
-function md(src) {
+function md(src, githubMentions = false) {
   const inline = (s) => s
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/__([^_]+)__/g, '<b>$1</b>')
     .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>').replace(/(^|[\s(])_([^_\s][^_]*)_(?=[\s.,)!?]|$)/g, '$1<i>$2</i>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="#" data-url="$2">$1</a>')
-    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="#" data-url="$2">$2</a>');
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="#" data-url="$2">$2</a>')
+    // Link GitHub handles only in text, never inside an existing link, code or HTML attribute.
+    .split(/(<a\b[^>]*>[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>|<[^>]*>)/g)
+    .map((part, i) => !githubMentions || i % 2 ? part : part.replace(/(^|[\s([{,:;!?])@([a-z\d](?:[a-z\d-]{0,37}[a-z\d])?)(?![\w\/-])/gi,
+      '$1<a href="#" class="md-mention" data-url="https://github.com/$2">@$2</a>')).join('');
   const lines = esc(String(src || '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\r/g, '')).split('\n');
   const out = []; let para = [], list = null, code = null;
   const flush = () => { if (para.length) out.push('<p>' + inline(para.join(' ')) + '</p>'); para = []; if (list) { out.push(`</${list}>`); list = null; } };
@@ -968,9 +972,18 @@ function showSlide(i) {
   $$('.slide', s).forEach((x, k) => { x.classList.toggle('on', k === S.slide); x.setAttribute('aria-hidden', String(k !== S.slide)); });
   $$('.sl-ui .dot', s).forEach((x, k) => x.classList.toggle('on', k === S.slide));
 }
+// The hero only moves while the window is really in front. A merely unfocused or covered window
+// (another app on top, the launcher behind a game) leaves it still, so an idle launcher draws no
+// frames. Minimized/hidden is already handled by S.away and document.hidden.
+const windowInFront = () => !document.hidden && document.hasFocus();
+const markWindowFocus = () => document.body.classList.toggle('unfocused', !windowInFront());
+addEventListener('focus', markWindowFocus);
+addEventListener('blur', markWindowFocus);
+document.addEventListener('visibilitychange', markWindowFocus);
+markWindowFocus();
 setInterval(() => {
   const s = $('#slider');
-  if (!s || document.hidden || S.away || s.matches(':hover') || document.body.classList.contains('tv-on') || $('.scrim')) return;
+  if (!s || !windowInFront() || S.away || s.matches(':hover') || document.body.classList.contains('tv-on') || $('.scrim')) return;
   if (document.body.classList.contains('lighter') || S.running.size) return;
   showSlide((S.slide || 0) + 1);
 }, 8000);
@@ -2500,7 +2513,7 @@ function updNotes(u) {
   if (u.self) {
     const n = S.selfNotes;
     if (n === undefined) { loadSelfNotes(); return `<p class="muted">${esc(t('Loading the notes…'))}</p>`; }
-    return n && relKey(n.version) === relKey(u.tag) && n.notes ? `<div class="md">${md(n.notes)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
+    return n && relKey(n.version) === relKey(u.tag) && n.notes ? `<div class="md">${md(n.notes, true)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
   }
   if (!u.repo) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
   const r = S.rels[u.repo];
@@ -4794,7 +4807,7 @@ async function crashModal(p) {
   const vkLoader = !gpu && /\[vulkan loader\] error|vkGetPhysicalDevice\w*: invalid physicalDevice|vkEnumeratePhysicalDevices\w*: invalid|Invalid physicalDevice/i.test(said);
   const wrongDisc = /no game archives|not the right disc|wrong disc/i.test(said);
   // Windows itself stopped the program: Smart App Control, or an app control policy.
-  const sac = [-1058471934, 3236495362].includes(Number(p.code)) || /blocked by (?:smart app control|your organization|app control)/i.test(said);
+  const sac = [-1058471934, 3236495362].includes(Number(p.code)) || /blocked by (?:smart app control|your organization|app control)|application control policy has blocked|0x800711C7/i.test(said);
   // The release has a program for each version of the game, and this one isn't for the player's.
   const otherBuild = /use the build that matches|recompiled from a different version of the game executable/i.test(said);
   const wrongCopy = !armProton && /wrong rom|rom is not supported|rom (?:file )?is truncated|truncated or invalid|invalid rom|cartridge id at|bad n64 magic|validation failed|isn't the (?:pal|ntsc|usa|us|european|japanese|japan|europe)\b|failed validation|re-dump|verify your file matches|hash mismatch|doesn't match any known|not a supported (?:dump|rom|version)|unsupported (?:rom|dump|version|revision)|wrong (?:region|revision)|bad dump|country byte|rejected: .{0,40}expected|region mismatch|sha1 [0-9a-f]{6,}.{0,30}another release|another release of (?:the|this) game/i.test(said);
@@ -5155,6 +5168,23 @@ const TS_TEXT = [
   N_('That setting isn\'t a slider.'),
   N_('That isn\'t a number.'),
   N_('That isn\'t a game.'),
+  N_('Required files'),
+  N_('Shared keys'),
+  N_('Choose file'),
+  N_('Choose folder'),
+  N_('Working…'),
+  N_('{ready} of {total} discs selected'),
+  N_('{ready} of {total} game files selected'),
+  N_('Insert your copies of {game}'),
+  N_('Finish choosing this game\'s files in Easy Setup.'),
+  N_('Checking the selected files'),
+  N_('Files selected.'),
+  N_('Your files are set up.'),
+  N_('Set this game up from its Easy Setup screen.'),
+  N_('That file is already picked for another slot.'),
+  N_('That file or folder isn\'t the kind this game asks for here.'),
+  N_('Close the game or stop setup first.'),
+  N_('The selected files changed. Run setup again.'),
   N_('It came with old copies of files Windows has newer ones of'),
   N_('{files}: the game uses these instead of Windows\' newer ones, and may close with "a DLL it needs is too old". Moving them aside fixes that.'),
   N_('Your graphics driver is out of date'),
