@@ -83,6 +83,19 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 `RL_API=http://127.0.0.1:8120 npm run dev`. It reads `/pc-catalog.json` and
 `/api/gh.php?repo=owner/name` (the same JSON as GitHub's releases API).
 
+## Pull request builds
+
+The `PR checks` GitHub Actions workflow runs the Rust tests and builds installers on
+Windows and Linux for every pull request, pushes to `main`, and manual runs. Download
+the `installers-windows-latest` or `installers-ubuntu-24.04` artifact from a successful
+workflow run for the NSIS `.exe` or Linux `.deb` and `.AppImage` packages. Artifacts
+are retained for 14 days; these builds do not publish a release. Windows CI packages
+use Tauri's standard installer screens; the optional branding step above is not run.
+
+A repository administrator must require `Build and test (windows-latest)` and
+`Build and test (ubuntu-24.04)` in the target branch's ruleset to block merging when
+either check fails. The workflow alone does not enforce merge restrictions.
+
 ## How it's put together
 
 - `src-tauri/src/assets.rs` picks which release file is the build for this PC.
