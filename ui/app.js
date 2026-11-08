@@ -968,9 +968,18 @@ function showSlide(i) {
   $$('.slide', s).forEach((x, k) => { x.classList.toggle('on', k === S.slide); x.setAttribute('aria-hidden', String(k !== S.slide)); });
   $$('.sl-ui .dot', s).forEach((x, k) => x.classList.toggle('on', k === S.slide));
 }
+// The hero only moves while the window is really in front. A merely unfocused or covered window
+// (another app on top, the launcher behind a game) leaves it still, so an idle launcher draws no
+// frames. Minimized/hidden is already handled by S.away and document.hidden.
+const windowInFront = () => !document.hidden && document.hasFocus();
+const markWindowFocus = () => document.body.classList.toggle('unfocused', !windowInFront());
+addEventListener('focus', markWindowFocus);
+addEventListener('blur', markWindowFocus);
+document.addEventListener('visibilitychange', markWindowFocus);
+markWindowFocus();
 setInterval(() => {
   const s = $('#slider');
-  if (!s || document.hidden || S.away || s.matches(':hover') || document.body.classList.contains('tv-on') || $('.scrim')) return;
+  if (!s || !windowInFront() || S.away || s.matches(':hover') || document.body.classList.contains('tv-on') || $('.scrim')) return;
   if (document.body.classList.contains('lighter') || S.running.size) return;
   showSlide((S.slide || 0) + 1);
 }, 8000);

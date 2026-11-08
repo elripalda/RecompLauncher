@@ -909,8 +909,10 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .gp.noart .gp-cover{display:none}
 .oob-win{position:absolute;top:6px;right:4px}
 
-/* Out of sight: nothing moves until the window is back. */
-body.away *,body.away *::before,body.away *::after{animation-play-state:paused!important}
+/* Out of sight: nothing moves until the window is back. The hero also rests when another window
+   is in front of the launcher, so an unfocused/covered window doesn't keep drawing its zoom. */
+body.away *,body.away *::before,body.away *::after,body.unfocused *,body.unfocused *::before,body.unfocused *::after{animation-play-state:paused!important}
+body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 
 /* ---------- 0.9: account and cloud saves ---------- */
 .acc-pic{display:inline-block;flex:none;border-radius:50%;object-fit:cover;background:var(--card2)}
