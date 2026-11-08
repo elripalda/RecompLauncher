@@ -3,6 +3,18 @@
 The launcher is a [Tauri](https://tauri.app) app: a Rust core (`src-tauri/`) and a window made of
 plain HTML, CSS and JavaScript (`ui/`).
 
+## Release notes
+
+Write release notes in `docs/PATCH-NOTES-<version>.md`. End each change with its author's GitHub
+handle: `— Added by @username.`, `— Fixed by @username.` or `— Improved by @username.` Link the
+pull request when available. Verify authorship from the original commits or pull request, rather
+than the person who merged or published the release. Split changes by different authors into
+separate bullets, or credit everyone who contributed to a shared change.
+
+When publishing or editing a GitHub release, copy the matching patch notes into its description;
+changing these files does not update an already published release. General thanks can accompany
+the notes, but each change should still name its author.
+
 ## What you need
 
 You need [Rust](https://rustup.rs) and Node.js 20 or newer. On Windows that's all (Rust's default
