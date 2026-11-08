@@ -67,6 +67,13 @@ In-game screenshot capture, visual effects and platform-specific overlays are no
 for Mac in this release. Controller and game compatibility depend on the individual recomp;
 a successful launcher build does not establish compatibility for every catalog entry.
 
+Zelda 64: Recompiled v1.2.2 has a known Mac shutdown crash: closing the game can show
+"Zelda64Recompiled quit unexpectedly" after gameplay has stopped. This also happens when
+the game is launched directly; see [Zelda issue #583](https://github.com/Zelda64Recomp/Zelda64Recomp/issues/583).
+Its graphics library has a [merged Metal ownership fix](https://github.com/renderbag/plume/pull/97),
+but the published v1.2.2 game predates that fix. Installing or reinstalling the same game release
+does not fix it. The launcher preserves the developer's game bundle and does not patch its code.
+
 A build you make yourself won't be byte-for-byte the same file as a release (the compiler stamps
 times and paths into it), so its checksum won't match. The code it's built from is this code.
 
