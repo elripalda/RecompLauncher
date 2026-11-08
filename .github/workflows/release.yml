@@ -142,6 +142,11 @@ jobs:
           # The notes file's own heading isn't repeated in the release.
           if [ -f "$notes" ]; then sed '1{/^# /d}' "$notes" | sed '/./,$!d' > body.md; else : > body.md; fi
           if gh release view "$TAG" >/dev/null 2>&1; then
+            # Only ever a draft: a published release is never changed from here.
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "$TAG is already published; nothing was changed." >&2
+              exit 1
+            fi
             gh release upload "$TAG" out/* --clobber
           else
             gh release create "$TAG" out/* --draft --prerelease --title "$title" --notes-file body.md --verify-tag
