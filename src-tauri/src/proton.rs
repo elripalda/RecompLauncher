@@ -435,7 +435,8 @@ mod tests {
         // umu-run brings its own Winetricks, on the same prefix the games use.
         if let Ok(c) = winetricks_command(&Runner::Umu(PathBuf::from("/usr/bin/umu-run"), Some(proton.clone())), &base, None) {
             let env: Vec<_> = c.get_envs().filter_map(|(k, v)| Some((k.to_string_lossy().to_string(), v?.to_string_lossy().to_string()))).collect();
-            assert!(env.contains(&("WINEPREFIX".into(), base.join("proton/pfx").to_string_lossy().to_string())));
+            // Compared as paths: Windows writes the separator its own way.
+            assert!(env.iter().any(|(k, v)| k.eq_ignore_ascii_case("WINEPREFIX") && Path::new(v) == base.join("proton").join("pfx")));
             assert_eq!(c.get_args().next().map(|a| a.to_string_lossy().to_string()).as_deref(), Some("winetricks"));
         }
         let _ = std::fs::remove_dir_all(&base);

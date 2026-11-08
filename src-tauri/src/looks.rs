@@ -848,18 +848,20 @@ mod tests {
         assert_eq!(route_for(&d, "g", Api::Both), (Api::Both, Some("both")));
         after_run(&d, "g", "both", 120, Some(1)); // played a while: nothing changes
         assert_eq!(route_for(&d, "g", Api::Both).1, Some("both"));
+        // Windows tries Direct3D (proxy) first, as most games there draw with it; elsewhere Vulkan.
+        let (first, second) = if cfg!(windows) { ((Api::Dxgi, "proxy"), (Api::Vulkan, "layer")) } else { ((Api::Vulkan, "layer"), (Api::Dxgi, "proxy")) };
         after_run(&d, "g", "both", 5, Some(-2147483645));
-        assert_eq!(route_for(&d, "g", Api::Both), (Api::Vulkan, Some("layer")));
-        after_run(&d, "g", "layer", 3, Some(-1073741819));
-        assert_eq!(route_for(&d, "g", Api::Both), (Api::Dxgi, Some("proxy")));
-        after_run(&d, "g", "proxy", 300, Some(0));
-        assert_eq!(route_for(&d, "g", Api::Both).1, Some("proxy"));
+        assert_eq!(route_for(&d, "g", Api::Both), (first.0, Some(first.1)));
+        after_run(&d, "g", first.1, 3, Some(-1073741819));
+        assert_eq!(route_for(&d, "g", Api::Both), (second.0, Some(second.1)));
+        after_run(&d, "g", second.1, 300, Some(0));
+        assert_eq!(route_for(&d, "g", Api::Both).1, Some(second.1));
         assert_eq!(never_started(&d, "g"), None);
         // Played without ReShade ever starting: the next way in, and Troubleshoot can say so.
         std::fs::remove_file(&log).unwrap();
-        after_run(&d, "g", "proxy", 60, Some(0));
-        assert_eq!(never_started(&d, "g").as_deref(), Some("proxy"));
-        assert_ne!(route_for(&d, "g", Api::Both).1, Some("proxy"));
+        after_run(&d, "g", second.1, 60, Some(0));
+        assert_eq!(never_started(&d, "g").as_deref(), Some(second.1));
+        assert_ne!(route_for(&d, "g", Api::Both).1, Some(second.1));
         // A game with one way in: only noted.
         after_run(&d, "h", "only", 60, Some(0));
         assert_eq!(never_started(&d, "h").as_deref(), Some("only"));
