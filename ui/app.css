@@ -560,11 +560,8 @@ body.mini-side .island{--side-w:76px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes settle{from{transform:rotate(-50deg)}}
 .drive{position:absolute;left:38px;right:38px;bottom:62px;height:14px;border-radius:7px;background:#050608;box-shadow:0 1px 0 rgba(244,248,252,.06),inset 0 2px 6px rgba(0,0,0,.8)}
-.drive i{position:absolute;right:14px;top:4px;width:6px;height:6px;border-radius:50%;background:#2a3140;transition:background .3s,box-shadow .3s;animation:driveSweep 1.8s ease-in-out infinite alternate}
-.drive i.on{background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
-/* Trial motion: visible even before an import starts. Keep the light inside the slot. */
-@keyframes driveSweep{from{right:14px}to{right:calc(100% - 20px)}}
-@media(prefers-reduced-motion:reduce){.drive i{animation:none}}
+.drive i{position:absolute;right:14px;top:4px;width:6px;height:6px;border-radius:50%;background:#403121;transition:background 60ms,box-shadow 60ms}
+.drive i.on{background:#ffba52;box-shadow:0 0 7px rgba(255,174,53,.65)}
 .su-r{padding:34px 36px;display:flex;flex-direction:column;gap:16px;min-width:0}
 .su-r h2{font-size:26px}
 .su-r p{margin:0;color:var(--muted)}

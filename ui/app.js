@@ -1713,6 +1713,7 @@ async function pickUpdate(id, folder) {
 }
 // ---------- setting a game up with the player's copy ----------
 const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+const suDrive = createSetupDriveLight();
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
   if (SU.el && SU.stage === 'run' && SU.id !== id) return toast(t('Finish the setup that\'s running first.'));
@@ -1738,6 +1739,7 @@ async function setupModal(id) {
   if (f) f.focus();
 }
 function closeSetup(quiet) {
+  suDrive.stop();
   if (!SU.el) return;
   if (SU.stage === 'run' && SU.id) invoke('setup_cancel', { id: SU.id }).catch(() => {});
   SU.el.remove();
@@ -1816,6 +1818,7 @@ function suPump() {
 T.event.listen('setup', ({ payload: p }) => { if (SU.el && p.id === SU.id && SU.stage === 'run') { SU.q.push(p); suPump(); } });
 function suDraw() {
   if (!SU.el) return;
+  if (SU.stage !== 'run') suDrive.stop();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
   const box = $('.modal', SU.el);
   const game = a.game || a.name;
@@ -1882,7 +1885,7 @@ function suDraw() {
     if (SU.stage !== 'run') box.dataset.step = '';
     box.dataset.stage = SU.stage;
     box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>
-      <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive"><i class="${SU.stage === 'run' ? 'on' : ''}"></i></div></div><div class="su-r">${right}</div></div>`;
+      <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive" aria-hidden="true"><i></i></div></div><div class="su-r">${right}</div></div>`;
     const f = $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
@@ -1890,6 +1893,7 @@ function suDraw() {
     const d = $('.sdisc', box);
     if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('spin')) d.className = 'sdisc spin';
   }
+  if (SU.stage === 'run') suDrive.start($('.drive i', box));
 }
 T.event.listen('tauri://drag-drop', ({ payload: p }) => {
   const paths = (p && p.paths) || [];
