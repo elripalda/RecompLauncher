@@ -1543,6 +1543,7 @@ mod mac_archive_tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn a_disk_image_installs_its_app_and_leaves_the_applications_shortcut() {
         let d = temp("dmg");
         let src = d.join("volume");
