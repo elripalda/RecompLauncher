@@ -111,27 +111,59 @@ pub fn notify(app: &AppHandle, title: &str, body: &str) {
     let _ = app.notification().builder().title(title).body(body).show();
 }
 
+/// What the quick menu shows for the game playing now.
+pub fn overlay_payload(app: &AppHandle) -> Option<serde_json::Value> {
+    let (id, name, _, started) = current(app)?;
+    let st = app.state::<App>();
+    let played = st.lib.lock().unwrap().installed.get(&id).map(|g| g.played_secs).unwrap_or(0);
+    Some(serde_json::json!({
+        "id": id, "name": name, "session": crate::library::now().saturating_sub(started), "played": played,
+        "shots": list_shots(&name).len()
+    }))
+}
+
 pub fn show_overlay(app: &AppHandle) {
     if cfg!(target_os = "macos") {
         return;
     }
-    let Some((id, name, _, started)) = current(app) else { return };
-    let Some(w) = app.get_webview_window("overlay") else { return };
+    let Some(payload) = overlay_payload(app) else { return };
+    app.state::<App>().overlay_open.store(true, Ordering::Relaxed);
+    if let Some(w) = app.get_webview_window("overlay") {
+        present_overlay(app, &w, payload);
+        return;
+    }
+    // The window is made the first time it's opened: a launcher that never opens the quick menu
+    // doesn't pay for a second WebKit process. Windows are made on the main thread.
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        let w = match app.get_webview_window("overlay") {
+            Some(w) => w,
+            None => match crate::build_overlay(&app) {
+                Ok(w) => w,
+                Err(e) => {
+                    crate::trail::note(format!("quick menu: {e}"));
+                    app.state::<App>().overlay_open.store(false, Ordering::Relaxed);
+                    return;
+                }
+            },
+        };
+        // Closed again while it was being made: it stays hidden for next time.
+        if app.state::<App>().overlay_open.load(Ordering::Relaxed) {
+            present_overlay(&app, &w, payload);
+        }
+    });
+}
+
+fn present_overlay(app: &AppHandle, w: &tauri::WebviewWindow, payload: serde_json::Value) {
     if let Ok(Some(m)) = app.primary_monitor() {
         let _ = w.set_position(*m.position());
         let _ = w.set_size(*m.size());
     }
-    let st = app.state::<App>();
-    st.overlay_open.store(true, Ordering::Relaxed);
-    let played = st.lib.lock().unwrap().installed.get(&id).map(|g| g.played_secs).unwrap_or(0);
-    crate::rest(&w, false);
+    crate::rest(w, false);
     let _ = w.show();
     let _ = w.set_always_on_top(true);
     let _ = w.set_focus();
-    let _ = app.emit_to("overlay", "overlay-open", serde_json::json!({
-        "id": id, "name": name, "session": crate::library::now().saturating_sub(started), "played": played,
-        "shots": list_shots(&name).len()
-    }));
+    let _ = app.emit_to("overlay", "overlay-open", payload);
 }
 
 pub fn hide_overlay(app: &AppHandle) {
