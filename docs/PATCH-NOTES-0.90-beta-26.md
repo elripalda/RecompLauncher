@@ -10,6 +10,7 @@
 - **Clearer crash help.** Run Setup for games that say which setup program they need, and Report to the Developer for problems inside the game itself. — Improved by @elripalda.
 - **Clearer setup labels.** Developer Tools describes how a game is set up and what it can do, and game pages show who maintains a game's setup. — Improved by @elripalda.
 - **Discover is second in the sidebar**, with a new search icon. — Improved by @elripalda.
+- **Discover opens at once**, even with hundreds of recomps. — Improved by @Element20Three ([#36](https://github.com/elripalda/RecompLauncher/pull/36)).
 - **General fixes and optimization**, including smoother drawing on Mac. — Improved by @elripalda.
 
 Keep the logs coming from the crash window and Settings → Beta. Every one helps.
