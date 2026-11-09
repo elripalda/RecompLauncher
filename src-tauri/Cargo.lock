@@ -4542,6 +4542,7 @@ dependencies = [
  "windows-core",
  "xcap",
  "zip",
+ "zstd",
 ]
 
 [[package]]
