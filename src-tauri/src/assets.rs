@@ -101,7 +101,7 @@ fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
-        "macos" => matches!(k, "zip" | "dmg"),
+        "macos" => matches!(k, "zip" | "dmg" | "rar" | "7z"),
         _ => false,
     }
 }
@@ -329,6 +329,17 @@ mod tests {
         assert!(pick(&files, "windows", "x64", None).unwrap().name.ends_with("Windows.zip"));
     }
 
+    #[test]
+    fn mac_rar_and_7z_are_builds() {
+        // SMW Remastered Plus ships its Mac build as a .rar.
+        assert_eq!(pick(&[a("SMW.Remastered+.MacOS.Untested.rar")], "macos", "arm64", Some("SMW.Remastered+.MacOS.Untested.rar")).unwrap().name, "SMW.Remastered+.MacOS.Untested.rar");
+        assert!(pick(&[a("Game-macOS.7z")], "macos", "arm64", None).is_some());
+        // A ZIP of the same game still comes first.
+        assert_eq!(pick(&[a("Game-macOS.rar"), a("Game-macOS.zip")], "macos", "arm64", None).unwrap().name, "Game-macOS.zip");
+        // Still not a Mac build: Windows and Linux files.
+        assert!(pick(&[a("Game-windows.rar"), a("Game-linux.tar.gz")], "macos", "arm64", None).is_none());
+    }
+
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new(), url: None }
     }
@@ -435,6 +446,7 @@ mod tests {
     fn nothing_for_this_system() {
         let r = [a("Game-macOS.dmg"), a("Game-Linux.tar.gz")];
         assert!(pick(&r, "windows", "x64", None).is_none());
+        assert!(pick(&r, "macos", "arm64", None).is_some());
     }
 
     #[test]

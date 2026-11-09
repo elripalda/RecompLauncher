@@ -44,11 +44,13 @@ Its `installers-macos-15` artifact contains a ZIP, a DMG and SHA-256 checksums, 
 Apple Developer ID certificate or notarization. The app is ad-hoc signed. ZIP packaging uses
 `ditto` to preserve the application's links and permissions.
 
-For game installation, this first version supports Mac ZIP releases containing an `.app` or
-a native executable. A ZIP containing only another ZIP is treated as a packaging wrapper,
-with a bounded nesting depth. Archives inside the application are left alone. ARM64 and
-universal game executables are supported on Apple Silicon; Intel-only games and Windows/Linux
-games are not translated. Game releases available only as a DMG are not installed automatically.
+For game installation, Mac releases may be a ZIP, a DMG, a RAR or a 7z containing an `.app` or
+a native executable. A DMG is mounted read-only, its apps and folders copied out, and unmounted
+again; the shortcut to /Applications is skipped. A ZIP is preferred when a release has both.
+A download holding one ZIP and no app or program beside it (a readme or a ROM may be) is
+treated as a packaging wrapper: the ZIP is unpacked in place, with a bounded nesting depth.
+Archives inside the application are left alone. ARM64 and universal game executables are
+supported on Apple Silicon; Intel-only games and Windows/Linux games are not translated.
 The launcher's own DMG is a separate, supported distribution format.
 
 Choose Program accepts a Mac `.app`; the launcher reads `CFBundleExecutable` from its

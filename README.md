@@ -48,7 +48,7 @@ the launcher sets it up.
 
 Windows 10 or 11, 64-bit. Initial macOS support targets Apple Silicon: see the
 [Mac build and test-artifact instructions](docs/BUILDING.md#macos-initial-apple-silicon-support).
-Mac test builds support ZIP-packaged native Mac games and are not Apple-notarized releases.
+Mac test builds support native Mac games packaged as ZIP, DMG, RAR or 7z and are not Apple-notarized releases.
 
 Download the setup file from [Releases](https://github.com/elripalda/RecompLauncher/releases/latest)
 and run it. While the beta is new, Windows may say "Windows protected your PC". Click
