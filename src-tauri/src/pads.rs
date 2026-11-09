@@ -280,12 +280,12 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
                     _ => {}
                 }
             }
-            // During a game with the quick menu off nothing needs the controller here.
-            let off = PLAYING.load(Ordering::Relaxed) && !QUICK_MENU.load(Ordering::Relaxed);
-            // During a game the quick menu only waits for its button: a check every 25 ms is plenty,
-            // and leaves the processor to the game.
+            // During a game the quick menu and the screenshot combo only wait for their buttons: a
+            // check every 25 ms is plenty, and leaves the processor to the game. Not slower, even
+            // with the quick menu off: SDL reads a controller's state when it's asked, so a quick
+            // tap between two checks would be missed.
             let playing = PLAYING.load(Ordering::Relaxed);
-            std::thread::sleep(std::time::Duration::from_millis(if off { 250 } else if idle() { 60 } else if playing && !FOCUSED.load(Ordering::Relaxed) { 25 } else { 10 }));
+            std::thread::sleep(std::time::Duration::from_millis(if idle() { 60 } else if playing && !FOCUSED.load(Ordering::Relaxed) { 25 } else { 10 }));
         }
     });
     if let Err(e) = spawned {
