@@ -691,6 +691,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         "zip" => unzip(file, staging)?,
         "7z" => un7z(file, staging)?,
         "rar" => crate::gamebanana::extract(file, staging)?,
+        "dmg" => undmg(file, staging)?,
         "tar.gz" => untar(file, staging, false)?,
         "tar.xz" => untar(file, staging, true)?,
         "appimage" | "exe" | "msi" => {
@@ -740,6 +741,70 @@ fn mark_mac_programs(dir: &Path) {
             let _ = fs::set_permissions(&p, fs::Permissions::from_mode(0o755));
         }
     }
+}
+
+/// A Mac disk image: mounted read-only out of sight, its applications and folders copied into `to`
+/// (with `ditto`, which keeps a signed app's links, permissions and attributes), and unmounted.
+/// The shortcut to /Applications and the volume's hidden files are left behind.
+#[cfg(target_os = "macos")]
+fn undmg(file: &Path, to: &Path) -> Result<(), Error> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    struct Mounted(PathBuf);
+    impl Drop for Mounted {
+        fn drop(&mut self) {
+            let ok = |args: &[&str]| Command::new("hdiutil").args(args).arg(&self.0).stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+            if !ok(&["detach", "-quiet"]) && !ok(&["detach", "-force", "-quiet"]) {
+                crate::trail::note(format!("Disk image at {} could not be unmounted", self.0.display()));
+            }
+            let _ = fs::remove_dir(&self.0);
+        }
+    }
+    let bad = |e: String| Error::Msg(format!("Couldn't open the disk image: {e}"));
+    let mount = to.with_file_name(format!("{}-dmg", to.file_name().and_then(|s| s.to_str()).unwrap_or("staging")));
+    let _ = fs::remove_dir_all(&mount);
+    fs::create_dir_all(&mount)?;
+    let mut child = Command::new("hdiutil")
+        .args(["attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen", "-quiet", "-mountpoint"])
+        .arg(&mount)
+        .arg(file)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| bad(e.to_string()))?;
+    // An image with a license agreement waits for a yes before it mounts.
+    if let Some(mut i) = child.stdin.take() {
+        let _ = i.write_all(b"Y\n");
+    }
+    let out = child.wait_with_output().map_err(|e| bad(e.to_string()))?;
+    if !out.status.success() {
+        let _ = fs::remove_dir(&mount);
+        return Err(bad(String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    let _guard = Mounted(mount.clone());
+    let mut copied = 0;
+    for e in fs::read_dir(&mount)? {
+        let e = e?;
+        let name = e.file_name();
+        if name.to_string_lossy().starts_with('.') || e.file_type()?.is_symlink() {
+            continue;
+        }
+        let st = Command::new("ditto").arg(e.path()).arg(to.join(&name)).status().map_err(|e| bad(e.to_string()))?;
+        if !st.success() {
+            return Err(bad(format!("couldn't copy {}", name.to_string_lossy())));
+        }
+        copied += 1;
+    }
+    if copied == 0 {
+        return Err(bad("it has nothing in it to install.".into()));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn undmg(_file: &Path, _to: &Path) -> Result<(), Error> {
+    Err(Error::Msg("A Mac disk image (.dmg) can only be opened on a Mac.".into()))
 }
 
 #[cfg(target_os = "macos")]
@@ -1416,6 +1481,30 @@ mod mac_archive_tests {
             zip.add_symlink(*name, *target, zip::write::SimpleFileOptions::default()).unwrap();
         }
         zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn a_disk_image_installs_its_app_and_leaves_the_applications_shortcut() {
+        let d = temp("dmg");
+        let src = d.join("volume");
+        fs::create_dir_all(src.join("Game.app/Contents/MacOS")).unwrap();
+        fs::write(src.join("Game.app/Contents/Info.plist"), b"metadata").unwrap();
+        fs::write(src.join("Game.app/Contents/MacOS/Game"), b"program").unwrap();
+        std::os::unix::fs::symlink("/Applications", src.join("Applications")).unwrap();
+        let image = d.join("Game-macOS.dmg");
+        let made = std::process::Command::new("hdiutil").args(["create", "-quiet", "-fs", "HFS+", "-volname", "Game", "-srcfolder"]).arg(&src).arg(&image).status().unwrap();
+        assert!(made.success());
+        let target = d.join("install");
+        let files = unpack(&image, &target, &d.join("staging")).unwrap();
+        assert!(files.iter().any(|f| f.ends_with("Game.app/Contents/MacOS/Game")));
+        assert_eq!(fs::read(target.join("Game.app/Contents/Info.plist")).unwrap(), b"metadata");
+        assert!(!target.join("Applications").exists());
+        // Unmounted again, and a file that isn't an image is an error, not a hang.
+        assert!(!d.join("staging-dmg").exists());
+        let junk = d.join("Junk.dmg");
+        fs::write(&junk, b"not an image").unwrap();
+        assert!(unpack(&junk, &d.join("install2"), &d.join("staging")).is_err());
+        let _ = fs::remove_dir_all(&d);
     }
 
     fn app_zip(extra: &[(&str, &[u8], u32)]) -> Vec<u8> {

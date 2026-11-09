@@ -97,7 +97,7 @@ fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
-        "macos" => matches!(k, "zip" | "rar" | "7z"),
+        "macos" => matches!(k, "zip" | "dmg" | "rar" | "7z"),
         _ => false,
     }
 }
@@ -189,6 +189,9 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("linux", "appimage") => 14,
         ("linux", "tar.gz") => 12,
         ("linux", "zip") => 8,
+        // A zip is unpacked as is; a disk image is mounted first, so it comes second.
+        ("macos", "zip") => 8,
+        ("macos", "dmg") => 6,
         _ => 4,
     };
     // A game's server (for playing online) comes with some releases: the game itself comes first,
@@ -303,12 +306,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mac_zip_rar_and_7z_are_installable_but_dmg_is_not() {
+    fn mac_builds_are_zip_dmg_rar_and_7z_with_the_zip_first() {
         let files = [a("Game-macOS.dmg"), a("Game-macOS.zip")];
-        assert_eq!(all_for(&files, "macos", "arm64", None).iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
-        assert!(pick(&files[..1], "macos", "arm64", None).is_none());
+        assert_eq!(all_for(&files, "macos", "arm64", None).iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip", "Game-macOS.dmg"]);
+        assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "Game-macOS.zip");
+        assert_eq!(pick(&files[..1], "macos", "arm64", None).unwrap().name, "Game-macOS.dmg");
         assert_eq!(pick(&[a("SMW.Remastered+.MacOS.Untested.rar")], "macos", "arm64", Some("SMW.Remastered+.MacOS.Untested.rar")).unwrap().name, "SMW.Remastered+.MacOS.Untested.rar");
         assert!(pick(&[a("Game-macOS.7z")], "macos", "arm64", None).is_some());
+        // Still not a Mac build: Windows and Linux files.
         assert!(pick(&[a("Game-windows.rar"), a("Game-linux.tar.gz")], "macos", "arm64", None).is_none());
     }
 
@@ -418,6 +423,7 @@ mod tests {
     fn nothing_for_this_system() {
         let r = [a("Game-macOS.dmg"), a("Game-Linux.tar.gz")];
         assert!(pick(&r, "windows", "x64", None).is_none());
+        assert!(pick(&r, "macos", "arm64", None).is_some());
     }
 
     #[test]

@@ -277,11 +277,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         return Err(Error::Msg(format!("This recomp has no {os_name} version yet.")));
     }
     let mut asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
-        .ok_or_else(|| Error::Msg(if os == "macos" && rel.assets.iter().any(|a| assets::kind(&a.name) == Some("dmg")) {
-            "This release uses a Mac disk image (.dmg). Automatic game installation currently requires a Mac ZIP release.".into()
-        } else {
-            format!("The latest release ({}) has no {os_name} version.", rel.tag_name)
-        }))?
+        .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
         .clone();
     // Several builds that fit this PC equally (one per region, say), or in different forms (an
     // AppImage and a plain folder, a portable zip and an installer): the one the player picked, the
