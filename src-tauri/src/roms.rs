@@ -30,7 +30,7 @@ const DISC: [&str; 6] = ["iso", "gcm", "rvz", "wbfs", "ciso", "chd"];
 /// Cartridge ROMs and game files of the other consoles recomps come from (NES, Game Boy, DS, 3DS,
 /// Switch, Virtual Boy, Genesis, 32X, Game Gear, Master System, SNES, Amiga). Matched to a recomp by
 /// name; which console is left open, as their ids in the catalog vary.
-const CART: [&str; 27] = ["nes", "fds", "unf", "gb", "gbc", "gba", "nds", "3ds", "cci", "cia", "cxi", "vb", "vboy", "md", "gen", "smd", "32x", "gg", "sms", "sfc", "smc", "adf", "hdf", "ipf", "lha", "xci", "nsp"];
+const CART: [&str; 28] = ["nes", "fds", "unf", "gb", "gbc", "gba", "nds", "3ds", "cci", "cia", "cxi", "vb", "vboy", "md", "gen", "smd", "32x", "gg", "sms", "sfc", "smc", "adf", "hdf", "ipf", "lha", "xci", "nsp", "nup"];
 
 fn n64_header(p: &Path) -> Option<(String, String)> {
     let mut f = fs::File::open(p).ok()?;
@@ -82,6 +82,8 @@ fn system_for(ext: &str) -> &'static str {
         "sfc" | "smc" => "snes",
         "adf" | "hdf" | "ipf" | "lha" => "amiga",
         "xci" | "nsp" => "switch",
+        // A Switch 2 package (game or update) only runs on Switch 2.
+        "nup" => "switch2",
         _ => "",
     }
 }
@@ -891,6 +893,20 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].path, emerald);
+    }
+
+    #[test]
+    fn scans_switch2_nup_packages() {
+        let root = tmp("nup-scan");
+        fs::create_dir_all(&root).unwrap();
+        let nup = root.join("Zelda [0400486024DEC000][v131072].nup");
+        fs::write(&nup, [0; 8192]).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, nup);
+        assert_eq!(found[0].system, "switch2");
     }
 
     #[test]
