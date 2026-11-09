@@ -5,7 +5,7 @@ description = "RecompLauncher: one home for PC recomps"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.85"
 
 [lib]
 name = "recomplauncher_lib"
@@ -49,17 +49,15 @@ regex-lite = "0.1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 plist = "1"
 tauri-plugin-deep-link = "2"
+# Controllers. SDL 3 is built from source and linked in, with only its joystick and HIDAPI parts:
+# no SDL library to ship, and nothing needed on the player's system.
+sdl3-sys = { version = "=0.7.2", default-features = false, features = ["build-from-source-static", "no-default-subsystems", "sdl-joystick", "sdl-hidapi", "sdl-unix-console-build"] }
 
 [target.'cfg(windows)'.dependencies]
-gilrs = { version = "0.11", default-features = false, features = ["xinput"] }
 xcap = { version = "0.9", features = ["image", "wgc"] }
-hidapi = { version = "2", default-features = false, features = ["windows-native"] }
 webview2-com = "0.39"
 windows-core = "0.62"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
-
-[target.'cfg(not(windows))'.dependencies]
-gilrs = "0.11"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"
