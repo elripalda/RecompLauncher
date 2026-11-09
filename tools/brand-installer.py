@@ -69,7 +69,19 @@ exe = os.path.join(target, 'bundle', 'nsis', f'RecompLauncher_{ver}_x64-setup.ex
 os.makedirs(os.path.dirname(exe), exist_ok=True)
 s2 = re.sub(r'!define OUTFILE "[^"]*"', '!define OUTFILE "' + exe.replace('\\', '/') + '"', open(out, encoding='utf-8-sig').read())
 open(out, 'w', encoding='utf-8-sig').write(s2)
-r = subprocess.run(['makensis', '-V2', '-INPUTCHARSET', 'UTF8', out], cwd=nsis, capture_output=True, text=True)
+# Tauri's own NSIS (with its plugins), wherever this machine keeps it; then one on PATH.
+def find_makensis():
+    for base in filter(None, [os.environ.get('LOCALAPPDATA'), os.path.expanduser('~/.cache')]):
+        for name in ('makensis.exe', 'makensis'):
+            hits = sorted(glob.glob(os.path.join(base, 'tauri', 'NSIS', '**', name), recursive=True), key=len)
+            if hits:
+                return hits[0]
+    return shutil.which('makensis') or shutil.which('makensis.exe')
+makensis = find_makensis()
+if not makensis:
+    sys.exit('brand-installer: makensis not found (Tauri\'s NSIS or one on PATH)')
+print('brand-installer: using', makensis)
+r = subprocess.run([makensis, '-V2', '-INPUTCHARSET', 'UTF8', out], cwd=nsis, capture_output=True, text=True)
 print(r.stdout[-3000:], r.stderr[-3000:])
 if r.returncode:
     sys.exit('brand-installer: makensis failed')

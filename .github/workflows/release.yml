@@ -118,8 +118,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          # Tauri keeps its own NSIS; the branding script rebuilds the installer with it.
-          export PATH="$LOCALAPPDATA/tauri/NSIS:$LOCALAPPDATA/tauri/NSIS/Bin:$PATH"
+          # Tauri keeps its own NSIS; the branding script finds it and rebuilds the installer with it.
           python tools/brand-installer.py src-tauri/target/release
 
       - name: Collect files
