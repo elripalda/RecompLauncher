@@ -274,9 +274,15 @@ pub async fn download(
     let mut total;
     let mut tries = 0u32;
     use tokio::io::AsyncWriteExt;
+    // github.com's download link, or GitHub's API link to the same file once that keeps failing.
+    let mut src = asset.browser_download_url.clone();
+    let mut by_api = false;
     'attempt: loop {
         tries += 1;
-        let mut req = http.get(&asset.browser_download_url).timeout(Duration::from_secs(60 * 60 * 6));
+        let mut req = http.get(&src).timeout(Duration::from_secs(60 * 60 * 6));
+        if by_api {
+            req = req.header(reqwest::header::ACCEPT, "application/octet-stream");
+        }
         if done > 0 {
             req = req.header(reqwest::header::RANGE, format!("bytes={done}-"));
         }
@@ -307,7 +313,17 @@ pub async fn download(
         if !r.status().is_success() {
             // GitHub's busy moments (502, 503, 504, or "slow down"): wait a little longer each time and
             // ask again, from where it got to.
-            if busy_answer(r.status().as_u16()) && tries < 5 {
+            // Still busy after a few tries: the same file through GitHub's API, which often answers
+            // when the download link doesn't.
+            if busy_answer(r.status().as_u16()) && tries >= 3 && !by_api {
+                if let Some(api) = asset.url.as_deref().filter(|u| u.starts_with("https://api.github.com/")) {
+                    crate::trail::note(format!("{}: github.com answered {}; trying GitHub's API link", asset.name, r.status().as_u16()));
+                    src = api.to_string();
+                    by_api = true;
+                    continue;
+                }
+            }
+            if busy_answer(r.status().as_u16()) && (tries < 5 || (by_api && tries < 8)) {
                 let wait = Instant::now() + Duration::from_secs(2u64 << (tries - 1).min(4));
                 while Instant::now() < wait {
                     if cancelled() {
@@ -693,6 +709,8 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         "rar" => crate::gamebanana::extract(file, staging)?,
         "tar.gz" => untar(file, staging, false)?,
         "tar.xz" => untar(file, staging, true)?,
+        #[cfg(target_os = "macos")]
+        "dmg" => undmg(file, staging)?,
         "appimage" | "exe" | "msi" => {
             fs::copy(file, staging.join(&name))?;
             #[cfg(unix)]
@@ -719,6 +737,60 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     overlay(&from, target)?;
     let _ = fs::remove_dir_all(staging);
     Ok(files)
+}
+
+/// A Mac disk image: opened read-only where Finder doesn't show it, what's on it (the .app and
+/// anything beside it, not the Applications shortcut or the window's background) copied out with
+/// ditto so the bundle stays whole, then closed again.
+#[cfg(target_os = "macos")]
+fn undmg(file: &Path, staging: &Path) -> Result<(), Error> {
+    let mount = staging.with_extension("mount");
+    let _ = fs::remove_dir(&mount);
+    fs::create_dir_all(&mount)?;
+    let out = std::process::Command::new("/usr/bin/hdiutil")
+        .args(["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint"])
+        .arg(&mount)
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        let _ = fs::remove_dir(&mount);
+        return Err(Error::Msg(format!("Couldn't open the disk image: {}", String::from_utf8_lossy(&out.stderr).trim())));
+    }
+    let copied = (|| -> Result<(), Error> {
+        for e in fs::read_dir(&mount)?.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if dmg_extra(&n) || e.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+                continue;
+            }
+            let ok = std::process::Command::new("/usr/bin/ditto").arg(e.path()).arg(staging.join(&n)).status()?.success();
+            if !ok {
+                return Err(Error::Msg(format!("Couldn't copy {n} from the disk image")));
+            }
+        }
+        Ok(())
+    })();
+    let detach = |force: bool| {
+        let mut c = std::process::Command::new("/usr/bin/hdiutil");
+        c.arg("detach").arg(&mount).arg("-quiet");
+        if force {
+            c.arg("-force");
+        }
+        c.status().map(|s| s.success()).unwrap_or(false)
+    };
+    if !detach(false) {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        detach(true);
+    }
+    let _ = fs::remove_dir(&mount);
+    copied
+}
+
+/// What a disk image carries for its Finder window, not the game: the background picture, Finder's
+/// own files, the volume icon, Spotlight's and the trash's folders.
+#[cfg(any(test, target_os = "macos"))]
+fn dmg_extra(name: &str) -> bool {
+    name.starts_with('.') || matches!(name, "Applications" | "Icon\r" | "VolumeIcon.icns")
 }
 
 #[cfg(target_os = "macos")]
@@ -829,7 +901,24 @@ pub const TOOL_DIRS: [&str; 21] = ["compiler", "compilers", "deps", "dependencie
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
+/// A runtime's or another program's installer (.NET, Visual C++, DirectX, WebView2...), never a game.
+const RUNTIME_INSTALLERS: [&str; 17] = [
+    "windowsdesktop-runtime", "dotnet-runtime", "dotnet-sdk", "aspnetcore-runtime", "dotnet-hosting", "vc_redist", "vcredist", "directx", "dxsetup", "dxwebsetup",
+    "oalinst", "ue4prereq", "ue5prereq", "physx", "xnafx", "microsoftedgewebview2", "msedgewebview2",
+];
+
+/// A file name a browser gives a second download of the same file ("game (2).exe"): something the
+/// player downloaded again, not the game's own program.
+fn downloaded_copy(stem: &str) -> bool {
+    let s = stem.trim_end();
+    s.ends_with(')') && s.rfind(" (").map(|i| s[i + 2..s.len() - 1].chars().all(|c| c.is_ascii_digit()) && s.len() > i + 3).unwrap_or(false)
+}
+
 pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
+    let low = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    if RUNTIME_INSTALLERS.iter().any(|r| low.starts_with(r)) || downloaded_copy(&low) {
+        return true;
+    }
     let want: Vec<String> = names.iter().flat_map(|n| tokens(n)).collect();
     let stem = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     // A build tool by its whole name (ninja.exe, cmake, python3.exe).
@@ -1087,6 +1176,16 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_disk_images_window_dressing_stays_behind() {
+        for n in [".background", ".DS_Store", ".fseventsd", "Applications", "VolumeIcon.icns", "Icon\r"] {
+            assert!(super::dmg_extra(n), "{n}");
+        }
+        for n in ["LAS Recomp.app", "README.txt", "mods"] {
+            assert!(!super::dmg_extra(n), "{n}");
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -1237,6 +1336,10 @@ mod tests {
         assert!(looks_like_tool(Path::new("Sf2Bktr.exe"), &["SF2Recomp"]));
         assert!(looks_like_tool(Path::new("chd2gdi.exe"), &["Street-Alpha-3-Dreamcast-Recomp"]));
         assert!(looks_like_tool(Path::new("x86_64-w64-mingw32-clang++.exe"), &["TotK Recomp"]));
+        assert!(looks_like_tool(Path::new("windowsdesktop-runtime-10.0.14-win-x64 (2).exe"), &["Mario Kart WiiCompiled"]));
+        assert!(looks_like_tool(Path::new("wps_wid.cid-642543927.1788466613 (8).exe"), &["ReStreet"]));
+        assert!(looks_like_tool(Path::new("VC_redist.x64.exe"), &["Any"]));
+        assert!(!looks_like_tool(Path::new("Dragon Ball Z (Burst Limit).exe"), &["Dragon Ball Z"]));
         // A tools folder in Portuguese, and recompilers.
         assert!(looks_like_tool(Path::new("ferramentas/bin/unzbic.exe"), &["ocarina-recomp"]));
         assert!(looks_like_tool(Path::new("nxlift.exe"), &["pokopia-native"]));

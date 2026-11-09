@@ -579,7 +579,7 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
     dirs.dedup();
     dirs.retain(|(from, to)| from != to && from.exists());
     if dirs.iter().any(|(_, to)| to.exists()) {
-        return Err(Error::Msg("The selected project already has backup or look data. Nothing was changed.".into()));
+        return Err(Error::Msg("The selected project already has backup or shader data. Nothing was changed.".into()));
     }
     let mut moved = Vec::new();
     for (from, to) in &dirs {

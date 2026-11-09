@@ -277,11 +277,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         return Err(Error::Msg(format!("This recomp has no {os_name} version yet.")));
     }
     let mut asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
-        .ok_or_else(|| Error::Msg(if os == "macos" && rel.assets.iter().any(|a| assets::kind(&a.name) == Some("dmg")) {
-            "This release uses a Mac disk image (.dmg). Automatic game installation currently requires a Mac ZIP release.".into()
-        } else {
-            format!("The latest release ({}) has no {os_name} version.", rel.tag_name)
-        }))?
+        .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
         .clone();
     // Several builds that fit this PC equally (one per region, say), or in different forms (an
     // AppImage and a plain folder, a portable zip and an installer): the one the player picked, the
@@ -2187,7 +2183,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
                 Ok(r) => Some(r),
                 Err(e) => {
                     let _ = app.emit("toast", &e);
-                    ingame::notify(app, "The look is off this time", &e);
+                    ingame::notify(app, "The shader is off this time", &e);
                     None
                 }
             }
@@ -2932,7 +2928,7 @@ struct LooksInfo {
     why: String,
     look: String,
     amount: u8,
-    /// Lines for the CRT looks.
+    /// Lines for the CRT shaders.
     lines: u32,
     /// The ReShade the launcher has.
     reshade: Option<String>,
@@ -2991,11 +2987,11 @@ fn looks_info(st: State<'_, App>, id: String) -> Res<LooksInfo> {
     let prof = profile_of(&st, &id, &g);
     let pl = prof.as_ref().and_then(|p| p.looks.clone());
     let why = if cfg!(target_os = "macos") {
-        "Looks work on Windows and Linux.".to_string()
+        "Shaders work on Windows and Linux.".to_string()
     } else if !cfg!(windows) && !looks::vkbasalt_installed() {
         VKBASALT_MISSING.to_string()
     } else if let Some(pl) = pl.as_ref().filter(|p| !p.allowed) {
-        if pl.reason.is_empty() { "This game doesn't work with looks.".into() } else { pl.reason.clone() }
+        if pl.reason.is_empty() { "This game doesn't work with shaders.".into() } else { pl.reason.clone() }
     } else {
         String::new()
     };
@@ -3009,7 +3005,7 @@ fn looks_info(st: State<'_, App>, id: String) -> Res<LooksInfo> {
 #[tauri::command(async)]
 fn set_look(st: State<'_, App>, id: String, look: String, amount: Option<u8>) -> Res<Installed> {
     if !look.is_empty() && looks::find(&look).is_none() {
-        return Err(Error::Msg("That look isn't one the launcher has.".into()));
+        return Err(Error::Msg("That shader isn't one the launcher has.".into()));
     }
     let g = {
         let mut l = st.lib.lock().unwrap();
@@ -3970,11 +3966,11 @@ pub(crate) async fn ready_look(app: &AppHandle, id: &str) {
         let say = move |m: &str| {
             let _ = app2.emit("toast", m);
             if headless {
-                ingame::notify(&app2, m, "Once, for the look you picked. The game starts in a moment.");
+                ingame::notify(&app2, m, "Once, for the shader you picked. The game starts in a moment.");
             }
         };
         if let Err(e) = looks::ensure(&st.http, &st.dir, mirror, &say).await {
-            let _ = app.emit("toast", format!("{e} The game starts without its look."));
+            let _ = app.emit("toast", format!("{e} The game starts without its shader."));
         }
     }
 }
@@ -3987,7 +3983,7 @@ fn reshade_mirror(st: &App) -> Option<looks::Source> {
 }
 
 /// Why looks are off on a Linux PC without vkBasalt.
-const VKBASALT_MISSING: &str = "Looks on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.";
+const VKBASALT_MISSING: &str = "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.";
 
 /// The look a game starts with: Ok(None) for none, Err with a reason when it has one that can't be used.
 fn look_plan(st: &App, id: &str, g: &Installed, prof: Option<&profile::Profile>, exe: &Path) -> Result<Option<(&'static looks::LookDef, u32, looks::Api)>, Option<String>> {
@@ -4000,7 +3996,7 @@ fn look_plan(st: &App, id: &str, g: &Installed, prof: Option<&profile::Profile>,
     }
     let pl = prof.and_then(|p| p.looks.clone()).unwrap_or_else(|| looks::ProfileLooks { allowed: true, r#in: "main".into(), ..Default::default() });
     if !pl.allowed {
-        return Err(Some(if pl.reason.is_empty() { "This game doesn't work with looks.".into() } else { pl.reason.clone() }));
+        return Err(Some(if pl.reason.is_empty() { "This game doesn't work with shaders.".into() } else { pl.reason.clone() }));
     }
     if cfg!(windows) && looks::have_version(&st.dir).is_none() {
         return Err(None);
@@ -4496,8 +4492,8 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
     let look_on = !g.look.is_empty() && g.look != "off";
     if look_on || !g.args.trim().is_empty() {
         let what = match (look_on, !g.args.trim().is_empty()) {
-            (true, true) => "A Look (ReShade) and your own launch options are on. If it won't start, try once without them.",
-            (true, false) => "A Look (ReShade) is on. If it won't start, try once without it.",
+            (true, true) => "A shader (ReShade) and your own launch options are on. If it won't start, try once without them.",
+            (true, false) => "A shader (ReShade) is on. If it won't start, try once without it.",
             _ => "Your own launch options are on. If it won't start, try once without them.",
         };
         out.push(check("info", "Extras are on", what, "clean"));
@@ -4507,14 +4503,14 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
             // ReShade didn't start at all last time: the Look never showed.
             if let Some(r) = looks::never_started(&st.dir, &id) {
                 if r == "only" {
-                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game, so its Look can't show. Play it without the Look.", "clean"));
+                    out.push(check("warn", "The shader didn't start last time", "ReShade didn't load in this game, so its shader can't show. Play it without the shader.", "clean"));
                 } else {
-                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game. The next time it starts, the Look tries another way in.", ""));
+                    out.push(check("warn", "The shader didn't start last time", "ReShade didn't load in this game. The next time it starts, the shader tries another way in.", ""));
                 }
             }
             if let Some(r) = looks::kept_route(&st.dir, &id) {
                 let way = if r == "layer" { "Vulkan" } else { "Direct3D" };
-                out.push(check("info", "The Look only tries one way in", "Since a start that crashed, its Look goes in through {way} only. If the Look doesn't show, let it try both ways again.", "lookroute").with("way", way));
+                out.push(check("info", "The shader only tries one way in", "Since a start that crashed, its shader goes in through {way} only. If the shader doesn't show, let it try both ways again.", "lookroute").with("way", way));
             }
         }
     }
@@ -6158,11 +6154,19 @@ fn get_state(st: State<'_, App>) -> Value {
         "deck": shortcuts::is_steam_deck(),
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
         "missing": missing,
-        // Run as an AppImage: its bundled GStreamer libraries don't match the PC's own plugins, and
-        // the web view hangs the moment it opens a sound. The page then plays none.
-        "appimage": cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some(),
+        // Where the web view can't play a sound (an AppImage, run as one or unpacked, or a PC
+        // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
+        "noSound": no_sound(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
     })
+}
+
+/// The web view can't play a sound here (see sysenv::sound_works).
+fn no_sound() -> bool {
+    #[cfg(target_os = "linux")]
+    return !sysenv::sound_works();
+    #[cfg(not(target_os = "linux"))]
+    false
 }
 
 /// An update started from inside the launcher that didn't go in (this is still the version it
@@ -7091,9 +7095,9 @@ pub fn run() {
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move { cloud::upload_pending(&h).await });
             }
-            // Screenshots show in the window straight from their folder, wherever Pictures is.
+            // Screenshots show in the window straight from their folder, wherever Pictures is. The
+            // folder itself is only made when the first screenshot is taken.
             if let Some(root) = ingame::shots_dir("x").parent() {
-                let _ = std::fs::create_dir_all(root);
                 let _ = app.asset_protocol_scope().allow_directory(root, true);
             }
             // Covers and backgrounds the player picked, wherever the launcher keeps its data (the

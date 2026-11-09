@@ -395,7 +395,7 @@ fn disc_system(p: &Path, ext: &str) -> &'static str {
 }
 
 /// Consoles whose games come on cartridges (or as cartridge files): a disc image is never one of theirs.
-const CART_ORIGINS: [&str; 13] = ["n64", "snes", "nes", "gb", "gbc", "gba", "ds", "3ds", "vb", "genesis", "s32x", "switch", "amiga"];
+const CART_ORIGINS: [&str; 14] = ["n64", "snes", "nes", "gb", "gbc", "gba", "ds", "3ds", "vb", "genesis", "s32x", "switch", "switch2", "amiga"];
 
 /// Can this file be a game for that console? The same console, or one that plays its games
 /// (Game Boy and Game Boy Color), or a disc image of unknown kind for a console that uses discs.
@@ -422,7 +422,8 @@ fn fits(rom: &RomFile, origin: &str) -> bool {
         // One of two: an Xbox or Xbox 360 disc, a PlayStation or PS2 one.
         "xdvdfs" => matches!(origin, "xbox" | "x360"),
         "playstation" => matches!(origin, "ps1" | "ps2"),
-        _ => sys == origin || matches!((sys, origin), ("gb", "gbc") | ("gbc", "gb")),
+        // A Switch 2 game card dumps to the same .xci/.nsp files as a Switch one.
+        _ => sys == origin || matches!((sys, origin), ("gb", "gbc") | ("gbc", "gb") | ("switch", "switch2")),
     }
 }
 
