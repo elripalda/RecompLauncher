@@ -33,10 +33,9 @@ enum Ev {
     Up(&'static str),
 }
 
-/// Valve: the Steam Controller (wired, its wireless receiver) and the Steam Deck's own controls.
-/// SDL reads a Steam Controller itself; the Deck's controls come through Steam Input.
+/// Valve: the Steam Controller and the Steam Deck. SDL reads a Steam Controller itself; the
+/// Deck's controls come through Steam Input.
 pub const VALVE: u16 = 0x28DE;
-pub const STEAM_PADS: [u16; 5] = [0x1102, 0x1142, 0x1105, 0x1106, 0x1205];
 
 /// Which button icons a controller gets.
 fn kind_of(ty: sdl::SDL_GamepadType, vendor: u16) -> &'static str {
@@ -144,35 +143,12 @@ fn set_hint(name: *const c_char, value: &CStr) {
     }
 }
 
-/// Is a Steam Controller (or a Steam Deck's controls) plugged in? So Settings lists one SDL
-/// doesn't read itself: the Deck's controls, or a Steam Controller SDL couldn't open.
-#[cfg(not(target_os = "linux"))]
-fn steam_pad_here() -> bool {
-    // SAFETY: the list SDL returns is walked to its end and then freed, once.
-    unsafe {
-        let list = sdl::SDL_hid_enumerate(VALVE, 0);
-        let mut d = list;
-        let mut found = false;
-        while !d.is_null() {
-            if STEAM_PADS.contains(&(*d).product_id) {
-                found = true;
-            }
-            d = (*d).next;
-        }
-        sdl::SDL_hid_free_enumeration(list);
-        found
-    }
-}
-
-fn list(open: &HashMap<sdl::SDL_JoystickID, Open>, steam: bool) {
+fn list(open: &HashMap<sdl::SDL_JoystickID, Open>) {
     let mut ids: Vec<_> = open.keys().copied().collect();
     ids.sort();
     let mut c = CONNECTED.lock().unwrap();
     c.clear();
     c.extend(ids.iter().map(|id| Pad { name: open[id].name.clone(), kind: open[id].kind }));
-    if steam && !c.iter().any(|p| p.kind == "steam") {
-        c.push(Pad { name: "Steam Controller".into(), kind: "steam" });
-    }
 }
 
 fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
@@ -211,26 +187,7 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
             }
         }
         let mut open: HashMap<sdl::SDL_JoystickID, Open> = HashMap::new();
-        // A Steam pad SDL doesn't read is looked for on Windows and macOS, as before.
-        #[cfg_attr(target_os = "linux", allow(unused_mut))]
-        let mut steam = false;
-        // Looked for again only when the list of HID devices changes: listing them opens each one.
-        #[cfg(not(target_os = "linux"))]
-        let mut hid_seen: Option<u32> = None;
         loop {
-            #[cfg(not(target_os = "linux"))]
-            {
-                // SAFETY: SDL is running on this thread.
-                let n = unsafe { sdl::SDL_hid_device_change_count() };
-                if hid_seen != Some(n) {
-                    hid_seen = Some(n);
-                    let now = steam_pad_here();
-                    if now != steam {
-                        steam = now;
-                        list(&open, steam);
-                    }
-                }
-            }
             // SAFETY: an SDL_Event is plain data SDL fills in; the union member read is the one
             // its type says.
             let mut ev: sdl::SDL_Event = unsafe { std::mem::zeroed() };
@@ -251,13 +208,13 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
                         let name = if name.is_null() { "Controller".to_string() } else { unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned() };
                         let kind = kind_of(unsafe { sdl::SDL_GetGamepadType(pad) }, unsafe { sdl::SDL_GetGamepadVendor(pad) });
                         open.insert(id, Open { pad, name, kind, axes: Axes::default() });
-                        list(&open, steam);
+                        list(&open);
                     }
                     sdl::SDL_EVENT_GAMEPAD_REMOVED => {
                         if let Some(o) = open.remove(&unsafe { ev.gdevice.which }) {
                             // SAFETY: opened above, closed once.
                             unsafe { sdl::SDL_CloseGamepad(o.pad) };
-                            list(&open, steam);
+                            list(&open);
                         }
                     }
                     sdl::SDL_EVENT_GAMEPAD_BUTTON_DOWN | sdl::SDL_EVENT_GAMEPAD_BUTTON_UP => {
