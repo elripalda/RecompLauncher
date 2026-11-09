@@ -7,7 +7,7 @@ The Tauri identifier stays `com.recomplauncher.app`, so other platforms keep the
 
 ```bash
 git submodule add https://github.com/flathub/shared-modules packaging/flatpak/shared-modules   # once
-flatpak install flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//24.08
+flatpak install flathub org.gnome.Platform//51 org.gnome.Sdk//51 org.freedesktop.Sdk.Extension.rust-stable//26.08
 curl -O https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
 python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o packaging/flatpak/cargo-sources.json
 cd packaging/flatpak
