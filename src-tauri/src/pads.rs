@@ -411,3 +411,112 @@ fn idle() -> bool {
 pub fn connected() -> Vec<Pad> {
     CONNECTED.lock().unwrap().clone()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sdl::SDL_GamepadAxis as A;
+    use sdl::SDL_GamepadButton as B;
+    use sdl::SDL_GamepadButtonLabel as L;
+    use sdl::SDL_GamepadType as T;
+
+    #[test]
+    fn kinds() {
+        assert_eq!(kind_of(T::PS5, 0x054C), "ps");
+        assert_eq!(kind_of(T::PS4, 0x054C), "ps");
+        assert_eq!(kind_of(T::PS3, 0x054C), "ps");
+        assert_eq!(kind_of(T::NINTENDO_SWITCH_PRO, 0x057E), "nintendo");
+        assert_eq!(kind_of(T::NINTENDO_SWITCH_JOYCON_PAIR, 0x057E), "nintendo");
+        assert_eq!(kind_of(T::STEAM, VALVE), "steam");
+        // Steam's own controllers show as Steam's even when SDL calls them an Xbox pad.
+        assert_eq!(kind_of(T::XBOX360, VALVE), "steam");
+        assert_eq!(kind_of(T::XBOXONE, 0x045E), "xbox");
+        assert_eq!(kind_of(T::STANDARD, 0x2DC8), "xbox");
+        assert_eq!(kind_of(T::UNKNOWN, 0), "xbox");
+    }
+
+    #[test]
+    fn face_buttons_go_by_what_is_printed() {
+        // Xbox: A at the bottom.
+        assert_eq!(button_name(B::SOUTH, L::A), Some("a"));
+        assert_eq!(button_name(B::NORTH, L::Y), Some("y"));
+        // PlayStation: Cross, Circle, Square, Triangle.
+        assert_eq!(button_name(B::SOUTH, L::CROSS), Some("a"));
+        assert_eq!(button_name(B::EAST, L::CIRCLE), Some("b"));
+        assert_eq!(button_name(B::WEST, L::SQUARE), Some("x"));
+        assert_eq!(button_name(B::NORTH, L::TRIANGLE), Some("y"));
+        // Nintendo: A on the right, B at the bottom, X on top, Y on the left.
+        assert_eq!(button_name(B::EAST, L::A), Some("a"));
+        assert_eq!(button_name(B::SOUTH, L::B), Some("b"));
+        assert_eq!(button_name(B::NORTH, L::X), Some("x"));
+        assert_eq!(button_name(B::WEST, L::Y), Some("y"));
+        // No label known: by position, like an Xbox pad.
+        assert_eq!(button_name(B::SOUTH, L::UNKNOWN), Some("a"));
+        assert_eq!(button_name(B::EAST, L::UNKNOWN), Some("b"));
+    }
+
+    #[test]
+    fn other_buttons() {
+        let n = |b| button_name(b, L::UNKNOWN);
+        assert_eq!(n(B::BACK), Some("view"));
+        assert_eq!(n(B::START), Some("menu"));
+        assert_eq!(n(B::GUIDE), Some("guide"));
+        assert_eq!(n(B::LEFT_SHOULDER), Some("lb"));
+        assert_eq!(n(B::RIGHT_SHOULDER), Some("rb"));
+        assert_eq!(n(B::LEFT_STICK), Some("ls"));
+        assert_eq!(n(B::RIGHT_STICK), Some("rs"));
+        assert_eq!(n(B::DPAD_UP), Some("up"));
+        assert_eq!(n(B::DPAD_DOWN), Some("down"));
+        assert_eq!(n(B::DPAD_LEFT), Some("left"));
+        assert_eq!(n(B::DPAD_RIGHT), Some("right"));
+        // Paddles, the touchpad and the share/capture button aren't the launcher's.
+        assert_eq!(n(B::TOUCHPAD), None);
+        assert_eq!(n(B::MISC1), None);
+        assert_eq!(n(B::RIGHT_PADDLE1), None);
+    }
+
+    #[test]
+    fn stick() {
+        let mut a = Axes::default();
+        // Not seen resting yet: a stick that starts pushed does nothing.
+        assert!(a.moved(A::LEFTX, 32767).is_empty());
+        assert!(a.moved(A::LEFTX, 0).is_empty());
+        assert_eq!(a.moved(A::LEFTX, 30000), vec![(true, "right")]);
+        // Still right: nothing new.
+        assert!(a.moved(A::LEFTX, 32767).is_empty());
+        // Straight across: right is let go, then left pressed.
+        assert_eq!(a.moved(A::LEFTX, -32768), vec![(false, "right"), (true, "left")]);
+        // Half way back counts as let go.
+        assert_eq!(a.moved(A::LEFTX, -15000), vec![(false, "left")]);
+        // SDL's Y is positive downwards.
+        assert!(a.moved(A::LEFTY, 0).is_empty());
+        assert_eq!(a.moved(A::LEFTY, -32768), vec![(true, "up")]);
+        assert_eq!(a.moved(A::LEFTY, 32767), vec![(false, "up"), (true, "down")]);
+        // The right stick isn't read.
+        assert!(a.moved(A::RIGHTX, 0).is_empty());
+        assert!(a.moved(A::RIGHTX, 32767).is_empty());
+    }
+
+    #[test]
+    fn each_axis_rests_on_its_own() {
+        let mut a = Axes::default();
+        assert!(a.moved(A::LEFTX, 0).is_empty());
+        // X resting doesn't make a Y that sits pushed count.
+        assert!(a.moved(A::LEFTY, 32767).is_empty());
+        assert_eq!(a.moved(A::LEFTX, 32767), vec![(true, "right")]);
+    }
+
+    #[test]
+    fn triggers() {
+        let mut a = Axes::default();
+        // A pedal that sits pressed doesn't count until it's been let go.
+        assert!(a.moved(A::LEFT_TRIGGER, 32767).is_empty());
+        assert!(a.moved(A::LEFT_TRIGGER, 0).is_empty());
+        assert!(a.moved(A::LEFT_TRIGGER, 15000).is_empty());
+        assert_eq!(a.moved(A::LEFT_TRIGGER, 25000), vec![(true, "lt")]);
+        assert_eq!(a.moved(A::LEFT_TRIGGER, 5000), vec![(false, "lt")]);
+        assert!(a.moved(A::RIGHT_TRIGGER, 0).is_empty());
+        assert_eq!(a.moved(A::RIGHT_TRIGGER, 32767), vec![(true, "rt")]);
+        assert_eq!(a.moved(A::RIGHT_TRIGGER, 0), vec![(false, "rt")]);
+    }
+}
