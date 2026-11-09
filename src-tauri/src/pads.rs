@@ -34,7 +34,7 @@ enum Ev {
 }
 
 /// Valve: the Steam Controller (wired, its wireless receiver) and the Steam Deck's own controls.
-/// Without Steam running they act as a mouse and keyboard; Steam Input turns them into a pad.
+/// SDL reads a Steam Controller itself; the Deck's controls come through Steam Input.
 pub const VALVE: u16 = 0x28DE;
 pub const STEAM_PADS: [u16; 5] = [0x1102, 0x1142, 0x1105, 0x1106, 0x1205];
 
@@ -144,8 +144,8 @@ fn set_hint(name: *const c_char, value: &CStr) {
     }
 }
 
-/// Is a Steam Controller (or a Steam Deck's controls) plugged in? It's listed by name only:
-/// Steam reads it, and passes its buttons on.
+/// Is a Steam Controller (or a Steam Deck's controls) plugged in? So Settings lists one SDL
+/// doesn't read itself: the Deck's controls, or a Steam Controller SDL couldn't open.
 #[cfg(not(target_os = "linux"))]
 fn steam_pad_here() -> bool {
     // SAFETY: the list SDL returns is walked to its end and then freed, once.
@@ -189,6 +189,8 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
         set_hint(sdl::SDL_HINT_JOYSTICK_DIRECTINPUT, c"0");
         // SDL's Steam Deck driver turns the Deck's trackpad mouse off for as long as it's open.
         // Started from Steam, the Deck's controls come through Steam Input instead.
+        // SDL's Steam Controller drivers stay on: they read the controller without Steam. Its
+        // trackpad mouse is off while it's open here, and (on the first model) back when it closes.
         set_hint(sdl::SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, c"0");
         // Closing the launcher (Ctrl+C, the system's own "quit") must still close it.
         set_hint(sdl::SDL_HINT_NO_SIGNAL_HANDLERS, c"1");
@@ -209,7 +211,7 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
             }
         }
         let mut open: HashMap<sdl::SDL_JoystickID, Open> = HashMap::new();
-        // A Steam Controller is looked for on Windows and macOS (on Linux it shows when it appears as a controller).
+        // A Steam pad SDL doesn't read is looked for on Windows and macOS, as before.
         #[cfg_attr(target_os = "linux", allow(unused_mut))]
         let mut steam = false;
         // Looked for again only when the list of HID devices changes: listing them opens each one.
