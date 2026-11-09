@@ -5475,6 +5475,10 @@ async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
 /// A newer RecompLauncher, if there is one. Read from the copy on disk when it's younger than
 /// `max_age` seconds.
 pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
+    // A Flatpak is updated by Flatpak (Flathub), never by the launcher itself.
+    if flatpak::sandboxed() {
+        return None;
+    }
     let v = version_json(st, max_age, player).await?;
     // Each non-Windows platform needs its own published build; never offer another OS's update.
     let v = launcher_platform_entry(&v, assets::os_now(), assets::arch_now()).unwrap_or(Value::Null);
@@ -6212,6 +6216,9 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
 /// place of this one on Linux. Anything else opens the download page.
 #[tauri::command]
 async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
+    if flatpak::sandboxed() {
+        return Err(Error::Msg("RecompLauncher updates through Flatpak. Update it from your software center, or run: flatpak update".into()));
+    }
     let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
     let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.

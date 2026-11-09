@@ -18,9 +18,23 @@ fn ref_in(bytes: &[u8]) -> Option<String> {
     re.captures(&text).map(|c| c[1].to_string())
 }
 
-fn flatpak() -> Option<PathBuf> {
+/// The launcher itself runs as a Flatpak (from Flathub). Its sandbox has no `flatpak` of its own:
+/// the PC's is reached through `flatpak-spawn --host`.
+pub fn sandboxed() -> bool {
+    cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists())
+}
+
+fn on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join("flatpak")).find(|p| p.is_file())
+    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
+}
+
+/// The program that runs `flatpak`, and what goes before its arguments.
+fn flatpak() -> Option<(PathBuf, &'static [&'static str])> {
+    if sandboxed() {
+        return on_path("flatpak-spawn").map(|p| (p, &["--host", "flatpak"][..]));
+    }
+    on_path("flatpak").map(|p| (p, &[][..]))
 }
 
 /// Flatpak is on this PC.
@@ -29,7 +43,9 @@ pub fn available() -> bool {
 }
 
 fn std_cmd() -> std::process::Command {
-    let mut c = std::process::Command::new(flatpak().unwrap_or_else(|| PathBuf::from("flatpak")));
+    let (program, prefix) = flatpak().unwrap_or_else(|| (PathBuf::from("flatpak"), &[]));
+    let mut c = std::process::Command::new(program);
+    c.args(prefix);
     crate::sysenv::clean_std(&mut c);
     c
 }
@@ -52,8 +68,9 @@ pub fn install(bundle: &Path) -> Result<(), String> {
 
 /// Starts it. Flatpak stays open until the game closes, so its exit code is the game's.
 pub fn command(id: &str) -> tokio::process::Command {
-    let mut c = tokio::process::Command::new(flatpak().unwrap_or_else(|| PathBuf::from("flatpak")));
-    c.arg("run").arg(id);
+    let (program, prefix) = flatpak().unwrap_or_else(|| (PathBuf::from("flatpak"), &[]));
+    let mut c = tokio::process::Command::new(program);
+    c.args(prefix).arg("run").arg(id);
     c
 }
 
