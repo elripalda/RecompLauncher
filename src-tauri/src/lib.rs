@@ -7011,10 +7011,10 @@ pub fn run() {
                         open_link(&h, id);
                     }
                 });
-                // Windows (a portable copy too) and an AppImage tell the system about the links
-                // themselves; the installer and the .deb do it when they install.
+                // Windows (a portable copy too) and Linux (an AppImage, the .deb, a build of its
+                // own) tell the system about the links each time, with the link passed along.
                 #[cfg(any(windows, target_os = "linux"))]
-                if cfg!(windows) || std::env::var_os("APPIMAGE").is_some() {
+                {
                     let h = app.handle().clone();
                     std::thread::spawn(move || {
                         if let Err(e) = h.deep_link().register_all() {
