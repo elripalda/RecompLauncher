@@ -758,6 +758,8 @@
         "makes",
         "player_note",
         "installer",
+        "needs",
+        "exit_codes",
         "files.folder",
         "files.flag",
         "files.env",

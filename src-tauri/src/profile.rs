@@ -1254,7 +1254,14 @@ impl Profile {
         let mut items: Vec<PathBuf> = if copy.is_dir() { std::fs::read_dir(copy)?.flatten().map(|e| e.path()).collect() } else { vec![copy.to_path_buf()] };
         // A .cue sheet is only the table of contents: the .bin tracks it names come along too.
         if !copy.is_dir() {
-            items.extend(cue_tracks(copy));
+            let tracks = cue_tracks(copy);
+            // The game wants the disc's one .bin under its own name (ctr-u.bin), and the player
+            // picked the sheet: the track it names goes there, not the sheet renamed.
+            if tracks.len() == 1 && g.name.trim().to_ascii_lowercase().ends_with(".bin") {
+                items = tracks;
+            } else {
+                items.extend(tracks);
+            }
         }
         let single = !copy.is_dir();
         let first = items.first().cloned();
@@ -2575,6 +2582,23 @@ mod tests {
         let sl = Slider { key: "k".into(), min: 0.1, max: 5.0, step: 0.05, ..Default::default() };
         assert_eq!(sl.text(sl.snap(0.1 + 0.2)), "0.3");
         assert_eq!(sl.text(sl.snap(-3.0)), "0.1");
+    }
+
+    #[test]
+    fn a_cue_picked_for_a_named_bin_places_its_track() {
+        let d = tmp("cuebin");
+        let disc = d.join("disc");
+        std::fs::create_dir_all(&disc).unwrap();
+        std::fs::write(disc.join("CTR (USA).bin"), vec![7u8; 4096]).unwrap();
+        std::fs::write(disc.join("CTR (USA).cue"), "FILE \"CTR (USA).bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n").unwrap();
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"ctr.exe","files":{"how":"folder","folder":"assets","accepts":"iso","contains":["ctr-u.bin"],"what":"Your USA Crash Team Racing disc (.bin)"}}"#).unwrap();
+        let p = from_boot(&b).unwrap();
+        p.place(&install, Some(&disc.join("CTR (USA).cue"))).unwrap();
+        assert_eq!(std::fs::metadata(install.join("assets/ctr-u.bin")).unwrap().len(), 4096);
+        assert!(!install.join("assets/CTR (USA).cue").exists());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

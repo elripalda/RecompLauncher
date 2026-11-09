@@ -1271,6 +1271,95 @@ async fn rom_matches(st: State<'_, App>) -> Res<HashMap<String, roms::RomFile>> 
     Ok(tokio::task::spawn_blocking(move || copies_for(&cat, &found, &dirs)).await.unwrap_or_default())
 }
 
+#[derive(Serialize)]
+struct CopyFile {
+    path: String,
+    name: String,
+    folder: String,
+    size: u64,
+    region: String,
+    /// "game", "update" or "dlc".
+    kind: &'static str,
+    disc: Option<u32>,
+    /// One of the catalog's known dumps of this game.
+    verified: bool,
+    /// The one the launcher uses for the game.
+    picked: bool,
+}
+
+#[derive(Serialize)]
+struct CopyFiles {
+    files: Vec<CopyFile>,
+    /// Discs of a set that weren't found (2 when Disc 1 and Disc 3 are there).
+    missing_discs: Vec<u32>,
+}
+
+/// Everything found in the player's folders for one game, for the "Your copy" list: its discs in
+/// order, then updates, then extra content. `picked` is the copy the launcher uses (or the one the
+/// player chose); `dropped` are the ones they said aren't theirs.
+#[tauri::command]
+async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, dropped: Vec<String>) -> Res<CopyFiles> {
+    let cat = cached_catalog(&st);
+    let entry = catalog::app(&cat, &id).cloned().ok_or_else(|| Error::Msg("That game isn't in the list.".into()))?;
+    let roms = st.lib.lock().unwrap().roms.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut found = roms::files_of(&entry, &roms);
+        // The one the launcher picked counts even when its name didn't match (a folder found by its check).
+        if let Some(p) = picked.as_deref().filter(|p| !p.is_empty()) {
+            if !found.iter().any(|r| r.path.to_string_lossy() == p) {
+                let path = PathBuf::from(p);
+                let size = std::fs::metadata(&path).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0);
+                found.push(roms::RomFile { path, system: String::new(), title: String::new(), region: String::new(), size });
+            }
+        }
+        let mut files: Vec<CopyFile> = found
+            .into_iter()
+            .filter(|r| !dropped.iter().any(|d| r.path.to_string_lossy() == d.as_str()))
+            .map(|r| {
+                let name = r.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let part = roms::part_of(&name);
+                let path = r.path.to_string_lossy().to_string();
+                CopyFile {
+                    folder: r.path.parent().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+                    verified: roms::known_dump(&entry, &r.path),
+                    picked: picked.as_deref() == Some(path.as_str()),
+                    kind: part.kind,
+                    disc: part.disc,
+                    size: r.size,
+                    region: r.region,
+                    name,
+                    path,
+                }
+            })
+            .collect();
+        let rank = |k: &str| match k { "game" => 0, "update" => 1, _ => 2 };
+        files.sort_by(|a, b| (rank(a.kind), a.disc.unwrap_or(0), a.name.to_lowercase()).cmp(&(rank(b.kind), b.disc.unwrap_or(0), b.name.to_lowercase())));
+        let discs: Vec<u32> = files.iter().filter_map(|f| f.disc).collect();
+        let of = files.iter().filter_map(|f| roms::part_of(&f.name).of).max().unwrap_or(0);
+        let top = discs.iter().copied().max().unwrap_or(0).max(of);
+        let missing_discs = if discs.is_empty() { vec![] } else { (1..=top.min(20)).filter(|n| !discs.contains(n)).collect() };
+        CopyFiles { files, missing_discs }
+    })
+    .await
+    .map_err(|e| Error::Msg(e.to_string()))
+}
+
+/// What an installed recomp's own recomplauncher.json (in its folder) covers, for the "Launcher
+/// support" list: each feature it sets up itself. Null when it has none.
+#[tauri::command]
+fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
+    let dir = st.lib.lock().unwrap().installed.get(&id).map(|g| g.path.clone())?;
+    let p = profile::release_profile(&dir)?.profile;
+    let game = p.game.as_ref();
+    Some(json!({
+        "easy_setup": game.is_some(),
+        "settings": !p.settings.is_empty(),
+        "prepare": p.prepare.is_some(),
+        "verified": game.map(|g| !g.dumps.is_empty() || !g.check.ids.is_empty()).unwrap_or(false),
+        "saves": !p.saves.is_empty(),
+    }))
+}
+
 // ---------- the launcher's own file browser ----------
 
 #[derive(Serialize)]
@@ -2654,7 +2743,11 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             }
         }
         // What the game's exit code means, when its profile says.
-        let said = code.and_then(|c| prof.as_ref().and_then(|p| p.exit_codes.get(&(c as u32).to_string()).cloned()));
+        let said = code.and_then(|c| {
+            let own = prof.as_ref().and_then(|p| p.exit_codes.get(&(c as u32).to_string()).or_else(|| p.exit_codes.get(&c.to_string())).cloned());
+            // Else the catalog's profile ("exit_codes" in its boot), fixable without a launcher update.
+            own.or_else(|| catalog::app(&cached_catalog(&st), &id).and_then(|e| boot::exit_says(e, c)))
+        }).filter(|t| !t.trim().eq_ignore_ascii_case("ok"));
         if mine {
             let _ = app2.emit("game", json!({"id": id, "state": "stopped", "secs": secs, "code": code, "started": started, "said": said}));
             ping::game_stop(&app2, &id, secs);
@@ -3462,6 +3555,9 @@ fn quit_code(st: &App, id: &str, prof: Option<&profile::Profile>, c: i32) -> boo
     }
     let cat = cached_catalog(st);
     let Some(e) = catalog::app(&cat, id) else { return false };
+    if crate::boot::exit_says(e, c).map(|s| s.trim().eq_ignore_ascii_case("ok")).unwrap_or(false) {
+        return true;
+    }
     let listed = [e.get("ok_codes"), e.get("boot").and_then(|b| b.get("ok_codes"))]
         .into_iter()
         .flatten()
@@ -7466,7 +7562,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
+            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,

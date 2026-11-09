@@ -84,7 +84,7 @@ fn rel(p: &str) -> Option<PathBuf> {
 /// What this launcher can do with a profile, by name: a profile's `"requires"` lists the ones it
 /// uses. Kept in step with docs/DEVELOPERS.md and recomplauncher.schema.json.
 pub const FEATURES: &[&str] = &[
-    "start", "start.linux", "start.macos", "setup", "console", "clone", "makes", "player_note", "installer",
+    "start", "start.linux", "start.macos", "setup", "console", "clone", "makes", "player_note", "installer", "needs", "exit_codes",
     "files.folder", "files.flag", "files.env", "files.setup", "files.accepts", "files.contains", "files.sha256", "files.update",
     "settings.toml", "settings.ini", "settings.json", "settings.args", "settings.choices", "settings.slider", "settings.bindings", "settings.groups",
 ];
@@ -208,6 +208,19 @@ pub fn hash_of(entry: &Value) -> String {
         Some(b) => hex::encode(sha2::Sha256::digest(b.to_string().as_bytes()))[..12].to_string(),
         None => String::new(),
     }
+}
+
+/// What the catalog's profile says a game's exit code means (`"exit_codes": {"70": "…"}`, the
+/// same as a recomplauncher.json's): a sentence for the crash window, or "ok" for a normal quit.
+/// The code as Windows shows it (unsigned) or signed both count.
+pub fn exit_says(entry: &Value, code: i32) -> Option<String> {
+    let b = raw(entry)?;
+    let m = b.get("exit_codes")?.as_object()?;
+    [(code as u32).to_string(), code.to_string(), format!("0x{:08X}", code as u32), format!("0x{:08x}", code as u32)]
+        .iter()
+        .find_map(|k| m.get(k).and_then(Value::as_str))
+        .map(|t| t.trim().chars().take(400).collect::<String>())
+        .filter(|t| !t.is_empty())
 }
 
 /// The fingerprint of only how a game starts (its program, setup and kind): a change there picks
@@ -360,6 +373,14 @@ pub fn of(dir: &Path, id: &str) -> Option<Boot> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exit_codes_come_from_the_catalog() {
+        let e = serde_json::json!({"id": "totk", "boot": {"start": "totk.exe", "exit_codes": {"70": "The game stopped on an error.", "3221226356": "Heap.", "0": "ok"}}});
+        assert_eq!(exit_says(&e, 70).as_deref(), Some("The game stopped on an error."));
+        assert_eq!(exit_says(&e, -1073740940).as_deref(), Some("Heap."));
+        assert_eq!(exit_says(&e, 5), None);
+    }
 
     #[test]
     fn profiles_drop_what_this_launcher_cant_do() {

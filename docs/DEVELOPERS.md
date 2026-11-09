@@ -554,6 +554,8 @@ RecompLauncher 0.90 Beta 27 supports:
 | `makes` | Files or folders its setup makes, to tell when it finished |
 | `player_note` | Something the player does by hand, shown on the game's page |
 | `installer` | The release is an installer, then the game starts from what it installed |
+| `needs` | What the PC needs for its setup: `build_tools`, `clang`, `python` (3.10 or newer), checked on the game's page |
+| `exit_codes` | What a game's exit codes mean (`{"70": "…"}`, or `"ok"` for a normal quit), shown in the crash window |
 | `files.folder` | Easy Setup: the player's copy goes into a folder |
 | `files.flag` | Easy Setup: the copy is passed on the command line |
 | `files.env` | Easy Setup: the copy reaches the game through an environment variable |
