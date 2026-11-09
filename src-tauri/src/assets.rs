@@ -97,7 +97,7 @@ fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
-        "macos" => k == "zip",
+        "macos" => matches!(k, "zip" | "rar" | "7z"),
         _ => false,
     }
 }
@@ -303,10 +303,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mac_zip_is_installable_but_dmg_is_not() {
+    fn mac_zip_rar_and_7z_are_installable_but_dmg_is_not() {
         let files = [a("Game-macOS.dmg"), a("Game-macOS.zip")];
         assert_eq!(all_for(&files, "macos", "arm64", None).iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
         assert!(pick(&files[..1], "macos", "arm64", None).is_none());
+        assert_eq!(pick(&[a("SMW.Remastered+.MacOS.Untested.rar")], "macos", "arm64", Some("SMW.Remastered+.MacOS.Untested.rar")).unwrap().name, "SMW.Remastered+.MacOS.Untested.rar");
+        assert!(pick(&[a("Game-macOS.7z")], "macos", "arm64", None).is_some());
+        assert!(pick(&[a("Game-windows.rar"), a("Game-linux.tar.gz")], "macos", "arm64", None).is_none());
     }
 
     fn a(n: &str) -> Asset {

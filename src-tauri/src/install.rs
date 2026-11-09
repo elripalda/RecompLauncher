@@ -703,6 +703,12 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         }
         _ => return Err(Error::Msg(format!("{name} can't be installed on this PC"))),
     }
+    // A .7z or .rar doesn't carry a file's executable bit the way a zip's entries do: a Mac program
+    // out of one is found by its header and marked runnable.
+    #[cfg(target_os = "macos")]
+    if matches!(k, "7z" | "rar") {
+        mark_mac_programs(staging);
+    }
     let from = if strip_top { root(staging) } else { staging.to_path_buf() };
     #[cfg(target_os = "macos")]
     let from = if strip_top { unwrap_mac_zip(from, staging)? } else { from };
@@ -719,6 +725,21 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     overlay(&from, target)?;
     let _ = fs::remove_dir_all(staging);
     Ok(files)
+}
+
+/// Mark every Mac executable under `dir` (by its Mach-O header) as runnable.
+#[cfg(target_os = "macos")]
+fn mark_mac_programs(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        let Ok(t) = e.file_type() else { continue };
+        if t.is_dir() {
+            mark_mac_programs(&p);
+        } else if t.is_file() && crate::macos::is_executable(&p, crate::assets::arch_now()) {
+            let _ = fs::set_permissions(&p, fs::Permissions::from_mode(0o755));
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
