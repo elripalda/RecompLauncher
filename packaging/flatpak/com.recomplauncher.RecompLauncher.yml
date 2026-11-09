@@ -17,6 +17,16 @@ finish-args:
   - --device=all
   # The tray icon.
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Steam (its own folder, or the Flatpak's): "Add to Steam" writes shortcuts and art there, and
+  # a game's Proton goes into its compatibilitytools.d.
+  - --filesystem=~/.local/share/Steam
+  - --filesystem=~/.steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  # Shortcuts on the desktop and in the PC's app menu.
+  - --filesystem=xdg-desktop
+  - --filesystem=xdg-data/applications:create
+  # In-game screenshots (Pictures/RecompLauncher).
+  - --filesystem=xdg-pictures/RecompLauncher:create
   # Rich presence for Discord (its socket, native or Flatpak).
   - --filesystem=xdg-run/app/com.discordapp.Discord:create
   - --filesystem=xdg-run/discord-ipc-0
