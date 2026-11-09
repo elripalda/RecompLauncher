@@ -30,10 +30,10 @@ pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Optio
         dirs::desktop_dir().or_else(|| dirs::home_dir().map(|h| h.join("Desktop"))).ok_or_else(|| Error::Msg("Couldn't find your desktop folder.".into()))?
     };
     // On Linux an AppImage runs from a folder that's gone once it closes: the shortcut starts the AppImage.
-    let launcher = start_path();
+    let (launcher, pre) = start_command();
     let (target, args): (PathBuf, String) = match direct {
         Some((exe, a)) => (exe.to_path_buf(), a.iter().map(|x| quote_arg(x)).collect::<Vec<_>>().join(" ")),
-        None => (launcher.clone(), format!("--play {id}")),
+        None => (launcher.clone(), with_start_args(&pre, &format!("--play {id}"))),
     };
     #[cfg(windows)]
     {
@@ -63,7 +63,8 @@ pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Optio
         );
         // In the applications menu (where launchers and Steam's Add a Game look), and on the desktop
         // unless it's for the menu only.
-        let apps = dirs::data_dir().map(|d| d.join("applications"));
+        // As a Flatpak, data_dir() is the sandbox's own: the PC's menu reads the real one.
+        let apps = if crate::flatpak::sandboxed() { dirs::home_dir().map(|h| h.join(".local/share")) } else { dirs::data_dir() }.map(|d| d.join("applications"));
         if let Some(apps) = &apps {
             if fs::create_dir_all(apps).is_ok() {
                 let _ = fs::write(apps.join(&file_name), &body);
@@ -303,6 +304,11 @@ pub fn steam_running() -> bool {
         // Steam's own process (named "steam", or its ubuntu12_32/steam program, as SteamOS starts
         // it), or its pid file pointing at a process that's still there. Any of them still open
         // means Steam can still write its shortcuts back over the new one on the way out.
+        // The sandbox sees none of the PC's processes. Steam keeps its command pipe open to read
+        // from while it runs, so a write end opens only then (no reader: "no such device").
+        if crate::flatpak::sandboxed() {
+            return pipe_has_reader(&dirs::home_dir().unwrap_or_default().join(".steam/steam.pipe"));
+        }
         let pid_live = dirs::home_dir()
             .and_then(|h| fs::read_to_string(h.join(".steam/steam.pid")).ok())
             .and_then(|p| p.trim().parse::<u32>().ok())
@@ -317,6 +323,16 @@ pub fn steam_running() -> bool {
                 steam_process(comm.trim(), &cmd)
             })
     }
+}
+
+/// A named pipe somebody is reading from. Opened for writing without waiting, which a pipe nobody
+/// reads refuses (ENXIO) and nothing is written.
+#[cfg(unix)]
+fn pipe_has_reader(pipe: &Path) -> bool {
+    use std::os::unix::fs::OpenOptionsExt;
+    const O_NONBLOCK: i32 = 0o4000;
+    // Anything but a reader being there (no pipe, no reader, no access) counts as Steam not running.
+    fs::OpenOptions::new().write(true).custom_flags(O_NONBLOCK).open(pipe).is_ok()
 }
 
 /// Is this process Steam itself (its comm name and command line)? Not the launcher's own children,
@@ -461,8 +477,49 @@ pub fn write_to_steam(steam: &Path, name: &str, id: &str, icon: &str, art: &[(&s
 /// RecompLauncher itself in Steam, opening in Big Picture mode (for a Steam Deck's Gaming Mode, or
 /// Steam's own Big Picture).
 pub fn launcher_to_steam(steam: &Path, art: &[(&str, Vec<u8>, &str)]) -> Result<usize, Error> {
-    let icon = launcher_exe().to_string_lossy().to_string();
-    write_entry(steam, "RecompLauncher", "--bigpicture", &icon, art)
+    write_entry(steam, "RecompLauncher", "--bigpicture", &launcher_icon(), art)
+}
+
+/// How a shortcut starts the launcher: the program and the arguments that go before its own.
+/// Run as a Flatpak, the program inside the sandbox isn't on the PC at all: a shortcut starts it
+/// with `flatpak run <app id>`.
+fn start_command() -> (PathBuf, Vec<String>) {
+    if crate::flatpak::sandboxed() {
+        if let Ok(id) = std::env::var("FLATPAK_ID") {
+            return (PathBuf::from("/usr/bin/flatpak"), vec!["run".into(), id]);
+        }
+    }
+    (start_path(), vec![])
+}
+
+/// `args` after the arguments `start_command` puts first, as one command line.
+fn with_start_args(pre: &[String], args: &str) -> String {
+    pre.iter().map(|a| quote_arg(a)).chain((!args.is_empty()).then(|| args.to_string())).collect::<Vec<_>>().join(" ")
+}
+
+/// The launcher's picture for Steam. As a Flatpak, the copy the PC's own icon folder holds (the
+/// sandbox's /app doesn't exist outside it).
+fn launcher_icon() -> String {
+    if crate::flatpak::sandboxed() {
+        if let Some(icon) = flatpak_icon() {
+            return icon;
+        }
+    }
+    launcher_exe().to_string_lossy().to_string()
+}
+
+fn flatpak_icon() -> Option<String> {
+    let id = std::env::var("FLATPAK_ID").ok()?;
+    let info = fs::read_to_string("/.flatpak-info").ok()?;
+    icon_in(&info, &id)
+}
+
+/// `app-path` in /.flatpak-info is <installation>/app/<id>/<arch>/<branch>/<commit>/files; the
+/// installation's exports folder has the icon.
+fn icon_in(info: &str, id: &str) -> Option<String> {
+    let app_path = info.lines().find_map(|l| l.trim().strip_prefix("app-path="))?;
+    let root = app_path.split(&format!("/app/{id}/")).next().filter(|r| r.len() < app_path.len())?;
+    Some(format!("{root}/exports/share/icons/hicolor/512x512/apps/{id}.png"))
 }
 
 /// The program Steam should start: the AppImage itself on Linux when it's one, else this program.
@@ -534,9 +591,11 @@ pub fn is_handheld(cpu: &str) -> bool {
 }
 
 fn write_entry(steam: &Path, name: &str, launch: &str, icon: &str, art: &[(&str, Vec<u8>, &str)]) -> Result<usize, Error> {
-    let exe = start_path();
+    let (exe, pre) = start_command();
     let exe_s = exe.to_string_lossy().to_string();
     let dir = exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+    let launch = with_start_args(&pre, launch);
+    let launch = launch.as_str();
     let users = steam_users(steam);
     if users.is_empty() {
         return Err(Error::Msg("Sign in to Steam once on this PC first.".into()));
@@ -583,6 +642,38 @@ fn write_entry(steam: &Path, name: &str, launch: &str, icon: &str, art: &[(&str,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_flatpak_starts_with_flatpak_run() {
+        let pre = vec!["run".to_string(), "com.recomplauncher.RecompLauncher".to_string()];
+        assert_eq!(with_start_args(&pre, "--play abc"), "run com.recomplauncher.RecompLauncher --play abc");
+        assert_eq!(with_start_args(&[], "--bigpicture"), "--bigpicture");
+        assert_eq!(with_start_args(&pre, ""), "run com.recomplauncher.RecompLauncher");
+    }
+
+    #[test]
+    fn the_launcher_icon_outside_the_sandbox() {
+        let id = "com.recomplauncher.RecompLauncher";
+        let user = "[Instance]
+app-path=/home/a/.local/share/flatpak/app/com.recomplauncher.RecompLauncher/x86_64/master/0f3a/files
+";
+        assert_eq!(icon_in(user, id).as_deref(), Some("/home/a/.local/share/flatpak/exports/share/icons/hicolor/512x512/apps/com.recomplauncher.RecompLauncher.png"));
+        let system = "[Instance]
+app-path=/var/lib/flatpak/app/com.recomplauncher.RecompLauncher/x86_64/stable/9/files
+";
+        assert!(icon_in(system, id).unwrap().starts_with("/var/lib/flatpak/exports/"));
+        assert_eq!(icon_in("[Instance]
+", id), None);
+        assert_eq!(icon_in("app-path=/somewhere/else/files
+", id), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_pipe_no_reader() {
+        assert!(!pipe_has_reader(Path::new("/nonexistent/steam.pipe")));
+    }
+
 
     #[test]
     fn knows_handhelds_by_name() {
