@@ -77,7 +77,16 @@ jobs:
         run: npm test -- --locked
 
       - name: Build installers
-        run: npm run build -- --bundles ${{ matrix.bundles }} -- --locked
+        shell: bash
+        # Packaging downloads Tauri's tools from GitHub, which sometimes answers 504: tried again.
+        run: |
+          for i in 1 2 3 4; do
+            npm run build -- --bundles ${{ matrix.bundles }} -- --locked 2>&1 | tee build.log && exit 0
+            grep -q "http status: 50" build.log || exit 1
+            echo "GitHub download failed, trying again in $((i * 30))s"
+            sleep $((i * 30))
+          done
+          exit 1
         env:
           # Let AppImage tooling run on hosted runners without FUSE mounts.
           APPIMAGE_EXTRACT_AND_RUN: "1"
