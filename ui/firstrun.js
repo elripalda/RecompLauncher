@@ -57,8 +57,8 @@
         return `<div class="oob-logo big">${LOGO}</div><h1>${esc(t('Welcome to RecompLauncher'))}</h1><p class="oob-lead">${esc(t('Your own games, rebuilt for PC. A minute of setup and you\'re in.'))}</p>
           <div class="oob-three">
             <div class="oob-card">${ICON.find}<b>${esc(t('Finds your games'))}</b><span>${esc(t('Point it at your game backups and it spots the ones with recomps.'))}</span></div>
-            <div class="oob-card">${ICON.disc}<b>${esc(t('Sets them up from your disc'))}</b><span>${esc(t('Your disc image is checked once. After that, you just press Play.'))}</span></div>
-            <div class="oob-card">${ICON.look}<b>${esc(t('Your way'))}</b><span>${esc(t('Settings, looks and mods for every game, at a desk or on a TV.'))}</span></div>
+            <div class="oob-card">${ICON.disc}<b>${esc(t('Sets them up from your copy'))}</b><span>${esc(t('Your disc image or ROM is checked once. After that, you just press Play.'))}</span></div>
+            <div class="oob-card">${ICON.look}<b>${esc(t('Your way'))}</b><span>${esc(t('Settings, shaders and mods for every game, at a desk or on a TV.'))}</span></div>
           </div>`;
       case 'play': {
         const tv = !!S.settings.start_in_tv;

@@ -62,7 +62,7 @@ pub fn find(id: &str) -> Option<&'static LookDef> {
     defs().looks.iter().find(|l| l.id == id)
 }
 
-/// How many lines the console sent to the TV, for the CRT looks.
+/// How many lines the console sent to the TV, for the CRT shaders.
 pub fn lines_for(origin: &str) -> u32 {
     defs().lines.get(&origin.to_ascii_lowercase()).copied().unwrap_or(defs().default_lines)
 }
@@ -84,7 +84,7 @@ pub struct ProfileLooks {
     pub graphics_key: String,
     #[serde(default = "main")]
     pub r#in: String,
-    /// Lines for the CRT looks, when the console's usual number is wrong for this game.
+    /// Lines for the CRT shaders, when the console's usual number is wrong for this game.
     #[serde(default)]
     pub lines: u32,
 }
@@ -646,10 +646,10 @@ pub fn prepare(data: &Path, id: &str, exe: &Path, look: &LookDef, amount: u8, li
         let dir = exe.parent().ok_or("No game folder.")?;
         let target = dir.join(name);
         if target.exists() && !ours(&note, &target) {
-            return Err(format!("The game's folder already has a {name}, maybe your own ReShade or another mod, so the look is off. Take it out of the folder to use looks."));
+            return Err(format!("The game's folder already has a {name}, maybe your own ReShade or another mod, so the shader is off. Take it out of the folder to use shaders."));
         }
         if dir.join("ReShade.ini").exists() && !target.exists() {
-            return Err("The game's folder has its own ReShade settings, so the launcher's look is off. Take ReShade out of the folder to use looks.".into());
+            return Err("The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.".into());
         }
         std::fs::write(&target, &dll).map_err(|e| format!("Couldn't put ReShade in the game's folder: {e}"))?;
         std::fs::write(&note, format!("{}\n{}\n", p(&target), hex::encode(Sha256::digest(&dll)))).map_err(|e| e.to_string())?;
@@ -667,7 +667,7 @@ pub fn prepare(data: &Path, id: &str, exe: &Path, look: &LookDef, amount: u8, li
                 "library_path": p(&layer_lib),
                 "api_version": "1.3.268",
                 "implementation_version": "1",
-                "description": "ReShade, for RecompLauncher looks"
+                "description": "ReShade, for RecompLauncher shaders"
             }
         });
         let vk = base.join("vk");
@@ -727,7 +727,7 @@ pub fn vkbasalt_installed() -> bool {
 }
 
 /// An effect with the look's settings written in as their starting values (and the number of
-/// lines for the CRT look).
+/// lines for the CRT shader).
 pub fn bake(fx: &str, values: &BTreeMap<String, f32>, lines: Option<u32>) -> String {
     let mut out = fx.to_string();
     for (k, v) in values {
@@ -759,7 +759,7 @@ pub fn prepare_vkbasalt(data: &Path, id: &str, look: &LookDef, amount: u8, lines
     }
     let p = |x: &Path| x.display().to_string();
     let conf = format!(
-        "# Written by RecompLauncher for the {} look. It's written again when the game starts.\neffects = rl\nrl = {}\nreshadeIncludePath = {}\nreshadeTexturePath = {}\ndepthCapture = off\ntoggleKey = Home\nenableOnLaunch = True\n",
+        "# Written by RecompLauncher for the {} shader. It's written again when the game starts.\neffects = rl\nrl = {}\nreshadeIncludePath = {}\nreshadeTexturePath = {}\ndepthCapture = off\ntoggleKey = Home\nenableOnLaunch = True\n",
         look.name,
         p(&dir.join(&look.fx)),
         p(&dir),

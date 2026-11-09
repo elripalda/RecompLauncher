@@ -597,6 +597,9 @@ function status(a) {
 // release in 60 days or more). Coming Soon recomps never get one. Null when there's nothing to say.
 function projectState(a) {
   if (!a || a.soon) return null;
+  // Finished: everything it set out to do is in. Never shown as ended or quiet, however old its
+  // last release is, and it wins over an old catalog's "archived".
+  if (a.status === 'complete') return { kind: 'complete', note: a.status_note || t('The developer considers it finished: everything it set out to do is in. Fixes may still come now and then.') };
   if (a.status === 'ended' || a.archived) return { kind: 'ended', note: a.status_note || (a.status === 'ended' ? t('The developer isn\'t planning any more updates.') : t('The developer archived this project, so no more updates are coming.')) };
   if (a.status === 'paused') return { kind: 'paused', note: a.status_note || t('The developer has put it on hold. Updates may pick up again later.') };
   const r = Date.parse(a.released || '');
@@ -606,18 +609,20 @@ function projectState(a) {
   const months = Math.floor(days / 30.4);
   return { kind: 'quiet', label: months >= 24 ? tn(Math.floor(months / 12), 'No updates in 1 year', 'No updates in {n} years') : months >= 12 ? t('No updates in over a year') : tn(months, 'No updates in 1 month', 'No updates in {n} months') };
 }
-const STATE_NAME = { ended: N_('Ended'), paused: N_('On hold') };
-const STATE_PILL = { ended: N_('Project ended'), paused: N_('On hold') };
+const STATE_NAME = { ended: N_('Ended'), paused: N_('On hold'), complete: N_('Feature complete') };
+const STATE_PILL = { ended: N_('Project ended'), paused: N_('On hold'), complete: N_('Feature complete') };
+// A check mark before "Feature complete", on the page and in its notice.
+const STATE_ICON = { complete: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>' };
 // The page's pill for it, and (ended or on hold) the notice by Play/Install.
 function statePill(a) {
   const ps = projectState(a);
   if (!ps) return '';
   return ps.kind === 'quiet' ? `<span class="tag quiet" title="${esc(t('No new release in a while. It may still get updates.'))}">${esc(ps.label)}</span>`
-    : `<span class="tag ${ps.kind}">${esc(t(STATE_PILL[ps.kind]))}</span>`;
+    : `<span class="tag ${ps.kind}">${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</span>`;
 }
 function stateNote(a) {
   const ps = projectState(a);
-  return ps && ps.kind !== 'quiet' ? `<div class="gp-note ${ps.kind}" role="note"><b>${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></div>` : '';
+  return ps && ps.kind !== 'quiet' ? `<div class="gp-note ${ps.kind}" role="note"><b>${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></div>` : '';
 }
 
 function poster(a, mine, inst, wide) {
@@ -735,8 +740,35 @@ function actions(a, size = 'big') {
     case 'installed': return needsSetup(a) && !setupDone(a.id) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : b('main', 'play', esc(t('Play')), PLAY) + more;
     case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
-    default: return (isSaved(a.id) ? b('main', 'install', esc(t('Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DOWN) : b('main', 'addlib', esc(t('Add to Library')), PLUS)) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + (size === 'big' && !a.custom ? b('glass', 'have-it', esc(t('I Already Have It'))) : '') + more;
+    // Easy Setup games say so: one press installs it and asks for the player's copy.
+    default: return (isSaved(a.id) ? (turnkey(a) ? b('main easy', 'install', esc(t('Easy Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DISC_S.replace(/14/g, '18')) : b('main', 'install', esc(t('Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DOWN)) : b('main', 'addlib', esc(t('Add to Library')), PLUS)) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + (size === 'big' && !a.custom ? b('glass', 'have-it', esc(t('I Already Have It'))) : '') + more;
   }
+}
+
+// A game's quick actions, at the top of its side column: Add to Steam and to the desktop
+// (installed games), its project page and Report a problem (games with a repo). Each has its icon
+// and its name. Steam's own icon is used when ui/icons/steam.svg is there.
+const QI = (d, w = 1.9) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const QI_PAD = QI('<path d="M7.5 7.5h9a4.5 4.5 0 0 1 4.4 5.4l-.8 3.9a2.3 2.3 0 0 1-3.9 1.1L14 15.5h-4l-2.2 2.4a2.3 2.3 0 0 1-3.9-1.1l-.8-3.9a4.5 4.5 0 0 1 4.4-5.4z"/><path d="M8 10.5v3M6.5 12h3"/><circle cx="15.5" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="17.3" cy="13" r=".9" fill="currentColor" stroke="none"/>');
+const QI_DESK = QI('<rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M9 20.5h6M12 16.5v4"/>');
+const QI_REPORT = QI('<path d="M10.3 4.1 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.1a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17h.01"/>', 2);
+let STEAM_ICON = '';
+fetch('icons/steam.svg').then((r) => (r.ok ? r.text() : '')).then((t) => { if (/^\s*<svg[\s>]/i.test(t) && !/<script|on\w+=/i.test(t)) { STEAM_ICON = t.replace(/<svg/i, '<svg class="qi-brand" aria-hidden="true"'); } }).catch(() => {});
+function quickActs(a) {
+  const id = esc(a.id), b = (act, label, icon, extra = '') => `<button type="button" class="btn" data-act="${act}" data-id="${id}" ${extra}>${icon}<span>${esc(label)}</span></button>`;
+  const out = [];
+  if (S.library[a.id] && S.os !== 'macos') {
+    if (S.steam) out.push(b('steam', t('Add to Steam'), STEAM_ICON || QI_PAD));
+    out.push(b('desktop', t('Add to desktop'), QI_DESK));
+  }
+  if (a.repo) {
+    out.push(b('url', isLab(a.repo) ? 'GitLab' : 'GitHub', isLab(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
+    out.push(b('url', t('Report a problem'), QI_REPORT, `data-url="${esc(repoIssues(a.repo))}"`));
+  }
+  if (!out.length) return '';
+  // Even rows: an odd one out takes the whole row.
+  if (out.length % 2) out[out.length - 1] = out[out.length - 1].replace('class="btn"', 'class="btn span2"');
+  return `<div class="gp-quick acts grid2">${out.join('')}</div>`;
 }
 
 // The other versions of this game that are installed too.
@@ -755,9 +787,10 @@ function readyRows(a) {
   const own = S.owned[id], su = S.setup[id];
   if (su && su.needs) rows.push({ k: t('Your copy of the game'), v: su.copy ? true : own ? null : null,
     d: su.copy ? tf('Set up with {file}', { file: baseName(su.copy) }) : own ? tf('Found in your folders: {file}', { file: baseName(own.path) }) : t('Insert it once and the launcher sets the game up for you.'),
+    tags: su.copy ? '' : fmtTags(copyFormats(id).exts),
     fix: su.copy ? '' : `${own ? fixBtn(id) : ''}<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
   else if (!g && S.easy.has(id)) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
-    d: own ? tf('Found in your folders: {file}. It\'s set up for you after it installs.', { file: baseName(own.path) }) : t('You insert it after it installs, and the launcher sets the game up.'), fix: '' });
+    d: own ? tf('Found in your folders: {file}. It\'s set up for you after it installs.', { file: baseName(own.path) }) : t('You insert it after it installs, and the launcher sets the game up.'), tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
   else if (a.needs) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
     d: own ? (own.region ? tf('Found: {path} ({region})', { path: own.path, region: own.region }) : tf('Found: {path}', { path: own.path })) : g && g.last_played ? t('Set up the first time you played') : t('The recomp asks for it the first time it starts. Add your game folders in Settings and the launcher finds it for you.'),
     fix: own ? fixBtn(id) : g && g.last_played ? '' : `<button type="button" class="btn sm" data-go="settings">${esc(t('Add folders'))}</button>` });
@@ -784,7 +817,7 @@ function readyCard(a) {
   if (!rows.length) return '';
   const bad = rows.filter((r) => r.v === false || (r.v === null && r.fix)).length;
   return `<div class="card ready"><div class="card-h"><h3>${esc(bad || !S.library[a.id] ? t('Before you play') : t('Ready to play'))}</h3><span>${esc(bad ? tn(bad, '1 thing to do', '{n} things to do') : t('Everything it needs is here'))}</span></div>
-    ${rows.map((r) => `<div class="set-row"><div class="k"><b>${esc(r.k)}</b><span>${esc(r.d)}</span></div><div class="acts">${r.fix}${r.fix && r.v !== true ? '' : okMark(r.v)}</div></div>`).join('')}</div>`;
+    ${rows.map((r) => `<div class="set-row"><div class="k"><b>${esc(r.k)}</b><span>${esc(r.d)}</span>${r.tags ? `<span class="fmts">${r.tags}</span>` : ''}</div><div class="acts">${r.fix}${r.fix && r.v !== true ? '' : okMark(r.v)}</div></div>`).join('')}</div>`;
 }
 
 // Play time from the sessions the launcher counted: this week, this month, and the last two weeks.
@@ -856,12 +889,19 @@ function aboutCard(a) {
     <p class="src">${esc(t('From Wikipedia, under CC BY-SA.'))} <a href="#" data-url="${esc(i.url)}">${esc(t('Read the whole article'))}</a></p></div>`;
 }
 
+// The facts as small tiles, the label over its value, in even rows: three across when they fill
+// rows of three, otherwise two, and a last odd one takes the whole row.
+function factGrid(facts) {
+  const cols = facts.length % 3 === 0 ? 3 : 2;
+  const odd = cols === 2 && facts.length % 2 === 1;
+  return `<dl class="facts-grid c${cols}">${facts.map(([k, v], i) => `<div${odd && i === facts.length - 1 ? ' class="wide"' : ''}><dt>${esc(k)}</dt><dd dir="auto">${esc(v)}</dd></div>`).join('')}</dl>`;
+}
 // About the original game, from IGDB: what it is, then the facts there are.
 function igdbCard(ab) {
   const facts = aboutFacts(ab), score = Number.isFinite(Number(ab.rating)) && ab.rating !== null && ab.rating !== '' ? Math.round(Number(ab.rating)) : null;
   return `<div class="card about-game igdb"><div class="card-h" style="margin-bottom:10px"><h3>${esc(t('About the game'))}</h3>${score !== null ? `<span class="score-b" title="${esc(t('Critic and player score'))}"><b>${score}</b>${esc(t('Critic and player score'))}</span>` : ''}</div>
     ${ab.summary ? String(ab.summary).split(/\n\s*\n/).map((p) => `<p dir="auto">${esc(p.trim())}</p>`).join('') : ''}
-    ${facts.length ? `<dl class="dl facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}
+    ${facts.length ? factGrid(facts) : ''}
     ${ab.url && /^https:\/\//.test(ab.url) ? `<p class="src"><a href="#" data-url="${esc(ab.url)}">${esc(t('Game info from IGDB'))}</a></p>` : ''}</div>`;
 }
 
@@ -913,7 +953,7 @@ function pageHome() {
     ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
     ${shelf('popular', t('Popular right now'), oneEach(pool.filter(notPC).sort(byDl)), { see: 'popular', turnkey: true })}
     ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: 'new', turnkey: true })}
-    ${easy.length >= 2 ? shelf('easy', t('Drop in your disc'), easy, { note: t('Pick your disc image and these are set up for you, with their settings right in the launcher.') }) : ''}
+    ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
     ${newsSection()}
   </div>`;
 }
@@ -1356,7 +1396,7 @@ function switchVersion(id) {
 
 function lookChip(g) {
   const l = g && g.look && window.Looks && Looks.defs() && Looks.defs().looks.find((x) => x.id === g.look);
-  return l && looksHere() ? `<span class="tag">${esc(tf('{name} look', { name: t(l.name) }))}</span>` : '';
+  return l && looksHere() ? `<span class="tag">${esc(tf('{name} shader', { name: t(l.name) }))}</span>` : '';
 }
 // A small "Beta" mark for features still being worked on (the launcher's own game settings).
 const BETA_MARK = () => `<b class="tab-beta">${esc(t('Beta'))}</b>`;
@@ -1364,7 +1404,7 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')], ['updates', t('Updates')]]).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Looks')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
+  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')], ['updates', t('Updates')]]).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
   if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
   return tabs;
 }
@@ -1525,10 +1565,9 @@ function gameRail(a) {
     [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
-  return `<div class="stack">${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
+  return `<div class="stack">${quickActs(a)}${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
-    ${S.library[a.id] && S.os !== 'macos' ? `<div class="acts grid2">${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(a.id)}">${esc(t('Add to Steam'))}</button>` : ''}<button type="button" class="btn${S.steam ? '' : ' span2'}" data-act="desktop" data-id="${esc(a.id)}">${esc(t('Add to desktop'))}</button></div>` : ''}
-    ${a.repo ? `<div class="acts grid2"><button type="button" class="btn" data-act="url" data-url="${esc(repoHome(a.repo))}">${isLab(a.repo) ? 'GitLab' : 'GitHub'}</button><button type="button" class="btn" data-act="url" data-url="${esc(repoIssues(a.repo))}">${esc(t('Report a problem'))}</button></div>` : ''}</div>`;
+    </div>`;
 }
 // The recomp's README from its GitHub, folded away under its heading until it's opened. Loaded
 // as the page opens (the launcher keeps a copy for a day), so it opens at once.
@@ -1596,6 +1635,7 @@ function gameBody(a) {
     body = `<div class="stack"><div class="card">
       <div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>
       <div class="set-row"><div class="k"><b>${esc(t('Shortcuts'))}</b><span>${esc(S.steam ? t('Start it from your desktop or from Steam, with its art. Play time still counts here.') : t('Start it from your desktop. Play time still counts here.'))}</span></div><div class="acts"><button type="button" class="btn" data-act="desktop" data-id="${esc(id)}">${esc(t('Add to desktop'))}</button>${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(id)}">${esc(t('Add to Steam'))}</button>` : ''}</div></div>
+      <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
@@ -1672,7 +1712,7 @@ const SYSTEM_EXTS = [
   [/^(ds|nds)$/, ['nds', 'zip']],
   [/^(3ds|n3ds)$/, ['3ds', 'cci', 'cia', 'cxi', 'app', 'zip']],
   [/^(vb|virtualboy)$/, ['vb', 'vboy', 'zip']],
-  [/^(switch|nx)$/, ['xci', 'nsp', 'nca']],
+  [/^(switch|switch2|nx|nx2)$/, ['xci', 'nsp', 'nca']],
   [/^(genesis|md|megadrive|gen)$/, ['md', 'gen', 'smd', 'bin', 'zip']],
   [/^(32x|sega32x)$/, ['32x', 'bin', 'zip']],
   [/^(gg|gamegear)$/, ['gg', 'zip']],
@@ -1682,6 +1722,31 @@ const SYSTEM_EXTS = [
   [/^(amiga|amigacd32|cd32)$/, ['adf', 'hdf', 'ipf', 'lha', 'dms', 'zip']],
 ];
 const extsFor = (origin) => { const o = String(origin || '').toLowerCase().replace(/[\s_.]/g, ''); const m = SYSTEM_EXTS.find(([re]) => re.test(o)); return m ? m[1] : null; };
+// What the player's copy of a game can be, to show before they pick it: a cartridge console's own
+// files (.nes, .sfc…), an N64 ROM in any byte order, or a disc image (.iso, plus the kinds its setup
+// names, like .rvz), and a copied folder where it takes one.
+const DISC_SHOWN = ['iso', 'xiso', 'gcm', 'rvz', 'wbfs', 'wia', 'gcz', 'nkit', 'chd', 'cso', 'ciso', 'img', 'bin', 'cue', 'pbp'];
+function copyFormats(id) {
+  const a = byId(id) || { id };
+  const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : {};
+  const folder = su.kind === 'folder' || su.kind === 'iso_or_folder';
+  const own = extsFor(a.origin);
+  if (own) return { type: 'file', exts: own, folder: false, console: originName(a.origin) };
+  const b = (a && a.boot) || (S.bootBuiltin || {})[id] || {};
+  const what = `${(b.files || {}).what || ''} ${su.needs || ''}`;
+  if (/\bN64\b|\.z64|\.n64|\.v64|\bROM\b/i.test(what) && !/\bdisc\b|\.iso/i.test(what)) return { type: 'rom', exts: ['z64', 'n64', 'v64', 'zip', '7z'], folder: false };
+  if (su.kind === 'folder') return { type: 'folder', exts: [], folder: true };
+  if (/\bdisc\b|\.iso\b|\biso\b|\bxex\b/i.test(what) || su.kind === 'iso' || folder) {
+    const named = [...what.matchAll(/\.([a-z0-9]{2,5})\b/gi)].map((m) => m[1].toLowerCase()).filter((e) => DISC_SHOWN.includes(e));
+    return { type: 'disc', exts: [...new Set(['iso', ...named])], folder };
+  }
+  return { type: 'any', exts: [], folder };
+}
+// Those, as small tags (".z64 .n64 .v64"), the same in every language.
+const fmtTags = (exts) => exts.map((e) => `<span class="fmt">.${esc(e)}</span>`).join('');
+// The pick button's name, and the line under the drop area, for that kind of copy.
+const copyName = (f) => (f.type === 'rom' ? t('ROM File') : f.type === 'disc' ? t('Disc Image') : f.type === 'file' ? tf('{console} File', { console: f.console }) : t('Game File'));
+const copyDrop = (f) => (f.type === 'rom' ? t('Drop your ROM here') : f.type === 'disc' ? t('Drop your disc image here') : t('Drop your game file here'));
 function copyPickOpts(id) {
   const a = byId(id) || { id };
   // A console with files of its own (cartridge ROMs, Switch games, Amiga disks): those.
@@ -1726,6 +1791,7 @@ async function pickUpdate(id, folder) {
 }
 // ---------- setting a game up with the player's copy ----------
 const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+const suDrive = createSetupDriveLight();
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
   if (SU.el && SU.stage === 'run' && SU.id !== id) return toast(t('Finish the setup that\'s running first.'));
@@ -1751,6 +1817,7 @@ async function setupModal(id) {
   if (f) f.focus();
 }
 function closeSetup(quiet) {
+  suDrive.stop();
   if (!SU.el) return;
   if (SU.stage === 'run' && SU.id) invoke('setup_cancel', { id: SU.id }).catch(() => {});
   SU.el.remove();
@@ -1829,6 +1896,7 @@ function suPump() {
 T.event.listen('setup', ({ payload: p }) => { if (SU.el && p.id === SU.id && SU.stage === 'run') { SU.q.push(p); suPump(); } });
 function suDraw() {
   if (!SU.el) return;
+  if (SU.stage !== 'run') suDrive.stop();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
   const box = $('.modal', SU.el);
   const game = a.game || a.name;
@@ -1838,8 +1906,8 @@ function suDraw() {
   let right = '';
   if (SU.stage === 'pick') {
     const own = S.owned[id];
-    const kind = su.kind || 'iso';
-    const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso">${DISC_L}<b>${esc(t('Disc image'))}</b><span>${esc(t('An .iso of your disc'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
+    const kind = su.kind || 'iso', fm = copyFormats(id);
+    const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso">${DISC_L}<b>${esc(copyName(fm))}</b><span class="fmts">${fm.exts.length ? fmtTags(fm.exts) : esc(t('The file you made from your own copy'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
       ${SU.note ? `<p class="su-note" role="alert">${esc(SU.note)}</p>` : ''}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>` : ''}
@@ -1850,10 +1918,10 @@ function suDraw() {
     const sub = {
       read: st.read && st.read.text ? st.read.text : baseName(SU.path),
       verify: st.verify && st.verify.text ? st.verify.text : st.verify && st.verify.total ? tf('{done} of {total}', { done: fmtB(st.verify.done), total: fmtB(st.verify.total) }) : t('Reading all of it, to make sure it\'s complete'),
-      extras: (st.extras && st.extras.text) || t('What the game needs from your disc'),
+      extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
       setup: t('Its settings, your controller and where your copy is'),
     };
-    const names = { read: t('Reading your disc'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Setting it up') };
+    const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Setting it up') };
     const weight = { read: 5, verify: SU.extras ? 70 : 80, extras: 15, setup: 10 };
     let total = 0, have = 0;
     for (const k of order) { total += weight[k]; const s = st[k]; const i = order.indexOf(k), cur = order.indexOf(SU.step); have += i < cur || (s && s.done) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0; }
@@ -1890,12 +1958,12 @@ function suDraw() {
       ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
   const keepDisc = $('.sdisc', box);
-  const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="sdisc ghost"></div><b>${esc(t('Drop your disc image here'))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="${discCls}">${label}</div>`;
+  const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="sdisc ghost"></div><b>${esc(copyDrop(copyFormats(SU.id)))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="${discCls}">${label}</div>`;
   if (!box.firstChild || box.dataset.stage !== SU.stage) {
     if (SU.stage !== 'run') box.dataset.step = '';
     box.dataset.stage = SU.stage;
     box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>
-      <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive"><i class="${SU.stage === 'run' ? 'on' : ''}"></i></div></div><div class="su-r">${right}</div></div>`;
+      <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive" aria-hidden="true"><i></i></div></div><div class="su-r">${right}</div></div>`;
     const f = $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
@@ -1903,6 +1971,7 @@ function suDraw() {
     const d = $('.sdisc', box);
     if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('spin')) d.className = 'sdisc spin';
   }
+  if (SU.stage === 'run') suDrive.start($('.drive i', box));
 }
 T.event.listen('tauri://drag-drop', ({ payload: p }) => {
   const paths = (p && p.paths) || [];
@@ -2132,15 +2201,21 @@ const LOOK_NONE = { id: '', name: N_('Original'), blurb: N_('The game as it come
 function looksTab(a) {
   const id = a.id, li = S.looks[id];
   if (li === undefined) loadLooks(id);
-  if (Looks.failed()) return `<div class="stack"><div class="card"><h3>${esc(t('Looks didn\'t load'))}</h3><p class="muted" style="margin:8px 0 0">${esc(t('Restart the launcher to try again.'))}</p></div></div>`;
+  if (Looks.failed()) return `<div class="stack"><div class="card"><h3>${esc(t('Shaders didn\'t load'))}</h3><p class="muted" style="margin:8px 0 0">${esc(t('Restart the launcher to try again.'))}</p></div></div>`;
   if (!li || li === 'loading' || !Looks.defs()) return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading…'))}</p></div></div>`;
-  if (!li.ok) return `<div class="stack"><div class="card"><h3>${esc(t('Looks aren\'t available for this game'))}</h3><p class="muted" style="margin:8px 0 0">${esc(t(li.why))}</p></div></div>`;
+  if (!li.ok) return `<div class="stack"><div class="card"><h3>${esc(t('Shaders aren\'t available for this game'))}</h3><p class="muted" style="margin:8px 0 0">${esc(t(li.why))}</p></div></div>`;
   const D = Looks.defs(), cur = li.look || '', look = D.looks.find((l) => l.id === cur);
   const all = [LOOK_NONE].concat(D.looks);
   const crt = look && look.lines;
   const origin = originName(a.origin);
-  const src = (li.shot ? t('Your latest screenshot.') : t('The game\'s banner. Take a screenshot while you play (F12) to see looks on the game itself.')) + (look ? ' ' + t('Drag across the picture to compare.') : '');
+  const src = (li.shot ? t('Your latest screenshot.') : t('The game\'s banner. Take a screenshot while you play (F12) to see shaders on the game itself.')) + (look ? ' ' + t('Drag across the picture to compare.') : '');
+  const amountRow = `<div class="lk-amtrow${look ? '' : ' off'}"><div class="k"><b>${esc(t('Amount'))}</b><span>${esc(look ? tf('How strong {look} is.', { look: look.name === 'CRT' ? t('the CRT shader') : t(look.name) === look.name ? look.name.toLowerCase() : t(look.name) }) : t('Pick a shader first.'))}</span></div>
+        <div class="lk-amt"><span>${esc(t('Light'))}</span><input type="range" min="0" max="100" step="5" value="${li.amount}" data-lk-amount="${esc(id)}"${look ? '' : ' disabled'} aria-label="${esc(t('Amount'))}"><span>${esc(t('Strong'))}</span></div></div>`;
+  // The picture and its strength on one side, every shader in a short list beside it: one look
+  // at the tab shows them all, and picking one never scrolls the picture away.
   return `<div class="stack lk" data-lk="${esc(id)}">
+    <div class="lk-studio">
+    <div class="lk-main">
     <div class="lk-view${look ? '' : ' none'}" style="--x:50%">
       <canvas class="lk-after" aria-hidden="true"></canvas>
       <canvas class="lk-before" aria-hidden="true"></canvas>
@@ -2150,14 +2225,15 @@ function looksTab(a) {
       <p class="lk-nopic">${esc(t('No picture to show it on yet. Take a screenshot while you play (F12).'))}</p>
     </div>
     <p class="lk-src">${esc(src)}</p>
-    <div class="lk-grid" role="radiogroup" aria-label="${esc(t('Look'))}">${all.map((l) => `<button type="button" role="radio" class="lk-card" aria-checked="${l.id === cur}" data-act="look" data-id="${esc(id)}" data-look="${esc(l.id)}"><span class="lk-th"><canvas data-look-th="${esc(l.id)}"></canvas></span><b>${esc(t(l.name))}</b><span>${esc(t(l.blurb))}</span></button>`).join('')}</div>
+    ${amountRow}
+    </div>
+    <div class="lk-list" role="radiogroup" aria-label="${esc(t('Shader'))}">${all.map((l) => `<button type="button" role="radio" class="lk-item" aria-checked="${l.id === cur}" data-act="look" data-id="${esc(id)}" data-look="${esc(l.id)}"><span class="lk-th"><canvas data-look-th="${esc(l.id)}"></canvas></span><span class="lk-txt"><b>${esc(t(l.name))}</b><span>${esc(t(l.blurb))}</span></span></button>`).join('')}</div>
+    </div>
     <div class="card">
-      <div class="set-row${look ? '' : ' off'}"><div class="k"><b>${esc(t('Amount'))}</b><span>${esc(look ? tf('How strong {look} is.', { look: look.name === 'CRT' ? t('the CRT look') : t(look.name) === look.name ? look.name.toLowerCase() : t(look.name) }) : t('Pick a look first.'))}</span></div>
-        <div class="lk-amt"><span>${esc(t('Light'))}</span><input type="range" min="0" max="100" step="5" value="${li.amount}" data-lk-amount="${esc(id)}"${look ? '' : ' disabled'} aria-label="${esc(t('Amount'))}"><span>${esc(t('Strong'))}</span></div></div>
       ${crt ? `<div class="set-row"><div class="k"><b>${esc(t('Scanlines'))}</b><span>${esc(origin ? tf('{n} lines, like the {console} sent to a TV.', { n: li.lines, console: origin }) : tf('{n} lines, like the console sent to a TV.', { n: li.lines }))}</span></div></div>` : ''}
-      ${S.os === 'linux' ? `<div class="set-row"><div class="k"><b>${esc(t('In the game'))}</b><span>${esc(t('Press Home while you play to turn the look off and on again.'))}</span></div></div>
-      <div class="set-row"><div class="k"><b>vkBasalt</b><span>${esc(t('On Linux, looks run on vkBasalt, from your distro\'s packages. The launcher turns it on only for the game you start.'))}</span></div><button type="button" class="btn sm" data-url="https://github.com/DadSchoorse/vkBasalt">GitHub</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('In the game'))}</b><span>${esc(t('Press Home while you play to fine-tune it in ReShade\'s menu. Changes made there stay until you pick another look here.'))}</span></div></div>
-      <div class="set-row"><div class="k"><b>ReShade${li.reshade ? ' ' + esc(li.reshade) : ''}</b><span>${esc(t('Looks run on ReShade by crosire.'))} ${esc(li.reshade ? t('The launcher keeps it up to date.') : t('It downloads the first time you play with a look, about 5 MB.'))} ${esc(t('Nothing is installed into Windows.'))}</span></div><button type="button" class="btn sm" data-url="https://reshade.me">reshade.me</button></div>`}
+      ${S.os === 'linux' ? `<div class="set-row"><div class="k"><b>${esc(t('In the game'))}</b><span>${esc(t('Press Home while you play to turn the shader off and on again.'))}</span></div></div>
+      <div class="set-row"><div class="k"><b>vkBasalt</b><span>${esc(t('On Linux, shaders run on vkBasalt, from your distro\'s packages. The launcher turns it on only for the game you start.'))}</span></div><button type="button" class="btn sm" data-url="https://github.com/DadSchoorse/vkBasalt">GitHub</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('In the game'))}</b><span>${esc(t('Press Home while you play to fine-tune it in ReShade\'s menu. Changes made there stay until you pick another shader here.'))}</span></div></div>
+      <div class="set-row"><div class="k"><b>ReShade${li.reshade ? ' ' + esc(li.reshade) : ''}</b><span>${esc(t('Shaders run on ReShade by crosire.'))} ${esc(li.reshade ? t('The launcher keeps it up to date.') : t('It downloads the first time you play with a shader, about 5 MB.'))} ${esc(t('Nothing is installed into Windows.'))}</span></div><button type="button" class="btn sm" data-url="https://reshade.me">reshade.me</button></div>`}
     </div></div>`;
 }
 // The picture looks are shown on: the player's screenshot, or the game's banner.
@@ -2709,7 +2785,7 @@ function pageSettings() {
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(tn(S.roms.filter((r) => String(r.path).startsWith(d)).length, '1 game or disc image', '{n} games and disc images'))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
         `<span class="acts"><button type="button" class="btn sm" data-act="rom-scan">${esc(t('Look again'))}</button><button type="button" class="btn sm main" data-act="rom-add">${esc(t('Add a folder'))}</button></span>`)
-        + group(t('Desktop shortcuts'), row(t('Shortcuts Go Through the Launcher'), t('Off: a game\'s desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your Look, cloud saves and play time along.'), sw('shortcut_launcher', ui.shortcut_launcher, t('Shortcuts Go Through the Launcher'), 'ui-toggle')))
+        + group(t('Desktop shortcuts'), row(t('Shortcuts Go Through the Launcher'), t('Off: a game\'s desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your shader, cloud saves and play time along.'), sw('shortcut_launcher', ui.shortcut_launcher, t('Shortcuts Go Through the Launcher'), 'ui-toggle')))
         + (S.os === 'windows' ? group(t('Picking files'), row(t('Use the Launcher\'s Own File Browser'), t('Off: Windows\' own window for picking files and folders. On: the launcher\'s, which marks the games it knows and can unzip.'), sw('own_picker', ui.own_picker, t('Use the Launcher\'s Own File Browser'), 'ui-toggle'))) : '')
         + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Recomps you added to Steam, installed with Quiver Launcher or keep in a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="adopt">${esc(t('Find them'))}</button>`))
         + group(t('Game Art'), `<div class="set-row"><div class="k"><b>${esc(t('SteamGridDB API Key'))}</b><span>${esc(t('Optional. With your own free key from steamgriddb.com (Preferences → API), games you add from GitHub get covers, backgrounds and logos.'))}</span></div>
@@ -2761,7 +2837,7 @@ function pageSettings() {
     case 'pc':
       body = pc ? group(t('Your PC'), `${pc.vcredist != null ? `<div class="set-row"><div class="k"><b>${esc(t('Microsoft Visual C++ runtime'))}</b><span>${esc(pc.vcredist && pc.vcredist_old ? tf('Out of date ({version}). Newer recomps need a newer one.', { version: pc.vcredist_old }) : t('Almost every Windows recomp needs it.'))}</span></div><div class="acts">${pc.vcredist && !pc.vcredist_old ? '' : `<button type="button" class="btn sm main" data-act="vcredist">${esc(pc.vcredist ? t('Update It') : t('Get it'))}</button>`}${ok(pc.vcredist && !pc.vcredist_old)}</div></div>` : ''}
         ${pc.vulkan != null ? `<div class="set-row"><div class="k"><b>Vulkan</b><span>${esc(t('Comes with your graphics driver. N64 recomps draw with it.'))}</span></div>${ok(pc.vulkan)}</div>` : ''}
-        ${pc.vkbasalt != null ? `<div class="set-row"><div class="k"><b>vkBasalt</b><span>${esc(t('Draws looks over games on Linux. It comes from your distro\'s packages, usually as vkbasalt.'))}</span></div>${ok(pc.vkbasalt)}</div>` : ''}
+        ${pc.vkbasalt != null ? `<div class="set-row"><div class="k"><b>vkBasalt</b><span>${esc(t('Draws shaders over games on Linux. It comes from your distro\'s packages, usually as vkbasalt.'))}</span></div>${ok(pc.vkbasalt)}</div>` : ''}
         ${pc.proton != null ? `<div class="set-row"><div class="k"><b>Proton${pc.proton ? ' · ' + esc(pc.proton) : ''}</b><span>${esc(t('Plays recomps that only have a Windows version. Steam\'s Proton, GE-Proton, umu-launcher or Wine.'))}</span></div>${ok(!!pc.proton)}</div>` : ''}
         ${pc.proton ? `<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn sm" data-act="wine-tools">${esc(t('Open'))}</button></div>` : ''}
         ${S.os === 'macos' ? '' : `<div class="set-row"><div class="k"><b>AVX2</b><span>${esc(t('Some Xbox 360 recomps need a processor from 2013 or later.'))}</span></div>${ok(pc.avx2)}</div>`}`) : group(t('Your PC'), `<p class="set-empty">${esc(t('Loading…'))}</p>`);
@@ -3238,7 +3314,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, appimage: !!st.appimage });
+  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
@@ -3321,8 +3397,14 @@ for (const ev of ['pointerover', 'focusin']) {
   });
 }
 
+let updateCheckRevision = 0;
 async function checkUpdates(loud) {
-  try { S.updates = await invoke('check_updates', { force: !!loud }); } catch (e) { if (loud) fail(e); return false; }
+  const revision = updateCheckRevision;
+  try {
+    const updates = await invoke('check_updates', { force: !!loud });
+    if (revision !== updateCheckRevision) return false;
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local));
+  } catch (e) { if (loud) fail(e); return false; }
   renderSide();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
   if (S.view === 'downloads') render(true);
@@ -3883,7 +3965,7 @@ function gameMenu(id) {
   const g = S.library[id], x = byId(id), st = x ? status(x) : g ? 'installed' : 'get';
   const first = st === 'running' ? { act: 'stop', id, label: t('Close game'), icon: 'stop' }
     : g ? { act: 'play', id, label: t('Play'), icon: 'play' }
-      : st === 'get' ? (isSaved(id) ? { act: 'install', id, label: t('Install'), icon: 'down' } : { act: 'addlib', id, label: t('Add to Library'), icon: 'plus' }) : null;
+      : st === 'get' ? (isSaved(id) ? { act: 'install', id, label: x && turnkey(x) ? t('Easy Install') : t('Install'), icon: x && turnkey(x) ? 'disc' : 'down' } : { act: 'addlib', id, label: t('Add to Library'), icon: 'plus' }) : null;
   const pinned = pins().includes(id);
   return [
     ...(first ? [first] : []),
@@ -3898,14 +3980,15 @@ function gameMenu(id) {
     ...(!g && x ? [{ act: 'customize', id, label: t('Customize…'), icon: 'shot' }] : []),
     ...(g ? ['-',
       { label: t('Manage'), icon: 'gear', sub: [
-        { act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update },
+        { act: 'project-association', id, label: t('Project association…'), icon: 'layers' },
+        ...(!g.local ? [{ act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update }] : []),
         { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
         { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
         { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }] : []),
-        ...(looksHere() ? [{ act: 'looks', id, label: t('Looks'), icon: 'look' }] : []),
+        ...(looksHere() ? [{ act: 'looks', id, label: t('Shaders'), icon: 'look' }] : []),
         ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
         ...(S.os === 'linux' && g.proton ? [{ act: 'wine-tools', id, label: t('Wine Tools…'), icon: 'exe' }] : []),
       ] },
@@ -4730,7 +4813,7 @@ async function crashModal(p) {
   if (ask) { rootFlag = ask[1]; need = (ask[2].match(/[\w.-]+(?=\/)/g) || []); }
   const gotFlag = !rootFlag && String(g.args || '').match(/(--[\w-]*(?:root|dir|path|game|data)[\w-]*)[ =]("[^"]*"|\S+)/i);
   // The graphics card or its driver can't run it.
-  const gpu = /no Vulkan [\d.]+ device|vkCreateDevice\b[^\n]{0,80}failed|renderer init failed|doesn't implement the VK_KHR_surface|unable to create a d3d12 device|volkInitialize failed|vkCreateInstance failed|VK_ERROR_INCOMPATIBLE_DRIVER|vulkan (?:is )?not (?:supported|available)|does not support vulkan|failed to (?:create|initiali[sz]e) (?:the )?(?:vulkan|d3d12|directx 12)|unable to initiali[sz]e direct3d 12|unable to find (?:any )?devices? that supports? vulkan|\bvk[A-Z]\w+(?: could)? not (?:be )?located|Vulkan [\d.]+ is required,? but only|Required (?:Vulkan )?extensions are missing|unable to create (?:a )?vulkan instance/i.test(said);
+  const gpu = /no Vulkan [\d.]+ device|vkCreateDevice\b[^\n]{0,80}failed|renderer init failed|doesn't implement the VK_KHR_surface|unable to create a d3d12 device|volkInitialize failed|vkCreateInstance failed|VK_ERROR_INCOMPATIBLE_DRIVER|vulkan (?:is )?not (?:supported|available)|does not support vulkan|failed to (?:create|initiali[sz]e) (?:the )?(?:vulkan|d3d12|directx 12)|unable to initiali[sz]e direct3d 12|unable to find (?:any )?devices? that supports? vulkan|\bvk[A-Z]\w+(?: could)? not (?:be )?located|Vulkan [\d.]+ is required,? but only|Required (?:Vulkan )?extensions are missing|unable to create (?:a )?vulkan instance|FeatureNotPresent|ErrorFeatureNotPresent|VK_ERROR_FEATURE_NOT_PRESENT/i.test(said);
   // OpenGL in particular: often a game that can draw another way, in its Game settings.
   const gl = /failed to initiali[sz]e opengl|opengl loader|(?:couldn't|could not|unable to|failed to) create (?:an? )?(?:opengl|gl) context|wglCreateContext failed/i.test(said);
   let su = S.setup[p.id] && S.setup[p.id] !== 'loading' ? S.setup[p.id] : null;
@@ -4798,6 +4881,9 @@ async function crashModal(p) {
   const modId = modHit ? modHit[2].replace(/\.(?:zip|dll|so)$/i, '') : '';
   const modName = /^(?:com|dev|io|org|net|me|xyz|gg|app)\.[^.]+\./i.test(modId) ? modId.split('.').pop() : modId;
   // Linux: the Proton it ran through is built for another processor (an ARM64 one on a normal PC).
+  // umu-launcher's Steam Linux Runtime didn't download properly (a checksum that didn't match, or
+  // parts missing), so nothing it starts can run.
+  const umuRt = S.os === 'linux' && /Digest mismatch|Runtime Platform missing or download incomplete|_v2-entry-point \(umu\) cannot be found|umu-shim (?:not found|cannot be found|is missing)/i.test(said);
   const armProton = S.os === 'linux' && (/steamrt[\w.-]*arm[\w-]* validation failed/i.test(said) || (/Exec format error/i.test(said) && /\.(exe|bat|cmd)$/i.test(String(g.exe || ''))));
   // Linux: a native build made for a newer Linux than this one (glibc).
   const glibc = S.os === 'linux' && /version [`'"]?GLIBC_[\w.]+[`'"]? not found/i.test(said);
@@ -4831,18 +4917,18 @@ async function crashModal(p) {
   let gpuc = null;
   if ((gpu || vkLoader) && S.os === 'windows') { try { gpuc = await invoke('gpu_choice', { id: p.id }); } catch (e) { /* none */ } }
   // Only when nothing the message says first applies, so the message and the main button agree.
-  const twoGpu = !!(gpuc && gpuc.cards >= 2 && !gpuc.fast) && !(modName || sac || badOpts || rootFlag || noFiles || eboot || needTU || dotnet || noWrite || blocked || noRom || gpuReset || (lookOn && p.secs < 30) || inPage || gl || vram || armProton || glibc || protonGap || noLib || oom || python || noCmd);
+  const twoGpu = !!(gpuc && gpuc.cards >= 2 && !gpuc.fast) && !(modName || sac || badOpts || rootFlag || noFiles || eboot || needTU || dotnet || noWrite || blocked || noRom || gpuReset || (lookOn && p.secs < 30) || inPage || gl || vram || armProton || umuRt || glibc || protonGap || noLib || oom || python || noCmd);
   // A fix it can offer: that's the main button, and sending the report comes second.
   const fix = armProton || sac || otherBuild || badOpts || rootFlag || dotnet || noWrite || lookOn || glSetting || (dllVC && !oldVulkan) || dllDX || python || setupExe || usage || copySetup || twoGpu || oldCopies || (madeOnly && S.easy && S.easy.has(p.id));
   // A plain exit code after a real run (30 seconds or more), on Windows (on Linux every code looks
   // plain, crashes too), with nothing found wrong: it may be how this game always closes.
   const plainExit = S.os === 'windows' && p.secs >= 30 && Math.abs(Number(p.code)) < 256 && !fix;
   const m = modal(`<h2>${esc(tf('{name} closed unexpectedly', { name: g.name }))}</h2>
-    <p>${modName ? esc(tf('It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.', { mod: modName })) : sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : noFiles ? esc(copySetup ? t('It started without your game files. Set up your copy of the game once, and it finds them from then on.') : t('It started without your game files: they aren\'t where it reads them. Its developer\'s instructions say where they go.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : blocked ? esc(t('It couldn\'t make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a Look on. Some games don\'t get along with ReShade: try it without the Look.')) : inPage ? esc(t('Windows couldn\'t read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : python ? esc(t('It needs Python 3, which isn\'t on this PC. Install it from python.org (tick Add python.exe to PATH in its installer), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : vkLoader && !twoGpu ? esc(t('Vulkan couldn\'t use your graphics card. Update your graphics driver from NVIDIA, AMD or Intel, and close overlays and recorders (like RivaTuner, OBS or Overwolf), then play again.')) : (gpu || vkLoader) && twoGpu ? esc(t('This PC has two graphics cards, and it may have started on the slower one. Use the Faster Graphics Card and Windows starts it on the faster one; if it still won\'t start, update your graphics drivers.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : oldCopies ? esc(tf('It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows\' newer ones.', { files: oldCopies.join(', ') })) : oldVulkan ? esc(tf('Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.', { version: dllf.vulkan_old })) : madeOnly ? esc(tf('It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.', { files: made.join(', ') })) : dllVC ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : dllDX ? esc(tf('It needs the older DirectX runtime (June 2010), which Windows doesn\'t come with. Missing: {files}', { files: lacking.join(', ') })) : dllOwn ? esc(tf('It needs files that aren\'t on this PC: {files}. They should come with the game. Reinstall it; if they\'re still missing, its developer needs to know.', { files: lacking.join(', ') })) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : toolRan ? esc(t('It printed how it\'s used and stopped. That\'s usually one of the game\'s tools, not the game. Choose the program that starts the game.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
+    <p>${modName ? esc(tf('It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.', { mod: modName })) : sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : noFiles ? esc(copySetup ? t('It started without your game files. Set up your copy of the game once, and it finds them from then on.') : t('It started without your game files: they aren\'t where it reads them. Its developer\'s instructions say where they go.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : blocked ? esc(t('It couldn\'t make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a shader on. Some games don\'t get along with ReShade: try it without the shader.')) : inPage ? esc(t('Windows couldn\'t read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : umuRt ? esc(t('umu-launcher\'s Steam Linux Runtime didn\'t finish downloading, so it can\'t start games. Delete the steamrt folders in ~/.local/share/umu and play again, or update umu-launcher.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : python ? esc(t('It needs Python 3, which isn\'t on this PC. Install it from python.org (tick Add python.exe to PATH in its installer), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : vkLoader && !twoGpu ? esc(t('Vulkan couldn\'t use your graphics card. Update your graphics driver from NVIDIA, AMD or Intel, and close overlays and recorders (like RivaTuner, OBS or Overwolf), then play again.')) : (gpu || vkLoader) && twoGpu ? esc(t('This PC has two graphics cards, and it may have started on the slower one. Use the Faster Graphics Card and Windows starts it on the faster one; if it still won\'t start, update your graphics drivers.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : oldCopies ? esc(tf('It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows\' newer ones.', { files: oldCopies.join(', ') })) : oldVulkan ? esc(tf('Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.', { version: dllf.vulkan_old })) : madeOnly ? esc(tf('It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.', { files: made.join(', ') })) : dllVC ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : dllDX ? esc(tf('It needs the older DirectX runtime (June 2010), which Windows doesn\'t come with. Missing: {files}', { files: lacking.join(', ') })) : dllOwn ? esc(tf('It needs files that aren\'t on this PC: {files}. They should come with the game. Reinstall it; if they\'re still missing, its developer needs to know.', { files: lacking.join(', ') })) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : toolRan ? esc(t('It printed how it\'s used and stopped. That\'s usually one of the game\'s tools, not the game. Choose the program that starts the game.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
     <div class="acts grid2">${evenActs([`<button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button>`, `<button type="button" class="btn${!fix && p.secs < 5 ? ' main' : ''}" data-x="trouble">${esc(t('Troubleshoot'))}</button>`, `<button type="button" class="btn${fix || p.secs < 5 ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>`,
-      modName ? `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>` : armProton ? `<button type="button" class="btn main" data-x="geproton">${esc(t('Install GE-Proton'))}</button>` : sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : copySetup ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : twoGpu ? `<button type="button" class="btn main" data-x="fastgpu">${esc(t('Use the Faster Graphics Card'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Look'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : oldCopies ? `<button type="button" class="btn main" data-x="dllaside">${esc(t('Move Them Aside'))}</button>` : madeOnly && S.easy && S.easy.has(p.id) ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : dllVC && !oldVulkan ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : dllDX ? `<button type="button" class="btn main" data-x="dxruntime">${esc(t('Get DirectX'))}</button>` : python ? `<button type="button" class="btn main" data-x="python">${esc(t('Get Python'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : toolRan ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : a ? `<button type="button" class="btn" data-x="report">${esc(t('Report on GitHub'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`, plainExit ? `<button type="button" class="btn" data-x="mine">${esc(t('I Closed It Myself'))}</button>` : '', `<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button>`])}</div>`, async (x, close) => {
+      modName ? `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>` : armProton ? `<button type="button" class="btn main" data-x="geproton">${esc(t('Install GE-Proton'))}</button>` : sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : copySetup ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : twoGpu ? `<button type="button" class="btn main" data-x="fastgpu">${esc(t('Use the Faster Graphics Card'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Shader'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : oldCopies ? `<button type="button" class="btn main" data-x="dllaside">${esc(t('Move Them Aside'))}</button>` : madeOnly && S.easy && S.easy.has(p.id) ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : dllVC && !oldVulkan ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : dllDX ? `<button type="button" class="btn main" data-x="dxruntime">${esc(t('Get DirectX'))}</button>` : python ? `<button type="button" class="btn main" data-x="python">${esc(t('Get Python'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : toolRan ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : a ? `<button type="button" class="btn" data-x="report">${esc(t('Report on GitHub'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`, plainExit ? `<button type="button" class="btn" data-x="mine">${esc(t('I Closed It Myself'))}</button>` : '', `<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button>`])}</div>`, async (x, close) => {
     if (x.dataset.x === 'copysetup') { close(); delete S.setup[p.id]; setupModal(p.id); }
     if (x.dataset.x === 'dllaside') { try { const moved = await invoke('dll_aside', { id: p.id }); close(); toast(moved.length ? tf('Moved aside: {files}. Press Play to try it.', { files: moved.join(', ') }) : t('Nothing needed moving.')); } catch (e) { fail(e); } }
     if (x.dataset.x === 'fastgpu') { try { await invoke('prefer_fast_gpu', { id: p.id }); close(); toast(t('It starts on the faster graphics card from now on. Press Play to try it.')); } catch (e) { fail(e); } }
@@ -4919,7 +5005,7 @@ function githubModal() {
 }
 
 // Consoles to pick from: the catalog's, then the usual ones.
-const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pc', 'PC']];
+const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch2', 'Nintendo Switch 2'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pc', 'PC']];
 function consoleList() {
   const seen = new Set(), out = [];
   for (const o of (S.cat && S.cat.origins) || []) if (!seen.has(o.name.toLowerCase())) { seen.add(o.name.toLowerCase()); seen.add(o.id); out.push([o.id, o.name]); }
@@ -5149,8 +5235,8 @@ const TS_TEXT = [
   N_('Missing: {files}. Install them with your system\'s package manager (the names are a good search), then press Play again.'),
   N_('Its folder is in OneDrive'),
   N_('Games often can\'t run from a folder OneDrive syncs: some files may only be online, and syncing locks them while the game runs.'),
-  N_('The Look only tries one way in'),
-  N_('Since a start that crashed, its Look goes in through {way} only. If the Look doesn\'t show, let it try both ways again.'),
+  N_('The shader only tries one way in'),
+  N_('Since a start that crashed, its shader goes in through {way} only. If the shader doesn\'t show, let it try both ways again.'),
   N_('Its folder\'s path has letters some games can\'t read'),
   N_('Many recomps can\'t open files in a folder whose path has accents or letters outside English. Move it to a folder with plain letters, like C:\\Recomp Library.'),
   N_('It says something it needs is missing'),
@@ -5264,8 +5350,8 @@ const TS_TEXT = [
   N_('The installer was cancelled.'),
   N_('The Visual C++ installer didn\'t finish. Run it from microsoft.com to see why.'),
   N_('A site took too long to answer. Try again in a minute.'),
-  N_('A Look (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
-  N_('A Look (ReShade) is on. If it won\'t start, try once without it.'),
+  N_('A shader (ReShade) and your own launch options are on. If it won\'t start, try once without them.'),
+  N_('A shader (ReShade) is on. If it won\'t start, try once without it.'),
   N_('Almost every Windows recomp needs it.'),
   N_('Antivirus may have taken it out, or the download was cut short.'),
   N_('Close it (check the taskbar and the tray), then press Play.'),
@@ -5300,9 +5386,9 @@ const TS_TEXT = [
   N_('Your graphics driver doesn\'t have Vulkan'),
   N_('Your copy of the game may be incomplete'),
   N_('Its size isn\'t one a full dump of the cartridge has. If the game won\'t start, try another copy of your own cartridge.'),
-  N_('The Look didn\'t start last time'),
-  N_('ReShade didn\'t load in this game, so its Look can\'t show. Play it without the Look.'),
-  N_('ReShade didn\'t load in this game. The next time it starts, the Look tries another way in.'),
+  N_('The shader didn\'t start last time'),
+  N_('ReShade didn\'t load in this game, so its shader can\'t show. Play it without the shader.'),
+  N_('ReShade didn\'t load in this game. The next time it starts, the shader tries another way in.'),
   N_('Your own launch options are on. If it won\'t start, try once without them.'),
   N_('{error}. Games often can\'t save or set up in protected folders like Program Files.'),
   N_('{gb} GB free. Some games need room for saves and shader caches.'),
@@ -5507,6 +5593,7 @@ async function act(el, e) {
   const a = el.dataset.act, id = el.dataset.id;
   if (/^(acc|saves|myrep)-/.test(a) && window.accountAct) return window.accountAct(a, el);
   if (/^beta-/.test(a) && window.moreAct) return window.moreAct(a, el);
+  if (a === 'project-association') return changeProject(id);
   if (a === 'adopt' && window.adoptAct) return window.adoptAct(a, el);
   switch (a) {
     case 'open': e.preventDefault(); closeMenu(); return go('game', id, el.closest('.tile') ? el : null);

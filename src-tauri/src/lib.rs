@@ -1363,6 +1363,9 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
                     g.id = new.clone();
                     l.put(&new, g);
                 }
+                for target in l.project_aliases.values_mut() {
+                    if target == &old { *target = new.clone(); }
+                }
                 if let Some(m) = l.mods.remove(&old) {
                     l.mods.entry(new.clone()).or_insert(m);
                 }
@@ -2180,7 +2183,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
                 Ok(r) => Some(r),
                 Err(e) => {
                     let _ = app.emit("toast", &e);
-                    ingame::notify(app, "The look is off this time", &e);
+                    ingame::notify(app, "The shader is off this time", &e);
                     None
                 }
             }
@@ -2900,6 +2903,9 @@ fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_u
     let g = {
         let mut l = st.lib.lock().unwrap();
         let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        if auto_update == Some(true) && g.local {
+            return Err(Error::Msg("Untracked installations don't get automatic updates. Choose a project first.".into()));
+        }
         if let Some(a) = args {
             g.args = a.trim().to_string();
         }
@@ -2922,7 +2928,7 @@ struct LooksInfo {
     why: String,
     look: String,
     amount: u8,
-    /// Lines for the CRT looks.
+    /// Lines for the CRT shaders.
     lines: u32,
     /// The ReShade the launcher has.
     reshade: Option<String>,
@@ -2981,11 +2987,11 @@ fn looks_info(st: State<'_, App>, id: String) -> Res<LooksInfo> {
     let prof = profile_of(&st, &id, &g);
     let pl = prof.as_ref().and_then(|p| p.looks.clone());
     let why = if cfg!(target_os = "macos") {
-        "Looks work on Windows and Linux.".to_string()
+        "Shaders work on Windows and Linux.".to_string()
     } else if !cfg!(windows) && !looks::vkbasalt_installed() {
         VKBASALT_MISSING.to_string()
     } else if let Some(pl) = pl.as_ref().filter(|p| !p.allowed) {
-        if pl.reason.is_empty() { "This game doesn't work with looks.".into() } else { pl.reason.clone() }
+        if pl.reason.is_empty() { "This game doesn't work with shaders.".into() } else { pl.reason.clone() }
     } else {
         String::new()
     };
@@ -2999,7 +3005,7 @@ fn looks_info(st: State<'_, App>, id: String) -> Res<LooksInfo> {
 #[tauri::command(async)]
 fn set_look(st: State<'_, App>, id: String, look: String, amount: Option<u8>) -> Res<Installed> {
     if !look.is_empty() && looks::find(&look).is_none() {
-        return Err(Error::Msg("That look isn't one the launcher has.".into()));
+        return Err(Error::Msg("That shader isn't one the launcher has.".into()));
     }
     let g = {
         let mut l = st.lib.lock().unwrap();
@@ -3960,11 +3966,11 @@ pub(crate) async fn ready_look(app: &AppHandle, id: &str) {
         let say = move |m: &str| {
             let _ = app2.emit("toast", m);
             if headless {
-                ingame::notify(&app2, m, "Once, for the look you picked. The game starts in a moment.");
+                ingame::notify(&app2, m, "Once, for the shader you picked. The game starts in a moment.");
             }
         };
         if let Err(e) = looks::ensure(&st.http, &st.dir, mirror, &say).await {
-            let _ = app.emit("toast", format!("{e} The game starts without its look."));
+            let _ = app.emit("toast", format!("{e} The game starts without its shader."));
         }
     }
 }
@@ -3977,7 +3983,7 @@ fn reshade_mirror(st: &App) -> Option<looks::Source> {
 }
 
 /// Why looks are off on a Linux PC without vkBasalt.
-const VKBASALT_MISSING: &str = "Looks on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.";
+const VKBASALT_MISSING: &str = "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.";
 
 /// The look a game starts with: Ok(None) for none, Err with a reason when it has one that can't be used.
 fn look_plan(st: &App, id: &str, g: &Installed, prof: Option<&profile::Profile>, exe: &Path) -> Result<Option<(&'static looks::LookDef, u32, looks::Api)>, Option<String>> {
@@ -3990,7 +3996,7 @@ fn look_plan(st: &App, id: &str, g: &Installed, prof: Option<&profile::Profile>,
     }
     let pl = prof.and_then(|p| p.looks.clone()).unwrap_or_else(|| looks::ProfileLooks { allowed: true, r#in: "main".into(), ..Default::default() });
     if !pl.allowed {
-        return Err(Some(if pl.reason.is_empty() { "This game doesn't work with looks.".into() } else { pl.reason.clone() }));
+        return Err(Some(if pl.reason.is_empty() { "This game doesn't work with shaders.".into() } else { pl.reason.clone() }));
     }
     if cfg!(windows) && looks::have_version(&st.dir).is_none() {
         return Err(None);
@@ -4486,8 +4492,8 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
     let look_on = !g.look.is_empty() && g.look != "off";
     if look_on || !g.args.trim().is_empty() {
         let what = match (look_on, !g.args.trim().is_empty()) {
-            (true, true) => "A Look (ReShade) and your own launch options are on. If it won't start, try once without them.",
-            (true, false) => "A Look (ReShade) is on. If it won't start, try once without it.",
+            (true, true) => "A shader (ReShade) and your own launch options are on. If it won't start, try once without them.",
+            (true, false) => "A shader (ReShade) is on. If it won't start, try once without it.",
             _ => "Your own launch options are on. If it won't start, try once without them.",
         };
         out.push(check("info", "Extras are on", what, "clean"));
@@ -4497,14 +4503,14 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
             // ReShade didn't start at all last time: the Look never showed.
             if let Some(r) = looks::never_started(&st.dir, &id) {
                 if r == "only" {
-                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game, so its Look can't show. Play it without the Look.", "clean"));
+                    out.push(check("warn", "The shader didn't start last time", "ReShade didn't load in this game, so its shader can't show. Play it without the shader.", "clean"));
                 } else {
-                    out.push(check("warn", "The Look didn't start last time", "ReShade didn't load in this game. The next time it starts, the Look tries another way in.", ""));
+                    out.push(check("warn", "The shader didn't start last time", "ReShade didn't load in this game. The next time it starts, the shader tries another way in.", ""));
                 }
             }
             if let Some(r) = looks::kept_route(&st.dir, &id) {
                 let way = if r == "layer" { "Vulkan" } else { "Direct3D" };
-                out.push(check("info", "The Look only tries one way in", "Since a start that crashed, its Look goes in through {way} only. If the Look doesn't show, let it try both ways again.", "lookroute").with("way", way));
+                out.push(check("info", "The shader only tries one way in", "Since a start that crashed, its shader goes in through {way} only. If the shader doesn't show, let it try both ways again.", "lookroute").with("way", way));
             }
         }
     }
@@ -5181,6 +5187,7 @@ async fn get_releases(app: AppHandle, st: State<'_, App>, repo: String, force: b
 async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<String, String>> {
     let force = force.unwrap_or(false);
     let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    let associations: HashMap<String, (String, PathBuf)> = games.iter().map(|g| (g.id.clone(), (g.repo.clone(), g.path.clone()))).collect();
     // The list says which version is newest: a game already on it needs no question to the site.
     let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
     let same = |a: &str, b: &str| {
@@ -5207,7 +5214,7 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
         let mut g = g;
         if g.tag.is_empty() {
             if let Some(tag) = version_from_files(&g, &rels) {
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id) {
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id).filter(|x| !x.local && x.repo == g.repo && x.path == g.path) {
                     x.tag = tag.clone();
                 }
                 st.save();
@@ -5236,6 +5243,11 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
                 out.insert(g.id.clone(), r.tag_name.clone());
             }
         }
+    }
+    // A project may have been corrected while its network requests were in flight.
+    {
+        let l = st.lib.lock().unwrap();
+        out.retain(|id, _| l.installed.get(id).is_some_and(|g| !g.local && associations.get(id) == Some(&(g.repo.clone(), g.path.clone()))));
     }
     // Not one answer: GitHub can't be reached from here (offline, or blocked on this network).
     if asked > 0 && failed == asked {
@@ -6142,11 +6154,19 @@ fn get_state(st: State<'_, App>) -> Value {
         "deck": shortcuts::is_steam_deck(),
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
         "missing": missing,
-        // Run as an AppImage: its bundled GStreamer libraries don't match the PC's own plugins, and
-        // the web view hangs the moment it opens a sound. The page then plays none.
-        "appimage": cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some(),
+        // Where the web view can't play a sound (an AppImage, run as one or unpacked, or a PC
+        // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
+        "noSound": no_sound(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
     })
+}
+
+/// The web view can't play a sound here (see sysenv::sound_works).
+fn no_sound() -> bool {
+    #[cfg(target_os = "linux")]
+    return !sysenv::sound_works();
+    #[cfg(not(target_os = "linux"))]
+    false
 }
 
 /// An update started from inside the launcher that didn't go in (this is still the version it
@@ -6782,6 +6802,7 @@ fn wait_for_play(args: &[String]) -> bool {
         return false;
     }
     let Some(dir) = data_dir_early() else { return false };
+    let id = Library::load(&dir).resolve_project_id(&id);
     let Ok(exe) = std::env::current_exe() else { return false };
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
     rest.push("--handoff".into());
@@ -6817,6 +6838,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| match play_arg(&argv) {
             _ if argv.iter().any(|a| a == "--quit") => app.exit(0),
             Some(id) => {
+                let id = app.state::<App>().lib.lock().unwrap().resolve_project_id(&id);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if setup_first(&app, &id) {
@@ -6962,7 +6984,7 @@ pub fn run() {
                     let _ = std::fs::remove_dir_all(d.join("cache/gamebanana"));
                 });
             }
-            let play = play_arg(&std::env::args().collect::<Vec<_>>());
+            let play = play_arg(&std::env::args().collect::<Vec<_>>()).map(|id| lib.resolve_project_id(&id));
             app.manage(App {
                 dir,
                 http,
@@ -7073,9 +7095,9 @@ pub fn run() {
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move { cloud::upload_pending(&h).await });
             }
-            // Screenshots show in the window straight from their folder, wherever Pictures is.
+            // Screenshots show in the window straight from their folder, wherever Pictures is. The
+            // folder itself is only made when the first screenshot is taken.
             if let Some(root) = ingame::shots_dir("x").parent() {
-                let _ = std::fs::create_dir_all(root);
                 let _ = app.asset_protocol_scope().allow_directory(root, true);
             }
             // Covers and backgrounds the player picked, wherever the launcher keeps its data (the
@@ -7151,7 +7173,7 @@ pub fn run() {
             game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
-            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
+            adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
         .expect("RecompLauncher couldn't start")
@@ -7333,6 +7355,95 @@ mod tests {
             looked: Mutex::new(HashSet::new()),
             headless: AtomicBool::new(false),
         }
+    }
+
+    #[test]
+    fn correcting_a_project_keeps_the_installation_and_history() {
+        let d = std::env::temp_dir().join(format!("rl-project-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        std::fs::write(d.join("game/game.exe"), b"player's executable").unwrap();
+        let mut lib = Library::default();
+        let manual = library::ManualSetup { exe: Some(PathBuf::from("game.exe")), how: "none".into(), ..Default::default() };
+        lib.installed.insert("wrong".into(), Installed {
+            id: "wrong".into(), name: "My game".into(), repo: "Wrong/Project".into(), tag: "v9".into(),
+            path: d.join("game"), exe: Some(PathBuf::from("game.exe")), manual: Some(manual.clone()),
+            played_secs: 120, sessions: vec![[1, 120]], auto_update: true, sha256: "old checksum".into(),
+            asset: "old.zip".into(), verified: true, cloud: Some(true), ..Default::default()
+        });
+        lib.settings.ui = json!({ "pins": ["wrong"], "names": { "wrong": "My name" } });
+        let backup = saves::dir_of(&d, "wrong");
+        std::fs::create_dir_all(&backup).unwrap();
+        std::fs::write(backup.join("backup.zip"), b"backup").unwrap();
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "right", "name": "Right", "repo": "Right/Project" }] });
+        let tracked = adopt::change_project(&app, "wrong", "right", &cat).unwrap();
+        assert_eq!((tracked.repo.as_str(), tracked.tag.as_str()), ("Right/Project", ""));
+        assert!(!tracked.local && !tracked.auto_update && !tracked.verified);
+        assert!(tracked.sha256.is_empty() && tracked.asset.is_empty() && tracked.cloud.is_none());
+        assert_eq!(tracked.manual, Some(manual.clone()));
+        assert_eq!(tracked.exe, Some(PathBuf::from("game.exe")));
+        assert_eq!((tracked.played_secs, tracked.sessions.clone()), (120, vec![[1, 120]]));
+        assert_eq!(std::fs::read(saves::dir_of(&d, "right").join("backup.zip")).unwrap(), b"backup");
+        let own = adopt::change_project(&app, "right", "", &cat).unwrap();
+        assert!(own.local && own.repo.is_empty() && own.tag == "own");
+        assert_eq!(own.manual, Some(manual));
+        let saved = Library::load(&d);
+        assert_eq!(saved.installed.len(), 1);
+        assert_eq!(saved.resolve_project_id("wrong"), own.id);
+        assert_eq!(saved.resolve_project_id("right"), own.id);
+        assert_eq!(saved.settings.ui["pins"][0], own.id);
+        assert_eq!(saved.settings.ui["names"][&own.id], "My name");
+        assert!(saves::dir_of(&d, &own.id).join("backup.zip").is_file());
+        assert_eq!(std::fs::read(d.join("game/game.exe")).unwrap(), b"player's executable");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn project_changes_reject_conflicts_busy_games_and_missing_projects() {
+        let d = std::env::temp_dir().join(format!("rl-project-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut lib = Library::default();
+        for id in ["first", "second"] {
+            lib.installed.insert(id.into(), Installed { id: id.into(), repo: format!("Owner/{id}"), tag: "v1".into(), ..Default::default() });
+        }
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "second", "repo": "Owner/second" }, { "id": "third", "repo": "Owner/third" }] });
+        assert!(adopt::change_project(&app, "first", "second", &cat).is_err());
+        assert!(adopt::change_project(&app, "first", "missing", &cat).is_err());
+        app.jobs.lock().unwrap().insert("first".into(), Arc::new(AtomicBool::new(false)));
+        assert!(adopt::change_project(&app, "first", "third", &cat).is_err());
+        app.jobs.lock().unwrap().clear();
+        std::fs::create_dir_all(d.join("saves/first")).unwrap();
+        std::fs::create_dir_all(d.join("saves/third")).unwrap();
+        assert!(adopt::change_project(&app, "first", "third", &cat).is_err());
+        let l = app.lib.lock().unwrap();
+        assert_eq!(l.installed.len(), 2);
+        assert_eq!(l.installed["first"].tag, "v1");
+        assert!(l.project_aliases.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn failed_project_save_rolls_back_the_library_and_backups() {
+        let d = std::env::temp_dir().join(format!("rl-project-rollback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut lib = Library::default();
+        lib.installed.insert("old".into(), Installed { id: "old".into(), tag: "v1".into(), ..Default::default() });
+        let backup = saves::dir_of(&d, "old");
+        std::fs::create_dir_all(&backup).unwrap();
+        std::fs::write(backup.join("save.zip"), b"save").unwrap();
+        // A directory at the temporary-file path forces Library::save to fail.
+        std::fs::create_dir_all(d.join("library.json.tmp")).unwrap();
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "new", "repo": "Owner/New" }] });
+        assert!(adopt::change_project(&app, "old", "new", &cat).is_err());
+        let l = app.lib.lock().unwrap();
+        assert_eq!(l.installed["old"].tag, "v1");
+        assert!(!l.installed.contains_key("new") && l.project_aliases.is_empty());
+        assert_eq!(std::fs::read(backup.join("save.zip")).unwrap(), b"save");
+        assert!(!saves::dir_of(&d, "new").exists());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
