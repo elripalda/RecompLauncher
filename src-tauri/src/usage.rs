@@ -336,6 +336,43 @@ pub async fn usage_event(app: AppHandle, kind: String, game: String, version: Op
     Ok(())
 }
 
+/// How a game's profile did, for the admin (only when the player allows sharing): which version of
+/// the profile (its fingerprint), the step (`files`: Easy Setup, `settings`, `start`), whether it
+/// worked, and the error in short. No paths or names.
+pub async fn profile_event(app: &AppHandle, id: &str, step: &str, ok: bool, error: &str) {
+    let st = app.state::<App>();
+    let cat = crate::cached_catalog(&st);
+    let Some(entry) = crate::catalog::app(&cat, id) else { return };
+    let hash = crate::boot::hash_of(entry);
+    if hash.is_empty() {
+        return;
+    }
+    let version = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
+    let detail = json!({"profile_hash": hash, "step": step, "ok": ok, "error": scrub(error)}).to_string();
+    event(app, Event { kind: "profile".into(), at: crate::library::now(), game: id.into(), version, detail, ..Default::default() }).await;
+}
+
+/// An error as it goes to the site: anything that looks like a path (or carries the player's name)
+/// left out, and short.
+fn scrub(e: &str) -> String {
+    let user = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
+    let words: Vec<String> = e
+        .split_whitespace()
+        .map(|w| if w.contains('/') || w.contains('\\') || (w.len() > 1 && w.as_bytes()[1] == b':') || (!user.is_empty() && w.to_lowercase().contains(&user.to_lowercase())) { "…".to_string() } else { w.to_string() })
+        .collect();
+    words.join(" ").chars().take(160).collect()
+}
+
+/// From the window: how an Easy Setup or a settings change went.
+#[tauri::command]
+pub async fn profile_report(app: AppHandle, id: String, step: String, ok: bool, error: Option<String>) -> Res<()> {
+    if !["files", "settings", "start"].contains(&step.as_str()) {
+        return Ok(());
+    }
+    profile_event(&app, &id, &step, ok, error.as_deref().unwrap_or("")).await;
+    Ok(())
+}
+
 // ---------- "How did it run?": reports developers can act on ----------
 
 /// The site's PC store API: reports, the player's own reports, answering a developer.
@@ -470,7 +507,8 @@ pub async fn report_preview(app: AppHandle, id: String) -> Res<Value> {
         let size = std::fs::metadata(&p).ok()?.len();
         Some(json!({"name": p.file_name()?.to_string_lossy(), "size": size.min(LOG_MAX as u64)}))
     });
-    Ok(json!({"specs": specs_line(&pc), "version": version, "sys": sys_now(), "log": log}))
+    let device = crate::shortcuts::handheld_name(&pc.cpu);
+    Ok(json!({"specs": specs_line(&pc), "version": version, "sys": sys_now(), "log": log, "device": device}))
 }
 
 /// "How did it run?": the player's word, the version they have and their PC in a line, with the
@@ -487,6 +525,10 @@ pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Optio
     // On Linux, a Windows build: it ran through Proton.
     let proton = !cfg!(windows) && st.lib.lock().unwrap().installed.get(&id).map(|g| g.proton).unwrap_or(false);
     mark_proton(&mut form, proton);
+    // Played on a handheld: which one, so the site can tell which games run well on them.
+    if let Some(d) = crate::shortcuts::handheld_name(&pc.cpu) {
+        form.fields.push(("device", d.into()));
+    }
     let boundary = format!("----RecompLauncher{}", (0..12).map(|_| format!("{:02x}", rand_byte())).collect::<String>());
     let url = pc_api();
     let mut req = st
@@ -579,6 +621,13 @@ pub async fn report_reply(app: AppHandle, id: i64, text: String) -> Res<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_errors_leave_paths_out() {
+        let e = scrub("Couldn't open C:\\Users\\Ruben\\game.iso: not found at /home/ruben/x");
+        assert!(!e.contains("Users") && !e.contains("/home") && e.contains("not found"));
+        assert!(scrub(&"x ".repeat(300)).chars().count() <= 160);
+    }
 
     #[test]
     fn a_graphics_card_is_named_from_the_pci_list() {

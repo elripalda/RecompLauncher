@@ -479,6 +479,54 @@ pub fn is_steam_deck() -> bool {
     matches!(read("product_name").as_str(), "jupiter" | "galileo") || read("board_vendor") == "valve"
 }
 
+/// The handheld this is, by name, from the maker's product name (DMI on Linux, the BIOS keys in the
+/// registry on Windows): None on a normal PC. `cpu` catches handheld chips under another name.
+pub fn handheld_name(cpu: &str) -> Option<&'static str> {
+    let (product, vendor) = dmi();
+    let named = device_of(&product, &vendor);
+    if named.is_some() {
+        return named;
+    }
+    is_handheld(cpu).then_some("Other handheld")
+}
+
+fn device_of(product: &str, vendor: &str) -> Option<&'static str> {
+    let p = product.to_lowercase();
+    let v = vendor.to_lowercase();
+    Some(match () {
+        _ if p == "jupiter" => "Steam Deck LCD",
+        _ if p == "galileo" => "Steam Deck OLED",
+        _ if v == "valve" => "Steam Deck",
+        _ if p.contains("rc72l") || p.contains("ally x") => "ROG Ally X",
+        _ if p.contains("rc71l") || p.contains("rog ally") => "ROG Ally",
+        // Lenovo names them by machine type: 83E1 is the Legion Go, 83L3/83N6/83Q2/83Q3 the Go S.
+        _ if ["83l3", "83n6", "83q2", "83q3"].iter().any(|m| p.starts_with(m)) || p.contains("legion go s") => "Legion Go S",
+        _ if p.starts_with("83e1") || p.contains("legion go") => "Legion Go",
+        _ if p.contains("claw") && (v.contains("micro-star") || v.contains("msi")) => "MSI Claw",
+        _ => return None,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn dmi() -> (String, String) {
+    let read = |f: &str| fs::read_to_string(format!("/sys/devices/virtual/dmi/id/{f}")).unwrap_or_default().trim().to_string();
+    let vendor = read("board_vendor");
+    (read("product_name"), if vendor.is_empty() { read("sys_vendor") } else { vendor })
+}
+
+#[cfg(windows)]
+fn dmi() -> (String, String) {
+    use crate::win::{reg_str, HKLM};
+    let get = |n: &str| reg_str(HKLM, r"HARDWARE\DESCRIPTION\System\BIOS", n).unwrap_or_default();
+    let vendor = get("BaseBoardManufacturer");
+    (get("SystemProductName"), if vendor.is_empty() { get("SystemManufacturer") } else { vendor })
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn dmi() -> (String, String) {
+    (String::new(), String::new())
+}
+
 /// A handheld PC: a Steam Deck, or one of the handheld chips (ROG Ally, Legion Go, MSI Claw A8).
 pub fn is_handheld(cpu: &str) -> bool {
     let c = cpu.to_lowercase();
@@ -535,6 +583,19 @@ fn write_entry(steam: &Path, name: &str, launch: &str, icon: &str, art: &[(&str,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn knows_handhelds_by_name() {
+        assert_eq!(device_of("Jupiter", "Valve"), Some("Steam Deck LCD"));
+        assert_eq!(device_of("Galileo", "Valve"), Some("Steam Deck OLED"));
+        assert_eq!(device_of("ROG Ally RC71L_RC71L", "ASUSTeK COMPUTER INC."), Some("ROG Ally"));
+        assert_eq!(device_of("ROG Ally X RC72LA_RC72LA", "ASUSTeK COMPUTER INC."), Some("ROG Ally X"));
+        assert_eq!(device_of("83E1", "LENOVO"), Some("Legion Go"));
+        assert_eq!(device_of("83L3", "LENOVO"), Some("Legion Go S"));
+        assert_eq!(device_of("Claw A1M", "Micro-Star International Co., Ltd."), Some("MSI Claw"));
+        assert_eq!(device_of("MS-7C91", "Micro-Star International Co., Ltd."), None);
+        assert_eq!(device_of("To Be Filled By O.E.M.", "ASRock"), None);
+    }
 
     #[test]
     fn vdf_round_trip_and_add() {

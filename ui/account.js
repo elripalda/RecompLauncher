@@ -182,11 +182,25 @@ function savesTab(a) {
   const cloudCard = !signed
     ? `<div class="card acc-cloud"><div class="acc-hero">${CLOUD_ICON}<div><b>${esc(t('Cloud saves'))}</b><span>${esc(t('Sign in to back this game\'s saves up to your account and play on with them on any PC.'))}</span></div></div><div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="acc-create">${esc(t('Create an account'))}</button><button type="button" class="btn main" data-act="acc-signin">${esc(t('Sign in'))}</button></div></div>`
     : `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? (s.offline ? t('On. The website can\'t be reached right now; copies go up when it can.') : s.pending ? t('On. The newest copy goes up next time the launcher can reach the website.') : t('On. After you play, its saves go to your account.')) : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>
+      ${on ? cloudStatus(id, s) : ''}
       ${on && Array.isArray(s.cloud) ? (s.cloud.length ? s.cloud.map((c) => copyRow(id, c, 'v', c.v, c.hash === s.synced)).join('') : `<p class="set-empty">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`) : ''}</div>`;
   const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`;
   return `<div class="stack">${cloudCard}
     <div class="card"><div class="card-h"><h3>${esc(t('On this PC'))}</h3><span class="acts"><button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}">${esc(t('Open the folder'))}</button><button type="button" class="btn sm main" data-act="saves-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Back up now'))}</button></span></div>${local}</div>
     <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${where}</div></div>`;
+}
+// Where this game's cloud saves stand, and the buttons to act now: Upload Now, or Check Again
+// while the website can't be reached.
+function cloudStatus(id, s) {
+  const newest = Array.isArray(s.cloud) && s.cloud[0];
+  const line = s.waiting ? tn(s.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)')
+    : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') })
+    : t('Nothing in the cloud yet');
+  const btn = s.offline
+    ? `<button type="button" class="btn sm" data-act="saves-check" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Check Again'))}</button>`
+    : `<button type="button" class="btn sm main" data-act="saves-upload-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(s.busy ? t('Uploading…') : t('Upload Now'))}</button>`;
+  const help = s.failed && s.status ? `<p class="set-note">${esc(t('Still no answer. Check whether the website is having trouble:'))} <button type="button" class="linkish" data-act="url" data-url="${esc(s.status)}">${esc(s.status.replace(/^https:\/\//, ''))}</button></p>` : '';
+  return `<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b></div><span class="acts">${btn}</span></div>${help}`;
 }
 function copyRow(id, c, k, v, current) {
   const when = c.when || c.made;
@@ -321,7 +335,30 @@ window.accountAct = async (act, el) => {
     case 'acc-signin': return signIn(false);
     case 'acc-create': return signIn(true);
     case 'acc-signout': return signOut();
-    case 'acc-retry': el.disabled = true; await loadAccount(true); if (S.account && !S.account.offline) toast(t('Connected again.')); return render(true);
+    case 'acc-retry': {
+      el.disabled = true;
+      // Asked now, even while the launcher is leaving the website alone after trouble; copies
+      // waiting go up if it answers.
+      let ok = true;
+      try { await invoke('cloud_retry', { id: null }); } catch (e) { ok = false; toast(String(e && e.message ? e.message : e), true); }
+      await loadAccount(true);
+      if (ok && S.account && !S.account.offline) toast(t('Connected again.'));
+      return render(true);
+    }
+    case 'saves-upload-now': case 'saves-check': {
+      const id = el.dataset.id;
+      el.disabled = true;
+      if (S.saves[id] && S.saves[id] !== 'loading') S.saves[id].busy = true;
+      refreshGame();
+      try {
+        S.saves[id] = await invoke(act === 'saves-check' ? 'cloud_retry' : 'saves_upload_now', { id });
+        toast(act === 'saves-check' ? t('Connected again.') : t('Your save is in the cloud.'));
+      } catch (e) {
+        if (S.saves[id] && S.saves[id] !== 'loading') { S.saves[id].busy = false; S.saves[id].failed = String(e && e.message ? e.message : e); }
+        toast(String(e && e.message ? e.message : e), true);
+      }
+      return refreshGame();
+    }
     case 'acc-cloud-ask': { const on = (S.settings.ui || {}).cloud_ask !== false; await saveUi({ cloud_ask: !on }); return render(true); }
     case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
     case 'myrep-load': return loadMyReports();

@@ -110,7 +110,7 @@ fn names(g: &Installed, entry: &Value) -> Vec<String> {
             n.push(s.to_string());
         }
     }
-    if let Some(r) = g.repo.rsplit('/').next().filter(|r| !r.is_empty()) {
+    if let Some(r) = g.repo.rsplit(['/', ':']).next().filter(|r| !r.is_empty()) {
         n.push(r.to_string());
     }
     n.dedup();

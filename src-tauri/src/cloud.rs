@@ -371,18 +371,25 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     answer(app, r).await?;
     let mut s = saves::state(&st.dir, id);
     s.synced_hash = man.hash;
-    if s.pending.as_deref() == Some(name) {
+    // The copy waiting is this one or an older one: what's in the cloud now is newer, so it
+    // doesn't go up after it.
+    if s.pending.as_deref().map(|p| p == name || copy_time(p) <= copy_time(name)).unwrap_or(false) {
         s.pending = None;
     }
     saves::set_state(&st.dir, id, &s);
     Ok(())
 }
 
+/// When a local copy was made, from its name ("<time>.zip").
+fn copy_time(name: &str) -> u64 {
+    name.strip_suffix(".zip").and_then(|n| n.parse().ok()).unwrap_or(0)
+}
+
 /// Copies that didn't get up before (offline, or not signed in yet), one after another. Any that
 /// still don't make it are tried again once the site can be asked again (see net.rs).
 pub async fn upload_pending(app: &AppHandle) {
     let st = app.state::<App>();
-    if !signed_in(&st.dir) || crate::net::resting(&api(), false) || paused() {
+    if !signed_in(&st.dir) || (!crate::net::forced() && crate::net::resting(&api(), false)) || paused() {
         return;
     }
     let ids: Vec<String> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).map(|g| g.id.clone()).collect();
@@ -642,10 +649,95 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             Err(_) => {}
         }
     }
+    // Copies on this PC that haven't gone up yet: the newest ones, back to the one that's in the cloud.
+    let waiting = match state.pending.as_deref() {
+        Some(p) => local.iter().take_while(|c| c.hash != state.synced_hash).filter(|c| c.when >= copy_time(p)).count().max(1),
+        None => 0,
+    };
     Ok(json!({
         "spots": spots, "local": local, "cloud": cloud, "space": space, "offline": offline,
         "cloudOn": g.cloud, "signedIn": signed_in(&st.dir), "synced": state.synced_hash, "pending": state.pending.is_some(),
+        "waiting": waiting, "status": STATUS_PAGE,
     }))
+}
+
+/// Where players see whether the site is having trouble on our side.
+const STATUS_PAGE: &str = "https://recomplauncher.com/status";
+
+/// Upload Now, from a game's Saves tab: the current save copied (when the game isn't running)
+/// and sent up straight away, and any copies still waiting with it. Asked now, even while the
+/// launcher is leaving the website alone after trouble. Then what the tab shows.
+#[tauri::command]
+pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
+    let st = app.state::<App>();
+    let g = game(&st, &id)?;
+    if g.cloud != Some(true) || !signed_in(&st.dir) {
+        return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
+    }
+    let running = st.running.lock().unwrap().contains_key(&id);
+    let r: Res<()> = crate::net::now(async {
+        {
+            let _busy = busy().await?;
+            // A fresh copy of what's there now (a running game's saves wait until it closes).
+            if !running {
+                let spots = spots_of(&st, &id, &g);
+                let (dir, id2, g2) = (st.dir.clone(), id.clone(), g.clone());
+                blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
+            }
+            let s = saves::state(&st.dir, &id);
+            let latest = saves::list(&st.dir, &id).into_iter().next();
+            if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
+                if let Err(e) = upload(&app, &id, &l.name).await {
+                    // It waits, and goes when the site answers again (once: no more tries now).
+                    if !e.to_string().starts_with("This save is too big") {
+                        let mut s = saves::state(&st.dir, &id);
+                        s.pending = Some(l.name.clone());
+                        saves::set_state(&st.dir, &id, &s);
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        // It went up: the other games' waiting copies go too.
+        upload_pending(&app).await;
+        Ok(())
+    })
+    .await;
+    crate::trail::note(format!("Cloud saves: Upload Now for {id}: {}", match &r { Ok(()) => "done".to_string(), Err(e) => e.to_string() }));
+    if matches!(r, Err(Error::Net(_))) && !paused() {
+        retry_pending_later(&app);
+    }
+    match r {
+        Ok(()) => crate::net::now(saves_info(app.clone(), id)).await,
+        Err(Error::Net(_)) => Err(Error::Msg(format!("The website still can't be reached. Your saves are safe on this PC and go up when it's back. See {STATUS_PAGE} for whether it's on our side."))),
+        Err(e) => Err(e),
+    }
+}
+
+/// Check Again (a game's Saves tab, or Retry on the Account screen): the website asked straight
+/// away, and any copies waiting go up if it answers. `id`: the game whose tab asked, if any.
+#[tauri::command]
+pub async fn cloud_retry(app: AppHandle, id: Option<String>) -> Res<Value> {
+    let st = app.state::<App>();
+    if !signed_in(&st.dir) {
+        return Err(Error::Msg("Sign in first.".into()));
+    }
+    let r = crate::net::now(async {
+        let v = get(&app, &[("a", "me")]).await;
+        if let Err(Error::Net(e)) = v {
+            return Err(Error::Net(e));
+        }
+        upload_pending(&app).await;
+        Ok(())
+    })
+    .await;
+    match r {
+        Ok(()) => match id {
+            Some(id) => crate::net::now(saves_info(app.clone(), id)).await,
+            None => Ok(json!({"ok": true})),
+        },
+        Err(_) => Err(Error::Msg(format!("The website still can't be reached. Your saves are safe on this PC and go up when it's back. See {STATUS_PAGE} for whether it's on our side."))),
+    }
 }
 
 /// The Saves page: every installed game's copies on this PC, without asking the website.

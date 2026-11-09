@@ -81,6 +81,78 @@ fn rel(p: &str) -> Option<PathBuf> {
     Some(PathBuf::from(p))
 }
 
+/// What this launcher can do with a profile, by name: a profile's `"requires"` lists the ones it
+/// uses. Kept in step with docs/DEVELOPERS.md and recomplauncher.schema.json.
+pub const FEATURES: &[&str] = &[
+    "start", "start.linux", "start.macos", "setup", "console", "clone", "makes", "player_note", "installer",
+    "files.folder", "files.flag", "files.env", "files.setup", "files.accepts", "files.contains", "files.sha256", "files.update",
+    "settings.toml", "settings.ini", "settings.json", "settings.args", "settings.choices", "settings.slider", "settings.bindings", "settings.groups",
+];
+
+/// The catalog says every recomp's profile is in it (`"boot_all": true`): the profiles built into
+/// this launcher are then only used when there's no catalog at all.
+static CATALOG_ALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A version as numbers to compare: 0.90.0-beta.27 -> [0, 90, 0, 27] (a release with no beta part
+/// counts after its betas).
+pub(crate) fn ver_key(v: &str) -> Vec<u64> {
+    let v = v.trim().trim_start_matches(['v', 'V']);
+    let (main, pre) = v.split_once('-').unwrap_or((v, ""));
+    let mut k: Vec<u64> = main.split('.').map(|p| p.parse().unwrap_or(0)).collect();
+    k.resize(3, 0);
+    k.push(if pre.is_empty() { u64::MAX } else { pre.rsplit('.').next().and_then(|n| n.parse().ok()).unwrap_or(0) });
+    k
+}
+
+/// A profile as this launcher can use it: parts that need something it doesn't have (an entry in
+/// `"requires"` it doesn't know, or a `"min"` version newer than this one) are left out, so the
+/// game still installs and plays the normal way. Never fails on what it doesn't understand.
+pub fn fit(b: &mut Value) {
+    let Some(o) = b.as_object_mut() else { return };
+    let mut drop: Vec<&str> = vec![];
+    if let Some(min) = o.get("min").and_then(Value::as_str) {
+        if ver_key(min) > ver_key(env!("CARGO_PKG_VERSION")) {
+            drop.extend(["files", "settings", "installer"]);
+        }
+    }
+    // A whole group by its name ("files", "settings") is known when the launcher has it at all.
+    let known = |f: &str| FEATURES.contains(&f) || matches!(f, "files" | "settings");
+    let unknown: Vec<String> = o.get("requires").and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).filter(|f| !known(f)).map(String::from).collect()).unwrap_or_default();
+    for f in &unknown {
+        match f.split('.').next().unwrap_or("") {
+            "files" => drop.push("files"),
+            "settings" => drop.push("settings"),
+            "installer" => drop.push("installer"),
+            // Something about how it starts: its setup step and copy too, the start stays.
+            _ => drop.extend(["files", "settings", "installer", "setup"]),
+        }
+    }
+    for k in drop {
+        o.remove(k);
+        if k == "installer" && o.get("kind").and_then(Value::as_str) == Some("installer") {
+            o.remove("kind");
+        }
+    }
+}
+
+/// Called with each catalog as it's read: whether it carries every profile, and each profile fitted
+/// to what this launcher can do.
+pub fn from_catalog(cat: &mut Value) {
+    CATALOG_ALL.store(cat.get("boot_all").and_then(Value::as_bool).unwrap_or(false), std::sync::atomic::Ordering::Relaxed);
+    if let Some(apps) = cat.get_mut("apps").and_then(Value::as_array_mut) {
+        for a in apps {
+            if let Some(b) = a.get_mut("boot").filter(|b| b.is_object()) {
+                fit(b);
+            }
+        }
+    }
+}
+
+/// Built-in profiles still in use (the catalog doesn't carry them all yet).
+pub fn built_in_used() -> bool {
+    !CATALOG_ALL.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// The profiles this launcher shipped with, for catalog entries that don't carry one yet.
 static BUILT_IN: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
 
@@ -88,53 +160,27 @@ fn built_in() -> &'static Value {
     BUILT_IN.get_or_init(|| serde_json::from_str(&crate::unpack(include_bytes!(concat!(env!("OUT_DIR"), "/boot-profiles.json.z")))).unwrap_or(Value::Null))
 }
 
-/// The shipped profiles, for the window (the game page's "Before you play").
+/// The shipped profiles, for the window (the game page's "Before you play"): none once the catalog
+/// carries them all.
 #[tauri::command(async)]
 pub fn boot_builtin() -> Value {
-    built_in().clone()
-}
-
-/// Additions this launcher knows for catalog profiles (a game's update, say), merged in where the
-/// catalog's own profile doesn't say them yet.
-static EXTRAS: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-
-fn extras() -> &'static Value {
-    EXTRAS.get_or_init(|| serde_json::from_str(include_str!("../boot/boot-extras.json")).unwrap_or(Value::Null))
-}
-
-/// `add` into `to`, keeping what `to` already says.
-/// Adds what the catalog's profile doesn't say. A key written as "=name" sets those fields even
-/// when the catalog has its own (a fix that has to win over what's published).
-fn merge(to: &mut Value, add: &Value) {
-    if let (Some(t), Some(a)) = (to.as_object_mut(), add.as_object()) {
-        for (k, v) in a {
-            if let Some(name) = k.strip_prefix('=') {
-                match (t.get_mut(name), v.as_object()) {
-                    (Some(Value::Object(have)), Some(fields)) => {
-                        for (fk, fv) in fields {
-                            have.insert(fk.clone(), fv.clone());
-                        }
-                    }
-                    _ => {
-                        t.insert(name.to_string(), v.clone());
-                    }
-                }
-                continue;
-            }
-            match t.get_mut(k) {
-                Some(have) if have.is_object() && v.is_object() => merge(have, v),
-                Some(_) => {}
-                None => {
-                    t.insert(k.clone(), v.clone());
-                }
-            }
-        }
+    if built_in_used() {
+        built_in().clone()
+    } else {
+        Value::Object(Default::default())
     }
 }
 
 /// A catalog entry's boot profile as JSON: its own, or the one this launcher shipped with.
 pub fn raw(entry: &Value) -> Option<Value> {
     let id = entry.get("id").and_then(Value::as_str);
+    // The catalog carries every profile: it's the only source (a fix there reaches players without
+    // a launcher update).
+    if !built_in_used() {
+        let mut b = entry.get("boot").filter(|b| b.is_object())?.clone();
+        fit(&mut b);
+        return Some(b);
+    }
     let mut b = match entry.get("boot").filter(|b| b.is_object()) {
         Some(b) => {
             let mut b = b.clone();
@@ -150,10 +196,30 @@ pub fn raw(entry: &Value) -> Option<Value> {
         }
         None => built_in().get(id?).cloned()?,
     };
-    if let Some(x) = id.and_then(|i| extras().get(i)) {
-        merge(&mut b, x);
-    }
+    fit(&mut b);
     Some(b)
+}
+
+/// A short fingerprint of a game's profile as it's used, so the site can tell which version of a
+/// profile a report is about (and the launcher, when it changed).
+pub fn hash_of(entry: &Value) -> String {
+    use sha2::Digest;
+    match raw(entry) {
+        Some(b) => hex::encode(sha2::Sha256::digest(b.to_string().as_bytes()))[..12].to_string(),
+        None => String::new(),
+    }
+}
+
+/// The fingerprint of only how a game starts (its program, setup and kind): a change there picks
+/// the program again on the next Play. A new note or setting doesn't.
+pub fn start_hash_of(entry: &Value) -> String {
+    use sha2::Digest;
+    let Some(b) = raw(entry) else { return String::new() };
+    let part: serde_json::Map<String, Value> = ["kind", "start", "start_linux", "start_macos", "start_is", "setup", "installer"]
+        .iter()
+        .filter_map(|k| b.get(*k).map(|v| (k.to_string(), v.clone())))
+        .collect();
+    hex::encode(sha2::Sha256::digest(Value::Object(part).to_string().as_bytes()))[..12].to_string()
 }
 
 impl Boot {
@@ -287,12 +353,38 @@ pub fn name_fits(pattern: &str, name: &str) -> bool {
 /// A game's boot profile, from the catalog the launcher last loaded.
 pub fn of(dir: &Path, id: &str) -> Option<Boot> {
     let cat: Value = std::fs::read(dir.join("cache/pc-catalog.json")).ok().and_then(|b| serde_json::from_slice(&b).ok())?;
+    let cat = crate::catalog::with_mine(dir, cat);
     Boot::from_entry(crate::catalog::app(&cat, id)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profiles_drop_what_this_launcher_cant_do() {
+        let mut b = serde_json::json!({"start": "game.exe", "files": {"how": "folder"}, "settings": {"config": []}, "requires": ["files.folder", "settings.toml"]});
+        fit(&mut b);
+        assert!(b.get("files").is_some() && b.get("settings").is_some());
+        let mut b = serde_json::json!({"start": "game.exe", "files": {"how": "folder"}, "settings": {"config": []}, "requires": ["files", "settings"]});
+        fit(&mut b);
+        assert!(b.get("files").is_some() && b.get("settings").is_some());
+        let mut b = serde_json::json!({"start": "game.exe", "files": {"how": "folder"}, "settings": {"config": []}, "requires": ["files.hologram"]});
+        fit(&mut b);
+        assert!(b.get("files").is_none() && b.get("settings").is_some() && b["start"] == "game.exe");
+        let mut b = serde_json::json!({"start": "game.exe", "setup": "s.exe", "files": {}, "requires": ["teleport"]});
+        fit(&mut b);
+        assert!(b.get("files").is_none() && b.get("setup").is_none() && b["start"] == "game.exe");
+        let mut b = serde_json::json!({"start": "game.exe", "files": {}, "kind": "installer", "installer": {}, "min": "9.0.0"});
+        fit(&mut b);
+        assert!(b.get("files").is_none() && b.get("kind").is_none() && b.get("installer").is_none());
+        let mut b = serde_json::json!({"start": "game.exe", "files": {}, "min": "0.90.0-beta.20"});
+        fit(&mut b);
+        assert!(b.get("files").is_some());
+        assert!(ver_key("0.90.0-beta.27") > ver_key("0.90.0-beta.26") && ver_key("0.90.0") > ver_key("0.90.0-beta.40"));
+        let mut odd = serde_json::json!({"requires": "not a list", "min": 5});
+        fit(&mut odd);
+    }
 
     #[test]
     fn a_linux_build_skips_a_windows_installer() {
@@ -346,7 +438,7 @@ mod tests {
 
     #[test]
     fn a_setup_that_made_nothing_isnt_done() {
-        let e: Value = serde_json::from_str(r#"{"id":"tenkaichi3decomp","boot":{"kind":"portable","start":"Tenkaichi3Decomp.exe","setup":"Tenkaichi3Decomp-setup.exe"}}"#).unwrap();
+        let e: Value = serde_json::from_str(r#"{"id":"tenkaichi3decomp","boot":{"kind":"portable","start":"Tenkaichi3Decomp.exe","setup":"Tenkaichi3Decomp-setup.exe","makes":["gamedata/disc/SLUS_216.78"]}}"#).unwrap();
         let b = Boot::from_entry(&e).unwrap();
         let d = std::env::temp_dir().join(format!("rl-made-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -359,7 +451,7 @@ mod tests {
 
     #[test]
     fn metroid_prime_gets_its_disc_by_env() {
-        let e: Value = serde_json::from_str(r#"{"id":"metroidprimeport","boot":{"kind":"portable","start":"metroid_prime_port.exe","start_is":"game","files":{"how":"self","accepts":"iso","what":"Your disc"}}}"#).unwrap();
+        let e: Value = serde_json::from_str(r#"{"id":"metroidprimeport","boot":{"kind":"portable","start":"metroid_prime_port.exe","start_is":"game","files":{"how":"env","env":"MP_DISC","accepts":"iso","what":"Your disc"}}}"#).unwrap();
         let b = raw(&e).unwrap();
         assert_eq!(b["files"]["how"], "env");
         let p = crate::profile::from_boot(&b).unwrap();
@@ -402,8 +494,8 @@ mod tests {
     }
 
     #[test]
-    fn extras_add_an_update_without_overwriting() {
-        let e: Value = serde_json::from_str(r#"{"id":"pgr4-native","boot":{"kind":"portable","start":"pgr4_recompiled.exe","files":{"how":"folder","folder":"game","accepts":"folder or iso","contains":["default.xex"]}}}"#).unwrap();
+    fn a_catalog_update_is_asked_for() {
+        let e: Value = serde_json::from_str(r#"{"id":"pgr4-native","boot":{"kind":"portable","start":"pgr4_recompiled.exe","files":{"how":"folder","folder":"game","accepts":"folder or iso","contains":["default.xex"],"update":{"folder":"game/Content","accepts":"file","what":"Title Update #2","name":"TU_16L61VP_0000004000000.00000000000G1","sha256":"9980cf82c3bbbb32b35c841532c832b5598e99ce50daba8c658645213ab3d9b8"}}}}"#).unwrap();
         let b = raw(&e).unwrap();
         assert_eq!(b["files"]["folder"], "game");
         assert_eq!(b["files"]["update"]["folder"], "game/Content");

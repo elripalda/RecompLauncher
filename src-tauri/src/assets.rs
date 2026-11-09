@@ -201,9 +201,12 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
     // A game's server (for playing online) comes with some releases: the game itself comes first,
     // and the server only when it's all there is. The same for an editor or tools beside the game.
     if w.iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv" | "editor" | "tools" | "toolkit" | "sdk" | "modkit" | "devkit")) {
-        s = (s - 60).max(1);
+        s -= 60;
     }
-    s
+    // Anything that can run here stays a build, however it's packed: a lone Game-Setup.exe or a
+    // .dmg with no system in its name is still the game. Lifted above zero with the order kept, so
+    // the best of them still wins.
+    s + 1000
 }
 
 /// The build for this PC, or None when the release has none.
@@ -313,6 +316,23 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lone_setup_or_disk_image_is_still_the_build() {
+        let a = |n: &str| Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new(), url: None };
+        let rel = [a("RE-Amped2-Setup.exe"), a("RE-Amped2-0.3.1-linux.tar.gz"), a("RE-Amped2-0.3.1-linux.tar.gz.sha256")];
+        assert_eq!(pick(&rel, "windows", "x64", None).map(|x| x.name.as_str()), Some("RE-Amped2-Setup.exe"));
+        assert_eq!(pick(&rel, "linux", "x64", None).map(|x| x.name.as_str()), Some("RE-Amped2-0.3.1-linux.tar.gz"));
+        let two = [a("Game-Setup.exe"), a("Game-Server-Setup.exe")];
+        assert_eq!(pick(&two, "windows", "x64", None).map(|x| x.name.as_str()), Some("Game-Setup.exe"));
+        assert_eq!(choices(&two, "windows", "x64", None).len(), 1);
+        let msi = [a("Game-Setup.exe"), a("Game-Setup.msi")];
+        assert_eq!(choices(&msi, "windows", "x64", None).iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), vec!["Game-Setup.exe"]);
+        let srv = [a("Game-Server.zip")];
+        assert_eq!(pick(&srv, "windows", "x64", None).map(|x| x.name.as_str()), Some("Game-Server.zip"));
+        let mac = [a("Game.dmg")];
+        assert_eq!(pick(&mac, "macos", "arm64", None).map(|x| x.name.as_str()), Some("Game.dmg"));
+    }
 
     #[test]
     fn mac_zip_comes_first_and_a_dmg_works_alone() {

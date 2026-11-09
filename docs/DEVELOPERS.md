@@ -527,6 +527,43 @@ Things that make a recomp feel finished in the launcher. None are required; each
 - **Ship a `recomplauncher.json` in every release**, and keep it in step with your settings when
   you add or rename keys. The Developer tab (below) shows the problems before players do.
 
+## Launcher features
+
+A profile can list the launcher features it uses in `"requires"`, and the oldest launcher it works
+with in `"min"` (like `"0.90.0-beta.27"`). A launcher that doesn't have one of them leaves out the
+parts that need it (no Easy Setup, no settings tab for it), and the game still installs and plays the
+normal way. It never fails on a profile it doesn't fully understand.
+
+RecompLauncher 0.90 Beta 27 supports:
+
+| Feature | What it is |
+| --- | --- |
+| `start` | The program to start |
+| `start.linux` | A separate program on Linux |
+| `start.macos` | A separate program on a Mac |
+| `setup` | A program in the release that runs once before the first play |
+| `console` | The program asks questions in its text window |
+| `clone` | The game's setup works from a clone of its repo |
+| `makes` | Files or folders its setup makes, to tell when it finished |
+| `player_note` | Something the player does by hand, shown on the game's page |
+| `installer` | The release is an installer, then the game starts from what it installed |
+| `files.folder` | Easy Setup: the player's copy goes into a folder |
+| `files.flag` | Easy Setup: the copy is passed on the command line |
+| `files.env` | Easy Setup: the copy reaches the game through an environment variable |
+| `files.setup` | Easy Setup: the copy is handed to the game's own setup |
+| `files.accepts` | Which kinds of copy it takes (a disc image, a folder, a file) |
+| `files.contains` | Files the copy must have, to check it's the right game |
+| `files.sha256` | Known dumps, checked by their SHA-256 |
+| `files.update` | A title update the game needs beside the disc |
+| `settings.toml` | Game settings in a TOML file |
+| `settings.ini` | Game settings in an INI file |
+| `settings.json` | Game settings in a JSON file |
+| `settings.args` | Game settings on the command line |
+| `settings.choices` | Settings with a list of choices |
+| `settings.slider` | Settings as a slider |
+| `settings.bindings` | Key and button bindings |
+| `settings.groups` | Settings in named groups |
+
 ## Betas
 
 Publish a test build as a GitHub pre-release. Players on your normal release never get it by

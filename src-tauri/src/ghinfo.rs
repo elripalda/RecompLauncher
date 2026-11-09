@@ -103,7 +103,7 @@ pub fn game_candidates(repo: &str, description: &str, readme: &str) -> Vec<Strin
             push(name);
         }
     }
-    push(strip_recomp_words(&split_words(repo.rsplit('/').next().unwrap_or(repo))));
+    push(strip_recomp_words(&split_words(repo.rsplit(['/', ':']).next().unwrap_or(repo))));
     out
 }
 

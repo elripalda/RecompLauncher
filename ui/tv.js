@@ -972,7 +972,7 @@
     // Search, a console and the order narrow it further (Sort & Filter).
     const q = fold((TV.dq || '').trim()), org = TV.dorigin || '', srt = TV.dsort || 'popular';
     const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDlConsolesFirst;
-    const each = apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : !g || a.genre === g))
+    const each = apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
@@ -982,13 +982,15 @@
     const count = recompCount(each);
     const found = oneEach(each, srt === 'new');
     // Discover's own order (no sort picked): turnkey recomps first.
-    const list = TV.dsort ? found : turnkeyFirst(found);
+    // On a handheld, the games handheld players say run well come first.
+    const hhFirst = (l) => (S.handheld ? [...l].sort((x, y) => (window.greatHandheld(y) ? 1 : 0) - (window.greatHandheld(x) ? 1 : 0)) : l);
+    const list = hhFirst(TV.dsort ? found : turnkeyFirst(found));
     const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (runsNow() ? 1 : 0) + (TV.ddeck && onHandheld() ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
-    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
+    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], apps.some(window.greatHandheld) ? [['hh', N_('Great on Handhelds')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'hh' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="3.5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16.5" cy="11" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>' : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
-      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
+      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'hh' ? t('Great on Handhelds') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
         <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]])}`;
   }
@@ -1093,6 +1095,13 @@
       const on = sv.cloudOn === true;
       body = `<div class="tv-list">
         ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
+        ${on && sv.signedIn ? (() => {
+          const newest = Array.isArray(sv.cloud) && sv.cloud[0];
+          const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
+          return sv.offline
+            ? `<button type="button" class="tv-item" data-f data-key="gs:check" data-tvact="gs-check" data-id="${esc(id)}"${sv.busy ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Check Again'))}<small>${esc(sv.failed ? t('Still no answer. See recomplauncher.com/status for whether it\'s on our side.') : t('The website can\'t be reached right now; copies go up when it can.'))}</small></span></button>`
+            : `<button type="button" class="tv-item" data-f data-key="gs:up" data-tvact="gs-upnow" data-id="${esc(id)}"${sv.busy ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(sv.busy ? t('Uploading…') : t('Upload Now'))}<small>${esc(line)}</small></span></button>`;
+        })() : ''}
         <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
         ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
@@ -1191,6 +1200,7 @@
       mainButton(a, 'g-main'),
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('I Already Have It')), { id, icon: 'folder' }) : '',
+      window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
       verGroup(a) ? btn('g-vers', 'versions', esc(tn(verGroup(a).list.length, '1 version', '{n} versions')), { id, icon: 'layers' }) : '',
       g ? btn('g-shots', 'shots', esc(t('Screenshots')), { id, icon: 'shot' }) : '',
@@ -1433,7 +1443,7 @@
     const b = el.querySelector('.tv-cycle b');
     if (b) { b.textContent = o.choices[i]; b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
     setPanel(el);
-    try { await invoke('set_game_setting', { id, setting: k, choice: i }); } catch (e) { fail(e); }
+    try { await invoke('set_game_setting', { id, setting: k, choice: i }); window.profileSaid(id, 'settings', true); } catch (e) { window.profileSaid(id, 'settings', false, e); fail(e); }
     delete S.setup[id];
     await loadSetup(id);
   }
@@ -2378,6 +2388,7 @@
           { label: t('Sign out'), sub: t('Your saves stay on this PC'), icon: 'user', run: () => window.signOut && window.signOut() },
         ]);
       case 'versions': return pickVersion(id);
+      case 'xfollow': { const f = window.followLink(byId(id)); if (f) { sfx('select'); invoke('open_url', { url: f }).catch(fail); } return; }
       case 'follow': { const d = devOf(byId(id)); if (d) { sfx('select'); await toggleFollow(d.slug); draw(true); } return; }
       case 'shots': await loadAllShots(); return go('shots', id);
       case 'mods': return go('mods', id);
@@ -2421,6 +2432,19 @@
           { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
           { label: t('Game page'), icon: 'page', run: () => go('game', id) },
         ]);
+      }
+      case 'gs-upnow': case 'gs-check': {
+        const sv = TV.saves[id];
+        if (sv && sv !== 'loading') sv.busy = true;
+        draw(true);
+        try {
+          TV.saves[id] = await invoke(act === 'gs-check' ? 'cloud_retry' : 'saves_upload_now', { id });
+          toast(act === 'gs-check' ? t('Connected again.') : t('Your save is in the cloud.'));
+        } catch (e) {
+          if (sv && sv !== 'loading') { sv.busy = false; sv.failed = true; }
+          toast(String(e && e.message ? e.message : e), true);
+        }
+        return draw(true);
       }
       case 'gs-cloud': {
         sfx('select');

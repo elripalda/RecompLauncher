@@ -378,6 +378,10 @@ pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> 
     if let Some(p) = scratch.parent() {
         fs::create_dir_all(p)?;
     }
+    // Only a GitHub project is cloned (a GitLab or SourceForge one has no such path here).
+    if crate::catalog::site_only(repo) {
+        return Err(Error::Msg("This game builds itself from its project files, which only works for projects on GitHub for now.".into()));
+    }
     let url = format!("https://github.com/{repo}.git");
     let out = git(&["clone".as_ref(), "--depth".as_ref(), "1".as_ref(), url.as_ref(), scratch.as_os_str()]).map_err(|e| if e.kind() == io::ErrorKind::NotFound { no_git() } else { Error::Io(e) })?;
     if !out.status.success() {

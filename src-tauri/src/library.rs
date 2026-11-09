@@ -183,6 +183,10 @@ pub struct Installed {
     pub installer_setup: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub installer_tag: String,
+    /// The fingerprint of how its profile started it at the last Play (boot::start_hash_of): a new
+    /// one from the catalog is applied on the next Play.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub boot_hash: String,
 }
 
 fn half() -> u8 {

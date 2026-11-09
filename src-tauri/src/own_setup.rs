@@ -19,7 +19,7 @@ static OPEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn names(g: &Installed) -> Vec<String> {
     let mut n = vec![g.name.clone()];
-    if let Some(r) = g.repo.rsplit('/').next().filter(|r| !r.is_empty()) {
+    if let Some(r) = g.repo.rsplit(['/', ':']).next().filter(|r| !r.is_empty()) {
         n.push(r.to_string());
     }
     n
@@ -32,6 +32,24 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         return None;
     }
     let mut g = g.clone();
+    // How the catalog's profile starts it changed since the last Play (a fixed start program, say):
+    // the program is picked again by it. The player's own pick, saves and settings stay.
+    let hash = {
+        let cat = crate::cached_catalog(st);
+        crate::catalog::app(&cat, id).map(crate::boot::start_hash_of).unwrap_or_default()
+    };
+    let new_profile = !hash.is_empty() && hash != g.boot_hash;
+    if new_profile {
+        if !g.boot_hash.is_empty() && g.exe_rules != u8::MAX {
+            crate::trail::note(format!("Play {id}: its profile changed, its program is picked again"));
+            g.exe_rules = 0;
+        }
+        g.boot_hash = hash.clone();
+        if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
+            r.boot_hash = hash;
+        }
+        st.save();
+    }
     // Left on the release's own installer as if it were the game (picked by hand when it was the
     // only program there): it goes back to being the setup, which finds the game it installs.
     let own_installer = g.exe.as_ref().map(|e| !e.is_absolute() && e.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&g.asset)).unwrap_or(false) && install::looks_like_setup(e)).unwrap_or(false);

@@ -74,10 +74,17 @@ const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id ===
 const isAI = (a) => !!(a && a.ai);
 // Something the player has to do by hand before the first play, from the game's boot profile.
 // A community server, not the game itself: it starts the server, so its button says so.
-const isServer = (a) => !!(((a && a.boot) || (S.bootBuiltin || {})[a && a.id] || {}).server);
+// The profiles built into the launcher: only while the catalog doesn't carry every profile itself
+// ("boot_all"), and when there's no catalog at all.
+// How a game's profile did (Easy Setup, a settings change), for the admin: sent with the usage
+// reports, only when the player allows them.
+function profileSaid(id, step, ok, err) { invoke('profile_report', { id, step, ok, error: err ? String(err && err.message ? err.message : err) : null }).catch(() => {}); }
+window.profileSaid = profileSaid;
+function builtinBoot() { return (S.cat && S.cat.boot_all) ? {} : (S.bootBuiltin || {}); }
+const isServer = (a) => !!(((a && a.boot) || builtinBoot()[a && a.id] || {}).server);
 // A line on what the player's copy should look like, by the console it's from (How to Set Up).
 function setupGuide(a) {
-  const b = (a && a.boot) || (S.bootBuiltin || {})[a && a.id] || {};
+  const b = (a && a.boot) || builtinBoot()[a && a.id] || {};
   const w = String((b.files || {}).what || '');
   if (!w || /no game data/i.test(w)) return '';
   if (/\bN64\b|\.z64/i.test(w)) return t('Use your own ROM: .z64, .n64 and .v64 all work. When you pick it, the launcher checks it\'s the right game and version, then puts it where the game reads it.');
@@ -89,7 +96,7 @@ function setupGuide(a) {
   return '';
 }
 // More than one player (split-screen, co-op, online), from its README or its labels in the store.
-const isMulti = (a) => !!((((a && a.boot) || (S.bootBuiltin || {})[a && a.id] || {}).multiplayer) || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
+const isMulti = (a) => !!((((a && a.boot) || builtinBoot()[a && a.id] || {}).multiplayer) || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
 // A game's tags (Widescreen, 60 FPS, Online…), as the site lists them. They stay in English.
 const tagsOf = (a) => (a && Array.isArray(a.tags) ? a.tags.filter((x) => typeof x === 'string' && x.trim()) : []);
 // Facts about the original game (from IGDB), only the ones there are.
@@ -114,7 +121,7 @@ function moreLike(a, max = 12) {
     return [x, sc];
   }).filter(([, sc]) => sc >= 3).sort((p, q) => q[1] - p[1] || (q[0].downloads || 0) - (p[0].downloads || 0)).slice(0, max).map(([x]) => x);
 }
-const bootNote = (a) => String(((a && a.boot) || (S.bootBuiltin || {})[a && a.id] || {}).player_note || '');
+const bootNote = (a) => String(((a && a.boot) || builtinBoot()[a && a.id] || {}).player_note || '');
 invoke('boot_builtin').then((b) => { S.bootBuiltin = b || {}; }).catch(() => {});
 const LOADED = new Set();
 // A picture through the disk cache; one that has loaded before shows at once instead of fading in again.
@@ -163,8 +170,8 @@ const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
 const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installerDue(a.id));
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
-const TURNKEY_HOW = ['folder', 'flag', 'setup'];
-const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.id) || TURNKEY_HOW.includes(String((((a.boot) || (S.bootBuiltin || {})[a.id] || {}).files || {}).how || '')));
+const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
@@ -211,11 +218,31 @@ async function removeFromLibrary(id) {
 }
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
-// Where a recomp lives: GitHub, or GitLab for a project kept as gitlab:group/project.
+// Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, or SourceForge
+// for sourceforge:<name>.
 const isLab = (repo) => /^gitlab:/i.test(String(repo || ''));
-const repoHome = (repo) => isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : `https://github.com/${repo}`;
-const repoIssues = (repo) => isLab(repo) ? `${repoHome(repo)}/-/issues/new` : `https://github.com/${repo}/issues`;
-const repoReadme = (repo) => isLab(repo) ? repoHome(repo) : `https://github.com/${repo}#readme`;
+const isSF = (repo) => /^sourceforge:/i.test(String(repo || ''));
+const sfName = (repo) => String(repo).slice(12);
+const hostName = (repo) => (isSF(repo) ? 'SourceForge' : isLab(repo) ? 'GitLab' : 'GitHub');
+const repoHome = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/` : isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : `https://github.com/${repo}`;
+const repoIssues = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/support` : isLab(repo) ? `${repoHome(repo)}/-/issues/new` : `https://github.com/${repo}/issues`;
+const repoReadme = (repo) => isSF(repo) || isLab(repo) ? repoHome(repo) : `https://github.com/${repo}#readme`;
+const repoFiles = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/files/` : isLab(repo) ? `${repoHome(repo)}/-/releases` : `https://github.com/${repo}/releases`;
+// Where Report a problem goes: the catalog's own link when it gives one (https), else the project's.
+const reportUrl = (a) => (a && /^https:\/\//i.test(String(a.report_url || '')) ? String(a.report_url) : repoIssues(a.repo));
+window.isSF = isSF;
+// A SourceForge project's two links: its page and its files (its releases).
+const sfMenu = (repo) => [{ act: 'url', url: repoHome(repo), label: t('View on SourceForge'), icon: 'web' }, { act: 'url', url: repoFiles(repo), label: t('Releases'), icon: 'page' }];
+window.repoFiles = repoFiles;
+// A Coming soon game announced before it has a project: the post to follow it on (https only), and
+// the button's name for it.
+const followLink = (a) => (a && !a.repo && /^https:\/\/[^\s/]+\//i.test(String(a.follow || '')) ? String(a.follow) : '');
+const onX = (url) => /^https:\/\/(?:[a-z0-9-]+\.)?(?:x|twitter)\.com\//i.test(String(url || ''));
+const followLabel = (url) => (onX(url) ? t('Follow It on X') : t('Follow It'));
+window.onX = onX;
+window.followLink = followLink;
+window.followLabel = followLabel;
+const X_S = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5z"/></svg>';
 // A link to a project: GitHub's mark for GitHub, a plain branch for anywhere else.
 const BRANCH_S = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3.4-11 6.6"/></svg>';
 window.repoHome = repoHome;
@@ -598,13 +625,18 @@ const byDlConsolesFirst = (x, y) => (isPC(x) ? 1 : 0) - (isPC(y) ? 1 : 0) || byD
 const recompCount = (list) => list.filter((a) => !a.soon).length;
 const byUpdated = (x, y) => String(y.released || '').localeCompare(String(x.released || ''));
 // Discover's Show filter: everything, what's installed, what isn't, or what needs setting up first.
-const SHOWS = [['', N_('Everything')], ['inst', N_('Installed')], ['notinst', N_('Not installed')], ['lib', N_('In your Library')], ['setup', N_('Setup Required')]];
+const SHOWS = [['', N_('Everything')], ['inst', N_('Installed')], ['notinst', N_('Not installed')], ['lib', N_('In your Library')], ['setup', N_('Setup Required')], ['handheld', N_('Great on Handhelds')]];
+// Several handheld players say it runs well (the catalog's "handheld", worked out by the site).
+const greatHandheld = (a) => !!(a && a.handheld && a.handheld.ok);
+window.greatHandheld = greatHandheld;
+const HH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="3.5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16.5" cy="11" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>';
 function showOk(a, k) {
   if (!k) return true;
   if (k === 'inst') return !!S.library[a.id];
   if (k === 'notinst') return !S.library[a.id];
   if (k === 'lib') return !!S.library[a.id] || isSaved(a.id);
   if (k === 'setup') return needsSetup(a) && !setupDone(a.id);
+  if (k === 'handheld') return greatHandheld(a);
   return true;
 }
 
@@ -813,9 +845,13 @@ function quickActs(a) {
     if (S.steam) out.push(b('steam', t('Add to Steam'), STEAM_ICON || QI_PAD));
     out.push(b('desktop', t('Add to desktop'), QI_DESK));
   }
+  if (followLink(a)) {
+    const f = followLink(a);
+    out.push(b('url', followLabel(f), onX(f) ? X_S : BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(f)}"`));
+  }
   if (a.repo) {
-    out.push(b('url', isLab(a.repo) ? 'GitLab' : 'GitHub', isLab(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
-    out.push(b('url', t('Report a problem'), QI_REPORT, `data-url="${esc(repoIssues(a.repo))}"`));
+    out.push(b('url', isSF(a.repo) ? t('View on SourceForge') : hostName(a.repo), isLab(a.repo) || isSF(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
+    out.push(b('url', t('Report a problem'), QI_REPORT, `data-url="${esc(reportUrl(a))}"`));
   }
   if (!out.length) return '';
   // Even rows: an odd one out takes the whole row.
@@ -852,7 +888,7 @@ function readyRows(a) {
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
   // A recomp whose own setup builds it on this PC (from a clone of its repo).
-  const builds = !!((a.boot && a.boot.clone) || ((S.bootBuiltin || {})[id] || {}).clone);
+  const builds = !!((a.boot && a.boot.clone) || (builtinBoot()[id] || {}).clone);
   if (builds && pc.build_tools != null) rows.push({ k: t('C++ build tools'), v: pc.build_tools, d: pc.build_tools ? t('Installed') : t('Its setup builds the game on your PC with Visual Studio\'s free C++ build tools'), fix: pc.build_tools ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://visualstudio.microsoft.com/visual-cpp-build-tools/">${esc(t('Get them'))}</button>` });
   if (pc.vcredist != null) { const old = pc.vcredist && pc.vcredist_old; rows.push({ k: t('Visual C++ runtime'), v: pc.vcredist && !old, d: old ? tf('Out of date ({version}). Newer recomps need a newer one.', { version: pc.vcredist_old }) : pc.vcredist ? t('Installed') : t('Almost every Windows recomp needs it'), fix: pc.vcredist && !old ? '' : `<button type="button" class="btn sm main" data-act="vcredist">${esc(old ? t('Update It') : t('Get it'))}</button>` }); }
   if (!g && a.size) {
@@ -1378,7 +1414,7 @@ function pageGame(id) {
   const su = S.setup[id];
   // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
   const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
@@ -1492,7 +1528,7 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')], ['updates', t('Updates')]]).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
+  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
   if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
   return tabs;
 }
@@ -1650,7 +1686,7 @@ const viaPx = (x) => !!x && (x.proton === true || x.proton === 1 || x.proton ===
 function gameRail(a) {
   const facts = [
     [t('Latest version'), a.version ? 'v' + String(a.version).replace(/^v/i, '') : ''], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars && !isSF(a.repo) ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   return `<div class="stack">${quickActs(a)}${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
@@ -1728,7 +1764,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
+      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
     </div>
     <div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
@@ -1820,7 +1856,7 @@ function copyFormats(id) {
   const folder = su.kind === 'folder' || su.kind === 'iso_or_folder';
   const own = extsFor(a.origin);
   if (own) return { type: 'file', exts: own, folder: false, console: originName(a.origin) };
-  const b = (a && a.boot) || (S.bootBuiltin || {})[id] || {};
+  const b = (a && a.boot) || builtinBoot()[id] || {};
   const what = `${(b.files || {}).what || ''} ${su.needs || ''}`;
   if (/\bN64\b|\.z64|\.n64|\.v64|\bROM\b/i.test(what) && !/\bdisc\b|\.iso/i.test(what)) return { type: 'rom', exts: ['z64', 'n64', 'v64', 'zip', '7z'], folder: false };
   if (su.kind === 'folder') return { type: 'folder', exts: [], folder: true };
@@ -1840,7 +1876,7 @@ function copyPickOpts(id) {
   // A console with files of its own (cartridge ROMs, Switch games, Amiga disks): those.
   const own = extsFor(a.origin);
   if (own) return { title: t('Your copy of the game'), directory: false, multiple: false, filters: [{ name: tf('{console} files', { console: originName(a.origin) }), extensions: own }, { name: t('All files'), extensions: ['*'] }] };
-  const b = (a && a.boot) || (S.bootBuiltin || {})[id] || {};
+  const b = (a && a.boot) || builtinBoot()[id] || {};
   const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : {};
   const what = `${(b.files || {}).what || ''} ${su.needs || ''}`;
   const n64 = /\bN64\b|\.z64|\.n64|\.v64|\bROM\b/i.test(what) && !/\bdisc\b|\.iso/i.test(what);
@@ -1966,7 +2002,7 @@ function suPump() {
   clearTimeout(SU.timer);
   while (SU.q.length) {
     const ev = SU.q[0];
-    if (ev.step === 'error') { SU.q = []; SU.stage = 'error'; SU.err = ev.text; return suDraw(); }
+    if (ev.step === 'error') { SU.q = []; SU.stage = 'error'; SU.err = ev.text; profileSaid(SU.id, 'files', false, ev.text); return suDraw(); }
     const cur = SU_ORDER.indexOf(SU.step), next = SU_ORDER.indexOf(ev.step);
     if (next > cur) {
       const wait = 700 - (Date.now() - SU.at);
@@ -1977,7 +2013,7 @@ function suPump() {
     SU.q.shift();
     SU.extras = ev.extras;
     SU.steps[ev.step] = Object.assign({}, SU.steps[ev.step], ev);
-    if (ev.step === 'done') { SU.result = ev; return suAfterCopy(); }
+    if (ev.step === 'done') { SU.result = ev; profileSaid(SU.id, 'files', true); return suAfterCopy(); }
   }
   suDraw();
 }
@@ -2264,7 +2300,7 @@ document.addEventListener('keydown', (e) => {
   slideTo(el, Math.round((sl.min + n * sl.step) * m) / m, true);
 }, true);
 async function setGameSetting(id, k, i) {
-  try { await invoke('set_game_setting', { id, setting: k, choice: Number(i) }); } catch (e) { return fail(e); }
+  try { await invoke('set_game_setting', { id, setting: k, choice: Number(i) }); profileSaid(id, 'settings', true); } catch (e) { profileSaid(id, 'settings', false, e); return fail(e); }
   delete S.setup[id];
   S.setup[id] = 'loading';
   try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; }
@@ -4111,12 +4147,12 @@ function gameMenu(id) {
         { act: 'backups', id, label: t('Backups of your saves…'), icon: 'save' },
         { act: 'move', id, label: t('Move to another drive…'), icon: 'move' },
       ] },
-      ...(x && x.repo ? [{ label: isLab(x.repo) ? t('On GitLab') : t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] }] : []),
+      ...(x && x.repo ? [isSF(x.repo) ? { label: t('On SourceForge'), icon: 'web', sub: sfMenu(x.repo) } : { label: isLab(x.repo) ? t('On GitLab') : t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] }] : []),
       ...(window.pluginMenu ? window.pluginMenu(id) : []),
       '-',
       { act: 'troubleshoot', id, label: t('Troubleshoot…'), icon: 'info' },
       { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
-    ] : x && x.repo ? ['-', { act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] : []),
+    ] : x && x.repo ? (isSF(x.repo) ? ['-', ...sfMenu(x.repo)] : ['-', { act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }]) : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }
@@ -4602,7 +4638,7 @@ function blocked(id, err) {
       ${a.repo ? `<button type="button" class="btn" data-x="gh">${esc(t('Tell its developer'))}</button>` : `<button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button>`}<button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`, (x) => {
     if (x.dataset.x === 'vt') invoke('open_url', { url: 'https://www.virustotal.com/gui/home/upload' }).catch(fail);
     if (x.dataset.x === 'ms') invoke('open_url', { url: 'https://www.microsoft.com/en-us/wdsi/filesubmission' }).catch(fail);
-    if (x.dataset.x === 'gh') invoke('open_url', { url: repoIssues(a.repo) }).catch(fail);
+    if (x.dataset.x === 'gh') invoke('open_url', { url: reportUrl(a) }).catch(fail);
     if (x.dataset.x === 'folder') invoke('open_folder', { id }).catch(fail);
   }, t('Blocked by Windows Security'));
   return true;
@@ -5249,6 +5285,12 @@ async function crashModal(p) {
       const tail = log ? String(log[1]).split('\n').slice(-40).join('\n').slice(-1800) : '';
       const title = `Crash: closed with code ${codeShown} after ${p.secs} s`;
       const body = [note ? `**What happened:** ${note}` : '**What happened:** ', '', `- Game: ${g.name} ${g.tag || ''}`, `- System: ${OS_NAME[S.os]} (${S.arch || ''})`, `- Started from RecompLauncher ${S.version}`, `- Closed with code ${codeShown} after ${p.secs} s`, ...(tail ? ['', `From ${log[0]}:`, '```', tail, '```'] : [])].join('\n');
+      // SourceForge, or a report link from the catalog: its page, with the details on the clipboard.
+      if (isSF(a.repo) || /^https:\/\//i.test(String(a.report_url || ''))) {
+        try { await navigator.clipboard.writeText(`${title}\n\n${body}`); } catch (e) { /* the window has the details anyway */ }
+        invoke('open_url', { url: reportUrl(a) }).then(() => toast(t('The details are copied. Paste them on the page that opened.'))).catch(fail);
+        return;
+      }
       const q = isLab(a.repo) ? `?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}` : `/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
       const url = (isLab(a.repo) ? repoIssues(a.repo) : repoIssues(a.repo)) + q;
       try { await navigator.clipboard.writeText(details); } catch (e) { /* the page has the details anyway */ }
@@ -5269,7 +5311,7 @@ async function crashModal(p) {
 // Add a recomp by its GitHub link: one the catalog lists opens its page; another is read first
 // (its game, console and art), shown to the player to check, then added to the Library.
 function githubModal() {
-  const m = modal(`<h2>${esc(t('Add From GitHub or GitLab'))}</h2><p>${esc(t('Paste the link to a recomp\'s GitHub or GitLab page. The launcher reads its releases and adds it to your Library, ready to install and keep up to date.'))}</p>
+  const m = modal(`<h2>${esc(t('Add From GitHub or GitLab'))}</h2><p>${esc(t('Paste the link to a recomp\'s page on GitHub, GitLab or SourceForge. The launcher reads its releases and adds it to your Library, ready to install and keep up to date.'))}</p>
     <input class="field" id="ghl" type="url" placeholder="https://github.com/owner/name" spellcheck="false" autocomplete="off" aria-label="${esc(t('GitHub or GitLab link'))}">
     <p class="err" id="ghe" hidden></p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Next'))}</button></div>`, async (x, close) => {
@@ -5588,6 +5630,7 @@ const TS_TEXT = [
   N_('GE-Proton is only made for x86-64 PCs.'),
   N_('GitHub\'s answer about GE-Proton didn\'t make sense. Try again later.'),
   N_('That isn\'t a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.'),
+  N_('That isn\'t a GitHub, GitLab or SourceForge link. It looks like github.com/owner/name, gitlab.com/group/name or sourceforge.net/projects/name.'),
   N_('That file isn\'t in this recomp\'s own releases, so it wasn\'t downloaded.'),
   N_('Windows needs your permission to install it. Press the button again and choose Yes when Windows asks.'),
   N_('That isn\'t an N64 ROM. Pick your game\'s .z64, .n64 or .v64 file.'),

@@ -250,7 +250,9 @@ pub fn save_mine(dir: &Path, list: &[Value]) -> std::io::Result<()> {
 /// id is the catalog's; one whose repo it lists under another id stays too, so a copy the player
 /// has keeps its page and updates until it moves over to the catalog's (merge_mine in lib.rs).
 pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
+    take_newer(&mut cat, env!("CARGO_PKG_VERSION"));
     mark_hosts(&mut cat);
+    crate::boot::from_catalog(&mut cat);
     let list = mine(dir);
     if list.is_empty() {
         return cat;
@@ -277,6 +279,16 @@ pub fn repo_from_link(s: &str) -> Option<String> {
     let s = s.trim().trim_end_matches('/');
     let s = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://")).unwrap_or(s);
     let s = s.strip_prefix("www.").unwrap_or(s);
+    // sourceforge.net/projects/<name>/... or sourceforge.net/p/<name>/...
+    if let Some(rest) = s.strip_prefix("sourceforge.net/projects/").or_else(|| s.strip_prefix("sourceforge.net/p/")) {
+        let name = rest.split(['/', '?', '#']).next().unwrap_or("").to_ascii_lowercase();
+        let repo = format!("sourceforge:{name}");
+        return repo_ok(&repo).then_some(repo);
+    }
+    if let Some(n) = s.strip_prefix("sourceforge:") {
+        let repo = format!("sourceforge:{n}");
+        return repo_ok(&repo).then_some(repo);
+    }
     if let Some(rest) = s.strip_prefix("gitlab.com/") {
         let rest = rest.split(['?', '#']).next().unwrap_or("");
         let rest = rest.split("/-/").next().unwrap_or("").trim_end_matches('/');
@@ -299,7 +311,7 @@ pub fn repo_from_link(s: &str) -> Option<String> {
 
 /// A repo's name as a game's: "burnout3-pc" -> "Burnout3 PC".
 pub fn name_from_repo(repo: &str) -> String {
-    let r = repo.rsplit('/').next().unwrap_or(repo);
+    let r = repo.rsplit(['/', ':']).next().unwrap_or(repo);
     r.split(['-', '_', '.'])
         .filter(|w| !w.is_empty())
         .map(|w| {
@@ -401,11 +413,39 @@ pub fn is_gitlab(repo: &str) -> bool {
     gitlab_path(repo).is_some()
 }
 
+/// A project on SourceForge, as the launcher keeps it: `sourceforge:<name>`, the project's short
+/// name (sourceforge.net/projects/<name>/). Its name.
+pub fn sourceforge_name(repo: &str) -> Option<&str> {
+    repo.strip_prefix("sourceforge:")
+}
+
+pub fn is_sourceforge(repo: &str) -> bool {
+    sourceforge_name(repo).is_some()
+}
+
+/// Read only through the site (GitLab and SourceForge): GitHub's API is never asked about it.
+pub fn site_only(repo: &str) -> bool {
+    is_gitlab(repo) || is_sourceforge(repo)
+}
+
+/// The project's own path: GitLab's group/project, SourceForge's name, GitHub's owner/repo.
+pub fn host_path(repo: &str) -> &str {
+    gitlab_path(repo).or_else(|| sourceforge_name(repo)).unwrap_or(repo)
+}
+
+/// A SourceForge project name: lowercase letters, digits and dashes, 2 to 63 of them.
+fn sf_name_ok(n: &str) -> bool {
+    (2..=63).contains(&n.len()) && n.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 fn part_ok(s: &str) -> bool {
     !s.is_empty() && s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) && s != "." && s != ".."
 }
 
 fn repo_ok(repo: &str) -> bool {
+    if let Some(n) = sourceforge_name(repo) {
+        return sf_name_ok(n);
+    }
     if let Some(p) = gitlab_path(repo) {
         let parts: Vec<&str> = p.split('/').collect();
         return (2..=20).contains(&parts.len()) && parts.iter().all(|s| part_ok(s));
@@ -422,6 +462,9 @@ fn releases_file(dir: &Path, repo: &str) -> PathBuf {
 /// Where a project's releases are read: GitHub's through gh.php, GitLab's through gl.php, which
 /// gives them in the same shape.
 fn releases_url(repo: &str) -> String {
+    if let Some(n) = sourceforge_name(repo) {
+        return format!("{}/api/sf.php?repo={}", base(), n);
+    }
     match gitlab_path(repo) {
         Some(p) => format!("{}/api/gl.php?repo={}", base(), p.replace('/', "%2F")),
         None => format!("{}/api/gh.php?repo={}", base(), repo),
@@ -577,6 +620,13 @@ fn with_gitlab_assets(dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
 /// links, package files, job artifacts), or under its number (files uploaded to it, which GitLab
 /// serves at /-/project/<number>/uploads/). GitHub's are as before.
 pub fn own_download(repo: &str, url: &str, project_id: Option<u64>) -> bool {
+    // A SourceForge project's files: https://sourceforge.net/projects/<name>/files/... only (the
+    // mirror it redirects to after that is SourceForge's choice).
+    if let Some(n) = sourceforge_name(repo) {
+        let Ok(u) = reqwest::Url::parse(url) else { return false };
+        let raw_ok = !url.contains("/../") && !url.contains("/./") && !url.to_ascii_lowercase().contains("%2f");
+        return raw_ok && u.scheme() == "https" && u.host_str() == Some("sourceforge.net") && u.port().is_none() && u.username().is_empty() && u.password().is_none() && u.path().starts_with(&format!("/projects/{n}/files/"));
+    }
     let Some(p) = gitlab_path(repo) else { return true };
     let Ok(u) = reqwest::Url::parse(url) else { return false };
     let path = u.path().to_ascii_lowercase();
@@ -586,11 +636,49 @@ pub fn own_download(repo: &str, url: &str, project_id: Option<u64>) -> bool {
 
 /// Catalog entries for GitLab projects ("host": "gitlab") get their repo the launcher's way
 /// (gitlab:group/project), so everything after tells the two apart by the repo alone.
+/// Entries only newer launchers can use come in a list of their own, which older launchers never
+/// read: `"apps_min": [{"min": "0.90.0-beta.27", "apps": [...]}]`. A group this launcher is new
+/// enough for joins the catalog; a newer one is left out. An id the catalog already lists stays
+/// the catalog's.
+pub fn take_newer(cat: &mut Value, version: &str) {
+    let Some(o) = cat.as_object_mut() else { return };
+    let Some(groups) = o.remove("apps_min") else { return };
+    let mine = crate::boot::ver_key(version);
+    let mut add: Vec<Value> = vec![];
+    for g in groups.as_array().into_iter().flatten() {
+        let Some(min) = g.get("min").and_then(Value::as_str) else { continue };
+        if crate::boot::ver_key(min) > mine {
+            continue;
+        }
+        add.extend(g.get("apps").and_then(Value::as_array).into_iter().flatten().filter(|a| a.get("id").and_then(Value::as_str).is_some()).cloned());
+    }
+    if add.is_empty() {
+        return;
+    }
+    if !o.get("apps").map(Value::is_array).unwrap_or(false) {
+        o.insert("apps".into(), Value::Array(vec![]));
+    }
+    let Some(apps) = o.get_mut("apps").and_then(Value::as_array_mut) else { return };
+    for a in add {
+        let id = a.get("id").and_then(Value::as_str).unwrap_or("");
+        if !apps.iter().any(|x| x.get("id").and_then(Value::as_str) == Some(id)) {
+            apps.push(a);
+        }
+    }
+}
+
 pub fn mark_hosts(cat: &mut Value) {
     let Some(apps) = cat.get_mut("apps").and_then(Value::as_array_mut) else { return };
     for a in apps {
-        let lab = a.get("host").and_then(Value::as_str).map(|h| h.trim().eq_ignore_ascii_case("gitlab")).unwrap_or(false);
+        let host = a.get("host").and_then(Value::as_str).map(|h| h.trim().to_ascii_lowercase()).unwrap_or_default();
+        let lab = host == "gitlab";
         let Some(r) = a.get("repo").and_then(Value::as_str).map(str::to_string) else { continue };
+        if host == "sourceforge" && !is_sourceforge(&r) {
+            // The project's short name, or a link to it (any page of the project).
+            let repo = repo_from_link(&r).filter(|x| is_sourceforge(x)).unwrap_or_else(|| format!("sourceforge:{}", r.trim().trim_end_matches('/').to_ascii_lowercase()));
+            a["repo"] = Value::String(repo);
+            continue;
+        }
         if lab && !is_gitlab(&r) {
             let r = r.trim().trim_start_matches("https://").trim_start_matches("gitlab.com/").trim_end_matches('/');
             let r = r.strip_suffix(".git").unwrap_or(r);
@@ -603,8 +691,8 @@ pub fn mark_hosts(cat: &mut Value) {
 /// gh.php passes on), so installing and updating still work while the site is down. Downloads
 /// always come from GitHub anyway.
 pub(crate) async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
-    // A GitLab project's releases only come through the site.
-    if is_gitlab(repo) {
+    // A GitLab or SourceForge project's releases only come through the site.
+    if site_only(repo) {
         return Err(Error::Net("The site couldn't be reached".into()));
     }
     let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
@@ -732,6 +820,41 @@ mod tests {
         assert!(!super::own_download("gitlab:a/b", "http://gitlab.com/a/b/game.zip", None));
         // GitHub as before.
         assert!(super::own_download("a/b", "https://github.com/a/b/releases/download/v1/x.zip", None));
+        // SourceForge: only the project's own files on sourceforge.net, over https.
+        assert!(super::own_download("sourceforge:cogbox", "https://sourceforge.net/projects/cogbox/files/0.4.8/COGBox.7z/download", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://sourceforge.net/projects/athelas/files/1.0/A.7z/download", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://sourceforge.net/projects/cogboxx/files/1.0/A.7z/download", None));
+        assert!(!super::own_download("sourceforge:cogbox", "http://sourceforge.net/projects/cogbox/files/0.4.8/COGBox.7z/download", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://sourceforge.net:8443/projects/cogbox/files/x.7z/download", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://user@sourceforge.net/projects/cogbox/files/x.7z/download", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://evil.example/projects/cogbox/files/x.7z", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://sourceforge.net/projects/cogbox/files/../../athelas/files/x.7z", None));
+        assert!(!super::own_download("sourceforge:cogbox", "https://cogbox.dl.sourceforge.net/project/cogbox/x.7z", None));
+        assert_eq!(super::repo_from_link("https://sourceforge.net/projects/cogbox/").as_deref(), Some("sourceforge:cogbox"));
+        assert_eq!(super::repo_from_link("sourceforge.net/projects/cogbox/files/0.4.8/").as_deref(), Some("sourceforge:cogbox"));
+        assert_eq!(super::repo_from_link("https://sourceforge.net/p/athelas/wiki/Home/").as_deref(), Some("sourceforge:athelas"));
+        assert_eq!(super::repo_from_link("https://sourceforge.net/projects/x/"), None);
+        assert!(super::releases_url("sourceforge:cogbox").ends_with("/api/sf.php?repo=cogbox"));
+        assert!(super::releases_file(std::path::Path::new("d"), "sourceforge:cogbox").ends_with("sourceforge_cogbox.json"));
+        assert!(super::repo_ok("sourceforge:co-gbox2") && !super::repo_ok("sourceforge:CogBox") && !super::repo_ok("sourceforge:a/b") && !super::repo_ok("sourceforge:a"));
+        let mut cat = serde_json::json!({"apps": [{"id": "cogbox", "host": "sourceforge", "repo": "cogbox"}, {"id": "y", "host": "SourceForge", "repo": "https://sourceforge.net/projects/athelas/"}, {"id": "z", "host": "sourceforge", "repo": "http://www.sourceforge.net/projects/athelas/files/"}, {"id": "w", "host": "sourceforge", "repo": "https://sourceforge.net/p/cogbox/wiki/"}]});
+        super::mark_hosts(&mut cat);
+        assert_eq!(cat["apps"][0]["repo"], "sourceforge:cogbox");
+        assert_eq!(cat["apps"][1]["repo"], "sourceforge:athelas");
+        assert_eq!(cat["apps"][2]["repo"], "sourceforge:athelas");
+        assert_eq!(cat["apps"][3]["repo"], "sourceforge:cogbox");
+        // Entries for newer launchers join only when this one is new enough.
+        let mut cat = serde_json::json!({"apps": [{"id": "a"}], "apps_min": [{"min": "0.90.0-beta.27", "apps": [{"id": "cogbox", "host": "sourceforge", "repo": "cogbox"}, {"id": "a", "name": "dup"}]}, {"min": "0.90.0-beta.30", "apps": [{"id": "later"}]}, {"min": 5, "apps": [{"id": "odd"}]}, "junk"]});
+        super::take_newer(&mut cat, "0.90.0-beta.27");
+        let ids: Vec<&str> = cat["apps"].as_array().unwrap().iter().map(|a| a["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec!["a", "cogbox"]);
+        assert!(cat.get("apps_min").is_none() && cat["apps"][0].get("name").is_none());
+        let mut old = serde_json::json!({"apps": [], "apps_min": [{"min": "0.90.0-beta.27", "apps": [{"id": "cogbox"}]}]});
+        super::take_newer(&mut old, "0.90.0-beta.26");
+        assert!(old["apps"].as_array().unwrap().is_empty());
+        let mut rel = serde_json::json!({"apps_min": [{"min": "0.90.0-beta.27", "apps": [{"id": "cogbox"}]}]});
+        super::take_newer(&mut rel, "0.90.0");
+        assert_eq!(rel["apps"][0]["id"], "cogbox");
         // A catalog entry with "host": "gitlab" gets the launcher's kind of repo; GitHub's don't change.
         let mut cat = serde_json::json!({"apps": [{"id": "x", "host": "gitlab", "repo": "g/s/p"}, {"id": "y", "repo": "o/r"}]});
         super::mark_hosts(&mut cat);

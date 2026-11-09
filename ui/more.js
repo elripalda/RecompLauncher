@@ -183,7 +183,7 @@ async function askRun(id, secs, asked_for) {
   };
   const a = byId(id) || {};
   const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
-  const specsLine = pre ? [pre.specs, pre.version].filter(Boolean).join(' · ') : '';
+  const specsLine = pre ? [pre.device, pre.specs, pre.version].filter(Boolean).join(' · ') : '';
   if (tvOn() && window.tvAsk) {
     const i = await window.tvAsk(tf('How did {name} run?', { name: g.name }), VERDICT.map(([, n]) => ({ label: t(n), sub: t('Shows on its page, with your PC\'s graphics card'), icon: 'check' })).concat([{ label: t('Not now'), icon: 'chevL' }]));
     if (i == null || i < 0 || i > 2) return;

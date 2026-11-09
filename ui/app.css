@@ -1892,3 +1892,6 @@ body.mac .tile .glow{display:none}
 .inst-found{display:flex;flex-direction:column;align-items:flex-start;gap:2px;height:auto;padding:10px 14px;text-align:left}
 .inst-found span{font-size:12.5px;font-weight:500;overflow-wrap:anywhere}
 .inst-exe{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:6px}.inst-exe .sel{width:100%}.inst-exe span{font-size:13px;color:var(--muted)}
+/* A link inside a sentence (the status page on the Saves tab). */
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+.cloud-now b{font-weight:600}

@@ -226,10 +226,27 @@ pub fn wait_left(url: &str) -> u64 {
     left(&host(url)).max(left(&key(url)))
 }
 
+tokio::task_local! {
+    /// Set for what the player asked for straight away (Upload Now, Check Again): the site is asked
+    /// even while it rests.
+    static NOW: bool;
+}
+
+/// Runs `f` with every request in it sent straight away, resting or not: only for a button the
+/// player pressed to try again now.
+pub async fn now<F: std::future::Future>(f: F) -> F::Output {
+    NOW.scope(true, f).await
+}
+
+/// Inside `now()`?
+pub fn forced() -> bool {
+    NOW.try_with(|v| *v).unwrap_or(false)
+}
+
 /// The one way to ask the server. A site that's resting isn't asked at all; trouble makes it rest.
 /// The answer comes back whatever its status, for the caller to read.
 pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Result<reqwest::Response, crate::Error> {
-    if resting(url, player) {
+    if !forced() && resting(url, player) {
         return Err(crate::Error::Net(format!("Can't reach {} right now. Using what's saved on this PC.", host(url))));
     }
     tried(url);

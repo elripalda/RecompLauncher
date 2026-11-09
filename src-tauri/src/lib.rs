@@ -340,7 +340,16 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if as_installer && installer::held(&entry) {
         return Err(Error::Msg("This release is on hold, so its installer won't be downloaded. Try again later.".into()));
     }
-    // A GitLab project's files come only from that project on gitlab.com.
+    // A SourceForge file is only ever installed once the site has checked it: its SHA-256 comes
+    // with the release, and the download must match it.
+    let sf = catalog::is_sourceforge(&repo);
+    let checked = asset.digest.as_deref().and_then(|d| d.strip_prefix("sha256:")).map(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())).unwrap_or(false);
+    if sf && !checked {
+        trail::note(format!("Install {id}: {} has no checked SHA-256 yet, so it wasn't downloaded", asset.name));
+        return Err(Error::Msg("This file hasn't been checked yet. Try again later.".into()));
+    }
+    // A GitLab project's files come only from that project on gitlab.com; a SourceForge one's
+    // only from its project on sourceforge.net.
     if !catalog::own_download(&repo, &asset.browser_download_url, rel.project_id) {
         trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
         return Err(Error::Msg("That file isn't in this recomp's own releases, so it wasn't downloaded.".into()));
@@ -375,7 +384,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let got = match install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await {
         // The file isn't there anymore (the release was changed after its list was read): the
         // release asked for straight from GitHub, and its file for this PC tried once more.
-        Err(Error::Msg(m)) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => {
+        Err(Error::Msg(m)) if sf && m.contains("checksum doesn't match") => {
+            trail::note(format!("Install {id}: {} didn't match its checked SHA-256", asset.name));
+            return Err(Error::Msg("The download didn't match the checked file, so it wasn't installed. Try again.".into()));
+        }
+        Err(Error::Msg(m)) if !sf && (m.contains("anymore (error 404)") || m.contains("anymore (error 410)")) => {
             trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
             // A developer swapping a release's files: give it a moment to finish.
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
@@ -523,7 +536,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
 
     // Keep the program the player picked, unless the update replaced it with a differently named one
     // (an AppImage carries its version in its name).
-    let names = [str_of(&entry, "name"), repo.rsplit('/').next().unwrap_or(""), str_of(&entry, "game")];
+    let names = [str_of(&entry, "name"), repo.rsplit(['/', ':']).next().unwrap_or(""), str_of(&entry, "game")];
     // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
     let kept = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
     let mut exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && (kept || !install::looks_like_tool(e, &names)));
@@ -624,6 +637,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         installer: false,
         installer_setup: String::new(),
         installer_tag: String::new(),
+        boot_hash: prev.as_ref().map(|p| p.boot_hash.clone()).unwrap_or_default(),
     };
     {
         let mut l = st.lib.lock().unwrap();
@@ -636,7 +650,13 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
     );
     let mut p = Progress::new(id, "done", 1, 1);
-    p.msg = Some(if got.verified { "Checked against GitHub's checksum".into() } else { "GitHub has no checksum for this file".into() });
+    let gh = !catalog::is_gitlab(str_of(&entry, "repo")) && !catalog::is_sourceforge(str_of(&entry, "repo"));
+    p.msg = Some(match (got.verified, gh) {
+        (true, true) => "Checked against GitHub's checksum".into(),
+        (true, false) => "Checked against its release's checksum".into(),
+        (false, true) => "GitHub has no checksum for this file".into(),
+        (false, false) => "Its release had no checksum for this file".into(),
+    });
     // Off the list of jobs before the window hears it's done: the window asks for the state right
     // away, and a job still listed then would show as "Getting ready" for good.
     st.jobs.lock().unwrap().remove(id);
@@ -2144,7 +2164,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     let installer = boot::of_build(&st.dir, id, boot::windows_build(g.proton)).map(|b| b.is_installer()).unwrap_or(false);
     let rebuild = installer && manual.is_some() && !g.setup_done && g.setup.is_some();
     if rebuild {
-        let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit('/').next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
+        let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit(['/', ':']).next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
         let leftover = manual.as_ref().and_then(|m| m.exe.as_ref()).map(|e| { let rel = e.strip_prefix(&g.path).unwrap_or(e); install::looks_like_tool(rel, &names) }).unwrap_or(false);
         if leftover && manual.as_ref().map(|m| m.how == "none" || m.how.is_empty()).unwrap_or(false) {
             trail::note(format!("Play {id}: set up by hand on a program in its setup's leftovers; the setup builds the new version and the launcher finds it"));
@@ -2335,7 +2355,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         let spots = cloud::spots_of(&st, id, &g);
         if matches!(spots.first().map(|s| s.from), Some("game") | Some("found")) {
             let exe_name = exe.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let repo_name = g.repo.rsplit('/').next().unwrap_or("").to_string();
+            let repo_name = g.repo.rsplit(['/', ':']).next().unwrap_or("").to_string();
             Some(saves::watch_start(&g, &[&g.name, &exe_name, &repo_name]))
         } else {
             None
@@ -2658,8 +2678,10 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             let e = |kind: &str| usage::Event { kind: kind.into(), at: now(), game: id.clone(), version: version.clone(), secs, code: code.map(|c| c as i64), ..Default::default() };
             if secs < 15 && code.map(|c| c != 0).unwrap_or(false) {
                 usage::event(&app2, e("crash")).await;
+                usage::profile_event(&app2, &id, "start", false, &format!("closed with code {} after {secs} s", code.unwrap_or(0))).await;
             } else if secs >= 30 {
                 usage::event(&app2, e("session")).await;
+                usage::profile_event(&app2, &id, "start", true, "").await;
             }
         }
         if secs >= 5 {
@@ -3175,16 +3197,16 @@ pub(crate) fn cached_catalog(st: &App) -> Value {
 /// art from SteamGridDB when the player gave their key.
 #[tauri::command]
 async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.".into()))?;
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub, GitLab or SourceForge link. It looks like github.com/owner/name, gitlab.com/group/name or sourceforge.net/projects/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let apps = cat.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
     if let Some(a) = apps.iter().find(|a| str_of(a, "repo").eq_ignore_ascii_case(&repo)) {
         return Ok(json!({"repo": repo, "known": {"id": str_of(a, "id"), "name": str_of(a, "name")}}));
     }
     let os = github_os(&st, &repo).await?;
-    // A GitLab project: only its releases are read (through the site), so its name stands in for
-    // what GitHub would say about it.
-    let lab = catalog::is_gitlab(&repo);
+    // A GitLab or SourceForge project: only its releases are read (through the site), so its name
+    // stands in for what GitHub would say about it.
+    let lab = catalog::site_only(&repo);
     let api = if lab { String::new() } else { format!("https://api.github.com/repos/{repo}") };
     let get = |url: String, raw: bool| {
         let mut r = st.http.get(url).timeout(std::time::Duration::from_secs(10));
@@ -3207,7 +3229,7 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         };
         (info, readme)
     };
-    let path = catalog::gitlab_path(&repo).unwrap_or(&repo).to_string();
+    let path = catalog::host_path(&repo).to_string();
     let desc = str_of(&info, "description").to_string();
     let topics: Vec<String> = info.get("topics").and_then(Value::as_array).map(|l| l.iter().filter_map(|t| t.as_str().map(str::to_string)).collect()).unwrap_or_default();
     // The game: a catalog game the repo names in its own words first, then what its description,
@@ -3308,7 +3330,7 @@ const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero
 /// { id, known, name }.
 #[tauri::command]
 async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.".into()))?;
+    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub, GitLab or SourceForge link. It looks like github.com/owner/name, gitlab.com/group/name or sourceforge.net/projects/name.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
     if let Some(a) = cat.get("apps").and_then(Value::as_array).and_then(|l| l.iter().find(|a| same(a))) {
@@ -3317,8 +3339,8 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
     let os = github_os(&st, &repo).await?;
     let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, &repo, false).await?.data).unwrap_or_default();
     // What the repo says about itself, when GitHub answers (it's fine without). A GitLab
-    // project's releases are all that's read of it.
-    let lab = catalog::is_gitlab(&repo);
+    // project's (or a SourceForge one's) releases are all that's read of it.
+    let lab = catalog::site_only(&repo);
     let meta: Value = if lab {
         Value::Null
     } else {
@@ -3327,9 +3349,9 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
             _ => Value::Null,
         }
     };
-    let path = catalog::gitlab_path(&repo).unwrap_or(&repo).to_string();
+    let path = catalog::host_path(&repo).to_string();
     let owner = path.split('/').next().unwrap_or("").to_string();
-    let id: String = format!("{}-{}", if lab { "gl" } else { "gh" }, path.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
+    let id: String = format!("{}-{}", if catalog::is_sourceforge(&repo) { "sf" } else if lab { "gl" } else { "gh" }, path.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
     let newest = rels.iter().find(|r| !r.draft);
     let mut entry = json!({
         "id": id,
@@ -4033,7 +4055,7 @@ fn g_discord(st: &App) -> bool {
 
 /// The Discord application id, the game's own name and its cover's address, from the catalog on disk.
 fn discord_info(st: &App, id: &str) -> (String, String, String) {
-    let cat: Value = std::fs::read(st.dir.join("cache/pc-catalog.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    let cat = cached_catalog(st);
     let app_id = cat.get("discord").and_then(Value::as_str).filter(|s| s.chars().all(|c| c.is_ascii_digit()) && !s.is_empty()).unwrap_or(discord::APP_ID).to_string();
     let a = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let game = Some(str_of(&a, "game").trim().to_string()).filter(|s| !s.is_empty()).or_else(|| st.lib.lock().unwrap().installed.get(id).map(|g| g.name.clone())).unwrap_or_default();
@@ -4499,7 +4521,7 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
     // A program in a setup's working folder (temp\…\build) or one of the game's tools: what it
     // starts is probably not the finished game.
     let rel = exe.strip_prefix(&g.path).map(Path::to_path_buf).unwrap_or_else(|_| PathBuf::from(&name));
-    let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit('/').next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
+    let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit(['/', ':']).next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
     if install::looks_like_tool(&rel, &names) {
         out.push(check("warn", "It starts {name}, which looks like one of the game's tools", "It sits in a folder for tools or a setup's leftovers ({folder}). Choose the game's own program, where its setup installed it.", "setexe").with("name", &name).with("folder", rel.parent().map(|d| d.display().to_string()).unwrap_or_default()));
     } else {
@@ -7225,6 +7247,17 @@ pub fn run() {
             }
             let http = reqwest::Client::builder()
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
+                // Redirects are followed (GitHub's and SourceForge's downloads go through them), but
+                // never from https down to plain http.
+                .redirect(reqwest::redirect::Policy::custom(|a| {
+                    if a.previous().len() >= 10 {
+                        a.error("too many redirects")
+                    } else if a.url().scheme() != "https" && a.previous().iter().any(|u| u.scheme() == "https") {
+                        a.error("a redirect away from https")
+                    } else {
+                        a.follow()
+                    }
+                }))
                 // Slow DNS or a busy mobile connection can take a while to connect.
                 .connect_timeout(std::time::Duration::from_secs(15))
                 .build()?;
@@ -7433,10 +7466,10 @@ pub fn run() {
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::my_reports, usage::report_reply,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())

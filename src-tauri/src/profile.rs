@@ -248,6 +248,11 @@ impl Extra {
             let Some(n) = f.file_name() else { continue };
             let name = self.name.trim();
             let to = if single && !name.is_empty() && !name.contains(['/', '\\']) { dir.join(name) } else { dir.join(n) };
+            // An empty folder the release came with (targets/exefs, say) is a place for it, not
+            // something already there.
+            if empty_dir(&to) {
+                let _ = std::fs::remove_dir(&to);
+            }
             if to.symlink_metadata().is_ok() {
                 continue;
             }
@@ -1001,6 +1006,11 @@ fn near_config(path: &Path) -> Option<PathBuf> {
     None
 }
 
+/// A real folder (not a link) with nothing in it.
+fn empty_dir(p: &Path) -> bool {
+    p.symlink_metadata().map(|m| m.is_dir() && !m.file_type().is_symlink()).unwrap_or(false) && std::fs::read_dir(p).map(|mut r| r.next().is_none()).unwrap_or(false)
+}
+
 pub fn place(list: &[Place], install: &Path) -> Option<PathBuf> {
     list.iter().find(|p| p.when.is_empty() || Path::new(&fill(&p.when, install, None)).exists()).map(|p| PathBuf::from(fill(&p.path, install, None)))
 }
@@ -1251,6 +1261,11 @@ impl Profile {
                     let _ = std::fs::remove_file(&to);
                 }
             }
+            // An empty folder the release came with (targets/exefs, say) is a place for it, not
+            // something already there.
+            if empty_dir(&to) {
+                let _ = std::fs::remove_dir(&to);
+            }
             if to.symlink_metadata().is_ok() {
                 continue;
             }
@@ -1273,7 +1288,8 @@ impl Profile {
             return vec![];
         }
         let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
-        let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
+        // An empty folder doesn't count: a release can come with the folders the player's files go in.
+        let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(|e| !empty_dir(&e.path())).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
         g.contains
             .iter()
             .filter(|c| !c.contains(['*', '/', '\\']))
@@ -2534,6 +2550,27 @@ mod tests {
         let sl = Slider { key: "k".into(), min: 0.1, max: 5.0, step: 0.05, ..Default::default() };
         assert_eq!(sl.text(sl.snap(0.1 + 0.2)), "0.3");
         assert_eq!(sl.text(sl.snap(-3.0)), "0.1");
+    }
+
+    #[test]
+    fn empty_folders_from_the_release_get_filled() {
+        let d = tmp("emptyfold");
+        let copy = d.join("dump");
+        std::fs::create_dir_all(copy.join("exefs")).unwrap();
+        std::fs::create_dir_all(copy.join("romfs")).unwrap();
+        std::fs::write(copy.join("exefs/main"), b"x").unwrap();
+        std::fs::write(copy.join("romfs/data.arc"), b"x").unwrap();
+        let install = d.join("game");
+        std::fs::create_dir_all(install.join("targets/exefs")).unwrap();
+        std::fs::create_dir_all(install.join("targets/romfs")).unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"build/xcde_launcher.exe","files":{"how":"folder","folder":"targets","accepts":"folder","contains":["exefs","romfs"]}}"#).unwrap();
+        let p = from_boot(&b).unwrap();
+        assert!(p.already_in_place(&install).is_none());
+        assert_eq!(p.missing_after_place(&install).len(), 2);
+        p.place(&install, Some(&copy)).unwrap();
+        assert!(install.join("targets/exefs/main").is_file() && install.join("targets/romfs/data.arc").is_file());
+        assert!(p.missing_after_place(&install).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

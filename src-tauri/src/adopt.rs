@@ -53,7 +53,7 @@ pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
     let mut best: Option<(usize, String)> = None;
     let mut tie = false;
     for a in apps {
-        let repo_name = s(a, "repo").rsplit('/').next().unwrap_or("").to_string();
+        let repo_name = s(a, "repo").rsplit(['/', ':']).next().unwrap_or("").to_string();
         let keys: Vec<String> = [s(a, "id"), s(a, "name"), repo_name].iter().map(|k| norm(k)).filter(|k| k.len() >= 4).collect();
         let mut score = 0;
         for h in &hints {
@@ -215,7 +215,7 @@ fn mark(found: &mut [Found], have: &[Installed]) {
 fn names(cat: &Value, id: &str) -> Vec<String> {
     let a = catalog::app(cat, id).cloned().unwrap_or(Value::Null);
     let s = |k: &str| a.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-    vec![s("name"), s("repo").rsplit('/').next().unwrap_or("").to_string(), s("game")]
+    vec![s("name"), s("repo").rsplit(['/', ':']).next().unwrap_or("").to_string(), s("game")]
 }
 
 /// Every recomp found on this PC that matches one in the catalog (and those Steam or Quiver have
