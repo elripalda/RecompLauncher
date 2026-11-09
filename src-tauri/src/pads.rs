@@ -13,7 +13,7 @@ use serde::Serialize;
 use sdl3_sys::everything as sdl;
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
@@ -28,6 +28,7 @@ pub struct Pad {
 /// What's plugged in, for Settings.
 pub static CONNECTED: Mutex<Vec<Pad>> = Mutex::new(Vec::new());
 
+#[derive(Debug, PartialEq)]
 enum Ev {
     Down(&'static str, &'static str),
     Up(&'static str),
@@ -151,92 +152,130 @@ fn list(open: &HashMap<sdl::SDL_JoystickID, Open>) {
     c.extend(ids.iter().map(|id| Pad { name: open[id].name.clone(), kind: open[id].kind }));
 }
 
+/// Start SDL for controllers, on the thread that will make every SDL call from now on.
+fn init(mappings: &Path) -> bool {
+    // Hints, not environment variables, so the games the launcher starts don't get them.
+    // Keep reading while a game is in front.
+    set_hint(sdl::SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, c"1");
+    // Leave PlayStation and Switch pads in the mode they started in. Enhanced reports break
+    // DirectInput for games that don't use SDL, and a PlayStation pad keeps them until it's
+    // switched off.
+    set_hint(sdl::SDL_HINT_JOYSTICK_ENHANCED_REPORTS, c"0");
+    // DirectInput opens a controller for itself alone, which would keep it from a game.
+    // XInput and SDL's own drivers cover the controllers the launcher has always read.
+    set_hint(sdl::SDL_HINT_JOYSTICK_DIRECTINPUT, c"0");
+    // SDL's Steam Deck driver turns the Deck's trackpad mouse off for as long as it's open.
+    // Started from Steam, the Deck's controls come through Steam Input instead.
+    // SDL's Steam Controller drivers stay on: they read the controller without Steam. Its
+    // trackpad mouse is off while it's open here, and (on the first model) back when it closes.
+    set_hint(sdl::SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, c"0");
+    // Closing the launcher (Ctrl+C, the system's own "quit") must still close it.
+    set_hint(sdl::SDL_HINT_NO_SIGNAL_HANDLERS, c"1");
+    // SAFETY: SDL is started here and only ever called from this thread.
+    if !unsafe { sdl::SDL_Init(sdl::SDL_INIT_GAMEPAD) } {
+        // SAFETY: SDL_GetError always returns a NUL-terminated string.
+        eprintln!("No controllers: {}", unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
+        return false;
+    }
+    // Events nothing here reads, so SDL doesn't queue them: "update complete" comes with
+    // every report a controller sends. The joystick-level button, axis and hat events stay:
+    // SDL makes the gamepad events from them.
+    for t in [
+        sdl::SDL_EVENT_JOYSTICK_UPDATE_COMPLETE,
+        sdl::SDL_EVENT_GAMEPAD_UPDATE_COMPLETE,
+        sdl::SDL_EVENT_GAMEPAD_TOUCHPAD_DOWN,
+        sdl::SDL_EVENT_GAMEPAD_TOUCHPAD_MOTION,
+        sdl::SDL_EVENT_GAMEPAD_TOUCHPAD_UP,
+        sdl::SDL_EVENT_GAMEPAD_SENSOR_UPDATE,
+        sdl::SDL_EVENT_JOYSTICK_BATTERY_UPDATED,
+        sdl::SDL_EVENT_JOYSTICK_BALL_MOTION,
+    ] {
+        // SAFETY: SDL is running on this thread.
+        unsafe { sdl::SDL_SetEventEnabled(t.0, false) };
+    }
+    // The player's own mappings, for a controller SDL doesn't know.
+    if mappings.is_file() {
+        if let Some(p) = mappings.to_str().and_then(|p| CString::new(p).ok()) {
+            // SAFETY: a NUL-terminated UTF-8 path, as SDL wants.
+            if unsafe { sdl::SDL_AddGamepadMappingsFromFile(p.as_ptr()) } < 0 {
+                // SAFETY: SDL_GetError always returns a NUL-terminated string.
+                eprintln!("Couldn't read {}: {}", mappings.display(), unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
+            }
+        }
+    }
+    true
+}
+
+/// The controllers SDL has open, and what they're doing.
+#[derive(Default)]
+struct Reader {
+    open: HashMap<sdl::SDL_JoystickID, Open>,
+}
+
+impl Reader {
+    /// Everything SDL has seen since last time, as presses.
+    fn poll(&mut self, tx: &Sender<Ev>) {
+        let open = &mut self.open;
+        // SAFETY: an SDL_Event is plain data SDL fills in; the union member read is the one
+        // its type says.
+        let mut ev: sdl::SDL_Event = unsafe { std::mem::zeroed() };
+        while unsafe { sdl::SDL_PollEvent(&mut ev) } {
+            let ty = sdl::SDL_EventType(unsafe { ev.r#type });
+            match ty {
+                sdl::SDL_EVENT_GAMEPAD_ADDED => {
+                    let id = unsafe { ev.gdevice.which };
+                    if open.contains_key(&id) {
+                        continue;
+                    }
+                    // SAFETY: the id is one SDL just announced; a null pad is skipped.
+                    let pad = unsafe { sdl::SDL_OpenGamepad(id) };
+                    if pad.is_null() {
+                        continue;
+                    }
+                    let name = unsafe { sdl::SDL_GetGamepadName(pad) };
+                    let name = if name.is_null() { "Controller".to_string() } else { unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned() };
+                    let kind = kind_of(unsafe { sdl::SDL_GetGamepadType(pad) }, unsafe { sdl::SDL_GetGamepadVendor(pad) });
+                    open.insert(id, Open { pad, name, kind, axes: Axes::default() });
+                    list(open);
+                }
+                sdl::SDL_EVENT_GAMEPAD_REMOVED => {
+                    if let Some(o) = open.remove(&unsafe { ev.gdevice.which }) {
+                        // SAFETY: opened above, closed once.
+                        unsafe { sdl::SDL_CloseGamepad(o.pad) };
+                        list(open);
+                    }
+                }
+                sdl::SDL_EVENT_GAMEPAD_BUTTON_DOWN | sdl::SDL_EVENT_GAMEPAD_BUTTON_UP => {
+                    let b = unsafe { ev.gbutton };
+                    let Some(o) = open.get(&b.which) else { continue };
+                    let button = sdl::SDL_GamepadButton(b.button as i32);
+                    // SAFETY: the pad is open.
+                    let label = unsafe { sdl::SDL_GetGamepadButtonLabel(o.pad, button) };
+                    if let Some(n) = button_name(button, label) {
+                        let _ = tx.send(if b.down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
+                    }
+                }
+                sdl::SDL_EVENT_GAMEPAD_AXIS_MOTION => {
+                    let a = unsafe { ev.gaxis };
+                    let Some(o) = open.get_mut(&a.which) else { continue };
+                    for (down, n) in o.axes.moved(sdl::SDL_GamepadAxis(a.axis as i32), a.value) {
+                        let _ = tx.send(if down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
     let spawned = std::thread::Builder::new().name("pads".into()).spawn(move || {
-        // Hints, not environment variables, so the games the launcher starts don't get them.
-        // Keep reading while a game is in front.
-        set_hint(sdl::SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, c"1");
-        // Leave PlayStation and Switch pads in the mode they started in. Enhanced reports break
-        // DirectInput for games that don't use SDL, and a PlayStation pad keeps them until it's
-        // switched off.
-        set_hint(sdl::SDL_HINT_JOYSTICK_ENHANCED_REPORTS, c"0");
-        // DirectInput opens a controller for itself alone, which would keep it from a game.
-        // XInput and SDL's own drivers cover the controllers the launcher has always read.
-        set_hint(sdl::SDL_HINT_JOYSTICK_DIRECTINPUT, c"0");
-        // SDL's Steam Deck driver turns the Deck's trackpad mouse off for as long as it's open.
-        // Started from Steam, the Deck's controls come through Steam Input instead.
-        // SDL's Steam Controller drivers stay on: they read the controller without Steam. Its
-        // trackpad mouse is off while it's open here, and (on the first model) back when it closes.
-        set_hint(sdl::SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, c"0");
-        // Closing the launcher (Ctrl+C, the system's own "quit") must still close it.
-        set_hint(sdl::SDL_HINT_NO_SIGNAL_HANDLERS, c"1");
-        // SAFETY: SDL is started here and only ever called from this thread.
-        if !unsafe { sdl::SDL_Init(sdl::SDL_INIT_GAMEPAD) } {
-            // SAFETY: SDL_GetError always returns a NUL-terminated string.
-            eprintln!("No controllers: {}", unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
+        if !init(&mappings) {
             return;
         }
-        // The player's own mappings, for a controller SDL doesn't know.
-        if mappings.is_file() {
-            if let Some(p) = mappings.to_str().and_then(|p| CString::new(p).ok()) {
-                // SAFETY: a NUL-terminated UTF-8 path, as SDL wants.
-                if unsafe { sdl::SDL_AddGamepadMappingsFromFile(p.as_ptr()) } < 0 {
-                    // SAFETY: SDL_GetError always returns a NUL-terminated string.
-                    eprintln!("Couldn't read {}: {}", mappings.display(), unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
-                }
-            }
-        }
-        let mut open: HashMap<sdl::SDL_JoystickID, Open> = HashMap::new();
+        let mut reader = Reader::default();
         loop {
-            // SAFETY: an SDL_Event is plain data SDL fills in; the union member read is the one
-            // its type says.
-            let mut ev: sdl::SDL_Event = unsafe { std::mem::zeroed() };
-            while unsafe { sdl::SDL_PollEvent(&mut ev) } {
-                let ty = sdl::SDL_EventType(unsafe { ev.r#type });
-                match ty {
-                    sdl::SDL_EVENT_GAMEPAD_ADDED => {
-                        let id = unsafe { ev.gdevice.which };
-                        if open.contains_key(&id) {
-                            continue;
-                        }
-                        // SAFETY: the id is one SDL just announced; a null pad is skipped.
-                        let pad = unsafe { sdl::SDL_OpenGamepad(id) };
-                        if pad.is_null() {
-                            continue;
-                        }
-                        let name = unsafe { sdl::SDL_GetGamepadName(pad) };
-                        let name = if name.is_null() { "Controller".to_string() } else { unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned() };
-                        let kind = kind_of(unsafe { sdl::SDL_GetGamepadType(pad) }, unsafe { sdl::SDL_GetGamepadVendor(pad) });
-                        open.insert(id, Open { pad, name, kind, axes: Axes::default() });
-                        list(&open);
-                    }
-                    sdl::SDL_EVENT_GAMEPAD_REMOVED => {
-                        if let Some(o) = open.remove(&unsafe { ev.gdevice.which }) {
-                            // SAFETY: opened above, closed once.
-                            unsafe { sdl::SDL_CloseGamepad(o.pad) };
-                            list(&open);
-                        }
-                    }
-                    sdl::SDL_EVENT_GAMEPAD_BUTTON_DOWN | sdl::SDL_EVENT_GAMEPAD_BUTTON_UP => {
-                        let b = unsafe { ev.gbutton };
-                        let Some(o) = open.get(&b.which) else { continue };
-                        let button = sdl::SDL_GamepadButton(b.button as i32);
-                        // SAFETY: the pad is open.
-                        let label = unsafe { sdl::SDL_GetGamepadButtonLabel(o.pad, button) };
-                        if let Some(n) = button_name(button, label) {
-                            let _ = tx.send(if b.down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
-                        }
-                    }
-                    sdl::SDL_EVENT_GAMEPAD_AXIS_MOTION => {
-                        let a = unsafe { ev.gaxis };
-                        let Some(o) = open.get_mut(&a.which) else { continue };
-                        for (down, n) in o.axes.moved(sdl::SDL_GamepadAxis(a.axis as i32), a.value) {
-                            let _ = tx.send(if down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            reader.poll(&tx);
             // During a game the quick menu and the screenshot combo only wait for their buttons: a
             // check every 25 ms is plenty, and leaves the processor to the game. Not slower, even
             // with the quick menu off: SDL reads a controller's state when it's asked, so a quick
@@ -475,6 +514,71 @@ mod tests {
         // X resting doesn't make a Y that sits pushed count.
         assert!(a.moved(A::LEFTY, 32767).is_empty());
         assert_eq!(a.moved(A::LEFTX, 32767), vec![(true, "right")]);
+    }
+
+    /// The whole way through SDL, with virtual controllers: SDL starts with the launcher's
+    /// settings, makes gamepad events, and the launcher names them. The only test that starts
+    /// SDL, so nothing else shares its state.
+    #[test]
+    fn through_sdl() {
+        assert!(init(Path::new("")));
+        let (tx, rx) = channel();
+        let mut r = Reader::default();
+        let attach = |vendor: u16, product: u16| {
+            let mut d = sdl::SDL_VirtualJoystickDesc::default();
+            d.r#type = sdl::SDL_JOYSTICK_TYPE_GAMEPAD.0 as u16;
+            d.vendor_id = vendor;
+            d.product_id = product;
+            d.naxes = sdl::SDL_GAMEPAD_AXIS_COUNT.0 as u16;
+            d.nbuttons = sdl::SDL_GAMEPAD_BUTTON_COUNT.0 as u16;
+            d.name = c"Test pad".as_ptr();
+            // SAFETY: SDL runs on this test's thread; the description outlives the call.
+            let id = unsafe { sdl::SDL_AttachVirtualJoystick(&d) };
+            assert_ne!(id.0, 0);
+            let j = unsafe { sdl::SDL_OpenJoystick(id) };
+            assert!(!j.is_null());
+            (id, j)
+        };
+        // SAFETY (for the calls below): the joysticks are open, on this thread.
+        let press = |j, b: B, down| unsafe { assert!(sdl::SDL_SetJoystickVirtualButton(j, b.0, down)) };
+        let axis = |j, a: A, v| unsafe { assert!(sdl::SDL_SetJoystickVirtualAxis(j, a.0, v)) };
+
+        // An Xbox One pad.
+        let (xid, x) = attach(0x045E, 0x02EA);
+        r.poll(&tx);
+        assert_eq!(connected().iter().map(|p| p.kind).collect::<Vec<_>>(), vec!["xbox"]);
+        press(x, B::SOUTH, true);
+        press(x, B::BACK, true);
+        r.poll(&tx);
+        press(x, B::SOUTH, false);
+        axis(x, A::LEFTX, 0);
+        r.poll(&tx);
+        axis(x, A::LEFTX, 32767);
+        r.poll(&tx);
+        let got: Vec<Ev> = rx.try_iter().collect();
+        assert_eq!(got, vec![Ev::Down("a", "xbox"), Ev::Down("view", "xbox"), Ev::Up("a"), Ev::Down("right", "xbox")]);
+
+        // A Switch Pro Controller: its A is on the right.
+        let (nid, n) = attach(0x057E, 0x2009);
+        r.poll(&tx);
+        assert!(connected().iter().any(|p| p.kind == "nintendo"), "{:?}", connected());
+        press(n, B::EAST, true);
+        r.poll(&tx);
+        press(n, B::SOUTH, true);
+        r.poll(&tx);
+        let got: Vec<Ev> = rx.try_iter().collect();
+        assert_eq!(got, vec![Ev::Down("a", "nintendo"), Ev::Down("b", "nintendo")]);
+
+        // Unplugged: gone from the list.
+        unsafe {
+            sdl::SDL_CloseJoystick(x);
+            sdl::SDL_CloseJoystick(n);
+            assert!(sdl::SDL_DetachVirtualJoystick(xid));
+            assert!(sdl::SDL_DetachVirtualJoystick(nid));
+        }
+        r.poll(&tx);
+        assert!(connected().is_empty(), "{:?}", connected());
+        unsafe { sdl::SDL_Quit() };
     }
 
     #[test]
