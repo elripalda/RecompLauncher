@@ -744,6 +744,29 @@ fn installed_elsewhere(_names: &[&str], _since: SystemTime, _ours: &Path, _then:
     None
 }
 
+/// Where Windows says installers put this game (the InstallLocation of its entries in
+/// Settings > Apps whose names are the game's), folders that are there.
+#[cfg(windows)]
+pub fn app_folders(names: &[&str]) -> Vec<PathBuf> {
+    let want = want_of(names);
+    let mut out: Vec<PathBuf> = vec![];
+    for v in installed_apps() {
+        let (n, p) = (v["n"].as_str().unwrap_or(""), v["p"].as_str().unwrap_or("").trim().trim_matches('"'));
+        if !p.is_empty() && is_ours(&want, n) {
+            let d = PathBuf::from(p);
+            if d.is_dir() && !out.contains(&d) {
+                out.push(d);
+            }
+        }
+    }
+    out
+}
+
+#[cfg(not(windows))]
+pub fn app_folders(_names: &[&str]) -> Vec<PathBuf> {
+    vec![]
+}
+
 /// The uninstaller Windows lists for a game an installer put in `dir` (its install folder holds
 /// the game's program): the command to run, as Windows keeps it.
 #[cfg(windows)]

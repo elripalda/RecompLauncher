@@ -398,7 +398,7 @@ mod imp {
 
     impl Elevated {
         /// Waits for it to close: its exit code.
-        pub fn wait(self) -> Option<i32> {
+        pub fn wait(mut self) -> Option<i32> {
             use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
             if self.0 == 0 {
                 return None;
@@ -411,8 +411,59 @@ mod imp {
                 let _ = CloseHandle(h);
                 ok
             };
+            self.0 = 0;
             ok.then_some(code as i32)
         }
+    }
+
+    impl Elevated {
+        /// Waits for it to close, or until `stop` is set: Some(exit code) when it closed, None
+        /// when the wait was stopped (the program keeps running).
+        pub fn wait_or(&self, stop: &std::sync::atomic::AtomicBool) -> Option<Option<i32>> {
+            use windows::Win32::Foundation::WAIT_OBJECT_0;
+            use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+            if self.0 == 0 {
+                return Some(None);
+            }
+            let h = HANDLE(self.0 as *mut _);
+            loop {
+                if unsafe { WaitForSingleObject(h, 400) } == WAIT_OBJECT_0 {
+                    let mut code = 0u32;
+                    let ok = unsafe { GetExitCodeProcess(h, &mut code).is_ok() };
+                    return Some(ok.then_some(code as i32));
+                }
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return None;
+                }
+            }
+        }
+    }
+    impl Drop for Elevated {
+        fn drop(&mut self) {
+            // wait() closes the handle itself and leaves 0 behind.
+            if self.0 != 0 {
+                let _ = unsafe { CloseHandle(HANDLE(self.0 as *mut _)) };
+            }
+        }
+    }
+
+    /// Starts a program the way double-clicking it does (ShellExecute): one that needs
+    /// administrator rights gets Windows' prompt instead of failing with error 740.
+    pub fn shell_open(exe: &Path, args: &str, dir: &Path) -> std::io::Result<Elevated> {
+        use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let (f, p, d) = (HSTRING::from(exe), HSTRING::from(args), HSTRING::from(dir));
+        let mut i = SHELLEXECUTEINFOW {
+            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+            lpFile: PCWSTR(f.as_ptr()),
+            lpParameters: if args.is_empty() { PCWSTR::null() } else { PCWSTR(p.as_ptr()) },
+            lpDirectory: PCWSTR(d.as_ptr()),
+            nShow: SW_SHOWNORMAL.0,
+            ..Default::default()
+        };
+        unsafe { ShellExecuteExW(&mut i) }.map_err(|e| std::io::Error::from_raw_os_error(e.code().0 & 0xFFFF))?;
+        Ok(Elevated(i.hProcess.0 as isize))
     }
 
     /// Starts a program the way "Run as administrator" does.

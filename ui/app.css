@@ -1888,3 +1888,7 @@ body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}
 
 /* Mac: the web view there pays a lot for big blurs, so covers don't glow on hover. */
 body.mac .tile .glow{display:none}
+/* Set Up for a recomp that comes as an installer. */
+.inst-found{display:flex;flex-direction:column;align-items:flex-start;gap:2px;height:auto;padding:10px 14px;text-align:left}
+.inst-found span{font-size:12.5px;font-weight:500;overflow-wrap:anywhere}
+.inst-exe{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:6px}.inst-exe .sel{width:100%}.inst-exe span{font-size:13px;color:var(--muted)}

@@ -47,6 +47,7 @@ pub mod trail;
 pub mod tray;
 pub mod usage;
 pub mod win;
+mod installer;
 
 use catalog::Release;
 use install::Progress;
@@ -334,6 +335,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
 
+    // A recomp that only comes as an installer: Windows only, and never one the store holds.
+    let as_installer = installer::is_installer(&entry) && assets::os_now() == "windows";
+    if as_installer && installer::held(&entry) {
+        return Err(Error::Msg("This release is on hold, so its installer won't be downloaded. Try again later.".into()));
+    }
     // A GitLab project's files come only from that project on gitlab.com.
     if !catalog::own_download(&repo, &asset.browser_download_url, rel.project_id) {
         trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
@@ -432,6 +438,54 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         report(Progress::new(id, "backup", 0, 0));
         let (dir, files, bdir) = (p.path.clone(), inputs::release_files(p), backups_dir(p));
         let _ = tokio::task::spawn_blocking(move || manage::backup(&dir, &files, &bdir, 5)).await;
+    }
+
+    // Only an installer: it waits in the launcher's staging folder for Set Up, which runs it when
+    // the player presses Run Installer. A new game gets its place in the Library (the folder Set
+    // Up suggests); an update keeps everything until its installer has run.
+    if as_installer {
+        report(Progress::new(id, "unpack", 0, 0));
+        let (file, sdir) = (got.file.clone(), installer::staging(&st.dir, id));
+        let setup = tokio::task::spawn_blocking(move || installer::stage(&file, &sdir)).await.map_err(|e| Error::Msg(e.to_string()))??;
+        let _ = std::fs::remove_file(&got.file);
+        {
+            let mut l = st.lib.lock().unwrap();
+            match l.installed.get_mut(id) {
+                Some(g) => {
+                    g.installer_setup = setup.to_string_lossy().to_string();
+                    g.installer_tag = tag_got.clone();
+                    g.asset = asset.name.clone();
+                }
+                None => {
+                    let rec = Installed {
+                        id: id.into(),
+                        name: str_of(&entry, "name").into(),
+                        repo: repo.clone(),
+                        version: str_of(&entry, "version").into(),
+                        path: target.clone(),
+                        asset: asset.name.clone(),
+                        size: asset.size,
+                        installed_at: now(),
+                        updated_at: now(),
+                        setup_checked: true,
+                        exe_rules: u8::MAX,
+                        look_amount: 50,
+                        installer: true,
+                        installer_setup: setup.to_string_lossy().to_string(),
+                        installer_tag: tag_got.clone(),
+                        ..Default::default()
+                    };
+                    l.put(id, rec);
+                }
+            }
+            l.settings.asked_location = true;
+        }
+        st.save();
+        trail::note(format!("Install {id}: its installer {} is ready for Set Up", setup.file_name().unwrap_or_default().to_string_lossy()));
+        note_download(&st.dir, json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}));
+        st.jobs.lock().unwrap().remove(id);
+        report(Progress::new(id, "done", 1, 1));
+        return Ok(());
     }
 
     // The settings the player picked on the game's page, put back after the update's files.
@@ -567,6 +621,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         // The version it came from, for "go back" after a bad update. A version the player picked
         // (going back, or an older one on purpose) isn't an update, so there's nothing to go back to.
         prev_tag: if picked_tag { String::new() } else { prev.as_ref().map(|p| if !p.tag.is_empty() && p.tag != tag_got { p.tag.clone() } else { p.prev_tag.clone() }).unwrap_or_default() },
+        installer: false,
+        installer_setup: String::new(),
+        installer_tag: String::new(),
     };
     {
         let mut l = st.lib.lock().unwrap();
@@ -860,7 +917,7 @@ fn download_limits(mb: f64, slow_playing: bool) {
 }
 
 #[tauri::command(async)]
-fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
+fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>) -> Res<Value> {
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
@@ -872,6 +929,16 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool) -> Res<Value> {
     // Still open outside the launcher (or still closing): Windows won't let its files go.
     if delete_files && g.exe.as_ref().map(|e| already_open(&if e.is_absolute() { e.clone() } else { g.path.join(e) })).unwrap_or(false) {
         return Err(Error::Msg(format!("{} is still open. Close it, then uninstall it.", g.name)));
+    }
+    // A game its own installer put in place: its uninstaller if the player said so, and the
+    // folder is never deleted by the launcher (it may be Program Files or anywhere else).
+    if g.installer || !g.installer_setup.is_empty() {
+        let _ = std::fs::remove_dir_all(installer::staging(&st.dir, &id));
+        let ran = run_uninstaller == Some(true) && g.installer && g.path.is_dir() && installer::run_uninstaller(&g.path);
+        trail::note(format!("Uninstall {id}: an installed game{}", if ran { ", its uninstaller ran" } else { "" }));
+        st.lib.lock().unwrap().forget(&id);
+        st.save();
+        return Ok(json!({"left": 0, "path": g.path, "kept": g.path.is_dir() && !ran, "uninstaller": ran, "installer": true}));
     }
     // A local build's folder is the developer's: it only leaves the Library.
     let delete_files = delete_files && !g.local;
@@ -2103,6 +2170,10 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
     // still runs the release's setup first.)
     if (manual.is_none() || rebuild) && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
+        // Only its installer so far: Set Up runs it first.
+        if !g.installer_setup.is_empty() && g.exe.is_none() {
+            return Err(Error::Msg("Its installer hasn't run yet. Press Set Up on its page.".into()));
+        }
         if let Some(setup) = own_setup::pending(&st, id, &g) {
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
@@ -3094,7 +3165,7 @@ async fn look_picture(path: String) -> Res<String> {
     .map_err(|e| Error::Msg(e.to_string()))?
 }
 
-fn cached_catalog(st: &App) -> Value {
+pub(crate) fn cached_catalog(st: &App) -> Value {
     let cat = std::fs::read(st.dir.join("cache/pc-catalog.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
     catalog::with_mine(&st.dir, cat)
 }
@@ -7311,7 +7382,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, pause, download_limits,
+            take_link, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             precheck_copy,
             emulator_folders,
             add_github,

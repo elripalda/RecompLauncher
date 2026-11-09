@@ -152,6 +152,12 @@ function based(a) { return a.game ? `<div class="based">${DISC_S}<span>${htmlFil
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
 const needsSetup = (a) => !!(a && a.setup_required);
+// A recomp that only comes as a Windows installer (the catalog's "installer"), and one whose
+// downloaded installer is waiting for Set Up (a new game, or an update).
+const isInstallerApp = (a) => !!(a && a.installer) && S.os === 'windows';
+const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
+// The yellow Set Up: the developer's steps not done yet, or an installer waiting to run.
+const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installerDue(a.id));
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'setup'];
@@ -605,6 +611,7 @@ function status(a) {
   if (S.settingUp.has(id)) return 'settingup';
   if (job) return 'busy';
   if ((S.paused || {})[id]) return 'paused';
+  if (inst && inst.installer_setup) return 'installed';
   if (inst && S.updates[id]) return 'update';
   if (inst) return 'installed';
   if (a.soon) return 'soon';
@@ -777,7 +784,7 @@ function actions(a, size = 'big') {
     case 'busy': return progress(a.id) + (canPause(a.id) ? `<button type="button" class="${sq}" data-act="dl-pause" data-id="${id}" aria-label="${esc(t('Pause'))}" title="${esc(t('Pause'))}">${PAUSE}</button>` : '') + `<button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>`;
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
-    case 'installed': return needsSetup(a) && !setupDone(a.id) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : b('main', 'play', esc(t('Play')), PLAY) + more;
+    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : b('main', 'play', esc(t('Play')), PLAY) + more;
     case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy.
@@ -4123,7 +4130,7 @@ function confirmUninstall(id) {
   s.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="u-h"><h2 id="u-h">${esc(tf('Uninstall {name}?', { name: g.name }))}</h2>
     <p>${esc(t('It comes out of your Library. You can install it again from Discover any time.'))}</p>
     ${g.exe && /^([a-z]:[\\/]|\\\\|\/)/i.test(g.exe) && !String(g.exe).toLowerCase().startsWith(String(g.path).toLowerCase()) ? `<p class="muted">${esc(t('Its own installer put the game somewhere else. With the box ticked, its own uninstaller opens too.'))}</p>` : ''}
-    ${ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
+    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep it'))}</button><button type="button" class="btn danger" data-x="yes">${esc(t('Uninstall'))}</button></div></div>`;
   document.body.append(s);
   $('[data-x="no"]', s).focus();
@@ -4131,16 +4138,18 @@ function confirmUninstall(id) {
     const x = e.target.closest('[data-x]');
     if (e.target === s || (x && x.dataset.x === 'no')) return s.remove();
     if (!x) return;
-    const del = !!($('#u-del', s) || {}).checked;
+    const del = !!($('#u-del', s) || {}).checked, unins = !!($('#u-unins', s) || {}).checked;
     s.remove();
+    if (unins) toast(tf('{name}\'s uninstaller is opening. Finish it there.', { name: g.name }));
     let r = {};
-    try { r = (await invoke('uninstall', { id, deleteFiles: del })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
+    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
     if (window.usageUninstall) window.usageUninstall(id);
     await keepOut(id);
     delete S.updates[id]; await refreshState(); render(true);
     // Some files couldn't go (still in use by something): say where they are.
     if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
     else if (del && r.kept && r.copy_stuck) toast(tf('{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn\'t be moved out. It\'s in {path}.', { name: g.name, path: r.path }), true);
+    else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
     else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
     else toast(tf('{name} is uninstalled.', { name: g.name }));
     // The player's own files that were inside its folder: said apart, whatever else happened.
@@ -4392,7 +4401,72 @@ function askData() {
 }
 window.askData = askData;
 
+// Set Up for a recomp that only comes as an installer: run it (the player clicks through its own
+// windows), find the game where it went, done. Big Picture says to finish it on the desktop.
+function installerModal(id) {
+  const a = byId(id) || { id, name: (S.library[id] || {}).name || id };
+  const g = S.library[id];
+  if (!g || !g.installer_setup) {
+    // Not downloaded yet (or the download went): Install gets it.
+    return startInstall(id);
+  }
+  const tv = document.body.classList.contains('tv-on');
+  const head = (n, title) => `<span class="kick">${esc(tf('Step {n} of 3', { n }))}</span><h2>${esc(title)}</h2>`;
+  let st = { stage: 'run' };
+  let m = null;
+  const paint = () => {
+    const box = m && $('.modal', m.s || document);
+    let html = '';
+    if (st.stage === 'run') html = `${head(1, t('Run the Installer'))}<p>${esc(t('This one comes with its own installer. Run it, and when it asks where to install, keep the folder it suggests.'))}</p><p class="muted mono">${esc(g.path)}</p>${tv ? `<p class="set-note">${esc(t('The installer opens on your desktop. Finish it there, then come back.'))}</p>` : ''}
+      <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="run">${esc(t('Run Installer'))}</button></div>`;
+    else if (st.stage === 'wait') html = `${head(1, t('Run the Installer'))}<p>${esc(t('Waiting for the installer to finish…'))}</p><div class="prog"><div class="track busy"><i></i></div></div>
+      <div class="acts"><button type="button" class="btn" data-x="stop">${esc(t('Cancel'))}</button></div>`;
+    else if (st.stage === 'find') {
+      const c = st.check;
+      const exes = c && c.exes && c.exes.length ? c.exes : (c && c.exe ? [c.exe] : []);
+      html = `${head(2, t('Find the Game'))}<p>${esc(t('Where did it install? Pick the folder with the game in it.'))}</p>
+        ${(st.found || []).map((f, i) => `<button type="button" class="btn inst-found" data-x="found" data-i="${i}"><b>${esc(f.exe)}</b><span class="muted">${esc(f.path)}</span></button>`).join('')}
+        ${c ? `<p class="muted mono">${esc(c.path)}</p>${exes.length ? `<label class="inst-exe"><span>${esc(t('The game\'s program'))}</span><select class="sel" id="inst-exe">${exes.map((e) => `<option value="${esc(e)}"${e === c.exe ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select></label>` : `<p class="err">${esc(t('No program found in that folder.'))}</p>`}` : ''}
+        <div class="acts grid2"><button type="button" class="btn" data-x="pick">${esc(t('Pick a Folder'))}</button><button type="button" class="btn main" data-x="use"${c && exes.length ? '' : ' disabled'}>${esc(t('Use This Folder'))}</button></div>`;
+    } else if (st.stage === 'done') html = `${head(3, t('All Set'))}<p>${esc(tf('{name} is in your Library and ready to play.', { name: a.name }))}</p>
+      <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Close'))}</button><button type="button" class="btn main" data-x="play">${esc(t('Play'))}</button></div>`;
+    if (box) box.innerHTML = html;
+    return html;
+  };
+  const finished = async (game) => {
+    if (game) S.library[id] = game;
+    await refreshState().catch(() => {});
+    st = { stage: 'done' };
+    paint();
+    render(true);
+  };
+  const s0 = modal(paint(), async (x, close) => {
+    const k = x.dataset.x;
+    if (k === 'run') {
+      st = { stage: 'wait' }; paint(); m.s.dataset.busy = '1';
+      let r;
+      try { r = await invoke('installer_run', { id }); } catch (e) { delete m.s.dataset.busy; st = { stage: 'run' }; paint(); return fail(e); }
+      delete m.s.dataset.busy;
+      if (r.stopped) { st = { stage: 'run' }; paint(); return; }
+      if (r.done) return finished(r.game);
+      st = { stage: 'find', found: r.found || [] }; paint(); return;
+    }
+    if (k === 'stop') return invoke('installer_cancel', { id });
+    if (k === 'found') { const f = (st.found || [])[Number(x.dataset.i)]; if (!f) return; try { return finished(await invoke('installer_done', { id, path: f.path, exe: f.exe })); } catch (e) { return fail(e); } }
+    if (k === 'pick') {
+      const p = await pickFile({ title: t('Where did it install? Pick the folder with the game in it.'), directory: true }).catch(() => null);
+      if (!p) return;
+      try { st.check = await invoke('installer_check', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+      return paint();
+    }
+    if (k === 'use') { const exe = ($('#inst-exe', m.s) || {}).value || (st.check || {}).exe; if (!st.check || !exe) return; try { return finished(await invoke('installer_done', { id, path: st.check.path, exe })); } catch (e) { return fail(e); } }
+    if (k === 'play') { close(); return playGame(id); }
+  }, t('Set Up'));
+  m = { s: s0 };
+}
+
 function setupReqModal(id) {
+  if (isInstallerApp(byId(id)) || installerDue(id)) return installerModal(id);
   // In Big Picture mode it's a sheet made for the controller.
   if (window.tvSetupReq && window.tvSetupReq(id)) return;
   const a = byId(id);
@@ -4421,7 +4495,7 @@ function setupReqModal(id) {
 
 async function playGame(id, program) {
   if (S.missing && S.missing.has(id)) return missingModal(id);
-  if (needsSetup(byId(id)) && !setupDone(id)) return setupReqModal(id);
+  if (setupDue(byId(id) || { id })) return setupReqModal(id);
   // A second press while this one is still on its way (saving a look, the cloud check, ReShade)
   // does nothing.
   if (STARTING.has(id) || S.running.has(id)) return;
@@ -6508,7 +6582,9 @@ T.event.listen('install', ({ payload: p }) => {
       // A copy picked (and checked) before the download: its setup starts with it at once.
       const pre = (S.prePicked || {})[id];
       if (pre) delete S.prePicked[id];
-      if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+      // Only an installer: its Set Up opens to run it (an update's too).
+      if (isInstallerApp(byId(id))) { if (!busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
+      else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
       else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
       else toast(tf('{name} is ready to play.', { name }));
     }

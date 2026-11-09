@@ -173,6 +173,16 @@ pub struct Installed {
     /// breaks it. Empty until it has been updated.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prev_tag: String,
+    /// Put in place by its own installer (the catalog's "installer"): Remove offers its
+    /// uninstaller and never deletes the folder itself.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub installer: bool,
+    /// Its downloaded installer, waiting for Set Up (in the launcher's staging folder), and the
+    /// release it installs.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub installer_setup: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub installer_tag: String,
 }
 
 fn half() -> u8 {
