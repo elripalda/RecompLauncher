@@ -29,6 +29,7 @@ pub mod macos;
 pub mod media;
 pub mod mods;
 pub mod net;
+pub mod nup;
 pub mod pads;
 pub mod own_setup;
 pub mod ghinfo;
