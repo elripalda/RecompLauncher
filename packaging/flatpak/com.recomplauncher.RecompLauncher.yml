@@ -1,0 +1,55 @@
+# Flatpak manifest for RecompLauncher. See packaging/flatpak/README.md.
+app-id: com.recomplauncher.RecompLauncher
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: recomplauncher
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # Graphics, and game controllers (the recomps it starts run inside this sandbox).
+  - --device=all
+  # The tray icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Installs and starts the Flatpak builds some recomps ship, through the PC's own flatpak
+  # (flatpak-spawn --host). Remove this line to run without that feature.
+  - --talk-name=org.freedesktop.Flatpak
+  # Rich presence for Discord (its socket, native or Flatpak).
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/discord-ipc-0
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/recomplauncher/cargo
+    CARGO_NET_OFFLINE: 'true'
+
+modules:
+  # The tray icon's library; the shared-modules folder is Flathub's
+  # (git submodule add https://github.com/flathub/shared-modules).
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: recomplauncher
+    buildsystem: simple
+    build-commands:
+      # cargo build, not `tauri build`: no Node needed, and the web UI is embedded from ui/.
+      - cargo build --release --offline --locked --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol
+      - install -Dm755 src-tauri/target/release/recomplauncher -t /app/bin
+      - install -Dm644 packaging/flatpak/com.recomplauncher.RecompLauncher.desktop -t /app/share/applications
+      - install -Dm644 packaging/flatpak/com.recomplauncher.RecompLauncher.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.recomplauncher.RecompLauncher.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.recomplauncher.RecompLauncher.png
+    sources:
+      - type: git
+        url: https://github.com/Xarishark/RecompLauncher.git
+        tag: v0.90.0-beta.27
+        # commit: fill in with the release tag's commit
+      # Every crate, generated from src-tauri/Cargo.lock:
+      #   python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o cargo-sources.json
+      - cargo-sources.json

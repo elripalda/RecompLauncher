@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.recomplauncher.RecompLauncher</id>
+  <name>RecompLauncher</name>
+  <summary>One home for PC recomps</summary>
+  <developer id="com.recomplauncher">
+    <name>Ripalda</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <url type="homepage">https://recomplauncher.com</url>
+  <url type="bugtracker">https://github.com/Xarishark/RecompLauncher/issues</url>
+  <launchable type="desktop-id">com.recomplauncher.RecompLauncher.desktop</launchable>
+  <description>
+    <p>RecompLauncher finds, installs, updates and starts PC recomps from each developer's own GitHub.</p>
+    <p>No game files are included: every game needs your own copy.</p>
+  </description>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <provides>
+    <binary>recomplauncher</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Xarishark/RecompLauncher/main/docs/images/home.jpg</image>
+      <caption>Home</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Xarishark/RecompLauncher/main/docs/images/discover.jpg</image>
+      <caption>Discover</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Xarishark/RecompLauncher/main/docs/images/game.jpg</image>
+      <caption>A game's page</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Xarishark/RecompLauncher/main/docs/images/bigpicture.jpg</image>
+      <caption>Big Picture mode</caption>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.90.0-beta.27" date="2026-11-09"/>
+  </releases>
+</component>
