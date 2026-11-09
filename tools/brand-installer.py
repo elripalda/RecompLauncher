@@ -22,7 +22,9 @@ def swap(old, new, count=1):
         sys.exit(f'brand-installer: expected {count} of {old[:60]!r}, found {s.count(old)}')
     s = s.replace(old, new)
 
-ui = os.path.join(TAURI, 'installer', 'rl-ui.nsh').replace('\\', '/')
+# makensis on Windows wants Windows paths; on Linux, forward slashes.
+npath = lambda p: p if os.name == 'nt' else p.replace('\\', '/')
+ui = npath(os.path.join(TAURI, 'installer', 'rl-ui.nsh'))
 bmp = os.path.join(TAURI, 'installer', 'bmp')
 # Our screens, after Tauri's variables and before its pages.
 swap('; Installer pages, must be ordered as they appear\n',
@@ -48,7 +50,7 @@ swap('Section Install\n', 'Section -RLStep2\n  !insertmacro RLSAY "Copying Recom
 # which would show over the Installing screen.
 swap('        NSISdl::download "', '        NSISdl::download_quiet "')
 # The uninstaller: our screens too. Are you sure (with the "also delete" tick), removing, done.
-un = os.path.join(TAURI, 'installer', 'rl-un.nsh').replace('\\', '/')
+un = npath(os.path.join(TAURI, 'installer', 'rl-un.nsh'))
 i = s.index('!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow\n')
 j = s.index('!insertmacro MUI_UNPAGE_CONFIRM\n') + len('!insertmacro MUI_UNPAGE_CONFIRM\n')
 s = s[:i] + f'!define MUI_CUSTOMFUNCTION_UNGUIINIT un.RLGuiInit\n!include "{un}"\nUninstPage custom un.RLConfirm un.RLConfirmLeave\n' + s[j:]
@@ -68,7 +70,8 @@ conf = json.load(open(os.path.join(TAURI, 'tauri.conf.json')))
 ver = conf['version']
 exe = os.path.join(target, 'bundle', 'nsis', f'RecompLauncher_{ver}_x64-setup.exe')
 os.makedirs(os.path.dirname(exe), exist_ok=True)
-s2 = re.sub(r'!define OUTFILE "[^"]*"', '!define OUTFILE "' + exe.replace('\\', '/') + '"', open(out, encoding='utf-8-sig').read())
+# A function, not a string, as the replacement: a Windows path's backslashes stay as they are.
+s2 = re.sub(r'!define OUTFILE "[^"]*"', lambda m: '!define OUTFILE "' + npath(exe) + '"', open(out, encoding='utf-8-sig').read())
 open(out, 'w', encoding='utf-8-sig').write(s2)
 # Tauri's own NSIS (with its plugins), wherever this machine keeps it; then one on PATH.
 def find_makensis():
