@@ -179,6 +179,8 @@ body.isl-on main::after{content:'';display:block;height:84px}
 
 /* ---------- box art tiles ---------- */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:26px 20px}
+/* Discover's next page: the empty line at the list's end that asks for more tiles when it nears. */
+.more{height:1px}
 .grid.compact{gap:22px 16px}
 .tile{position:relative;min-width:0}
 .tile-b{position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;text-align:left;min-width:0;width:100%}
