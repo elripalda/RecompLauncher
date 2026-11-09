@@ -277,6 +277,7 @@ pub async fn download(
     // github.com's download link, or GitHub's API link to the same file once that keeps failing.
     let mut src = asset.browser_download_url.clone();
     let mut by_api = false;
+    let mut api_tried = false;
     'attempt: loop {
         tries += 1;
         let mut req = http.get(&src).timeout(Duration::from_secs(60 * 60 * 6));
@@ -315,13 +316,22 @@ pub async fn download(
             // ask again, from where it got to.
             // Still busy after a few tries: the same file through GitHub's API, which often answers
             // when the download link doesn't.
-            if busy_answer(r.status().as_u16()) && tries >= 3 && !by_api {
+            if busy_answer(r.status().as_u16()) && tries >= 3 && !by_api && !api_tried {
                 if let Some(api) = asset.url.as_deref().filter(|u| u.starts_with("https://api.github.com/")) {
                     crate::trail::note(format!("{}: github.com answered {}; trying GitHub's API link", asset.name, r.status().as_u16()));
                     src = api.to_string();
                     by_api = true;
+                    api_tried = true;
                     continue;
                 }
+            }
+            // The API said no for another reason (its hourly limit for a PC that isn't signed in):
+            // back to the usual link, which keeps its own tries.
+            if by_api && !busy_answer(r.status().as_u16()) && tries < 8 {
+                crate::trail::note(format!("{}: GitHub's API link answered {}; back to github.com", asset.name, r.status().as_u16()));
+                src = asset.browser_download_url.clone();
+                by_api = false;
+                continue;
             }
             if busy_answer(r.status().as_u16()) && (tries < 5 || (by_api && tries < 8)) {
                 let wait = Instant::now() + Duration::from_secs(2u64 << (tries - 1).min(4));
@@ -911,7 +921,8 @@ const RUNTIME_INSTALLERS: [&str; 17] = [
 /// player downloaded again, not the game's own program.
 fn downloaded_copy(stem: &str) -> bool {
     let s = stem.trim_end();
-    s.ends_with(')') && s.rfind(" (").map(|i| s[i + 2..s.len() - 1].chars().all(|c| c.is_ascii_digit()) && s.len() > i + 3).unwrap_or(false)
+    // "setup (2)", never "game (1993)": a browser counts up from 1, a year has four digits.
+    s.ends_with(')') && s.rfind(" (").map(|i| { let n = &s[i + 2..s.len() - 1]; (1..=2).contains(&n.len()) && n.chars().all(|c| c.is_ascii_digit()) }).unwrap_or(false)
 }
 
 pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
@@ -1338,6 +1349,8 @@ mod tests {
         assert!(looks_like_tool(Path::new("x86_64-w64-mingw32-clang++.exe"), &["TotK Recomp"]));
         assert!(looks_like_tool(Path::new("windowsdesktop-runtime-10.0.14-win-x64 (2).exe"), &["Mario Kart WiiCompiled"]));
         assert!(looks_like_tool(Path::new("wps_wid.cid-642543927.1788466613 (8).exe"), &["ReStreet"]));
+        // A year in the name is the game's, not a browser's count.
+        assert!(!looks_like_tool(Path::new("Doom (1993).exe"), &["Doom"]));
         assert!(looks_like_tool(Path::new("VC_redist.x64.exe"), &["Any"]));
         assert!(!looks_like_tool(Path::new("Dragon Ball Z (Burst Limit).exe"), &["Dragon Ball Z"]));
         // A tools folder in Portuguese, and recompilers.

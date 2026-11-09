@@ -194,7 +194,8 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("linux", "tar.gz") => 12,
         ("linux", "zip") => 8,
         ("macos", "zip") => 12,
-        ("macos", "dmg") => 6,
+        // Below a ZIP even when the disk image's name says more (arm64): a ZIP keeps the app as it is.
+        ("macos", "dmg") => -20,
         _ => 4,
     };
     // A game's server (for playing online) comes with some releases: the game itself comes first,
@@ -318,6 +319,9 @@ mod tests {
         let files = [a("Game-macOS.dmg"), a("Game-macOS.zip")];
         assert_eq!(all_for(&files, "macos", "arm64", None).iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
         assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "Game-macOS.zip");
+        let files = [a("Game-1.0-macOS-arm64.dmg"), a("Game-1.0-macOS.zip")];
+        assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "Game-1.0-macOS.zip");
+        assert_eq!(pick(&files[..1], "macos", "arm64", None).unwrap().name, "Game-1.0-macOS-arm64.dmg");
         // Only a disk image (Link's Awakening's release): that's the one.
         let files = [a("LAS.Recomp-1.0-macOS.dmg"), a("LAS.Recomp-1.0-Windows.zip")];
         assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "LAS.Recomp-1.0-macOS.dmg");

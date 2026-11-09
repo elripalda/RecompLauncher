@@ -283,15 +283,12 @@ fn newer_runtime(proton: &Path) -> bool {
     matches!(id.as_deref(), Some(x) if x != "1628350" && x != "1391110")
 }
 
-/// umu-run's runtime folder (~/.local/share/umu/steamrt4) is there but can't start anything: its
-/// entry point (umu) or its shim (umu-shim) is missing. No folder at all is fine: umu-run fetches it.
+/// umu-run's runtime folder (~/.local/share/umu/steamrt4) is there but an umu-run before 1.4 can't
+/// start anything from it: its entry point (umu) is missing ("_v2-entry-point (umu) cannot be
+/// found"). No folder at all is fine: umu-run fetches it.
 fn umu_runtime_broken(dir: &Path) -> bool {
     let has_files = std::fs::read_dir(dir).map(|mut d| d.next().is_some()).unwrap_or(false);
-    if !has_files {
-        return false;
-    }
-    let shim = dir.join("umu-shim").exists() || dir.parent().map(|p| p.join("umu-shim").exists()).unwrap_or(false);
-    !dir.join("umu").exists() || !shim
+    has_files && !dir.join("umu").exists()
 }
 
 /// The best way to start a Windows program on this PC, if there's one.
@@ -304,7 +301,11 @@ pub fn runner() -> Option<Runner> {
         let old = newer && umu_version(&umu).map(|v| v < (1, 4, 0)).unwrap_or(false);
         // Its Steam runtime half there (a download that failed its checksum, or parts missing):
         // nothing starts through it, so a Proton of the PC's own runs on its own instead.
-        let broken = proton.is_some() && dirs::data_dir().map(|d| umu_runtime_broken(&d.join("umu").join(if newer { "steamrt4" } else { "steamrt3" }))).unwrap_or(false);
+        // Only before umu-launcher 1.4: newer ones start through _v2-entry-point when umu isn't
+        // there, and every umu-run puts a missing umu-shim back itself.
+        let broken = proton.is_some()
+            && umu_version(&umu).map(|v| v < (1, 4, 0)).unwrap_or(false)
+            && dirs::data_dir().map(|d| umu_runtime_broken(&d.join("umu").join(if newer { "steamrt4" } else { "steamrt3" }))).unwrap_or(false);
         if !old && !broken {
             return Some(Runner::Umu(umu, proton.map(|p| p.0)));
         }
@@ -439,9 +440,6 @@ mod tests {
         std::fs::write(rt.join("_v2-entry-point"), b"").unwrap();
         assert!(super::umu_runtime_broken(&rt));
         std::fs::write(rt.join("umu"), b"").unwrap();
-        assert!(super::umu_runtime_broken(&rt));
-        // The shim, beside it or one folder up.
-        std::fs::write(d.join("umu-shim"), b"").unwrap();
         assert!(!super::umu_runtime_broken(&rt));
         let _ = std::fs::remove_dir_all(&d);
     }

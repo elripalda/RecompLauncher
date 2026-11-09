@@ -202,6 +202,10 @@ fn sound_check() -> bool {
 #[cfg(any(test, target_os = "linux"))]
 fn bundled_gstreamer(exe: &std::path::Path) -> bool {
     let Some(root) = exe.parent().filter(|b| b.ends_with("usr/bin")).and_then(|b| b.parent()).and_then(|u| u.parent()) else { return false };
+    // /usr/bin itself is an ordinary install: on Arch and others the PC's own GStreamer is in /usr/lib.
+    if root.parent().is_none() {
+        return false;
+    }
     root.join("AppRun").exists() || root.join("usr/lib/libgstreamer-1.0.so.0").exists()
 }
 
