@@ -831,6 +831,8 @@ fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
         // Files beside the ZIP stay with the game it holds.
         fs::remove_file(zips[0].path())?;
         overlay(&root(&layer), &from)?;
+        // The layer can sit inside `from` (a ZIP at the top of the download): not part of the game.
+        let _ = fs::remove_dir_all(&layer);
     }
     unreachable!()
 }
@@ -1223,6 +1225,15 @@ mod tests {
         assert!(from.join("Game.app/Contents/Info.plist").is_file());
         assert_eq!(fs::read(from.join("baserom.sfc")).unwrap(), b"rom");
         assert!(!from.join("Game.zip").exists());
+        // The same files at the top of the download, with nothing around them: no unpacking layer left in.
+        let stage = d.join("top");
+        fs::create_dir_all(&stage).unwrap();
+        fs::write(stage.join("baserom.sfc"), b"rom").unwrap();
+        fs::write(stage.join("Game.zip"), zip_of(&[("Game.app/Contents/Info.plist", b"info")])).unwrap();
+        let out = unwrap_mac_zip(stage.clone(), &stage).unwrap();
+        let mut names: Vec<String> = fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Game.app", "baserom.sfc"]);
     }
 
     #[test]
