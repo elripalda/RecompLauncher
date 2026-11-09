@@ -48,6 +48,9 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .nav:hover{background:var(--fill2);color:var(--ink)}
 .nav.on{background:var(--card2);color:var(--ink)}
 .nav.on svg{color:var(--cyan)}
+/* Not switched on yet (Achievements): there and clickable, but quieter than the rest. */
+.nav.soon:not(.on){opacity:.5}
+.nav.soon:not(.on):hover{opacity:.8}
 .nav .n{margin-left:auto;margin-right:14px;font-size:12px;color:var(--dim);font-weight:700}
 .nav .n:empty{display:none}
 .lbl{transition:opacity .2s}
@@ -330,6 +333,12 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .gp-note b{font-size:13px}.gp-note span{color:var(--muted)}
 .gp-note.ended{border-color:rgba(255,122,122,.42);background:rgba(255,122,122,.1)}.gp-note.ended b{color:var(--bad)}
 .gp-note.paused{border-color:rgba(245,184,61,.42);background:rgba(245,184,61,.1)}.gp-note.paused b{color:var(--warn)}
+/* The crash window: what players found for this crash, and the note before Go Back. */
+.known-fix{display:flex;flex-direction:column;gap:4px;margin:2px 0 12px;padding:12px 14px;border-radius:12px;background:rgba(62,224,143,.1);border:1px solid rgba(62,224,143,.4);font-size:14px;line-height:1.45}
+.known-fix b{color:#3ee08f;font-size:13px}
+body.light .known-fix b{color:#127a45}
+.go-back-note{margin:0 0 10px;padding:10px 14px;border-radius:12px;background:rgba(245,184,61,.1);border:1px solid rgba(245,184,61,.38);font-size:14px}
+.gp-note.bad-ver{border-color:rgba(245,184,61,.45);background:rgba(245,184,61,.1)}.gp-note.bad-ver b{color:var(--warn)}.gp-note.bad-ver .btn{align-self:flex-start;margin-top:6px}
 .gp-note.complete{border-color:rgba(62,224,143,.42);background:rgba(62,224,143,.1)}.gp-note.complete b{color:#3ee08f;display:inline-flex;align-items:center;gap:6px}
 .gp-acts .btn.big{min-width:210px}
 .gp-acts .prog{min-width:300px}
@@ -937,6 +946,8 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .dev-sum h3{font-size:20px}
 .dev-sum p{margin:2px 0 0}
 .dev-levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dev-sum2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.dev-sum2 .card{display:flex;flex-direction:column;gap:6px;margin:0}.dev-sum2 b{font-size:16px}.dev-sum2 p{margin:0}.dev-caps{display:flex;flex-wrap:wrap;gap:6px}.dev-cap{padding:4px 10px;border-radius:99px;background:var(--fill2);font-size:12.5px;font-weight:600}
+@media (max-width:720px){.dev-sum2{grid-template-columns:1fr}}
 .dev-level{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);color:var(--dim);font-weight:600}
 .dev-level b{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:none;font:800 semi-expanded 14px Archivo,sans-serif;background:var(--fill2);color:var(--dim)}
 .dev-level.on{color:var(--ink);border-color:rgba(52,242,232,.35)}
@@ -1872,3 +1883,6 @@ body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}
 .gp-quick .btn{gap:9px;justify-content:center}
 .gp-quick .btn svg{width:18px;height:18px;flex:none}
 .gp-quick .btn .qi-brand{width:18px;height:18px;flex:none}
+
+/* Mac: the web view there pays a lot for big blurs, so covers don't glow on hover. */
+body.mac .tile .glow{display:none}

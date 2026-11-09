@@ -26,6 +26,7 @@ body.tv-on #app{visibility:hidden}
 .tv-nav{display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:rgba(var(--tvrgb2),.6);border:1px solid rgba(var(--tvinkrgb,244,248,252),.1);backdrop-filter:blur(16px)}
 .tv-tab{height:54px;padding:0 26px;border-radius:999px;display:flex;align-items:center;font-weight:600;font-size:21px;color:var(--tvsoft,#c9d3e0);border:0;background:transparent;transition:background .25s,color .25s,box-shadow .2s}
 .tv-tab.on{color:var(--tvbg);background:var(--tvink,#F4F8FC);font-weight:700}
+.tv-tab.soon:not(.on):not(.f){opacity:.5}
 .tv-status{justify-self:end;display:flex;align-items:center;gap:22px;color:var(--tvsoft,#dbe5ee)}
 .tv-clock{font-size:22px;font-weight:600}
 .tv-padico{display:grid;place-items:center;color:var(--tvmuted,#a7b3c4)}

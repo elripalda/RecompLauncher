@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['library', N_('Library')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -403,6 +403,7 @@
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
       case 'settingup': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
+      case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
       case 'installed': { const su = S.setup[id]; if (needsSetup(a) && !setupDone(id)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
@@ -415,7 +416,7 @@
   const tabOf = () => (['about', 'saves', 'storage'].includes(TV.view) ? 'settings' : GAMEVIEWS.includes(TV.view) ? TV.from || 'home' : TV.view);
   const clock = () => new Date().toLocaleTimeString(curLocale(), { hour: 'numeric', minute: '2-digit' });
   const bar = () => `<header class="tv-bar"><div class="tv-brand">${MARK}<img class="tv-wm" src="img/${document.body.classList.contains('light') ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher"></div>
-    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
+    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}${k === 'achievements' ? ' soon' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
     <div class="tv-status"><span class="tv-clock" id="tv-clock">${clock()}</span></div></header>`;
   // The game page has a Back pill instead of the sections.
   const gameBar = () => `<header class="tv-bar"><button type="button" class="tv-back" data-f data-key="back" data-tvact="back">${glyph('b', 'tv-keyg')}<span>${esc(t('Back'))}</span></button><span></span>
@@ -504,6 +505,7 @@
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
+      case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) };
       case 'installed': {
         const su = S.setup[id];
@@ -2361,7 +2363,8 @@
     switch (act) {
       case 'play': sfx('select'); return playGame(id);
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
-      case 'cancel': return invoke('cancel', { id });
+      case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
+      case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'install': sfx('select'); return startInstall(id, S.settings.library_dir).then(() => draw(true));
       case 'page': return go('game', id);
       case 'back': return back();

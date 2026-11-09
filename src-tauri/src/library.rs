@@ -169,6 +169,10 @@ pub struct Installed {
     /// made again on the next Play. The player's own pick is never redone.
     #[serde(default)]
     pub exe_rules: u8,
+    /// The version it had before its last update: what "go back" installs again when the update
+    /// breaks it. Empty until it has been updated.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prev_tag: String,
 }
 
 fn half() -> u8 {

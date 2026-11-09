@@ -74,9 +74,13 @@
         const status = O.scanning ? `<p class="oob-status"><span class="spinr"></span>${esc(t('Looking through your folders…'))}</p>`
           : found.length ? `<p class="oob-status ok">${ICON.check}${esc(tn(found.length, 'Found 1 game that has a recomp', 'Found {n} games that have recomps'))}</p>${covers(found)}`
             : O.scanned && dirs.length ? `<p class="oob-status">${esc(t('None of these have recomps yet. You\'ll hear about it when one does.'))}</p>` : '';
+        // The folders the player's emulators already list: one press adds them all.
+        if (O.emus === undefined) { O.emus = null; invoke('emulator_folders').then((f) => { O.emus = (f || []).filter((x) => !dirs.includes(x.path)); draw(); }).catch(() => { O.emus = []; }); }
+        const emus = (O.emus || []).filter((x) => !dirs.includes(x.path));
+        const emuBtn = emus.length ? `<button type="button" class="btn main oob-add" data-o="emus">${ICON.folder}${esc(tf('Add {n} from {emus}', { n: emus.length, emus: [...new Set(emus.map((x) => x.emu))].join(', ') }))}</button>` : '';
         return `<h1>${esc(t('Where do you keep your games?'))}</h1><p class="oob-lead">${esc(t('Add the folders with your disc images, ROMs and game backups. The launcher finds the games that have recomps. Nothing leaves your PC.'))}</p>
           <div class="oob-box">${dirs.map((d) => `<div class="oob-dir">${ICON.folder}<span title="${esc(d)}">${esc(d)}</span><button type="button" class="btn sm" data-o="rm" data-path="${esc(d)}">${esc(t('Remove'))}</button></div>`).join('')}
-          <button type="button" class="btn${dirs.length ? '' : ' main'} oob-add" data-o="add">${ICON.folder}${esc(dirs.length ? t('Add another folder') : t('Add a folder'))}</button></div>${status}`;
+          ${emuBtn}<button type="button" class="btn${dirs.length || emus.length ? '' : ' main'} oob-add" data-o="add">${ICON.folder}${esc(dirs.length ? t('Add another folder') : t('Add a folder'))}</button></div>${status}`;
       }
       case 'library': {
         const lib = S.settings.library_dir || '';
@@ -183,6 +187,12 @@
         const p = await pickFile({ title: t('A folder with your games'), directory: true }).catch(fail);
         if (!p) return;
         await save({ rom_dirs: uniq([...(S.settings.rom_dirs || []), p]) });
+        return scan();
+      }
+      case 'emus': {
+        const add = (O.emus || []).map((x) => x.path);
+        if (!add.length) return;
+        await save({ rom_dirs: uniq([...(S.settings.rom_dirs || []), ...add]) });
         return scan();
       }
       case 'rm':

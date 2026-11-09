@@ -12,15 +12,25 @@ All of it comes from one file you write, `recomplauncher.json`. Your recomp does
 change: the launcher only does what a player would do by hand. It edits your settings file,
 passes command-line arguments and starts your executable.
 
-There are three levels. Each one builds on the last, and you can stop at any of them.
+It has four parts. Add the ones your game needs: a game that reads the player's disc while it
+runs is completely set up without a `prepare` step.
 
-| Level | What players get | What you add |
+| Part | What players get | What you add |
 | --- | --- | --- |
-| 1. Plays from RecompLauncher | Drop in a disc, it's checked and set up, Play starts the game directly | `game` and `start` |
-| 2. Settings in the launcher | Your video and gameplay settings on the game's page and in Big Picture mode | `config` and `settings` |
-| 3. Full setup | Your own setup step on the setup screen, and a "verified" badge for clean dumps | `prepare` and `dumps` |
+| Launch | Drop in a disc, it's checked and set up, Play starts the game directly | `game` and `start` |
+| Settings | Your video and gameplay settings on the game's page and in Big Picture mode | `config` and `settings` |
+| Preparation | Your own setup step that runs once before Play | `prepare` |
+| Verification | A "verified" badge when the player's copy matches a known dump | `dumps` |
 
-Level 1 takes about ten minutes. Before any of them, your releases need to install cleanly, which
+The rule: use `start` to pass inputs the game reads when it starts. Add `prepare` only when your
+game has separate work to do before Play, like importing assets or recompiling from the player's
+dump. Verification works with either.
+
+Game pages show who maintains a game's setup: its developer, RecompLauncher or the community.
+Where the file comes from doesn't decide it. If you ship and maintain your own
+`recomplauncher.json`, tell us and your game shows as maintained by its developer.
+
+Launch takes about ten minutes. Before any of them, your releases need to install cleanly, which
 most already do: see [Releases that install cleanly](#releases-that-install-cleanly).
 
 ## Releases that install cleanly
@@ -100,7 +110,7 @@ Add `"$schema": "https://recomplauncher.com/schema/recomplauncher.json"` at the 
 editor will complete fields and flag mistakes as you type. The schema is also in this folder:
 [recomplauncher.schema.json](recomplauncher.schema.json).
 
-## Level 1: plays from RecompLauncher
+## Launch: plays from RecompLauncher
 
 ```json
 {
@@ -225,7 +235,7 @@ Without it, the launcher watches which files the game writes while it runs, and 
 That works for most games, but saying where is better. Only list saves and small settings: game
 files, programs and archives are never copied, and nothing over 64 MB.
 
-## Level 2: settings in the launcher
+## Settings: in the launcher
 
 ### `config`: your settings files
 
@@ -430,7 +440,7 @@ the launcher. For the rest, the player gets a link to the mod's page.
 "exit_codes": { "252968961": "It couldn't find your copy of the game. Pick it again on the game's page.", "1": "ok" }
 ```
 
-## Level 3: full setup
+## Preparation and verification
 
 ### `prepare`: your own setup step
 
@@ -542,7 +552,8 @@ The launcher has tools for this. In Settings, open Developers and turn on Develo
 2. **Read the check.** The build opens on its Developer tab. It reads your file fresh each time
    and lists what it found: where Play starts, what the setup screen asks for, each settings file
    and the choice each setting shows right now. Problems are marked in red, things worth a look in
-   yellow. JSON mistakes show the line and column. It also shows which level your file reaches.
+   yellow. JSON mistakes show the line and column. It also sums up how the game is set up
+   (launches with the player's copy, or needs a one-time step) and what it can do.
    No file yet? "Make a starter file" writes one next to your program to begin from.
 3. **Try it like a player.** Set it up with your own disc, change a setting, then open your
    settings file: only the keys you listed should have changed. Press Play: your game should start

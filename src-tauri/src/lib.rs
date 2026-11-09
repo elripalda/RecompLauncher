@@ -39,6 +39,7 @@ pub mod profile;
 pub mod proton;
 pub mod secret;
 pub mod sysenv;
+mod emus;
 pub mod roms;
 pub mod saves;
 pub mod shortcuts;
@@ -193,6 +194,7 @@ fn same_tag(a: &str, b: &str) -> bool {
 }
 
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
+    let picked_tag = tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
     };
@@ -342,7 +344,20 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         Ok(p) => p,
         Err(_) => {
             report(Progress::new(id, "queued", 0, 0));
-            st.download_slot.clone().acquire_owned().await.map_err(|e| Error::Msg(e.to_string()))?
+            // Waiting its turn: cancelling (or pausing) answers at once, not when its turn comes.
+            let slot = st.download_slot.clone();
+            let wait = slot.acquire_owned();
+            tokio::pin!(wait);
+            loop {
+                tokio::select! {
+                    p = &mut wait => break p.map_err(|e| Error::Msg(e.to_string()))?,
+                    _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {
+                        if cancel.load(Ordering::Relaxed) {
+                            return Err(Error::Cancelled);
+                        }
+                    }
+                }
+            }
         }
     };
     let started = std::time::Instant::now();
@@ -402,6 +417,12 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         r => r?,
     };
     drop(permit);
+    // A pause that came just as the download finished: there's nothing left to pause, so the
+    // install carries on.
+    if install::paused(id) {
+        install::unpause(id);
+        cancel.store(false, Ordering::Relaxed);
+    }
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
     }
@@ -541,6 +562,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         setup_checked: true,
         exe_rules: if prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false) { u8::MAX } else { install::EXE_RULES },
         manual: prev.as_ref().and_then(|p| p.manual.clone()),
+        // An update remembers the version it came from; installing the same version again keeps
+        // what was remembered before.
+        // The version it came from, for "go back" after a bad update. A version the player picked
+        // (going back, or an older one on purpose) isn't an update, so there's nothing to go back to.
+        prev_tag: if picked_tag { String::new() } else { prev.as_ref().map(|p| if !p.tag.is_empty() && p.tag != tag_got { p.tag.clone() } else { p.prev_tag.clone() }).unwrap_or_default() },
     };
     {
         let mut l = st.lib.lock().unwrap();
@@ -710,6 +736,8 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         if jobs.contains_key(&id) {
             return Ok(());
         }
+        install::unpause(&id);
+        install::resumed(&id);
         jobs.insert(id.clone(), cancel.clone());
     }
     let dir = dir.filter(|d| !d.is_empty()).map(PathBuf::from);
@@ -751,8 +779,18 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
             e => e,
         });
         st.jobs.lock().unwrap().remove(&id);
+        // Paused (while downloading, or still waiting its turn): stopped with what came kept.
+        let r = match r {
+            Err(_) if install::paused(&id) => Err(Error::Msg("PAUSED".into())),
+            r => r,
+        };
+        install::unpause(&id);
         match r {
             Ok(()) => trail::note(format!("Install {id}: done")),
+            Err(Error::Msg(m)) if m == "PAUSED" => {
+                trail::note(format!("Install {id}: paused"));
+                let _ = app2.emit("install", Progress::new(&id, "paused", 0, 0));
+            }
             Err(Error::Cancelled) => {
                 trail::note(format!("Install {id}: cancelled"));
                 let _ = app2.emit("install", Progress::new(&id, "cancelled", 0, 0));
@@ -796,8 +834,29 @@ async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
 #[tauri::command(async)]
 fn cancel(st: State<'_, App>, id: String) {
     if let Some(c) = st.jobs.lock().unwrap().get(&id) {
+        // Cancelled, even if Pause was pressed a moment before: the part file goes too.
+        install::unpause(&id);
+        c.store(true, Ordering::Relaxed);
+    } else {
+        // Paused, so nothing's running: what it had downloaded goes.
+        install::discard(&id);
+    }
+}
+
+/// Stops a download where it got to, keeping what came, so Resume carries on from there.
+#[tauri::command(async)]
+fn pause(st: State<'_, App>, id: String) {
+    if let Some(c) = st.jobs.lock().unwrap().get(&id) {
+        install::pause(&id);
         c.store(true, Ordering::Relaxed);
     }
+}
+
+/// The player's download speed limit (MB a second, 0 for none) and whether downloads slow down
+/// while a game is running.
+#[tauri::command(async)]
+fn download_limits(mb: f64, slow_playing: bool) {
+    install::set_limits((mb.max(0.0) * 1048576.0) as u64, slow_playing);
 }
 
 #[tauri::command(async)]
@@ -6712,6 +6771,33 @@ fn open_link(app: &AppHandle, id: String) {
     let _ = app.emit("open-game", id);
 }
 
+/// Easy Install, before the download: is this the copy the game needs? The same checks its setup
+/// runs (kind of file, disc and version), from the catalog's setup for it, so a wrong copy is found
+/// now instead of after the download.
+#[tauri::command(async)]
+fn precheck_copy(st: State<'_, App>, id: String, path: String) -> Res<String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err(Error::Msg("That file isn't there anymore.".into()));
+    }
+    let cat = cached_catalog(&st);
+    let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
+    // Nothing is installed yet, so only the catalog's setup counts (a folder that isn't there).
+    let none = st.dir.join("precheck").join(&id);
+    let prof = profile::find(&none, str_of(&entry, "repo"), &entry).ok_or_else(|| Error::Msg("This game's copy can only be checked once it's installed.".into()))?;
+    let g = prof.game.as_ref().filter(|_| prof.inputs.is_empty()).ok_or_else(|| Error::Msg("This game's copy can only be checked once it's installed.".into()))?;
+    profile::check_copy(g, &p).map_err(Error::Msg)?;
+    roms::fits_copy_ids(&entry, &p).map_err(|found| Error::Msg(format!("That copy reads as {found}, and this recomp is made for another version of the game.")))?;
+    Ok(p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+/// The game folders the player's emulators know about, that aren't among their game folders yet.
+#[tauri::command(async)]
+fn emulator_folders(st: State<'_, App>) -> Vec<emus::Found> {
+    let have = st.lib.lock().unwrap().settings.rom_dirs.clone();
+    emus::find().into_iter().filter(|f| !have.iter().any(|h| emus::within(&f.path, h))).collect()
+}
+
 /// For the page as it starts: a game a link asked for before it was ready, once.
 #[tauri::command]
 fn take_link() -> Option<String> {
@@ -6993,6 +7079,11 @@ pub fn run() {
             }
             trail::start(&dir);
             update_check_last(&dir);
+            // Downloads slow down while a game is running (if the player wants that).
+            {
+                let h = app.handle().clone();
+                install::playing_probe(move || h.try_state::<App>().map(|s| !s.running.lock().unwrap().is_empty()).unwrap_or(false));
+            }
             // Started by a game link: the page opens that game once it's ready.
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -7220,7 +7311,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link,
+            take_link, pause, download_limits,
+            precheck_copy,
+            emulator_folders,
             add_github,
             github_lookup,
             github_art,

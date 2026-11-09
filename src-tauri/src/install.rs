@@ -236,6 +236,71 @@ pub async fn download_split(
 }
 
 /// Download `asset` into `dir`, reporting progress, then check it against GitHub's checksum.
+/// Downloads the player paused: stopped where they got to, with the part file kept, so Install (or
+/// Update) carries on from there.
+static PAUSED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// The player's speed limit in bytes a second (0 for none), and whether downloads slow down while
+/// a game is running.
+static LIMIT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static SLOW_PLAYING: AtomicBool = AtomicBool::new(true);
+/// While a game runs, downloads keep to this so the game's own reading and network come first.
+const PLAYING_RATE: u64 = 4 << 20;
+static PLAYING: std::sync::OnceLock<Box<dyn Fn() -> bool + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn pause(id: &str) {
+    let mut p = PAUSED.lock().unwrap();
+    if !p.iter().any(|x| x == id) {
+        p.push(id.to_string());
+    }
+}
+pub fn paused(id: &str) -> bool {
+    PAUSED.lock().unwrap().iter().any(|x| x == id)
+}
+pub fn unpause(id: &str) {
+    PAUSED.lock().unwrap().retain(|x| x != id);
+}
+/// Where each paused download's part file is, so cancelling a paused one can throw it away.
+static PARTS: std::sync::Mutex<Vec<(String, PathBuf)>> = std::sync::Mutex::new(Vec::new());
+fn kept(id: &str, part: &Path) {
+    let mut p = PARTS.lock().unwrap();
+    p.retain(|(i, _)| i != id);
+    p.push((id.to_string(), part.to_path_buf()));
+}
+/// A paused download carried on: its part file is in use again, not one to throw away.
+pub fn resumed(id: &str) {
+    PARTS.lock().unwrap().retain(|(i, _)| i != id);
+}
+/// Throws away what a paused download had got (the player cancelled it instead of resuming).
+pub fn discard(id: &str) {
+    let mut p = PARTS.lock().unwrap();
+    for (_, f) in p.iter().filter(|(i, _)| i == id) {
+        let _ = std::fs::remove_file(f);
+    }
+    p.retain(|(i, _)| i != id);
+}
+pub fn set_limits(bytes_per_sec: u64, slow_while_playing: bool) {
+    LIMIT.store(bytes_per_sec, Ordering::Relaxed);
+    SLOW_PLAYING.store(slow_while_playing, Ordering::Relaxed);
+}
+/// How the launcher tells whether a game is running (set once when it starts).
+pub fn playing_probe(f: impl Fn() -> bool + Send + Sync + 'static) {
+    let _ = PLAYING.set(Box::new(f));
+}
+/// The speed a download keeps to right now, in bytes a second (0 for as fast as it goes).
+fn rate_now() -> u64 {
+    let limit = LIMIT.load(Ordering::Relaxed);
+    let playing = SLOW_PLAYING.load(Ordering::Relaxed) && PLAYING.get().map(|f| f()).unwrap_or(false);
+    rate_for(limit, playing)
+}
+fn rate_for(limit: u64, playing: bool) -> u64 {
+    match (limit, playing) {
+        (0, false) => 0,
+        (0, true) => PLAYING_RATE,
+        (l, true) => l.min(PLAYING_RATE),
+        (l, false) => l,
+    }
+}
+
 pub async fn download(
     http: &reqwest::Client,
     asset: &Asset,
@@ -269,6 +334,15 @@ pub async fn download(
     // each piece is limited, cancelling works while it waits, and a download that stalls part way
     // carries on from where it got to, a few times, before it gives up.
     let cancelled = || cancel.load(Ordering::Relaxed);
+    // Stopped: a pause keeps what came so far; a cancel throws it away.
+    let stop = |part: &Path| -> Error {
+        if paused(id) {
+            kept(id, part);
+            return Error::Msg("PAUSED".into());
+        }
+        let _ = std::fs::remove_file(part);
+        Error::Cancelled
+    };
     let mut out: Option<tokio::fs::File> = None;
     let mut done = have;
     let mut total;
@@ -292,9 +366,8 @@ pub async fn download(
         let started = Instant::now();
         let r = loop {
             if cancelled() {
-                drop(out);
-                let _ = tokio::fs::remove_file(&part).await;
-                return Err(Error::Cancelled);
+                if let Some(mut f) = out.take() { let _ = f.flush().await; }
+                return Err(stop(&part));
             }
             match tokio::time::timeout(Duration::from_millis(500), &mut send).await {
                 Ok(r) => break r,
@@ -337,9 +410,8 @@ pub async fn download(
                 let wait = Instant::now() + Duration::from_secs(2u64 << (tries - 1).min(4));
                 while Instant::now() < wait {
                     if cancelled() {
-                        drop(out);
-                        let _ = tokio::fs::remove_file(&part).await;
-                        return Err(Error::Cancelled);
+                        if let Some(mut f) = out.take() { let _ = f.flush().await; }
+                        return Err(stop(&part));
                     }
                     tokio::time::sleep(Duration::from_millis(250)).await;
                 }
@@ -373,6 +445,7 @@ pub async fn download(
         let mut stream = r.bytes_stream();
         let (mut last, mut mark, mut mark_bytes, mut speed) = (Instant::now() - Duration::from_secs(1), Instant::now(), done, 0u64);
         let mut quiet = Instant::now();
+        let (mut pace_at, mut pace_bytes, mut pace_rate) = (Instant::now(), 0u64, 0u64);
         loop {
             if cancelled() {
                 break 'attempt;
@@ -394,6 +467,22 @@ pub async fn download(
             hash.update(&chunk);
             f.write_all(&chunk).await?;
             done += chunk.len() as u64;
+            // Kept to the player's limit (and slower while a game is running): ahead of it, it waits
+            // the difference, a little at a time so pausing and cancelling still answer at once.
+            let rate = rate_now();
+            if rate > 0 {
+                if pace_rate != rate { pace_rate = rate; pace_at = Instant::now(); pace_bytes = 0; }
+                pace_bytes += chunk.len() as u64;
+                let due = Duration::from_secs_f64(pace_bytes as f64 / rate as f64);
+                while pace_at.elapsed() < due && !cancelled() {
+                    tokio::time::sleep(due.saturating_sub(pace_at.elapsed()).clamp(Duration::from_millis(1), Duration::from_millis(200))).await;
+                }
+                quiet = Instant::now();
+                // A fresh window now and then, so a short burst after a pause isn't held against it.
+                if pace_at.elapsed() > Duration::from_secs(4) { pace_at = Instant::now(); pace_bytes = 0; }
+            } else {
+                pace_rate = 0;
+            }
             if mark.elapsed() >= Duration::from_millis(800) {
                 speed = ((done - mark_bytes) as f64 / mark.elapsed().as_secs_f64()) as u64;
                 mark = Instant::now();
@@ -408,9 +497,8 @@ pub async fn download(
         }
     }
     if cancelled() {
-        drop(out);
-        let _ = tokio::fs::remove_file(&part).await;
-        return Err(Error::Cancelled);
+        if let Some(mut f) = out.take() { let _ = f.flush().await; }
+        return Err(stop(&part));
     }
     let Some(mut out) = out else { return Err(Error::Msg(format!("The download of {} didn't start. Try again.", asset.name))) };
     out.flush().await?;
@@ -1231,6 +1319,19 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn download_speed_follows_the_limit_and_play() {
+        assert_eq!(rate_for(0, false), 0);
+        assert_eq!(rate_for(0, true), PLAYING_RATE);
+        assert_eq!(rate_for(1 << 20, true), 1 << 20);
+        assert_eq!(rate_for(50 << 20, true), PLAYING_RATE);
+        assert_eq!(rate_for(50 << 20, false), 50 << 20);
+        pause("x");
+        assert!(paused("x") && !paused("y"));
+        unpause("x");
+        assert!(!paused("x"));
+    }
 
     #[test]
     fn busy_answers_are_asked_again() {
