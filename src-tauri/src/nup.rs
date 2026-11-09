@@ -158,7 +158,7 @@ pub fn matches(have: &str, want: &str) -> Result<bool, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Cursor;
 
@@ -166,7 +166,7 @@ mod tests {
         0xe0, 0xf3, 0xcc, 0xfa, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
     ];
 
-    fn nso(id: &[u8; 32]) -> Vec<u8> {
+    pub(crate) fn nso(id: &[u8; 32]) -> Vec<u8> {
         let mut n = vec![0u8; 0x100];
         n[..4].copy_from_slice(b"NSO0");
         n[0x40..0x60].copy_from_slice(id);
@@ -174,7 +174,7 @@ mod tests {
     }
 
     /// A synthetic package: title versions with their `exefs` files (name, bytes, codec).
-    fn package(titles: &[(u32, Vec<(&str, Vec<u8>, u8)>)]) -> Vec<u8> {
+    pub(crate) fn package(titles: &[(u32, Vec<(&str, Vec<u8>, u8)>)]) -> Vec<u8> {
         // Nodes: dir 0 = root; per title one exefs dir. Files after the dirs.
         let nd = 1 + titles.len();
         let nf: usize = titles.iter().map(|t| t.1.len()).sum();

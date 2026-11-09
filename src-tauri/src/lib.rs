@@ -1461,8 +1461,10 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         // Recognized PlayStation and Switch folders are matched by title. Shared files
         // such as eboot.bin or main.npdm can't identify another game.
         if let Some(r) = found.iter().find(|r| {
-            let matched_by_title = matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2")
-                || (r.system == "switch" && r.size == 0);
+            // A build ID is the exception: it's read from the package or folder itself.
+            let by_build = !need.check.nup_build_id.is_empty() && matches!(r.system.as_str(), "switch" | "switch2");
+            let matched_by_title = !by_build
+                && (matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2") || (r.system == "switch" && r.size == 0));
             !matched_by_title && id_fits(&r.path) && profile::check_copy(&need, &r.path).is_ok()
         }) {
             out.insert(id.to_string(), r.clone());
@@ -7613,6 +7615,29 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_switch2_package_is_found_by_its_build_id() {
+        use crate::nup::tests::{nso, package};
+        let d = std::env::temp_dir().join(format!("rl-nupfind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut id = [7u8; 32];
+        id[..4].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        let rom = |name: &str, id: &[u8; 32]| {
+            let p = d.join(name);
+            std::fs::write(&p, package(&[(0, vec![("main", nso(id), 0)])])).unwrap();
+            roms::RomFile { path: p, system: "switch2".into(), title: name.into(), region: String::new(), size: 0 }
+        };
+        let ours = rom("backup-07.nup", &id);
+        let other = rom("other.nup", &[9u8; 32]);
+        let cat = json!({ "apps": [{ "id": "hs", "name": "Hookshot", "game": "Some Game", "origin": "switch2", "repo": "a/hs",
+            "launcher": { "format": 1, "start": { "program": ["g.exe"] }, "game": { "kind": "iso_or_folder", "label": "Your .nup", "check": { "nup_build_id": "e0f3ccfa" } } } }] });
+        let dirs = HashMap::new();
+        assert!(copies_for(&cat, &[other.clone()], &dirs).is_empty());
+        assert_eq!(copies_for(&cat, &[other, ours.clone()], &dirs).get("hs").map(|r| r.path.clone()), Some(ours.path));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn another_games_disc_isnt_taken_for_this_one() {
