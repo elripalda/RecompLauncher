@@ -1,5 +1,6 @@
 //! Controllers, through SDL 3's gamepad support on every system: Xbox pads, PlayStation
-//! (DualSense, DualShock 4), Switch Pro and Joy-Cons, 8BitDo and the hundreds of others SDL knows.
+//! (DualSense, DualShock 4), Switch Pro and Joy-Cons, 8BitDo and the hundreds of others SDL knows,
+//! plus any mappings in `gamecontrollerdb.txt` in the launcher's folder.
 //! They're read even while a game has focus, so the in-game combos work:
 //! View + RB (Create + R1) takes a screenshot, holding View (Create) opens the quick menu. Otherwise buttons go to the launcher's window as `pad` events:
 //! {"b": a | b | x | y | lb | rb | lt | rt | ls | rs | view | menu | guide | up | down | left | right, "kind": xbox | ps | nintendo | steam}.
@@ -11,7 +12,8 @@ use crate::{ingame, App};
 use serde::Serialize;
 use sdl3_sys::everything as sdl;
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
@@ -173,7 +175,7 @@ fn list(open: &HashMap<sdl::SDL_JoystickID, Open>, steam: bool) {
     }
 }
 
-fn read_sdl(tx: Sender<Ev>) {
+fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
     let spawned = std::thread::Builder::new().name("pads".into()).spawn(move || {
         // Hints, not environment variables, so the games the launcher starts don't get them.
         // Keep reading while a game is in front.
@@ -195,6 +197,16 @@ fn read_sdl(tx: Sender<Ev>) {
             // SAFETY: SDL_GetError always returns a NUL-terminated string.
             eprintln!("No controllers: {}", unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
             return;
+        }
+        // The player's own mappings, for a controller SDL doesn't know.
+        if mappings.is_file() {
+            if let Some(p) = mappings.to_str().and_then(|p| CString::new(p).ok()) {
+                // SAFETY: a NUL-terminated UTF-8 path, as SDL wants.
+                if unsafe { sdl::SDL_AddGamepadMappingsFromFile(p.as_ptr()) } < 0 {
+                    // SAFETY: SDL_GetError always returns a NUL-terminated string.
+                    eprintln!("Couldn't read {}: {}", mappings.display(), unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
+                }
+            }
         }
         let mut open: HashMap<sdl::SDL_JoystickID, Open> = HashMap::new();
         // A Steam Controller is looked for on Windows and macOS (on Linux it shows when it appears as a controller).
@@ -282,7 +294,7 @@ fn read_sdl(tx: Sender<Ev>) {
 /// Start reading controllers. One place decides where each press goes.
 pub fn start(app: AppHandle) {
     let (tx, rx) = channel::<Ev>();
-    read_sdl(tx);
+    read_sdl(tx, app.state::<App>().dir.join("gamecontrollerdb.txt"));
     std::thread::spawn(move || {
         use std::time::{Duration, Instant};
         let mut view_held = false;
