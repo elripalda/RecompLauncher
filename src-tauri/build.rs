@@ -40,7 +40,23 @@ fn main() {
             println!("cargo:rustc-link-lib={l}");
         }
     }
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        clang_runtime();
+    }
     tauri_build::build()
+}
+
+/// SDL's Objective-C checks which macOS it runs on (`@available`) through clang's own runtime
+/// library. clang adds that library itself, but Rust links with `-nodefaultlibs`, so it's named
+/// here; without it a build for an older macOS than the SDK fails to link
+/// (`___isPlatformVersionAtLeast`).
+fn clang_runtime() {
+    let cc = cc::Build::new().get_compiler();
+    let dir = std::process::Command::new(cc.path()).arg("-print-resource-dir").output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    match dir.map(|d| std::path::Path::new(&d).join("lib/darwin/libclang_rt.osx.a")).filter(|p| p.is_file()) {
+        Some(lib) => println!("cargo:rustc-link-arg={}", lib.display()),
+        None => println!("cargo:warning=clang's runtime library (libclang_rt.osx.a) wasn't found; linking may fail"),
+    }
 }
 
 /// unrar_sys's C++ sources, in Cargo's download folder.
