@@ -2470,7 +2470,15 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // An AppImage on a Linux without FUSE 2 (libfuse.so.2, missing on many new systems): it unpacks
     // itself and runs from there instead of failing to start.
     #[cfg(target_os = "linux")]
-    if ext == "appimage" && !sysenv::has_fuse2() {
+    if ext == "appimage" && flatpak::sandboxed() {
+        // Inside the Flatpak there is no fusermount, so no AppImage can mount itself. It unpacks
+        // on disk (the sandbox's /tmp is memory, and a game can be several GB).
+        cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+        if let Some(dir) = flatpak::scratch_dir() {
+            cmd.env("TMPDIR", dir);
+        }
+        trail::note(format!("Play {id}: in the Flatpak the AppImage unpacks itself to run"));
+    } else if cfg!(target_os = "linux") && ext == "appimage" && !sysenv::has_fuse2() {
         cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
         trail::note(format!("Play {id}: no FUSE 2 on this PC, the AppImage unpacks itself to run"));
     }

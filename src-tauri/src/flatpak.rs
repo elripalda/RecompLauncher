@@ -24,6 +24,14 @@ pub fn sandboxed() -> bool {
     cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists())
 }
 
+/// A folder on disk for what a program unpacks to run (an AppImage), since the sandbox's own
+/// /tmp is memory.
+pub fn scratch_dir() -> Option<PathBuf> {
+    let dir = dirs::cache_dir()?.join("appimage-run");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
 fn on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
