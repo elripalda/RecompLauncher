@@ -8,6 +8,7 @@
 - **A tidier game page.** Add to Steam, Add to Desktop, GitHub and Report a Problem are up top with clear labels, and the page keeps a comfortable width on ultrawide screens. — Improved by @elripalda.
 - **Nintendo Switch 2 recomps**, and a Feature Complete label for finished projects. — Added by @elripalda.
 - **More Mac games** install, including ones released as disk images. — Improved by @elripalda.
+- **RAR and 7z games on Mac**, and game ZIPs packed beside other files. — Added by @Xarishark ([#37](https://github.com/elripalda/RecompLauncher/pull/37)).
 - **Linux fixes** for Big Picture, NVIDIA on Wayland and umu-launcher, and steadier downloads when GitHub is busy. — Fixed by @elripalda.
 - **General fixes and optimization.** — Improved by @elripalda.
 
