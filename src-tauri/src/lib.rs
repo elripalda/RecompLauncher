@@ -5021,7 +5021,7 @@ fn overlay_action(app: AppHandle, action: String) {
 pub(crate) fn not_a_program(p: &Path) -> Option<&'static str> {
     let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
-        "iso" | "img" | "mdf" | "nrg" | "gdi" | "pbp" | "cue" | "chd" | "cso" | "gcm" | "rvz" | "wbfs" | "wia" | "gcz" | "xci" | "nsp" | "nca" | "wad" | "wux" | "wud" | "rpx" | "xex" | "xbe" | "elf" | "z64" | "n64" | "v64" | "sfc" | "smc" | "gba" | "nds" | "3ds" | "cia" | "pkg" =>
+        "iso" | "img" | "mdf" | "nrg" | "gdi" | "pbp" | "cue" | "chd" | "cso" | "gcm" | "rvz" | "wbfs" | "wia" | "gcz" | "xci" | "nsp" | "nup" | "nca" | "wad" | "wux" | "wud" | "rpx" | "xex" | "xbe" | "elf" | "z64" | "n64" | "v64" | "sfc" | "smc" | "gba" | "nds" | "3ds" | "cia" | "pkg" =>
             Some("That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup."),
         "zip" | "7z" | "rar" | "gz" | "xz" | "tar" =>
             Some("That's a compressed file, not a program. Unpack it first, then pick the program inside."),

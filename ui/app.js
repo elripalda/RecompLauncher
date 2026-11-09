@@ -1712,7 +1712,7 @@ const SYSTEM_EXTS = [
   [/^(ds|nds)$/, ['nds', 'zip']],
   [/^(3ds|n3ds)$/, ['3ds', 'cci', 'cia', 'cxi', 'app', 'zip']],
   [/^(vb|virtualboy)$/, ['vb', 'vboy', 'zip']],
-  [/^(switch|switch2|nx|nx2)$/, ['xci', 'nsp', 'nca']],
+  [/^(switch|switch2|nx|nx2)$/, ['xci', 'nsp', 'nup', 'nca']],
   [/^(genesis|md|megadrive|gen)$/, ['md', 'gen', 'smd', 'bin', 'zip']],
   [/^(32x|sega32x)$/, ['32x', 'bin', 'zip']],
   [/^(gg|gamegear)$/, ['gg', 'zip']],

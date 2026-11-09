@@ -32,8 +32,8 @@ const MAX_FILES: usize = 20_000;
 const WALK_MAX: usize = 250_000;
 const WALK_SECS: u64 = 20;
 /// Never in a save copy: game files, programs, archives, logs.
-const NOT_SAVES: [&str; 36] = [
-    ".iso", ".cue", ".chd", ".cso", ".gcm", ".rvz", ".wbfs", ".wad", ".nsp", ".xci", ".xex", ".xbe", ".z64", ".n64", ".v64",
+const NOT_SAVES: [&str; 37] = [
+    ".iso", ".cue", ".chd", ".cso", ".gcm", ".rvz", ".wbfs", ".wad", ".nsp", ".xci", ".nup", ".xex", ".xbe", ".z64", ".n64", ".v64",
     ".sfc", ".smc", ".gba", ".nds", ".3ds", ".elf", ".rpx", ".exe", ".dll", ".so", ".pdb", ".msi", ".zip", ".7z", ".rar", ".appimage",
     ".log", ".tmp", ".dmp", ".mp4", ".mkv",
 ];
