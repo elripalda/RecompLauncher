@@ -7479,6 +7479,7 @@ pub fn run() {
         .expect("RecompLauncher couldn't start")
         .run(|app, ev| {
             if let tauri::RunEvent::Exit = ev {
+                pads::stop();
                 ping::close(app);
             }
         });
