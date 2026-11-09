@@ -213,6 +213,16 @@ struct Reader {
 }
 
 impl Reader {
+    /// Close every controller. SDL puts back what it changed when it opened one (a Steam
+    /// Controller's trackpad mouse, for one).
+    fn close(&mut self) {
+        for (_, o) in self.open.drain() {
+            // SAFETY: each pad was opened once, and is closed once.
+            unsafe { sdl::SDL_CloseGamepad(o.pad) };
+        }
+        list(&self.open);
+    }
+
     /// Everything SDL has seen since last time, as presses.
     fn poll(&mut self, tx: &Sender<Ev>) {
         let open = &mut self.open;
@@ -269,12 +279,14 @@ impl Reader {
 }
 
 fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
+    RUNNING.store(true, Ordering::Relaxed);
     let spawned = std::thread::Builder::new().name("pads".into()).spawn(move || {
         if !init(&mappings) {
+            RUNNING.store(false, Ordering::Relaxed);
             return;
         }
         let mut reader = Reader::default();
-        loop {
+        while !STOP.load(Ordering::Relaxed) {
             reader.poll(&tx);
             // During a game the quick menu and the screenshot combo only wait for their buttons: a
             // check every 25 ms is plenty, and leaves the processor to the game. Not slower, even
@@ -283,9 +295,29 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
             let playing = PLAYING.load(Ordering::Relaxed);
             std::thread::sleep(std::time::Duration::from_millis(if idle() { 60 } else if playing && !FOCUSED.load(Ordering::Relaxed) { 25 } else { 10 }));
         }
+        reader.close();
+        // SAFETY: the last SDL call, on SDL's thread.
+        unsafe { sdl::SDL_Quit() };
+        RUNNING.store(false, Ordering::Relaxed);
     });
     if let Err(e) = spawned {
+        RUNNING.store(false, Ordering::Relaxed);
         eprintln!("No controllers: {e}");
+    }
+}
+
+/// SDL's thread is running (or starting).
+static RUNNING: AtomicBool = AtomicBool::new(false);
+/// The launcher is closing: SDL's thread closes the controllers and stops.
+static STOP: AtomicBool = AtomicBool::new(false);
+
+/// The launcher is closing: close the controllers properly, so SDL can put back what it changed,
+/// waiting half a second at most.
+pub fn stop() {
+    STOP.store(true, Ordering::Relaxed);
+    let t = std::time::Instant::now();
+    while RUNNING.load(Ordering::Relaxed) && t.elapsed() < std::time::Duration::from_millis(500) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
 
@@ -572,13 +604,18 @@ mod tests {
         // Unplugged: gone from the list.
         unsafe {
             sdl::SDL_CloseJoystick(x);
-            sdl::SDL_CloseJoystick(n);
             assert!(sdl::SDL_DetachVirtualJoystick(xid));
-            assert!(sdl::SDL_DetachVirtualJoystick(nid));
         }
         r.poll(&tx);
+        assert_eq!(connected().iter().map(|p| p.kind).collect::<Vec<_>>(), vec!["nintendo"]);
+        // Closing the launcher closes the rest.
+        r.close();
         assert!(connected().is_empty(), "{:?}", connected());
-        unsafe { sdl::SDL_Quit() };
+        unsafe {
+            sdl::SDL_CloseJoystick(n);
+            assert!(sdl::SDL_DetachVirtualJoystick(nid));
+            sdl::SDL_Quit();
+        }
     }
 
     #[test]
