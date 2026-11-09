@@ -1675,6 +1675,9 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 #main.scrolling>*,#main.scrolling .viewport>.track{pointer-events:none}
 /* Big grids: tiles out of view aren't drawn at all until they scroll in. */
 #main .grid>.tile{content-visibility:auto;contain-intrinsic-size:auto 320px;overflow-clip-margin:24px}
+/* A shelf's tiles out of view aren't drawn either. The first one stays drawn: it gives the
+   track its height, so the page doesn't change size as the rest come in. */
+#main .shelf .track>.tile:not(:first-child){content-visibility:auto;contain-intrinsic-size:auto 0px;overflow-clip-margin:24px}
 /* While a game runs, nothing in the launcher moves. */
 body.playing *,body.playing *::before,body.playing *::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important}
 
