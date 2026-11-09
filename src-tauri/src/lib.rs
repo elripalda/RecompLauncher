@@ -6673,6 +6673,51 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// A game link from the website: recomplauncher://game/<id>, with a plain catalog id (letters,
+/// numbers, dashes). Anything else in the link is ignored, and any other link is no link at all.
+/// It only ever opens the game's page: nothing is installed or started from a link.
+fn link_game(link: &str) -> Option<String> {
+    let link = link.trim();
+    let (scheme, rest) = link.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("recomplauncher") {
+        return None;
+    }
+    let rest = rest.split(['?', '#']).next().unwrap_or("");
+    let mut parts = rest.split('/').filter(|p| !p.is_empty());
+    if !parts.next()?.eq_ignore_ascii_case("game") {
+        return None;
+    }
+    let id = parts.next()?;
+    (id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).then(|| id.to_string())
+}
+
+/// The game a link asked for while the window was still starting: the page takes it once the
+/// catalog is in.
+static LINK_WAITING: Mutex<Option<String>> = Mutex::new(None);
+/// The last link handled, and when: the same link arriving twice at once (two ways in) opens once.
+static LINK_LAST: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+
+/// A game link for the launcher that's running: its window to the front, on that game's page.
+fn open_link(app: &AppHandle, id: String) {
+    {
+        let mut last = LINK_LAST.lock().unwrap();
+        if matches!(&*last, Some((l, at)) if *l == id && at.elapsed() < std::time::Duration::from_secs(3)) {
+            return;
+        }
+        *last = Some((id.clone(), Instant::now()));
+    }
+    trail::note(format!("Link: open game {id}"));
+    show_main(app);
+    *LINK_WAITING.lock().unwrap() = Some(id.clone());
+    let _ = app.emit("open-game", id);
+}
+
+/// For the page as it starts: a game a link asked for before it was ready, once.
+#[tauri::command]
+fn take_link() -> Option<String> {
+    LINK_WAITING.lock().unwrap().take()
+}
+
 fn play_arg(args: &[String]) -> Option<String> {
     let i = args.iter().position(|a| a == "--play")?;
     args.get(i + 1).cloned().filter(|s| !s.is_empty())
@@ -6837,6 +6882,14 @@ pub fn run() {
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| match play_arg(&argv) {
             _ if argv.iter().any(|a| a == "--quit") => app.exit(0),
+            // A game link from the website, clicked while the launcher is open (or by the clock).
+            _ if argv.iter().skip(1).any(|a| a.to_ascii_lowercase().starts_with("recomplauncher:")) => {
+                if let Some(id) = argv.iter().skip(1).find_map(|a| link_game(a)) {
+                    open_link(app, id);
+                } else {
+                    show_main(app);
+                }
+            }
             Some(id) => {
                 let id = app.state::<App>().lib.lock().unwrap().resolve_project_id(&id);
                 let app = app.clone();
@@ -6895,6 +6948,8 @@ pub fn run() {
                 _ => {}
             }
         })
+        // recomplauncher:// links from the website.
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -6938,6 +6993,36 @@ pub fn run() {
             }
             trail::start(&dir);
             update_check_last(&dir);
+            // Started by a game link: the page opens that game once it's ready.
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let first = app.deep_link().get_current().ok().flatten().into_iter().flatten().map(|u| u.to_string())
+                    .chain(std::env::args().skip(1))
+                    .find_map(|a| link_game(&a));
+                if let Some(id) = first {
+                    trail::note(format!("Link: started for game {id}"));
+                    *LINK_WAITING.lock().unwrap() = Some(id.clone());
+                    *LINK_LAST.lock().unwrap() = Some((id, Instant::now()));
+                }
+                // A Mac hands links to the running launcher this way.
+                let h = app.handle().clone();
+                app.deep_link().on_open_url(move |ev| {
+                    if let Some(id) = ev.urls().iter().find_map(|u| link_game(u.as_str())) {
+                        open_link(&h, id);
+                    }
+                });
+                // Windows (a portable copy too) and an AppImage tell the system about the links
+                // themselves; the installer and the .deb do it when they install.
+                #[cfg(any(windows, target_os = "linux"))]
+                if cfg!(windows) || std::env::var_os("APPIMAGE").is_some() {
+                    let h = app.handle().clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = h.deep_link().register_all() {
+                            trail::note(format!("Link: couldn't register recomplauncher:// ({e})"));
+                        }
+                    });
+                }
+            }
             net::init(app.handle());
             proton::set_data(&dir);
             // The files an update moved aside (they were in use while it copied).
@@ -7135,6 +7220,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            take_link,
             add_github,
             github_lookup,
             github_art,
@@ -7186,6 +7272,18 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_plain_game_links_open_anything() {
+        assert_eq!(super::link_game("recomplauncher://game/recompia").as_deref(), Some("recompia"));
+        assert_eq!(super::link_game("RecompLauncher://Game/zelda64-recomp/").as_deref(), Some("zelda64-recomp"));
+        assert_eq!(super::link_game("recomplauncher://game/recompia?play=1#x").as_deref(), Some("recompia"));
+        assert_eq!(super::link_game("recomplauncher://game/recompia/extra").as_deref(), Some("recompia"));
+        for bad in ["recomplauncher://game/", "recomplauncher://game/../x", "recomplauncher://game/a%20b", "recomplauncher://install/recompia", "https://recomplauncher.com/game/recompia", "recomplauncher:game/x", "recomplauncher://game/a.exe", "--play"] {
+            assert_eq!(super::link_game(bad), None, "{bad}");
+        }
+        assert_eq!(super::link_game(&format!("recomplauncher://game/{}", "a".repeat(81))), None);
+    }
+
     #[test]
     fn an_older_release_isnt_an_update() {
         assert!(super::older_version("0.42", "1.0"));

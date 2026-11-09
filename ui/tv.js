@@ -232,7 +232,7 @@
       const b = $('.tv-boot', root);
       if (!b || !TV.on) return;
       b.classList.add('out');
-      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : (S.settings.ui || {}).start_page === 'discover' ? 'discover' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
+      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : (S.settings.ui || {}).start_page === 'discover' ? 'discover' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (TV.pendingGo) { const [v, a] = TV.pendingGo; TV.pendingGo = null; window.tvGoto(v, a); } if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
     }, 3100);
   }
 
@@ -1995,6 +1995,8 @@
   };
   window.tvGoto = (view, id) => {
     if (!TV.on) return;
+    // Still starting up: it goes there once the first page is in.
+    if (TV.booting) { TV.pendingGo = [view, id]; return; }
     if (view === 'shots') { loadAllShots().then(() => go('shots', id || null)); }
     else go(view, id || null);
   };

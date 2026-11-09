@@ -6384,6 +6384,29 @@ T.event.listen('goto', ({ payload: p }) => {
   if (p.view === 'shots') { S.shotsGame = p.id || ''; go('shots'); }
 });
 T.event.listen('toast', ({ payload }) => toast(t(String(payload)), true));
+// A game link from the website (recomplauncher://game/<id>): that game's page, once the catalog is
+// in and the first-time setup is done. A game the catalog doesn't have: Discover, with a word on why.
+// Only the page opens: installing and playing stay the player's own presses.
+let linkWait = 0;
+function openLinkedGame(id) {
+  id = String(id || '');
+  if (!/^[A-Za-z0-9-]{1,80}$/.test(id)) return;
+  invoke('take_link').catch(() => {});
+  clearTimeout(linkWait);
+  const started = Date.now();
+  const tryOpen = () => {
+    const ready = S.cat && S.cat.apps && S.cat.apps.length && !document.querySelector('.oob');
+    if (!ready && Date.now() - started < 120000) { linkWait = setTimeout(tryOpen, 400); return; }
+    const a = (S.cat && byId(id)) || null;
+    const known = a || S.library[id];
+    const tv = document.body.classList.contains('tv-on') && window.tvGoto;
+    if (known) { if (tv) window.tvGoto('game', id); else go('game', id); return; }
+    if (tv) window.tvGoto('discover'); else go('discover');
+    toast(t('That game isn\'t in RecompLauncher yet'), true);
+  };
+  tryOpen();
+}
+T.event.listen('open-game', ({ payload }) => openLinkedGame(payload));
 // Something on its way that takes a while (a Flatpak installing before its game starts).
 T.event.listen('note', ({ payload }) => toast(t(String(payload)), false, null, 9000));
 T.event.listen('setup-required', ({ payload }) => { if (S.cat && S.cat.apps.length) { invoke('take_setup_asked').catch(() => {}); setupReqModal(String(payload)); } });
@@ -6446,6 +6469,8 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && (S.settings.start_in_tv || S.bigArg)) window.startTV();
   else setTimeout(askData, 800);
+  // Started by a game link from the website: that game's page.
+  invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
   // A shortcut asked to play a recomp that still needs setting up: its Set Up window.
   invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
 })();

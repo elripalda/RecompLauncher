@@ -2291,5 +2291,6 @@
  "Choose Your Game File": "ゲームファイルを選択",
  "Sets them up from your copy": "お持ちのゲームからセットアップ",
  "Your disc image or ROM is checked once. After that, you just press Play.": "ディスクイメージや ROM の確認は一度だけ。あとは「プレイ」を押すだけです。",
- "Settings, shaders and mods for every game, at a desk or on a TV.": "すべてのゲームの設定、シェーダー、MOD を、デスクでもテレビでも。"
+ "Settings, shaders and mods for every game, at a desk or on a TV.": "すべてのゲームの設定、シェーダー、MOD を、デスクでもテレビでも。",
+ "That game isn't in RecompLauncher yet": "このゲームはまだ RecompLauncher にありません"
 }

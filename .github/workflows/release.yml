@@ -32,16 +32,27 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         with:
           fetch-depth: 0
-      - name: Make the tag if it's missing
+      - name: Make the tag, or move it to this commit while nothing is published
         if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           case "$TAG" in v[0-9]*) ;; *) echo "Not a version tag: $TAG" >&2; exit 1;; esac
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-            echo "$TAG already exists."
-          else
+          at=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | cut -f1)
+          [ -n "$at" ] || at=$(git ls-remote --tags origin "refs/tags/$TAG" | cut -f1)
+          if [ -z "$at" ]; then
             git tag "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
             echo "Made $TAG on $GITHUB_SHA."
+          elif [ "$at" = "$GITHUB_SHA" ]; then
+            echo "$TAG is already on $GITHUB_SHA."
+          elif gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null | grep -qx false; then
+            echo "$TAG is published on $at; it isn't moved." >&2
+            exit 1
+          else
+            git tag -f "$TAG" "$GITHUB_SHA"
+            git push -f origin "refs/tags/$TAG"
+            echo "Moved $TAG from $at to $GITHUB_SHA (nothing was published for it)."
           fi
 
   build:

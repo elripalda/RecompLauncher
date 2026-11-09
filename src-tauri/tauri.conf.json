@@ -74,5 +74,14 @@
         "bundleMediaFramework": false
       }
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "recomplauncher"
+        ]
+      }
+    }
   }
 }

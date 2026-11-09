@@ -48,6 +48,7 @@ discord-rich-presence = "1"
 regex-lite = "0.1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 plist = "1"
+tauri-plugin-deep-link = "2"
 
 [target.'cfg(windows)'.dependencies]
 gilrs = { version = "0.11", default-features = false, features = ["xinput"] }

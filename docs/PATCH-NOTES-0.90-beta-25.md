@@ -1,6 +1,7 @@
 # RecompLauncher 0.90 Beta 25
 
 - **Easy Install.** Games with Easy Setup get a green Easy Install button, and setup shows exactly which file types each game takes. — Improved by @elripalda.
+- **Open games from the website.** Open in RecompLauncher on recomplauncher.com takes you straight to the game's page. — Added by @elripalda.
 - **Pick the right project.** Point an installed game at the project it really belongs to, or keep it untracked. — Added by @Xarishark ([#26](https://github.com/elripalda/RecompLauncher/pull/26)).
 - **A drive light for Easy Setup.** — Added by @Xarishark ([#33](https://github.com/elripalda/RecompLauncher/pull/33)).
 - **Shaders.** A cleaner Shaders tab, with every shader and its preview on one screen. — Improved by @elripalda.
