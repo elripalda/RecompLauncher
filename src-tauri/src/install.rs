@@ -807,11 +807,15 @@ fn undmg(_file: &Path, _to: &Path) -> Result<(), Error> {
     Err(Error::Msg("A Mac disk image (.dmg) can only be opened on a Mac.".into()))
 }
 
-#[cfg(target_os = "macos")]
+/// A Mac download that is really a ZIP of the game: the one ZIP in the folder, with no application
+/// or program beside it (a readme or a ROM may be). Unpacked in place, up to three layers deep.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
     for depth in 0..=3 {
         let entries = fs::read_dir(&from)?.collect::<Result<Vec<_>, _>>()?;
-        if entries.len() != 1 || !entries[0].file_type()?.is_file() || kind(&entries[0].file_name().to_string_lossy()) != Some("zip") {
+        let zips: Vec<_> = entries.iter().filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false) && kind(&e.file_name().to_string_lossy()) == Some("zip")).collect();
+        let has_program = entries.iter().any(|e| crate::macos::is_bundle(&e.path()) || crate::macos::is_executable(&e.path(), crate::assets::arch_now()));
+        if zips.len() != 1 || has_program {
             return Ok(from);
         }
         if depth == 3 {
@@ -819,8 +823,14 @@ fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
         }
         let layer = staging.join(format!(".mac-wrapper-{depth}"));
         fs::create_dir(&layer)?;
-        unzip(&entries[0].path(), &layer)?;
-        from = root(&layer);
+        unzip(&zips[0].path(), &layer)?;
+        if entries.len() == 1 {
+            from = root(&layer);
+            continue;
+        }
+        // Files beside the ZIP stay with the game it holds.
+        fs::remove_file(zips[0].path())?;
+        overlay(&root(&layer), &from)?;
     }
     unreachable!()
 }
@@ -1188,6 +1198,55 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn zip_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, bytes) in files {
+            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(bytes).unwrap();
+        }
+        z.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn a_game_zip_beside_a_rom_is_unpacked_and_the_rom_kept() {
+        // SMW Remastered Plus's Mac download: a folder with baserom.sfc and the game's ZIP.
+        let d = tmp("mac-zip-beside");
+        fs::create_dir_all(d.join("stage")).unwrap();
+        let from = d.join("from");
+        fs::create_dir_all(&from).unwrap();
+        fs::write(from.join("baserom.sfc"), b"rom").unwrap();
+        fs::write(from.join("Game.zip"), zip_of(&[("Game.app/Contents/Info.plist", b"info"), ("Game.app/Contents/MacOS/Game", b"program")])).unwrap();
+        let out = unwrap_mac_zip(from.clone(), &d.join("stage")).unwrap();
+        assert_eq!(out, from);
+        assert!(from.join("Game.app/Contents/Info.plist").is_file());
+        assert_eq!(fs::read(from.join("baserom.sfc")).unwrap(), b"rom");
+        assert!(!from.join("Game.zip").exists());
+    }
+
+    #[test]
+    fn a_zip_beside_a_program_is_game_data_and_stays() {
+        let d = tmp("mac-zip-data");
+        fs::create_dir_all(d.join("stage")).unwrap();
+        let from = d.join("from");
+        fs::create_dir_all(&from).unwrap();
+        // A 64-bit Mach-O executable header for this processor.
+        let mut h = [0u8; 32];
+        h[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        h[4..8].copy_from_slice(&(if crate::assets::arch_now() == "arm64" { 0x0100000cu32 } else { 0x01000007u32 }).to_le_bytes());
+        h[12..16].copy_from_slice(&2u32.to_le_bytes());
+        fs::write(from.join("game"), h).unwrap();
+        fs::write(from.join("data.zip"), zip_of(&[("level.bin", b"level")])).unwrap();
+        let out = unwrap_mac_zip(from.clone(), &d.join("stage")).unwrap();
+        assert!(out.join("data.zip").is_file());
+        assert!(!out.join("level.bin").exists());
+        // Two ZIPs and nothing else is no wrapper either.
+        let two = d.join("two");
+        fs::create_dir_all(&two).unwrap();
+        fs::write(two.join("a.zip"), zip_of(&[("a", b"a")])).unwrap();
+        fs::write(two.join("b.zip"), zip_of(&[("b", b"b")])).unwrap();
+        assert!(unwrap_mac_zip(two.clone(), &d.join("stage")).unwrap().join("a.zip").is_file());
     }
 
     fn put(p: &Path, bytes: usize) {
