@@ -17,15 +17,15 @@ function adoptMerge(list) {
 function adoptRow(f, i) {
   const a = f.id && byId(f.id);
   const ver = f.tag ? f.tag : t('version not known');
-  // Typing filters the list (hundreds of recomps): pick one, or add it as your own.
-  const pickOne = !f.id && !f.have
-    ? `<input class="field adopt-which" list="adopt-names" data-i="${i}" placeholder="${esc(f.any ? t('Not in the list: add it anyway') : t('Which recomp is this?'))}" aria-label="${esc(t('Which recomp is this?'))}" autocomplete="off" spellcheck="false">`
+  const sameFolder = Object.values(S.library).some((g) => adoptKey(g) === adoptKey(f));
+  const pickOne = f.from !== 'linked' && !sameFolder
+    ? `<button type="button" class="btn sm" data-x="project" data-i="${i}">${esc(t(f.id || f.any ? 'Change…' : 'Choose project…'))}</button>`
     : '';
   return `<div class="adopt-row${f.have ? ' have' : ''}"><label class="adopt-l">
     <input type="checkbox" data-i="${i}"${f.on ? ' checked' : ''}${f.have || !(f.id || f.any) ? ' disabled' : ''}>
     ${(a && a.cover && pic(a.cover)) || '<span class="ph"></span>'}
     <span class="adopt-k"><b>${esc(adoptName(f))}</b><small class="path">${esc(f.path)}</small>
-      <small>${esc(t(FROM_WORD[f.from] || FROM_WORD.folder))} · ${esc(f.have ? t('Already in your Library') : ver)}</small></span></label>
+      <small>${esc(t(FROM_WORD[f.from] || FROM_WORD.folder))} · ${esc(f.have ? t('Already in your Library') : f.any ? t('Untracked · no updates') : ver)}${a && a.repo ? ' · ' + esc(a.repo) : ''}</small></span></label>
     ${pickOne}</div>`;
 }
 function adoptDraw() {
@@ -37,10 +37,10 @@ function adoptDraw() {
   const body = ADOPT.busy === 'scan'
     ? `<p class="muted adopt-wait">${esc(t('Looking in Steam, Quiver Launcher and the usual folders…'))}</p>`
     : list.length
-      ? `<div class="adopt-list">${list.map(adoptRow).join('')}</div><datalist id="adopt-names"><option value="${esc(t('Not in the list: add it anyway'))}"></option>${all().filter(forOS).sort((x, y) => x.name.localeCompare(y.name)).map((x) => `<option value="${esc(x.name)}"></option>`).join('')}</datalist>`
+      ? `<div class="adopt-list">${list.map(adoptRow).join('')}</div>`
       : `<p class="set-empty">${esc(t('None found in Steam or Quiver Launcher. If yours are somewhere else, pick the folder.'))}</p>`;
   box.innerHTML = `<h2>${esc(t('Recomps you already have'))}</h2>
-    <p>${esc(t('They stay where they are and update from here, in the same folder, so Steam shortcuts keep working. Saves are backed up before every update.'))}</p>
+    <p>${esc(t('Check the suggested project for each installation. Tracked projects get updates here; untracked installations launch without update checks. Your folders stay where they are.'))}</p>
     ${body}
     ${quiver ? `<div class="set-row adopt-move"><div class="k"><b>${esc(t('Move the Quiver Launcher ones into your Recomp Library'))}</b><span>${esc(tf('Into {dir}. Quiver Launcher won\'t see them after that.', { dir: S.settings.library_dir }))}</span></div><button type="button" class="switch" role="switch" aria-checked="${ADOPT.move}" aria-label="${esc(t('Move them'))}" data-x="move"></button></div>` : ''}
     <div class="acts" style="justify-content:space-between"><button type="button" class="btn" data-x="pick"${ADOPT.busy ? ' disabled' : ''}>${esc(t('Pick a folder…'))}</button>
@@ -52,6 +52,17 @@ async function adoptOpen(found) {
   if (found) adoptMerge(found);
   ADOPT.el = modal('<div></div>', async (x, close) => {
     const w = x.dataset.x;
+    if (w === 'project') {
+      const f = ADOPT.list[Number(x.dataset.i)];
+      return projectPicker(f.id || '', '', async (project) => {
+        if (project !== f.id) f.tag = '';
+        f.id = project;
+        f.any = !project;
+        f.on = true;
+        f.have = !!(project && S.library[project]);
+        adoptDraw();
+      });
+    }
     if (w === 'move') { ADOPT.move = !ADOPT.move; return adoptDraw(); }
     if (w === 'pick') {
       const p = await pickFile({ title: t('The folder the game is in, or Quiver Launcher\'s folder'), directory: true, multiple: false }).catch(fail);
@@ -67,16 +78,6 @@ async function adoptOpen(found) {
     const f = ADOPT.list[i];
     if (!f) return;
     if (e.target.matches('input[type=checkbox]')) f.on = e.target.checked;
-    if (e.target.matches('.adopt-which')) {
-      // Not one the launcher knows: it goes in as the player's own game (plays, but doesn't update).
-      const v = e.target.value.trim();
-      const hit = all().find((x) => x.name.toLowerCase() === v.toLowerCase());
-      f.any = v === t('Not in the list: add it anyway');
-      if (!hit && !f.any) return;
-      f.id = f.any ? '' : hit.id; f.on = !!(f.id || f.any);
-      f.have = !!(f.id && S.library[f.id]);
-      if (f.have) toast(tf('{name} is already in your Library.', { name: adoptName(f) }));
-    }
     adoptDraw();
   });
   adoptDraw();
@@ -85,6 +86,75 @@ async function adoptOpen(found) {
     ADOPT.busy = false;
     adoptDraw();
   }
+}
+
+// Shared by imports and Manage: select the exact project, not just a game's title.
+function projectPicker(current, installedId, save) {
+  const projects = all().filter((a) => a.repo && !a.soon).sort((a, b) => a.name.localeCompare(b.name) || a.repo.localeCompare(b.repo));
+  let selected = current || '';
+  const m = modal(`<h2>${esc(t('Project association'))}</h2>
+    <p>${esc(t('Choose the project this installation belongs to, or keep it untracked. Changing this does not download or replace any game files.'))}</p>
+    <label class="mh-f"><span>${esc(t('Search projects'))}</span><input class="field" id="project-search" type="search" autocomplete="off"></label>
+    <label class="mh-f"><span>${esc(t('Project'))}</span><select class="field project-options" id="project-choice" size="8"></select></label>
+    <p class="muted" id="project-note"></p>
+    <p class="err" id="project-error" hidden></p>
+    <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Save'))}</button></div>`, async (x, close) => {
+      if (x.dataset.x !== 'yes' || m.dataset.busy) return;
+      m.dataset.busy = '1';
+      $('[data-x="yes"]', m).disabled = true;
+      $('#project-choice', m).disabled = true;
+      $('#project-search', m).disabled = true;
+      try { await save(selected); close(); }
+      catch (e) {
+        const err = $('#project-error', m); err.textContent = String(e); err.hidden = false;
+        delete m.dataset.busy;
+        $('#project-choice', m).disabled = false;
+        $('#project-search', m).disabled = false;
+        update();
+      }
+    }, t('Project association'));
+  $('.modal', m).classList.add('project-picker');
+  const update = () => {
+    const conflict = selected && selected !== installedId && S.library[selected];
+    $('[data-x="yes"]', m).disabled = !!conflict;
+    $('#project-note', m).textContent = conflict ? t('That project is already in your Library. Choose another project or keep this installation untracked.')
+      : selected && selected === installedId ? t('This is the current project. Choose another project to correct the match.')
+      : selected ? t('Updates will be checked against this project. Automatic updates stay off until you enable them.')
+      : t('Keep untracked: launch this installation without checking a project’s releases for updates.');
+  };
+  const draw = () => {
+    const q = $('#project-search', m).value.trim().toLowerCase();
+    const list = projects.filter((a) => a.id === selected || `${a.name} ${a.repo}`.toLowerCase().includes(q));
+    $('#project-choice', m).innerHTML = `<option value="">${esc(t('Keep untracked'))}</option>` + list.map((a) => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.repo)}</option>`).join('');
+    $('#project-choice', m).value = selected;
+    update();
+  };
+  $('#project-search', m).addEventListener('input', draw);
+  $('#project-choice', m).addEventListener('change', (e) => { selected = e.target.value; update(); });
+  draw();
+  $('#project-search', m).focus();
+  return m;
+}
+
+function changeProject(id) {
+  const g = S.library[id];
+  if (!g) return;
+  if (S.running.has(id) || S.jobs[id]) return toast(t('Close the game and wait for its downloads first.'), true);
+  return projectPicker(g.local ? '' : id, id, async (project) => {
+    // Invalidate any update check started against the previous association.
+    updateCheckRevision++;
+    const next = await invoke('set_project', { id, project });
+    updateCheckRevision++;
+    delete S.updates[id]; delete S.updates[next.id];
+    for (const cache of [S.setup, S.mods, S.modList, S.info, S.builds, S.reports]) {
+      delete cache[id]; delete cache[next.id];
+    }
+    await refreshState();
+    if (S.arg === id) S.arg = next.id;
+    render(true); renderSide();
+    if (window.tvRefresh) window.tvRefresh();
+    toast(t('Project association saved. Your game files were not changed.'));
+  });
 }
 
 async function adoptAdd(close) {

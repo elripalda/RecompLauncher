@@ -1017,7 +1017,6 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .adopt-k b{font-size:14.5px}
 .adopt-k small{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adopt-k small.path{color:var(--dim)}
-.adopt-which{max-width:220px}
 .adopt-move{margin:6px 0 4px;padding:12px 2px}
 .adopt-wait{margin:22px 0}
 
@@ -1834,6 +1833,10 @@ body.light .ds-panel{box-shadow:0 14px 40px rgba(14,22,38,.16)}
 .ds-panel .ds-narrow{display:none}
 @media (max-width:1280px){.ds-ctl .ds-wide{display:none}.ds-panel .ds-narrow{display:flex}}
 @media (max-width:1060px){.dstick{padding-left:28px}.ds-q{flex-basis:200px}}
+
+.project-picker .mh-f{align-items:stretch}
+.project-options{width:100%;height:auto;min-height:180px;resize:none}
+.project-options option{padding:8px;white-space:normal}
 /* The setup asking again: which files the copy picked before didn't have. */
 .su-note{margin:4px 0 0;padding:10px 12px;border-radius:12px;background:rgba(255,184,77,.1);border:1px solid rgba(255,184,77,.3);color:#ffd9a0;font-size:13.5px}
 body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}
