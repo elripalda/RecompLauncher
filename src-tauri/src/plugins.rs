@@ -659,7 +659,7 @@ async fn install_zip(
     // Where the file really is, after the site's redirects (each one checked).
     let client = client_for(&headers.unwrap_or_default())?;
     let (_, at) = send(&st.dir, m, &client, reqwest::Method::GET, u, None).await?;
-    let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: at.to_string() };
+    let asset = crate::assets::Asset { name: file_name, size: 0, digest: None, browser_download_url: at.to_string(), url: None };
     let report = |p: crate::install::Progress| tell(p.phase, p.done, p.total, p.speed, None);
     // Big files from a site that sends parts come down in pieces at once.
     let got = match crate::install::download_split(&client, &asset.browser_download_url, &asset.name, &dl_dir, job, cancel.clone(), &report).await? {

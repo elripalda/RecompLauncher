@@ -105,7 +105,8 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     if safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    if mode == "safe" && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+    let wayland = (std::env::var_os("WAYLAND_DISPLAY").is_some() || var("XDG_SESSION_TYPE").eq_ignore_ascii_case("wayland")) && !var("GDK_BACKEND").starts_with("x11");
+    if compositing_off(&mode, nvidia, wayland) && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
     if std::env::var_os("RL_STEAM_CLEAN").is_some() {
@@ -157,6 +158,60 @@ fn graphics_safe_way(mode: &str, gamescope: bool, from_steam: bool, nvidia: bool
         "safe" => true,
         _ => gamescope || from_steam || nvidia || (appimage && !hardware),
     }
+}
+
+/// Whether WebKit's compositing has to go too. On NVIDIA under Wayland, with it on, Big Picture
+/// shows only its background colour; "fast" and "safe" are the player's own choice.
+#[cfg(any(test, target_os = "linux"))]
+fn compositing_off(mode: &str, nvidia: bool, wayland: bool) -> bool {
+    match mode {
+        "fast" => false,
+        "safe" => true,
+        _ => nvidia && wayland,
+    }
+}
+
+/// Whether the web view can play a sound. It plays through GStreamer: an AppImage (run as one or
+/// unpacked) carries its own GStreamer core and none of the plugins, and the PC's newer plugins
+/// can't load into it, so the web view stops the moment a sound starts. A PC without the base
+/// plugins (appsink) is the same.
+#[cfg(target_os = "linux")]
+pub fn sound_works() -> bool {
+    static WORKS: OnceLock<bool> = OnceLock::new();
+    *WORKS.get_or_init(sound_check)
+}
+
+#[cfg(target_os = "linux")]
+fn sound_check() -> bool {
+    let bundled = std::env::var_os("APPIMAGE").is_some()
+        || std::env::var_os("APPDIR").is_some()
+        || std::env::current_exe().ok().is_some_and(|exe| bundled_gstreamer(&exe));
+    let var = |k: &str| std::env::var(k).unwrap_or_default();
+    let mut dirs: Vec<std::path::PathBuf> = ["GST_PLUGIN_SYSTEM_PATH_1_0", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_PATH_1_0", "GST_PLUGIN_PATH"]
+        .iter()
+        .flat_map(|k| var(k).split(':').filter(|d| !d.is_empty()).map(std::path::PathBuf::from).collect::<Vec<_>>())
+        .collect();
+    for d in ["/usr/lib/gstreamer-1.0", "/usr/lib64/gstreamer-1.0", "/usr/lib/x86_64-linux-gnu/gstreamer-1.0", "/usr/lib/aarch64-linux-gnu/gstreamer-1.0", "/usr/local/lib/gstreamer-1.0"] {
+        dirs.push(d.into());
+    }
+    !bundled && has_appsink(&dirs)
+}
+
+/// The launcher sits in an unpacked AppImage: <root>/usr/bin/<launcher> beside its own
+/// usr/lib/libgstreamer-1.0.so.0, or with an AppRun at <root>.
+#[cfg(any(test, target_os = "linux"))]
+fn bundled_gstreamer(exe: &std::path::Path) -> bool {
+    let Some(root) = exe.parent().filter(|b| b.ends_with("usr/bin")).and_then(|b| b.parent()).and_then(|u| u.parent()) else { return false };
+    // /usr/bin itself is an ordinary install: on Arch and others the PC's own GStreamer is in /usr/lib.
+    if root.parent().is_none() {
+        return false;
+    }
+    root.join("AppRun").exists() || root.join("usr/lib/libgstreamer-1.0.so.0").exists()
+}
+
+#[cfg(any(test, target_os = "linux"))]
+fn has_appsink(dirs: &[std::path::PathBuf]) -> bool {
+    dirs.iter().any(|d| d.join("libgstapp.so").is_file())
 }
 
 /// A DRM render node means WebKit can draw through the GPU's DMA-BUF path. Without one (a VM,
@@ -225,6 +280,37 @@ mod tests {
     }
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn compositing_goes_on_nvidia_under_wayland() {
+        assert!(compositing_off("", true, true));
+        assert!(!compositing_off("", true, false));
+        assert!(!compositing_off("", false, true));
+        assert!(!compositing_off("fast", true, true));
+        assert!(compositing_off("safe", false, false));
+    }
+
+    #[test]
+    fn an_unpacked_appimage_plays_no_sound() {
+        let d = std::env::temp_dir().join(format!("rl-gst-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let root = d.join("squashfs-root");
+        std::fs::create_dir_all(root.join("usr/bin")).unwrap();
+        std::fs::create_dir_all(root.join("usr/lib")).unwrap();
+        let exe = root.join("usr/bin/recomp-launcher");
+        assert!(!bundled_gstreamer(&exe));
+        std::fs::write(root.join("usr/lib/libgstreamer-1.0.so.0"), b"").unwrap();
+        assert!(bundled_gstreamer(&exe));
+        // An ordinary install in /usr/bin isn't one.
+        assert!(!bundled_gstreamer(std::path::Path::new("/usr/bin/recomp-launcher")));
+        // Sounds need GStreamer's appsink plugin somewhere.
+        let plugins = d.join("gst");
+        std::fs::create_dir_all(&plugins).unwrap();
+        assert!(!has_appsink(&[plugins.clone()]));
+        std::fs::write(plugins.join("libgstapp.so"), b"").unwrap();
+        assert!(has_appsink(&[d.join("none"), plugins]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

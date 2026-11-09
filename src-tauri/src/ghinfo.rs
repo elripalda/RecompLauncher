@@ -15,6 +15,7 @@ pub const CONSOLES: &[(&str, &str, &[&str])] = &[
     ("wiiu", "Wii U", &["wii u", "wiiu"]),
     ("wii", "Wii", &["wii"]),
     ("gc", "GameCube", &["gamecube", "game cube", "ngc"]),
+    ("switch2", "Nintendo Switch 2", &["nintendo switch 2", "switch 2", "switch2"]),
     ("switch", "Nintendo Switch", &["nintendo switch", "switch"]),
     ("3ds", "Nintendo 3DS", &["nintendo 3ds", "3ds"]),
     ("nds", "Nintendo DS", &["nintendo ds", "nds"]),
@@ -50,7 +51,7 @@ pub fn console_of(topics: &[String], description: &str, readme: &str) -> Option<
     let topics = topics.iter().map(|t| t.replace('-', " ")).collect::<Vec<_>>().join(" , ").to_lowercase();
     let readme_top: String = readme.chars().take(3000).collect();
     // Words that mean other things in a sentence count only as topics.
-    let unsure = ["switch", "saturn", "genesis"];
+    let unsure = ["switch", "switch 2", "switch2", "saturn", "genesis"];
     for (n, text) in [topics, description.to_lowercase(), readme_top.to_lowercase()].into_iter().enumerate() {
         // The earliest mention wins ("a PS2 game, also on GameCube" is a PS2 recomp).
         let mut best: Option<(usize, &str)> = None;
@@ -357,6 +358,8 @@ mod tests {
         assert_eq!(console_of(&[], "Switch to the new renderer", ""), None);
         assert_eq!(console_of(&["switch".into()], "", ""), Some("switch"));
         assert_eq!(console_of(&[], "A Nintendo Switch recomp", ""), Some("switch"));
+        assert_eq!(console_of(&[], "A Nintendo Switch 2 recomp", ""), Some("switch2"));
+        assert_eq!(console_of(&["switch-2".into()], "", ""), Some("switch2"));
         assert_eq!(console_of(&[], "", "Runs games natively"), None);
         assert_eq!(console_of(&[], "Wii U and Wii", ""), Some("wiiu"));
         assert_eq!(console_of(&[], "Dreamcast games", ""), Some("dc"));

@@ -154,8 +154,48 @@ pub struct Report {
     /// The file can't be read as JSON, or doesn't fit the format: what's wrong and where.
     error: String,
     /// What the file gives players: 0 nothing yet, 1 plays from the launcher, 2 settings, 3 full setup.
+    /// Kept for older pages; the page shows `flow` and `caps` instead.
     level: u8,
+    /// How the game gets the player's copy: "launch" (passed to it when it starts), "prepare" (a
+    /// step that runs once before Play), or "" when it asks for nothing.
+    flow: &'static str,
+    /// What the setup can do besides: "settings", "verify" (known dumps), "inputs" (more than one
+    /// file), "saves" (says where it saves).
+    caps: Vec<&'static str>,
+    /// Who looks after this setup, as the catalog says: "project", "launcher", "community", or
+    /// "unconfirmed" when nobody has said.
+    owner: &'static str,
     items: Vec<Item>,
+}
+
+/// The setup's flow and what it can do, read from the profile as it is (no new fields needed).
+fn summary(p: &profile::Profile) -> (&'static str, Vec<&'static str>) {
+    let flow = if p.prepare.is_some() { "prepare" } else if p.game.is_some() || !p.inputs.is_empty() { "launch" } else { "" };
+    let mut caps = vec![];
+    if !p.settings.is_empty() {
+        caps.push("settings");
+    }
+    if p.game.as_ref().map(|g| !g.dumps.is_empty()).unwrap_or(false) {
+        caps.push("verify");
+    }
+    if p.inputs.len() > 1 {
+        caps.push("inputs");
+    }
+    if !p.saves.is_empty() {
+        caps.push("saves");
+    }
+    (flow, caps)
+}
+
+/// Who maintains a game's setup, from the catalog's "maintained_by". Only the catalog says it, so
+/// where a profile came from never counts as a promise from the project.
+pub fn owner(entry: &Value) -> &'static str {
+    match entry.get("maintained_by").and_then(Value::as_str).unwrap_or("") {
+        "project" | "official" => "project",
+        "launcher" => "launcher",
+        "community" => "community",
+        _ => "unconfirmed",
+    }
 }
 
 fn ok(text: impl Into<String>) -> Item {
@@ -238,7 +278,8 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
         level = check_profile(p, &dir, &g, &mut items);
     }
     let location = embedded.map(|p| p.location).unwrap_or_else(|| file.display().to_string());
-    Ok(Report { source, file: location, has_file, error, level, items })
+    let (flow, caps) = prof.as_ref().filter(|p| p.format == 1).or(used.as_ref()).map(summary).unwrap_or(("", vec![]));
+    Ok(Report { source, file: location, has_file, error, level, flow, caps, owner: owner(&entry), items })
 }
 
 /// The checks, top to bottom in the order of the developer guide. Gives back the level reached.
@@ -447,4 +488,17 @@ pub fn dev_starter(st: State<'_, App>, id: String) -> Res<String> {
 /// Whether a game is a local build (never updated, moved or deleted by the launcher).
 pub fn is_local(st: &App, id: &str) -> bool {
     st.lib.lock().unwrap().installed.get(id).map(|g| g.local).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_comes_only_from_the_catalog() {
+        assert_eq!(owner(&serde_json::json!({"maintained_by": "project"})), "project");
+        assert_eq!(owner(&serde_json::json!({"maintained_by": "community"})), "community");
+        assert_eq!(owner(&serde_json::json!({"launcher": {}})), "unconfirmed");
+        assert_eq!(owner(&Value::Null), "unconfirmed");
+    }
 }

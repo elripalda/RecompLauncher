@@ -26,6 +26,7 @@ body.tv-on #app{visibility:hidden}
 .tv-nav{display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:rgba(var(--tvrgb2),.6);border:1px solid rgba(var(--tvinkrgb,244,248,252),.1);backdrop-filter:blur(16px)}
 .tv-tab{height:54px;padding:0 26px;border-radius:999px;display:flex;align-items:center;font-weight:600;font-size:21px;color:var(--tvsoft,#c9d3e0);border:0;background:transparent;transition:background .25s,color .25s,box-shadow .2s}
 .tv-tab.on{color:var(--tvbg);background:var(--tvink,#F4F8FC);font-weight:700}
+.tv-tab.soon:not(.on):not(.f){opacity:.5}
 .tv-status{justify-self:end;display:flex;align-items:center;gap:22px;color:var(--tvsoft,#dbe5ee)}
 .tv-clock{font-size:22px;font-weight:600}
 .tv-padico{display:grid;place-items:center;color:var(--tvmuted,#a7b3c4)}
@@ -716,6 +717,8 @@ body.light .tv-stage .tv-flow-row .tv-fcase{opacity:1!important}
 
 /* Setup Required: yellow, so it reads as "do this first" next to Play. */
 .tv-btn.main.warn,body .tv-stage .tv-btn.main.warn{background:linear-gradient(180deg,#ffd43b,#f5c518);color:#1a1400;box-shadow:0 14px 34px -12px rgba(245,197,24,.6)}
+.tv-btn.main.easy,body .tv-stage .tv-btn.main.easy{background:linear-gradient(180deg,#6ae9a8,#2fc77c);color:#03170c;box-shadow:0 14px 34px -12px rgba(62,224,143,.6)}
+.tv-btn.main.easy .glyph{color:#03170c}
 .tv-btn.main.warn .glyph,.tv-btn.main.warn svg{color:#1a1400}
 .tv-btn.warn-o{color:#f5c518;border:2px solid rgba(245,197,24,.6);background:rgba(245,197,24,.08)}
 .tv-btn.warn-o svg{color:#f5c518}
@@ -841,14 +844,16 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-capture-in small{font-size:20px;color:var(--tvsoft,#a9c1d4)}
 @keyframes kwait{50%{opacity:.55}}
 /* Where a recomp's project stands: ended (red), on hold (amber), quiet (grey). */
-.tv-badge.left.state{color:#06121a;backdrop-filter:none}.tv-badge.state.ended{background:#ff7a7a}.tv-badge.state.paused{background:#f5b83d}
+.tv-badge.left.state{color:#06121a;backdrop-filter:none}.tv-badge.state.ended{background:#ff7a7a}.tv-badge.state.paused{background:#f5b83d}.tv-badge.state.complete{background:#3ee08f}
 .tv-badge.left.state.low{top:52px}.tv-dk .tv-badge.left.state{left:8px;top:8px;font-size:13px;padding:3px 9px}.tv-dk .tv-badge.left.state.low{top:38px}
 .tv-g-chips span.tv-st.ended{color:#ff9a9a;background:rgba(255,122,122,.14);border-color:rgba(255,122,122,.45)}
+.tv-g-chips span.tv-st.complete{color:#7af0b4;background:rgba(62,224,143,.14);border-color:rgba(62,224,143,.45);display:inline-flex;align-items:center;gap:6px}
 .tv-g-chips span.tv-st.paused{color:#ffcf70;background:rgba(245,184,61,.14);border-color:rgba(245,184,61,.45)}
 .tv-g-chips span.tv-st.quiet{color:rgba(var(--tvinkrgb,244,248,252),.7)}
 .tv-stnote{display:flex;flex-direction:column;gap:4px;max-width:760px;margin:14px 0 0;padding:14px 18px;border-radius:16px;font-size:17px;line-height:1.4;border:1px solid}
 .tv-stnote span{opacity:.82}
 .tv-stnote.ended{background:rgba(255,122,122,.1);border-color:rgba(255,122,122,.4)}.tv-stnote.ended b{color:#ff9a9a}
+.tv-stnote.complete{background:rgba(62,224,143,.1);border-color:rgba(62,224,143,.4)}.tv-stnote.complete b{color:#7af0b4;display:inline-flex;align-items:center;gap:8px}
 .tv-stnote.paused{background:rgba(245,184,61,.1);border-color:rgba(245,184,61,.4)}.tv-stnote.paused b{color:#ffcf70}
 /* Great on Deck, Notify Me and the team's notes. */
 .tv-deckb{position:absolute;right:12px;bottom:12px;z-index:2;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:15px;font-weight:700;color:#fff;background:#1a9fff}

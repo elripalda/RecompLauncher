@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['library', N_('Library')], ['discover', N_('Discover')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -77,7 +77,7 @@
   const SFX = {};
   let ctx = null;
   function tone(kind) {
-    if (S.appimage) return;
+    if (S.noSound) return;
     try {
       ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
       if (ctx.state === 'suspended') ctx.resume();
@@ -101,7 +101,7 @@
     } catch (e) { /* no sound is fine */ }
   }
   const sfx = (n) => {
-    if (S.settings.sounds === false || S.appimage) return;
+    if (S.settings.sounds === false || S.noSound) return;
     if (n === 'select' || n === 'open') return tone(n);
     try {
       const a = SFX[n] || (SFX[n] = new Audio(`sfx/${n}.webm`));
@@ -232,7 +232,7 @@
       const b = $('.tv-boot', root);
       if (!b || !TV.on) return;
       b.classList.add('out');
-      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : (S.settings.ui || {}).start_page === 'discover' ? 'discover' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
+      setTimeout(() => { if (!TV.on) return; fit(); TV.booting = false; TV.view = (S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length ? 'library' : (S.settings.ui || {}).start_page === 'discover' ? 'discover' : 'home'; TV.back = []; TV.enter = 'boot'; draw(); if (TV.pendingGo) { const [v, a] = TV.pendingGo; TV.pendingGo = null; window.tvGoto(v, a); } if (!S.settings.data_asked && S.settings.setup_done) setTimeout(() => window.tvAskData(), 700); }, 420);
     }, 3100);
   }
 
@@ -403,11 +403,12 @@
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
       case 'settingup': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
+      case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
       case 'installed': { const su = S.setup[id]; if (needsSetup(a) && !setupDone(id)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
-      default: return isSaved(id) ? btn(key, 'install', esc(t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
+      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Install') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
     }
   }
 
@@ -415,7 +416,7 @@
   const tabOf = () => (['about', 'saves', 'storage'].includes(TV.view) ? 'settings' : GAMEVIEWS.includes(TV.view) ? TV.from || 'home' : TV.view);
   const clock = () => new Date().toLocaleTimeString(curLocale(), { hour: 'numeric', minute: '2-digit' });
   const bar = () => `<header class="tv-bar"><div class="tv-brand">${MARK}<img class="tv-wm" src="img/${document.body.classList.contains('light') ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher"></div>
-    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
+    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}${k === 'achievements' ? ' soon' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
     <div class="tv-status"><span class="tv-clock" id="tv-clock">${clock()}</span></div></header>`;
   // The game page has a Back pill instead of the sections.
   const gameBar = () => `<header class="tv-bar"><button type="button" class="tv-back" data-f data-key="back" data-tvact="back">${glyph('b', 'tv-keyg')}<span>${esc(t('Back'))}</span></button><span></span>
@@ -470,7 +471,7 @@
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
     const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
     if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
-    if (disc.length >= 2) rows.push(row('disc', t('Drop in your disc'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
+    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
     const upd = recentlyUpdated(pool()).slice(0, 14);
@@ -504,6 +505,7 @@
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
+      case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) };
       case 'installed': {
         const su = S.setup[id];
@@ -1022,7 +1024,7 @@
           ${(() => { const v = { grid: 'Grid', drift: 'Drift', art: 'Game Art' }[bgMode()] || 'Aurora'; return `<button type="button" class="tv-item" data-f data-key="s:bg" data-tvact="bgmode" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Backdrop'))}<small>${esc(t('Behind Home and the Library: a moving backdrop in the launcher\'s colors, or the art of the game you\'re on'))}</small></span><span class="tv-seg">${[N_('Aurora'), N_('Grid'), N_('Drift'), N_('Game Art')].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           ${(() => { const v = (S.settings.ui || {}).tv_dock === 'wide' ? 'Wide' : 'Covers'; return `<button type="button" class="tv-item" data-f data-key="s:dock" data-tvact="dockview" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Home Row'))}<small>${esc(t('Your games on Home as covers, or as wide pictures'))}</small></span><span class="tv-seg">${[N_('Covers'), N_('Wide')].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:lang" data-tvact="lang" data-val="${esc(langName())}"><span class="k">${esc(t('Language'))}<small>${esc(langName())}</small></span><span class="tv-pill on">${esc(t('Change'))}</span></button>
-          ${S.appimage ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
+          ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
           ${head(t('Games and updates'))}
@@ -1175,8 +1177,8 @@
       .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : [])
     const ps = projectState(a);
     const deckChip = greatOnDeck(a) ? `<span class="tv-st deck">${DECK_ICON(18)}${esc(t('Great on Deck'))}</span>` : '';
-    const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${esc(t(STATE_PILL[ps.kind]))}</span>`;
-    const stNote = ps && ps.kind !== 'quiet' ? `<p class="tv-stnote ${ps.kind}"><b>${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></p>` : '';;
+    const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</span>`;
+    const stNote = ps && ps.kind !== 'quiet' ? `<p class="tv-stnote ${ps.kind}"><b>${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></p>` : '';;
     const checks = readyRows(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
@@ -1360,8 +1362,8 @@
     const prof = su && su !== 'loading' ? su : null;
     const look = li && li.ok && LD ? LD.looks.find((l) => l.id === li.look) : null;
     const lookRows = li && li.ok && LD ? [
-      `<button type="button" class="tv-item" data-f data-key="gs:__look" data-gset="__look" data-id="${esc(id)}"><span class="k">${esc(t('Look'))}<small>${esc(S.os === 'linux' ? t('Drawn over the game by vkBasalt.') : t('Drawn over the game by ReShade.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(look ? t(look.name) : t('Original'))}</b>${svg('chevR', 22)}</span></button>`,
-      `<button type="button" class="tv-item${look ? '' : ' off'}" data-f data-key="gs:__amount" data-gset="__amount" data-id="${esc(id)}"${look ? '' : ' disabled'}><span class="k">${esc(t('Amount'))}<small>${esc(t('How strong the look is.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 22)}</span></button>`,
+      `<button type="button" class="tv-item" data-f data-key="gs:__look" data-gset="__look" data-id="${esc(id)}"><span class="k">${esc(t('Shader'))}<small>${esc(S.os === 'linux' ? t('Drawn over the game by vkBasalt.') : t('Drawn over the game by ReShade.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(look ? t(look.name) : t('Original'))}</b>${svg('chevR', 22)}</span></button>`,
+      `<button type="button" class="tv-item${look ? '' : ' off'}" data-f data-key="gs:__amount" data-gset="__amount" data-id="${esc(id)}"${look ? '' : ' disabled'}><span class="k">${esc(t('Amount'))}<small>${esc(t('How strong the shader is.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 22)}</span></button>`,
     ] : [];
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
       prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
@@ -1369,7 +1371,7 @@
       ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
     ].join('') || `<p class="tv-empty">${esc(t('Nothing to set for this game.'))}</p>`;
-    const sub = prof && prof.settings.length ? (prof.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings, so they\'re the same in its own launcher.')) : S.os === 'linux' ? t('Looks are drawn over the game. Press Home while you play to turn one off and on.') : t('Looks are drawn over the game. Press Home while you play to fine-tune one.');
+    const sub = prof && prof.settings.length ? (prof.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings, so they\'re the same in its own launcher.')) : S.os === 'linux' ? t('Shaders are drawn over the game. Press Home while you play to turn one off and on.') : t('Shaders are drawn over the game. Press Home while you play to fine-tune one.');
     return `${backdrop(a, 'dim')}${gameBar()}
       ${region(`${pageHead(tf('{name}: settings', { name: a.name }), sub)}<div class="tv-setwrap"><div class="tv-list">${items}</div><aside class="tv-setpanel" id="tv-setpanel" aria-live="polite"></aside></div>`, 'top')}
       ${hints([['A', t('Change')], ['B', t('Back')]])}`;
@@ -1468,7 +1470,7 @@
       ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Discover'), sub: t('It shows in Discover and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Discover'), sub: t('It won\'t show in Discover or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
         { gap: true, label: t('Saves'), sub: t('Back them up, or put an older one back'), icon: 'save', run: () => go('gsaves', id) },
-        ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and Looks'), icon: 'gear', run: () => go('gsettings', id) }] : []),
+        ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and shaders'), icon: 'gear', run: () => go('gsettings', id) }] : []),
         { label: t('Screenshots'), icon: 'shot', run: async () => { await loadAllShots(); go('shots', id); } },
         ...(S.mods[id] && S.mods[id] !== 'loading' ? [{ label: t('Mods'), icon: 'puzzle', run: () => go('mods', id) }] : []),
         ...(S.running.has(id) ? [{ label: t('Close the game'), sub: t('Anything you haven\'t saved is lost'), icon: 'stop', run: () => invoke('stop', { id }) }] : []),
@@ -1788,12 +1790,12 @@
     } else if (TS.stage === 'pick') {
       const own = S.owned[id];
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
-        <div class="opts">${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? it(t('Choose a disc image'), t('An .iso of your disc'), () => pickIt(false)) : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
+        <div class="opts">${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
     } else if (TS.stage === 'run') {
       const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
-      const names = { read: N_('Reading your disc'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
+      const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
-      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your disc'), setup: t('Settings, controller and your copy') };
+      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;
@@ -1995,6 +1997,8 @@
   };
   window.tvGoto = (view, id) => {
     if (!TV.on) return;
+    // Still starting up: it goes there once the first page is in.
+    if (TV.booting) { TV.pendingGo = [view, id]; return; }
     if (view === 'shots') { loadAllShots().then(() => go('shots', id || null)); }
     else go(view, id || null);
   };
@@ -2053,7 +2057,7 @@
       const ids = [''].concat(LD.looks.map((l) => l.id));
       const l = LD.looks.find((x) => x.id === li.look);
       const isLook = k === '__look';
-      html = `<span class="k">${esc(isLook ? t('Look') : t('Amount'))}</span><div class="tv-lkprev"><canvas></canvas></div>
+      html = `<span class="k">${esc(isLook ? t('Shader') : t('Amount'))}</span><div class="tv-lkprev"><canvas></canvas></div>
         <div class="val">${svg('chevL', 34)}<b>${esc(isLook ? (l ? t(l.name) : t('Original')) : tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 34)}</div>
         <div class="dots">${isLook ? ids.map((x) => `<i class="${x === (li.look || '') ? 'on' : ''}"></i>`).join('') : [0, 20, 40, 60, 80, 100].map((x) => `<i class="${li.amount >= x && (x === 100 || li.amount < x + 20) ? 'on' : ''}"></i>`).join('')}</div>
         <p>${esc(isLook ? (l ? t(l.blurb) : t('The game as it comes, with nothing on top.')) : t('Light to strong.'))}</p>`;
@@ -2359,7 +2363,8 @@
     switch (act) {
       case 'play': sfx('select'); return playGame(id);
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
-      case 'cancel': return invoke('cancel', { id });
+      case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
+      case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'install': sfx('select'); return startInstall(id, S.settings.library_dir).then(() => draw(true));
       case 'page': return go('game', id);
       case 'back': return back();

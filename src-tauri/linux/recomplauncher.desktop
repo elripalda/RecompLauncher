@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories=Game;
+Comment=One home for PC recomps
+Exec=recomplauncher %u
+StartupWMClass=recomplauncher
+Icon=recomplauncher
+Name=RecompLauncher
+Terminal=false
+Type=Application
+MimeType=x-scheme-handler/recomplauncher;

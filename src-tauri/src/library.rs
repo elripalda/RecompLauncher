@@ -169,6 +169,10 @@ pub struct Installed {
     /// made again on the next Play. The player's own pick is never redone.
     #[serde(default)]
     pub exe_rules: u8,
+    /// The version it had before its last update: what "go back" installs again when the update
+    /// breaks it. Empty until it has been updated.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prev_tag: String,
 }
 
 fn half() -> u8 {
@@ -316,6 +320,9 @@ impl Default for Settings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Library {
+    /// Old ids retained for Steam and desktop shortcuts after correcting a project match.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub project_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub installed: BTreeMap<String, Installed>,
     #[serde(default)]
@@ -374,6 +381,11 @@ impl ArtSet {
 }
 
 impl Library {
+    pub fn resolve_project_id(&self, id: &str) -> String {
+        if self.installed.contains_key(id) { return id.to_string(); }
+        self.project_aliases.get(id).filter(|new| self.installed.contains_key(*new)).cloned().unwrap_or_else(|| id.to_string())
+    }
+
     /// A game into the Library: pictures the player picked for it before go on it.
     pub fn put(&mut self, id: &str, mut g: Installed) {
         if let Some(a) = self.arts.remove(id) {
@@ -503,6 +515,7 @@ impl Library {
         l.roms = serde_json::from_value(field("roms")).unwrap_or_default();
         l.seen_apps = serde_json::from_value(field("seen_apps")).unwrap_or_default();
         l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
+        l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
         l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
         l
     }

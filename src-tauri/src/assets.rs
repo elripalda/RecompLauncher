@@ -15,6 +15,10 @@ pub struct Asset {
     #[serde(default)]
     pub digest: Option<String>,
     pub browser_download_url: String,
+    /// GitHub's API address for the same file (the release info has it): a second way to download
+    /// it when github.com's own download link keeps failing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 pub fn os_now() -> &'static str {
@@ -97,7 +101,7 @@ fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
         "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
-        "macos" => k == "zip",
+        "macos" => matches!(k, "zip" | "dmg" | "rar" | "7z"),
         _ => false,
     }
 }
@@ -121,7 +125,7 @@ fn not_a_build(name: &str) -> bool {
 }
 
 /// Words that tag a file as a build for a console or a phone: never a build for a PC.
-const PLATFORM_TAGS: [&str; 19] = ["switch", "nx", "nsp", "xci", "nro", "android", "apk", "aab", "ios", "ipa", "ps4", "ps5", "vita", "psp", "3ds", "wiiu", "wii", "xbox", "vpk"];
+const PLATFORM_TAGS: [&str; 20] = ["switch", "switch2", "nx", "nsp", "xci", "nro", "android", "apk", "aab", "ios", "ipa", "ps4", "ps5", "vita", "psp", "3ds", "wiiu", "wii", "xbox", "vpk"];
 /// Files for a console or a phone by their ending.
 const PLATFORM_ENDS: [&str; 7] = [".apk", ".ipa", ".nsp", ".xci", ".nro", ".vpk", ".pkg"];
 
@@ -189,6 +193,9 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("linux", "appimage") => 14,
         ("linux", "tar.gz") => 12,
         ("linux", "zip") => 8,
+        ("macos", "zip") => 12,
+        // Below a ZIP even when the disk image's name says more (arm64): a ZIP keeps the app as it is.
+        ("macos", "dmg") => -20,
         _ => 4,
     };
     // A game's server (for playing online) comes with some releases: the game itself comes first,
@@ -232,6 +239,11 @@ pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
     let msi = |a: &Asset| a.name.to_lowercase().ends_with(".msi");
     if v.iter().any(|(_, a)| !msi(a)) {
         v.retain(|(_, a)| !msi(a));
+    }
+    // A Mac disk image only when there's no ZIP of the same game.
+    let dmg = |a: &Asset| a.name.to_lowercase().ends_with(".dmg");
+    if v.iter().any(|(_, a)| !dmg(a)) {
+        v.retain(|(_, a)| !dmg(a));
     }
     // When a release says which files are for this system, a file that says nothing is for another.
     if v.iter().any(|(_, a)| says_os(&a.name, os)) {
@@ -303,14 +315,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mac_zip_is_installable_but_dmg_is_not() {
+    fn mac_zip_comes_first_and_a_dmg_works_alone() {
         let files = [a("Game-macOS.dmg"), a("Game-macOS.zip")];
         assert_eq!(all_for(&files, "macos", "arm64", None).iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
-        assert!(pick(&files[..1], "macos", "arm64", None).is_none());
+        assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "Game-macOS.zip");
+        let files = [a("Game-1.0-macOS-arm64.dmg"), a("Game-1.0-macOS.zip")];
+        assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "Game-1.0-macOS.zip");
+        assert_eq!(pick(&files[..1], "macos", "arm64", None).unwrap().name, "Game-1.0-macOS-arm64.dmg");
+        // Only a disk image (Link's Awakening's release): that's the one.
+        let files = [a("LAS.Recomp-1.0-macOS.dmg"), a("LAS.Recomp-1.0-Windows.zip")];
+        assert_eq!(pick(&files, "macos", "arm64", None).unwrap().name, "LAS.Recomp-1.0-macOS.dmg");
+        assert_eq!(pick(&files, "macos", "arm64", Some("LAS.Recomp-*-macOS.dmg")).unwrap().name, "LAS.Recomp-1.0-macOS.dmg");
+        assert!(pick(&files, "windows", "x64", None).unwrap().name.ends_with("Windows.zip"));
+    }
+
+    #[test]
+    fn mac_rar_and_7z_are_builds() {
+        // SMW Remastered Plus ships its Mac build as a .rar.
+        assert_eq!(pick(&[a("SMW.Remastered+.MacOS.Untested.rar")], "macos", "arm64", Some("SMW.Remastered+.MacOS.Untested.rar")).unwrap().name, "SMW.Remastered+.MacOS.Untested.rar");
+        assert!(pick(&[a("Game-macOS.7z")], "macos", "arm64", None).is_some());
+        // A ZIP of the same game still comes first.
+        assert_eq!(pick(&[a("Game-macOS.rar"), a("Game-macOS.zip")], "macos", "arm64", None).unwrap().name, "Game-macOS.zip");
+        // Still not a Mac build: Windows and Linux files.
+        assert!(pick(&[a("Game-windows.rar"), a("Game-linux.tar.gz")], "macos", "arm64", None).is_none());
     }
 
     fn a(n: &str) -> Asset {
-        Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new() }
+        Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new(), url: None }
     }
 
     #[test]
@@ -415,6 +446,7 @@ mod tests {
     fn nothing_for_this_system() {
         let r = [a("Game-macOS.dmg"), a("Game-Linux.tar.gz")];
         assert!(pick(&r, "windows", "x64", None).is_none());
+        assert!(pick(&r, "macos", "arm64", None).is_some());
     }
 
     #[test]

@@ -35,9 +35,9 @@ jobs:
             artifacts: artifacts/*
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -97,7 +97,7 @@ jobs:
       # Releases are built by release.yml, straight into a draft.
       - name: Upload installers
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: installers-${{ matrix.os }}
           path: ${{ matrix.artifacts }}

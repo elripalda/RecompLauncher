@@ -236,6 +236,71 @@ pub async fn download_split(
 }
 
 /// Download `asset` into `dir`, reporting progress, then check it against GitHub's checksum.
+/// Downloads the player paused: stopped where they got to, with the part file kept, so Install (or
+/// Update) carries on from there.
+static PAUSED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// The player's speed limit in bytes a second (0 for none), and whether downloads slow down while
+/// a game is running.
+static LIMIT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static SLOW_PLAYING: AtomicBool = AtomicBool::new(true);
+/// While a game runs, downloads keep to this so the game's own reading and network come first.
+const PLAYING_RATE: u64 = 4 << 20;
+static PLAYING: std::sync::OnceLock<Box<dyn Fn() -> bool + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn pause(id: &str) {
+    let mut p = PAUSED.lock().unwrap();
+    if !p.iter().any(|x| x == id) {
+        p.push(id.to_string());
+    }
+}
+pub fn paused(id: &str) -> bool {
+    PAUSED.lock().unwrap().iter().any(|x| x == id)
+}
+pub fn unpause(id: &str) {
+    PAUSED.lock().unwrap().retain(|x| x != id);
+}
+/// Where each paused download's part file is, so cancelling a paused one can throw it away.
+static PARTS: std::sync::Mutex<Vec<(String, PathBuf)>> = std::sync::Mutex::new(Vec::new());
+fn kept(id: &str, part: &Path) {
+    let mut p = PARTS.lock().unwrap();
+    p.retain(|(i, _)| i != id);
+    p.push((id.to_string(), part.to_path_buf()));
+}
+/// A paused download carried on: its part file is in use again, not one to throw away.
+pub fn resumed(id: &str) {
+    PARTS.lock().unwrap().retain(|(i, _)| i != id);
+}
+/// Throws away what a paused download had got (the player cancelled it instead of resuming).
+pub fn discard(id: &str) {
+    let mut p = PARTS.lock().unwrap();
+    for (_, f) in p.iter().filter(|(i, _)| i == id) {
+        let _ = std::fs::remove_file(f);
+    }
+    p.retain(|(i, _)| i != id);
+}
+pub fn set_limits(bytes_per_sec: u64, slow_while_playing: bool) {
+    LIMIT.store(bytes_per_sec, Ordering::Relaxed);
+    SLOW_PLAYING.store(slow_while_playing, Ordering::Relaxed);
+}
+/// How the launcher tells whether a game is running (set once when it starts).
+pub fn playing_probe(f: impl Fn() -> bool + Send + Sync + 'static) {
+    let _ = PLAYING.set(Box::new(f));
+}
+/// The speed a download keeps to right now, in bytes a second (0 for as fast as it goes).
+fn rate_now() -> u64 {
+    let limit = LIMIT.load(Ordering::Relaxed);
+    let playing = SLOW_PLAYING.load(Ordering::Relaxed) && PLAYING.get().map(|f| f()).unwrap_or(false);
+    rate_for(limit, playing)
+}
+fn rate_for(limit: u64, playing: bool) -> u64 {
+    match (limit, playing) {
+        (0, false) => 0,
+        (0, true) => PLAYING_RATE,
+        (l, true) => l.min(PLAYING_RATE),
+        (l, false) => l,
+    }
+}
+
 pub async fn download(
     http: &reqwest::Client,
     asset: &Asset,
@@ -269,14 +334,30 @@ pub async fn download(
     // each piece is limited, cancelling works while it waits, and a download that stalls part way
     // carries on from where it got to, a few times, before it gives up.
     let cancelled = || cancel.load(Ordering::Relaxed);
+    // Stopped: a pause keeps what came so far; a cancel throws it away.
+    let stop = |part: &Path| -> Error {
+        if paused(id) {
+            kept(id, part);
+            return Error::Msg("PAUSED".into());
+        }
+        let _ = std::fs::remove_file(part);
+        Error::Cancelled
+    };
     let mut out: Option<tokio::fs::File> = None;
     let mut done = have;
     let mut total;
     let mut tries = 0u32;
     use tokio::io::AsyncWriteExt;
+    // github.com's download link, or GitHub's API link to the same file once that keeps failing.
+    let mut src = asset.browser_download_url.clone();
+    let mut by_api = false;
+    let mut api_tried = false;
     'attempt: loop {
         tries += 1;
-        let mut req = http.get(&asset.browser_download_url).timeout(Duration::from_secs(60 * 60 * 6));
+        let mut req = http.get(&src).timeout(Duration::from_secs(60 * 60 * 6));
+        if by_api {
+            req = req.header(reqwest::header::ACCEPT, "application/octet-stream");
+        }
         if done > 0 {
             req = req.header(reqwest::header::RANGE, format!("bytes={done}-"));
         }
@@ -285,9 +366,8 @@ pub async fn download(
         let started = Instant::now();
         let r = loop {
             if cancelled() {
-                drop(out);
-                let _ = tokio::fs::remove_file(&part).await;
-                return Err(Error::Cancelled);
+                if let Some(mut f) = out.take() { let _ = f.flush().await; }
+                return Err(stop(&part));
             }
             match tokio::time::timeout(Duration::from_millis(500), &mut send).await {
                 Ok(r) => break r,
@@ -307,13 +387,31 @@ pub async fn download(
         if !r.status().is_success() {
             // GitHub's busy moments (502, 503, 504, or "slow down"): wait a little longer each time and
             // ask again, from where it got to.
-            if busy_answer(r.status().as_u16()) && tries < 5 {
+            // Still busy after a few tries: the same file through GitHub's API, which often answers
+            // when the download link doesn't.
+            if busy_answer(r.status().as_u16()) && tries >= 3 && !by_api && !api_tried {
+                if let Some(api) = asset.url.as_deref().filter(|u| u.starts_with("https://api.github.com/")) {
+                    crate::trail::note(format!("{}: github.com answered {}; trying GitHub's API link", asset.name, r.status().as_u16()));
+                    src = api.to_string();
+                    by_api = true;
+                    api_tried = true;
+                    continue;
+                }
+            }
+            // The API said no for another reason (its hourly limit for a PC that isn't signed in):
+            // back to the usual link, which keeps its own tries.
+            if by_api && !busy_answer(r.status().as_u16()) && tries < 8 {
+                crate::trail::note(format!("{}: GitHub's API link answered {}; back to github.com", asset.name, r.status().as_u16()));
+                src = asset.browser_download_url.clone();
+                by_api = false;
+                continue;
+            }
+            if busy_answer(r.status().as_u16()) && (tries < 5 || (by_api && tries < 8)) {
                 let wait = Instant::now() + Duration::from_secs(2u64 << (tries - 1).min(4));
                 while Instant::now() < wait {
                     if cancelled() {
-                        drop(out);
-                        let _ = tokio::fs::remove_file(&part).await;
-                        return Err(Error::Cancelled);
+                        if let Some(mut f) = out.take() { let _ = f.flush().await; }
+                        return Err(stop(&part));
                     }
                     tokio::time::sleep(Duration::from_millis(250)).await;
                 }
@@ -347,6 +445,7 @@ pub async fn download(
         let mut stream = r.bytes_stream();
         let (mut last, mut mark, mut mark_bytes, mut speed) = (Instant::now() - Duration::from_secs(1), Instant::now(), done, 0u64);
         let mut quiet = Instant::now();
+        let (mut pace_at, mut pace_bytes, mut pace_rate) = (Instant::now(), 0u64, 0u64);
         loop {
             if cancelled() {
                 break 'attempt;
@@ -368,6 +467,22 @@ pub async fn download(
             hash.update(&chunk);
             f.write_all(&chunk).await?;
             done += chunk.len() as u64;
+            // Kept to the player's limit (and slower while a game is running): ahead of it, it waits
+            // the difference, a little at a time so pausing and cancelling still answer at once.
+            let rate = rate_now();
+            if rate > 0 {
+                if pace_rate != rate { pace_rate = rate; pace_at = Instant::now(); pace_bytes = 0; }
+                pace_bytes += chunk.len() as u64;
+                let due = Duration::from_secs_f64(pace_bytes as f64 / rate as f64);
+                while pace_at.elapsed() < due && !cancelled() {
+                    tokio::time::sleep(due.saturating_sub(pace_at.elapsed()).clamp(Duration::from_millis(1), Duration::from_millis(200))).await;
+                }
+                quiet = Instant::now();
+                // A fresh window now and then, so a short burst after a pause isn't held against it.
+                if pace_at.elapsed() > Duration::from_secs(4) { pace_at = Instant::now(); pace_bytes = 0; }
+            } else {
+                pace_rate = 0;
+            }
             if mark.elapsed() >= Duration::from_millis(800) {
                 speed = ((done - mark_bytes) as f64 / mark.elapsed().as_secs_f64()) as u64;
                 mark = Instant::now();
@@ -382,9 +497,8 @@ pub async fn download(
         }
     }
     if cancelled() {
-        drop(out);
-        let _ = tokio::fs::remove_file(&part).await;
-        return Err(Error::Cancelled);
+        if let Some(mut f) = out.take() { let _ = f.flush().await; }
+        return Err(stop(&part));
     }
     let Some(mut out) = out else { return Err(Error::Msg(format!("The download of {} didn't start. Try again.", asset.name))) };
     out.flush().await?;
@@ -693,6 +807,8 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         "rar" => crate::gamebanana::extract(file, staging)?,
         "tar.gz" => untar(file, staging, false)?,
         "tar.xz" => untar(file, staging, true)?,
+        #[cfg(target_os = "macos")]
+        "dmg" => undmg(file, staging)?,
         "appimage" | "exe" | "msi" => {
             fs::copy(file, staging.join(&name))?;
             #[cfg(unix)]
@@ -702,6 +818,12 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
             }
         }
         _ => return Err(Error::Msg(format!("{name} can't be installed on this PC"))),
+    }
+    // A .7z or .rar doesn't carry a file's executable bit the way a zip's entries do: a Mac program
+    // out of one is found by its header and marked runnable.
+    #[cfg(target_os = "macos")]
+    if matches!(k, "7z" | "rar") {
+        mark_mac_programs(staging);
     }
     let from = if strip_top { root(staging) } else { staging.to_path_buf() };
     #[cfg(target_os = "macos")]
@@ -721,11 +843,84 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     Ok(files)
 }
 
+/// A Mac disk image: opened read-only where Finder doesn't show it, what's on it (the .app and
+/// anything beside it, not the Applications shortcut or the window's background) copied out with
+/// ditto so the bundle stays whole, then closed again.
 #[cfg(target_os = "macos")]
+fn undmg(file: &Path, staging: &Path) -> Result<(), Error> {
+    let mount = staging.with_extension("mount");
+    let _ = fs::remove_dir(&mount);
+    fs::create_dir_all(&mount)?;
+    let out = std::process::Command::new("/usr/bin/hdiutil")
+        .args(["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint"])
+        .arg(&mount)
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        let _ = fs::remove_dir(&mount);
+        return Err(Error::Msg(format!("Couldn't open the disk image: {}", String::from_utf8_lossy(&out.stderr).trim())));
+    }
+    let copied = (|| -> Result<(), Error> {
+        for e in fs::read_dir(&mount)?.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if dmg_extra(&n) || e.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+                continue;
+            }
+            let ok = std::process::Command::new("/usr/bin/ditto").arg(e.path()).arg(staging.join(&n)).status()?.success();
+            if !ok {
+                return Err(Error::Msg(format!("Couldn't copy {n} from the disk image")));
+            }
+        }
+        Ok(())
+    })();
+    let detach = |force: bool| {
+        let mut c = std::process::Command::new("/usr/bin/hdiutil");
+        c.arg("detach").arg(&mount).arg("-quiet");
+        if force {
+            c.arg("-force");
+        }
+        c.status().map(|s| s.success()).unwrap_or(false)
+    };
+    if !detach(false) {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        detach(true);
+    }
+    let _ = fs::remove_dir(&mount);
+    copied
+}
+
+/// What a disk image carries for its Finder window, not the game: the background picture, Finder's
+/// own files, the volume icon, Spotlight's and the trash's folders.
+#[cfg(any(test, target_os = "macos"))]
+fn dmg_extra(name: &str) -> bool {
+    name.starts_with('.') || matches!(name, "Applications" | "Icon\r" | "VolumeIcon.icns")
+}
+
+/// Mark every Mac executable under `dir` (by its Mach-O header) as runnable.
+#[cfg(target_os = "macos")]
+fn mark_mac_programs(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        let Ok(t) = e.file_type() else { continue };
+        if t.is_dir() {
+            mark_mac_programs(&p);
+        } else if t.is_file() && crate::macos::is_executable(&p, crate::assets::arch_now()) {
+            let _ = fs::set_permissions(&p, fs::Permissions::from_mode(0o755));
+        }
+    }
+}
+
+/// A Mac download that is really a ZIP of the game: the one ZIP in the folder, with no application
+/// or program beside it (a readme or a ROM may be). Unpacked in place, up to three layers deep.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
     for depth in 0..=3 {
         let entries = fs::read_dir(&from)?.collect::<Result<Vec<_>, _>>()?;
-        if entries.len() != 1 || !entries[0].file_type()?.is_file() || kind(&entries[0].file_name().to_string_lossy()) != Some("zip") {
+        let zips: Vec<_> = entries.iter().filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false) && kind(&e.file_name().to_string_lossy()) == Some("zip")).collect();
+        let has_program = entries.iter().any(|e| crate::macos::is_bundle(&e.path()) || crate::macos::is_executable(&e.path(), crate::assets::arch_now()));
+        if zips.len() != 1 || has_program {
             return Ok(from);
         }
         if depth == 3 {
@@ -733,8 +928,16 @@ fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
         }
         let layer = staging.join(format!(".mac-wrapper-{depth}"));
         fs::create_dir(&layer)?;
-        unzip(&entries[0].path(), &layer)?;
-        from = root(&layer);
+        unzip(&zips[0].path(), &layer)?;
+        if entries.len() == 1 {
+            from = root(&layer);
+            continue;
+        }
+        // Files beside the ZIP stay with the game it holds.
+        fs::remove_file(zips[0].path())?;
+        overlay(&root(&layer), &from)?;
+        // The layer can sit inside `from` (a ZIP at the top of the download): not part of the game.
+        let _ = fs::remove_dir_all(&layer);
     }
     unreachable!()
 }
@@ -829,7 +1032,25 @@ pub const TOOL_DIRS: [&str; 21] = ["compiler", "compilers", "deps", "dependencie
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
+/// A runtime's or another program's installer (.NET, Visual C++, DirectX, WebView2...), never a game.
+const RUNTIME_INSTALLERS: [&str; 17] = [
+    "windowsdesktop-runtime", "dotnet-runtime", "dotnet-sdk", "aspnetcore-runtime", "dotnet-hosting", "vc_redist", "vcredist", "directx", "dxsetup", "dxwebsetup",
+    "oalinst", "ue4prereq", "ue5prereq", "physx", "xnafx", "microsoftedgewebview2", "msedgewebview2",
+];
+
+/// A file name a browser gives a second download of the same file ("game (2).exe"): something the
+/// player downloaded again, not the game's own program.
+fn downloaded_copy(stem: &str) -> bool {
+    let s = stem.trim_end();
+    // "setup (2)", never "game (1993)": a browser counts up from 1, a year has four digits.
+    s.ends_with(')') && s.rfind(" (").map(|i| { let n = &s[i + 2..s.len() - 1]; (1..=2).contains(&n.len()) && n.chars().all(|c| c.is_ascii_digit()) }).unwrap_or(false)
+}
+
 pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
+    let low = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    if RUNTIME_INSTALLERS.iter().any(|r| low.starts_with(r)) || downloaded_copy(&low) {
+        return true;
+    }
     let want: Vec<String> = names.iter().flat_map(|n| tokens(n)).collect();
     let stem = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     // A build tool by its whole name (ninja.exe, cmake, python3.exe).
@@ -1087,7 +1308,30 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_disk_images_window_dressing_stays_behind() {
+        for n in [".background", ".DS_Store", ".fseventsd", "Applications", "VolumeIcon.icns", "Icon\r"] {
+            assert!(super::dmg_extra(n), "{n}");
+        }
+        for n in ["LAS Recomp.app", "README.txt", "mods"] {
+            assert!(!super::dmg_extra(n), "{n}");
+        }
+    }
+
     use super::*;
+
+    #[test]
+    fn download_speed_follows_the_limit_and_play() {
+        assert_eq!(rate_for(0, false), 0);
+        assert_eq!(rate_for(0, true), PLAYING_RATE);
+        assert_eq!(rate_for(1 << 20, true), 1 << 20);
+        assert_eq!(rate_for(50 << 20, true), PLAYING_RATE);
+        assert_eq!(rate_for(50 << 20, false), 50 << 20);
+        pause("x");
+        assert!(paused("x") && !paused("y"));
+        unpause("x");
+        assert!(!paused("x"));
+    }
 
     #[test]
     fn busy_answers_are_asked_again() {
@@ -1102,6 +1346,64 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn zip_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, bytes) in files {
+            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(bytes).unwrap();
+        }
+        z.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn a_game_zip_beside_a_rom_is_unpacked_and_the_rom_kept() {
+        // SMW Remastered Plus's Mac download: a folder with baserom.sfc and the game's ZIP.
+        let d = tmp("mac-zip-beside");
+        fs::create_dir_all(d.join("stage")).unwrap();
+        let from = d.join("from");
+        fs::create_dir_all(&from).unwrap();
+        fs::write(from.join("baserom.sfc"), b"rom").unwrap();
+        fs::write(from.join("Game.zip"), zip_of(&[("Game.app/Contents/Info.plist", b"info"), ("Game.app/Contents/MacOS/Game", b"program")])).unwrap();
+        let out = unwrap_mac_zip(from.clone(), &d.join("stage")).unwrap();
+        assert_eq!(out, from);
+        assert!(from.join("Game.app/Contents/Info.plist").is_file());
+        assert_eq!(fs::read(from.join("baserom.sfc")).unwrap(), b"rom");
+        assert!(!from.join("Game.zip").exists());
+        // The same files at the top of the download, with nothing around them: no unpacking layer left in.
+        let stage = d.join("top");
+        fs::create_dir_all(&stage).unwrap();
+        fs::write(stage.join("baserom.sfc"), b"rom").unwrap();
+        fs::write(stage.join("Game.zip"), zip_of(&[("Game.app/Contents/Info.plist", b"info")])).unwrap();
+        let out = unwrap_mac_zip(stage.clone(), &stage).unwrap();
+        let mut names: Vec<String> = fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Game.app", "baserom.sfc"]);
+    }
+
+    #[test]
+    fn a_zip_beside_a_program_is_game_data_and_stays() {
+        let d = tmp("mac-zip-data");
+        fs::create_dir_all(d.join("stage")).unwrap();
+        let from = d.join("from");
+        fs::create_dir_all(&from).unwrap();
+        // A 64-bit Mach-O executable header for this processor.
+        let mut h = [0u8; 32];
+        h[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        h[4..8].copy_from_slice(&(if crate::assets::arch_now() == "arm64" { 0x0100000cu32 } else { 0x01000007u32 }).to_le_bytes());
+        h[12..16].copy_from_slice(&2u32.to_le_bytes());
+        fs::write(from.join("game"), h).unwrap();
+        fs::write(from.join("data.zip"), zip_of(&[("level.bin", b"level")])).unwrap();
+        let out = unwrap_mac_zip(from.clone(), &d.join("stage")).unwrap();
+        assert!(out.join("data.zip").is_file());
+        assert!(!out.join("level.bin").exists());
+        // Two ZIPs and nothing else is no wrapper either.
+        let two = d.join("two");
+        fs::create_dir_all(&two).unwrap();
+        fs::write(two.join("a.zip"), zip_of(&[("a", b"a")])).unwrap();
+        fs::write(two.join("b.zip"), zip_of(&[("b", b"b")])).unwrap();
+        assert!(unwrap_mac_zip(two.clone(), &d.join("stage")).unwrap().join("a.zip").is_file());
     }
 
     fn put(p: &Path, bytes: usize) {
@@ -1237,6 +1539,12 @@ mod tests {
         assert!(looks_like_tool(Path::new("Sf2Bktr.exe"), &["SF2Recomp"]));
         assert!(looks_like_tool(Path::new("chd2gdi.exe"), &["Street-Alpha-3-Dreamcast-Recomp"]));
         assert!(looks_like_tool(Path::new("x86_64-w64-mingw32-clang++.exe"), &["TotK Recomp"]));
+        assert!(looks_like_tool(Path::new("windowsdesktop-runtime-10.0.14-win-x64 (2).exe"), &["Mario Kart WiiCompiled"]));
+        assert!(looks_like_tool(Path::new("wps_wid.cid-642543927.1788466613 (8).exe"), &["ReStreet"]));
+        // A year in the name is the game's, not a browser's count.
+        assert!(!looks_like_tool(Path::new("Doom (1993).exe"), &["Doom"]));
+        assert!(looks_like_tool(Path::new("VC_redist.x64.exe"), &["Any"]));
+        assert!(!looks_like_tool(Path::new("Dragon Ball Z (Burst Limit).exe"), &["Dragon Ball Z"]));
         // A tools folder in Portuguese, and recompilers.
         assert!(looks_like_tool(Path::new("ferramentas/bin/unzbic.exe"), &["ocarina-recomp"]));
         assert!(looks_like_tool(Path::new("nxlift.exe"), &["pokopia-native"]));
@@ -1395,6 +1703,31 @@ mod mac_archive_tests {
             zip.add_symlink(*name, *target, zip::write::SimpleFileOptions::default()).unwrap();
         }
         zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_disk_image_installs_its_app_and_leaves_the_applications_shortcut() {
+        let d = temp("dmg");
+        let src = d.join("volume");
+        fs::create_dir_all(src.join("Game.app/Contents/MacOS")).unwrap();
+        fs::write(src.join("Game.app/Contents/Info.plist"), b"metadata").unwrap();
+        fs::write(src.join("Game.app/Contents/MacOS/Game"), b"program").unwrap();
+        std::os::unix::fs::symlink("/Applications", src.join("Applications")).unwrap();
+        let image = d.join("Game-macOS.dmg");
+        let made = std::process::Command::new("hdiutil").args(["create", "-quiet", "-fs", "HFS+", "-volname", "Game", "-srcfolder"]).arg(&src).arg(&image).status().unwrap();
+        assert!(made.success());
+        let target = d.join("install");
+        let files = unpack(&image, &target, &d.join("staging")).unwrap();
+        assert!(files.iter().any(|f| f.ends_with("Game.app/Contents/MacOS/Game")));
+        assert_eq!(fs::read(target.join("Game.app/Contents/Info.plist")).unwrap(), b"metadata");
+        assert!(!target.join("Applications").exists());
+        // Unmounted again, and a file that isn't an image is an error, not a hang.
+        assert!(!d.join("staging.mount").exists());
+        let junk = d.join("Junk.dmg");
+        fs::write(&junk, b"not an image").unwrap();
+        assert!(unpack(&junk, &d.join("install2"), &d.join("staging")).is_err());
+        let _ = fs::remove_dir_all(&d);
     }
 
     fn app_zip(extra: &[(&str, &[u8], u32)]) -> Vec<u8> {
