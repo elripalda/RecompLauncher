@@ -17,9 +17,6 @@ finish-args:
   - --device=all
   # The tray icon.
   - --talk-name=org.kde.StatusNotifierWatcher
-  # Installs and starts the Flatpak builds some recomps ship, through the PC's own flatpak
-  # (flatpak-spawn --host). Remove this line to run without that feature.
-  - --talk-name=org.freedesktop.Flatpak
   # Rich presence for Discord (its socket, native or Flatpak).
   - --filesystem=xdg-run/app/com.discordapp.Discord:create
   - --filesystem=xdg-run/discord-ipc-0

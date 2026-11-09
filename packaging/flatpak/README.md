@@ -23,9 +23,12 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
 ## In the sandbox
 
 - Updates come from Flathub: the launcher's own updater is off (`flatpak::sandboxed()`).
-- Recomps' own `.flatpak` builds are installed and started through the PC's flatpak with
-  `flatpak-spawn --host`, which needs `--talk-name=org.freedesktop.Flatpak`. Flathub reviewers
-  may question that permission; without it those builds report that Flatpak isn't available.
+- Games ship as AppImages. They run inside the sandbox with `APPIMAGE_EXTRACT_AND_RUN=1` (there is
+  no FUSE), unpacked under `~/.var/app/<id>/cache/appimage-run` instead of the sandbox's RAM-backed /tmp.
+- A recomp that ships only a `.flatpak` file needs the PC's own flatpak, which the sandbox may not
+  reach (Flathub flags `--talk-name=org.freedesktop.Flatpak`, so the manifest leaves it out). The
+  launcher says so and shows the command that turns it on for the player:
+  `flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher`.
 - Games, saves and settings live under `~/.var/app/com.recomplauncher.RecompLauncher/`.
   Folders the player picks go through the file portal.
 

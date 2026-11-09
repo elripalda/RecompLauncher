@@ -2409,6 +2409,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         // A Flatpak bundle: Linux can't run the file itself. Installed for this user the first
         // time (with what it needs from Flathub), then started through Flatpak.
         "flatpak" if !cfg!(windows) => {
+            if flatpak::host_flatpak_blocked() {
+                return Err(Error::Msg("This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.".into()));
+            }
             if !flatpak::available() {
                 return Err(Error::Msg("This build comes as a Flatpak, and Flatpak isn't on this PC. Install Flatpak from your system's software center, or switch to another build on the game's page.".into()));
             }

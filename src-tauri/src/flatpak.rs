@@ -37,10 +37,35 @@ fn on_path(name: &str) -> Option<PathBuf> {
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }
 
+/// The sandbox may talk to the PC's Flatpak (`flatpak override --user --talk-name=org.freedesktop.Flatpak <app>`):
+/// the session bus rules in /.flatpak-info say so.
+fn may_use_host_flatpak() -> bool {
+    talks_to_flatpak(&std::fs::read_to_string("/.flatpak-info").unwrap_or_default())
+}
+
+fn talks_to_flatpak(info: &str) -> bool {
+    let mut in_policy = false;
+    for line in info.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_policy = line == "[Session Bus Policy]";
+        } else if in_policy {
+            if let Some(level) = line.strip_prefix("org.freedesktop.Flatpak=") {
+                return matches!(level.trim(), "talk" | "own");
+            }
+        }
+    }
+    false
+}
+
+/// In the sandbox, and the PC's Flatpak is out of reach until the player allows it.
+pub fn host_flatpak_blocked() -> bool {
+    sandboxed() && !may_use_host_flatpak()
+}
+
 /// The program that runs `flatpak`, and what goes before its arguments.
 fn flatpak() -> Option<(PathBuf, &'static [&'static str])> {
     if sandboxed() {
-        return on_path("flatpak-spawn").map(|p| (p, &["--host", "flatpak"][..]));
+        return on_path("flatpak-spawn").filter(|_| may_use_host_flatpak()).map(|p| (p, &["--host", "flatpak"][..]));
     }
     on_path("flatpak").map(|p| (p, &[][..]))
 }
@@ -95,6 +120,29 @@ pub fn bundle_in(dir: &Path) -> Option<(PathBuf, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_flatpak_permission() {
+        let info = "[Application]
+name=a.b.C
+
+[Session Bus Policy]
+org.freedesktop.Flatpak=talk
+org.kde.StatusNotifierWatcher=talk
+";
+        assert!(talks_to_flatpak(info));
+        assert!(!talks_to_flatpak("[Session Bus Policy]
+org.kde.StatusNotifierWatcher=talk
+"));
+        assert!(!talks_to_flatpak("[Session Bus Policy]
+org.freedesktop.Flatpak=none
+"));
+        // Only the session bus rules count.
+        assert!(!talks_to_flatpak("[System Bus Policy]
+org.freedesktop.Flatpak=talk
+"));
+        assert!(!talks_to_flatpak(""));
+    }
 
     #[test]
     fn the_app_in_a_bundle() {
