@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Version tag to build (it must already exist)
+        description: Version tag to build (made from this branch's latest commit if it doesn't exist yet)
         required: true
 
 permissions:
@@ -22,7 +22,30 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
+  # Run from the Actions page with a tag that isn't there yet: the tag is made here, on the commit
+  # it was run on. (A tag pushed with this token doesn't start another run.)
+  tag:
+    name: Tag
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+      - name: Make the tag if it's missing
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          case "$TAG" in v[0-9]*) ;; *) echo "Not a version tag: $TAG" >&2; exit 1;; esac
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists."
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+            echo "Made $TAG on $GITHUB_SHA."
+          fi
+
   build:
+    needs: tag
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
