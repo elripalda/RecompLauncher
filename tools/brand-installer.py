@@ -10,7 +10,8 @@ uninstaller, WebView2, shortcuts, updates from the launcher) is still Tauri's.""
 import glob, json, os, re, shutil, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TAURI = os.path.join(ROOT, 'src-tauri')
-target = sys.argv[1] if len(sys.argv) > 1 else os.path.join(TAURI, 'target', 'x86_64-pc-windows-gnu', 'release')
+# Absolute, since makensis runs from the installer's own folder.
+target = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(TAURI, 'target', 'x86_64-pc-windows-gnu', 'release'))
 nsis = os.path.join(target, 'nsis', 'x64')
 src = os.path.join(nsis, 'installer.nsi')
 s = open(src, encoding='utf-8-sig').read()
