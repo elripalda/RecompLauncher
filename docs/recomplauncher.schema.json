@@ -187,7 +187,7 @@
             "nup_build_id": {
               "type": "string",
               "pattern": "^[0-9A-Fa-f]{8,64}$",
-              "description": "The build ID of a Nintendo Switch 2 .nup package (hex, 8 to 64 digits; a prefix such as the first 8 is fine), read from the exefs/main of its newest title. A folder with exefs/main is checked the same way. Judged by the file's content, never its name. Needs no keys."
+              "description": "The build ID of a Nintendo Switch or Switch 2 .nup package (hex, 8 to 64 digits; a prefix such as the first 8 is fine), read from the exefs/main of its newest title. A folder with exefs/main is checked the same way. Judged by the file's content, never its name. Needs no keys."
             },
             "ids": {
               "type": "array",
