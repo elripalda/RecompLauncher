@@ -16,11 +16,22 @@ const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), {
 const avatar = (u, size = 28) => (u && u.avatar ? `<img class="acc-pic" src="${esc(u.avatar)}" alt="" width="${size}" height="${size}">` : `<span class="acc-pic none" style="width:${size}px;height:${size}px">${esc(((u && u.username) || '?').slice(0, 1).toUpperCase())}</span>`);
 const inTV = () => document.body.classList.contains('tv-on');
 
+// A completed refresh must not replace a newer account event or refresh.
+let accountRequest = 0;
+const accountIdentity = (a) => a && a.signedIn ? (a.user && a.user.uid ? `uid:${a.user.uid}` : `name:${(a.user && a.user.username) || ''}`) : null;
 async function loadAccount(fresh) {
-  const was = !!(S.account && S.account.signedIn);
-  try { S.account = await invoke('account_state', { fresh: !!fresh }); } catch (e) { S.account = S.account || { signedIn: false }; }
-  // Signed in (or out) just now: what each game's Saves tab knew is out of date.
-  if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; }
+  const request = ++accountRequest;
+  const was = accountIdentity(S.account);
+  try {
+    const account = await invoke('account_state', { fresh: !!fresh });
+    if (request !== accountRequest) return;
+    S.account = account;
+  } catch (e) {
+    if (request !== accountRequest) return;
+    S.account = S.account || { signedIn: false };
+  }
+  // Signed in, signed out, or switched accounts: cached saves and reports belong to that account.
+  if (was !== accountIdentity(S.account)) { S.saves = {}; S.savesAll = null; S.myReports = null; }
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
   // Notify Me: the games they're waiting on (none when signed out).
@@ -118,12 +129,10 @@ async function signIn(create) {
 }
 
 async function signOut() {
-  try { await invoke('account_signout'); } catch (e) { /* signed out here anyway */ }
-  S.account = { signedIn: false };
-  S.saves = {};
-  toast(t('Signed out. Your saves stay on this PC.'));
-  renderAccountBits();
-  if (window.afterSignIn) window.afterSignIn();
+  ++accountRequest;
+  try { await invoke('account_signout'); } catch (e) { /* Refresh the local state below. */ }
+  await loadAccount(false);
+  if (!S.account.signedIn) toast(t('Signed out. Your saves stay on this PC.'));
 }
 
 // ---------- Settings > Account ----------
@@ -433,7 +442,7 @@ window.accountAct = async (act, el) => {
   return null;
 };
 
-T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
+T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { ++accountRequest; S.account = { signedIn: false }; S.saves = {}; renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
 T.event.listen('saves', ({ payload }) => { if (S.view === 'saves') loadSavesAll(); if (payload && payload.id) { delete S.saves[payload.id]; if (S.view === 'game' && S.arg === payload.id && S.tab === 'saves') loadSaves(payload.id); } });
 
 // Who's signed in: what's remembered first, then the website's answer.

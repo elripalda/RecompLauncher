@@ -50,6 +50,82 @@ struct Account {
     user: User,
 }
 
+/// Serializes account snapshots and response mutations, including the sign-in being approved.
+/// Always take this lock before account persistence; never keep it across a network await.
+/// The storage helpers stay independent so their legacy-token migration can call store().
+static SESSION: Mutex<Session> = Mutex::new(Session { link: None, link_generation: 0 });
+
+#[derive(Default)]
+struct Session {
+    link: Option<String>,
+    link_generation: u64,
+}
+
+impl Session {
+    fn begin_link(&mut self) -> u64 {
+        self.cancel_link();
+        self.link_generation
+    }
+
+    fn cancel_link(&mut self) {
+        self.link = None;
+        self.link_generation = self.link_generation.wrapping_add(1);
+    }
+
+    fn finish_link_start(&mut self, generation: u64, poll: String) -> bool {
+        if generation != self.link_generation {
+            return false;
+        }
+        self.link = Some(poll);
+        true
+    }
+
+    fn finish_poll(&mut self, dir: &Path, poll: &str, status: &str, account: Option<&Account>) -> bool {
+        if self.link.as_deref() != Some(poll) {
+            return false;
+        }
+        if let Some(account) = account {
+            store(dir, Some(account));
+        }
+        if status != "pending" {
+            self.link = None;
+        }
+        true
+    }
+
+    fn forget(&mut self, dir: &Path, request_token: Option<&str>) -> bool {
+        let Some(request_token) = request_token else { return false };
+        if load(dir).as_ref().map(|a| a.token.as_str()) != Some(request_token) {
+            return false;
+        }
+        store(dir, None);
+        true
+    }
+
+    fn refresh(&mut self, dir: &Path, a: Account, response: Res<Value>) -> Res<Value> {
+        let current = load(dir);
+        if current.as_ref().map(|a| a.token.as_str()) != Some(a.token.as_str()) {
+            return Ok(match current {
+                Some(a) => json!({"signedIn": true, "user": a.user}),
+                None => json!({"signedIn": false}),
+            });
+        }
+        let why = match &response {
+            Err(e) => e.to_string(),
+            Ok(_) => String::new(),
+        };
+        match response {
+            Ok(v) => {
+                let user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
+                store(dir, Some(&Account { token: a.token, user: user.clone(), ..Default::default() }));
+                Ok(json!({"signedIn": true, "user": user, "used": v.pointer("/saves/used"), "quota": v.pointer("/saves/quota")}))
+            }
+            Err(Error::Net(_)) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
+            Err(_) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
+        }
+    }
+}
+
 fn file(dir: &Path) -> PathBuf {
     dir.join("account.json")
 }
@@ -65,9 +141,14 @@ fn load(dir: &Path) -> Option<Account> {
     Some(a).filter(|a| !a.token.is_empty())
 }
 
+fn current_account(dir: &Path) -> Option<Account> {
+    let _session = SESSION.lock().unwrap();
+    load(dir)
+}
+
 /// This PC's sign-in token, when signed in.
 pub fn token(dir: &Path) -> Option<String> {
-    load(dir).map(|a| a.token)
+    current_account(dir).map(|a| a.token)
 }
 
 fn store(dir: &Path, a: Option<&Account>) {
@@ -90,14 +171,16 @@ fn store(dir: &Path, a: Option<&Account>) {
 }
 
 pub fn signed_in(dir: &Path) -> bool {
-    load(dir).is_some()
+    current_account(dir).is_some()
 }
 
 /// The website said this PC's token is no good any more (signed out from the website).
-fn forget(app: &AppHandle) {
+fn forget(app: &AppHandle, request_token: Option<&str>) {
     let st = app.state::<App>();
-    store(&st.dir, None);
-    let _ = app.emit("account", json!({"signedIn": false}));
+    let mut session = SESSION.lock().unwrap();
+    if session.forget(&st.dir, request_token) {
+        let _ = app.emit("account", json!({"signedIn": false}));
+    }
 }
 
 /// Cloud saves paused on the site (it answered 423), or not reachable for them (403, a block in
@@ -111,7 +194,7 @@ const PAUSED_TEXT: &str = "Cloud saves are paused for now. Your saves on this PC
 /// Larger than this, a copy isn't sent (the site and what's in front of it refuse bigger ones).
 const MAX_UPLOAD: usize = 95 * 1024 * 1024;
 
-async fn answer(app: &AppHandle, r: reqwest::Response) -> Res<Value> {
+async fn answer(app: &AppHandle, r: reqwest::Response, request_token: Option<&str>) -> Res<Value> {
     let code = r.status().as_u16();
     let action = r.url().query_pairs().find(|(k, _)| k == "a").map(|(_, v)| v.to_string()).unwrap_or_default();
     let cloud = matches!(action.as_str(), "saves" | "save-get" | "save-put" | "save-delete");
@@ -127,7 +210,7 @@ async fn answer(app: &AppHandle, r: reqwest::Response) -> Res<Value> {
         return Err(Error::Msg(said.unwrap_or_else(|| "Cloud saves aren't available right now. Your saves on this PC are safe.".into())));
     }
     if code == 401 {
-        forget(app);
+        forget(app, request_token);
         return Err(Error::Msg("You were signed out. Sign in again to use cloud saves.".into()));
     }
     // The site having trouble (blocked, busy, down): the same as no connection, so it's quiet.
@@ -151,28 +234,33 @@ fn net(e: reqwest::Error) -> Error {
 }
 
 async fn get(app: &AppHandle, q: &[(&str, &str)]) -> Res<Value> {
+    let a = current_account(&app.state::<App>().dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    get_with_token(app, q, &a.token).await
+}
+
+async fn get_with_token(app: &AppHandle, q: &[(&str, &str)], token: &str) -> Res<Value> {
     let st = app.state::<App>();
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let url = api();
-    let r = crate::net::send(st.http.get(&url).query(q).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str()).timeout(crate::net::QUICK), &url, true).await?;
-    answer(app, r).await
+    let r = crate::net::send(st.http.get(&url).query(q).bearer_auth(token).header("X-RL-Token", token).timeout(crate::net::QUICK), &url, true).await?;
+    answer(app, r, Some(token)).await
 }
 
 async fn post(app: &AppHandle, a_: &str, body: Value, token: bool) -> Res<Value> {
+    let a = if token { Some(current_account(&app.state::<App>().dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?) } else { None };
+    post_with_token(app, a_, body, a.as_ref().map(|a| a.token.as_str())).await
+}
+
+async fn post_with_token(app: &AppHandle, a_: &str, body: Value, token: Option<&str>) -> Res<Value> {
     let st = app.state::<App>();
     let url = api();
     let mut req = st.http.post(&url).query(&[("a", a_)]).json(&body).timeout(crate::net::QUICK);
-    if token {
-        let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-        req = req.bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    if let Some(token) = token {
+        req = req.bearer_auth(token).header("X-RL-Token", token);
     }
-    answer(app, crate::net::send(req, &url, true).await?).await
+    answer(app, crate::net::send(req, &url, true).await?, token).await
 }
 
 // ---------- signing in ----------
-
-/// The sign-in that's waiting for the player to approve it on the website.
-static LINK: Mutex<Option<String>> = Mutex::new(None);
 
 #[derive(Serialize)]
 pub struct LinkStart {
@@ -199,13 +287,16 @@ fn qr_svg(text: &str) -> String {
 /// A code for this PC. `create`: the website shows "make an account" first.
 #[tauri::command]
 pub async fn account_start(app: AppHandle, create: bool) -> Res<LinkStart> {
+    let generation = SESSION.lock().unwrap().begin_link();
     let v = post(&app, "link-start", json!({"device": saves::device_name(), "os": std::env::consts::OS, "version": env!("CARGO_PKG_VERSION")}), false).await?;
     let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let (code, poll) = (s("code"), s("poll"));
     if code.is_empty() || poll.is_empty() {
         return Err(Error::Msg("The website didn't answer properly. Try again in a moment.".into()));
     }
-    *LINK.lock().unwrap() = Some(poll);
+    if !SESSION.lock().unwrap().finish_link_start(generation, poll) {
+        return Err(Error::Msg("That sign-in was cancelled. Try again.".into()));
+    }
     let mut url = s("url");
     if create {
         url.push_str(if url.contains('?') { "&new=1" } else { "?new=1" });
@@ -222,7 +313,7 @@ pub async fn account_start(app: AppHandle, create: bool) -> Res<LinkStart> {
 /// Has the player approved it yet? "pending", "ok", "expired" or "denied".
 #[tauri::command]
 pub async fn account_poll(app: AppHandle) -> Res<Value> {
-    let Some(poll) = LINK.lock().unwrap().clone() else { return Ok(json!({"status": "expired"})) };
+    let Some(poll) = SESSION.lock().unwrap().link.clone() else { return Ok(json!({"status": "expired"})) };
     let v = post(&app, "link-poll", json!({"poll": poll}), false).await?;
     let status = v.get("status").and_then(Value::as_str).unwrap_or("pending").to_string();
     if status == "ok" {
@@ -232,55 +323,53 @@ pub async fn account_poll(app: AppHandle) -> Res<Value> {
             return Err(Error::Msg("The website didn't answer properly. Try again in a moment.".into()));
         }
         let st = app.state::<App>();
-        store(&st.dir, Some(&Account { token, user: user.clone(), ..Default::default() }));
-        *LINK.lock().unwrap() = None;
-        let _ = app.emit("account", json!({"signedIn": true, "user": user}));
+        {
+            let mut session = SESSION.lock().unwrap();
+            if !session.finish_poll(&st.dir, &poll, &status, Some(&Account { token, user: user.clone(), ..Default::default() })) {
+                return Ok(json!({"status": "expired"}));
+            }
+            let _ = app.emit("account", json!({"signedIn": true, "user": user}));
+        }
         // Anything that was waiting to go up.
         let app2 = app.clone();
         tauri::async_runtime::spawn(async move { upload_pending(&app2).await });
         return Ok(json!({"status": "ok", "user": user}));
     }
-    if status != "pending" {
-        *LINK.lock().unwrap() = None;
+    if !SESSION.lock().unwrap().finish_poll(&app.state::<App>().dir, &poll, &status, None) {
+        return Ok(json!({"status": "expired"}));
     }
     Ok(json!({"status": status}))
 }
 
 #[tauri::command(async)]
 pub fn account_cancel() {
-    *LINK.lock().unwrap() = None;
+    SESSION.lock().unwrap().cancel_link();
 }
 
 /// Who's signed in, and how much of their cloud space is used (asked of the website when it can be).
 #[tauri::command]
 pub async fn account_state(app: AppHandle, fresh: bool) -> Res<Value> {
     let st = app.state::<App>();
-    let Some(a) = load(&st.dir) else { return Ok(json!({"signedIn": false})) };
+    let Some(a) = current_account(&st.dir) else { return Ok(json!({"signedIn": false})) };
     if !fresh {
         return Ok(json!({"signedIn": true, "user": a.user}));
     }
     // No answer: the account shows as offline, and the site is asked again later (see net.rs).
-    let r = get(&app, &[("a", "me")]).await;
-    let why = match &r {
-        Err(e) => e.to_string(),
-        Ok(_) => String::new(),
-    };
-    match r {
-        Ok(v) => {
-            let user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
-            store(&st.dir, Some(&Account { token: a.token, user: user.clone(), ..Default::default() }));
-            Ok(json!({"signedIn": true, "user": user, "used": v.pointer("/saves/used"), "quota": v.pointer("/saves/quota")}))
-        }
-        Err(Error::Net(_)) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
-        Err(e) if !signed_in(&st.dir) => Err(e),
-        Err(_) => Ok(json!({"signedIn": true, "user": a.user, "offline": true, "why": why})),
-    }
+    let r = get_with_token(&app, &[("a", "me")], &a.token).await;
+    SESSION.lock().unwrap().refresh(&st.dir, a, r)
 }
 
 #[tauri::command]
 pub async fn account_signout(app: AppHandle) -> Res<()> {
-    let _ = post(&app, "signout", json!({}), true).await;
-    forget(&app);
+    let account = {
+        let mut session = SESSION.lock().unwrap();
+        session.cancel_link();
+        load(&app.state::<App>().dir)
+    };
+    if let Some(a) = account {
+        let _ = post_with_token(&app, "signout", json!({}), Some(&a.token)).await;
+        forget(&app, Some(&a.token));
+    }
     Ok(())
 }
 
@@ -356,7 +445,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         crate::trail::note(format!("Cloud saves: {id}'s copy is {} MB, too big to send", body.len() / (1024 * 1024)));
         return Err(Error::Msg("This save is too big for cloud saves (over 95 MB). It's kept on this PC.".into()));
     }
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    let a = current_account(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let (made, played) = (man.made.to_string(), man.played.to_string());
     let url = api();
     let req = st
@@ -368,7 +457,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         .body(body)
         .timeout(std::time::Duration::from_secs(300));
     let r = crate::net::send(req, &url, true).await?;
-    answer(app, r).await?;
+    answer(app, r, Some(&a.token)).await?;
     let mut s = saves::state(&st.dir, id);
     s.synced_hash = man.hash;
     // The copy waiting is this one or an older one: what's in the cloud now is newer, so it
@@ -480,7 +569,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
 async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let st = app.state::<App>();
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    let a = current_account(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let url = api();
     let req = st
         .http
@@ -490,7 +579,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         .timeout(std::time::Duration::from_secs(300));
     let r = crate::net::send(req, &url, true).await?;
     if r.status().as_u16() != 200 {
-        answer(app, r).await?;
+        answer(app, r, Some(&a.token)).await?;
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
@@ -952,4 +1041,151 @@ pub async fn beta_join(app: AppHandle, id: i64) -> Res<Value> {
 #[tauri::command]
 pub async fn beta_leave(app: AppHandle, id: i64) -> Res<Value> {
     post(&app, "beta-leave", json!({"id": id}), true).await
+}
+
+// The real persistence fixture is deliberately excluded on Windows: secret::seal/forget use
+// the player's shared Credential Manager entry there, even with a temporary account.json.
+#[cfg(all(test, not(windows)))]
+mod session_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct Fixture {
+        dir: PathBuf,
+        session: Session,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let dir = std::env::temp_dir().join(format!("rl-account-order-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self { dir, session: Session::default() }
+        }
+
+        fn sign_in(&mut self, name: &str) -> Account {
+            let account = Account { token: format!("dummy-{name}"), user: User { username: name.into(), ..Default::default() }, ..Default::default() };
+            let generation = self.session.begin_link();
+            assert!(self.session.finish_link_start(generation, format!("poll-{name}")));
+            assert!(self.session.finish_poll(&self.dir, &format!("poll-{name}"), "ok", Some(&account)));
+            account
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn refreshed() -> Res<Value> {
+        Ok(json!({"account": {"username": "updated A"}, "saves": {"used": 12, "quota": 150}}))
+    }
+
+    #[test]
+    fn refresh_finishing_after_signout_cannot_restore_account() {
+        let mut f = Fixture::new();
+        let request = f.sign_in("A");
+        assert!(f.session.forget(&f.dir, Some(&request.token)));
+        let shown = f.session.refresh(&f.dir, request, refreshed()).unwrap();
+        assert_eq!(shown["signedIn"], false);
+        assert!(load(&f.dir).is_none());
+    }
+
+    #[test]
+    fn refresh_finishing_after_new_login_preserves_new_account_and_quota() {
+        let mut f = Fixture::new();
+        let request = f.sign_in("A");
+        f.sign_in("B");
+        let shown = f.session.refresh(&f.dir, request, refreshed()).unwrap();
+        assert_eq!(load(&f.dir).unwrap().token, "dummy-B");
+        assert_eq!(shown["user"]["username"], "B");
+        assert!(shown.get("used").is_none());
+    }
+
+    #[test]
+    fn delayed_unauthorized_or_signout_cannot_remove_new_login() {
+        let mut f = Fixture::new();
+        let request = f.sign_in("A");
+        f.sign_in("B");
+        assert!(!f.session.forget(&f.dir, Some(&request.token)));
+        assert_eq!(load(&f.dir).unwrap().token, "dummy-B");
+    }
+
+    #[test]
+    fn unauthenticated_error_cannot_remove_signed_in_account() {
+        let mut f = Fixture::new();
+        f.sign_in("B");
+        assert!(!f.session.forget(&f.dir, None));
+        assert_eq!(load(&f.dir).unwrap().token, "dummy-B");
+    }
+
+    #[test]
+    fn offline_refresh_finishing_after_session_change_shows_current_state() {
+        let mut f = Fixture::new();
+        let request = f.sign_in("A");
+        f.session.forget(&f.dir, Some(&request.token));
+        let shown = f.session.refresh(&f.dir, request.clone(), Err(Error::Net("offline".into()))).unwrap();
+        assert_eq!(shown["signedIn"], false);
+        f.sign_in("B");
+        let shown = f.session.refresh(&f.dir, request, Err(Error::Msg("old request failed".into()))).unwrap();
+        assert_eq!(shown["user"]["username"], "B");
+        assert!(shown.get("offline").is_none());
+    }
+
+    #[test]
+    fn current_refresh_and_invalidation_still_work() {
+        let mut f = Fixture::new();
+        let request = f.sign_in("A");
+        let shown = f.session.refresh(&f.dir, request.clone(), refreshed()).unwrap();
+        assert_eq!(shown["user"]["username"], "updated A");
+        assert_eq!(shown["used"], 12);
+        assert_eq!(shown["quota"], 150);
+        assert_eq!(load(&f.dir).unwrap().token, "dummy-A");
+        assert!(f.session.forget(&f.dir, Some(&request.token)));
+        assert!(load(&f.dir).is_none());
+        assert!(!f.session.forget(&f.dir, Some(&request.token)));
+    }
+
+    #[test]
+    fn cancelled_poll_cannot_sign_in() {
+        let mut f = Fixture::new();
+        let generation = f.session.begin_link();
+        f.session.finish_link_start(generation, "old-poll".into());
+        f.session.cancel_link();
+        let account = Account { token: "dummy-A".into(), ..Default::default() };
+        assert!(!f.session.finish_poll(&f.dir, "old-poll", "ok", Some(&account)));
+        assert!(load(&f.dir).is_none());
+    }
+
+    #[test]
+    fn replaced_poll_cannot_sign_in_or_clear_new_attempt() {
+        let mut f = Fixture::new();
+        let generation = f.session.begin_link();
+        f.session.finish_link_start(generation, "new-poll".into());
+        let account = Account { token: "dummy-A".into(), ..Default::default() };
+        for status in ["ok", "denied", "expired", "pending"] {
+            assert!(!f.session.finish_poll(&f.dir, "old-poll", status, (status == "ok").then_some(&account)));
+            assert_eq!(f.session.link.as_deref(), Some("new-poll"));
+            assert!(load(&f.dir).is_none());
+        }
+        assert!(f.session.finish_poll(&f.dir, "new-poll", "pending", None));
+        assert_eq!(f.session.link.as_deref(), Some("new-poll"));
+        assert!(f.session.finish_poll(&f.dir, "new-poll", "ok", Some(&account)));
+        assert!(f.session.link.is_none());
+        assert!(!f.session.finish_poll(&f.dir, "new-poll", "ok", Some(&account)));
+    }
+
+    #[test]
+    fn delayed_link_start_cannot_revive_cancelled_or_newer_attempt() {
+        let mut session = Session::default();
+        let old = session.begin_link();
+        session.cancel_link();
+        assert!(!session.finish_link_start(old, "cancelled".into()));
+        assert!(session.link.is_none());
+        let current = session.begin_link();
+        assert!(session.finish_link_start(current, "new-poll".into()));
+        assert!(!session.finish_link_start(old, "old-poll".into()));
+        assert_eq!(session.link.as_deref(), Some("new-poll"));
+    }
 }
