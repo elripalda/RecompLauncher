@@ -456,40 +456,87 @@ pub fn dir_of(app_dir: &Path, id: &str) -> PathBuf {
     root(app_dir).join(id)
 }
 
-/// The copies moved from one folder to another, each file checked by its size before the old one
-/// goes. Nothing is deleted when a file doesn't arrive whole: what's left behind stays where it was.
+/// Move completed backup archives only after every destination has been verified by checksum.
+/// Conflicting names never overwrite history, and a failed copy leaves all originals in place.
 pub fn move_copies(from: &Path, to: &Path) -> io::Result<usize> {
     fs::create_dir_all(to)?;
-    let mut moved = 0;
-    for game in fs::read_dir(from).into_iter().flatten().flatten() {
-        let src = game.path();
-        if !src.is_dir() {
+    let (from, to) = (fs::canonicalize(from)?, fs::canonicalize(to)?);
+    if from == to {
+        return Ok(0);
+    }
+    if to.starts_with(&from) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Pick a backup folder outside the current backup folder."));
+    }
+    let mut verified = Vec::new();
+    let mut games = Vec::new();
+    for game in fs::read_dir(&from)? {
+        let game = game?;
+        if !game.file_type()?.is_dir() {
             continue;
         }
+        let src = game.path();
         let dst = to.join(game.file_name());
-        fs::create_dir_all(&dst)?;
-        let mut whole = true;
-        for f in fs::read_dir(&src)?.flatten() {
-            let (a, b) = (f.path(), dst.join(f.file_name()));
-            if !a.is_file() || f.file_name() == "state.json" {
+        let before = verified.len();
+        for f in fs::read_dir(&src)? {
+            let f = f?;
+            let name = f.file_name();
+            // state.json belongs to this PC; .part files may still be written by a backup.
+            // Only the timestamp-named ZIPs returned by list() are completed save copies.
+            if !f.file_type()?.is_file() || name.to_str().and_then(|n| n.strip_suffix(".zip")).and_then(|n| n.parse::<u64>().ok()).is_none() {
                 continue;
             }
-            let len = a.metadata()?.len();
-            if !b.exists() || b.metadata().map(|m| m.len()).unwrap_or(0) != len {
-                fs::copy(&a, &b)?;
+            fs::create_dir_all(&dst)?;
+            if fs::symlink_metadata(&dst)?.file_type().is_symlink() {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "A game's destination folder is a link. Pick another backup folder."));
             }
-            if b.metadata().map(|m| m.len()).unwrap_or(u64::MAX) == len {
-                let _ = fs::remove_file(&a);
-            } else {
-                whole = false;
+            let (a, b) = (f.path(), dst.join(name));
+            let hash = sha_file(&a)?;
+            match fs::symlink_metadata(&b) {
+                Ok(m) => {
+                    if !m.is_file() || sha_file(&b)? != hash {
+                        return Err(io::Error::new(io::ErrorKind::AlreadyExists, format!("{} already contains a different backup. Both copies were kept; pick another backup folder.", b.display())));
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    // create_new also prevents a copy from replacing a file created since the check.
+                    let mut out = fs::OpenOptions::new().write(true).create_new(true).open(&b)?;
+                    let copied = (|| -> io::Result<()> {
+                        out.set_permissions(fs::metadata(&a)?.permissions())?;
+                        io::copy(&mut fs::File::open(&a)?, &mut out)?;
+                        out.sync_all()?;
+                        if sha_file(&b)? != hash {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData, "The copied backup didn't match its original."));
+                        }
+                        Ok(())
+                    })();
+                    drop(out);
+                    if let Err(e) = copied {
+                        let _ = fs::remove_file(&b);
+                        return Err(e);
+                    }
+                }
+                Err(e) => return Err(e),
             }
+            verified.push((a, b, hash));
         }
-        if whole {
-            let _ = fs::remove_dir(&src);
-            moved += 1;
+        if verified.len() > before {
+            games.push(src);
         }
     }
-    Ok(moved)
+    // A later conflict or write failure must not leave an earlier original missing. Check the
+    // entire batch again before deleting anything, including sources a sync tool may have changed.
+    for (a, b, hash) in &verified {
+        if sha_file(a)? != *hash || sha_file(b)? != *hash {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "A backup changed during the move. The originals were kept; try again."));
+        }
+    }
+    for (a, _, _) in verified {
+        fs::remove_file(a)?;
+    }
+    for src in &games {
+        let _ = fs::remove_dir(src);
+    }
+    Ok(games.len())
 }
 
 /// What the launcher remembers about a game's saves and its cloud copies.
@@ -1017,6 +1064,108 @@ mod tests {
         assert!(!inst.join("save/slot2.sav").exists());
         let (_, _, now) = current(&s, &g);
         assert_eq!(now, a.hash);
+    }
+
+    #[test]
+    fn moving_copies_preserves_conflicting_backups() {
+        for (suffix, previous) in [("same-size", b"other save".as_slice()), ("different-size", b"older save with more bytes".as_slice())] {
+            let d = tmp(&format!("move-conflict-{suffix}"));
+            let (from, to) = (d.join("from"), d.join("to"));
+            fs::create_dir_all(from.join("g")).unwrap();
+            fs::create_dir_all(to.join("g")).unwrap();
+            fs::write(from.join("g/123.zip"), b"first save").unwrap();
+            fs::write(from.join("g/124.zip"), b"another backup").unwrap();
+            fs::write(to.join("g/123.zip"), previous).unwrap();
+            assert!(move_copies(&from, &to).is_err(), "a different backup must not be replaced or mistaken for a duplicate");
+            assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"first save");
+            assert_eq!(fs::read(from.join("g/124.zip")).unwrap(), b"another backup");
+            assert_eq!(fs::read(to.join("g/123.zip")).unwrap(), previous);
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    #[test]
+    fn moving_copies_reuses_identical_backups_and_keeps_local_state() {
+        let d = tmp("move-identical");
+        let (from, to) = (d.join("from"), d.join("to"));
+        fs::create_dir_all(from.join("g")).unwrap();
+        fs::create_dir_all(to.join("g")).unwrap();
+        fs::write(from.join("g/123.zip"), b"same backup").unwrap();
+        fs::write(to.join("g/123.zip"), b"same backup").unwrap();
+        fs::write(from.join("g/124.zip"), b"new backup").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(from.join("g/124.zip"), fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        fs::write(from.join("g/state.json"), b"local notes").unwrap();
+        fs::write(from.join("g/125.part"), b"still being written").unwrap();
+        assert_eq!(move_copies(&from, &to).unwrap(), 1);
+        assert!(!from.join("g/123.zip").exists());
+        assert!(!from.join("g/124.zip").exists());
+        assert_eq!(fs::read(to.join("g/123.zip")).unwrap(), b"same backup");
+        assert_eq!(fs::read(to.join("g/124.zip")).unwrap(), b"new backup");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(to.join("g/124.zip")).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        assert_eq!(fs::read(from.join("g/state.json")).unwrap(), b"local notes");
+        assert_eq!(fs::read(from.join("g/125.part")).unwrap(), b"still being written");
+        assert!(!to.join("g/state.json").exists());
+        assert!(!to.join("g/125.part").exists());
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn moving_copies_keeps_sources_when_the_destination_fails() {
+        let d = tmp("move-failed");
+        let (from, to) = (d.join("from"), d.join("to"));
+        fs::create_dir_all(from.join("g")).unwrap();
+        fs::create_dir_all(to.join("g/124.zip")).unwrap();
+        fs::write(from.join("g/123.zip"), b"first backup").unwrap();
+        fs::write(from.join("g/124.zip"), b"second backup").unwrap();
+        assert!(move_copies(&from, &to).is_err());
+        assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"first backup");
+        assert_eq!(fs::read(from.join("g/124.zip")).unwrap(), b"second backup");
+        assert!(to.join("g/124.zip").is_dir());
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn moving_copies_into_the_same_folder_keeps_every_backup() {
+        let d = tmp("move-same");
+        fs::create_dir_all(d.join("g")).unwrap();
+        fs::write(d.join("g/123.zip"), b"our only backup").unwrap();
+        assert_eq!(move_copies(&d, &d.join(".")).unwrap(), 0);
+        assert_eq!(fs::read(d.join("g/123.zip")).unwrap(), b"our only backup");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn moving_copies_rejects_a_nested_destination() {
+        let d = tmp("move-nested");
+        fs::create_dir_all(d.join("g")).unwrap();
+        fs::write(d.join("g/123.zip"), b"original backup").unwrap();
+        assert!(move_copies(&d, &d.join("nested")).is_err());
+        assert_eq!(fs::read(d.join("g/123.zip")).unwrap(), b"original backup");
+        assert!(!d.join("nested/g/123.zip").exists());
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn moving_copies_rejects_a_destination_game_folder_link() {
+        let d = tmp("move-linked-game");
+        let (from, to) = (d.join("from"), d.join("to"));
+        fs::create_dir_all(from.join("g")).unwrap();
+        fs::create_dir_all(&to).unwrap();
+        fs::write(from.join("g/123.zip"), b"original backup").unwrap();
+        std::os::unix::fs::symlink(from.join("g"), to.join("g")).unwrap();
+        assert!(move_copies(&from, &to).is_err());
+        assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"original backup");
+        assert!(fs::symlink_metadata(to.join("g")).unwrap().file_type().is_symlink());
+        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
