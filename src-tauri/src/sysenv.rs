@@ -264,18 +264,73 @@ pub fn steam_only(list: &str, keep: &[&str]) -> String {
     list.split([' ', ':']).filter(|e| !e.is_empty() && keep.iter().any(|d| e.contains(d))).collect::<Vec<_>>().join(" ")
 }
 
-/// A game started from a Steam shortcut gets Steam's overlay back (the launcher itself runs without
-/// it): its preload, and its Vulkan layer switched on. Nothing changes for a launcher Steam didn't
-/// start.
-#[cfg(target_os = "linux")]
-pub fn steam_overlay_for_game(c: &mut tokio::process::Command) {
-    let Some(overlay) = std::env::var("RL_STEAM_OVERLAY").ok().filter(|o| !o.trim().is_empty()) else { return };
+/// Only Steam's launch identity and saved overlay cross the single-instance handoff. Library
+/// paths, preload lists and unrelated variables still come from the receiving launcher's cleanup.
+pub type SteamLaunch = std::collections::BTreeMap<String, String>;
+const STEAM_VARS: [&str; 8] = [
+    "RL_STEAM_OVERLAY", "SteamAppId", "SteamGameId", "SteamOverlayGameId", "SteamClientLaunch",
+    "SteamEnv", "STEAM_COMPAT_CLIENT_INSTALL_PATH", "ENABLE_VK_LAYER_VALVE_steam_overlay_1",
+];
+const STEAM_ARG: &str = "--steam-launch=";
+
+fn steam_launch_from(get: &dyn Fn(&str) -> Option<String>) -> Option<SteamLaunch> {
+    let launch: SteamLaunch = STEAM_VARS.iter().filter_map(|k| {
+        get(k).filter(|v| !v.is_empty() && !v.contains('\0')).map(|v| (k.to_string(), v))
+    }).collect();
+    // A graphics override alone doesn't make this a Steam shortcut.
+    STEAM_VARS[..6].iter().any(|k| launch.contains_key(*k)).then_some(launch)
+}
+
+pub fn steam_launch_from_args(args: &[String]) -> Option<SteamLaunch> {
+    if !args.iter().any(|a| a == "--handoff") {
+        return None;
+    }
+    let payload = args.iter().find_map(|a| a.strip_prefix(STEAM_ARG))?;
+    if payload.len() > 32768 {
+        return None;
+    }
+    let values: SteamLaunch = serde_json::from_str(payload).ok()?;
+    steam_launch_from(&|k| values.get(k).cloned())
+}
+
+/// The copy making a Steam shortcut hands its environment to the existing launcher as well as
+/// its game ID. The receiving process may have been opened from the desktop, outside Steam.
+pub fn play_handoff_args(args: &[String], get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+    let mut rest: Vec<String> = args.iter().skip(1).filter(|a| !a.starts_with(STEAM_ARG)).cloned().collect();
+    rest.push("--handoff".into());
+    if let Some(payload) = steam_launch_from(get).and_then(|s| serde_json::to_string(&s).ok()).filter(|s| s.len() <= 32768) {
+        rest.push(format!("{STEAM_ARG}{payload}"));
+    }
+    rest
+}
+
+/// A game started from a Steam shortcut gets Steam's identity and overlay back (the launcher
+/// itself runs without the overlay). A handed-off context applies to this child only.
+#[cfg(any(target_os = "linux", all(test, unix)))]
+pub fn steam_overlay_for_game(c: &mut tokio::process::Command, launch: Option<&SteamLaunch>) {
+    if let Some(launch) = launch {
+        for k in &STEAM_VARS[1..] {
+            match launch.get(*k) {
+                Some(v) => c.env(k, v),
+                None => c.env_remove(k),
+            };
+        }
+    }
+    let inherited = || std::env::var("RL_STEAM_OVERLAY").ok();
+    let Some(overlay) = launch.map(|s| s.get("RL_STEAM_OVERLAY").cloned()).unwrap_or_else(inherited).filter(|o| !o.trim().is_empty()) else { return };
     // Only the overlay's own files, and only ones that are there.
-    let ok: Vec<&str> = overlay.split(' ').filter(|e| e.ends_with("gameoverlayrenderer.so") && !e.contains("..") && std::path::Path::new(e).is_file()).collect();
+    let ok: Vec<&str> = overlay.split(' ').filter(|e| {
+        let p = std::path::Path::new(e);
+        p.is_absolute() && p.file_name().is_some_and(|n| n == "gameoverlayrenderer.so") && !e.contains("..") && p.is_file()
+    }).collect();
     if ok.is_empty() {
         return;
     }
-    let cur = std::env::var("LD_PRELOAD").unwrap_or_default();
+    // Respect the command's cleaned preload list, including an explicit removal. Reading the
+    // launcher's original value here would put AppImage libraries back into the game.
+    let cur = c.as_std().get_envs().find(|(k, _)| *k == "LD_PRELOAD")
+        .map(|(_, v)| v.map(|s| s.to_string_lossy().into_owned()).unwrap_or_default())
+        .unwrap_or_else(|| std::env::var("LD_PRELOAD").unwrap_or_default());
     let mut list: Vec<String> = cur.split([' ', ':']).filter(|e| !e.is_empty()).map(str::to_string).collect();
     for e in ok {
         if !list.iter().any(|x| x == e) {
@@ -283,7 +338,9 @@ pub fn steam_overlay_for_game(c: &mut tokio::process::Command) {
         }
     }
     c.env("LD_PRELOAD", list.join(" "));
-    if std::env::var_os("ENABLE_VK_LAYER_VALVE_steam_overlay_1").is_none() {
+    let layer = launch.map(|s| s.get("ENABLE_VK_LAYER_VALVE_steam_overlay_1").cloned())
+        .unwrap_or_else(|| std::env::var("ENABLE_VK_LAYER_VALVE_steam_overlay_1").ok());
+    if layer.is_none() {
         c.env("ENABLE_VK_LAYER_VALVE_steam_overlay_1", "1");
     }
 }
@@ -296,6 +353,89 @@ pub fn steam_free(list: &str, sep: char, drop: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn steam_shortcut_handoff_carries_its_launch_environment() {
+        let env = HashMap::from([
+            ("RL_STEAM_OVERLAY", "/steam/ubuntu12_64/gameoverlayrenderer.so"),
+            ("SteamAppId", "123"),
+            ("SteamGameId", "456"),
+            ("SteamOverlayGameId", "456"),
+            ("ENABLE_VK_LAYER_VALVE_steam_overlay_1", "0"),
+            ("LD_LIBRARY_PATH", "/tmp/.mount_launcher/usr/lib"),
+            ("HOME", "/private/home"),
+        ]);
+        let args = ["launcher", "--play", "metroidprime2port"].map(str::to_string);
+        let forwarded = play_handoff_args(&args, &|k| env.get(k).map(|s| s.to_string()));
+        assert_eq!(&forwarded[..3], ["--play", "metroidprime2port", "--handoff"]);
+        let payload = forwarded.iter().find_map(|a| a.strip_prefix("--steam-launch="))
+            .expect("the existing launcher needs the Steam shortcut's environment");
+        let values: serde_json::Value = serde_json::from_str(payload).unwrap();
+        assert_eq!(values["RL_STEAM_OVERLAY"], "/steam/ubuntu12_64/gameoverlayrenderer.so");
+        assert_eq!(values["SteamAppId"], "123");
+        assert_eq!(values["SteamGameId"], "456");
+        assert_eq!(values["SteamOverlayGameId"], "456");
+        assert_eq!(values["ENABLE_VK_LAYER_VALVE_steam_overlay_1"], "0");
+        assert!(values.get("HOME").is_none());
+        assert!(values.get("LD_LIBRARY_PATH").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn handed_off_steam_environment_applies_only_to_its_game() {
+        let root = std::env::temp_dir().join(format!("rl-steam-handoff-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let overlay = root.join("gameoverlayrenderer.so");
+        std::fs::write(&overlay, b"").unwrap();
+        let args = vec!["--play".into(), "metroidprime2port".into(), "--handoff".into(), format!("--steam-launch={}", serde_json::json!({
+            "RL_STEAM_OVERLAY": overlay,
+            "SteamAppId": "123",
+            "SteamGameId": "456",
+            "ENABLE_VK_LAYER_VALVE_steam_overlay_1": "0",
+            "HOME": "/unwanted",
+            "LD_LIBRARY_PATH": "/unwanted/lib",
+        }))];
+        let launch = steam_launch_from_args(&args).expect("Steam context must survive a single-instance handoff");
+        let mut game = tokio::process::Command::new("game");
+        game.env("LD_PRELOAD", "/user/libextra.so").env("SteamAppId", "old").env("SteamOverlayGameId", "old");
+        steam_overlay_for_game(&mut game, Some(&launch));
+        let env: HashMap<_, _> = game.as_std().get_envs().map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|s| s.to_string_lossy().into_owned()))).collect();
+        assert_eq!(env["LD_PRELOAD"], Some(format!("/user/libextra.so {}", overlay.display())));
+        assert_eq!(env["SteamAppId"].as_deref(), Some("123"));
+        assert_eq!(env["SteamGameId"].as_deref(), Some("456"));
+        assert_eq!(env["SteamOverlayGameId"], None);
+        assert_eq!(env["ENABLE_VK_LAYER_VALVE_steam_overlay_1"].as_deref(), Some("0"));
+        assert!(!env.contains_key("HOME"));
+        assert!(!env.contains_key("LD_LIBRARY_PATH"));
+        assert!(!launch.contains_key("HOME"));
+        assert!(!launch.contains_key("LD_LIBRARY_PATH"));
+        // An explicit cleanup stays removed; only the verified overlay is added back, once.
+        let mut default_layer = launch.clone();
+        default_layer.remove("ENABLE_VK_LAYER_VALVE_steam_overlay_1");
+        let mut clean = tokio::process::Command::new("game");
+        clean.env_remove("LD_PRELOAD");
+        steam_overlay_for_game(&mut clean, Some(&default_layer));
+        steam_overlay_for_game(&mut clean, Some(&default_layer));
+        let env: HashMap<_, _> = clean.as_std().get_envs().map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|s| s.to_string_lossy().into_owned()))).collect();
+        assert_eq!(env["LD_PRELOAD"].as_deref(), overlay.to_str());
+        assert_eq!(env["ENABLE_VK_LAYER_VALVE_steam_overlay_1"].as_deref(), Some("1"));
+        // A later desktop start has no inherited context from the previous shortcut.
+        let desktop = play_handoff_args(&["launcher".into(), "--play".into(), "another".into()], &|_| None);
+        assert!(steam_launch_from_args(&desktop).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn invalid_steam_handoffs_do_not_change_the_launch() {
+        for args in [
+            vec![r#"--steam-launch={"SteamGameId":"123"}"#.to_string()],
+            vec!["--handoff".into(), "--steam-launch=not-json".into()],
+            vec!["--handoff".into(), r#"--steam-launch={"HOME":"/unwanted"}"#.into()],
+            vec!["--handoff".into(), r#"--steam-launch={"SteamGameId":"bad\u0000id"}"#.into()],
+        ] {
+            assert!(steam_launch_from_args(&args).is_none(), "{args:?}");
+        }
+    }
+
     #[test]
     fn steam_entries_are_taken_out() {
         assert_eq!(super::steam_free("/tmp/.mount_x/usr/lib:/home/deck/.steam/root/ubuntu12_32/steam-runtime/lib:/usr/lib", ':', &["steam-runtime", "ubuntu12_32"]), "/tmp/.mount_x/usr/lib:/usr/lib");
