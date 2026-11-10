@@ -2245,7 +2245,7 @@
       const items = $$('[data-f]', rowEl).filter((e) => !e.disabled);
       const n = items[items.indexOf(cur) + (dir === 'right' ? 1 : -1)];
       if (n) return focus(n);
-      if (rowEl.classList.contains('tv-row') || rowEl.classList.contains('tv-nav')) return;
+      if (rowEl.classList.contains('tv-row') || rowEl.classList.contains('tv-nav') || rowEl.classList.contains('tv-acts')) return;
     }
     // Home: up from the row of your games stops at the team's note first, when there is one.
     // Down from it goes back to the game you were on.
