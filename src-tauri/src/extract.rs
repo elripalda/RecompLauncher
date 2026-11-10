@@ -133,6 +133,37 @@ fn list(image: &Path, kind: &str) -> io::Result<Vec<Entry>> {
     Ok(out)
 }
 
+/// One file at the top of an Xbox or Xbox 360 disc image (default.xex, say), read straight from the
+/// image without unpacking anything. None when it isn't there, or it's bigger than `max`.
+pub fn xbox_root_file(image: &Path, name: &str, max: u64) -> io::Result<Option<Vec<u8>>> {
+    let mut f = File::open(image)?;
+    let (base, sector, size) = xdvdfs_base(&mut f).ok_or_else(|| io::Error::other("That isn't an Xbox disc image."))?;
+    if size == 0 || size > 64 << 20 {
+        return Ok(None);
+    }
+    let t = read_at(&mut f, base + sector * SECTOR, size as usize)?;
+    let mut pos = 0usize;
+    while pos + 14 <= t.len() {
+        if t[pos] == 0xFF && t[pos + 1] == 0xFF {
+            pos = (pos / SECTOR as usize + 1) * SECTOR as usize;
+            continue;
+        }
+        let nl = t[pos + 13] as usize;
+        if nl == 0 || pos + 14 + nl > t.len() {
+            break;
+        }
+        let (start, len, attr) = (u32le(&t, pos + 4), u32le(&t, pos + 8), t[pos + 12]);
+        if attr & 0x10 == 0 && String::from_utf8_lossy(&t[pos + 14..pos + 14 + nl]).eq_ignore_ascii_case(name) {
+            if len > max {
+                return Ok(None);
+            }
+            return read_at(&mut f, base + start * SECTOR, len as usize).map(Some);
+        }
+        pos = (pos + 14 + nl + 3) & !3;
+    }
+    Ok(None)
+}
+
 /// How much unpacking takes, for checking there's room first.
 pub fn size(image: &Path, kind: &str) -> io::Result<u64> {
     Ok(list(image, kind)?.iter().map(|e| e.size).sum())
@@ -233,6 +264,11 @@ mod tests {
         assert_eq!(std::fs::read(out.join("media/a.bin")).unwrap(), b"abc");
         assert!(!d.join("out/..").join("x").exists());
         assert!(unpack(&img, "iso9660", &out, &|_, _| {}, &|| false).is_err());
+        // One file read straight from the image (any case), nothing for folders or missing names.
+        assert_eq!(xbox_root_file(&img, "DEFAULT.XEX", 1 << 20).unwrap().as_deref(), Some(&b"XEX2!"[..]));
+        assert_eq!(xbox_root_file(&img, "media", 1 << 20).unwrap(), None);
+        assert_eq!(xbox_root_file(&img, "nope.xex", 1 << 20).unwrap(), None);
+        assert_eq!(xbox_root_file(&img, "default.xex", 2).unwrap(), None);
         let _ = std::fs::remove_dir_all(&d);
     }
 

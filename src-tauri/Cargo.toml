@@ -1,6 +1,6 @@
 [package]
 name = "recomplauncher"
-version = "0.90.0-beta.31"
+version = "0.90.0-beta.32"
 description = "RecompLauncher: one home for PC recomps"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
@@ -64,7 +64,7 @@ sdl3-sys = { version = "=0.7.2", default-features = false, features = ["no-sdl-l
 xcap = { version = "0.9", features = ["image", "wgc"] }
 webview2-com = "0.39"
 windows-core = "0.62"
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"

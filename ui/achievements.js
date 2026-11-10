@@ -4,6 +4,7 @@
 // channel, the toasts, the local store and the syncing (ach.rs).
 (() => {
   const A = (S.ach = S.ach || { allowed: false, games: {}, log: {}, mem: {}, rule: {}, devOpen: false });
+  A.discMsg = A.discMsg || {};
   const STAR = (on) => `<svg class="ach-star${on ? ' on' : ''}" viewBox="0 0 64 64" width="40" height="40" aria-hidden="true"><path d="M32 5.5l7.9 16.1 17.7 2.6-12.8 12.5 3 17.6L32 46l-15.8 8.3 3-17.6L6.4 24.2l17.7-2.6z"/></svg>`;
   const onTab = (id) => S.view === 'game' && S.arg === id && S.tab === 'ach';
   const REASONS = {
@@ -191,7 +192,12 @@
       : `<div class="card"><p style="margin:0">${esc(t('No achievements for this game yet.'))}</p><p class="muted" style="margin:6px 0 0">${esc(t('A list for it shows here once there is one. For testing, put one in the achievements\\dev-lists folder as <game id>.json.'))}</p></div>`;
     if (bonus.length) body += `<section class="ach-sec"><div class="ach-sec-h"><h3>${esc(t('Bonus'))}</h3><span class="muted">${esc(tf('{n} of {total}', { n: bonus.filter(has).length, total: bonus.length }))}</span></div><p class="muted ach-sec-p">${esc(t('Bonus achievements don\'t count for Beaten or Mastered.'))}</p><div class="card ach-list">${bonus.map((x) => row(x, d)).join('')}</div></section>`;
     if (boards.length) body += `<section class="ach-sec"><div class="ach-sec-h"><h3>${esc(t('Leaderboards'))}</h3></div>${lbGrid(boards.map((b) => lbCard(id, b, (mine.boards || []).find((x) => String(x.id) === String(b.id)))))}</section>`;
-    return `<div class="stack">${head}${body}${d.dev || (typeof devOn === 'function' && devOn()) ? devTools(id, d) : ''}</div>`;
+    // An Xbox 360 recomp whose disc the launcher hasn't found yet (it looks while the game runs):
+    // the player can point to it.
+    const disc = a.origin === 'x360' && !d.native_known && !list.length
+      ? `<div class="card"><p style="margin:0"><b>${esc(t('Show This Game\'s Achievements'))}</b></p><p class="muted" style="margin:6px 0 12px">${esc(A.discMsg[id] || t('Point RecompLauncher to your game files to show this game\'s achievements.'))}</p><div class="ach-acts"><button type="button" class="btn" data-ach="disc-file" data-id="${esc(id)}">${esc(t('Choose Disc Image'))}</button><button type="button" class="btn" data-ach="disc-folder" data-id="${esc(id)}">${esc(t('Choose Game Folder'))}</button></div></div>`
+      : '';
+    return `<div class="stack">${head}${disc}${body}${d.dev || (typeof devOn === 'function' && devOn()) ? devTools(id, d) : ''}</div>`;
   };
 
   // Report a problem with one achievement: what's wrong, and an optional note.
@@ -225,6 +231,19 @@
     const id = b.dataset.id, k = b.dataset.ach;
     if (k === 'report') {
       report(id, Number(b.dataset.aid));
+    } else if (k === 'disc-file' || k === 'disc-folder') {
+      const folder = k === 'disc-folder';
+      let path = null;
+      try {
+        path = typeof pickFile === 'function'
+          ? await pickFile(folder ? { title: t('Your Game Folder'), directory: true } : { title: t('Your Disc Image'), filters: [{ name: t('Xbox 360 Disc Image'), extensions: ['iso', 'xiso', 'xex'] }] })
+          : null;
+      } catch (err) { path = null; }
+      if (!path) return;
+      let r = {};
+      try { r = await invoke('ach_set_disc', { id, path: String(path) }); } catch (err) { r = { ok: false }; }
+      A.discMsg[id] = r.ok ? tf('Found {n} achievements.', { n: r.count }) : t('No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.');
+      load(id, true);
     } else if (k === 'sound') {
       const on = b.getAttribute('aria-checked') !== 'true';
       b.setAttribute('aria-checked', String(on));
