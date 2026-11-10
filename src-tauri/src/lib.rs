@@ -2481,7 +2481,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             cmd.env("TMPDIR", dir);
         }
         trail::note(format!("Play {id}: in the Flatpak the AppImage unpacks itself to run"));
-    } else if cfg!(target_os = "linux") && ext == "appimage" && !sysenv::has_fuse2() {
+    } else if ext == "appimage" && !sysenv::has_fuse2() {
         cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
         trail::note(format!("Play {id}: no FUSE 2 on this PC, the AppImage unpacks itself to run"));
     }

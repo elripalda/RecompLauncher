@@ -306,8 +306,10 @@ pub fn steam_running() -> bool {
         // means Steam can still write its shortcuts back over the new one on the way out.
         // The sandbox sees none of the PC's processes. Steam keeps its command pipe open to read
         // from while it runs, so a write end opens only then (no reader: "no such device").
+        #[cfg(target_os = "linux")]
         if crate::flatpak::sandboxed() {
-            return pipe_has_reader(&dirs::home_dir().unwrap_or_default().join(".steam/steam.pipe"));
+            let home = dirs::home_dir().unwrap_or_default();
+            return steam_pipes(&home).iter().any(|p| pipe_has_reader(p));
         }
         let pid_live = dirs::home_dir()
             .and_then(|h| fs::read_to_string(h.join(".steam/steam.pid")).ok())
@@ -327,12 +329,19 @@ pub fn steam_running() -> bool {
 
 /// A named pipe somebody is reading from. Opened for writing without waiting, which a pipe nobody
 /// reads refuses (ENXIO) and nothing is written.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn pipe_has_reader(pipe: &Path) -> bool {
     use std::os::unix::fs::OpenOptionsExt;
+    // Linux's O_NONBLOCK (the same on x86_64 and aarch64).
     const O_NONBLOCK: i32 = 0o4000;
     // Anything but a reader being there (no pipe, no reader, no access) counts as Steam not running.
     fs::OpenOptions::new().write(true).custom_flags(O_NONBLOCK).open(pipe).is_ok()
+}
+
+/// Steam's command pipe: the PC's own Steam, and Steam from Flathub (its home is its ~/.var/app folder).
+#[cfg(any(target_os = "linux", test))]
+fn steam_pipes(home: &Path) -> [PathBuf; 2] {
+    [home.join(".steam/steam.pipe"), home.join(".var/app/com.valvesoftware.Steam/.steam/steam.pipe")]
 }
 
 /// Is this process Steam itself (its comm name and command line)? Not the launcher's own children,
@@ -668,12 +677,18 @@ app-path=/var/lib/flatpak/app/com.recomplauncher.RecompLauncher/x86_64/stable/9/
 ", id), None);
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[test]
     fn no_pipe_no_reader() {
         assert!(!pipe_has_reader(Path::new("/nonexistent/steam.pipe")));
     }
 
+    #[test]
+    fn both_steams_pipes() {
+        let [own, flathub] = steam_pipes(Path::new("/home/a"));
+        assert_eq!(own, Path::new("/home/a/.steam/steam.pipe"));
+        assert_eq!(flathub, Path::new("/home/a/.var/app/com.valvesoftware.Steam/.steam/steam.pipe"));
+    }
 
     #[test]
     fn knows_handhelds_by_name() {
