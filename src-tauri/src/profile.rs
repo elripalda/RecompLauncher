@@ -21,6 +21,9 @@ pub struct Profile {
     pub inputs: Vec<crate::inputs::Input>,
     #[serde(skip)]
     pub input_paths: BTreeMap<String, PathBuf>,
+    /// The installed build's platform preference, supplied by the launcher, never a manifest.
+    #[serde(skip)]
+    pub windows_build: Option<bool>,
     #[serde(default)]
     pub format: u32,
     /// GitHub repo this built-in profile is for.
@@ -1214,11 +1217,19 @@ impl Profile {
         Some(File::open(path, &c.format))
     }
 
-    /// Before the game starts: its settings files get what it needs and where the player's copy is.
-    /// Its program is a Windows one that plays through Proton here (on Linux).
+    fn program_for(&self, install: &Path, windows_build: bool) -> Option<PathBuf> {
+        let s = self.start.as_ref()?;
+        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
+        (if windows_build { None } else { twin() })
+            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
+            .or_else(twin)
+    }
+
+    /// The selected program is a Windows one that plays through Proton here. Leftover Windows
+    /// files must not turn a native build's config, environment or input paths into Windows paths.
     pub fn through_proton(&self, install: &Path) -> bool {
-        !cfg!(windows)
-            && self.start.as_ref().and_then(|s| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file())).map(|e| e.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false)).unwrap_or(false)
+        !cfg!(windows) && self.program_for(install, self.windows_build.unwrap_or(true))
+            .is_some_and(|e| e.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe")))
     }
 
     pub fn prepare(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
@@ -1345,15 +1356,16 @@ impl Profile {
     }
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
-        let _w = WineFill::new(self.through_proton(install));
+        let through_proton = self.through_proton(install);
+        let _w = WineFill::new(through_proton);
         self.start.as_ref().map(|s| s.env.iter().filter(|(k, _)| env_name_ok(k)).filter_map(|(k, v)| {
-            let value = crate::inputs::expand(&fill(v, install, game), &self.input_paths, self.through_proton(install));
+            let value = crate::inputs::expand(&fill(v, install, game), &self.input_paths, through_proton);
             (!value.contains("{input:")).then(|| (k.clone(), value))
         }).collect()).unwrap_or_default()
     }
 
     pub fn command(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Option<(PathBuf, Vec<String>)> {
-        self.command_for(install, game, picks, true)
+        self.command_for(install, game, picks, self.windows_build.unwrap_or(true))
     }
 
     /// The command it runs. `windows_build`: the installed build is the Windows one (on Windows, or
@@ -1361,20 +1373,20 @@ impl Profile {
     /// with the same name comes first: an old `.exe` left beside it (a switch from the Windows build)
     /// must not hide the native one.
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
-        let _w = WineFill::new(self.through_proton(install));
-        let s = self.start.as_ref()?;
-        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
-        let exe = if windows_build { None } else { twin() }
-            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
-            .or_else(twin)?;
+        let exe = self.program_for(install, windows_build)?;
+        let through_proton = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
         crate::boot::runnable(&exe);
-        Some((exe, self.args_for(install, game, picks)))
+        Some((exe, self.expanded_args(install, game, picks, through_proton)))
     }
 
     /// The command line it gives its program: its own arguments (the player's copy among them) and
     /// the settings that go there.
     pub fn args_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Vec<String> {
-        let _w = WineFill::new(self.through_proton(install));
+        self.expanded_args(install, game, picks, self.through_proton(install))
+    }
+
+    fn expanded_args(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, through_proton: bool) -> Vec<String> {
+        let _w = WineFill::new(through_proton);
         let Some(s) = self.start.as_ref() else { return vec![] };
         let mut args: Vec<String> = s.args.iter().map(|a| fill(a, install, game)).collect();
         for st in self.settings.iter().filter(|s| s.target == "args") {
@@ -1383,7 +1395,7 @@ impl Profile {
             }
             args.extend(self.slider_args(st).into_iter().map(|a| fill(&a, install, game)));
         }
-        crate::inputs::arguments(&args, &self.input_paths, self.through_proton(install))
+        crate::inputs::arguments(&args, &self.input_paths, through_proton)
     }
 
     /// A command-line slider the player moved: its arguments with the number in place of {value}.
@@ -2346,6 +2358,61 @@ mod tests {
         // The plain call keeps the Windows-first behavior for callers that don't know the build.
         assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_build_arguments_do_not_use_leftover_windows_paths() {
+        let dir = tmp("native-arguments");
+        std::fs::write(dir.join("game.exe"), b"MZ").unwrap();
+        std::fs::write(dir.join("game"), b"\x7fELF").unwrap();
+        let copy = dir.join("disc.iso");
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["game.exe"],"args":["{game}","--disc={input:disc}"]}}"#).unwrap();
+        p.input_paths.insert("disc".into(), copy.clone());
+        let picks = BTreeMap::new();
+        let windows = p.command_for(&dir, Some(&copy), &picks, true).unwrap();
+        assert_eq!(windows.0, dir.join("game.exe"));
+        assert_eq!(windows.1, vec![wine_path(&copy.to_string_lossy()), format!("--disc={}", wine_path(&copy.to_string_lossy()))]);
+        let native = p.command_for(&dir, Some(&copy), &picks, false).unwrap();
+        assert_eq!(native.0, dir.join("game"));
+        assert_eq!(native.1, vec![copy.to_string_lossy().to_string(), format!("--disc={}", copy.display())]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_build_config_and_environment_use_the_selected_program() {
+        let dir = tmp("native-config-env");
+        std::fs::write(dir.join("game.exe"), b"MZ").unwrap();
+        std::fs::write(dir.join("game"), b"\x7fELF").unwrap();
+        let copy = dir.join("disc.iso");
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,
+            "start":{"program":["game.exe"],"args":["{game}"],"env":{"GAME_DISC":"{game}","NAMED_DISC":"{input:disc}"}},
+            "config":[{"format":"json","file":[{"path":"{install}/config.json"}],"always":{"disc":"{game}"}}]
+        }"#).unwrap();
+        p.input_paths.insert("disc".into(), copy.clone());
+        let picks = BTreeMap::new();
+        p.windows_build = Some(true);
+        p.prepare(&dir, Some(&copy)).unwrap();
+        let config = || serde_json::from_slice::<Value>(&std::fs::read(dir.join("config.json")).unwrap()).unwrap();
+        assert_eq!(config()["disc"], wine_path(&copy.to_string_lossy()).replace('\\', "/"));
+        assert_eq!(p.env_vars(&dir, Some(&copy)), vec![("GAME_DISC".into(), wine_path(&copy.to_string_lossy())), ("NAMED_DISC".into(), wine_path(&copy.to_string_lossy()))]);
+        p.windows_build = Some(false);
+        p.prepare(&dir, Some(&copy)).unwrap();
+        assert_eq!(config()["disc"], copy.to_string_lossy().to_string());
+        assert_eq!(p.env_vars(&dir, Some(&copy)), vec![("GAME_DISC".into(), copy.to_string_lossy().to_string()), ("NAMED_DISC".into(), copy.to_string_lossy().to_string())]);
+        let native = p.command(&dir, Some(&copy), &picks).unwrap();
+        assert_eq!(native.0, dir.join("game"));
+        assert_eq!(native.1, vec![copy.to_string_lossy().to_string()]);
+        // An explicit Windows choice still overrides the installed preference.
+        let windows = p.command_for(&dir, Some(&copy), &picks, true).unwrap();
+        assert_eq!(windows.0, dir.join("game.exe"));
+        assert_eq!(windows.1, vec![wine_path(&copy.to_string_lossy())]);
+        // If only the Windows program remains, fallback arguments must suit that program.
+        std::fs::remove_file(dir.join("game")).unwrap();
+        assert!(p.through_proton(&dir));
+        assert_eq!(p.command(&dir, Some(&copy), &picks).unwrap(), windows);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
