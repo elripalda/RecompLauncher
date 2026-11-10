@@ -1623,7 +1623,7 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
+  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.achTabs ? window.achTabs(id) : [], window.pluginTabs ? window.pluginTabs(id) : []);
   if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
   return tabs;
 }
@@ -1808,6 +1808,7 @@ function gameBody(a) {
   gameTabs(a);
   let body = '';
   if (String(S.tab).startsWith('plug-') && window.pluginTabBody) return window.pluginTabBody(S.tab, id) + gameRail(a);
+  if (S.tab === 'ach' && window.achBody) return window.achBody(a) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const stats = inst
@@ -3299,6 +3300,7 @@ function renderSide() {
   nb.title = !nd && nu ? tn(nu, '1 update ready', '{n} updates ready') : '';
   // A new launcher: its own button at the foot of the sidebar too.
   { const su = $('#side-upd'); if (su) su.hidden = !S.launcherUpd; }
+  if (window.achSide) window.achSide();
   document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
   document.body.classList.toggle('nonames', !!ui.hide_names);
   document.body.classList.toggle('light', ui.theme === 'light');
@@ -4855,26 +4857,8 @@ async function loadAllShots() {
 const shotList = () => (S.allShots || []).filter((x) => !S.shotsGame || x.id === S.shotsGame);
 const when = (ts) => new Date(ts * 1000).toLocaleString(curLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-// Achievements: a first look at what's coming. Nothing here pretends to work yet; the two buttons
-// that do something are Learn More (the site) and Sign In (the account they'll be tied to).
-const LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
-const ACH_SITE = 'https://recompachievements.com';
-function achCards() {
-  return [
-    [t('Unlocks while you play'), t('Achievements pop up the moment you earn them, right in your recomps.'), '<path d="M12 3l2.5 5.2 5.7.8-4.1 4 1 5.6L12 16l-5.1 2.6 1-5.6-4.1-4 5.7-.8z"/>'],
-    [t('Your profile and rating'), t('Every achievement adds to your profile and your rating, on every PC you play on.'), '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>'],
-    [t('Leaderboards'), t('See how you stack up against other players, game by game.'), '<path d="M5 20V12M12 20V5M19 20v-5"/>'],
-  ];
-}
-function pageAchievements() {
-  const signed = !!(S.account && S.account.signedIn);
-  return `<div class="page ach">
-    <div class="head"><div><div class="ach-h"><h1>${esc(t('Achievements'))}</h1><span class="ach-pill">${esc(t('Coming soon'))}</span></div>
-      <p class="ach-lead">${esc(t('Earn achievements in your recomps, track them on your profile and climb the leaderboards. We\'re preparing the system. More info soon.'))}</p>${signed ? `<p class="ach-ok">${esc(t('You\'re all set. Your achievements will be tied to your account.'))}</p>` : ''}</div>
-      <div class="dctl ach-acts">${signed ? '' : `<button type="button" class="btn" data-act="acc-btn">${esc(t('Sign in'))}</button>`}<button type="button" class="btn main ach-btn" data-act="url" data-url="${ACH_SITE}">${esc(t('Learn more'))}</button></div></div>
-    <div class="ach-cards">${achCards().map(([h, d, ic]) => `<div class="ach-card" aria-disabled="true"><span class="ach-lock" aria-hidden="true">${LOCK}</span><span class="ach-ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic}</svg></span><b>${esc(h)}</b><p>${esc(d)}</p></div>`).join('')}</div>
-  </div>`;
-}
+// Achievements: the page itself is in achievements.js (testers, and the alpha page for everyone else).
+function pageAchievements() { return window.achPage ? window.achPage() : ''; }
 
 function pageShots() {
   if (!S.allShots) return `<div class="loading">${esc(t('Loading your screenshots…'))}</div>`;

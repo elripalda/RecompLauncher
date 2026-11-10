@@ -94,7 +94,33 @@ fn read_pc() -> PcInfo {
     }
 }
 
-#[cfg(not(windows))]
+/// A Mac: sysctl for the processor and memory, sw_vers for the system, and the graphics from
+/// System Information (Apple silicon's GPU is the chip's own).
+#[cfg(target_os = "macos")]
+fn read_pc() -> PcInfo {
+    let out = |cmd: &str, args: &[&str]| std::process::Command::new(cmd).args(args).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let cpu = out("/usr/sbin/sysctl", &["-n", "machdep.cpu.brand_string"]);
+    let ram_gb = out("/usr/sbin/sysctl", &["-n", "hw.memsize"]).parse::<u64>().map(|b| ((b as f64) / 1073741824.0).round() as u32).unwrap_or(0);
+    let ver = out("/usr/bin/sw_vers", &["-productVersion"]);
+    let osver = if ver.is_empty() { "macOS".to_string() } else { format!("macOS {ver}") };
+    let (gpu, gpu_driver) = mac_gpu(&out("/usr/sbin/system_profiler", &["SPDisplaysDataType", "-json"]));
+    let gpu = if gpu.is_empty() && cpu.starts_with("Apple") { format!("{cpu} GPU") } else { gpu };
+    PcInfo { osver, cpu, cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(0), ram_gb, gpu, gpu_driver }
+}
+
+/// The first graphics card in System Information's JSON, with its core count or Metal support.
+#[cfg(any(target_os = "macos", test))]
+fn mac_gpu(json: &str) -> (String, String) {
+    let v: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    let Some(card) = v.get("SPDisplaysDataType").and_then(Value::as_array).and_then(|a| a.first()) else { return (String::new(), String::new()) };
+    let s = |k: &str| card.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let name = [s("sppci_model"), s("_name")].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
+    let cores = s("sppci_cores");
+    let detail = if !cores.is_empty() { format!("{cores} cores") } else { s("spdisplays_mtlgpufamilysupport").replace("spdisplays_", "") };
+    (name, detail)
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn read_pc() -> PcInfo {
     let cpu = std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| s.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split(':').nth(1)).map(|x| x.trim().to_string())).unwrap_or_default();
     let ram_gb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| s.lines().next().and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok())).map(|k| ((k as f64) / 1048576.0).round() as u32).unwrap_or(0);
@@ -110,7 +136,7 @@ fn read_pc() -> PcInfo {
 
 /// The graphics card on Linux, from /sys (no tools needed): NVIDIA, then AMD, then Intel, then
 /// any other, skipping a virtual machine's. Named from the system's PCI list when it has one.
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn linux_gpu() -> (String, String) {
     let rd = |p: &Path| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
     let mut cards: Vec<(u32, String, String, String)> = vec![];
@@ -151,13 +177,13 @@ fn linux_gpu() -> (String, String) {
 }
 
 /// A card's name from the system's PCI list ("VanGogh [AMD Custom GPU 0405]" → "AMD Custom GPU 0405").
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn pci_name(vendor: &str, device: &str) -> Option<String> {
     let list = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"].iter().find_map(|p| std::fs::read_to_string(p).ok())?;
     pci_lookup(&list, vendor, device)
 }
 
-#[cfg(any(not(windows), test))]
+#[cfg(any(all(not(windows), not(target_os = "macos")), test))]
 fn pci_lookup(list: &str, vendor: &str, device: &str) -> Option<String> {
     let mut inside = false;
     for l in list.lines() {
@@ -621,6 +647,15 @@ pub async fn report_reply(app: AppHandle, id: i64, text: String) -> Res<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_macs_graphics_come_from_system_information() {
+        let j = r#"{"SPDisplaysDataType":[{"_name":"kHW_AppleM2Item","sppci_model":"Apple M2","sppci_cores":"10"}]}"#;
+        assert_eq!(mac_gpu(j), ("Apple M2".to_string(), "10 cores".to_string()));
+        let intel = r#"{"SPDisplaysDataType":[{"_name":"Intel Iris Plus","spdisplays_mtlgpufamilysupport":"spdisplays_metal3"}]}"#;
+        assert_eq!(mac_gpu(intel), ("Intel Iris Plus".to_string(), "metal3".to_string()));
+        assert_eq!(mac_gpu("not json"), (String::new(), String::new()));
+    }
 
     #[test]
     fn profile_errors_leave_paths_out() {
