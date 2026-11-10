@@ -25,7 +25,7 @@ const S = {
   library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general',
-  find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false },
+  find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
   lib: { sel: null, filter: 'all', sort: 'played' },
   tab: 'overview',
 };
@@ -674,6 +674,10 @@ function projectState(a) {
   const months = Math.floor(days / 30.4);
   return { kind: 'quiet', label: months >= 24 ? tn(Math.floor(months / 12), 'No updates in 1 year', 'No updates in {n} years') : months >= 12 ? t('No updates in over a year') : tn(months, 'No updates in 1 month', 'No updates in {n} months') };
 }
+// Discover's "Hide ended" switch: out only the projects whose state is 'ended' (archived or abandoned).
+function keepEnded(a, f) {
+  return !f.hideEnded || projectState(a)?.kind !== 'ended';
+}
 const STATE_NAME = { ended: N_('Ended'), paused: N_('On hold'), complete: N_('Feature complete') };
 const STATE_PILL = { ended: N_('Project ended'), paused: N_('On hold'), complete: N_('Feature complete') };
 // A check mark before "Feature complete", on the page and in its notice.
@@ -1243,7 +1247,7 @@ function layoutShelves(scope = document) {
 
 function discoverList() {
   const f = S.find, q = fold(S.q.trim());
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a))
+  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && keepEnded(a, f)
     && (!q || fold([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ')).includes(q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
@@ -1265,6 +1269,7 @@ const discToggles = (f) => `<button type="button" class="toggle" role="switch" a
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.mp}" data-act="mp-f">${esc(t('Multiplayer'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.great}" data-act="great"><span class="dot-great" aria-hidden="true"></span>${esc(t('Plays great'))}<span class="switch" aria-hidden="true"></span></button>
       ${onHandheld() ? `<button type="button" class="toggle deck-t" role="switch" aria-checked="${!!f.deckgreat}" data-act="deck-f">${DECK_ICON(15)}${esc(t('Great on Deck'))}<span class="switch" aria-hidden="true"></span></button>` : ''}
+      <button type="button" class="toggle" role="switch" aria-checked="${!!f.hideEnded}" data-act="ended-f">${esc(t('Hide ended'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!S.settings.hide_ai}" data-act="toggle" data-k="hide_ai">${esc(t('Hide AI-assisted'))}<span class="switch" aria-hidden="true"></span></button>`;
 const discGenres = () => { const apps = visible(); return Object.keys(GENRES).filter((k) => apps.some((a) => a.genre === k)); };
 function pageDiscover() {
@@ -1296,7 +1301,7 @@ function pageDiscover() {
 // they're always at hand further down. The rest are under Filters. Outside the page (in the window's
 // frame), so a redraw of the page doesn't touch it, and only on Discover.
 const SLIDERS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>';
-function stickExtras(f) { return [f.show, f.tag, f.easy, f.mp, f.great, onHandheld() && f.deckgreat, S.settings.hide_ai].filter(Boolean).length; }
+function stickExtras(f) { return [f.show, f.tag, f.easy, f.mp, f.great, onHandheld() && f.deckgreat, f.hideEnded, S.settings.hide_ai].filter(Boolean).length; }
 function paintStick() {
   let b = document.getElementById('dstick');
   if (S.view !== 'discover' || !S.cat || !$('#dlist')) {
@@ -3531,6 +3536,8 @@ function updateDiscover() {
   if (mp) mp.setAttribute('aria-checked', String(!!f.mp));
   const dk = $('.dctl [data-act="deck-f"]');
   if (dk) dk.setAttribute('aria-checked', String(!!f.deckgreat));
+  const en = $('.dctl [data-act="ended-f"]');
+  if (en) en.setAttribute('aria-checked', String(!!f.hideEnded));
   const ai = $('.dctl [data-k="hide_ai"]');
   if (ai) ai.setAttribute('aria-checked', String(!!S.settings.hide_ai));
   const h = $('.dhead h1');
@@ -6280,6 +6287,7 @@ async function act(el, e) {
     case 'note-url': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
+    case 'ended-f': S.find.hideEnded = !S.find.hideEnded; return updateDiscover();
     case 'self-steam': return selfToSteam(false);
     case 'ge-proton': return geInstall();
     case 'use-proton': return useProton(id);
