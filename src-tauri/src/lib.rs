@@ -2630,6 +2630,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     // An AppImage on a Linux without FUSE 2 (libfuse.so.2, missing on many new systems): it unpacks
     // itself and runs from there instead of failing to start.
     #[cfg(target_os = "linux")]
+    if unpacked.is_none() {
+        appimage_env(&mut cmd, &exe);
+    }
+    #[cfg(target_os = "linux")]
     if let Some(dir) = &unpacked {
         // What an AppImage's own runtime would have set, for games that look for their files by it.
         cmd.env("APPIMAGE", &exe).env("APPDIR", dir).env("ARGV0", &exe);
@@ -3181,12 +3185,29 @@ fn human_size(b: u64) -> String {
 }
 
 /// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
+/// An AppImage unpacked at install starts from its AppRun, which may look for its files through
+/// APPDIR (the AppImage's runtime sets it when the AppImage starts itself): set it here.
+#[cfg(target_os = "linux")]
+fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
+    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
+        if let Some(dir) = exe.parent() {
+            cmd.env("APPDIR", dir).env("ARGV0", exe);
+        }
+    }
+}
+
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program.iter().map(|x| install.join(x)).find(|x| x.is_file()).ok_or("Its setup program is missing. Reinstall the game.")?;
     let args: Vec<String> = pr.args.iter().map(|a| profile::fill(a, install, Some(copy))).collect();
     let mut c = std::process::Command::new(&exe);
     sysenv::clean_std(&mut c);
+    // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
+    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
+        if let Some(dir) = exe.parent() {
+            c.env("APPDIR", dir).env("ARGV0", &exe);
+        }
+    }
     c.args(&args).current_dir(exe.parent().unwrap_or(install)).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
     #[cfg(windows)]
     {

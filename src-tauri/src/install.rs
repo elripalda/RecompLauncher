@@ -865,11 +865,49 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
             validate_links(&entry.path(), &entry.path())?;
         }
     }
+    // In the Flatpak an AppImage can't mount itself (no FUSE): the release's AppImage is unpacked
+    // here like an archive, so its files are the game's files from now on.
+    #[cfg(target_os = "linux")]
+    if crate::flatpak::sandboxed() {
+        unpack_appimage_in(&from, staging);
+    }
     let mut files = vec![];
     list(&from, &from, &mut files);
     overlay(&from, target)?;
     let _ = fs::remove_dir_all(staging);
     Ok(files)
+}
+
+/// The one AppImage at the top of a release (on its own, or out of a zip): its contents (AppRun,
+/// usr/, the desktop file, an embedded recomplauncher.json) put in its place and the AppImage
+/// removed. Two or more AppImages, or one that doesn't unpack cleanly, stay as they are: Play
+/// unpacks those itself.
+#[cfg(target_os = "linux")]
+fn unpack_appimage_in(dir: &Path, staging: &Path) {
+    let images: Vec<PathBuf> = fs::read_dir(dir)
+        .map(|r| r.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false)).collect())
+        .unwrap_or_default();
+    let [image] = images.as_slice() else { return };
+    let work = staging.with_extension("appdir");
+    let _ = fs::remove_dir_all(&work);
+    if fs::create_dir_all(&work).is_err() {
+        return;
+    }
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(image, fs::Permissions::from_mode(0o755));
+    }
+    // `--appimage-extract` writes squashfs-root into the folder it runs in, and needs no FUSE.
+    let mut c = std::process::Command::new(image);
+    c.arg("--appimage-extract").current_dir(&work).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    crate::sysenv::clean_std(&mut c);
+    let appdir = work.join("squashfs-root");
+    let ok = c.status().map(|s| s.success()).unwrap_or(false) && appdir.join("AppRun").is_file() && validate_links(&appdir, &appdir).is_ok();
+    if ok && overlay(&appdir, dir).is_ok() {
+        let _ = fs::remove_file(image);
+        crate::trail::note(format!("Install: unpacked {} for the Flatpak", image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+    }
+    let _ = fs::remove_dir_all(&work);
 }
 
 /// A Mac disk image: opened read-only where Finder doesn't show it, what's on it (the .app and
@@ -1252,6 +1290,10 @@ pub fn is_program(p: &Path, os: &str) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
+    // An AppImage unpacked at install (the Flatpak): its AppRun starts it, as the AppImage did.
+    if os == "linux" && dir.join("AppRun").is_file() {
+        return Some(PathBuf::from("AppRun"));
+    }
     let mut want: Vec<String> = names.iter().flat_map(|n| tokens(n)).filter(|t| t.len() > 2 && t != "recomp" && t != "the").collect();
     // Initials too: VCSLauncher.exe is Vice City Stories' launcher, mcla.exe Midnight Club Los
     // Angeles.
@@ -1555,6 +1597,13 @@ mod tests {
         assert!(target.join("Game").is_file());
         #[cfg(unix)]
         assert_eq!(find_exe(&target, "linux", &["Game"]).unwrap(), PathBuf::from("Game"));
+        // An AppImage unpacked at install: AppRun starts it.
+        #[cfg(unix)]
+        {
+            fs::write(target.join("AppRun"), b"#!/bin/sh\n").unwrap();
+            assert_eq!(find_exe(&target, "linux", &["Game"]).unwrap(), PathBuf::from("AppRun"));
+            fs::remove_file(target.join("AppRun")).unwrap();
+        }
         #[cfg(unix)]
         assert!(!is_program(&target.join("LICENSE"), "linux"));
     }
