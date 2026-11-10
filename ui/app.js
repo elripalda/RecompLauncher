@@ -1212,11 +1212,17 @@ function shelf(key, title, list, o = {}) {
 }
 // Each shelf shows as many games as fit, and pages through the rest.
 function layoutShelves(scope = document) {
+  // Measure every shelf before writing any of them: changing --per lays the page out again,
+  // and reading the next shelf after that would make it lay out once per shelf.
+  const rows = [];
   for (const sh of $$('.shelf[data-shelf]', scope)) {
     const vp = $('.viewport', sh), tr = $('.track', sh);
     if (!vp || !tr) continue;
-    const w = tr.clientWidth, n = Number(sh.dataset.n) || 0, gap = 20;
-    if (!w) continue;
+    const w = tr.clientWidth;
+    if (w) rows.push([sh, tr, w, Number(sh.dataset.n) || 0]);
+  }
+  const gap = 20;
+  for (const [sh, tr, w, n] of rows) {
     const per = Math.max(2, Math.min(10, Math.floor((w + gap) / (150 + gap))));
     const pages = Math.max(1, Math.ceil(n / per));
     const key = sh.dataset.shelf;
@@ -3203,7 +3209,8 @@ function render(keepScroll) {
   main.dataset.v = v;
   if (S.anim) {
     main.classList.remove('enter', 'enter-game', 'enter-soft', 'enter-back');
-    void main.offsetWidth;
+    // Flush styles (not layout) so the entrance animation restarts.
+    getComputedStyle(main).animationName;
     main.classList.add(S.anim);
     let i = 0;
     for (const el of $$('.grid > .tile, .shotgrid > .shot', main)) el.style.setProperty('--i', Math.min(i++, 18));
@@ -3498,9 +3505,11 @@ function go(view, arg, fromEl) {
     S.view = view; S.arg = arg;
     // Discover opens at the top, so it starts again from the first page of its list.
     if (view === 'discover') S.dshow = DISCOVER_PAGE;
+    // Reset before drawing: after it, the browser would have to lay the new page out again
+    // just to clamp the old scroll position.
+    $('#main').scrollTop = 0;
     S.anim = view === 'game' ? 'enter-game' : 'enter';
     render();
-    $('#main').scrollTop = 0;
   };
   // A soft cross-fade between pages, where the window can do it (WebKitGTK on Linux can crash on it).
   if (S.os === 'windows' && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) { document.startViewTransition(swap); return; }
