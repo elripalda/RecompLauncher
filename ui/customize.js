@@ -262,7 +262,7 @@
       }
       browse = browse || { term: a.game || own, games: null, sel: 0, art: {} };
       body.innerHTML = `<div class="cz-sg"><div class="cz-sgbar"><input class="field" id="cz-q" type="search" value="${esc(browse.term)}" spellcheck="false" aria-label="${esc(t('Search'))}"><button type="button" class="btn" data-x="sg-go">${esc(t('Search'))}</button><button type="button" class="btn" data-x="back">${esc(t('Back'))}</button></div>
-        <div class="cz-games" id="cz-games"></div><div class="ap-grid ${spec.k === 'hero' ? 'hero' : spec.k === 'cover' ? 'cover' : 'sq'}" id="cz-grid"><p class="muted">${esc(t('Loading…'))}</p></div></div>`;
+        <div class="cz-games" id="cz-games"></div><div class="ap-grid ${spec.k === 'hero' ? 'hero' : spec.k === 'cover' ? 'cover' : spec.k === 'logo' ? 'logo' : 'icon'}" id="cz-grid"><p class="muted">${esc(t('Loading…'))}</p></div></div>`;
       const q = $('#cz-q', body);
       q.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); $('[data-x="sg-go"]', body).click(); } });
       // It looks as you type: a bit of the name is enough, then pick the game from the list.

@@ -6133,7 +6133,7 @@ function artPicker(shared, cur, own, opt, done) {
     for (const b of $$('[data-x="tab"]', m)) { const k = b.dataset.k; b.textContent = tf(KS[k][1], { n: (art[KS[k][0]] || []).length + (yours[k] ? 1 : 0) }); b.setAttribute('aria-checked', String(k === tab)); }
     const list = art[KS[tab][0]] || [];
     const g = $('#ap-grid', m);
-    g.className = 'ap-grid ' + (tab === 'logo' ? 'sq logo' : tab);
+    g.className = 'ap-grid ' + tab;
     const n = list.length + (yours[tab] ? 1 : 0);
     g.style.setProperty('--cols', evenCols(n, tab === 'cover' ? [5, 4, 6, 3] : tab === 'logo' ? [4, 3, 5] : [2, 3]));
     const mineTile = yours[tab] ? `<button type="button" class="ap-it ap-mine${yours[tab].data === sel[tab] ? ' on' : ''}" data-x="mine" aria-pressed="${yours[tab].data === sel[tab]}">${pic(yours[tab].data)}<small>${esc(t('Yours'))}</small></button>` : '';
