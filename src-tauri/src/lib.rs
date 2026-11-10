@@ -7096,6 +7096,15 @@ fn emulator_folders(st: State<'_, App>) -> Vec<emus::Found> {
     emus::find().into_iter().filter(|f| !have.iter().any(|h| emus::within(&f.path, h))).collect()
 }
 
+/// ~/Games/ROMs, made if it isn't there: a ROM folder the Flatpak reads directly (its sandbox
+/// allows ~/Games), without the system's picker.
+#[tauri::command(async)]
+fn games_rom_folder() -> Res<String> {
+    let dir = dirs::home_dir().ok_or_else(|| Error::Msg("Couldn't find your home folder.".into()))?.join("Games/ROMs");
+    std::fs::create_dir_all(&dir).map_err(|_| Error::Msg("Couldn't create the ROMs folder in Games.".into()))?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 /// For the page as it starts: a game a link asked for before it was ready, once.
 #[tauri::command]
 fn take_link() -> Option<String> {
@@ -7626,6 +7635,7 @@ pub fn run() {
             take_link, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             precheck_copy,
             emulator_folders,
+            games_rom_folder,
             add_github,
             github_lookup,
             github_art,

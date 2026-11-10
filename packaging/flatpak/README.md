@@ -38,7 +38,8 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
   `/run/user/…/doc/…` path, fine for ROMs. An install folder there is slower, so an info box
   suggests ~/Games or another drive.
 - Emulator auto-detect is off: the sandbox can't read the emulators' settings, so players add
-  their ROM folders by hand.
+  their ROM folders by hand. First-time setup offers "Use Games/ROMs": `~/Games/ROMs`, made when
+  picked, read directly with no picker.
 
 - Steam and desktop shortcuts start `flatpak run com.recomplauncher.RecompLauncher`. The sandbox
   can't see Steam's process, so Steam counts as open while its command pipe has a reader

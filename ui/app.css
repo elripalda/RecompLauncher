@@ -819,6 +819,7 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .oob-dir span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:14px}
 .oob-dir.big{padding:14px 16px}
 .oob-add{align-self:center}
+.oob-or{align-self:center;color:var(--dim);font-size:13.5px;text-transform:lowercase}
 .oob-free{margin:0 4px;color:var(--dim);font-size:13.5px}
 .oob-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;border-bottom:1px solid var(--line)}
 .oob-row:last-child{border-bottom:0}
