@@ -1742,8 +1742,8 @@ span.pv-logo{display:none}
 .cz-sgbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;margin-bottom:12px}
 .cz-games{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .cz-games small{opacity:.7;font-weight:600}
-.ap-grid.sq .ap-it{aspect-ratio:1}
-.ap-grid.sq .ap-it img{object-fit:contain;padding:8px;background:repeating-conic-gradient(#232a36 0 25%,#1b212c 0 50%) 0 0/16px 16px}
+.ap-grid.icon .ap-it{aspect-ratio:1}
+.ap-grid.icon .ap-it img,.ap-grid.logo .ap-it img{object-fit:contain;padding:8px;background:repeating-conic-gradient(#232a36 0 25%,#1b212c 0 50%) 0 0/16px 16px}
 .cz-key{max-width:560px}
 .cz-keyrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0}
 @media (max-width:860px){.cz-art{grid-template-columns:1fr}.cz-stage{height:300px}}
