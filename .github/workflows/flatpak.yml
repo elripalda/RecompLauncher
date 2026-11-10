@@ -51,10 +51,14 @@ jobs:
         with:
           bundle: RecompLauncher.flatpak
           manifest-path: packaging/flatpak/ci-manifest.yml
-          cache-key: flatpak-builder-${{ github.sha }}
+          # Reused while the crates and the manifest stay the same.
+          cache-key: flatpak-builder-${{ hashFiles('src-tauri/Cargo.lock', 'packaging/flatpak/com.recomplauncher.RecompLauncher.yml') }}
           restore-cache: true
 
-      - name: Check the app data
+      # Flathub's own checks. Only errors fail it (the release's missing commit is a warning).
+      - name: Lint the manifest and app data
         run: |
-          flatpak install -y --noninteractive flathub org.flatpak.Builder || true
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream packaging/flatpak/com.recomplauncher.RecompLauncher.metainfo.xml || true
+          flatpak install -y --noninteractive flathub org.flatpak.Builder
+          cd packaging/flatpak
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.recomplauncher.RecompLauncher.yml
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream com.recomplauncher.RecompLauncher.metainfo.xml
