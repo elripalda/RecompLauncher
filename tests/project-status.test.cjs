@@ -59,7 +59,7 @@ test('arriving repository status refreshes desktop card lists only when it chang
 });
 test('Discover can hide ended projects and keeps everything else', () => {
   const ctx = vm.createContext({ S: { rels: {} }, t: s => s, tn: () => '' });
-  for (const name of ['projectState', 'keepEnded']) vm.runInContext(source.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0], ctx);
+  for (const name of ['projectState', 'isEnded', 'keepEnded']) vm.runInContext(source.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0], ctx);
   const keep = (entry, f) => { ctx.entry = entry; ctx.f = f; return vm.runInContext('keepEnded(entry, f)', ctx); };
   const ended = [{ status: 'abandoned' }, { status: 'ended' }, { archived: true }];
   for (const entry of ended) {
