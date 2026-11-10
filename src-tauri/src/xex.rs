@@ -43,8 +43,16 @@ fn be16(d: &[u8], o: usize) -> Option<u16> {
     d.get(o..o + 2).map(|b| u16::from_be_bytes([b[0], b[1]]))
 }
 
-/// The game's achievement table, from a default.xex's bytes.
+/// The game's achievement table, from a default.xex's bytes. Retail discs are encrypted with the
+/// retail key; a few builds use the development key (all zeros): tried when the first gives nothing.
 pub fn read(d: &[u8]) -> Result<Table, String> {
+    match read_with(d, &RETAIL_KEY) {
+        Ok(t) => Ok(t),
+        Err(e) => read_with(d, &[0u8; 16]).map_err(|_| e),
+    }
+}
+
+fn read_with(d: &[u8], key: &[u8; 16]) -> Result<Table, String> {
     if d.get(..4) != Some(b"XEX2") {
         return Err("not an XEX2 file".into());
     }
@@ -70,7 +78,7 @@ pub fn read(d: &[u8]) -> Result<Table, String> {
     let payload = d.get(pe_off..).ok_or("no payload")?;
     let plain = if enc != 0 {
         let key_enc: [u8; 16] = d.get(sec_off + 0x150..sec_off + 0x160).ok_or("no key")?.try_into().unwrap();
-        let session = aes_ecb_decrypt_block(&RETAIL_KEY, key_enc);
+        let session = aes_ecb_decrypt_block(key, key_enc);
         aes_cbc_decrypt(&session, &payload[..payload.len() / 16 * 16])
     } else {
         payload.to_vec()
@@ -177,10 +185,25 @@ fn lzx_image(plain: &[u8], window: u32, first: usize, image_size: usize) -> Resu
     Ok(out)
 }
 
-/// The XDBF resource: entries, then XACH (36-byte records) and the English XSTR (id 1).
+/// The XDBF resource: entries, then XACH (36-byte records) and the English XSTR (id 1). The
+/// letters "XDBF" can turn up elsewhere in a game's code too: every place is tried, the first real
+/// one with achievements wins.
 pub fn xdbf(img: &[u8]) -> Result<Table, String> {
-    let base = img.windows(4).position(|w| w == b"XDBF").ok_or("no XDBF in the image")?;
-    let x = &img[base..];
+    let mut first_err = None;
+    let mut at = 0usize;
+    while let Some(i) = img[at..].windows(4).position(|w| w == b"XDBF") {
+        match xdbf_at(&img[at + i..]) {
+            Ok(t) => return Ok(t),
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+        at += i + 4;
+    }
+    Err(first_err.unwrap_or_else(|| "no XDBF in the image".into()))
+}
+
+fn xdbf_at(x: &[u8]) -> Result<Table, String> {
     let table_len = be32(x, 8).ok_or("short XDBF")? as usize;
     let count = be32(x, 12).ok_or("short XDBF")? as usize;
     let free_len = be32(x, 16).ok_or("short XDBF")? as usize;
@@ -196,7 +219,7 @@ pub fn xdbf(img: &[u8]) -> Result<Table, String> {
         let Some(v) = x.get(data + off..data + off + len) else { continue };
         match v.get(..4) {
             Some(b"XACH") if xach.is_none() => xach = Some(v),
-            Some(b"XSTR") if id == 1 => xstr = Some(v),
+            Some(b"XSTR") if id == 1 || xstr.is_none() => xstr = Some(v),
             _ => {}
         }
     }
@@ -225,12 +248,22 @@ pub fn xdbf(img: &[u8]) -> Result<Table, String> {
 
 // ---------- finding it, once per game and version ----------
 
-/// default.xex in the folders a game's files can be in: the game's own folder (game/default.xex
-/// next to the exe, a few levels down), and the folders Easy Setup or the player picked.
+/// An Xbox disc image by its name (.iso or .xiso).
+pub fn is_disc_image(p: &Path) -> bool {
+    p.extension().map(|e| e.eq_ignore_ascii_case("iso") || e.eq_ignore_ascii_case("xiso")).unwrap_or(false)
+}
+
+fn is_default_xex(p: &Path) -> bool {
+    p.file_name().map(|n| n.eq_ignore_ascii_case("default.xex")).unwrap_or(false)
+}
+
+/// Where the game's default.xex is, from the places its files can be: a default.xex, an Xbox disc
+/// image (read straight from the image), or a folder (default.xex in it or a few levels down, else
+/// a disc image at its top, where recomps like SmackDown vs. Raw 2007 look first).
 pub fn find(roots: &[PathBuf]) -> Option<PathBuf> {
     for r in roots {
         if r.is_file() {
-            if r.file_name().map(|n| n.eq_ignore_ascii_case("default.xex")).unwrap_or(false) {
+            if is_default_xex(r) || (is_disc_image(r) && crate::extract::xbox_root_file(r, "default.xex", MAX_XEX).ok().flatten().is_some()) {
                 return Some(r.clone());
             }
             continue;
@@ -245,7 +278,7 @@ pub fn find(roots: &[PathBuf]) -> Option<PathBuf> {
             for e in std::fs::read_dir(&d).into_iter().flatten().flatten().take(400) {
                 let p = e.path();
                 let ty = e.file_type();
-                if ty.as_ref().map(|t| t.is_file()).unwrap_or(false) && e.file_name().to_string_lossy().eq_ignore_ascii_case("default.xex") {
+                if ty.as_ref().map(|t| t.is_file()).unwrap_or(false) && is_default_xex(&p) {
                     return Some(p);
                 }
                 if depth < 4 && ty.map(|t| t.is_dir()).unwrap_or(false) {
@@ -253,8 +286,59 @@ pub fn find(roots: &[PathBuf]) -> Option<PathBuf> {
                 }
             }
         }
+        for e in std::fs::read_dir(r).into_iter().flatten().flatten().take(400) {
+            let p = e.path();
+            if p.is_file() && is_disc_image(&p) && crate::extract::xbox_root_file(&p, "default.xex", MAX_XEX).ok().flatten().is_some() {
+                return Some(p);
+            }
+        }
     }
     None
+}
+
+/// Like find, but only exact places: a default.xex, a disc image, or a folder with default.xex at its
+/// top (or in game/). For paths read from settings or from what a running game has open, where
+/// searching around could land on another game's copy.
+pub fn find_exact(places: &[PathBuf]) -> Option<PathBuf> {
+    for p in places {
+        if p.is_file() {
+            if is_default_xex(p) || (is_disc_image(p) && crate::extract::xbox_root_file(p, "default.xex", MAX_XEX).ok().flatten().is_some()) {
+                return Some(p.clone());
+            }
+        } else {
+            for direct in [p.join("default.xex"), p.join("game").join("default.xex")] {
+                if direct.is_file() {
+                    return Some(direct);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The game a file belongs to, from any file a running game has open: a disc image or default.xex
+/// itself, else the nearest folder above it with a default.xex (a few levels up at most).
+pub fn game_for_open_file(p: &Path) -> Option<PathBuf> {
+    if is_disc_image(p) || is_default_xex(p) {
+        return Some(p.to_path_buf());
+    }
+    let mut d = p.parent();
+    for _ in 0..8 {
+        let dir = d?;
+        if dir.join("default.xex").is_file() {
+            return Some(dir.to_path_buf());
+        }
+        d = dir.parent();
+    }
+    None
+}
+
+/// default.xex's bytes, from the file itself or from inside a disc image.
+fn xex_bytes(src: &Path) -> Option<Vec<u8>> {
+    if is_disc_image(src) {
+        return crate::extract::xbox_root_file(src, "default.xex", MAX_XEX).ok().flatten();
+    }
+    std::fs::read(src).ok()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -271,26 +355,27 @@ const CACHE: &str = "recomplauncher-achievements.json";
 
 /// The table for a game, from its cache next to the install when default.xex hasn't changed,
 /// else read and cached. None when there's no default.xex or no table in it.
-pub fn table_for(install: &Path, roots: &[PathBuf]) -> Option<Table> {
-    let xex = find(roots)?;
+pub fn table_for(install: &Path, roots: &[PathBuf], exact: &[PathBuf]) -> Option<Table> {
+    let xex = find(roots).or_else(|| find_exact(exact))?;
     let meta = std::fs::metadata(&xex).ok()?;
-    if meta.len() > MAX_XEX {
+    if meta.len() > MAX_XEX && !is_disc_image(&xex) {
         return None;
     }
     let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
     let cache = install.join(CACHE);
     if let Some(c) = std::fs::read(&cache).ok().and_then(|b| serde_json::from_slice::<Cached>(&b).ok()) {
-        if c.size == meta.len() && c.modified == modified {
+        // A read that failed before is tried again: the reader may know more now.
+        if c.size == meta.len() && c.modified == modified && c.table.is_some() {
             return c.table;
         }
     }
-    let bytes = std::fs::read(&xex).ok()?;
+    let bytes = xex_bytes(&xex)?;
     let sha256 = {
         use sha2::Digest;
         sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect::<String>()
     };
     if let Some(c) = std::fs::read(&cache).ok().and_then(|b| serde_json::from_slice::<Cached>(&b).ok()) {
-        if c.sha256 == sha256 {
+        if c.sha256 == sha256 && c.table.is_some() {
             let _ = std::fs::write(&cache, serde_json::to_vec_pretty(&Cached { size: meta.len(), modified, ..c }).unwrap_or_default());
             return std::fs::read(&cache).ok().and_then(|b| serde_json::from_slice::<Cached>(&b).ok()).and_then(|c| c.table);
         }

@@ -18,6 +18,7 @@ pub mod dllcheck;
 pub mod discord;
 pub mod extract;
 pub mod files;
+pub mod gamefiles;
 pub mod flatpak;
 pub mod gamebanana;
 pub mod info;
