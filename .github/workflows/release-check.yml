@@ -26,7 +26,34 @@ jobs:
       TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@v6
+      # The draft is found too (the tags endpoint only knows published releases), so this can be
+      # run from the Actions page on the draft, after the signed installer goes in, before publishing.
       - name: Check the release's files
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | "\(.name) \(.digest // "")"' \
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\(.name) \(.digest // \"\")\"" \
             | bash tools/check-release-files.sh "$TAG"
+      # A file can have the right name and still be another build. The installer names its own
+      # version inside (its version resource), and the one players get has to be signed.
+      - name: The Windows installer is this version, and signed
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | select(.name | endswith(\"-setup.exe\")) | .id" | head -n1)
+          [ -n "$id" ] || { echo "::error::No Windows installer on $TAG."; exit 1; }
+          gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$id" > setup.exe
+          python3 - "$TAG" <<'PY'
+          import struct, sys
+          ver = sys.argv[1].lstrip("v")
+          b = open("setup.exe", "rb").read()
+          if ver.encode("utf-16-le") not in b:
+              print(f"::error::The Windows installer isn't {ver} inside: it's another build.")
+              sys.exit(1)
+          pe = struct.unpack_from("<I", b, 0x3C)[0]
+          opt = pe + 24
+          dirs = opt + (112 if struct.unpack_from("<H", b, opt)[0] == 0x20B else 96)
+          size = struct.unpack_from("<I", b, dirs + 4 * 8 + 4)[0]
+          if not size:
+              print("::warning::The Windows installer isn't signed yet. Sign it and upload it again under the same name before publishing.")
+          else:
+              print(f"The Windows installer is {ver} and signed.")
+          PY

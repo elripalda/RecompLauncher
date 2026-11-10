@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "คุณใช้ {version} อยู่ จะอัปเดตในอีกสักครู่และเปิดขึ้นใหม่เอง",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "ทุกการดาวน์โหลดจะถูกเทียบกับเช็กซัมของ GitHub และสโตร์จะตรวจไวรัสในรีลีสก่อนนำมาให้ดาวน์โหลด",
  "Up Next": "ถัดไป",
- "Completed": "เสร็จแล้ว"
+ "Completed": "เสร็จแล้ว",
+ "This Update Looks Wrong": "อัปเดตนี้ดูเหมือนจะมีปัญหา",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} ติดตั้งไม่สำเร็จสองครั้ง ไฟล์อัปเดตจึงดูเหมือนจะมีปัญหา จะไม่มีการเสนออัปเดตนี้อีก และเวอร์ชันที่แก้ไขแล้วจะปรากฏขึ้นเองเมื่อออก ไม่ต้องเปลี่ยนอะไรบนพีซีของคุณ",
+ "OK": "ตกลง"
 }

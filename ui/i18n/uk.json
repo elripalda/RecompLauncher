@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "У тебе версія {version}. Оновлення займе мить, і лаунчер відкриється сам.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Кожне завантаження звіряється з контрольною сумою GitHub, а магазин перевіряє релізи на віруси, перш ніж їх запропонувати.",
  "Up Next": "Далі",
- "Completed": "Завершені"
+ "Completed": "Завершені",
+ "This Update Looks Wrong": "Схоже, це оновлення пошкоджене",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} двічі не вдалося встановити, тож файл оновлення, схоже, пошкоджений. Його більше не пропонуватимуть, а виправлений з'явиться сам, щойно вийде. На твоєму ПК нічого змінювати не потрібно.",
+ "OK": "ОК"
 }

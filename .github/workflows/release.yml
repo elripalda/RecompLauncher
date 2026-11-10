@@ -2,9 +2,13 @@ name: Release builds
 
 # Pushing a version tag (v0.90.0-beta.25) builds Windows, Linux and Mac together and puts every
 # file in a draft release for that tag. Nothing is public until the draft is published.
+# A version bump on main (src-tauri/tauri.conf.json) does the same by itself: the tag is made from
+# the new version, so a release never has to be put together by hand.
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['src-tauri/tauri.conf.json']
   workflow_dispatch:
     inputs:
       tag:
@@ -18,24 +22,43 @@ concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
-env:
-  TAG: ${{ github.event.inputs.tag || github.ref_name }}
-
 jobs:
   # Run from the Actions page with a tag that isn't there yet: the tag is made here, on the commit
   # it was run on. (A tag pushed with this token doesn't start another run.)
   tag:
     name: Tag
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.which.outputs.tag }}
+      go: ${{ steps.which.outputs.go }}
     steps:
       - uses: actions/checkout@v6
-        if: github.event_name == 'workflow_dispatch'
+        if: github.ref_type != 'tag'
         with:
           fetch-depth: 0
+      # A run from the Actions page names its tag; a pushed tag is its own; a push to main is the
+      # version in tauri.conf.json, built only when that version has no tag yet.
+      - name: Which tag
+        id: which
+        env:
+          INPUT: ${{ github.event.inputs.tag }}
+        run: |
+          go=true
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then tag="$INPUT"
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then tag="$GITHUB_REF_NAME"
+          else
+            tag="v$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              echo "$tag already has a tag; nothing to build."; go=false
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "go=$go" >> "$GITHUB_OUTPUT"
       - name: Make the tag, or move it to this commit while nothing is published
-        if: github.event_name == 'workflow_dispatch'
+        if: github.ref_type != 'tag' && steps.which.outputs.go == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.which.outputs.tag }}
         run: |
           case "$TAG" in v[0-9]*) ;; *) echo "Not a version tag: $TAG" >&2; exit 1;; esac
           at=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | cut -f1)
@@ -57,6 +80,9 @@ jobs:
 
   build:
     needs: tag
+    if: needs.tag.outputs.go == 'true'
+    env:
+      TAG: ${{ needs.tag.outputs.tag }}
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -153,7 +179,9 @@ jobs:
 
   draft:
     name: Put the files in a draft
-    needs: build
+    needs: [tag, build]
+    env:
+      TAG: ${{ needs.tag.outputs.tag }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6

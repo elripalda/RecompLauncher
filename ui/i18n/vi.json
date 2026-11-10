@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "Bạn đang dùng {version}. Bản cập nhật chỉ mất chốc lát rồi tự mở lại.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Mỗi lượt tải đều được đối chiếu với checksum của GitHub, và cửa hàng quét virus các bản phát hành trước khi cung cấp.",
  "Up Next": "Tiếp theo",
- "Completed": "Đã hoàn tất"
+ "Completed": "Đã hoàn tất",
+ "This Update Looks Wrong": "Bản cập nhật này có vẻ bị lỗi",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} đã hai lần không cài được, nên tệp cập nhật có vẻ bị lỗi. Bản này sẽ không được đề xuất nữa, và bản đã sửa sẽ tự xuất hiện khi phát hành. Bạn không cần thay đổi gì trên PC.",
+ "OK": "OK"
 }

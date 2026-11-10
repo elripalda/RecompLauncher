@@ -42,6 +42,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.34" date="2026-11-10">
+      <description>
+        <p>Safer launcher updates, plus improvements and fixes.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.33" date="2026-11-10">
       <description>
         <p>A redesigned Downloads page, plus improvements and fixes.</p>

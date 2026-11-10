@@ -3184,7 +3184,6 @@ fn human_size(b: u64) -> String {
     }
 }
 
-/// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
 /// An AppImage unpacked at install starts from its AppRun, which may look for its files through
 /// APPDIR (the AppImage's runtime sets it when the AppImage starts itself): set it here.
 #[cfg(target_os = "linux")]
@@ -3196,6 +3195,7 @@ fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
     }
 }
 
+/// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program.iter().map(|x| install.join(x)).find(|x| x.is_file()).ok_or("Its setup program is missing. Reinstall the game.")?;
@@ -5709,7 +5709,43 @@ pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Opti
     if !min.is_empty() && version_key(env!("CARGO_PKG_VERSION")) < version_key(&min) && v.is_object() {
         v["required"] = Value::Bool(true);
     }
+    // An update file that turned out wrong isn't offered again; a fixed one (another checksum) is.
+    if update_is_bad(&st.dir, &newest, str_of(&v, "url"), str_of(&v, "sha256")) {
+        return None;
+    }
     (!newest.is_empty() && version_key(&newest) > version_key(env!("CARGO_PKG_VERSION"))).then_some(v)
+}
+
+/// An update file that turned out wrong: another version inside it, or two installs from it that
+/// didn't go in. { version, url, sha256, fails }. Two strikes and that exact file isn't offered
+/// again; it's offered again when version.json changes it (a new version, url or sha256).
+fn update_bad_file(dir: &Path) -> PathBuf {
+    dir.join("update-bad.json")
+}
+
+fn update_same(v: &Value, version: &str, url: &str, sha: &str) -> bool {
+    str_of(v, "version").trim_start_matches('v') == version.trim_start_matches('v') && str_of(v, "url") == url && str_of(v, "sha256").eq_ignore_ascii_case(sha)
+}
+
+fn update_is_bad(dir: &Path, version: &str, url: &str, sha: &str) -> bool {
+    let Some(v) = std::fs::read(update_bad_file(dir)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return false };
+    update_same(&v, version, url, sha) && v.get("fails").and_then(Value::as_u64).unwrap_or(0) >= 2
+}
+
+/// One more strike against this update file (`fails` more); returns how many it has now.
+fn update_strike(dir: &Path, version: &str, url: &str, sha: &str, fails: u64) -> u64 {
+    let f = update_bad_file(dir);
+    let old = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null);
+    let n = if update_same(&old, version, url, sha) { old.get("fails").and_then(Value::as_u64).unwrap_or(0) } else { 0 } + fails;
+    let _ = std::fs::write(&f, json!({"version": version.trim_start_matches('v'), "url": url, "sha256": sha.to_lowercase(), "fails": n}).to_string());
+    n
+}
+
+/// A Windows installer names its own version in its version resource (UTF-16). An installer for
+/// RecompLauncher `version` that doesn't is another build, published by mistake.
+fn installer_is_version(bytes: &[u8], version: &str) -> bool {
+    let want: Vec<u8> = version.trim_start_matches('v').encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    !want.is_empty() && bytes.windows(want.len()).any(|w| w == want.as_slice())
 }
 
 /// The window asks as it opens (an answer from the last hour is reused, so opening it again and
@@ -6476,6 +6512,14 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
             return Err(Error::Msg("The new version didn't download right (its checksum doesn't match). Try again.".into()));
         }
     }
+    // The installer has to be the version on offer. Another one (a file published by mistake) would
+    // install the same version again and again, so it's refused and not offered again.
+    let to_ver = str_of(&v, "version").trim_start_matches('v').to_string();
+    if cfg!(windows) && !to_ver.is_empty() && !installer_is_version(&bytes, &to_ver) {
+        update_strike(&st.dir, &to_ver, &file_url, &want, 2);
+        trail::note(format!("The update file for {to_ver} is another version; not offered again"));
+        return Err(Error::Msg(format!("The update file for RecompLauncher {to_ver} looks wrong: it's a different version inside. It won't be offered again until it's fixed, and nothing on your PC needs changing.")));
+    }
     if let Some(me) = appimage {
         // The new AppImage goes next to this one and takes its place, then starts.
         let new = me.with_extension("new");
@@ -6498,7 +6542,7 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     let file = std::env::temp_dir().join(format!("RecompLauncher-{}-setup.exe", str_of(&v, "version").trim_start_matches('v')));
     std::fs::write(&file, &bytes)?;
     // Noted, so the next start can tell whether it went in (see update_check_last).
-    let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file}).to_string());
+    let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file, "url": file_url, "sha256": want}).to_string());
     // Its own small window shows the progress (/P), and RecompLauncher opens again after (/R).
     // In that mode the installer closes any copy of the launcher still open before it copies.
     // This one closes right away, so none of our files are in use. /UPDATE: it replaces the files
@@ -6571,8 +6615,10 @@ fn update_check_last(dir: &Path) {
         return;
     }
     let installer = str_of(&v, "installer").to_string();
-    trail::note(format!("The update to {to} didn't install (this is still {me})"));
-    *UPDATE_FAILED.lock().unwrap() = Some(json!({"to": to, "installer": installer, "there": Path::new(&installer).is_file()}));
+    // The second time the same file doesn't go in, it's the file: it isn't offered again.
+    let fails = update_strike(dir, &to, str_of(&v, "url"), str_of(&v, "sha256"), 1);
+    trail::note(format!("The update to {to} didn't install (this is still {me}; {fails} time(s) with this file)"));
+    *UPDATE_FAILED.lock().unwrap() = Some(json!({"to": to, "installer": installer, "there": Path::new(&installer).is_file(), "bad": fails >= 2}));
     let _ = std::fs::remove_file(&f);
 }
 
@@ -7738,6 +7784,31 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_wrong_update_file_is_refused_and_not_offered_again() {
+        // An installer names its version in UTF-16; another version's installer doesn't match.
+        let inst: Vec<u8> = b"MZ..".iter().copied().chain("ProductVersion\00.90.0-beta.32".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        assert!(installer_is_version(&inst, "0.90.0-beta.32"));
+        assert!(installer_is_version(&inst, "v0.90.0-beta.32"));
+        assert!(!installer_is_version(&inst, "0.90.0-beta.33"));
+        // Two strikes against the same file and it isn't offered; a fixed file (another checksum) is.
+        let d = std::env::temp_dir().join(format!("rl-upd-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let u = "https://github.com/x/RecompLauncher_0.90.0-beta.33_x64-setup.exe";
+        assert_eq!(update_strike(&d, "0.90.0-beta.33", u, "AAA", 1), 1);
+        assert!(!update_is_bad(&d, "0.90.0-beta.33", u, "aaa"));
+        assert_eq!(update_strike(&d, "0.90.0-beta.33", u, "aaa", 1), 2);
+        assert!(update_is_bad(&d, "v0.90.0-beta.33", u, "AAA"));
+        // version.json changed (another file, another url, another version): offered again.
+        assert!(!update_is_bad(&d, "0.90.0-beta.33", u, "bbb"));
+        assert!(!update_is_bad(&d, "0.90.0-beta.33", "https://github.com/x/other.exe", "aaa"));
+        assert!(!update_is_bad(&d, "0.90.0-beta.34", u, "aaa"));
+        // Another file starts over.
+        assert_eq!(update_strike(&d, "0.90.0-beta.33", u, "bbb", 1), 1);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
     #[test]
     fn only_plain_game_links_open_anything() {
         assert_eq!(super::link_game("recomplauncher://game/recompia").as_deref(), Some("recompia"));

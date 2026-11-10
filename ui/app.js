@@ -4866,6 +4866,13 @@ const cleanMsg = (m) => {
 // what stopped it (an antivirus, a folder Windows protects), or it's downloaded again.
 function updateFailedModal(f) {
   if (document.body.classList.contains('tv-on') || $('.scrim')) { setTimeout(() => updateFailedModal(f), 4000); return; }
+  // Twice from the same file: it's the file, not the PC. It isn't offered again; a fixed one is.
+  if (f.bad) {
+    S.launcherUpd = null; renderSide();
+    modal(`<h2>${esc(t('This Update Looks Wrong'))}</h2><p>${esc(tf('RecompLauncher {to} didn\'t install twice, so its update file looks wrong. It won\'t be offered again, and a fixed one shows up on its own once it\'s out. Nothing on your PC needs changing.', { to: verName(f.to) }))}</p>
+    <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('OK'))}</button></div>`, () => {}, t('This Update Looks Wrong'));
+    return;
+  }
   modal(`<h2>${esc(t('The Update Didn\'t Install'))}</h2><p>${esc(tf('RecompLauncher {to} was downloaded, but it didn\'t install, so this is still {now}. Run its installer the usual way to see what\'s stopping it, like an antivirus or a folder Windows protects.', { to: verName(f.to), now: verName(S.version) }))}</p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="go">${esc(f.there ? t('Run the Installer') : t('Download It Again'))}</button></div>`, async (x, close) => {
     if (x.dataset.x !== 'go') return;
@@ -4876,7 +4883,7 @@ function updateFailedModal(f) {
 }
 async function selfUpdate() {
   toast(t('Downloading the new RecompLauncher…'));
-  try { await invoke('update_launcher'); } catch (e) { if (!blocked('', e)) fail(e); }
+  try { await invoke('update_launcher'); } catch (e) { if (!blocked('', e)) fail(e); lookForLauncher(); }
 }
 
 function libChoices(libs, sel) {
@@ -5033,7 +5040,8 @@ const LL = { told: '' };
 async function lookForLauncher() {
   let v = null;
   try { v = await invoke('launcher_update', { force: false }); } catch { return; }
-  if (v && v.version) S.launcherUpd = v;
+  // A file that turned out wrong isn't offered any more, so the banner goes too.
+  S.launcherUpd = v && v.version ? v : null;
   if (v && v.version && v.version !== LL.told) { LL.told = v.version; updateToast(v); }
   renderSide();
 }

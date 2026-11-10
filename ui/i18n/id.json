@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "Kamu punya {version}. Pembaruannya sebentar saja, lalu terbuka lagi dengan sendirinya.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Setiap unduhan dicocokkan dengan checksum dari GitHub, dan toko memeriksa rilis dari virus sebelum menawarkannya.",
  "Up Next": "Berikutnya",
- "Completed": "Selesai"
+ "Completed": "Selesai",
+ "This Update Looks Wrong": "Pembaruan ini tampaknya bermasalah",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dua kali gagal terpasang, jadi file pembaruannya tampaknya bermasalah. Pembaruan ini tidak akan ditawarkan lagi, dan versi yang sudah diperbaiki akan muncul sendiri begitu dirilis. Tidak ada yang perlu diubah di PC-mu.",
+ "OK": "OK"
 }

@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "Masz wersję {version}. Aktualizacja potrwa chwilę, a potem launcher sam się uruchomi.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Każde pobranie jest porównywane z sumą kontrolną z GitHuba, a sklep sprawdza wydania pod kątem wirusów, zanim je udostępni.",
  "Up Next": "Następne",
- "Completed": "Ukończone"
+ "Completed": "Ukończone",
+ "This Update Looks Wrong": "Ta aktualizacja wygląda na wadliwą",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dwa razy się nie zainstalował, więc plik aktualizacji wygląda na wadliwy. Nie będzie już proponowany, a poprawiony pojawi się sam, gdy tylko zostanie wydany. Na twoim komputerze nie trzeba nic zmieniać.",
+ "OK": "OK"
 }

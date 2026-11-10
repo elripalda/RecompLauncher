@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "現在のバージョンは {version} です。すぐに更新され、自動でもう一度開きます。",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "すべてのダウンロードは GitHub のチェックサムと照合され、ストアは提供前にリリースのウイルスチェックを行います。",
  "Up Next": "次のダウンロード",
- "Completed": "完了"
+ "Completed": "完了",
+ "This Update Looks Wrong": "このアップデートに問題があるようです",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} のインストールに 2 回失敗したため、アップデートファイルに問題があるようです。このアップデートは今後表示されず、修正版が出ると自動で表示されます。お使いの PC で変更が必要なことはありません。",
+ "OK": "OK"
 }

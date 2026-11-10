@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "Sizde {version} var. Birazdan güncellenir ve kendiliğinden yeniden açılır.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Her indirme GitHub'ın sağlama toplamıyla karşılaştırılır ve mağaza, sürümleri sunmadan önce virüslere karşı tarar.",
  "Up Next": "Sıradaki",
- "Completed": "Tamamlananlar"
+ "Completed": "Tamamlananlar",
+ "This Update Looks Wrong": "Bu güncelleme hatalı görünüyor",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} iki kez yüklenemedi, bu yüzden güncelleme dosyası hatalı görünüyor. Bir daha sunulmayacak; düzeltilmiş olanı çıktığında kendiliğinden görünür. Bilgisayarınızda hiçbir şeyi değiştirmeniz gerekmiyor.",
+ "OK": "Tamam"
 }

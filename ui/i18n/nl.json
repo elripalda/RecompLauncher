@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "Je hebt {version}. Hij werkt zich zo bij en opent daarna vanzelf weer.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Elke download wordt vergeleken met de checksum van GitHub, en de store controleert releases op virussen voordat ze worden aangeboden.",
  "Up Next": "Hierna",
- "Completed": "Voltooid"
+ "Completed": "Voltooid",
+ "This Update Looks Wrong": "Deze update lijkt niet in orde",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} is twee keer niet geïnstalleerd, dus het updatebestand lijkt niet in orde. Het wordt niet opnieuw aangeboden, en een gerepareerde versie verschijnt vanzelf zodra die uit is. Op je pc hoeft niets te veranderen.",
+ "OK": "OK"
 }

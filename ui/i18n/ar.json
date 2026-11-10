@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "لديك الإصدار {version}. سيتحدّث خلال لحظات ثم يُفتح من تلقاء نفسه.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "يُطابَق كل تنزيل مع المجموع الاختباري من GitHub، ويفحص المتجر الإصدارات بحثًا عن الفيروسات قبل عرضها.",
  "Up Next": "التالي",
- "Completed": "المكتملة"
+ "Completed": "المكتملة",
+ "This Update Looks Wrong": "يبدو أن هذا التحديث معيب",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "تعذّر تثبيت RecompLauncher {to} مرتين، لذا يبدو أن ملف التحديث معيب. لن يُعرض مرة أخرى، وسيظهر تحديث مُصلَح من تلقاء نفسه فور صدوره. لا شيء على جهازك يحتاج إلى تغيير.",
+ "OK": "حسنًا"
 }

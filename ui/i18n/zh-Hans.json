@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "你的版本是 {version}。稍后即会更新并自动重新打开。",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "每次下载都会与 GitHub 的校验和比对，商店也会在提供前检查发布版本是否有病毒。",
  "Up Next": "即将下载",
- "Completed": "已完成"
+ "Completed": "已完成",
+ "This Update Looks Wrong": "此更新似乎有问题",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} 两次都未能安装，因此它的更新文件似乎有问题。它不会再次提供，修复后的版本一推出就会自动出现。你的电脑无需做任何更改。",
+ "OK": "确定"
 }

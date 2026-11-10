@@ -2664,5 +2664,8 @@
  "You have {version}. It updates in a moment and opens again by itself.": "Hai la {version}. Si aggiorna in un attimo e si riapre da solo.",
  "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Ogni download viene confrontato con il checksum di GitHub, e lo store controlla le release alla ricerca di virus prima di offrirle.",
  "Up Next": "Prossimi",
- "Completed": "Completati"
+ "Completed": "Completati",
+ "This Update Looks Wrong": "Questo aggiornamento sembra difettoso",
+ "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} non si è installato per due volte, quindi il suo file di aggiornamento sembra difettoso. Non verrà più proposto, e uno corretto comparirà da solo appena sarà disponibile. Sul tuo PC non c'è niente da cambiare.",
+ "OK": "OK"
 }
