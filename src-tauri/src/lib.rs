@@ -3616,6 +3616,7 @@ fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+        p.windows_build = Some(is_windows_build(g));
         p.input_paths = inputs::available(&p, g, &st.dir);
         p.slider_vals = g.slider_vals.clone();
         p.add_screen_choices(screen_now());
