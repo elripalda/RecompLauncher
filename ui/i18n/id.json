@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Taruh ROM dan image disk di sini, dan launcher akan menemukannya sendiri.",
  "Couldn't create the ROMs folder in Games.": "Tidak bisa membuat folder ROMs di Games.",
  "or": "atau",
- "Unpacking the game the first time it's played. Later starts are quicker.": "Membongkar game saat pertama kali dimainkan. Pembukaan berikutnya lebih cepat."
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Membongkar game saat pertama kali dimainkan. Pembukaan berikutnya lebih cepat.",
+ "Current": "Saat ini",
+ "Peak": "Puncak",
+ "Time Left": "Sisa waktu",
+ "Downloading · {pct}%": "Mengunduh · {pct}%",
+ "Clean · {by}": "Bersih · {by}",
+ "Being checked": "Sedang diperiksa",
+ "Flagged · {by}": "Ditandai · {by}",
+ "{n} of {total} engines flagged": "Ditandai oleh {n} dari {total} mesin",
+ "Checked by the store before it was offered": "Diperiksa oleh toko sebelum ditawarkan",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} sudah siap",
+ "You have {version}. It updates in a moment and opens again by itself.": "Kamu punya {version}. Pembaruannya sebentar saja, lalu terbuka lagi dengan sendirinya.",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Setiap unduhan dicocokkan dengan checksum dari GitHub, dan toko memeriksa rilis dari virus sebelum menawarkannya.",
+ "Up Next": "Berikutnya",
+ "Completed": "Selesai"
 }

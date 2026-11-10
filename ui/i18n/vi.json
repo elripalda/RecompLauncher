@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Đặt ROM và ảnh đĩa vào đây, trình khởi chạy sẽ tự tìm thấy chúng.",
  "Couldn't create the ROMs folder in Games.": "Không tạo được thư mục ROMs trong Games.",
  "or": "hoặc",
- "Unpacking the game the first time it's played. Later starts are quicker.": "Đang giải nén trò chơi ở lần chơi đầu tiên. Những lần khởi động sau sẽ nhanh hơn."
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Đang giải nén trò chơi ở lần chơi đầu tiên. Những lần khởi động sau sẽ nhanh hơn.",
+ "Current": "Hiện tại",
+ "Peak": "Cao nhất",
+ "Time Left": "Thời gian còn lại",
+ "Downloading · {pct}%": "Đang tải xuống · {pct}%",
+ "Clean · {by}": "An toàn · {by}",
+ "Being checked": "Đang kiểm tra",
+ "Flagged · {by}": "Bị gắn cờ · {by}",
+ "{n} of {total} engines flagged": "{n}/{total} công cụ gắn cờ",
+ "Checked by the store before it was offered": "Đã được cửa hàng kiểm tra trước khi cung cấp",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} đã sẵn sàng",
+ "You have {version}. It updates in a moment and opens again by itself.": "Bạn đang dùng {version}. Bản cập nhật chỉ mất chốc lát rồi tự mở lại.",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Mỗi lượt tải đều được đối chiếu với checksum của GitHub, và cửa hàng quét virus các bản phát hành trước khi cung cấp.",
+ "Up Next": "Tiếp theo",
+ "Completed": "Đã hoàn tất"
 }

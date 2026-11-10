@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ضع ملفات ROM وصور الأقراص هنا وسيجدها المشغل بنفسه.",
  "Couldn't create the ROMs folder in Games.": "تعذّر إنشاء مجلد ROMs داخل Games.",
  "or": "أو",
- "Unpacking the game the first time it's played. Later starts are quicker.": "يجري فك ضغط اللعبة في أول مرة تُلعب فيها. البدايات التالية أسرع."
+ "Unpacking the game the first time it's played. Later starts are quicker.": "يجري فك ضغط اللعبة في أول مرة تُلعب فيها. البدايات التالية أسرع.",
+ "Current": "الحالية",
+ "Peak": "الذروة",
+ "Time Left": "الوقت المتبقي",
+ "Downloading · {pct}%": "جارٍ التنزيل · {pct}%",
+ "Clean · {by}": "سليم · {by}",
+ "Being checked": "قيد الفحص",
+ "Flagged · {by}": "مُبلَّغ عنه · {by}",
+ "{n} of {total} engines flagged": "أبلغ عنه {n} من أصل {total} من المحركات",
+ "Checked by the store before it was offered": "فحصه المتجر قبل عرضه",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} جاهز",
+ "You have {version}. It updates in a moment and opens again by itself.": "لديك الإصدار {version}. سيتحدّث خلال لحظات ثم يُفتح من تلقاء نفسه.",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "يُطابَق كل تنزيل مع المجموع الاختباري من GitHub، ويفحص المتجر الإصدارات بحثًا عن الفيروسات قبل عرضها.",
+ "Up Next": "التالي",
+ "Completed": "المكتملة"
 }

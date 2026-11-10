@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "把 ROM 和光盘镜像放在这里，启动器会自己找到它们。",
  "Couldn't create the ROMs folder in Games.": "无法在 Games 中创建 ROMs 文件夹。",
  "or": "或",
- "Unpacking the game the first time it's played. Later starts are quicker.": "首次游玩时正在解包游戏。之后启动会更快。"
+ "Unpacking the game the first time it's played. Later starts are quicker.": "首次游玩时正在解包游戏。之后启动会更快。",
+ "Current": "当前",
+ "Peak": "峰值",
+ "Time Left": "剩余时间",
+ "Downloading · {pct}%": "正在下载 · {pct}%",
+ "Clean · {by}": "安全 · {by}",
+ "Being checked": "正在检查",
+ "Flagged · {by}": "已标记 · {by}",
+ "{n} of {total} engines flagged": "{total} 个引擎中有 {n} 个标记",
+ "Checked by the store before it was offered": "商店在提供前已检查",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} 已就绪",
+ "You have {version}. It updates in a moment and opens again by itself.": "你的版本是 {version}。稍后即会更新并自动重新打开。",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "每次下载都会与 GitHub 的校验和比对，商店也会在提供前检查发布版本是否有病毒。",
+ "Up Next": "即将下载",
+ "Completed": "已完成"
 }

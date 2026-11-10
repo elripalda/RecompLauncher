@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Поклади сюди ROM-файли й образи дисків, і лаунчер сам їх знайде.",
  "Couldn't create the ROMs folder in Games.": "Не вдалося створити папку ROMs у Games.",
  "or": "або",
- "Unpacking the game the first time it's played. Later starts are quicker.": "Гра розпаковується під час першого запуску. Наступні запуски будуть швидшими."
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Гра розпаковується під час першого запуску. Наступні запуски будуть швидшими.",
+ "Current": "Зараз",
+ "Peak": "Пік",
+ "Time Left": "Залишилося",
+ "Downloading · {pct}%": "Завантаження · {pct}%",
+ "Clean · {by}": "Чисто · {by}",
+ "Being checked": "Перевіряється",
+ "Flagged · {by}": "Виявлено загрозу · {by}",
+ "{n} of {total} engines flagged": "Загрозу знайшли антивіруси: {n} з {total}",
+ "Checked by the store before it was offered": "Перевірено магазином перед публікацією",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} готовий",
+ "You have {version}. It updates in a moment and opens again by itself.": "У тебе версія {version}. Оновлення займе мить, і лаунчер відкриється сам.",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Кожне завантаження звіряється з контрольною сумою GitHub, а магазин перевіряє релізи на віруси, перш ніж їх запропонувати.",
+ "Up Next": "Далі",
+ "Completed": "Завершені"
 }

@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ROM やディスクイメージをここに置くと、ランチャーが自動で見つけます。",
  "Couldn't create the ROMs folder in Games.": "Games 内に ROMs フォルダーを作成できませんでした。",
  "or": "または",
- "Unpacking the game the first time it's played. Later starts are quicker.": "初回プレイ時にゲームを展開しています。次回からはより速く起動します。"
+ "Unpacking the game the first time it's played. Later starts are quicker.": "初回プレイ時にゲームを展開しています。次回からはより速く起動します。",
+ "Current": "現在",
+ "Peak": "ピーク",
+ "Time Left": "残り時間",
+ "Downloading · {pct}%": "ダウンロード中 · {pct}%",
+ "Clean · {by}": "問題なし · {by}",
+ "Being checked": "チェック中",
+ "Flagged · {by}": "検出あり · {by}",
+ "{n} of {total} engines flagged": "{total} 個中 {n} 個のエンジンが検出",
+ "Checked by the store before it was offered": "ストアが提供前にチェック済み",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} の準備ができました",
+ "You have {version}. It updates in a moment and opens again by itself.": "現在のバージョンは {version} です。すぐに更新され、自動でもう一度開きます。",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "すべてのダウンロードは GitHub のチェックサムと照合され、ストアは提供前にリリースのウイルスチェックを行います。",
+ "Up Next": "次のダウンロード",
+ "Completed": "完了"
 }

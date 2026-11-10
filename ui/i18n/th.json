@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ใส่ ROM และอิมเมจดิสก์ไว้ที่นี่ แล้วตัวเปิดเกมจะหาเจอเอง",
  "Couldn't create the ROMs folder in Games.": "สร้างโฟลเดอร์ ROMs ใน Games ไม่ได้",
  "or": "หรือ",
- "Unpacking the game the first time it's played. Later starts are quicker.": "กำลังแตกไฟล์เกมในการเล่นครั้งแรก ครั้งต่อไปจะเปิดได้เร็วขึ้น"
+ "Unpacking the game the first time it's played. Later starts are quicker.": "กำลังแตกไฟล์เกมในการเล่นครั้งแรก ครั้งต่อไปจะเปิดได้เร็วขึ้น",
+ "Current": "ปัจจุบัน",
+ "Peak": "สูงสุด",
+ "Time Left": "เวลาที่เหลือ",
+ "Downloading · {pct}%": "กำลังดาวน์โหลด · {pct}%",
+ "Clean · {by}": "ปลอดภัย · {by}",
+ "Being checked": "กำลังตรวจสอบ",
+ "Flagged · {by}": "ถูกตั้งค่าสถานะ · {by}",
+ "{n} of {total} engines flagged": "ถูกตั้งค่าสถานะโดย {n} จาก {total} เอนจิน",
+ "Checked by the store before it was offered": "สโตร์ตรวจสอบแล้วก่อนนำมาให้ดาวน์โหลด",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} พร้อมแล้ว",
+ "You have {version}. It updates in a moment and opens again by itself.": "คุณใช้ {version} อยู่ จะอัปเดตในอีกสักครู่และเปิดขึ้นใหม่เอง",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "ทุกการดาวน์โหลดจะถูกเทียบกับเช็กซัมของ GitHub และสโตร์จะตรวจไวรัสในรีลีสก่อนนำมาให้ดาวน์โหลด",
+ "Up Next": "ถัดไป",
+ "Completed": "เสร็จแล้ว"
 }

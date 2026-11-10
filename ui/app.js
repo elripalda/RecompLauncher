@@ -2779,7 +2779,7 @@ function dlGraphStats(id) {
   const cur = j.phase === 'download' ? j.speed || 0 : 0, peak = Math.max(0, ...l);
   const left = cur && j.total ? Math.max(0, j.total - j.done) / cur : 0;
   return [[t('Current'), cur ? tf('{speed}/s', { speed: fmtB(cur) }) : '—'], [t('Peak'), peak ? tf('{speed}/s', { speed: fmtB(peak) }) : '—'],
-    [t('Time left'), left ? took(Math.round(left)) : '—']];
+    [t('Time Left'), left ? took(Math.round(left)) : '—']];
 }
 // Only the graph and its numbers change while a download runs.
 function paintDlHero(id) {
@@ -2880,7 +2880,7 @@ function pageDownloads() {
   const n = (k) => `<span class="dl-n">${k}</span>`;
   return `<div class="page dl-page" style="max-width:1100px">${head}
     ${hero || `<div class="stats dl-stats">${stats.map(([k, v, sub]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b><small>${esc(sub || '')}</small></div>`).join('')}</div>`}
-    ${queue || upRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Up next'))}${n(act.length - (lead ? 1 : 0) + ups.length)}</h2>${ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : ''}</div><div class="dl-list">${queue}${upRows}</div></section>` : ''}
+    ${queue || upRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Up Next'))}${n(act.length - (lead ? 1 : 0) + ups.length)}</h2>${ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : ''}</div><div class="dl-list">${queue}${upRows}</div></section>` : ''}
     ${failRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Didn\'t finish'))}${n(fails.length)}</h2></div><div class="dl-list">${failRows}</div></section>` : ''}
     ${shown.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Completed'))}${n(shown.length)}</h2></div><div class="dl-list">${histRows}</div></section>` : ''}
     ${nothing ? `<div class="empty"><h2>${esc(t('No downloads'))}</h2><p>${esc(t('Games you install or update show their progress here.'))}</p></div>` : ''}</div>`;

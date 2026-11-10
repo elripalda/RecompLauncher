@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ROM과 디스크 이미지를 여기에 두면 런처가 알아서 찾습니다.",
  "Couldn't create the ROMs folder in Games.": "Games 안에 ROMs 폴더를 만들 수 없습니다.",
  "or": "또는",
- "Unpacking the game the first time it's played. Later starts are quicker.": "처음 플레이할 때 게임 압축을 풀고 있습니다. 다음부터는 더 빨리 시작됩니다."
+ "Unpacking the game the first time it's played. Later starts are quicker.": "처음 플레이할 때 게임 압축을 풀고 있습니다. 다음부터는 더 빨리 시작됩니다.",
+ "Current": "현재",
+ "Peak": "최고",
+ "Time Left": "남은 시간",
+ "Downloading · {pct}%": "다운로드 중 · {pct}%",
+ "Clean · {by}": "안전 · {by}",
+ "Being checked": "검사 중",
+ "Flagged · {by}": "위협 감지 · {by}",
+ "{n} of {total} engines flagged": "엔진 {total}개 중 {n}개가 감지",
+ "Checked by the store before it was offered": "제공 전에 스토어에서 검사함",
+ "RecompLauncher {version} is ready": "RecompLauncher {version} 준비 완료",
+ "You have {version}. It updates in a moment and opens again by itself.": "현재 {version}을(를) 사용 중입니다. 잠시 후 업데이트되고 저절로 다시 열립니다.",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "모든 다운로드는 GitHub의 체크섬과 대조되며, 스토어는 릴리스를 제공하기 전에 바이러스 검사를 합니다.",
+ "Up Next": "다음 순서",
+ "Completed": "완료됨"
 }

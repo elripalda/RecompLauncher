@@ -25,23 +25,28 @@
   <content_rating type="oars-1.1"/>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/main/docs/images/home.jpg</image>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/home.jpg</image>
       <caption>Home</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/main/docs/images/discover.jpg</image>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/discover.jpg</image>
       <caption>Discover</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/main/docs/images/game.jpg</image>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/game.jpg</image>
       <caption>A game's page</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/main/docs/images/bigpicture.jpg</image>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/bigpicture.jpg</image>
       <caption>Big Picture mode</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.33" date="2026-11-10">
+      <description>
+        <p>A redesigned Downloads page, plus improvements and fixes.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.31" date="2026-11-10"/>
   </releases>
 </component>

@@ -2650,5 +2650,19 @@
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Coloque aqui suas ROMs e imagens de disco e o launcher encontra tudo sozinho.",
  "Couldn't create the ROMs folder in Games.": "Não foi possível criar a pasta ROMs em Games.",
  "or": "ou",
- "Unpacking the game the first time it's played. Later starts are quicker.": "Descompactando o jogo na primeira vez que ele é jogado. As próximas aberturas são mais rápidas."
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Descompactando o jogo na primeira vez que ele é jogado. As próximas aberturas são mais rápidas.",
+ "Current": "Atual",
+ "Peak": "Pico",
+ "Time Left": "Tempo restante",
+ "Downloading · {pct}%": "Baixando · {pct}%",
+ "Clean · {by}": "Limpo · {by}",
+ "Being checked": "Em verificação",
+ "Flagged · {by}": "Sinalizado · {by}",
+ "{n} of {total} engines flagged": "Sinalizado por {n} de {total} mecanismos",
+ "Checked by the store before it was offered": "Verificado pela loja antes de ser oferecido",
+ "RecompLauncher {version} is ready": "O RecompLauncher {version} está pronto",
+ "You have {version}. It updates in a moment and opens again by itself.": "Você tem a {version}. Ele atualiza em um instante e abre de novo sozinho.",
+ "Each download is matched against GitHub's checksum, and the store checks releases for viruses before offering them.": "Cada download é conferido com o checksum do GitHub, e a loja verifica as versões contra vírus antes de oferecê-las.",
+ "Up Next": "A seguir",
+ "Completed": "Concluídos"
 }
