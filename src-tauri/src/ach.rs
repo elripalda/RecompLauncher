@@ -41,6 +41,9 @@ const MAX_LINE: usize = 1 << 20;
 static ACCESS: AtomicU8 = AtomicU8::new(0);
 /// The website's last a=status answer (kept for offline use).
 static STATUS: Mutex<Option<Value>> = Mutex::new(None);
+/// When the website last answered a=status (seconds), so a page open asks again once it's a few minutes old.
+static STATUS_AT: AtomicU64 = AtomicU64::new(0);
+const STATUS_FRESH: u64 = 180;
 
 pub fn allowed() -> bool {
     ACCESS.load(Ordering::Relaxed) == 1
@@ -67,6 +70,7 @@ fn set_status(app: &AppHandle, dir: &Path, v: Option<Value>) {
         None => { let _ = std::fs::remove_file(status_file(dir)); }
     }
     *STATUS.lock().unwrap() = v;
+    STATUS_AT.store(now_ms() / 1000, Ordering::Relaxed);
     if before != ACCESS.load(Ordering::Relaxed) {
         let _ = app.emit("ach-access", json!({"allowed": tester}));
     }
@@ -1646,7 +1650,9 @@ pub async fn ach_access(app: AppHandle, fresh: Option<bool>) -> Res<Value> {
 pub async fn ach_status(app: AppHandle, fresh: Option<bool>) -> Res<Value> {
     let dir = app.state::<App>().dir.clone();
     let signed = crate::cloud::token(&dir).is_some();
-    let st = if fresh.unwrap_or(false) || ACCESS.load(Ordering::Relaxed) == 0 { check_status(&app).await } else { STATUS.lock().unwrap().clone() };
+    // A cached answer a few minutes old is asked again, so a note the team just posted turns up.
+    let stale = (now_ms() / 1000).saturating_sub(STATUS_AT.load(Ordering::Relaxed)) > STATUS_FRESH;
+    let st = if fresh.unwrap_or(false) || stale || ACCESS.load(Ordering::Relaxed) == 0 { check_status(&app).await } else { STATUS.lock().unwrap().clone() };
     let mut v = st.unwrap_or_else(|| json!({}));
     v["signed_in"] = json!(signed);
     v["tester"] = json!(signed && allowed());

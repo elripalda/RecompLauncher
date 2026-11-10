@@ -328,7 +328,7 @@ Your account's Terms and Privacy still apply.`;
   const coverOf = (g) => { const a = cat(g.id); return (a && a.cover) || g.cover || ''; };
   const nameOf = (g) => { const a = cat(g.id); return (a && a.name) || g.name || g.id; };
   const COVERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-  const cov = (g, cls = '') => { const c = coverOf(g); const k = COVERS[[...String(g.id)].reduce((n, ch) => n + ch.charCodeAt(0), 0) % COVERS.length]; return `<div class="achp-cov ${c ? '' : 'ph-' + k} ${cls}">${c ? pic(thumbOf(c, 320), '', 'loading="lazy"') : `<span>${esc(nameOf(g))}</span>`}</div>`; };
+  const cov = (g, cls = '') => { const c = coverOf(g); const k = COVERS[[...String(g.id)].reduce((n, ch) => n + ch.charCodeAt(0), 0) % COVERS.length]; return `<div class="achp-cov ph-${k} ${cls}"><span>${esc(nameOf(g))}</span>${c ? pic(thumbOf(c, cls === 'wide' ? 640 : 400), '', `loading="lazy" data-orig="${esc(media(c))}"`) : ''}</div>`; };
   const bar = (n, of, gold) => `<div class="achp-bar${gold ? ' gold' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="${of || 0}" aria-valuenow="${n || 0}"><i style="width:${of ? Math.min(100, Math.round((n / of) * 100)) : 0}%"></i></div>`;
   const agoShort = (ts) => {
     if (!ts) return '';
@@ -339,6 +339,14 @@ Your account's Terms and Privacy still apply.`;
     return new Date(ts * 1000).toLocaleDateString(curLocale(), { month: 'short', day: 'numeric' });
   };
   const chip = (ranked) => `<span class="achp-chip ${ranked ? 'rk' : 'cs'}">${esc(ranked ? t('Ranked') : t('Casual'))}</span>`;
+  // The team's pinned note from a=status (a title, its text and a button), above everything else.
+  const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></svg>';
+  function noteCard() {
+    const n = A.status && A.status.note;
+    if (!n || typeof n !== 'object' || !(n.title || n.text)) return '';
+    const url = typeof n.url === 'string' && /^https:\/\//i.test(n.url) ? n.url : '';
+    return `<section class="card achp-pin" role="note"><span class="achp-pin-ic">${PIN}</span><div class="achp-pin-k">${n.title ? `<strong>${esc(n.title)}</strong>` : ''}${String(n.text || '').split(/\n+/).filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join('')}</div>${url ? `<button type="button" class="btn sm main" data-act="url" data-url="${esc(url)}">${EXT}${esc(n.button || t('Open'))}</button>` : ''}</section>`;
+  }
   const head = (sub, btn) => `<div class="head achp-head"><div><div class="achp-h"><h1>${esc(t('Achievements'))}</h1><span class="achp-pill">${esc(t('Alpha'))}</span></div><p class="achp-sub">${esc(sub)}</p></div>${btn}</div>`;
   const webBtn = (label) => `<button type="button" class="btn" data-act="url" data-url="${WEB}">${EXT}${esc(label)}</button>`;
   // As many columns as there are cards (up to `max`), so a row never has a lone leftover.
@@ -373,7 +381,7 @@ Your account's Terms and Privacy still apply.`;
     const tabs = [['ov', t('Overview')], ['games', t('Games')], ['lb', t('Leaderboard')]];
     const tabBar = `<nav class="achp-tabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" aria-selected="${A.ptab === k}" class="${A.ptab === k ? 'on' : ''}" data-ach="ptab" data-k="${k}">${esc(l)}</button>`).join('')}</nav>`;
     const body = A.ptab === 'games' ? paneGames() : A.ptab === 'lb' ? paneBoard() : paneOverview();
-    return `<div class="page achp">${head(t('Your Recomp Achievements across every game. Thanks for testing: report anything odd on Discord.'), webBtn(t('Leaderboards on the Web')))}${prof}${tabBar}${body}</div>`;
+    return `<div class="page achp">${head(t('Your Recomp Achievements across every game. Thanks for testing: report anything odd on Discord.'), webBtn(t('Leaderboards on the Web')))}${noteCard()}${prof}${tabBar}${body}</div>`;
   }
 
   function progCard(g) {
@@ -418,8 +426,8 @@ Your account's Terms and Privacy still apply.`;
       const info = g.mastered ? tf('{n} of {total} · {kind}', { n: fmtN(g.unlocked), total: fmtN(g.achievements), kind: g.mastered === 'ranked' ? t('Ranked') : t('Casual') }) : tf('{n} of {total} · {pts} pts', { n: fmtN(g.unlocked || 0), total: fmtN(g.achievements || 0), pts: fmtN(g.points || 0) });
       return `<div class="achp-gcard" data-ach="open-game" data-id="${esc(g.id)}" role="button" tabindex="0"><div class="achp-cwrap">${cov(g)}${inst ? `<span class="achp-pill c achp-tagm">${esc(t('Installed'))}</span>` : ''}${g.mastered ? badge('m') : isBeaten(g, bset) ? badge('b') : ''}</div><strong>${esc(nameOf(g))}</strong>${bar(g.unlocked, g.achievements, g.mastered)}<div class="achp-row"><span>${esc(info)}</span>${btn}</div></div>`;
     };
-    return `<div class="achp-pane"><div class="achp-top"><div class="chips">${Object.keys(f).map((k) => `<button type="button" class="chip${A.gfilter === k ? ' on' : ''}" data-ach="gfilter" data-k="${k}">${esc(labels[k])} ${fmtN(counts[k])}</button>`).join('')}</div></div>
-      ${list.length ? `<div class="achp-games">${list.map(card).join('')}</div>` : `<div class="card achp-empty">${STARP}<div><strong>${esc(t('Nothing Here'))}</strong><span>${esc(t('No games match this filter yet.'))}</span></div></div>`}</div>`;
+    return `<div class="achp-pane"><p class="muted achp-sec-p">${esc(t('Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.'))}</p><div class="achp-top"><div class="chips">${Object.keys(f).map((k) => `<button type="button" class="chip${A.gfilter === k ? ' on' : ''}" data-ach="gfilter" data-k="${k}">${esc(labels[k])} ${fmtN(counts[k])}</button>`).join('')}</div></div>
+      ${list.length ? `<div class="achp-games">${list.map(card).join('')}</div>` : `<div class="card achp-empty">${STARP}<div><strong>${esc(t('Nothing Here'))}</strong><span>${esc(all.length ? t('No games match this filter yet.') : t('Xbox 360 games appear here as testers play them.'))}</span></div></div>`}</div>`;
   }
 
   function paneBoard() {
@@ -482,9 +490,9 @@ Your account's Terms and Privacy still apply.`;
       : applyForm(app && app.status === 'declined');
     const list = (A.list || []).slice(0, 3);
     const mini = (g) => `<div class="achp-mini">${cov(g)}<strong>${esc(nameOf(g))}</strong><small>${esc(tf('{n} achievements · {pts} pts', { n: fmtN(g.achievements || 0), pts: fmtN(g.points || 0) }))}</small></div>`;
-    const gamesSec = list.length ? `<section class="achp-sec"><div class="achp-sec-h"><h3>${esc(t('Games with Achievements'))}</h3><span class="muted">${esc(t('More as developers add it'))}</span></div>
-      <div class="achp-grid" style="--c:${list.length + 1}">${list.map(mini).join('')}<div class="achp-mini"><div class="achp-cov dash"><span>${esc(t('Your Game?'))}</span></div><strong>${esc(t('Don\'t See a Game?'))}</strong><small>${esc(t('Ask its developer to add it. It\'s free.'))}</small></div></div></section>` : '';
-    return `<div class="page achp">${head(t('Earn achievements in your recomps, track them on your profile and climb the leaderboards.'), webBtn(t('Learn More')))}${hero}${featHtml}${block}${gamesSec}</div>`;
+    const gamesSec = `<section class="achp-sec"><div class="achp-sec-h"><h3>${esc(t('Games with Achievements'))}</h3></div><p class="muted achp-sec-p">${esc(t('Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.'))}</p>
+      ${list.length ? `<div class="achp-grid" style="--c:${list.length + 1}">${list.map(mini).join('')}<div class="achp-mini"><div class="achp-cov dash"><span>${esc(t('Your Game?'))}</span></div><strong>${esc(t('Don\'t See a Game?'))}</strong><small>${esc(t('Ask its developer to add it. It\'s free.'))}</small></div></div>` : `<div class="card achp-empty">${STARP}<div><span>${esc(t('Xbox 360 games appear here as testers play them.'))}</span></div></div>`}</section>`;
+    return `<div class="page achp">${head(t('Earn achievements in your recomps, track them on your profile and climb the leaderboards.'), webBtn(t('Learn More')))}${noteCard()}${hero}${featHtml}${block}${gamesSec}</div>`;
   }
 
   function applyForm(declined) {
@@ -560,6 +568,9 @@ Your account's Terms and Privacy still apply.`;
   });
   T.event.listen('ach-profile', () => { if (A.allowed) loadProfile(); });
   setTimeout(() => loadStatus(true), 1500);
+  // While the page is open, the status is asked again every few minutes (the core only goes to the
+  // website when its copy is old), so a note the team posts turns up without a restart.
+  setInterval(() => { if (S.view === 'achievements' && !document.hidden) loadStatus(false); }, 4 * 60 * 1000);
 
   T.event.listen('ach-access', ({ payload }) => { A.allowed = !!(payload && payload.allowed); if (S.view === 'game') refreshGame(); loadStatus(false); });
   T.event.listen('ach-changed', ({ payload }) => { const id = payload && payload.game; if (id && (A.games[id] || onTab(id))) load(id); });

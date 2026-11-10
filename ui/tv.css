@@ -806,6 +806,9 @@ body.light .tv-tag{background:rgba(255,255,255,.7);color:#334155}
 .tv-ach-ok{margin:-6px 0 4px;color:var(--gold);font-weight:600}
 body.light .tv-ach-ok{color:#8a6400}
 .tv-ach-ok{display:inline-block;padding:6px 10px;border-radius:12px}
+.tv-ach-pin{margin-top:22px;max-width:1500px;padding:22px 30px;border-radius:24px;border:1px solid rgba(242,193,78,.45);background:linear-gradient(110deg,rgba(242,193,78,.16),rgba(242,193,78,.03) 60%),rgba(var(--tvrgb),.72)}
+.tv-ach-pin b{display:block;font:700 semi-expanded 26px Archivo,sans-serif;color:var(--gold)}
+.tv-ach-pin p{margin:6px 0 0;font-size:20px;color:var(--tvsoft,#c9d3e0)}
 .tv-ach-pill.in{position:static;height:34px;font-size:16px;background:linear-gradient(180deg,#34F2E8,#377BB6);color:#08101c}
 .tv-ach-prof{margin-top:22px;padding:28px 32px;border-radius:28px;background:linear-gradient(120deg,rgba(52,242,232,.12),rgba(55,123,182,.06) 50%,transparent),rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);display:flex;flex-direction:column;gap:20px;max-width:1500px}
 .tv-ach-who{display:flex;align-items:center;gap:16px}

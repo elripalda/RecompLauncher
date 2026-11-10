@@ -987,7 +987,8 @@
     const prof = `<section class="tv-ach-prof" data-f data-key="ach-prof"><div class="tv-ach-who"><b>${esc(u.username || t('Tester'))}</b><span class="tv-ach-pill in">${esc(t('Tester'))}</span></div>
       <div class="tv-ach-boxes">${box(esc(fmtN(p.points || 0)), t('Points'), rk(p.rank))}${box(esc(fmtN(p.score || 0)), t('Score'), rk(p.score_rank))}${box(esc(fmtN(p.beaten_count || (p.beaten || []).length || 0)), t('Beaten'))}${box(esc(fmtN(p.mastered_count || 0)), t('Mastered'))}</div>
       <p class="tv-ach-i"><i aria-hidden="true">i</i><span><b>${esc(t('Score'))}</b> · ${esc(t('Points weighted by how rare each achievement is.'))}</span></p></section>`;
-    const cover = (id) => { const a = byId(id); return a && a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''; };
+    // The catalog's copy of the cover first, else the one the website sends with the game.
+    const cover = (g) => { const a = byId(g.id), c = (a && a.cover) || g.cover; return c ? `<img src="${esc(media(c))}" alt="" loading="lazy">` : ''; };
     const nameOf = (g) => (byId(g.id) || {}).name || g.name || g.id;
     const sec = (h, inner) => `<section class="tv-block"><h3>${esc(h)}</h3>${inner}</section>`;
     const evs = p.events || [];
@@ -995,7 +996,7 @@
     const ms = (p.mastered || []).map((m) => Object.assign({ kind: 'm' }, m));
     const done = ms.concat((p.beaten || []).filter((b) => !ms.some((m) => m.id === b.id)).map((b) => Object.assign({ kind: 'b' }, b)));
     const doneHtml = sec(t('Beaten and Mastered'), done.length
-      ? `<div class="tv-ach-done" style="--c:${done.length <= 6 ? 6 : achCols(done.length, [6, 5, 4])}">${done.map((m) => `<button type="button" class="tv-ach-gm" data-f data-key="ach-g:${esc(m.id)}" data-tvact="page" data-id="${esc(m.id)}"><span class="cv"><span class="ph">${esc(nameOf(m))}</span>${cover(m.id)}</span>${achTag(m.kind)}<b>${esc(nameOf(m))}</b></button>`).join('')}</div>`
+      ? `<div class="tv-ach-done" style="--c:${done.length <= 6 ? 6 : achCols(done.length, [6, 5, 4])}">${done.map((m) => `<button type="button" class="tv-ach-gm" data-f data-key="ach-g:${esc(m.id)}" data-tvact="page" data-id="${esc(m.id)}"><span class="cv"><span class="ph">${esc(nameOf(m))}</span>${cover(m)}</span>${achTag(m.kind)}<b>${esc(nameOf(m))}</b></button>`).join('')}</div>`
       : `<p class="tv-empty" data-f data-key="ach-none">${esc(t('Beat a game and it lands here; unlock every achievement and it\'s Mastered.'))}</p>`);
     const recent = (p.recent || []).slice(0, 6);
     const recHtml = sec(t('Recent Unlocks'), recent.length
@@ -1004,8 +1005,10 @@
     const rows = (pg.board || []).slice(0, 10);
     const me = u.username;
     const lbHtml = rows.length ? sec(t('Leaderboard'), `<div class="tv-ach-lb" data-f data-key="ach-lb">${rows.map((r) => `<div class="${r.username === me ? 'you' : ''}"><span>${esc(String(r.rank || ''))}</span><b>${esc(r.username || '')}</b><em>${esc(fmtN(r.points || 0))}</em></div>`).join('')}</div>`) : '';
+    const n = pg.status && pg.status.note;
+    const note = n && typeof n === 'object' && (n.title || n.text) ? `<section class="tv-ach-pin" data-f data-key="ach-note"><b>${esc(n.title || '')}</b>${String(n.text || '').split(/\n+/).filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join('')}</section>` : '';
     return `${backdrop(null)}${bar()}
-      ${region(`<div class="tv-ach">${pageHead(t('Achievements'), t('Your Recomp Achievements across every game. Report problems from the desktop view.'))}${prof}${evHtml}${doneHtml}${recHtml}${lbHtml}</div>`)}
+      ${region(`<div class="tv-ach">${pageHead(t('Achievements'), t('Your Recomp Achievements across every game. Report problems from the desktop view.'))}${note}${prof}${evHtml}${doneHtml}${recHtml}${lbHtml}</div>`)}
       ${hints([['A', t('Select')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
   }
   // A game page's Achievements block: the banner, progress, every achievement with its tag and

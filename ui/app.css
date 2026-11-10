@@ -2063,7 +2063,7 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .achp-prog strong{display:block;font-size:15px;line-height:1.25}
 .achp-cov{border-radius:10px;aspect-ratio:2/3;position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:8px;background:var(--fill2)}
 .achp-cov img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.achp-cov span{position:relative;font:800 11px/1.05 Archivo,sans-serif;font-stretch:112%;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.6);text-transform:uppercase}
+.achp-cov span{position:relative;overflow-wrap:anywhere;font:800 11px/1.05 Archivo,sans-serif;font-stretch:112%;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.6);text-transform:uppercase}
 .achp-cov.ph-a{background:linear-gradient(160deg,#1f6fb2,#0b2b4c 70%)}.achp-cov.ph-b{background:linear-gradient(160deg,#b63a3a,#3a0f1a 70%)}.achp-cov.ph-c{background:linear-gradient(160deg,#f2a541,#5a2a10 70%)}.achp-cov.ph-d{background:linear-gradient(160deg,#3ddc97,#0f3b2c 70%)}.achp-cov.ph-e{background:linear-gradient(160deg,#8a6cff,#24124f 70%)}.achp-cov.ph-f{background:linear-gradient(160deg,#34c6f2,#0e2d4d 70%)}.achp-cov.ph-g{background:linear-gradient(160deg,#ff6fa3,#4b1430 70%)}
 .achp-cov.wide{aspect-ratio:16/9}
 .achp-cov.dash{border:1px dashed var(--line2);background:var(--fill)}
@@ -2140,6 +2140,13 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .achp-pname{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;text-align:left}
 .achp-pname:hover{color:var(--cyan)}
 .achp-lb+.achp-sec{margin-top:4px}
+.achp-pin{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:16px;align-items:center;padding:16px 20px;border-color:rgba(242,193,78,.42)!important;background:linear-gradient(110deg,rgba(242,193,78,.14),rgba(242,193,78,.03) 60%),var(--card)!important}
+.achp-pin-ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:rgba(242,193,78,.16)}
+.achp-pin-ic svg{width:22px;height:22px;fill:none;stroke:var(--gold);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.achp-pin-k{display:flex;flex-direction:column;gap:3px;min-width:0}
+.achp-pin-k strong{font-size:16px}
+.achp-pin-k p{margin:0;color:var(--muted);font-size:14px}
+.achp-pane>.achp-sec-p,.achp-sec>.achp-sec-p{margin:-6px 0 0;font-size:14px}
 .achp-hero{display:grid;grid-template-columns:1.15fr .85fr;gap:28px;align-items:center;padding:30px;background:radial-gradient(80% 120% at 100% 0%,rgba(52,242,232,.14),transparent 60%),radial-gradient(60% 90% at 0% 100%,rgba(55,123,182,.16),transparent 60%),var(--card)!important}
 .achp-hero h2{font-size:30px;margin:10px 0}
 .achp-hero p{color:var(--muted);margin:0 0 18px;font-size:15.5px}
