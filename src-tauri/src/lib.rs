@@ -1541,8 +1541,14 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         }
         // By its disc ID: one that's this game's. One that can't be read (a folder, an Xbox disc)
         // counts only when there's another check that tells it apart.
-        let by_file = need.identifies_by_contents();
-        let id_fits = |p: &Path| want.is_empty() || roms::copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(by_file);
+        let id_fits = |p: &Path| {
+            let by_contents = need.identifies_kind(p.is_dir());
+            if want.is_empty() {
+                by_contents
+            } else {
+                roms::copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(by_contents)
+            }
+        };
         if named_ok {
             continue;
         }
@@ -7712,6 +7718,50 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn folder_checks_do_not_identify_unrelated_game_files() {
+        let d = std::env::temp_dir().join(format!("rl-folder-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("copy/58410A9F/000D0000")).unwrap();
+        std::fs::write(d.join("copy/58410A9F/000D0000/package"), b"game package").unwrap();
+        let wrong = d.join("Super Mario 64 DS.nds");
+        std::fs::write(&wrong, vec![0u8; 8192]).unwrap();
+        let found = roms::RomFile { path: wrong, system: "nds".into(), title: "Super Mario 64 DS".into(), region: String::new(), size: 8192 };
+        let cat = json!({ "apps": [{ "id": "pants", "game": "The Fancy Pants Adventures", "origin": "x360", "repo": "example/pants",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "game": {
+                "kind": "iso_or_folder", "check": { "file": "58410A9F/000D0000/package" }
+            } } }] });
+        let dirs = HashMap::new();
+        assert!(copies_for(&cat, &[found.clone()], &dirs).is_empty());
+        // Unreadable IDs must not let a folder-only check identify that file either.
+        let mut with_ids = cat.clone();
+        with_ids["apps"][0]["launcher"]["game"]["check"]["ids"] = json!(["58410A9F"]);
+        assert!(copies_for(&with_ids, &[found.clone()], &dirs).is_empty());
+        // A folder that really contains the identifying file still matches under any name.
+        let folder = roms::RomFile { path: d.join("copy"), system: "x360".into(), title: "copy".into(), region: String::new(), size: 0 };
+        assert_eq!(copies_for(&cat, &[found, folder.clone()], &dirs).get("pants").map(|r| &r.path), Some(&folder.path));
+        // A package explicitly matched by its title is still eligible for setup.
+        let named = d.join("The Fancy Pants Adventures.bin");
+        std::fs::write(&named, b"game package").unwrap();
+        let package = roms::RomFile { path: named, system: "x360".into(), title: "The Fancy Pants Adventures".into(), region: String::new(), size: 12 };
+        assert!(copies_for(&cat, &[package], &dirs).contains_key("pants"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn disc_checks_do_not_identify_unrelated_folders() {
+        let d = std::env::temp_dir().join(format!("rl-disc-copy-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("data.bin"), b"another game's data").unwrap();
+        let folder = roms::RomFile { path: d.clone(), system: "x360".into(), title: "Other Game".into(), region: String::new(), size: 0 };
+        let cat = json!({ "apps": [{ "id": "disc-game", "game": "My Disc Game", "repo": "example/disc-game",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "game": {
+                "kind": "iso_or_folder", "check": { "iso9660": "SLUS_206.51" }
+            } } }] });
+        assert!(copies_for(&cat, &[folder], &HashMap::new()).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn a_switch2_package_is_found_by_its_build_id() {

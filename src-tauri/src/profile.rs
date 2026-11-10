@@ -1931,9 +1931,19 @@ impl GameCopy {
 
     /// Told apart by what's in it (a file only this game has, its N64 cartridge code), not an ID.
     pub fn identifies_by_contents(&self) -> bool {
+        self.identifies_kind(true) || self.identifies_kind(false)
+    }
+
+    /// Only checks that `check_copy` applies to this kind of input can identify it. A file
+    /// inside an extracted folder says nothing about an arbitrary package or ROM file.
+    pub fn identifies_kind(&self, folder: bool) -> bool {
         let c = &self.check;
         let own = |f: &str| !f.is_empty() && !COMMON_FILES.iter().any(|x| f.eq_ignore_ascii_case(x));
-        !c.n64_id.is_empty() || !c.nup_build_id.is_empty() || (!self.generic && (own(&c.file) || own(&c.xdvdfs) || own(&c.iso9660)))
+        !c.nup_build_id.is_empty() || if folder {
+            !self.generic && own(&c.file)
+        } else {
+            !c.n64_id.is_empty() || (!self.generic && (own(&c.xdvdfs) || own(&c.iso9660)))
+        }
     }
 }
 
