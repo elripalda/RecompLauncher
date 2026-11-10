@@ -2636,5 +2636,9 @@
  "Xbox 360 games appear here as testers play them.": "测试员玩过的 Xbox 360 游戏会显示在这里。",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "这个构建以 Flatpak 形式提供，而 RecompLauncher 的 Flatpak 没有安装它的权限。可用此命令允许：flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher。或在游戏页面上切换到其他构建。",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak 版无法读取你的模拟器设置。请用“添加文件夹”添加它们的游戏文件夹。",
- "For the best performance, install recomps in your Games folder or on another drive.": "为获得最佳性能，请把重编译游戏安装到 Games 文件夹或其他磁盘上。"
+ "For the best performance, install recomps in your Games folder or on another drive.": "为获得最佳性能，请把重编译游戏安装到 Games 文件夹或其他磁盘上。",
+ "Use Games/ROMs": "使用 Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "把 ROM 和光盘镜像放在这里，启动器会自己找到它们。",
+ "Couldn't create the ROMs folder in Games.": "无法在 Games 中创建 ROMs 文件夹。",
+ "or": "或"
 }

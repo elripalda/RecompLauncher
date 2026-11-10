@@ -2636,5 +2636,9 @@
  "Xbox 360 games appear here as testers play them.": "Các trò chơi Xbox 360 sẽ xuất hiện ở đây khi người thử nghiệm chơi chúng.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Bản dựng này ở dạng Flatpak, nhưng bản Flatpak của RecompLauncher chưa được phép cài nó. Hãy cấp quyền bằng lệnh: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Hoặc chuyển sang bản dựng khác trên trang của trò chơi.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Bản Flatpak không đọc được cài đặt của trình giả lập. Hãy thêm thư mục trò chơi của chúng bằng Thêm thư mục.",
- "For the best performance, install recomps in your Games folder or on another drive.": "Để có hiệu năng tốt nhất, hãy cài bản recomp vào thư mục Games hoặc một ổ đĩa khác."
+ "For the best performance, install recomps in your Games folder or on another drive.": "Để có hiệu năng tốt nhất, hãy cài bản recomp vào thư mục Games hoặc một ổ đĩa khác.",
+ "Use Games/ROMs": "Dùng Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "Đặt ROM và ảnh đĩa vào đây, trình khởi chạy sẽ tự tìm thấy chúng.",
+ "Couldn't create the ROMs folder in Games.": "Không tạo được thư mục ROMs trong Games.",
+ "or": "hoặc"
 }

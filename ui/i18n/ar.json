@@ -2636,5 +2636,9 @@
  "Xbox 360 games appear here as testers play them.": "تظهر ألعاب Xbox 360 هنا كلما لعبها المختبِرون.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "يأتي هذا الإصدار بصيغة Flatpak، وFlatpak الخاص بـ RecompLauncher غير مسموح له بتثبيته. اسمح له بالأمر: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. أو انتقل إلى إصدار آخر من صفحة اللعبة.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "لا يستطيع Flatpak قراءة إعدادات المحاكيات لديك. أضف مجلدات ألعابها عبر إضافة مجلد.",
- "For the best performance, install recomps in your Games folder or on another drive.": "للحصول على أفضل أداء، ثبّت الألعاب المعاد تجميعها في مجلد Games أو على محرك أقراص آخر."
+ "For the best performance, install recomps in your Games folder or on another drive.": "للحصول على أفضل أداء، ثبّت الألعاب المعاد تجميعها في مجلد Games أو على محرك أقراص آخر.",
+ "Use Games/ROMs": "استخدام Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "ضع ملفات ROM وصور الأقراص هنا وسيجدها المشغل بنفسه.",
+ "Couldn't create the ROMs folder in Games.": "تعذّر إنشاء مجلد ROMs داخل Games.",
+ "or": "أو"
 }

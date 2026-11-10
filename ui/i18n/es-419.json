@@ -2636,5 +2636,9 @@
  "Xbox 360 games appear here as testers play them.": "Los juegos de Xbox 360 aparecen aquí a medida que los testers los juegan.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Esta compilación viene como Flatpak, y el Flatpak de RecompLauncher no tiene permiso para instalarla. Dale permiso con: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. O cambia a otra compilación en la página del juego.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "El Flatpak no puede leer la configuración de tus emuladores. Agrega sus carpetas de juegos con Agregar una carpeta.",
- "For the best performance, install recomps in your Games folder or on another drive.": "Para el mejor rendimiento, instala los recomps en tu carpeta Games o en otra unidad."
+ "For the best performance, install recomps in your Games folder or on another drive.": "Para el mejor rendimiento, instala los recomps en tu carpeta Games o en otra unidad.",
+ "Use Games/ROMs": "Usar Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "Pon aquí tus ROMs e imágenes de disco y el lanzador las encuentra solo.",
+ "Couldn't create the ROMs folder in Games.": "No se pudo crear la carpeta ROMs dentro de Games.",
+ "or": "o"
 }

@@ -2636,5 +2636,9 @@
  "Xbox 360 games appear here as testers play them.": "Xbox 360 oyunları, test kullanıcıları oynadıkça burada görünür.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Bu derleme Flatpak olarak geliyor ve RecompLauncher Flatpak'inin onu yükleme izni yok. Şu komutla izin verin: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Ya da oyunun sayfasında başka bir derlemeye geçin.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak, emülatörlerinizin ayarlarını okuyamıyor. Oyun klasörlerini Klasör ekle ile ekleyin.",
- "For the best performance, install recomps in your Games folder or on another drive.": "En iyi performans için recomp'ları Games klasörünüze ya da başka bir sürücüye yükleyin."
+ "For the best performance, install recomps in your Games folder or on another drive.": "En iyi performans için recomp'ları Games klasörünüze ya da başka bir sürücüye yükleyin.",
+ "Use Games/ROMs": "Games/ROMs kullan",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "ROM'larınızı ve disk kalıplarınızı buraya koyun, başlatıcı onları kendisi bulur.",
+ "Couldn't create the ROMs folder in Games.": "Games içinde ROMs klasörü oluşturulamadı.",
+ "or": "veya"
 }
