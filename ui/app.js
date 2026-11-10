@@ -3812,15 +3812,16 @@ function applyLighter() {
 // they're slow more often than not, the player hears about the two settings that help, once.
 function watchSlow() {
   if ((S.os !== 'linux' && S.os !== 'macos') || (S.settings.ui || {}).slow_told) return;
-  let busyUntil = 0, last = 0, running = false, frames = 0, slow = 0, done = false;
+  let busyUntil = 0, last = 0, running = false, frames = 0, slow = 0, sampled = 0, done = false;
   const tick = (now) => {
     if (done) return;
     if (now > busyUntil) { running = false; last = 0; return; }
-    if (last) { const d = now - last; if (d < 1000) { frames++; if (d > 45) slow++; } }
+    if (last) { const d = now - last; if (d < 1000) { frames++; sampled += d; if (d > 45) slow++; } }
     last = now;
-    if (frames >= 300) {
+    // Measure active rendering time: waiting for 300 frames takes longest when rendering is slow.
+    if (sampled >= 2000 && frames >= 30) {
       if (slow / frames > 0.4 && !document.body.classList.contains('lighter') && !document.querySelector('.scrim')) { done = true; return tellSlow(); }
-      frames = 0; slow = 0;
+      frames = 0; slow = 0; sampled = 0;
     }
     requestAnimationFrame(tick);
   };
