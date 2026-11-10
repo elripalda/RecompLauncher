@@ -76,6 +76,10 @@ It does not execute or mount the image to inspect it, and writes no extracted JS
 Settings, save and folder paths still start from the installation directory (`{install}`),
 not from the internal filesystem.
 
+The Flatpak build of the launcher unpacks your AppImage at install and starts its `AppRun`. See
+[Your recomp in the RecompLauncher Flatpak](FLATPAK.md) for that and the sandbox's other
+differences.
+
 Use the AppImage's filename in `start.program`, for example:
 
 ```json

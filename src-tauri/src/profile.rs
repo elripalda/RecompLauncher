@@ -638,7 +638,31 @@ const BUILT_IN: &[&str] = &[
 /// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
-    find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))
+    let mut p = find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))?;
+    to_apprun(&mut p, game_dir);
+    Some(p)
+}
+
+/// An AppImage the Flatpak unpacked at install is gone, its AppRun in its place: programs named
+/// `….AppImage` that aren't in the folder start the AppRun instead.
+fn to_apprun(p: &mut Profile, dir: &Path) {
+    if dir.as_os_str().is_empty() || !dir.join("AppRun").is_file() {
+        return;
+    }
+    let swap = |programs: &mut Vec<String>| {
+        for prog in programs.iter_mut() {
+            let image = Path::new(prog.as_str()).extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
+            if image && !dir.join(prog.as_str()).is_file() {
+                *prog = "AppRun".into();
+            }
+        }
+    };
+    if let Some(s) = p.start.as_mut() {
+        swap(&mut s.program);
+    }
+    if let Some(pr) = p.prepare.as_mut() {
+        swap(&mut pr.program);
+    }
 }
 
 /// From the catalog's boot profile (crate::boot): the player's copy and how it reaches the game,
@@ -2440,6 +2464,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn an_unpacked_appimage_starts_its_apprun() {
+        let d = tmp("apprun");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["Game-x86_64.AppImage"],"args":["{game}"]},"prepare":{"program":["Game-x86_64.AppImage"],"args":["--prepare"]}}"#).unwrap();
+        // The AppImage is still there: nothing changes.
+        std::fs::write(d.join("Game-x86_64.AppImage"), b"x").unwrap();
+        std::fs::write(d.join("AppRun"), b"#!/bin/sh\n").unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["Game-x86_64.AppImage"]);
+        // Unpacked at install: the AppImage is gone, so AppRun starts it (and runs its setup step).
+        std::fs::remove_file(d.join("Game-x86_64.AppImage")).unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["AppRun"]);
+        assert_eq!(p.prepare.unwrap().program, ["AppRun"]);
+        // No AppRun either: the profile is left as it is.
+        std::fs::remove_file(d.join("AppRun")).unwrap();
+        assert_eq!(find(&d, "", &Value::Null).unwrap().start.unwrap().program, ["Game-x86_64.AppImage"]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
