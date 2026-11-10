@@ -403,6 +403,19 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
 }
 
+/// How a release's files were checked before the store offered them (ClamAV on the website's server,
+/// or VirusTotal): for Downloads, beside each finished download. Kept an hour.
+pub async fn scan(http: &reqwest::Client, dir: &Path, id: &str, tag: &str) -> Result<Fetched, Error> {
+    let ok_id = !id.is_empty() && id.len() <= 120 && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    let ok_tag = !tag.is_empty() && tag.len() <= 120 && tag.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+".contains(c));
+    if !ok_id || !ok_tag {
+        return Err(Error::Msg("Nothing to look up.".into()));
+    }
+    let url = format!("{}/api/pc.php?a=scan&id={id}&tag={}", base(), tag.replace('+', "%2B"));
+    let file = dir.join("cache/scans").join(format!("{id}@{}.json", tag.replace('+', "_")));
+    cached(http, &url, file, 3600, crate::net::QUICK, true, |v| v.get("files").map(Value::is_array).unwrap_or(false)).await
+}
+
 /// A project on GitLab, as the launcher keeps it: `gitlab:group/project` (subgroups too:
 /// `gitlab:group/subgroup/project`). Its path on gitlab.com.
 pub fn gitlab_path(repo: &str) -> Option<&str> {

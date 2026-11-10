@@ -2753,12 +2753,80 @@ async function loadDlHist() {
   if (S.view === 'downloads') render(true);
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
+// (0.91) Each download's speed over its last minute and a half, for the graph at the top of Downloads.
+const DLSPD = {};
+function noteSpeed(id, v) {
+  const l = DLSPD[id] = DLSPD[id] || [], now = Date.now();
+  if (l.length && now - l.at < 1000) l[l.length - 1] = v; else { l.push(v); l.at = now; }
+  if (l.length > 90) l.splice(0, l.length - 90);
+}
+window.dlSpeedSeed = (id, list) => { DLSPD[id] = list.slice(-90); DLSPD[id].at = Date.now(); };
+function dlGraph(id) {
+  // Fills the width from the start, then scrolls once there's a minute and a half of it.
+  const l = DLSPD[id] || [], W = 300, H = 96, n = Math.max(l.length, 2);
+  const top = Math.max(1, ...l) * 1.15;
+  const pts = l.map((v, i) => [((n - l.length + i) / (n - 1)) * W, H - (v / top) * (H - 6)]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const area = pts.length > 1 ? `${line} L${W} ${H} L${pts[0][0].toFixed(1)} ${H} Z` : '';
+  return `<defs><linearGradient id="dlg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34F2E8" stop-opacity=".42"/><stop offset="1" stop-color="#34F2E8" stop-opacity="0"/></linearGradient></defs>
+    ${[0.25, 0.5, 0.75].map((f) => `<line x1="0" x2="${W}" y1="${H * f}" y2="${H * f}" class="gl"/>`).join('')}${area ? `<path d="${area}" fill="url(#dlg)"/><path d="${line}" class="ln"/>` : ''}`;
+}
+function dlGraphStats(id) {
+  const j = S.jobs[id] || {}, l = DLSPD[id] || [];
+  const cur = j.phase === 'download' ? j.speed || 0 : 0, peak = Math.max(0, ...l);
+  const left = cur && j.total ? Math.max(0, j.total - j.done) / cur : 0;
+  return [[t('Current'), cur ? tf('{speed}/s', { speed: fmtB(cur) }) : '—'], [t('Peak'), peak ? tf('{speed}/s', { speed: fmtB(peak) }) : '—'],
+    [t('Time left'), left ? took(Math.round(left)) : '—']];
+}
+// Only the graph and its numbers change while a download runs.
+function paintDlHero(id) {
+  const g = document.querySelector(`[data-dl-graph="${CSS.escape(id)}"]`);
+  if (!g) return;
+  g.innerHTML = dlGraph(id);
+  const v = dlGraphStats(id);
+  document.querySelectorAll(`[data-dl-gstat="${CSS.escape(id)}"] b`).forEach((b, i) => { b.textContent = v[i][1]; });
+  const ph = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
+  if (ph) ph.textContent = dlPhase(id);
+}
+function dlPhase(id) {
+  const j = S.jobs[id] || (S.paused || {})[id] || {};
+  if (!S.jobs[id]) return t('Paused');
+  return j.phase === 'download' && j.total ? tf('Downloading · {pct}%', { pct: pct(j) }) : progLabel(j)[0] || t('Getting ready');
+}
+// (0.91) How the store checked a finished download's files (ClamAV or VirusTotal), asked once each.
+S.scans = S.scans || {};
+const scanAsk = new Set();
+function scanPill(h) {
+  const key = h.id + '@' + h.tag, files = S.scans[key];
+  if (files === undefined && !scanAsk.has(key) && h.tag) {
+    scanAsk.add(key);
+    invoke('scan_info', { id: h.id, tag: h.tag }).then((r) => (r && r.files) || []).catch(() => []).then((f) => {
+      S.scans[key] = f;
+      for (const el of document.querySelectorAll(`[data-scan="${CSS.escape(key)}"]`)) el.outerHTML = scanPill(h);
+    });
+  }
+  const mine = (files || []).filter((f) => (f.for || []).includes(S.os));
+  const use = mine.length ? mine : files || [];
+  const plain = h.verified ? `<span class="dl-check" data-scan="${esc(key)}">${esc(t('Checksum matched'))}</span>` : `<span data-scan="${esc(key)}"></span>`;
+  if (!use.length) return plain;
+  const rank = { red: 3, yellow: 2, grey: 1, green: 0 };
+  const worst = use.reduce((w, f) => (rank[f.verdict] > rank[w.verdict] ? f : w), use[0]);
+  const by = worst.scanner === 'clamav' ? 'ClamAV' : 'VirusTotal';
+  const [cls, ic, text] = worst.verdict === 'green' ? ['ok', '✓', tf('Clean · {by}', { by })]
+    : worst.verdict === 'grey' ? ['wait', '…', t('Being checked')]
+    : worst.verdict === 'yellow' ? ['warn', '!', worst.scanner === 'clamav' ? tf('Flagged · {by}', { by }) : tf('{n} of {total} engines flagged', { n: worst.found, total: worst.engines })]
+    : ['bad', '✕', tf('Flagged · {by}', { by })];
+  return `<span class="scan-pill ${cls}" data-scan="${esc(key)}" title="${esc(t('Checked by the store before it was offered'))}"><i>${ic}</i>${esc(text)}</span>`;
+}
 function pageDownloads() {
   if (!S.dlHist) loadDlHist();
   const hist = S.dlHist || [];
   const act = Object.keys(S.jobs).concat(Object.keys(S.paused || {}).filter((id) => !S.jobs[id])), fails = S.recent.filter((r) => !S.jobs[r.id] && r.phase === 'error');
   const ups = Object.keys(S.updates).filter((id) => S.library[id] && !S.jobs[id] && !(S.paused || {})[id]);
-  const art = (id) => { const pj = S.jobs[id] && S.jobs[id].plug ? S.jobs[id] : null; if (pj) { const pm = plugMan(pj.plugin); return [{ id, name: pj.name }, `<span class="ph plug-ph">${pm ? plugIcon(pm, pm.icon) : PUZZLE}</span>`]; } const a = byId(id) || { id, name: S.library[id]?.name || id }; return [a, a.cover ? pic(thumbOf(a.cover, 160)) : '<span class="ph"></span>']; };
+  const appOf = (id) => { const pj = S.jobs[id] && S.jobs[id].plug ? S.jobs[id] : null; return pj ? { id, name: pj.name, plug: pj } : byId(id) || { id, name: S.library[id]?.name || id }; };
+  // A row's picture: the game's wide art when it has some (like Steam's), else its cover.
+  const wide = (id, w = 320) => { const a = appOf(id); if (a.plug) { const pm = plugMan(a.plug.plugin); return `<span class="cap ph plug-ph">${pm ? plugIcon(pm, pm.icon) : PUZZLE}</span>`; }
+    return a.hero ? pic(thumbOf(a.hero, w), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>'; };
   const total = hist.reduce((n, h) => n + (h.size || 0), 0), secs = hist.reduce((n, h) => n + (h.secs || 0), 0);
   const avg = secs ? total / secs : 0;
   const nInst = Object.values(S.library).filter((g) => !g.local).length;
@@ -2769,36 +2837,49 @@ function pageDownloads() {
     [t('Updates installed'), fmtNum(hist.filter((h) => h.update).length), ups.length ? tn(ups.length, '1 more ready', '{n} more ready') : t('All up to date')],
     [t('Average speed'), avg ? tf('{speed}/s', { speed: fmtB(avg) }) : '—', hist[0] ? tf('Last one {when}', { when: ago(hist[0].when) }) : ''],
   ];
-  const now = act.map((id) => { const [a, img] = art(id); const j = S.jobs[id] || {}, held = !S.jobs[id];
-    const two = held ? `<button type="button" class="btn main" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) ? `<button type="button" class="btn" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
-    return `<div class="dl-now">${img}<div class="mid"><div class="dl-top"><b>${esc(a.name)}</b><span class="tag cy">${esc(j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New'))}</span></div>${progress(id)}</div><span class="acts">${two}<button type="button" class="btn" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button></span></div>`; }).join('');
-  const self = S.launcherUpd ? `<div class="dl-row"><img class="self" src="img/mark.svg" alt=""><div class="mid"><b>RecompLauncher</b><span>${esc(tf('{from} → {to}', { from: verName(S.version), to: verName(S.launcherUpd.version) }))}</span></div><button type="button" class="btn main sm" data-act="self-update">${DOWN}${esc(t('Update'))}</button></div>` : '';
-  const upRows = self + ups.map((id) => { const [a, img] = art(id);
-    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${img}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
-  const failRows = fails.map((r) => { const [a, img] = art(r.id);
-    return `<div class="dl-row bad">${img}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div><button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
+  // The one at the top: the download that's moving, else the first one there is.
+  const lead = act.find((id) => S.jobs[id] && S.jobs[id].phase !== 'queued') || act[0];
+  const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New'); };
+  const jobBtns = (id, small) => { const j = S.jobs[id] || {}, held = !S.jobs[id], sm = small ? ' sm' : '';
+    const two = held ? `<button type="button" class="btn main${sm}" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) && j.phase !== 'queued' ? `<button type="button" class="btn${sm}" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
+    return `${two}<button type="button" class="btn${sm}" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button>`; };
+  const hero = lead ? (() => { const a = appOf(lead), art = a.hero || a.cover, gs = dlGraphStats(lead);
+    return `<section class="dl-hero">
+      <div class="dl-hero-art">${art && !a.plug ? pic(thumbOf(art, 640)) : wide(lead)}</div>
+      <div class="dl-hero-main"><div class="dl-top"><span class="tag cy">${esc(kindTag(lead))}</span><span class="dl-phase" data-dl-phase="${esc(lead)}">${esc(dlPhase(lead))}</span></div>
+        <h2>${esc(a.name)}</h2>${progress(lead)}<div class="acts">${jobBtns(lead)}</div></div>
+      <div class="dl-graph"><svg viewBox="0 0 300 96" preserveAspectRatio="none" data-dl-graph="${esc(lead)}" aria-hidden="true">${dlGraph(lead)}</svg>
+        <div class="dl-gstats" data-dl-gstat="${esc(lead)}">${gs.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div></div></section>`; })() : '';
+  // RecompLauncher's own update: up top, where it's seen first.
+  const self = S.launcherUpd ? `<section class="dl-self"><img src="img/mark.svg" alt=""><div class="mid"><b>${esc(tf('RecompLauncher {version} is ready', { version: verName(S.launcherUpd.version) }))}</b><span>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</span></div><button type="button" class="btn main" data-act="self-update">${DOWN}${esc(t('Update now'))}</button></section>` : '';
+  const queue = act.filter((id) => id !== lead).map((id) => { const a = appOf(id);
+    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b>${progress(id)}</div><span class="tag cy">${esc(kindTag(id))}</span><span class="acts">${jobBtns(id, true)}</span></div>`; }).join('');
+  const upRows = ups.map((id) => { const a = appOf(id);
+    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
+  const failRows = fails.map((r) => { const a = appOf(r.id);
+    return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div><button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   const ui = S.settings.ui || {};
   const shown = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
-  const histRows = shown.slice(0, 40).map((h) => { const [a, img] = art(h.id); const inst = S.library[h.id];
+  const histRows = shown.slice(0, 40).map((h) => { const a = appOf(h.id); const inst = S.library[h.id];
     // The row opens the game's page; Play is its own button.
-    return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${img}<div class="mid"><b>${esc(a.name || h.name)}</b><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}${h.verified ? ' · ' + esc(t('Checksum matched')) : ''}</span></div>
+    return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}</span>${scanPill(h)}</span></div>
       <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(agoCap(h.when))}</span>
-      ${inst ? `<button type="button" class="icon-btn" data-act="play" data-id="${esc(h.id)}" aria-label="${esc(tf('Play {name}', { name: a.name || h.name }))}" title="${esc(t('Play'))}">${PLAY}</button>` : '<span class="icon-btn" aria-hidden="true"></span>'}</div>`; }).join('');
-  const nothing = !act.length && !ups.length && !self && !fails.length && !shown.length;
+      ${inst ? `<button type="button" class="btn sm dl-play" data-act="play" data-id="${esc(h.id)}">${PLAY}${esc(t('Play'))}</button>` : '<span class="dl-play" aria-hidden="true"></span>'}</div>`; }).join('');
+  const nothing = !act.length && !ups.length && !fails.length && !shown.length;
   const updLog = updateLog(hist).filter((u) => (u.when || 0) > (ui.upd_cleared || 0));
   const tab = S.dlTab === 'updates' ? 'updates' : 'downloads';
-  const tabs = `<div class="tabs dl-tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${[['downloads', t('Downloads')], ['updates', t('Updates')]].map(([k, n]) => `<button type="button" role="tab" class="${tab === k ? 'on' : ''}" aria-selected="${tab === k}" data-act="dl-tab" data-tab="${k}">${esc(n)}</button>`).join('')}</div></div>`;
+  const tabs = `<div class="tabs dl-tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${[['downloads', t('Downloads')], ['updates', t('Update history')]].map(([k, n]) => `<button type="button" role="tab" class="${tab === k ? 'on' : ''}" aria-selected="${tab === k}" data-act="dl-tab" data-tab="${k}">${esc(n)}</button>`).join('')}</div></div>`;
   // Clearing only hides what's listed; the totals above stay.
   const canClear = tab === 'updates' ? updLog.length : shown.length;
   const bar = `<div class="dl-bar">${tabs}${canClear ? `<button type="button" class="btn sm" data-act="dl-clear" data-k="${tab === 'updates' ? 'upd_cleared' : 'dl_cleared'}">${esc(t('Clear history'))}</button>` : ''}</div>`;
-  const head = `<div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(tab === 'updates' ? t('Every update the launcher has installed, newest first. Open one to read what changed.') : t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}</p></div></div>${bar}`;
+  const head = `<div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(tab === 'updates' ? t('Every update the launcher has installed, newest first. Open one to read what changed.') : t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p></div></div>${self}${bar}`;
   if (tab === 'updates') return `<div class="page dl-page" style="max-width:1100px">${head}${updatesTab(updLog)}</div>`;
+  const n = (k) => `<span class="dl-n">${k}</span>`;
   return `<div class="page dl-page" style="max-width:1100px">${head}
-    <div class="stats dl-stats">${stats.map(([k, v, sub]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b><small>${esc(sub || '')}</small></div>`).join('')}</div>
-    ${act.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Now'))}</h2></div><div class="list">${now}</div></section>` : ''}
-    ${failRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Didn\'t finish'))}</h2></div><div class="dl-list">${failRows}</div></section>` : ''}
-    ${ups.length || self ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Updates ready'))}</h2>${ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : ''}</div><div class="dl-list">${upRows}</div></section>` : ''}
-    ${shown.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('History'))}</h2></div><div class="dl-list">${histRows}</div></section>` : ''}
+    ${hero || `<div class="stats dl-stats">${stats.map(([k, v, sub]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b><small>${esc(sub || '')}</small></div>`).join('')}</div>`}
+    ${queue || upRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Up next'))}${n(act.length - (lead ? 1 : 0) + ups.length)}</h2>${ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : ''}</div><div class="dl-list">${queue}${upRows}</div></section>` : ''}
+    ${failRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Didn\'t finish'))}${n(fails.length)}</h2></div><div class="dl-list">${failRows}</div></section>` : ''}
+    ${shown.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Completed'))}${n(shown.length)}</h2></div><div class="dl-list">${histRows}</div></section>` : ''}
     ${nothing ? `<div class="empty"><h2>${esc(t('No downloads'))}</h2><p>${esc(t('Games you install or update show their progress here.'))}</p></div>` : ''}</div>`;
 }
 
@@ -2853,7 +2934,7 @@ function updatesTab(log) {
   const CHEV = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   return `<div class="upd-list">${log.map((u) => {
     const a = u.self ? null : byId(u.id) || { id: u.id, name: u.name };
-    const img = u.self ? '<span class="upd-self" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.cover ? pic(thumbOf(a.cover, 160)) : '<span class="ph"></span>';
+    const img = u.self ? '<span class="upd-self cap" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.hero ? pic(thumbOf(a.hero, 320), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>';
     const open = S.updOpen.has(u.key);
     return `<div class="upd${open ? ' open' : ''}" data-key="${esc(u.key)}"${u.self ? ' data-self="1"' : ''}>
       <button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(agoCap(u.when))}</span>${CHEV}</button>
@@ -6793,6 +6874,7 @@ T.event.listen('install', ({ payload: p }) => {
   if (['done', 'error', 'cancelled'].includes(p.phase)) {
     if (S.paused) delete S.paused[id];
     delete S.jobs[id];
+    delete DLSPD[id];
     ENDED[id] = Date.now();
     S.recent = [p].concat(S.recent.filter((r) => r.id !== id)).slice(0, 20);
     if (p.phase === 'done') S.dlHist = null;
@@ -6818,7 +6900,8 @@ T.event.listen('install', ({ payload: p }) => {
   const had = S.jobs[id];
   p.at = Date.now();
   S.jobs[id] = p;
-  if (!had || had.phase !== p.phase) render(true); else { paintProgress(id); paintIsland(); }
+  if (p.phase === 'download') noteSpeed(id, p.speed || 0);
+  if (!had || had.phase !== p.phase) render(true); else { paintProgress(id); paintDlHero(id); paintIsland(); }
 });
 
 T.event.listen('game', ({ payload: p }) => {
