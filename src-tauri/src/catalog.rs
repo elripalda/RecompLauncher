@@ -442,7 +442,7 @@ fn part_ok(s: &str) -> bool {
     !s.is_empty() && s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) && s != "." && s != ".."
 }
 
-fn repo_ok(repo: &str) -> bool {
+pub(crate) fn repo_ok(repo: &str) -> bool {
     if let Some(n) = sourceforge_name(repo) {
         return sf_name_ok(n);
     }

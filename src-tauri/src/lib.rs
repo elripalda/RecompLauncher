@@ -46,6 +46,7 @@ pub mod saves;
 pub mod shortcuts;
 pub mod trail;
 pub mod tray;
+mod update_download;
 pub mod usage;
 pub mod win;
 mod installer;
@@ -6331,7 +6332,7 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     if !(cfg!(windows) || appimage.is_some()) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
-    let mut r = st.http.get(&file_url).timeout(std::time::Duration::from_secs(900)).send().await?;
+    let mut r = update_download::response(&st.http, &file_url).await?;
     if !r.status().is_success() {
         return Err(Error::Msg(format!("The download answered {}", r.status().as_u16())));
     }
