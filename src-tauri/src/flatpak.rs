@@ -18,7 +18,7 @@ fn ref_in(bytes: &[u8]) -> Option<String> {
     re.captures(&text).map(|c| c[1].to_string())
 }
 
-/// The launcher itself runs as a Flatpak (from Flathub). Its sandbox has no `flatpak` of its own:
+/// The launcher itself runs as a Flatpak (built from packaging/flatpak). Its sandbox has no `flatpak` of its own:
 /// the PC's is reached through `flatpak-spawn --host`.
 pub fn sandboxed() -> bool {
     cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists())

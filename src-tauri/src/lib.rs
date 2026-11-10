@@ -5695,7 +5695,7 @@ async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
 /// A newer RecompLauncher, if there is one. Read from the copy on disk when it's younger than
 /// `max_age` seconds.
 pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
-    // A Flatpak is updated by Flatpak (Flathub), never by the launcher itself.
+    // A Flatpak is updated by Flatpak (from wherever it was installed), never by the launcher itself.
     if flatpak::sandboxed() {
         return None;
     }

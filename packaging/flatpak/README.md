@@ -23,7 +23,8 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
 
 ## In the sandbox
 
-- Updates come from Flathub: the launcher's own updater is off (`flatpak::sandboxed()`).
+- Updates come through Flatpak (from Flathub, once it's published there): the launcher's own
+  updater is off (`flatpak::sandboxed()`).
 - Many games ship as AppImages, and there's no FUSE in the sandbox to mount one. A release's
   AppImage (on its own or in a zip) is unpacked at install and update like an archive: its
   contents become the game's files and the AppImage is removed. The game starts from `AppRun`

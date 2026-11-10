@@ -1,7 +1,8 @@
 # Your recomp in the RecompLauncher Flatpak
 
-RecompLauncher is also a Flatpak (`com.recomplauncher.RecompLauncher`, on Flathub). Games it
-starts run inside its sandbox, with the same permissions. Most recomps work there unchanged. This
+RecompLauncher can also be built as a Flatpak (`com.recomplauncher.RecompLauncher`). It isn't on
+Flathub yet: the packaging is ready for a submission. Games the Flatpak starts run inside its
+sandbox, with the same permissions. Most recomps work there unchanged. This
 page lists what's different from the AppImage and .deb builds of the launcher, and what to do so
 your game behaves the same everywhere.
 
