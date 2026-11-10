@@ -264,7 +264,11 @@ pub async fn install_ge(
 fn umu_version(umu: &Path) -> Option<(u32, u32, u32)> {
     static V: std::sync::OnceLock<Option<(u32, u32, u32)>> = std::sync::OnceLock::new();
     *V.get_or_init(|| {
-        let out = std::process::Command::new(umu).arg("--version").stdin(std::process::Stdio::null()).output().ok()?;
+        let mut cmd = std::process::Command::new(umu);
+        // The probe needs the same host environment as the eventual game launch. An AppImage's
+        // Python or libraries can otherwise break umu-run before it prints its version.
+        crate::sysenv::clean_std(&mut cmd);
+        let out = cmd.arg("--version").stdin(std::process::Stdio::null()).output().ok()?;
         version_in(&format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
     })
 }
@@ -427,6 +431,46 @@ pub fn is_windows_program(p: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn umu_version_probe_uses_the_host_environment() {
+        // Keep process-wide environment and OnceLock caches isolated from the other tests.
+        const PROBE: &str = "RL_TEST_UMU_VERSION_PROBE";
+        if let Some(umu) = std::env::var_os(PROBE) {
+            assert_eq!(super::umu_version(Path::new(&umu)), Some((1, 3, 0)));
+            return;
+        }
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rl-umu-version-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let umu = dir.join("umu-run");
+        std::fs::write(&umu, br#"#!/bin/sh
+[ "$1" = "--version" ] || exit 2
+if [ -n "${APPDIR:-}" ] || [ -n "${APPIMAGE:-}" ] || [ -n "${PYTHONHOME:-}" ]; then
+    echo "AppImage environment leaked into umu-run" >&2
+    exit 1
+fi
+[ "${LD_LIBRARY_PATH:-}" = "/host/lib" ] || exit 3
+[ "${PATH:-}" = "/usr/bin:/bin" ] || exit 4
+[ "${UMU_RUNTIME_UPDATE:-}" = "0" ] || exit 5
+printf '%s\n' 'umu-launcher version 1.3.0'
+"#).unwrap();
+        std::fs::set_permissions(&umu, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let appdir = dir.join("AppDir");
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "proton::tests::umu_version_probe_uses_the_host_environment", "--nocapture"])
+            .env(PROBE, &umu)
+            .env("APPDIR", &appdir)
+            .env("APPIMAGE", dir.join("launcher.AppImage"))
+            .env("PYTHONHOME", appdir.join("usr"))
+            .env("LD_LIBRARY_PATH", format!("{}/usr/lib:/host/lib", appdir.display()))
+            .env("PATH", format!("{}/usr/bin:/usr/bin:/bin", appdir.display()))
+            .env("UMU_RUNTIME_UPDATE", "0")
+            .output().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(out.status.success(), "isolated probe failed:\n{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    }
+
     #[test]
     fn a_half_downloaded_umu_runtime_is_noticed() {
         let d = std::env::temp_dir().join(format!("rl-umu-{}", std::process::id()));

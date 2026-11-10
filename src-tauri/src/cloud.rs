@@ -39,8 +39,8 @@ pub struct User {
     pub dev: Option<serde_json::Value>,
 }
 
-/// account.json in the app's data folder. The token is kept sealed (secret.rs): `sealed` holds it
-/// and `token` stays empty. A file from before that still has it plain, and is sealed on first read.
+/// account.json in the app's data folder. Windows keeps the token sealed (secret.rs); elsewhere
+/// it stays in the owner-only file. Older Windows accounts migrate on their first read.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct Account {
     #[serde(default)]
@@ -54,13 +54,19 @@ fn file(dir: &Path) -> PathBuf {
     dir.join("account.json")
 }
 
+// Account checks and background refreshes can run together. Keep a reader from seeing a
+// truncated write, and keep simultaneous refreshes from overwriting parts of each other's JSON.
+static ACCOUNT_FILE: Mutex<()> = Mutex::new(());
+
 fn load(dir: &Path) -> Option<Account> {
+    let _guard = ACCOUNT_FILE.lock().unwrap();
     let mut a = std::fs::read(file(dir)).ok().and_then(|b| serde_json::from_slice::<Account>(&b).ok())?;
     if !a.sealed.is_empty() {
         a.token = crate::secret::open(&a.sealed)?;
-    } else if !a.token.is_empty() {
-        // Kept plain by an older launcher: sealed now.
-        store(dir, Some(&a));
+    } else if cfg!(windows) && !a.token.is_empty() {
+        // Only Windows has a credential store. A plain token is already the saved format on
+        // Linux and macOS, so reading it must not rewrite the account every time.
+        store_locked(dir, Some(&a));
     }
     Some(a).filter(|a| !a.token.is_empty())
 }
@@ -71,6 +77,12 @@ pub fn token(dir: &Path) -> Option<String> {
 }
 
 fn store(dir: &Path, a: Option<&Account>) {
+    let _guard = ACCOUNT_FILE.lock().unwrap();
+    store_locked(dir, a);
+}
+
+/// The caller holds ACCOUNT_FILE, including during migration from load().
+fn store_locked(dir: &Path, a: Option<&Account>) {
     match a {
         Some(a) => {
             let mut keep = a.clone();
@@ -80,10 +92,19 @@ fn store(dir: &Path, a: Option<&Account>) {
             } else {
                 keep.sealed = String::new();
             }
-            let _ = crate::secret::write_private(&file(dir), &serde_json::to_vec_pretty(&keep).unwrap_or_default());
+            // Replace only after a complete private copy exists. A stopped or failed write must
+            // leave the previous sign-in intact; ACCOUNT_FILE also protects this staging path.
+            let temp = dir.join("account.json.tmp");
+            let saved = crate::secret::write_private(&temp, &serde_json::to_vec_pretty(&keep).unwrap_or_default())
+                .and_then(|_| std::fs::rename(&temp, file(dir)));
+            if let Err(e) = saved {
+                let _ = std::fs::remove_file(&temp);
+                crate::trail::note(format!("Account: couldn't save sign-in ({e})"));
+            }
         }
         None => {
             let _ = std::fs::remove_file(file(dir));
+            let _ = std::fs::remove_file(dir.join("account.json.tmp"));
             crate::secret::forget();
         }
     }
@@ -511,6 +532,18 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     Ok(n)
 }
 
+/// Whether the cloud copy can be put in place without replacing locally changed saves.
+fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
+    if cloud == local {
+        return false;
+    }
+    let local_changed = !local.is_empty() && local != synced;
+    let cloud_changed = cloud != synced;
+    // A reset/reinstall can remove the saves while the last synced hash is still remembered.
+    // The cloud copy is needed then even if nobody has played on another PC since that sync.
+    empty || (cloud_changed && !local_changed)
+}
+
 /// Before Play: what to do about the cloud.
 /// "play": go ahead. "restored": a newer save from another PC was put in place. "conflict": both
 /// changed, the player picks (`local` and `cloud` say what each is). "offline": couldn't check.
@@ -540,15 +573,13 @@ pub async fn saves_check(app: AppHandle, id: String) -> Res<Value> {
         }
         return Ok(json!({"action": "play"}));
     }
-    let local_changed = !local.is_empty() && local != s.synced_hash;
-    let cloud_changed = top.hash != s.synced_hash;
-    if !cloud_changed {
-        // Only this PC has played since: it goes up after this session.
-        return Ok(json!({"action": "play"}));
-    }
-    if !local_changed || entries.is_empty() {
+    if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
         let n = take_cloud(&app, &id, &top).await?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
+    }
+    if top.hash == s.synced_hash {
+        // Only this PC has played since: it goes up after this session.
+        return Ok(json!({"action": "play"}));
     }
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
     let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
@@ -952,4 +983,104 @@ pub async fn beta_join(app: AppHandle, id: i64) -> Res<Value> {
 #[tauri::command]
 pub async fn beta_leave(app: AppHandle, id: i64) -> Res<Value> {
     post(&app, "beta-leave", json!({"id": id}), true).await
+}
+
+#[cfg(all(test, not(windows)))]
+mod account_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct AccountDir(PathBuf);
+    impl AccountDir {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!("rl-account-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for AccountDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn reading_a_plain_token_does_not_rewrite_the_account() {
+        let dir = AccountDir::new();
+        let saved = br#"{"token":"test-token","user":{"uid":"42","username":"Player","avatar":""}}"#;
+        crate::secret::write_private(&file(&dir.0), saved).unwrap();
+        assert_eq!(token(&dir.0).as_deref(), Some("test-token"));
+        assert!(signed_in(&dir.0));
+        assert_eq!(std::fs::read(file(&dir.0)).unwrap(), saved);
+    }
+
+    #[test]
+    fn a_failed_account_replacement_keeps_the_previous_sign_in() {
+        let dir = AccountDir::new();
+        let mut account = Account { token: "previous-token".into(), ..Default::default() };
+        store(&dir.0, Some(&account));
+        // A blocked staging path simulates a failed write without relying on user permissions.
+        std::fs::create_dir(dir.0.join("account.json.tmp")).unwrap();
+        account.token = "new-token".into();
+        store(&dir.0, Some(&account));
+        assert_eq!(token(&dir.0).as_deref(), Some("previous-token"));
+    }
+
+    #[test]
+    fn concurrent_account_refreshes_do_not_lose_the_sign_in() {
+        let dir = AccountDir::new();
+        let account = Account { token: "test-token".into(), user: User { uid: "42".into(), username: "Player".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&account));
+        let start = std::sync::Barrier::new(8);
+        let missing = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for worker in 0..8 {
+                let (path, account, start, missing) = (&dir.0, &account, &start, &missing);
+                scope.spawn(move || {
+                    start.wait();
+                    for turn in 0..100 {
+                        if worker % 2 == 0 {
+                            let mut refreshed = account.clone();
+                            refreshed.user.avatar = "a".repeat(4096 + worker * 31 + turn);
+                            store(path, Some(&refreshed));
+                        }
+                        if token(path).as_deref() != Some("test-token") {
+                            missing.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                });
+            }
+        });
+        assert_eq!(missing.load(Ordering::Relaxed), 0, "an account read observed an incomplete refresh");
+        assert_eq!(token(&dir.0).as_deref(), Some("test-token"), "the next launch must still be signed in");
+    }
+}
+
+#[cfg(test)]
+mod sync_tests {
+    use super::should_restore;
+
+    #[test]
+    fn missing_local_saves_restore_even_when_the_cloud_has_not_changed() {
+        // The game was reset/reinstalled, but the launcher still remembers its last sync.
+        assert!(should_restore("", "last-save", "last-save", true));
+    }
+
+    #[test]
+    fn automatic_restore_preserves_existing_sync_and_conflict_rules() {
+        for (local, synced, cloud, empty, restore) in [
+            ("same", "same", "same", false, false),
+            ("same", "previous", "same", false, false),
+            ("previous", "previous", "new-cloud", false, true),
+            ("new-local", "previous", "previous", false, false),
+            ("new-local", "previous", "new-cloud", false, false),
+            ("", "", "new-cloud", true, true),
+            ("", "previous", "new-cloud", true, true),
+            // Files whose checksums could not be read are not the same as missing files.
+            ("", "previous", "previous", false, false),
+        ] {
+            assert_eq!(should_restore(local, synced, cloud, empty), restore, "local={local}, synced={synced}, cloud={cloud}, empty={empty}");
+        }
+    }
 }

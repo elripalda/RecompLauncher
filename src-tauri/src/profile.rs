@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use crate::nup;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Profile {
     /// Named disc/DLC inputs and explicit key dependencies. See docs/SETUP-INPUTS.md.
@@ -282,6 +284,10 @@ pub struct Check {
     /// On a PlayStation 2 (or any ISO 9660) disc image, in its top folder.
     #[serde(default)]
     pub iso9660: String,
+    /// A Nintendo Switch 2 `.nup` package's build ID (hex, at least 8 digits; a prefix is fine),
+    /// read from its newest title's `exefs/main`. A folder with `exefs/main` is read the same way.
+    #[serde(default)]
+    pub nup_build_id: String,
     /// An N64 ROM's region: the country letters it may have (`E` for USA).
     #[serde(default)]
     pub n64_region: String,
@@ -818,6 +824,7 @@ fn boot_copy(b: &Value) -> Option<(GameCopy, Vec<String>)> {
                 n64_id: s(f, "n64_id").to_ascii_uppercase(),
                 n64_rev: f.get("n64_rev").and_then(Value::as_u64).map(|v| v as u8),
                 ids: f.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default(),
+                nup_build_id: String::new(),
             },
             into: if how == "folder" { into } else { String::new() },
             name,
@@ -1247,7 +1254,14 @@ impl Profile {
         let mut items: Vec<PathBuf> = if copy.is_dir() { std::fs::read_dir(copy)?.flatten().map(|e| e.path()).collect() } else { vec![copy.to_path_buf()] };
         // A .cue sheet is only the table of contents: the .bin tracks it names come along too.
         if !copy.is_dir() {
-            items.extend(cue_tracks(copy));
+            let tracks = cue_tracks(copy);
+            // The game wants the disc's one .bin under its own name (ctr-u.bin), and the player
+            // picked the sheet: the track it names goes there, not the sheet renamed.
+            if tracks.len() == 1 && g.name.trim().to_ascii_lowercase().ends_with(".bin") {
+                items = tracks;
+            } else {
+                items.extend(tracks);
+            }
         }
         let single = !copy.is_dir();
         let first = items.first().cloned();
@@ -1917,9 +1931,19 @@ impl GameCopy {
 
     /// Told apart by what's in it (a file only this game has, its N64 cartridge code), not an ID.
     pub fn identifies_by_contents(&self) -> bool {
+        self.identifies_kind(true) || self.identifies_kind(false)
+    }
+
+    /// Only checks that `check_copy` applies to this kind of input can identify it. A file
+    /// inside an extracted folder says nothing about an arbitrary package or ROM file.
+    pub fn identifies_kind(&self, folder: bool) -> bool {
         let c = &self.check;
         let own = |f: &str| !f.is_empty() && !COMMON_FILES.iter().any(|x| f.eq_ignore_ascii_case(x));
-        !c.n64_id.is_empty() || (!self.generic && (own(&c.file) || own(&c.xdvdfs) || own(&c.iso9660)))
+        !c.nup_build_id.is_empty() || if folder {
+            !self.generic && own(&c.file)
+        } else {
+            !c.n64_id.is_empty() || (!self.generic && (own(&c.xdvdfs) || own(&c.iso9660)))
+        }
     }
 }
 
@@ -1944,6 +1968,9 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     if folder {
         if !g.check.file.is_empty() && !p.join(&g.check.file).is_file() && !std::fs::read_dir(p).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&g.check.file)) {
             return Err(format!("That folder doesn't have {}.", g.check.file));
+        }
+        if !g.check.nup_build_id.is_empty() {
+            return check_nup_build(&g.check.nup_build_id, nup::build_id_of_folder(p));
         }
         // With nothing more to check by: a folder with nothing in it, or only pictures and videos
         // (the launcher's own screenshots folder, say), is never anyone's game.
@@ -2000,6 +2027,11 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
             "That disc image isn't the game this recomp reads.".into()
         });
     }
+    if !g.check.nup_build_id.is_empty() {
+        // By the package's magic, not its name; only its headers and `main`'s first bytes are read.
+        let id = if nup::is_package(p) { nup::build_id_of_package(p) } else { Err("That isn't a Nintendo Switch 2 .nup package.".into()) };
+        return check_nup_build(&g.check.nup_build_id, id);
+    }
     let wants_n64 = !g.check.n64_region.is_empty() || !g.check.n64_id.is_empty() || g.check.n64_rev.is_some() || [".z64", ".n64", ".v64"].iter().any(|e| g.name.to_lowercase().ends_with(e));
     if wants_n64 {
         // An N64 ROM starts with one of three byte patterns; anything else isn't one.
@@ -2026,6 +2058,16 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The build a package or folder is, against the one the recomp needs.
+fn check_nup_build(want: &str, have: Result<String, String>) -> Result<(), String> {
+    let have = have?;
+    if nup::matches(&have, want)? {
+        Ok(())
+    } else {
+        Err(format!("That copy is build {}. This recomp needs build {}.", &have[..8], want.trim().to_ascii_lowercase()))
+    }
 }
 
 /// Kinds of file that are never a game: pictures, documents, videos, shortcuts.
@@ -2553,6 +2595,23 @@ mod tests {
     }
 
     #[test]
+    fn a_cue_picked_for_a_named_bin_places_its_track() {
+        let d = tmp("cuebin");
+        let disc = d.join("disc");
+        std::fs::create_dir_all(&disc).unwrap();
+        std::fs::write(disc.join("CTR (USA).bin"), vec![7u8; 4096]).unwrap();
+        std::fs::write(disc.join("CTR (USA).cue"), "FILE \"CTR (USA).bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n").unwrap();
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"ctr.exe","files":{"how":"folder","folder":"assets","accepts":"iso","contains":["ctr-u.bin"],"what":"Your USA Crash Team Racing disc (.bin)"}}"#).unwrap();
+        let p = from_boot(&b).unwrap();
+        p.place(&install, Some(&disc.join("CTR (USA).cue"))).unwrap();
+        assert_eq!(std::fs::metadata(install.join("assets/ctr-u.bin")).unwrap().len(), 4096);
+        assert!(!install.join("assets/CTR (USA).cue").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn empty_folders_from_the_release_get_filled() {
         let d = tmp("emptyfold");
         let copy = d.join("dump");
@@ -2925,6 +2984,33 @@ mod tests {
         let g2 = GameCopy { check: Check { iso9660: "SLUS_999.99".into(), ..Default::default() }, ..g.clone() };
         assert!(check_copy(&g2, &iso).is_err());
         assert!(check_copy(&g, &d).is_err());
+    }
+
+    #[test]
+    fn nup_build_id_checks_a_package_or_folder_by_content() {
+        let d = tmp("nupcheck");
+        let mut main = vec![0u8; 0x100];
+        main[..4].copy_from_slice(b"NSO0");
+        main[0x40..0x44].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        std::fs::create_dir_all(d.join("dump").join("exefs")).unwrap();
+        std::fs::write(d.join("dump").join("exefs").join("main"), &main).unwrap();
+        let g = |id: &str| GameCopy {
+            kind: "iso_or_folder".into(),
+            label: String::new(),
+            check: Check { nup_build_id: id.into(), ..Default::default() },
+            ..Default::default()
+        };
+        assert!(check_copy(&g("e0f3ccfa"), &d.join("dump")).is_ok());
+        let e = check_copy(&g("11223344"), &d.join("dump")).unwrap_err();
+        assert!(e.contains("e0f3ccfa") && e.contains("11223344"), "{e}");
+        assert!(check_copy(&g("e0f3ccfa"), &d).unwrap_err().contains("exefs/main"));
+        // A file is judged by its content, whatever it is called.
+        std::fs::write(d.join("a.nup"), b"just text").unwrap();
+        assert!(check_copy(&g("e0f3ccfa"), &d.join("a.nup")).unwrap_err().contains("isn't a Nintendo Switch 2"));
+        assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
+        // No check, no change: any file is still accepted.
+        assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

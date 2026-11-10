@@ -1,11 +1,11 @@
 [package]
 name = "recomplauncher"
-version = "0.90.0-beta.27"
+version = "0.90.0-beta.29"
 description = "RecompLauncher: one home for PC recomps"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.85"
 
 [lib]
 name = "recomplauncher_lib"
@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 cc = "1"
 flate2 = "1"
+zstd = "0.13"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
@@ -23,15 +24,18 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "gzip"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "process"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "process", "net"] }
 futures-util = "0.3"
 sha2 = "0.10"
+aes = "0.8"
+lzxd = "0.2"
 hex = "0.4"
 base64 = "0.22"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 sevenz-rust = "0.6"
 unrar = "0.5"
 flate2 = "1"
+zstd = "0.13"
 tar = "0.4"
 backhand = { version = "0.21", default-features = false, features = ["gzip", "xz", "xz-static", "zstd", "lz4"] }
 dirs = "5"
@@ -49,17 +53,18 @@ regex-lite = "0.1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 plist = "1"
 tauri-plugin-deep-link = "2"
+# Controllers. SDL 3 is built from source and linked in, with only its joystick and HIDAPI parts:
+# no SDL library to ship, and nothing needed on the player's system.
+sdl3-sys = { version = "=0.7.2", default-features = false, features = ["build-from-source-static", "no-default-subsystems", "sdl-joystick", "sdl-hidapi", "sdl-unix-console-build"] }
 
 [target.'cfg(windows)'.dependencies]
-gilrs = { version = "0.11", default-features = false, features = ["xinput"] }
+# On Windows SDL is built without the C runtime (as SDL's own releases are): its CMake would
+# otherwise pick the DLL runtime, mixing it with the static one release builds use.
+sdl3-sys = { version = "=0.7.2", default-features = false, features = ["no-sdl-libc"] }
 xcap = { version = "0.9", features = ["image", "wgc"] }
-hidapi = { version = "2", default-features = false, features = ["windows-native"] }
 webview2-com = "0.39"
 windows-core = "0.62"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
-
-[target.'cfg(not(windows))'.dependencies]
-gilrs = "0.11"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"

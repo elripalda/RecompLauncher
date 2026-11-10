@@ -321,7 +321,7 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
             items.push(ok(format!("Asks for: {}", gc.label)));
         }
         let c = &gc.check;
-        if c.file.is_empty() && c.xdvdfs.is_empty() && c.iso9660.is_empty() {
+        if c.file.is_empty() && c.xdvdfs.is_empty() && c.iso9660.is_empty() && c.nup_build_id.is_empty() {
             items.push(warn("No \"game.check\"", "Any disc or folder is accepted, and the launcher can't find the player's copy in their folders."));
         } else {
             items.push(ok("Checks the player's copy and finds it in their folders"));

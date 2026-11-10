@@ -4,7 +4,9 @@
 //! games running) report back through events: `install` with a Progress, `game` when one starts
 //! or closes.
 
+pub mod ach;
 pub mod adopt;
+pub mod xex;
 mod appimage;
 pub mod art;
 pub mod assets;
@@ -29,6 +31,7 @@ pub mod macos;
 pub mod media;
 pub mod mods;
 pub mod net;
+pub mod nup;
 pub mod pads;
 pub mod own_setup;
 pub mod ghinfo;
@@ -45,6 +48,7 @@ pub mod saves;
 pub mod shortcuts;
 pub mod trail;
 pub mod tray;
+mod update_download;
 pub mod usage;
 pub mod win;
 mod installer;
@@ -1270,6 +1274,95 @@ async fn rom_matches(st: State<'_, App>) -> Res<HashMap<String, roms::RomFile>> 
     Ok(tokio::task::spawn_blocking(move || copies_for(&cat, &found, &dirs)).await.unwrap_or_default())
 }
 
+#[derive(Serialize)]
+struct CopyFile {
+    path: String,
+    name: String,
+    folder: String,
+    size: u64,
+    region: String,
+    /// "game", "update" or "dlc".
+    kind: &'static str,
+    disc: Option<u32>,
+    /// One of the catalog's known dumps of this game.
+    verified: bool,
+    /// The one the launcher uses for the game.
+    picked: bool,
+}
+
+#[derive(Serialize)]
+struct CopyFiles {
+    files: Vec<CopyFile>,
+    /// Discs of a set that weren't found (2 when Disc 1 and Disc 3 are there).
+    missing_discs: Vec<u32>,
+}
+
+/// Everything found in the player's folders for one game, for the "Your copy" list: its discs in
+/// order, then updates, then extra content. `picked` is the copy the launcher uses (or the one the
+/// player chose); `dropped` are the ones they said aren't theirs.
+#[tauri::command]
+async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, dropped: Vec<String>) -> Res<CopyFiles> {
+    let cat = cached_catalog(&st);
+    let entry = catalog::app(&cat, &id).cloned().ok_or_else(|| Error::Msg("That game isn't in the list.".into()))?;
+    let roms = st.lib.lock().unwrap().roms.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut found = roms::files_of(&entry, &roms);
+        // The one the launcher picked counts even when its name didn't match (a folder found by its check).
+        if let Some(p) = picked.as_deref().filter(|p| !p.is_empty()) {
+            if !found.iter().any(|r| r.path.to_string_lossy() == p) {
+                let path = PathBuf::from(p);
+                let size = std::fs::metadata(&path).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0);
+                found.push(roms::RomFile { path, system: String::new(), title: String::new(), region: String::new(), size });
+            }
+        }
+        let mut files: Vec<CopyFile> = found
+            .into_iter()
+            .filter(|r| !dropped.iter().any(|d| r.path.to_string_lossy() == d.as_str()))
+            .map(|r| {
+                let name = r.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let part = roms::part_of(&name);
+                let path = r.path.to_string_lossy().to_string();
+                CopyFile {
+                    folder: r.path.parent().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+                    verified: roms::known_dump(&entry, &r.path),
+                    picked: picked.as_deref() == Some(path.as_str()),
+                    kind: part.kind,
+                    disc: part.disc,
+                    size: r.size,
+                    region: r.region,
+                    name,
+                    path,
+                }
+            })
+            .collect();
+        let rank = |k: &str| match k { "game" => 0, "update" => 1, _ => 2 };
+        files.sort_by(|a, b| (rank(a.kind), a.disc.unwrap_or(0), a.name.to_lowercase()).cmp(&(rank(b.kind), b.disc.unwrap_or(0), b.name.to_lowercase())));
+        let discs: Vec<u32> = files.iter().filter_map(|f| f.disc).collect();
+        let of = files.iter().filter_map(|f| roms::part_of(&f.name).of).max().unwrap_or(0);
+        let top = discs.iter().copied().max().unwrap_or(0).max(of);
+        let missing_discs = if discs.is_empty() { vec![] } else { (1..=top.min(20)).filter(|n| !discs.contains(n)).collect() };
+        CopyFiles { files, missing_discs }
+    })
+    .await
+    .map_err(|e| Error::Msg(e.to_string()))
+}
+
+/// What an installed recomp's own recomplauncher.json (in its folder) covers, for the "Launcher
+/// support" list: each feature it sets up itself. Null when it has none.
+#[tauri::command]
+fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
+    let dir = st.lib.lock().unwrap().installed.get(&id).map(|g| g.path.clone())?;
+    let p = profile::release_profile(&dir)?.profile;
+    let game = p.game.as_ref();
+    Some(json!({
+        "easy_setup": game.is_some(),
+        "settings": !p.settings.is_empty(),
+        "prepare": p.prepare.is_some(),
+        "verified": game.map(|g| !g.dumps.is_empty() || !g.check.ids.is_empty()).unwrap_or(false),
+        "saves": !p.saves.is_empty(),
+    }))
+}
+
 // ---------- the launcher's own file browser ----------
 
 #[derive(Serialize)]
@@ -1451,8 +1544,14 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         }
         // By its disc ID: one that's this game's. One that can't be read (a folder, an Xbox disc)
         // counts only when there's another check that tells it apart.
-        let by_file = need.identifies_by_contents();
-        let id_fits = |p: &Path| want.is_empty() || roms::copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(by_file);
+        let id_fits = |p: &Path| {
+            let by_contents = need.identifies_kind(p.is_dir());
+            if want.is_empty() {
+                by_contents
+            } else {
+                roms::copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(by_contents)
+            }
+        };
         if named_ok {
             continue;
         }
@@ -1460,8 +1559,10 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         // Recognized PlayStation and Switch folders are matched by title. Shared files
         // such as eboot.bin or main.npdm can't identify another game.
         if let Some(r) = found.iter().find(|r| {
-            let matched_by_title = matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2")
-                || (r.system == "switch" && r.size == 0);
+            // A build ID is the exception: it's read from the package or folder itself.
+            let by_build = !need.check.nup_build_id.is_empty() && matches!(r.system.as_str(), "switch" | "switch2");
+            let matched_by_title = !by_build
+                && (matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2") || (r.system == "switch" && r.size == 0));
             !matched_by_title && id_fits(&r.path) && profile::check_copy(&need, &r.path).is_ok()
         }) {
             out.insert(id.to_string(), r.clone());
@@ -2485,6 +2586,21 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
         trail::note(format!("Play {id}: no FUSE 2 on this PC, the AppImage unpacks itself to run"));
     }
+    // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
+    let ach_session = {
+        let cat = cached_catalog(&st);
+        let entry = catalog::app(&cat, id);
+        let origin = entry.map(|e| str_of(e, "origin").to_string()).unwrap_or_default();
+        let folder = entry.and_then(|e| e.get("achievements_folder").and_then(Value::as_str).or_else(|| e.pointer("/achievements/folder").and_then(Value::as_str))).map(str::to_string);
+        let mut roots = vec![g.path.clone()];
+        if let Some(p) = g.path.parent() {
+            roots.push(p.join("Game Copies").join(library::folder_name(id)));
+        }
+        ach::start(app, ach::Start { id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, roots })
+    };
+    if let Some(p) = &ach_session {
+        cmd.env("RL_SESSION", p);
+    }
     note_run(&st, id, &g, &exe, &args, &cwd, prof.as_ref(), look_run.is_some());
     trail::note(format!("Play {id}: {}{}", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), if look_run.is_some() { " with a Look" } else { "" }));
     let spawned = cmd.spawn();
@@ -2505,6 +2621,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         trail::note(format!("Play {id}: didn't start: {e}"));
     }
     if spawned.is_err() {
+        if ach_session.is_some() {
+            ach::abort(app, id);
+        }
         if let Some(p) = look_run.as_ref().and_then(|r| r.placed.as_ref()) {
             looks::finish(&st.dir, id, p);
         }
@@ -2636,6 +2755,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             st.running.lock().unwrap().remove(&id);
             st.pids.lock().unwrap().remove(&id);
             st.started.lock().unwrap().remove(&id);
+            ach::end(&app2, &id);
         }
         pads::PLAYING.store(!st.running.lock().unwrap().is_empty(), Ordering::Relaxed);
         if !st.running.lock().unwrap().contains_key(&id) {
@@ -2662,7 +2782,11 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             }
         }
         // What the game's exit code means, when its profile says.
-        let said = code.and_then(|c| prof.as_ref().and_then(|p| p.exit_codes.get(&(c as u32).to_string()).cloned()));
+        let said = code.and_then(|c| {
+            let own = prof.as_ref().and_then(|p| p.exit_codes.get(&(c as u32).to_string()).or_else(|| p.exit_codes.get(&c.to_string())).cloned());
+            // Else the catalog's profile ("exit_codes" in its boot), fixable without a launcher update.
+            own.or_else(|| catalog::app(&cached_catalog(&st), &id).and_then(|e| boot::exit_says(e, c)))
+        }).filter(|t| !t.trim().eq_ignore_ascii_case("ok"));
         if mine {
             let _ = app2.emit("game", json!({"id": id, "state": "stopped", "secs": secs, "code": code, "started": started, "said": said}));
             ping::game_stop(&app2, &id, secs);
@@ -3470,6 +3594,9 @@ fn quit_code(st: &App, id: &str, prof: Option<&profile::Profile>, c: i32) -> boo
     }
     let cat = cached_catalog(st);
     let Some(e) = catalog::app(&cat, id) else { return false };
+    if crate::boot::exit_says(e, c).map(|s| s.trim().eq_ignore_ascii_case("ok")).unwrap_or(false) {
+        return true;
+    }
     let listed = [e.get("ok_codes"), e.get("boot").and_then(|b| b.get("ok_codes"))]
         .into_iter()
         .flatten()
@@ -6244,7 +6371,7 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     if !(cfg!(windows) || appimage.is_some()) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
-    let mut r = st.http.get(&file_url).timeout(std::time::Duration::from_secs(900)).send().await?;
+    let mut r = update_download::response(&st.http, &file_url).await?;
     if !r.status().is_success() {
         return Err(Error::Msg(format!("The download answered {}", r.status().as_u16())));
     }
@@ -7115,6 +7242,8 @@ pub fn run() {
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
         return;
     }
+    // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
+    sysenv::tune_allocator();
     tauri::Builder::default()
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
@@ -7340,6 +7469,8 @@ pub fn run() {
                 looked: Mutex::new(HashSet::new()),
                 headless: AtomicBool::new(play.is_some()),
             });
+            // Achievements: what the website said about this account last time.
+            ach::init(&app.state::<App>().dir);
             #[cfg(windows)]
             watch_outside(app.handle().clone());
             // Text Size from last time.
@@ -7495,12 +7626,12 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches,
+            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
-            reset_settings, tray::tray_words, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
+            reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
@@ -7508,6 +7639,7 @@ pub fn run() {
         .expect("RecompLauncher couldn't start")
         .run(|app, ev| {
             if let tauri::RunEvent::Exit = ev {
+                pads::stop();
                 ping::close(app);
             }
         });
@@ -7644,6 +7776,73 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn folder_checks_do_not_identify_unrelated_game_files() {
+        let d = std::env::temp_dir().join(format!("rl-folder-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("copy/58410A9F/000D0000")).unwrap();
+        std::fs::write(d.join("copy/58410A9F/000D0000/package"), b"game package").unwrap();
+        let wrong = d.join("Super Mario 64 DS.nds");
+        std::fs::write(&wrong, vec![0u8; 8192]).unwrap();
+        let found = roms::RomFile { path: wrong, system: "nds".into(), title: "Super Mario 64 DS".into(), region: String::new(), size: 8192 };
+        let cat = json!({ "apps": [{ "id": "pants", "game": "The Fancy Pants Adventures", "origin": "x360", "repo": "example/pants",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "game": {
+                "kind": "iso_or_folder", "check": { "file": "58410A9F/000D0000/package" }
+            } } }] });
+        let dirs = HashMap::new();
+        assert!(copies_for(&cat, &[found.clone()], &dirs).is_empty());
+        // Unreadable IDs must not let a folder-only check identify that file either.
+        let mut with_ids = cat.clone();
+        with_ids["apps"][0]["launcher"]["game"]["check"]["ids"] = json!(["58410A9F"]);
+        assert!(copies_for(&with_ids, &[found.clone()], &dirs).is_empty());
+        // A folder that really contains the identifying file still matches under any name.
+        let folder = roms::RomFile { path: d.join("copy"), system: "x360".into(), title: "copy".into(), region: String::new(), size: 0 };
+        assert_eq!(copies_for(&cat, &[found, folder.clone()], &dirs).get("pants").map(|r| &r.path), Some(&folder.path));
+        // A package explicitly matched by its title is still eligible for setup.
+        let named = d.join("The Fancy Pants Adventures.bin");
+        std::fs::write(&named, b"game package").unwrap();
+        let package = roms::RomFile { path: named, system: "x360".into(), title: "The Fancy Pants Adventures".into(), region: String::new(), size: 12 };
+        assert!(copies_for(&cat, &[package], &dirs).contains_key("pants"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn disc_checks_do_not_identify_unrelated_folders() {
+        let d = std::env::temp_dir().join(format!("rl-disc-copy-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("data.bin"), b"another game's data").unwrap();
+        let folder = roms::RomFile { path: d.clone(), system: "x360".into(), title: "Other Game".into(), region: String::new(), size: 0 };
+        let cat = json!({ "apps": [{ "id": "disc-game", "game": "My Disc Game", "repo": "example/disc-game",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "game": {
+                "kind": "iso_or_folder", "check": { "iso9660": "SLUS_206.51" }
+            } } }] });
+        assert!(copies_for(&cat, &[folder], &HashMap::new()).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_switch2_package_is_found_by_its_build_id() {
+        use crate::nup::tests::{nso, package};
+        let d = std::env::temp_dir().join(format!("rl-nupfind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut id = [7u8; 32];
+        id[..4].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        let rom = |name: &str, id: &[u8; 32]| {
+            let p = d.join(name);
+            std::fs::write(&p, package(&[(0, vec![("main", nso(id), 0)])])).unwrap();
+            roms::RomFile { path: p, system: "switch2".into(), title: name.into(), region: String::new(), size: 0 }
+        };
+        let ours = rom("backup-07.nup", &id);
+        let other = rom("other.nup", &[9u8; 32]);
+        let cat = json!({ "apps": [{ "id": "hs", "name": "Hookshot", "game": "Some Game", "origin": "switch2", "repo": "a/hs",
+            "launcher": { "format": 1, "start": { "program": ["g.exe"] }, "game": { "kind": "iso_or_folder", "label": "Your .nup", "check": { "nup_build_id": "e0f3ccfa" } } } }] });
+        let dirs = HashMap::new();
+        assert!(copies_for(&cat, &[other.clone()], &dirs).is_empty());
+        assert_eq!(copies_for(&cat, &[other, ours.clone()], &dirs).get("hs").map(|r| r.path.clone()), Some(ours.path));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn another_games_disc_isnt_taken_for_this_one() {

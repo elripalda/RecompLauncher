@@ -146,6 +146,13 @@ What the player sees:
   - `file`: a file that should be in the folder, like `"default.xex"`.
   - `xdvdfs`: a file on an Xbox 360 disc image.
   - `iso9660`: a file in the top folder of a PlayStation 2 (or any ISO 9660) disc image.
+  - `nup_build_id`: the build ID of a Nintendo Switch 2 `.nup` package, e.g. `"e0f3ccfa"` (hex,
+    at least 8 digits; a prefix of the full 64-digit ID is fine). It is read from the `exefs/main`
+    of the package's newest title, from the table rows leading to it and the first 96 bytes of that
+    file only, never the whole package, and a folder with `exefs/main` is read the same way. The
+    file is recognised by its contents, not its extension. This is a content check only: it needs
+    and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Use
+    it with `kind: "iso_or_folder"`.
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found.
@@ -547,6 +554,8 @@ RecompLauncher 0.90 Beta 27 supports:
 | `makes` | Files or folders its setup makes, to tell when it finished |
 | `player_note` | Something the player does by hand, shown on the game's page |
 | `installer` | The release is an installer, then the game starts from what it installed |
+| `needs` | What the PC needs for its setup: `build_tools`, `clang`, `python` (3.10 or newer), checked on the game's page |
+| `exit_codes` | What a game's exit codes mean (`{"70": "…"}`, or `"ok"` for a normal quit), shown in the crash window |
 | `files.folder` | Easy Setup: the player's copy goes into a folder |
 | `files.flag` | Easy Setup: the copy is passed on the command line |
 | `files.env` | Easy Setup: the copy reaches the game through an environment variable |

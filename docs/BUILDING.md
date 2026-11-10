@@ -5,10 +5,18 @@ plain HTML, CSS and JavaScript (`ui/`).
 
 ## What you need
 
-You need [Rust](https://rustup.rs) and Node.js 20 or newer. On Windows that's all (Rust's default
-MSVC toolchain, with the Visual Studio C++ build tools it asks for). On Linux you also need the
-WebKitGTK libraries (`libwebkit2gtk-4.1-dev`, see the
-[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
+You need [Rust](https://rustup.rs) 1.85 or newer, Node.js 20 or newer and
+[CMake](https://cmake.org). CMake builds SDL 3, which reads controllers; it's compiled into the
+launcher, so there is no SDL library to ship or install. On Windows you also need Rust's default
+MSVC toolchain, with the Visual Studio C++ build tools it asks for. The Build Tools come with a
+CMake of their own if you tick "C++ CMake tools for Windows" in the installer. On Linux you also
+need the WebKitGTK libraries (`libwebkit2gtk-4.1-dev`, see the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)) and `libudev-dev`.
+
+On Windows, a checkout in a deep folder can break SDL's build with MSBuild's "could not create
+the new file tracking log file" (its paths go past 260 characters). Build with the Ninja
+generator instead (`CMAKE_GENERATOR=Ninja`, with `ninja` on your PATH; Visual Studio's CMake
+folder has one), or clone to a shorter path.
 
 ```
 npm ci
@@ -24,7 +32,8 @@ after the build.
 
 ### macOS (initial Apple Silicon support)
 
-Install Xcode Command Line Tools, Rust and Node.js 20 or newer, then run:
+Install Xcode Command Line Tools, Rust, CMake (for example `brew install cmake`) and Node.js 20
+or newer, then run:
 
 ```sh
 npm ci
@@ -109,7 +118,10 @@ to block merging when any platform check fails. The workflow alone does not enfo
 - `src-tauri/src/manage.rs` moves games, backs up saves and checks the PC.
 - `src-tauri/src/roms.rs` finds the player's own games in their folders.
 - `src-tauri/src/shortcuts.rs` makes desktop shortcuts and Steam entries.
-- `src-tauri/src/pads.rs` reads controllers (XInput, and PlayStation pads directly).
+- `src-tauri/src/pads.rs` reads controllers through SDL 3 on every system, even while a game is in
+  front. A `gamecontrollerdb.txt` in the launcher's data folder (`com.recomplauncher.app` in the
+  system's app data folder, or `data` beside the program in portable mode) adds SDL mappings for
+  controllers SDL doesn't know.
 - `src-tauri/src/media.rs` keeps cover art on disk and copies screenshots to the clipboard.
 - `src-tauri/src/ingame.rs` handles the quick menu, hotkeys and taking screenshots.
 - `src-tauri/src/mods.rs` installs mods from Thunderstore and `gamebanana.rs` from GameBanana;

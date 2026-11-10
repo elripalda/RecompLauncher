@@ -695,6 +695,13 @@ function badNote(a) {
   if (next) return `<div class="gp-note bad-ver" role="note"><b>${esc(t('The Update Is Crashing a Lot'))}</b><span dir="auto">${esc(next.note || tf('{version} is crashing for a lot of players. It\'s fine to wait for the next one.', { version: S.updates[a.id] }))}</span></div>`;
   return '';
 }
+// The catalog now installs this game with its installer, but this copy came from the old download
+// (a zip without the parts the installer adds): offer to install it the new way.
+function reinstallNote(a) {
+  const g = S.library[a.id];
+  if (!g || !isInstallerApp(a) || g.installer || g.installer_setup || S.jobs[a.id]) return '';
+  return `<div class="gp-note bad-ver" role="note"><b>${esc(t('This Game Installs Differently Now'))}</b><span dir="auto">${esc(t('It comes as an installer now, which brings parts your copy doesn\'t have. Reinstall it to get them. Your saves stay.'))}</span><button type="button" class="btn sm" data-act="reinstall-new" data-id="${esc(a.id)}">${esc(t('Reinstall'))}</button></div>`;
+}
 function stateNote(a) {
   const ps = projectState(a);
   return ps && ps.kind !== 'quiet' ? `<div class="gp-note ${ps.kind}" role="note"><b>${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></div>` : '';
@@ -838,6 +845,59 @@ const QI_DESK = QI('<rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="
 const QI_REPORT = QI('<path d="M10.3 4.1 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.1a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17h.01"/>', 2);
 let STEAM_ICON = '';
 fetch('icons/steam.svg').then((r) => (r.ok ? r.text() : '')).then((t) => { if (/^\s*<svg[\s>]/i.test(t) && !/<script|on\w+=/i.test(t)) { STEAM_ICON = t.replace(/<svg/i, '<svg class="qi-brand"'); if (!/aria-hidden/.test(STEAM_ICON)) STEAM_ICON = STEAM_ICON.replace(/<svg/i, '<svg aria-hidden="true"'); if (typeof S !== 'undefined' && S.view === 'game' && typeof refreshGame === 'function') refreshGame(); } }).catch(() => {});
+const SUPPORT_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 9 1.5 1.5L12 8M8 15l1.5 1.5L12 14M14.5 9.5H17M14.5 15.5H17"/></svg>';
+// A new issue on the recomp's own page, asking for RecompLauncher support. Opened for the player to
+// send themselves; nothing is sent from here.
+function askSupportUrl(a) {
+  const title = 'RecompLauncher support';
+  const body = 'Hi! Could you add a recomplauncher.json to this recomp, so RecompLauncher can set it up and show its settings for players?\n\nThe guide: https://recomplauncher.com/sdk-files/guide.md';
+  if (isSF(a.repo)) return repoIssues(a.repo);
+  if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
+  return `https://github.com/${a.repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+}
+// What RecompLauncher can do for this recomp, and who made each part work: the catalog's
+// "support", the recomp's own recomplauncher.json in its folder, or (offline) its boot profile.
+async function supportModal(id) {
+  const a = byId(id) || (S.library[id] && libApp(S.library[id]));
+  if (!a) return;
+  const sup = a.support && typeof a.support === 'object' ? a.support : null;
+  let local = null;
+  if (S.library[id]) local = await invoke('support_local', { id }).catch(() => null);
+  const boot = a.boot || builtinBoot()[id] || {};
+  const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
+  const guess = {
+    easy_setup: !!(files && TURNKEY_HOW.includes(files.how)) || S.easy.has(id),
+    settings: !!(boot.settings && (boot.settings.settings || []).length),
+    prepare: !!(boot.setup || boot.prepare),
+    verified: !!((Array.isArray(a.copy_ids) ? a.copy_ids.length : a.copy_ids) || (files && files.sha256)),
+    saves: false,
+  };
+  // 'dev', 'launcher', '' (not there), or '?' (there, by whom isn't known).
+  const who = (k) => (local && local[k] ? 'dev' : sup ? (sup[k] === 'dev' || sup[k] === 'launcher' ? sup[k] : '') : guess[k] ? '?' : '');
+  const sdk = local ? 'release' : sup && sup.sdk ? sup.sdk : 'unknown';
+  const hh = a.handheld && a.handheld.ok;
+  const saves = who('saves') === 'dev' ? 'dev' : 'launcher';
+  const rows = [
+    [t('Easy Setup'), t('Pick your copy and the launcher sets it up.'), who('easy_setup')],
+    [t('Game Settings in the Launcher'), t('Change the game\'s own settings from its page.'), who('settings')],
+    [t('Full Setup Step'), t('The recomp\'s own setup step, run for you.'), who('prepare')],
+    [t('Verified Copies Badge'), t('Shows when your copy matches a known good one.'), who('verified')],
+    [t('Save Backups and Cloud Saves'), saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : t('Always on from the launcher\'s side.'), saves],
+    [t('Handheld Rating'), hh ? tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') || t('several players') }) : t('From handheld players\' reports. None yet.'), hh ? 'players' : ''],
+  ];
+  const tag = (w) => (w === 'dev' ? `<span class="tag ok">${esc(t('By the Developer'))}</span>` : w === 'launcher' ? `<span class="tag cy">${esc(t('By RecompLauncher'))}</span>` : w === 'players' ? `<span class="tag">${esc(t('By Players'))}</span>` : '');
+  // What the developer's own file could add (the handheld rating comes from players).
+  const missing = rows.slice(0, 4).some((r) => !r[2]);
+  const own = sdk === 'release' || sdk === 'repo';
+  const ask = a.repo && (sdk === 'none' || missing);
+  const html = `<h2>${esc(t('Launcher Support'))}</h2><p class="muted">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
+    <div class="mh sup-list">${rows.map(([k, d, w]) => `<div class="mh-row sup-row"><span class="sup-mark">${okMark(w ? true : null)}</span><div class="mh-k"><b>${esc(k)}</b><span class="sup-d">${esc(d)}</span></div>${tag(w)}</div>`).join('')}</div>
+    ${own ? `<p class="sup-own">${esc(t('This recomp supports RecompLauncher itself.'))}</p>` : ''}
+    ${ask ? `<p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p>` : ''}
+    <div class="acts ${ask ? 'grid2' : ''}">${ask ? `<button type="button" class="btn" data-x="ask">${esc(t('Ask the Developer'))}</button>` : ''}<button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`;
+  modal(html, (x) => { if (x.dataset.x === 'ask') invoke('open_url', { url: askSupportUrl(a) }).catch(fail); }, t('Launcher Support'));
+}
+
 function quickActs(a) {
   const id = esc(a.id), b = (act, label, icon, extra = '') => `<button type="button" class="btn" data-act="${act}" data-id="${id}" ${extra}>${icon}<span>${esc(label)}</span></button>`;
   const out = [];
@@ -853,6 +913,7 @@ function quickActs(a) {
     out.push(b('url', isSF(a.repo) ? t('View on SourceForge') : hostName(a.repo), isLab(a.repo) || isSF(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
     out.push(b('url', t('Report a problem'), QI_REPORT, `data-url="${esc(reportUrl(a))}"`));
   }
+  if (!a.soon) out.push(b('support', t('Launcher Support'), SUPPORT_I));
   if (!out.length) return '';
   // Even rows: an odd one out takes the whole row.
   if (out.length % 2) out[out.length - 1] = out[out.length - 1].replace('class="btn"', 'class="btn span2"');
@@ -870,18 +931,38 @@ const okMark = (v) => (v ? `<span class="mark ok" title="${esc(t('Yes'))}"><svg 
 // driver, the processor, the Windows runtime, and room on the drive.
 // The found copy isn't the right one: the player picks theirs.
 const fixBtn = (id) => `<button type="button" class="btn sm" data-act="found-fix" data-id="${esc(id)}">${esc(t('Not This One'))}</button>`;
+// Everything found for a game (its discs, update and extra content), loaded once per scan.
+async function loadCopies(id) {
+  S.copyFiles = S.copyFiles || {};
+  if (S.copyFiles[id]) return S.copyFiles[id];
+  const own = S.owned[id], drop = (((S.settings.ui || {}).found_drop) || {})[id] || [];
+  try { S.copyFiles[id] = await invoke('copy_files', { id, picked: own ? own.path : null, dropped: drop }); } catch (e) { S.copyFiles[id] = { files: own ? [{ path: own.path, name: baseName(own.path), folder: '', size: own.size || 0, region: own.region || '', kind: 'game', disc: null, verified: false, picked: true }] : [], missing_discs: [] }; }
+  return S.copyFiles[id];
+}
+// "Game detected · 3 files found", opening the list of them.
+function copyLine(id) {
+  const c = (S.copyFiles || {})[id];
+  if (!c && !(S.copyBusy || {})[id]) {
+    S.copyBusy = Object.assign(S.copyBusy || {}, { [id]: true });
+    loadCopies(id).then(() => { delete S.copyBusy[id]; if (S.view === 'game' && S.arg === id) refreshGame(); });
+  }
+  const n = c ? Math.max(c.files.length, 1) : 1;
+  const gap = c && c.missing_discs.length ? ' · ' + tn(c.missing_discs.length, 'Disc {list} is missing', 'Discs {list} are missing').replace('{list}', c.missing_discs.join(', ')) : '';
+  return `<button type="button" class="linkish copy-line" data-act="copies" data-id="${esc(id)}">${esc(t('Game detected'))} · ${esc(tn(n, '1 file found', '{n} files found'))}${esc(gap)}</button>`;
+}
+const pickBtn = (id) => `<button type="button" class="btn sm" data-act="found-fix" data-id="${esc(id)}">${esc(t('Choose Your Copy'))}</button>`;
 function readyRows(a) {
   const id = a.id, g = S.library[id], pc = S.pc || {}, rows = [];
   const own = S.owned[id], su = S.setup[id];
   if (su && su.needs) rows.push({ k: t('Your copy of the game'), v: su.copy ? true : own ? null : null,
-    d: su.copy ? tf('Set up with {file}', { file: baseName(su.copy) }) : own ? tf('Found in your folders: {file}', { file: baseName(own.path) }) : t('Insert it once and the launcher sets the game up for you.'),
-    tags: su.copy ? '' : fmtTags(copyFormats(id).exts),
-    fix: su.copy ? '' : `${own ? fixBtn(id) : ''}<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
+    d: su.copy ? tf('Set up with {file}', { file: baseName(su.copy) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !su.copy && own ? copyLine(id) : '',
+    tags: su.copy || own ? '' : fmtTags(copyFormats(id).exts),
+    fix: su.copy ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
   else if (!g && S.easy.has(id)) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
-    d: own ? tf('Found in your folders: {file}. It\'s set up for you after it installs.', { file: baseName(own.path) }) : t('You insert it after it installs, and the launcher sets the game up.'), tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
+    d: own ? t('It\'s set up for you after it installs.') : t('You insert it after it installs, and the launcher sets the game up.'), html: own ? copyLine(id) : '', tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
   else if (a.needs) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
-    d: own ? (own.region ? tf('Found: {path} ({region})', { path: own.path, region: own.region }) : tf('Found: {path}', { path: own.path })) : g && g.last_played ? t('Set up the first time you played') : t('The recomp asks for it the first time it starts. Add your game folders in Settings and the launcher finds it for you.'),
-    fix: own ? fixBtn(id) : g && g.last_played ? '' : `<button type="button" class="btn sm" data-go="settings">${esc(t('Add folders'))}</button>` });
+    d: own ? '' : g && g.last_played ? t('Set up the first time you played') : t('Not found'), html: own ? copyLine(id) : '',
+    fix: own || (g && g.last_played) ? '' : pickBtn(id) });
   if (su && su.needs && su.update) rows.push({ k: t('The game\'s update'), v: su.update_copy ? true : su.update_optional ? true : null,
     d: su.update_copy ? tf('Set up with {file}', { file: baseName(su.update_copy) }) : su.update,
     fix: su.update_copy || su.update_optional ? '' : `<button type="button" class="btn sm main" data-act="setupdate" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` });
@@ -889,6 +970,14 @@ function readyRows(a) {
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
   // A recomp whose own setup builds it on this PC (from a clone of its repo).
   const builds = !!((a.boot && a.boot.clone) || (builtinBoot()[id] || {}).clone);
+  // What a setup that builds or runs scripts says it needs ("needs": ["build_tools", "clang", "python"]
+  // in its profile, or the same as "requires" flags).
+  const bootOf = a.boot || builtinBoot()[id] || {};
+  const needs = new Set([...(Array.isArray(bootOf.needs) ? bootOf.needs : []), ...Object.keys(a.requires || {}).filter((k) => a.requires[k] === true)]);
+  const builds2 = builds || needs.has('build_tools') || needs.has('clang');
+  if (!builds && builds2 && pc.build_tools != null) rows.push({ k: t('C++ build tools'), v: pc.build_tools, d: pc.build_tools ? t('Installed') : t('Its setup builds the game on your PC with Visual Studio\'s free C++ build tools'), fix: pc.build_tools ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://visualstudio.microsoft.com/visual-cpp-build-tools/">${esc(t('Get them'))}</button>` });
+  if (needs.has('clang') && pc.clang != null) rows.push({ k: t('Clang'), v: pc.clang, d: pc.clang ? t('Installed') : t('In the Visual Studio Installer, tick "C++ Clang tools for Windows" under Individual components'), fix: pc.clang ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://learn.microsoft.com/cpp/build/clang-support-msbuild">${esc(t('How'))}</button>` });
+  if (needs.has('python') && pc.python != null) { const v = pc.python || '', ok = /^3\.(1\d|[2-9]\d)/.test(v); rows.push({ k: t('Python 3.10 or newer'), v: ok, d: ok ? tf('Python {version}', { version: v }) : v ? tf('Python {version} is too old', { version: v }) : t('Its setup runs Python scripts'), fix: ok ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://www.python.org/downloads/windows/">${esc(t('Get it'))}</button>` }); }
   if (builds && pc.build_tools != null) rows.push({ k: t('C++ build tools'), v: pc.build_tools, d: pc.build_tools ? t('Installed') : t('Its setup builds the game on your PC with Visual Studio\'s free C++ build tools'), fix: pc.build_tools ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://visualstudio.microsoft.com/visual-cpp-build-tools/">${esc(t('Get them'))}</button>` });
   if (pc.vcredist != null) { const old = pc.vcredist && pc.vcredist_old; rows.push({ k: t('Visual C++ runtime'), v: pc.vcredist && !old, d: old ? tf('Out of date ({version}). Newer recomps need a newer one.', { version: pc.vcredist_old }) : pc.vcredist ? t('Installed') : t('Almost every Windows recomp needs it'), fix: pc.vcredist && !old ? '' : `<button type="button" class="btn sm main" data-act="vcredist">${esc(old ? t('Update It') : t('Get it'))}</button>` }); }
   if (!g && a.size) {
@@ -905,7 +994,7 @@ function readyCard(a) {
   if (!rows.length) return '';
   const bad = rows.filter((r) => r.v === false || (r.v === null && r.fix)).length;
   return `<div class="card ready"><div class="card-h"><h3>${esc(bad || !S.library[a.id] ? t('Before you play') : t('Ready to play'))}</h3><span>${esc(bad ? tn(bad, '1 thing to do', '{n} things to do') : t('Everything it needs is here'))}</span></div>
-    ${rows.map((r) => `<div class="set-row"><div class="k"><b>${esc(r.k)}</b><span>${esc(r.d)}</span>${r.tags ? `<span class="fmts">${r.tags}</span>` : ''}</div><div class="acts">${r.fix}${r.fix && r.v !== true ? '' : okMark(r.v)}</div></div>`).join('')}</div>`;
+    ${rows.map((r) => `<div class="set-row"><div class="k"><b>${esc(r.k)}</b>${r.html ? `<span>${r.html}${r.d ? ' ' + esc(r.d) : ''}</span>` : `<span>${esc(r.d)}</span>`}${r.tags ? `<span class="fmts">${r.tags}</span>` : ''}</div><div class="acts">${r.fix}${r.fix && r.v !== true ? '' : okMark(r.v)}</div></div>`).join('')}</div>`;
 }
 
 // Play time from the sessions the launcher counted: this week, this month, and the last two weeks.
@@ -1123,11 +1212,17 @@ function shelf(key, title, list, o = {}) {
 }
 // Each shelf shows as many games as fit, and pages through the rest.
 function layoutShelves(scope = document) {
+  // Measure every shelf before writing any of them: changing --per lays the page out again,
+  // and reading the next shelf after that would make it lay out once per shelf.
+  const rows = [];
   for (const sh of $$('.shelf[data-shelf]', scope)) {
     const vp = $('.viewport', sh), tr = $('.track', sh);
     if (!vp || !tr) continue;
-    const w = tr.clientWidth, n = Number(sh.dataset.n) || 0, gap = 20;
-    if (!w) continue;
+    const w = tr.clientWidth;
+    if (w) rows.push([sh, tr, w, Number(sh.dataset.n) || 0]);
+  }
+  const gap = 20;
+  for (const [sh, tr, w, n] of rows) {
     const per = Math.max(2, Math.min(10, Math.floor((w + gap) / (150 + gap))));
     const pages = Math.max(1, Math.ceil(n / per));
     const key = sh.dataset.shelf;
@@ -1421,7 +1516,7 @@ function pageGame(id) {
     <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
-      <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${badNote(a) || stateNote(a)}</div></div>
+      <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
 }
@@ -1528,7 +1623,7 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
+  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.achTabs ? window.achTabs(id) : [], window.pluginTabs ? window.pluginTabs(id) : []);
   if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
   return tabs;
 }
@@ -1713,6 +1808,7 @@ function gameBody(a) {
   gameTabs(a);
   let body = '';
   if (String(S.tab).startsWith('plug-') && window.pluginTabBody) return window.pluginTabBody(S.tab, id) + gameRail(a);
+  if (S.tab === 'ach' && window.achBody) return window.achBody(a) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const stats = inst
@@ -2361,11 +2457,20 @@ function looksTab(a) {
     </div></div>`;
 }
 // The picture looks are shown on: the player's screenshot, or the game's banner.
+// A decoded one is about 3 MB, so only the few most recently shown are kept. The encoded picture
+// stays in the disk/HTTP cache, so one that was let go decodes again quickly.
+const LOOK_PIC_MAX = 3;
 const LOOK_PIC = {};
 function lookPicture(id) {
-  if (LOOK_PIC[id]) return LOOK_PIC[id];
+  if (LOOK_PIC[id]) {
+    // Using one makes it the most recent, so the ones not used lately go first.
+    const pic = LOOK_PIC[id];
+    delete LOOK_PIC[id];
+    LOOK_PIC[id] = pic;
+    return pic;
+  }
   const li = S.looks[id] || {}, a = byId(id) || {};
-  LOOK_PIC[id] = (async () => {
+  const pic = LOOK_PIC[id] = (async () => {
     let src = '';
     if (li.shot) { try { src = await invoke('look_picture', { path: li.shot }); } catch (e) { src = ''; } }
     if (!src) src = media(a.hero || a.cover || '');
@@ -2377,8 +2482,10 @@ function lookPicture(id) {
     return img;
   })();
   // A picture that didn't load is tried again next time.
-  LOOK_PIC[id].then((img) => { if (!img) delete LOOK_PIC[id]; });
-  return LOOK_PIC[id];
+  pic.then((img) => { if (!img && LOOK_PIC[id] === pic) delete LOOK_PIC[id]; });
+  const keys = Object.keys(LOOK_PIC);
+  for (let i = 0; i < keys.length - LOOK_PIC_MAX; i++) if (keys[i] !== id) delete LOOK_PIC[keys[i]];
+  return pic;
 }
 function sizeCanvas(c, ratio) {
   const w = Math.max(1, Math.round(c.clientWidth * devicePixelRatio));
@@ -3114,7 +3221,8 @@ function render(keepScroll) {
   main.dataset.v = v;
   if (S.anim) {
     main.classList.remove('enter', 'enter-game', 'enter-soft', 'enter-back');
-    void main.offsetWidth;
+    // Flush styles (not layout) so the entrance animation restarts.
+    getComputedStyle(main).animationName;
     main.classList.add(S.anim);
     let i = 0;
     for (const el of $$('.grid > .tile, .shotgrid > .shot', main)) el.style.setProperty('--i', Math.min(i++, 18));
@@ -3192,6 +3300,7 @@ function renderSide() {
   nb.title = !nd && nu ? tn(nu, '1 update ready', '{n} updates ready') : '';
   // A new launcher: its own button at the foot of the sidebar too.
   { const su = $('#side-upd'); if (su) su.hidden = !S.launcherUpd; }
+  if (window.achSide) window.achSide();
   document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
   document.body.classList.toggle('nonames', !!ui.hide_names);
   document.body.classList.toggle('light', ui.theme === 'light');
@@ -3409,9 +3518,11 @@ function go(view, arg, fromEl) {
     S.view = view; S.arg = arg;
     // Discover opens at the top, so it starts again from the first page of its list.
     if (view === 'discover') S.dshow = DISCOVER_PAGE;
+    // Reset before drawing: after it, the browser would have to lay the new page out again
+    // just to clamp the old scroll position.
+    $('#main').scrollTop = 0;
     S.anim = view === 'game' ? 'enter-game' : 'enter';
     render();
-    $('#main').scrollTop = 0;
   };
   // A soft cross-fade between pages, where the window can do it (WebKitGTK on Linux can crash on it).
   if (S.os === 'windows' && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) { document.startViewTransition(swap); return; }
@@ -4746,26 +4857,8 @@ async function loadAllShots() {
 const shotList = () => (S.allShots || []).filter((x) => !S.shotsGame || x.id === S.shotsGame);
 const when = (ts) => new Date(ts * 1000).toLocaleString(curLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-// Achievements: a first look at what's coming. Nothing here pretends to work yet; the two buttons
-// that do something are Learn More (the site) and Sign In (the account they'll be tied to).
-const LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
-const ACH_SITE = 'https://recompachievements.com';
-function achCards() {
-  return [
-    [t('Unlocks while you play'), t('Achievements pop up the moment you earn them, right in your recomps.'), '<path d="M12 3l2.5 5.2 5.7.8-4.1 4 1 5.6L12 16l-5.1 2.6 1-5.6-4.1-4 5.7-.8z"/>'],
-    [t('Your profile and rating'), t('Every achievement adds to your profile and your rating, on every PC you play on.'), '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>'],
-    [t('Leaderboards'), t('See how you stack up against other players, game by game.'), '<path d="M5 20V12M12 20V5M19 20v-5"/>'],
-  ];
-}
-function pageAchievements() {
-  const signed = !!(S.account && S.account.signedIn);
-  return `<div class="page ach">
-    <div class="head"><div><div class="ach-h"><h1>${esc(t('Achievements'))}</h1><span class="ach-pill">${esc(t('Coming soon'))}</span></div>
-      <p class="ach-lead">${esc(t('Earn achievements in your recomps, track them on your profile and climb the leaderboards. We\'re preparing the system. More info soon.'))}</p>${signed ? `<p class="ach-ok">${esc(t('You\'re all set. Your achievements will be tied to your account.'))}</p>` : ''}</div>
-      <div class="dctl ach-acts">${signed ? '' : `<button type="button" class="btn" data-act="acc-btn">${esc(t('Sign in'))}</button>`}<button type="button" class="btn main ach-btn" data-act="url" data-url="${ACH_SITE}">${esc(t('Learn more'))}</button></div></div>
-    <div class="ach-cards">${achCards().map(([h, d, ic]) => `<div class="ach-card" aria-disabled="true"><span class="ach-lock" aria-hidden="true">${LOCK}</span><span class="ach-ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic}</svg></span><b>${esc(h)}</b><p>${esc(d)}</p></div>`).join('')}</div>
-  </div>`;
-}
+// Achievements: the page itself is in achievements.js (testers, and the alpha page for everyone else).
+function pageAchievements() { return window.achPage ? window.achPage() : ''; }
 
 function pageShots() {
   if (!S.allShots) return `<div class="loading">${esc(t('Loading your screenshots…'))}</div>`;
@@ -4985,21 +5078,89 @@ async function loadEasy(quiet) {
 }
 async function loadOwned() {
   try { S.owned = await invoke('rom_matches'); S.ownedOk = true; } catch (e) { S.owned = {}; S.ownedOk = false; }
+  S.copyFiles = {};
   S.owned = ownedHere(S.owned);
 }
 // Only recomps this PC can play count as found (a Windows-only one on Linux without Proton doesn't).
 function ownedHere(o) {
   o = Object.assign({}, o || {});
-  // The copy the player chose instead, when the one found wasn't right (another console's, say).
-  for (const [id, path] of Object.entries((((S.settings || {}).ui || {}).found_fix) || {})) if (path && o[id]) o[id] = Object.assign({}, o[id], { path, region: '' });
+  const ui = (S.settings || {}).ui || {}, drop = ui.found_drop || {};
+  // Files the player said aren't theirs don't count as found.
+  for (const [id, list] of Object.entries(drop)) if (o[id] && (list || []).includes(o[id].path)) delete o[id];
+  // The copy the player chose instead, when the one found wasn't right (another console's, say),
+  // or when none was found.
+  for (const [id, path] of Object.entries(ui.found_fix || {})) {
+    if (!path || (drop[id] || []).includes(path)) continue;
+    o[id] = Object.assign({ system: '', title: '', size: 0 }, o[id] || {}, { path, region: o[id] && o[id].path === path ? o[id].region : '' });
+  }
   if (!S.cat || !S.cat.apps.length) return o;
   return Object.fromEntries(Object.entries(o).filter(([id]) => { const a = byId(id); return !a || forOS(a); }));
 }
+// A long folder, shortened in the middle: C:\Games\…\Switch\Zelda.
+const midShort = (p, n = 46) => { p = String(p || ''); if (p.length <= n) return p; const h = Math.floor((n - 1) / 2); return p.slice(0, h) + '…' + p.slice(p.length - (n - 1 - h)); };
+// Everything found for a game, grouped: the game (each disc), its update, extra content. Each one
+// can be dropped on its own, or another picked by hand.
+async function copiesModal(id) {
+  const a = byId(id) || { id, name: id };
+  const draw = () => {
+    const c = (S.copyFiles || {})[id] || { files: [], missing_discs: [] };
+    const groups = [['game', t('Game')], ['update', t('Update')], ['dlc', t('DLC')]];
+    const row = (f) => `<div class="mh-row copy-row"><div class="mh-k"><b>${f.disc ? `<span class="tag">${esc(tf('Disc {n}', { n: f.disc }))}</span> ` : ''}${esc(f.name)}</b>
+      <span class="path" title="${esc(f.path)}">${esc([midShort(f.folder), f.size ? fmtB(f.size) : '', f.region].filter(Boolean).join(' · '))}</span></div>
+      <span class="copy-tags">${f.verified ? `<span class="tag ok">${esc(t('Verified'))}</span>` : ''}${f.picked ? `<span class="tag">${esc(t('In Use'))}</span>` : ''}</span>
+      <button type="button" class="btn sm" data-x="drop" data-path="${esc(f.path)}">${esc(t('Not This One'))}</button></div>`;
+    const body = groups.map(([k, name]) => { const list = c.files.filter((f) => f.kind === k); return list.length ? `<h4 class="copy-h">${esc(name)}</h4>${list.map(row).join('')}` : ''; }).join('');
+    const gap = c.missing_discs.length ? `<p class="warn-line">${esc(tn(c.missing_discs.length, 'Disc {list} is missing.', 'Discs {list} are missing.').replace('{list}', c.missing_discs.join(', ')))}</p>` : '';
+    return `<h2>${esc(t('Your Copy of the Game'))}</h2><p class="muted">${esc(tf('What the launcher found for {name} in your game folders.', { name: a.name }))}</p>
+      ${gap}<div class="mh copy-list">${body || `<p class="muted">${esc(t('Not found'))}</p>`}</div>
+      <div class="acts grid2"><button type="button" class="btn" data-x="another">${esc(t('Choose Another…'))}</button><button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`;
+  };
+  await loadCopies(id);
+  const scrim = modal(draw(), async (x, close) => {
+    const box = $('.modal', scrim);
+    if (x.dataset.x === 'drop') {
+      const path = x.dataset.path;
+      const ui = S.settings.ui || {};
+      const drop = Object.assign({}, ui.found_drop || {});
+      drop[id] = uniq([...(drop[id] || []), path]);
+      const fix = Object.assign({}, ui.found_fix || {});
+      // The one in use goes: the next disc or game file found takes its place.
+      const own = S.owned[id];
+      if (own && own.path === path) {
+        const next = (((S.copyFiles || {})[id] || {}).files || []).find((f) => f.kind === 'game' && f.path !== path && !drop[id].includes(f.path));
+        if (next) fix[id] = next.path; else delete fix[id];
+      }
+      await saveUi({ found_drop: drop, found_fix: fix }, true);
+      await loadOwned();
+      await loadCopies(id);
+      box.innerHTML = draw();
+      render(true);
+      return toast(tf('{file} isn\'t used for this game anymore.', { file: baseName(path) }));
+    }
+    if (x.dataset.x === 'another') {
+      const p = await pickFile(copyPickOpts(id)).catch(fail);
+      const path = p && (typeof p === 'string' ? p : p.path);
+      if (!path) return;
+      const ui = S.settings.ui || {};
+      const drop = Object.assign({}, ui.found_drop || {});
+      if (drop[id]) drop[id] = drop[id].filter((d) => d !== path);
+      await saveUi({ found_fix: Object.assign({}, ui.found_fix || {}, { [id]: path }), found_drop: drop }, true);
+      await loadOwned();
+      await loadCopies(id);
+      box.innerHTML = draw();
+      render(true);
+      toast(tf('It uses {file} from now on.', { file: baseName(path) }));
+    }
+  }, t('Your Copy of the Game'));
+}
+
 async function fixFound(id) {
   const p = await pickFile(copyPickOpts(id)).catch(fail);
   const path = p && (typeof p === 'string' ? p : p.path);
   if (!path) return;
-  await saveUi({ found_fix: Object.assign({}, ((S.settings.ui || {}).found_fix) || {}, { [id]: path }) }, true);
+  const drop = Object.assign({}, ((S.settings.ui || {}).found_drop) || {});
+  if (drop[id]) drop[id] = drop[id].filter((d) => d !== path);
+  await saveUi({ found_fix: Object.assign({}, ((S.settings.ui || {}).found_fix) || {}, { [id]: path }), found_drop: drop }, true);
   await loadOwned();
   render(true);
   toast(tf('It uses {file} from now on.', { file: baseName(path) }));
@@ -5232,10 +5393,14 @@ async function crashModal(p) {
   const gameOwn = !fix && !modName && !!(a && a.repo) && ([-1073741819, 3221225477, -1073740940, 3221226356, -1073740791, 3221226505, -1073741571, 3221225725].includes(Number(p.code)) || /unhandled exception|access violation|segmentation fault|stack overflow|panicked at|fatal error|assertion failed/i.test(said));
   // What players found for this crash, and whether the update before it is the likely cause.
   const fixSaid = knownFix(a, said + '\n' + String(p.said || ''), g.tag);
+  // The line a recomp's runtime writes when it stops itself ("FATAL: …"): the cause, in its words.
+  const fatalLine = ((String((log && log[1]) || '').match(/^.*\bFATAL:.*$/gm) || []).pop() || '').trim().slice(0, 300);
   const bad = badVersion(a, g.tag);
   const goBack = !fix && !modName && (bad ? (bad.use || g.prev_tag) : updateBroke(g) ? g.prev_tag : '');
   const m = modal(`<h2>${esc(tf('{name} closed unexpectedly', { name: g.name }))}</h2>
     ${fixSaid ? `<div class="known-fix" role="note"><b>${esc(t('Players Fixed This'))}</b><span dir="auto">${esc(fixSaid)}</span></div>` : ''}
+    ${p.said && p.said !== fixSaid ? `<div class="known-fix" role="note"><b>${esc(t('What This Code Means'))}</b><span dir="auto">${esc(p.said)}</span></div>` : ''}
+    ${fatalLine ? `<p class="fatal-line"><b>${esc(t('The game\'s last error'))}</b><code>${esc(fatalLine)}</code></p>` : ''}
     ${goBack ? `<p class="go-back-note">${esc(bad ? tf('{version} is crashing for a lot of players. {old} works for most.', { version: g.tag, old: goBack }) : tf('It worked before its last update. {old}, the version you had, is one press away.', { old: goBack }))}</p>` : ''}
     <p>${modName ? esc(tf('It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.', { mod: modName })) : sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : noFiles ? esc(copySetup ? t('It started without your game files. Set up your copy of the game once, and it finds them from then on.') : t('It started without your game files: they aren\'t where it reads them. Its developer\'s instructions say where they go.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : blocked ? esc(t('It couldn\'t make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a shader on. Some games don\'t get along with ReShade: try it without the shader.')) : inPage ? esc(t('Windows couldn\'t read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : umuRt ? esc(t('umu-launcher\'s Steam Linux Runtime didn\'t finish downloading, so it can\'t start games. Delete the steamrt folders in ~/.local/share/umu and play again, or update umu-launcher.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : python ? esc(t('It needs Python 3, which isn\'t on this PC. Install it from python.org (tick Add python.exe to PATH in its installer), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : vkLoader && !twoGpu ? esc(t('Vulkan couldn\'t use your graphics card. Update your graphics driver from NVIDIA, AMD or Intel, and close overlays and recorders (like RivaTuner, OBS or Overwolf), then play again.')) : (gpu || vkLoader) && twoGpu ? esc(t('This PC has two graphics cards, and it may have started on the slower one. Use the Faster Graphics Card and Windows starts it on the faster one; if it still won\'t start, update your graphics drivers.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : oldCopies ? esc(tf('It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows\' newer ones.', { files: oldCopies.join(', ') })) : oldVulkan ? esc(tf('Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.', { version: dllf.vulkan_old })) : madeOnly ? esc(tf('It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.', { files: made.join(', ') })) : dllVC ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : dllDX ? esc(tf('It needs the older DirectX runtime (June 2010), which Windows doesn\'t come with. Missing: {files}', { files: lacking.join(', ') })) : dllOwn ? esc(tf('It needs files that aren\'t on this PC: {files}. They should come with the game. Reinstall it; if they\'re still missing, its developer needs to know.', { files: lacking.join(', ') })) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : toolRan ? esc(t('It printed how it\'s used and stopped. That\'s usually one of the game\'s tools, not the game. Choose the program that starts the game.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
@@ -6019,6 +6184,7 @@ async function act(el, e) {
     case 'ver-go': if (S.view === 'game') return switchVersion(id); closeMenu(); return go('game', id);
     case 'ver-hide': { const p = saveUi({ verHide: !(S.settings.ui || {}).verHide }, true); refreshGame(); return p; }
     case 'install': return startInstall(id);
+    case 'reinstall-new': return startInstall(id, null, null, true);
     case 'goback': return startInstall(id, undefined, el.dataset.tag);
     case 'wine-tools': return wineTools();
     case 'have-it': return haveIt(id);
@@ -6149,6 +6315,8 @@ async function act(el, e) {
     case 'rom-scan': return scanRoms();
     case 'rom-emus': return emuFolders();
     case 'found-fix': return fixFound(id);
+    case 'copies': return copiesModal(id);
+    case 'support': return supportModal(id);
     case 'tv': return window.enterTV && window.enterTV();
     case 'vcredist': return installVcredist();
     case 'report': S.reportGame = id; return setSection('report');

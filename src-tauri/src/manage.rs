@@ -266,6 +266,10 @@ pub struct PcCheck {
     pub cores: usize,
     /// Visual Studio's C++ build tools (with CMake), for recomps that build themselves on the PC.
     pub build_tools: Option<bool>,
+    /// Clang (Visual Studio's "C++ Clang tools", or LLVM), for the ones whose setup builds with it.
+    pub clang: Option<bool>,
+    /// Python 3's version ("3.12.4"); empty when there's none. For setups that run Python.
+    pub python: Option<String>,
 }
 
 pub fn pc_check() -> PcCheck {
@@ -282,6 +286,8 @@ pub fn pc_check() -> PcCheck {
         let sys = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
         c.vulkan = Some(Path::new(&sys).join("System32").join("vulkan-1.dll").is_file());
         c.build_tools = Some(crate::win::has_build_tools());
+        c.clang = Some(crate::win::has_clang());
+        c.python = Some(crate::win::python_version().unwrap_or_default());
     }
     #[cfg(target_os = "linux")]
     {

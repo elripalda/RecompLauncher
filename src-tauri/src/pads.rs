@@ -1,12 +1,19 @@
-//! Controllers: Xbox (and anything else Windows sees as an Xbox pad) through XInput, PlayStation
-//! controllers (DualSense, DualSense Edge, DualShock 4) and the Switch Pro Controller read directly
-//! over USB or Bluetooth. On Linux everything goes through gilrs (evdev, with SDL's mappings).
-//! Both are read even while a game has focus, so the in-game combos work:
+//! Controllers, through SDL 3's gamepad support on every system: Xbox pads, PlayStation
+//! (DualSense, DualShock 4), Switch Pro and Joy-Cons, 8BitDo and the hundreds of others SDL knows,
+//! plus any mappings in `gamecontrollerdb.txt` in the launcher's folder.
+//! They're read even while a game has focus, so the in-game combos work:
 //! View + RB (Create + R1) takes a screenshot, holding View (Create) opens the quick menu. Otherwise buttons go to the launcher's window as `pad` events:
-//! {"b": a | b | x | y | lb | rb | view | menu | guide | up | down | left | right, "kind": xbox | ps | nintendo}.
+//! {"b": a | b | x | y | lb | rb | lt | rt | ls | rs | view | menu | guide | up | down | left | right, "kind": xbox | ps | nintendo | steam}.
+//!
+//! SDL runs on one thread of its own, which starts it and makes every SDL call: SDL takes the
+//! thread that starts its events for its main thread.
 
 use crate::{ingame, App};
 use serde::Serialize;
+use sdl3_sys::everything as sdl;
+use std::collections::HashMap;
+use std::ffi::{c_char, CStr, CString};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
@@ -21,456 +28,303 @@ pub struct Pad {
 /// What's plugged in, for Settings.
 pub static CONNECTED: Mutex<Vec<Pad>> = Mutex::new(Vec::new());
 
+#[derive(Debug, PartialEq)]
 enum Ev {
     Down(&'static str, &'static str),
     Up(&'static str),
 }
 
-// ---------- PlayStation reports ----------
-
-pub const SONY: u16 = 0x054C;
-pub const DUALSENSE: [u16; 2] = [0x0CE6, 0x0DF2];
-pub const DUALSHOCK4: [u16; 3] = [0x05C4, 0x09CC, 0x0BA0];
-
-/// Buttons held in one input report, as names, plus the left stick.
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct SonyState {
-    pub held: Vec<&'static str>,
-    pub lx: u8,
-    pub ly: u8,
-}
-
-/// Read one input report. `dualsense` tells the two layouts apart over USB; `bt` is a controller
-/// on Bluetooth. Windows pads every Bluetooth read to the longest report (78 bytes), so a DualSense's
-/// short Bluetooth report 0x01 comes in as long as a USB one and only the connection tells them apart.
-pub fn parse_sony(r: &[u8], dualsense: bool, bt: bool) -> Option<SonyState> {
-    // Where the first button byte is, for each kind of report.
-    let (sticks, b0) = match (r.first()?, r.len()) {
-        (0x01, n) if dualsense && !bt && (21..=64).contains(&n) => (1, 8), // DualSense over USB
-        (0x31, n) if n >= 12 => (2, 9),                       // DualSense over Bluetooth
-        (0x11, n) if n >= 10 => (3, 7),                       // DualShock 4 over Bluetooth
-        (0x01, n) if n >= 8 => (1, 5),                        // DualShock 4 over USB, or a DualSense's short Bluetooth report
-        _ => return None,
-    };
-    let (btn0, btn1, btn2) = (*r.get(b0)?, *r.get(b0 + 1)?, *r.get(b0 + 2)?);
-    let mut held = vec![];
-    match btn0 & 0x0F {
-        0 => held.push("up"),
-        1 => held.extend(["up", "right"]),
-        2 => held.push("right"),
-        3 => held.extend(["down", "right"]),
-        4 => held.push("down"),
-        5 => held.extend(["down", "left"]),
-        6 => held.push("left"),
-        7 => held.extend(["up", "left"]),
-        _ => {}
-    }
-    for (bit, name) in [(0x10, "x"), (0x20, "a"), (0x40, "b"), (0x80, "y")] {
-        if btn0 & bit != 0 {
-            held.push(name);
-        }
-    }
-    for (bit, name) in [(0x01, "lb"), (0x02, "rb"), (0x04, "lt"), (0x08, "rt"), (0x10, "view"), (0x20, "menu"), (0x40, "ls"), (0x80, "rs")] {
-        if btn1 & bit != 0 {
-            held.push(name);
-        }
-    }
-    if btn2 & 0x01 != 0 {
-        held.push("guide");
-    }
-    Some(SonyState { held, lx: *r.get(sticks)?, ly: *r.get(sticks + 1)? })
-}
-
-// ---------- Nintendo Switch Pro Controller (and pads that act like one, like 8BitDo's in Switch mode) ----------
-
-pub const NINTENDO: u16 = 0x057E;
-/// Valve: the Steam Controller (wired, its wireless receiver) and the Steam Deck's own controls.
-/// Without Steam running they act as a mouse and keyboard; Steam Input turns them into a pad.
+/// Valve: the Steam Controller and the Steam Deck. SDL reads a Steam Controller itself; the
+/// Deck's controls come through Steam Input.
 pub const VALVE: u16 = 0x28DE;
-pub const STEAM_PADS: [u16; 5] = [0x1102, 0x1142, 0x1105, 0x1106, 0x1205];
-pub const SWITCH_PRO: u16 = 0x2009;
 
-/// One Switch Pro Controller input report: the full one (0x30) or the simple one it sends over
-/// Bluetooth before anything asks for more (0x3F, buttons and d-pad only). Buttons go by what's
-/// printed on them, so A is the one on the right.
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn parse_switch(r: &[u8]) -> Option<SonyState> {
-    let mut held = vec![];
-    match *r.first()? {
-        0x30 | 0x21 if r.len() >= 12 => {
-            let (right, mid, left) = (r[3], r[4], r[5]);
-            for (bit, name) in [(0x08, "a"), (0x04, "b"), (0x02, "x"), (0x01, "y"), (0x40, "rb"), (0x80, "rt")] {
-                if right & bit != 0 {
-                    held.push(name);
-                }
-            }
-            for (bit, name) in [(0x02, "up"), (0x01, "down"), (0x08, "left"), (0x04, "right"), (0x40, "lb"), (0x80, "lt")] {
-                if left & bit != 0 {
-                    held.push(name);
-                }
-            }
-            for (bit, name) in [(0x01, "view"), (0x02, "menu"), (0x04, "rs"), (0x08, "ls"), (0x10, "guide")] {
-                if mid & bit != 0 {
-                    held.push(name);
-                }
-            }
-            // 12-bit stick values, up is higher; as a byte with up low, like a PlayStation pad's.
-            let x = r[6] as u16 | ((r[7] as u16 & 0x0F) << 8);
-            let y = (r[7] as u16 >> 4) | ((r[8] as u16) << 4);
-            Some(SonyState { held, lx: (x >> 4).min(255) as u8, ly: 255 - (y >> 4).min(255) as u8 })
-        }
-        0x3F if r.len() >= 4 => {
-            let (b1, b2) = (r[1], r[2]);
-            match r[3] {
-                0 => held.push("up"),
-                1 => held.extend(["up", "right"]),
-                2 => held.push("right"),
-                3 => held.extend(["down", "right"]),
-                4 => held.push("down"),
-                5 => held.extend(["down", "left"]),
-                6 => held.push("left"),
-                7 => held.extend(["up", "left"]),
-                _ => {}
-            }
-            for (bit, name) in [(0x02, "a"), (0x01, "b"), (0x08, "x"), (0x04, "y"), (0x10, "lb"), (0x20, "rb")] {
-                if b1 & bit != 0 {
-                    held.push(name);
-                }
-            }
-            for (bit, name) in [(0x01, "view"), (0x02, "menu"), (0x10, "guide")] {
-                if b2 & bit != 0 {
-                    held.push(name);
-                }
-            }
-            Some(SonyState { held, lx: 128, ly: 128 })
-        }
+/// Which button icons a controller gets.
+fn kind_of(ty: sdl::SDL_GamepadType, vendor: u16) -> &'static str {
+    use sdl::SDL_GamepadType as T;
+    match ty {
+        T::PS3 | T::PS4 | T::PS5 => "ps",
+        T::NINTENDO_SWITCH_PRO | T::NINTENDO_SWITCH_JOYCON_LEFT | T::NINTENDO_SWITCH_JOYCON_RIGHT | T::NINTENDO_SWITCH_JOYCON_PAIR | T::GAMECUBE => "nintendo",
+        T::STEAM => "steam",
+        _ if vendor == VALVE => "steam",
+        _ => "xbox",
+    }
+}
+
+/// A button's name for the launcher. The face buttons go by what's printed on them (SDL knows,
+/// per controller), so a Nintendo pad's A is `a` though it sits on the right, and Cross is `a`.
+fn button_name(button: sdl::SDL_GamepadButton, label: sdl::SDL_GamepadButtonLabel) -> Option<&'static str> {
+    use sdl::SDL_GamepadButton as B;
+    use sdl::SDL_GamepadButtonLabel as L;
+    let face = match label {
+        L::A | L::CROSS => Some("a"),
+        L::B | L::CIRCLE => Some("b"),
+        L::X | L::SQUARE => Some("x"),
+        L::Y | L::TRIANGLE => Some("y"),
+        _ => None,
+    };
+    match button {
+        B::SOUTH => face.or(Some("a")),
+        B::EAST => face.or(Some("b")),
+        B::WEST => face.or(Some("x")),
+        B::NORTH => face.or(Some("y")),
+        B::BACK => Some("view"),
+        B::START => Some("menu"),
+        B::GUIDE => Some("guide"),
+        B::LEFT_STICK => Some("ls"),
+        B::RIGHT_STICK => Some("rs"),
+        B::LEFT_SHOULDER => Some("lb"),
+        B::RIGHT_SHOULDER => Some("rb"),
+        B::DPAD_UP => Some("up"),
+        B::DPAD_DOWN => Some("down"),
+        B::DPAD_LEFT => Some("left"),
+        B::DPAD_RIGHT => Some("right"),
         _ => None,
     }
 }
 
-/// The stick, pushed past half way, as a direction.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn stick_dirs(lx: u8, ly: u8) -> Vec<&'static str> {
-    let mut v = vec![];
-    if lx < 50 {
-        v.push("left");
-    } else if lx > 205 {
-        v.push("right");
-    }
-    if ly < 50 {
-        v.push("up");
-    } else if ly > 205 {
-        v.push("down");
-    }
-    v
+/// The left stick and the triggers of one controller, as presses.
+#[derive(Default)]
+struct Axes {
+    /// An axis counts once it has been seen resting: a wheel, pedal or worn stick that sits
+    /// pushed all the way never scrolls on its own.
+    rested: [bool; 6],
+    /// Where each axis is pushed: -1, 0 or 1.
+    dir: [i8; 6],
 }
 
-#[cfg(windows)]
-fn read_sony(tx: Sender<Ev>) {
-    std::thread::spawn(move || {
-        let Ok(mut api) = hidapi::HidApi::new() else { return };
-        let mut open: std::collections::HashSet<String> = Default::default();
-        let mut first = true;
-        let mut last_scan = std::time::Instant::now();
-        let mut seen = input_devices();
-        let mut last_full = std::time::Instant::now();
-        loop {
-            // Listing the computer's input devices opens each one to read its name, which makes
-            // some PCs' mouse hitch and some wireless headsets crackle. So it's done only when
-            // Windows' own list of input devices changes (a controller plugged in or out): asking
-            // for that list opens nothing. It's looked at every couple of seconds while the
-            // launcher's window is in front, now and then otherwise, and not at all during a game
-            // once a controller is open or the quick menu is off.
-            let wait = if FOCUSED.load(Ordering::Relaxed) {
-                2
-            } else if PLAYING.load(Ordering::Relaxed) && (!QUICK_MENU.load(Ordering::Relaxed) || !open.is_empty()) {
-                u64::MAX
-            } else {
-                10
-            };
-            if !first && last_scan.elapsed().as_secs() < wait {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                continue;
-            }
-            last_scan = std::time::Instant::now();
-            if !first {
-                let now = input_devices();
-                // Windows didn't answer: the full listing, as before, but only every minute.
-                let blind = now.is_empty() && seen.is_empty();
-                if (blind && last_full.elapsed().as_secs() < 60) || (!blind && now == seen) {
-                    continue;
-                }
-                seen = now;
-            }
-            first = false;
-            last_full = std::time::Instant::now();
-            let _ = api.refresh_devices();
-            // A Steam Controller is listed (by name only: Steam reads it, and passes its buttons on).
-            let steam_pad = api.device_list().any(|d| d.vendor_id() == VALVE && STEAM_PADS.contains(&d.product_id()));
-            {
-                let mut c = CONNECTED.lock().unwrap();
-                let has = c.iter().any(|p| p.kind == "steam");
-                if steam_pad && !has {
-                    c.push(Pad { name: "Steam Controller".into(), kind: "steam" });
-                } else if !steam_pad && has {
-                    c.retain(|p| p.kind != "steam");
-                }
-            }
-            for d in api.device_list() {
-                let (vid, pid) = (d.vendor_id(), d.product_id());
-                let switch = vid == NINTENDO && pid == SWITCH_PRO;
-                if !switch && (vid != SONY || !(DUALSENSE.contains(&pid) || DUALSHOCK4.contains(&pid))) {
-                    continue;
-                }
-                let path = d.path().to_string_lossy().to_string();
-                if open.contains(&path) {
-                    continue;
-                }
-                let Ok(dev) = d.open_device(&api) else { continue };
-                open.insert(path.clone());
-                let name = if switch { "Switch Pro Controller" } else if DUALSENSE.contains(&pid) { "DualSense" } else { "DualShock 4" };
-                let kind: &'static str = if switch { "nintendo" } else { "ps" };
-                CONNECTED.lock().unwrap().push(Pad { name: name.into(), kind });
-                let tx = tx.clone();
-                let dualsense = DUALSENSE.contains(&pid);
-                let bt = matches!(d.bus_type(), hidapi::BusType::Bluetooth);
-                std::thread::spawn(move || {
-                    let mut buf = [0u8; 128];
-                    let mut prev: Vec<&'static str> = vec![];
-                    // The stick counts once it has been seen near the middle.
-                    let mut rested = false;
-                    // A Switch pad already in use (by Steam or a game) is left as it is. One that
-                    // sends nothing over USB yet, or only its simple Bluetooth report, is asked for
-                    // its full report.
-                    let mut quiet = 0u32;
-                    let mut asked = false;
-                    loop {
-                        match dev.read_timeout(&mut buf, 250) {
-                            Ok(0) => {
-                                quiet += 1;
-                                if switch && !asked && !bt && quiet >= 3 {
-                                    asked = true;
-                                    switch_full_reports(&dev, true);
-                                }
-                                continue;
-                            }
-                            Ok(n) => {
-                                quiet = 0;
-                                if switch && !asked && buf[0] == 0x3F {
-                                    asked = true;
-                                    switch_full_reports(&dev, false);
-                                }
-                                let parsed = if switch { parse_switch(&buf[..n]) } else { parse_sony(&buf[..n], dualsense, bt) };
-                                let Some(s) = parsed else { continue };
-                                let mut now = s.held.clone();
-                                if (90..=166).contains(&s.lx) && (90..=166).contains(&s.ly) {
-                                    rested = true;
-                                }
-                                for d in if rested { stick_dirs(s.lx, s.ly) } else { vec![] } {
-                                    if !now.contains(&d) {
-                                        now.push(d);
-                                    }
-                                }
-                                for b in &now {
-                                    if !prev.contains(b) {
-                                        let _ = tx.send(Ev::Down(b, kind));
-                                    }
-                                }
-                                for b in &prev {
-                                    if !now.contains(b) {
-                                        let _ = tx.send(Ev::Up(b));
-                                    }
-                                }
-                                prev = now;
-                            }
-                            Err(_) => break, // unplugged
-                        }
-                    }
-                    let mut c = CONNECTED.lock().unwrap();
-                    if let Some(i) = c.iter().position(|p| p.kind == kind) {
-                        c.remove(i);
-                    }
-                });
-            }
-            // Forget devices that went away so they can be opened again when they come back.
-            let live: std::collections::HashSet<String> = api.device_list().map(|d| d.path().to_string_lossy().to_string()).collect();
-            open.retain(|p| live.contains(p));
-            std::thread::sleep(std::time::Duration::from_millis(500));
+impl Axes {
+    /// An axis moved (SDL's -32768..32767, or 0..32767 for a trigger): what's pressed or let go.
+    /// `true` is a press.
+    fn moved(&mut self, axis: sdl::SDL_GamepadAxis, value: i16) -> Vec<(bool, &'static str)> {
+        use sdl::SDL_GamepadAxis as A;
+        // Which name each way is: SDL's stick Y is positive downwards.
+        let (i, names): (usize, [&'static str; 2]) = match axis {
+            A::LEFTX => (0, ["left", "right"]),
+            A::LEFTY => (1, ["up", "down"]),
+            A::LEFT_TRIGGER => (4, ["", "lt"]),
+            A::RIGHT_TRIGGER => (5, ["", "rt"]),
+            _ => return vec![],
+        };
+        let v = value as f32 / 32767.0;
+        if v.abs() < 0.3 {
+            self.rested[i] = true;
         }
-    });
-}
-
-/// Ask a Switch Pro Controller for its full input report (0x30). Over USB it first needs the
-/// handshake that switches it to talking over USB with no timeout.
-#[cfg(windows)]
-fn switch_full_reports(dev: &hidapi::HidDevice, usb: bool) {
-    if usb {
-        for cmd in [[0x80u8, 0x02], [0x80, 0x04]] {
-            let _ = dev.write(&cmd);
-            std::thread::sleep(std::time::Duration::from_millis(30));
+        if !self.rested[i] {
+            return vec![];
         }
+        let dir = if v > 0.6 { 1 } else if v < -0.6 && !names[0].is_empty() { -1 } else { 0 };
+        let was = self.dir[i];
+        if dir == was {
+            return vec![];
+        }
+        self.dir[i] = dir;
+        let name = |d: i8| if d > 0 { names[1] } else { names[0] };
+        let mut out = vec![];
+        if was != 0 {
+            out.push((false, name(was)));
+        }
+        if dir != 0 {
+            out.push((true, name(dir)));
+        }
+        out
     }
-    // Output report 0x01: a counter, neutral rumble, then subcommand 0x03 (input report mode) 0x30.
-    let _ = dev.write(&[0x01, 0x00, 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40, 0x03, 0x30]);
 }
 
-/// The input devices Windows knows about right now (keyboards, mice, controllers), as handles.
-/// Cheap to ask: no device is opened. Empty when Windows doesn't answer.
-#[cfg(windows)]
-fn input_devices() -> Vec<isize> {
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    #[allow(dead_code)]
-    struct RawDev {
-        h: isize,
-        kind: u32,
-    }
-    #[link(name = "user32")]
-    extern "system" {
-        fn GetRawInputDeviceList(list: *mut RawDev, n: *mut u32, size: u32) -> u32;
-    }
-    let size = std::mem::size_of::<RawDev>() as u32;
-    let mut n = 0u32;
-    // SAFETY: the list is sized from Windows' own count (with room for a few more arriving in
-    // between), and only as many entries as it says it wrote are read.
+struct Open {
+    pad: *mut sdl::SDL_Gamepad,
+    name: String,
+    kind: &'static str,
+    axes: Axes,
+}
+
+fn set_hint(name: *const c_char, value: &CStr) {
+    // SAFETY: both are NUL-terminated strings that SDL copies.
     unsafe {
-        if GetRawInputDeviceList(std::ptr::null_mut(), &mut n, size) == u32::MAX {
-            return vec![];
-        }
-        let mut v = vec![RawDev { h: 0, kind: 0 }; n as usize + 8];
-        let mut cap = v.len() as u32;
-        let got = GetRawInputDeviceList(v.as_mut_ptr(), &mut cap, size);
-        if got == u32::MAX {
-            return vec![];
-        }
-        v.truncate(got as usize);
-        let mut hs: Vec<isize> = v.iter().map(|d| d.h).collect();
-        hs.sort_unstable();
-        hs
+        sdl::SDL_SetHint(name, value.as_ptr());
     }
 }
 
-#[cfg(not(windows))]
-fn read_sony(_tx: Sender<Ev>) {
-    // On Linux the kernel's driver already makes PlayStation controllers ordinary gamepads.
+fn list(open: &HashMap<sdl::SDL_JoystickID, Open>) {
+    let mut ids: Vec<_> = open.keys().copied().collect();
+    ids.sort();
+    let mut c = CONNECTED.lock().unwrap();
+    c.clear();
+    c.extend(ids.iter().map(|id| Pad { name: open[id].name.clone(), kind: open[id].kind }));
 }
 
-fn read_gilrs(tx: Sender<Ev>) {
-    std::thread::spawn(move || {
-        use gilrs::{Axis, Button, EventType, Gilrs};
-        let Ok(mut g) = Gilrs::new() else { return };
-        let kind_of = |name: &str| {
-            let n = name.to_lowercase();
-            if n.contains("sony") || n.contains("dualsense") || n.contains("playstation") || n.contains("wireless controller") || n.contains("dualshock") {
-                "ps"
-            } else if n.contains("nintendo") || n.contains("pro controller") || n.contains("joy-con") {
-                "nintendo"
-            } else if n.contains("steam") || n.contains("valve") {
-                "steam"
-            } else {
-                "xbox"
+/// Start SDL for controllers, on the thread that will make every SDL call from now on.
+fn init(mappings: &Path) -> bool {
+    // Hints, not environment variables, so the games the launcher starts don't get them.
+    // Keep reading while a game is in front.
+    set_hint(sdl::SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, c"1");
+    // Leave PlayStation and Switch pads in the mode they started in. Enhanced reports break
+    // DirectInput for games that don't use SDL, and a PlayStation pad keeps them until it's
+    // switched off.
+    set_hint(sdl::SDL_HINT_JOYSTICK_ENHANCED_REPORTS, c"0");
+    // DirectInput opens a controller for itself alone, which would keep it from a game.
+    // XInput and SDL's own drivers cover the controllers the launcher has always read.
+    set_hint(sdl::SDL_HINT_JOYSTICK_DIRECTINPUT, c"0");
+    // SDL's Steam Deck driver turns the Deck's trackpad mouse off for as long as it's open.
+    // Started from Steam, the Deck's controls come through Steam Input instead.
+    // SDL's Steam Controller drivers stay on: they read the controller without Steam. Its
+    // trackpad mouse is off while it's open here, and (on the first model) back when it closes.
+    set_hint(sdl::SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, c"0");
+    // Closing the launcher (Ctrl+C, the system's own "quit") must still close it.
+    set_hint(sdl::SDL_HINT_NO_SIGNAL_HANDLERS, c"1");
+    // SAFETY: SDL is started here and only ever called from this thread.
+    if !unsafe { sdl::SDL_Init(sdl::SDL_INIT_GAMEPAD) } {
+        // SAFETY: SDL_GetError always returns a NUL-terminated string.
+        eprintln!("No controllers: {}", unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
+        return false;
+    }
+    // Events nothing here reads, so SDL doesn't queue them: "update complete" comes with
+    // every report a controller sends. The joystick-level button, axis and hat events stay:
+    // SDL makes the gamepad events from them.
+    for t in [
+        sdl::SDL_EVENT_JOYSTICK_UPDATE_COMPLETE,
+        sdl::SDL_EVENT_GAMEPAD_UPDATE_COMPLETE,
+        sdl::SDL_EVENT_GAMEPAD_TOUCHPAD_DOWN,
+        sdl::SDL_EVENT_GAMEPAD_TOUCHPAD_MOTION,
+        sdl::SDL_EVENT_GAMEPAD_TOUCHPAD_UP,
+        sdl::SDL_EVENT_GAMEPAD_SENSOR_UPDATE,
+        sdl::SDL_EVENT_JOYSTICK_BATTERY_UPDATED,
+        sdl::SDL_EVENT_JOYSTICK_BALL_MOTION,
+    ] {
+        // SAFETY: SDL is running on this thread.
+        unsafe { sdl::SDL_SetEventEnabled(t.0, false) };
+    }
+    // The player's own mappings, for a controller SDL doesn't know.
+    if mappings.is_file() {
+        if let Some(p) = mappings.to_str().and_then(|p| CString::new(p).ok()) {
+            // SAFETY: a NUL-terminated UTF-8 path, as SDL wants.
+            if unsafe { sdl::SDL_AddGamepadMappingsFromFile(p.as_ptr()) } < 0 {
+                // SAFETY: SDL_GetError always returns a NUL-terminated string.
+                eprintln!("Couldn't read {}: {}", mappings.display(), unsafe { CStr::from_ptr(sdl::SDL_GetError()) }.to_string_lossy());
             }
-        };
-        let refresh = |g: &Gilrs| {
-            let mut c = CONNECTED.lock().unwrap();
-            c.retain(|p| (p.kind == "ps" || p.kind == "nintendo" || p.kind == "steam") && cfg!(windows));
-            for (_, pad) in g.gamepads() {
-                c.push(Pad { name: pad.name().to_string(), kind: kind_of(pad.name()) });
-            }
-        };
-        refresh(&g);
-        let mut stick: std::collections::HashMap<gilrs::GamepadId, (i8, i8)> = Default::default();
-        let mut rested: std::collections::HashMap<(gilrs::GamepadId, u32), bool> = Default::default();
-        loop {
-            while let Some(ev) = g.next_event() {
-                let kind = kind_of(g.gamepad(ev.id).name());
-                // gilrs names face buttons by where they sit. A Nintendo pad has A on the right and
-                // X on top, and the launcher goes by what's printed on the button.
-                let nin = kind == "nintendo";
-                let name = |b: Button| match b {
-                    Button::South => Some(if nin { "b" } else { "a" }),
-                    Button::East => Some(if nin { "a" } else { "b" }),
-                    Button::West => Some(if nin { "y" } else { "x" }),
-                    Button::North => Some(if nin { "x" } else { "y" }),
-                    Button::LeftTrigger => Some("lb"),
-                    Button::RightTrigger => Some("rb"),
-                    Button::LeftTrigger2 => Some("lt"),
-                    Button::RightTrigger2 => Some("rt"),
-                    Button::LeftThumb => Some("ls"),
-                    Button::RightThumb => Some("rs"),
-                    Button::Select => Some("view"),
-                    Button::Start => Some("menu"),
-                    Button::Mode => Some("guide"),
-                    Button::DPadUp => Some("up"),
-                    Button::DPadDown => Some("down"),
-                    Button::DPadLeft => Some("left"),
-                    Button::DPadRight => Some("right"),
-                    _ => None,
-                };
-                match ev.event {
-                    EventType::Connected | EventType::Disconnected => refresh(&g),
-                    EventType::ButtonPressed(b, _) => {
-                        if let Some(n) = name(b) {
-                            let _ = tx.send(Ev::Down(n, kind));
-                        }
-                    }
-                    EventType::ButtonReleased(b, _) => {
-                        if let Some(n) = name(b) {
-                            let _ = tx.send(Ev::Up(n));
-                        }
-                    }
-                    EventType::AxisChanged(axis, v, _) => {
-                        // An axis counts once it has been seen resting near the middle: a wheel,
-                        // pedal or worn stick that sits pushed all the way never scrolls on its own.
-                        let a = rested.entry((ev.id, axis as u32)).or_insert(false);
-                        if v.abs() < 0.3 {
-                            *a = true;
-                        }
-                        if !*a {
-                            continue;
-                        }
-                        let s = stick.entry(ev.id).or_default();
-                        let dir = if v > 0.6 { 1 } else if v < -0.6 { -1 } else { 0 };
-                        match axis {
-                            Axis::LeftStickX if dir != s.0 => {
-                                if s.0 != 0 {
-                                    let _ = tx.send(Ev::Up(if s.0 > 0 { "right" } else { "left" }));
-                                }
-                                s.0 = dir;
-                                if dir != 0 {
-                                    let _ = tx.send(Ev::Down(if dir > 0 { "right" } else { "left" }, kind));
-                                }
-                            }
-                            Axis::LeftStickY if dir != s.1 => {
-                                if s.1 != 0 {
-                                    let _ = tx.send(Ev::Up(if s.1 > 0 { "up" } else { "down" }));
-                                }
-                                s.1 = dir;
-                                if dir != 0 {
-                                    let _ = tx.send(Ev::Down(if dir > 0 { "up" } else { "down" }, kind));
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            // During a game with the quick menu off nothing needs the controller here.
-            let off = PLAYING.load(Ordering::Relaxed) && !QUICK_MENU.load(Ordering::Relaxed);
-            // During a game the quick menu only waits for its button: a check every 25 ms is plenty,
-            // and leaves the processor to the game.
-            let playing = PLAYING.load(Ordering::Relaxed);
-            std::thread::sleep(std::time::Duration::from_millis(if off { 250 } else if idle() { 60 } else if playing && !FOCUSED.load(Ordering::Relaxed) { 25 } else { 10 }));
         }
+    }
+    true
+}
+
+/// The controllers SDL has open, and what they're doing.
+#[derive(Default)]
+struct Reader {
+    open: HashMap<sdl::SDL_JoystickID, Open>,
+}
+
+impl Reader {
+    /// Close every controller. SDL puts back what it changed when it opened one (a Steam
+    /// Controller's trackpad mouse, for one).
+    fn close(&mut self) {
+        for (_, o) in self.open.drain() {
+            // SAFETY: each pad was opened once, and is closed once.
+            unsafe { sdl::SDL_CloseGamepad(o.pad) };
+        }
+        list(&self.open);
+    }
+
+    /// Everything SDL has seen since last time, as presses.
+    fn poll(&mut self, tx: &Sender<Ev>) {
+        let open = &mut self.open;
+        // SAFETY: an SDL_Event is plain data SDL fills in; the union member read is the one
+        // its type says.
+        let mut ev: sdl::SDL_Event = unsafe { std::mem::zeroed() };
+        while unsafe { sdl::SDL_PollEvent(&mut ev) } {
+            let ty = sdl::SDL_EventType(unsafe { ev.r#type });
+            match ty {
+                sdl::SDL_EVENT_GAMEPAD_ADDED => {
+                    let id = unsafe { ev.gdevice.which };
+                    if open.contains_key(&id) {
+                        continue;
+                    }
+                    // SAFETY: the id is one SDL just announced; a null pad is skipped.
+                    let pad = unsafe { sdl::SDL_OpenGamepad(id) };
+                    if pad.is_null() {
+                        continue;
+                    }
+                    let name = unsafe { sdl::SDL_GetGamepadName(pad) };
+                    let name = if name.is_null() { "Controller".to_string() } else { unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned() };
+                    let kind = kind_of(unsafe { sdl::SDL_GetGamepadType(pad) }, unsafe { sdl::SDL_GetGamepadVendor(pad) });
+                    open.insert(id, Open { pad, name, kind, axes: Axes::default() });
+                    list(open);
+                }
+                sdl::SDL_EVENT_GAMEPAD_REMOVED => {
+                    if let Some(o) = open.remove(&unsafe { ev.gdevice.which }) {
+                        // SAFETY: opened above, closed once.
+                        unsafe { sdl::SDL_CloseGamepad(o.pad) };
+                        list(open);
+                    }
+                }
+                sdl::SDL_EVENT_GAMEPAD_BUTTON_DOWN | sdl::SDL_EVENT_GAMEPAD_BUTTON_UP => {
+                    let b = unsafe { ev.gbutton };
+                    let Some(o) = open.get(&b.which) else { continue };
+                    let button = sdl::SDL_GamepadButton(b.button as i32);
+                    // SAFETY: the pad is open.
+                    let label = unsafe { sdl::SDL_GetGamepadButtonLabel(o.pad, button) };
+                    if let Some(n) = button_name(button, label) {
+                        let _ = tx.send(if b.down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
+                    }
+                }
+                sdl::SDL_EVENT_GAMEPAD_AXIS_MOTION => {
+                    let a = unsafe { ev.gaxis };
+                    let Some(o) = open.get_mut(&a.which) else { continue };
+                    for (down, n) in o.axes.moved(sdl::SDL_GamepadAxis(a.axis as i32), a.value) {
+                        let _ = tx.send(if down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
+    RUNNING.store(true, Ordering::Relaxed);
+    let spawned = std::thread::Builder::new().name("pads".into()).spawn(move || {
+        if !init(&mappings) {
+            RUNNING.store(false, Ordering::Relaxed);
+            return;
+        }
+        let mut reader = Reader::default();
+        while !STOP.load(Ordering::Relaxed) {
+            reader.poll(&tx);
+            // During a game the quick menu and the screenshot combo only wait for their buttons: a
+            // check every 25 ms is plenty, and leaves the processor to the game. Not slower, even
+            // with the quick menu off: SDL reads a controller's state when it's asked, so a quick
+            // tap between two checks would be missed.
+            let playing = PLAYING.load(Ordering::Relaxed);
+            std::thread::sleep(std::time::Duration::from_millis(if idle() { 60 } else if playing && !FOCUSED.load(Ordering::Relaxed) { 25 } else { 10 }));
+        }
+        reader.close();
+        // SAFETY: the last SDL call, on SDL's thread.
+        unsafe { sdl::SDL_Quit() };
+        RUNNING.store(false, Ordering::Relaxed);
     });
+    if let Err(e) = spawned {
+        RUNNING.store(false, Ordering::Relaxed);
+        eprintln!("No controllers: {e}");
+    }
+}
+
+/// SDL's thread is running (or starting).
+static RUNNING: AtomicBool = AtomicBool::new(false);
+/// The launcher is closing: SDL's thread closes the controllers and stops.
+static STOP: AtomicBool = AtomicBool::new(false);
+
+/// The launcher is closing: close the controllers properly, so SDL can put back what it changed,
+/// waiting half a second at most.
+pub fn stop() {
+    STOP.store(true, Ordering::Relaxed);
+    let t = std::time::Instant::now();
+    while RUNNING.load(Ordering::Relaxed) && t.elapsed() < std::time::Duration::from_millis(500) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 
 /// Start reading controllers. One place decides where each press goes.
 pub fn start(app: AppHandle) {
     let (tx, rx) = channel::<Ev>();
-    read_gilrs(tx.clone());
-    read_sony(tx);
+    read_sdl(tx, app.state::<App>().dir.join("gamecontrollerdb.txt"));
     std::thread::spawn(move || {
         use std::time::{Duration, Instant};
         let mut view_held = false;
@@ -603,82 +457,178 @@ pub fn connected() -> Vec<Pad> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sdl::SDL_GamepadAxis as A;
+    use sdl::SDL_GamepadButton as B;
+    use sdl::SDL_GamepadButtonLabel as L;
+    use sdl::SDL_GamepadType as T;
 
     #[test]
-    fn dualsense_usb() {
-        let mut r = vec![0u8; 64];
-        r[0] = 0x01;
-        r[1] = 128;
-        r[2] = 128;
-        r[8] = 0x20 | 0x02; // cross, d-pad right
-        r[9] = 0x10 | 0x02; // create, R1
-        r[10] = 0x01; // PS
-        let s = parse_sony(&r, true, false).unwrap();
-        for b in ["right", "a", "view", "rb", "guide"] {
-            assert!(s.held.contains(&b), "{b} missing: {:?}", s.held);
+    fn kinds() {
+        assert_eq!(kind_of(T::PS5, 0x054C), "ps");
+        assert_eq!(kind_of(T::PS4, 0x054C), "ps");
+        assert_eq!(kind_of(T::PS3, 0x054C), "ps");
+        assert_eq!(kind_of(T::NINTENDO_SWITCH_PRO, 0x057E), "nintendo");
+        assert_eq!(kind_of(T::NINTENDO_SWITCH_JOYCON_PAIR, 0x057E), "nintendo");
+        assert_eq!(kind_of(T::STEAM, VALVE), "steam");
+        // Steam's own controllers show as Steam's even when SDL calls them an Xbox pad.
+        assert_eq!(kind_of(T::XBOX360, VALVE), "steam");
+        assert_eq!(kind_of(T::XBOXONE, 0x045E), "xbox");
+        assert_eq!(kind_of(T::STANDARD, 0x2DC8), "xbox");
+        assert_eq!(kind_of(T::UNKNOWN, 0), "xbox");
+    }
+
+    #[test]
+    fn face_buttons_go_by_what_is_printed() {
+        // Xbox: A at the bottom.
+        assert_eq!(button_name(B::SOUTH, L::A), Some("a"));
+        assert_eq!(button_name(B::NORTH, L::Y), Some("y"));
+        // PlayStation: Cross, Circle, Square, Triangle.
+        assert_eq!(button_name(B::SOUTH, L::CROSS), Some("a"));
+        assert_eq!(button_name(B::EAST, L::CIRCLE), Some("b"));
+        assert_eq!(button_name(B::WEST, L::SQUARE), Some("x"));
+        assert_eq!(button_name(B::NORTH, L::TRIANGLE), Some("y"));
+        // Nintendo: A on the right, B at the bottom, X on top, Y on the left.
+        assert_eq!(button_name(B::EAST, L::A), Some("a"));
+        assert_eq!(button_name(B::SOUTH, L::B), Some("b"));
+        assert_eq!(button_name(B::NORTH, L::X), Some("x"));
+        assert_eq!(button_name(B::WEST, L::Y), Some("y"));
+        // No label known: by position, like an Xbox pad.
+        assert_eq!(button_name(B::SOUTH, L::UNKNOWN), Some("a"));
+        assert_eq!(button_name(B::EAST, L::UNKNOWN), Some("b"));
+    }
+
+    #[test]
+    fn other_buttons() {
+        let n = |b| button_name(b, L::UNKNOWN);
+        assert_eq!(n(B::BACK), Some("view"));
+        assert_eq!(n(B::START), Some("menu"));
+        assert_eq!(n(B::GUIDE), Some("guide"));
+        assert_eq!(n(B::LEFT_SHOULDER), Some("lb"));
+        assert_eq!(n(B::RIGHT_SHOULDER), Some("rb"));
+        assert_eq!(n(B::LEFT_STICK), Some("ls"));
+        assert_eq!(n(B::RIGHT_STICK), Some("rs"));
+        assert_eq!(n(B::DPAD_UP), Some("up"));
+        assert_eq!(n(B::DPAD_DOWN), Some("down"));
+        assert_eq!(n(B::DPAD_LEFT), Some("left"));
+        assert_eq!(n(B::DPAD_RIGHT), Some("right"));
+        // Paddles, the touchpad and the share/capture button aren't the launcher's.
+        assert_eq!(n(B::TOUCHPAD), None);
+        assert_eq!(n(B::MISC1), None);
+        assert_eq!(n(B::RIGHT_PADDLE1), None);
+    }
+
+    #[test]
+    fn stick() {
+        let mut a = Axes::default();
+        // Not seen resting yet: a stick that starts pushed does nothing.
+        assert!(a.moved(A::LEFTX, 32767).is_empty());
+        assert!(a.moved(A::LEFTX, 0).is_empty());
+        assert_eq!(a.moved(A::LEFTX, 30000), vec![(true, "right")]);
+        // Still right: nothing new.
+        assert!(a.moved(A::LEFTX, 32767).is_empty());
+        // Straight across: right is let go, then left pressed.
+        assert_eq!(a.moved(A::LEFTX, -32768), vec![(false, "right"), (true, "left")]);
+        // Half way back counts as let go.
+        assert_eq!(a.moved(A::LEFTX, -15000), vec![(false, "left")]);
+        // SDL's Y is positive downwards.
+        assert!(a.moved(A::LEFTY, 0).is_empty());
+        assert_eq!(a.moved(A::LEFTY, -32768), vec![(true, "up")]);
+        assert_eq!(a.moved(A::LEFTY, 32767), vec![(false, "up"), (true, "down")]);
+        // The right stick isn't read.
+        assert!(a.moved(A::RIGHTX, 0).is_empty());
+        assert!(a.moved(A::RIGHTX, 32767).is_empty());
+    }
+
+    #[test]
+    fn each_axis_rests_on_its_own() {
+        let mut a = Axes::default();
+        assert!(a.moved(A::LEFTX, 0).is_empty());
+        // X resting doesn't make a Y that sits pushed count.
+        assert!(a.moved(A::LEFTY, 32767).is_empty());
+        assert_eq!(a.moved(A::LEFTX, 32767), vec![(true, "right")]);
+    }
+
+    /// The whole way through SDL, with virtual controllers: SDL starts with the launcher's
+    /// settings, makes gamepad events, and the launcher names them. The only test that starts
+    /// SDL, so nothing else shares its state.
+    #[test]
+    fn through_sdl() {
+        assert!(init(Path::new("")));
+        let (tx, rx) = channel();
+        let mut r = Reader::default();
+        let attach = |vendor: u16, product: u16| {
+            let mut d = sdl::SDL_VirtualJoystickDesc::default();
+            d.r#type = sdl::SDL_JOYSTICK_TYPE_GAMEPAD.0 as u16;
+            d.vendor_id = vendor;
+            d.product_id = product;
+            d.naxes = sdl::SDL_GAMEPAD_AXIS_COUNT.0 as u16;
+            d.nbuttons = sdl::SDL_GAMEPAD_BUTTON_COUNT.0 as u16;
+            d.name = c"Test pad".as_ptr();
+            // SAFETY: SDL runs on this test's thread; the description outlives the call.
+            let id = unsafe { sdl::SDL_AttachVirtualJoystick(&d) };
+            assert_ne!(id.0, 0);
+            let j = unsafe { sdl::SDL_OpenJoystick(id) };
+            assert!(!j.is_null());
+            (id, j)
+        };
+        // SAFETY (for the calls below): the joysticks are open, on this thread.
+        let press = |j, b: B, down| unsafe { assert!(sdl::SDL_SetJoystickVirtualButton(j, b.0, down)) };
+        let axis = |j, a: A, v| unsafe { assert!(sdl::SDL_SetJoystickVirtualAxis(j, a.0, v)) };
+
+        // An Xbox One pad.
+        let (xid, x) = attach(0x045E, 0x02EA);
+        r.poll(&tx);
+        assert_eq!(connected().iter().map(|p| p.kind).collect::<Vec<_>>(), vec!["xbox"]);
+        press(x, B::SOUTH, true);
+        press(x, B::BACK, true);
+        r.poll(&tx);
+        press(x, B::SOUTH, false);
+        axis(x, A::LEFTX, 0);
+        r.poll(&tx);
+        axis(x, A::LEFTX, 32767);
+        r.poll(&tx);
+        let got: Vec<Ev> = rx.try_iter().collect();
+        assert_eq!(got, vec![Ev::Down("a", "xbox"), Ev::Down("view", "xbox"), Ev::Up("a"), Ev::Down("right", "xbox")]);
+
+        // A Switch Pro Controller: its A is on the right.
+        let (nid, n) = attach(0x057E, 0x2009);
+        r.poll(&tx);
+        assert!(connected().iter().any(|p| p.kind == "nintendo"), "{:?}", connected());
+        press(n, B::EAST, true);
+        r.poll(&tx);
+        press(n, B::SOUTH, true);
+        r.poll(&tx);
+        let got: Vec<Ev> = rx.try_iter().collect();
+        assert_eq!(got, vec![Ev::Down("a", "nintendo"), Ev::Down("b", "nintendo")]);
+
+        // Unplugged: gone from the list.
+        unsafe {
+            sdl::SDL_CloseJoystick(x);
+            assert!(sdl::SDL_DetachVirtualJoystick(xid));
         }
-        assert!(!s.held.contains(&"up"));
+        r.poll(&tx);
+        assert_eq!(connected().iter().map(|p| p.kind).collect::<Vec<_>>(), vec!["nintendo"]);
+        // Closing the launcher closes the rest.
+        r.close();
+        assert!(connected().is_empty(), "{:?}", connected());
+        unsafe {
+            sdl::SDL_CloseJoystick(n);
+            assert!(sdl::SDL_DetachVirtualJoystick(nid));
+            sdl::SDL_Quit();
+        }
     }
 
     #[test]
-    fn dualsense_bluetooth_and_dualshock() {
-        let mut bt = vec![0u8; 78];
-        bt[0] = 0x31;
-        bt[9] = 0x08 | 0x40; // no d-pad, circle
-        bt[10] = 0x20; // options
-        let s = parse_sony(&bt, true, true).unwrap();
-        assert_eq!(s.held, vec!["b", "menu"]);
-        let mut ds4 = vec![0u8; 64];
-        ds4[0] = 0x01;
-        ds4[5] = 0x04 | 0x80; // down, triangle
-        ds4[6] = 0x01; // L1
-        let s = parse_sony(&ds4, false, false).unwrap();
-        assert_eq!(s.held, vec!["down", "y", "lb"]);
-        let mut ds4bt = vec![0u8; 78];
-        ds4bt[0] = 0x11;
-        ds4bt[7] = 0x08 | 0x10; // square
-        assert_eq!(parse_sony(&ds4bt, false, true).unwrap().held, vec!["x"]);
-        // A DualSense on Bluetooth before anything switches it to full reports: the short 0x01
-        // report, padded by Windows to 78 bytes, laid out like a DualShock 4's.
-        let mut short = vec![0u8; 78];
-        short[0] = 0x01;
-        short[5] = 0x08 | 0x20; // cross
-        short[6] = 0x01 | 0x02; // L1, R1
-        assert_eq!(parse_sony(&short, true, true).unwrap().held, vec!["a", "lb", "rb"]);
-    }
-
-    #[test]
-    fn switch_pro() {
-        let mut r = vec![0u8; 64];
-        r[0] = 0x30;
-        r[3] = 0x08 | 0x40; // A, R
-        r[4] = 0x01; // minus
-        r[5] = 0x02; // d-pad up
-        // Left stick at the middle (2048, 2048).
-        r[6] = 0x00;
-        r[7] = 0x08;
-        r[8] = 0x80;
-        let s = parse_switch(&r).unwrap();
-        assert_eq!(s.held, vec!["a", "rb", "up", "view"]);
-        assert!(stick_dirs(s.lx, s.ly).is_empty());
-        // Stick all the way up (y 4095) reads as up.
-        r[7] = 0xF8;
-        r[8] = 0xFF;
-        assert_eq!(stick_dirs(parse_switch(&r).unwrap().lx, parse_switch(&r).unwrap().ly), vec!["up"]);
-        let mut simple = vec![0u8; 12];
-        simple[0] = 0x3F;
-        simple[1] = 0x01; // B
-        simple[2] = 0x02; // plus
-        simple[3] = 0x06; // left
-        assert_eq!(parse_switch(&simple).unwrap().held, vec!["left", "b", "menu"]);
-        simple[3] = 0x08;
-        assert_eq!(parse_switch(&simple).unwrap().held, vec!["b", "menu"]);
-    }
-
-    #[test]
-    fn sticks() {
-        assert_eq!(stick_dirs(0, 128), vec!["left"]);
-        assert_eq!(stick_dirs(255, 255), vec!["right", "down"]);
-        assert!(stick_dirs(128, 128).is_empty());
+    fn triggers() {
+        let mut a = Axes::default();
+        // A pedal that sits pressed doesn't count until it's been let go.
+        assert!(a.moved(A::LEFT_TRIGGER, 32767).is_empty());
+        assert!(a.moved(A::LEFT_TRIGGER, 0).is_empty());
+        assert!(a.moved(A::LEFT_TRIGGER, 15000).is_empty());
+        assert_eq!(a.moved(A::LEFT_TRIGGER, 25000), vec![(true, "lt")]);
+        assert_eq!(a.moved(A::LEFT_TRIGGER, 5000), vec![(false, "lt")]);
+        assert!(a.moved(A::RIGHT_TRIGGER, 0).is_empty());
+        assert_eq!(a.moved(A::RIGHT_TRIGGER, 32767), vec![(true, "rt")]);
+        assert_eq!(a.moved(A::RIGHT_TRIGGER, 0), vec![(false, "rt")]);
     }
 }

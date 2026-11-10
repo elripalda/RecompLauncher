@@ -717,6 +717,77 @@ fn matches(game: &str, rom: &RomFile) -> bool {
 }
 
 /// For each catalog app, the player's file for its game, if they have one.
+/// What a found file is to its game: the game itself (with its disc number in a set), an update,
+/// or extra content. Read from its name: "(Disc 2)", "[UPD]", "Title Update", a Switch title ID
+/// ending in 800 (an update) or another non-zero ending (extra content).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Part {
+    pub kind: &'static str,
+    pub disc: Option<u32>,
+    /// "Disc 2 of 3": how many discs the set has, when the name says.
+    pub of: Option<u32>,
+}
+
+pub fn part_of(name: &str) -> Part {
+    let low = name.to_lowercase();
+    let word = |w: &str| low.split(|c: char| !c.is_ascii_alphanumeric()).any(|x| x == w);
+    // A Switch title ID: 16 hex digits starting 01. Base games end in 000, updates in 800.
+    let tid = low
+        .split(|c: char| !c.is_ascii_hexdigit())
+        .find(|x| x.len() == 16 && x.starts_with("01"))
+        .map(|x| x[13..].to_string());
+    let kind = match tid.as_deref() {
+        Some("800") => "update",
+        Some(e) if e != "000" => "dlc",
+        _ if word("upd") || word("update") || low.contains("title update") || low.starts_with("tu_") || word("patch") => "update",
+        _ if word("dlc") || low.contains("add-on") || word("addon") => "dlc",
+        _ => "game",
+    };
+    let mut disc = None;
+    let mut of = None;
+    if kind == "game" {
+        for key in ["disc", "disk", "cd"] {
+            let mut rest = low.as_str();
+            while let Some(i) = rest.find(key) {
+                let before = rest[..i].chars().last();
+                let after = &rest[i + key.len()..];
+                let num: String = after.trim_start_matches([' ', '_', '-']).chars().take_while(char::is_ascii_digit).collect();
+                if before.map(|c| !c.is_ascii_alphanumeric()).unwrap_or(true) && !num.is_empty() {
+                    disc = num.parse().ok();
+                    let tail = after.trim_start_matches([' ', '_', '-']).trim_start_matches(|c: char| c.is_ascii_digit());
+                    let tail = tail.trim_start();
+                    if let Some(t) = tail.strip_prefix("of") {
+                        of = t.trim_start().chars().take_while(char::is_ascii_digit).collect::<String>().parse().ok();
+                    }
+                    break;
+                }
+                rest = &rest[i + key.len()..];
+            }
+            if disc.is_some() {
+                break;
+            }
+        }
+    }
+    Part { kind, disc, of }
+}
+
+/// Every found file that belongs to this catalog entry's game: its discs, updates and extra
+/// content, by the same name match as `match_catalog`.
+pub fn files_of(app: &Value, roms: &[RomFile]) -> Vec<RomFile> {
+    let game = app.get("game").and_then(Value::as_str).unwrap_or("");
+    let origin = app.get("origin").and_then(Value::as_str).unwrap_or("");
+    if game.is_empty() {
+        return vec![];
+    }
+    roms.iter().filter(|r| fits(r, origin) && matches(game, r) && fits_copy_ids(app, &r.path).is_ok()).cloned().collect()
+}
+
+/// A file whose disc ID is one of the catalog's known dumps for this game.
+pub fn known_dump(app: &Value, p: &Path) -> bool {
+    let want = copy_ids(app);
+    !want.is_empty() && copy_id(p).map(|id| want.iter().any(|w| id.starts_with(w.as_str()))).unwrap_or(false)
+}
+
 pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> {
     let mut out = HashMap::new();
     let Some(apps) = cat.get("apps").and_then(Value::as_array) else { return out };
@@ -755,6 +826,21 @@ mod tests {
         b[0x1C..0x20].copy_from_slice(&0x28u32.to_be_bytes());
         b[0x28 + 12..0x28 + 16].copy_from_slice(&title.to_be_bytes());
         b
+    }
+
+    #[test]
+    fn parts_are_read_from_names() {
+        let p = |n: &str| part_of(n);
+        assert_eq!(p("Game (USA) (Disc 2).iso"), Part { kind: "game", disc: Some(2), of: None });
+        assert_eq!(p("Game Disc 1 of 3.chd"), Part { kind: "game", disc: Some(1), of: Some(3) });
+        assert_eq!(p("Game [0100509005AF2000][v0].nsp").kind, "game");
+        assert_eq!(p("Game [0100509005AF2800][v786432].nsp").kind, "update");
+        assert_eq!(p("Game [0100509005AF3001][v0].nsp").kind, "dlc");
+        assert_eq!(p("Game [UPD].nsp").kind, "update");
+        assert_eq!(p("TU_16L61VP_0000004000000.00000000000G1").kind, "update");
+        assert_eq!(p("Game - Expansion DLC.nsp").kind, "dlc");
+        assert_eq!(p("Discovery.iso"), Part { kind: "game", disc: None, of: None });
+        assert_eq!(p("Uncharted.iso").disc, None);
     }
 
     #[test]

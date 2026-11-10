@@ -309,6 +309,19 @@ pub async fn download(
     cancel: Arc<AtomicBool>,
     report: &(dyn Fn(Progress) + Send + Sync),
 ) -> Result<Downloaded, Error> {
+    let api = asset.url.as_deref().filter(|u| u.starts_with("https://api.github.com/"));
+    download_with_api(http, asset, dir, id, cancel, report, api).await
+}
+
+async fn download_with_api(
+    http: &reqwest::Client,
+    asset: &Asset,
+    dir: &Path,
+    id: &str,
+    cancel: Arc<AtomicBool>,
+    report: &(dyn Fn(Progress) + Send + Sync),
+    api: Option<&str>,
+) -> Result<Downloaded, Error> {
     fs::create_dir_all(dir)?;
     let safe: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.+".contains(c) { c } else { '_' }).collect();
     let file = dir.join(&safe);
@@ -352,6 +365,19 @@ pub async fn download(
     let mut src = asset.browser_download_url.clone();
     let mut by_api = false;
     let mut api_tried = false;
+    // The same alternate route helps when the edge drops a connection or never answers. It is
+    // tried once per download, after repeated failures, with the byte offset and hash preserved.
+    let mut try_api = |tries: u32, src: &mut String, by_api: &mut bool| {
+        if tries < 3 || api_tried {
+            return false;
+        }
+        let Some(api) = api else { return false };
+        crate::trail::note(format!("{}: the download keeps failing; trying GitHub's API link", asset.name));
+        *src = api.to_string();
+        *by_api = true;
+        api_tried = true;
+        true
+    };
     'attempt: loop {
         tries += 1;
         let mut req = http.get(&src).timeout(Duration::from_secs(60 * 60 * 6));
@@ -372,12 +398,14 @@ pub async fn download(
             match tokio::time::timeout(Duration::from_millis(500), &mut send).await {
                 Ok(r) => break r,
                 Err(_) if started.elapsed() < Duration::from_secs(30) => continue,
+                Err(_) if try_api(tries, &mut src, &mut by_api) => continue 'attempt,
                 Err(_) if tries < 4 => continue 'attempt,
                 Err(_) => return Err(Error::Msg(format!("{} isn't answering right now. Try again in a minute; the download carries on from where it got to.", site_of(&asset.browser_download_url)))),
             }
         };
         let r = match r {
             Ok(r) => r,
+            Err(e) if (e.is_timeout() || e.is_connect() || e.is_request()) && try_api(tries, &mut src, &mut by_api) => continue,
             Err(e) if tries < 4 && (e.is_timeout() || e.is_connect() || e.is_request()) => {
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
@@ -389,14 +417,8 @@ pub async fn download(
             // ask again, from where it got to.
             // Still busy after a few tries: the same file through GitHub's API, which often answers
             // when the download link doesn't.
-            if busy_answer(r.status().as_u16()) && tries >= 3 && !by_api && !api_tried {
-                if let Some(api) = asset.url.as_deref().filter(|u| u.starts_with("https://api.github.com/")) {
-                    crate::trail::note(format!("{}: github.com answered {}; trying GitHub's API link", asset.name, r.status().as_u16()));
-                    src = api.to_string();
-                    by_api = true;
-                    api_tried = true;
-                    continue;
-                }
+            if busy_answer(r.status().as_u16()) && try_api(tries, &mut src, &mut by_api) {
+                continue;
             }
             // The API said no for another reason (its hourly limit for a PC that isn't signed in):
             // back to the usual link, which keeps its own tries.
@@ -454,13 +476,13 @@ pub async fn download(
                 Ok(n) => n,
                 Err(_) if quiet.elapsed() < Duration::from_secs(40) => continue,
                 // Nothing for 40 seconds: ask again from where it got to.
-                Err(_) if tries < 6 => { f.flush().await?; continue 'attempt; }
+                Err(_) if tries < 6 => { f.flush().await?; try_api(tries, &mut src, &mut by_api); continue 'attempt; }
                 Err(_) => return Err(Error::Msg(format!("The download of {} stopped. Press Install again; it carries on from where it got to.", asset.name))),
             };
             let Some(chunk) = next else { break 'attempt };
             let chunk = match chunk {
                 Ok(c) => c,
-                Err(_) if tries < 6 => { f.flush().await?; tokio::time::sleep(Duration::from_secs(2)).await; continue 'attempt; }
+                Err(_) if tries < 6 => { f.flush().await?; if !try_api(tries, &mut src, &mut by_api) { tokio::time::sleep(Duration::from_secs(2)).await; } continue 'attempt; }
                 Err(e) => return Err(e.into()),
             };
             quiet = Instant::now();
@@ -609,7 +631,14 @@ fn validate_links(dir: &Path, base: &Path) -> Result<(), Error> {
             let entry = entry?;
             let ty = entry.file_type()?;
             if ty.is_symlink() {
-                let target = fs::canonicalize(entry.path()).map_err(|_| Error::Msg("The archive contains a broken or circular link.".into()))?;
+                // A link to a file the archive doesn't have, or one that loops (common inside Mac
+                // apps: a framework's "Current" left from the developer's machine): it points at
+                // nothing, so it's dropped and the rest installs.
+                let Ok(target) = fs::canonicalize(entry.path()) else {
+                    crate::trail::note(format!("Install: dropped a link that points nowhere ({})", entry.file_name().to_string_lossy()));
+                    fs::remove_file(entry.path())?;
+                    continue;
+                };
                 if !target.starts_with(&root) {
                     return Err(Error::Msg("The archive contains a link outside its installation folder.".into()));
                 }
@@ -1007,7 +1036,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 16;
+pub const EXE_RULES: u8 = 17;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1028,7 +1057,7 @@ const BUILD_TOOLS: [&str; 66] = [
 /// Folders a release keeps its tools, or leftovers from building, in.
 /// "Tools" in other languages too: ferramentas (Portuguese), herramientas (Spanish), outils
 /// (French), werkzeuge (German), strumenti (Italian), narzedzia (Polish), gereedschap (Dutch).
-pub const TOOL_DIRS: [&str; 21] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
+pub const TOOL_DIRS: [&str; 31] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "llvm-mingw", "toolchain", "toolchains", "busybox", "mingw32", "mingw64", "msys64", "msys2", "cmake", "w64devkit", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
@@ -1303,7 +1332,9 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             }
         }
     }
-    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf))
+    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
+    // is asked rather than a tool started.
+    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf)).filter(|r| !looks_like_tool(r, names))
 }
 
 #[cfg(test)]
@@ -1409,6 +1440,36 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_that_point_nowhere_are_dropped() {
+        let d = tmp("dead-links");
+        fs::create_dir_all(d.join("Game.app/Contents/Frameworks/X.framework/Versions/A")).unwrap();
+        fs::write(d.join("Game.app/Contents/Frameworks/X.framework/Versions/A/X"), b"lib").unwrap();
+        std::os::unix::fs::symlink("A", d.join("Game.app/Contents/Frameworks/X.framework/Versions/Current")).unwrap();
+        std::os::unix::fs::symlink("Versions/B/X", d.join("Game.app/Contents/Frameworks/X.framework/X")).unwrap();
+        std::os::unix::fs::symlink("loop", d.join("Game.app/loop")).unwrap();
+        validate_links(&d, &d).unwrap();
+        assert!(fs::symlink_metadata(d.join("Game.app/Contents/Frameworks/X.framework/Versions/Current")).is_ok());
+        assert!(fs::symlink_metadata(d.join("Game.app/Contents/Frameworks/X.framework/X")).is_err());
+        assert!(fs::symlink_metadata(d.join("Game.app/loop")).is_err());
+        // A link out of the folder still stops it.
+        std::os::unix::fs::symlink("/etc", d.join("out")).unwrap();
+        assert!(validate_links(&d, &d).is_err());
+    }
+
+    #[test]
+    fn a_tool_is_never_picked_as_the_game() {
+        let d = tmp("only-tools");
+        put(&d.join("toolchain/bin/clang-23.exe"), 4000);
+        put(&d.join("busybox/bin/watch.exe"), 4000);
+        assert_eq!(find_exe(&d, "windows", &["Racing 8 DX Recomp"]), None);
+        put(&d.join("kartrecomp.exe"), 2000);
+        assert_eq!(find_exe(&d, "windows", &["Racing 8 DX Recomp"]), Some(PathBuf::from("kartrecomp.exe")));
+        assert!(looks_like_tool(Path::new("busybox/bin/watch.exe"), &["YW4 Recomp"]));
+        assert!(looks_like_tool(Path::new("toolchain/bin/game.exe"), &["Game"]));
     }
 
     #[test]
@@ -1956,5 +2017,140 @@ mod mac_discovery_tests {
         program(&d.join("LinuxGame"), &elf);
         assert!(!is_program(&d.join("LinuxGame"), "macos"));
         assert!(is_program(&d.join("LinuxGame"), "linux"));
+    }
+}
+
+#[cfg(test)]
+mod connection_fallback_tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    struct TempDir(PathBuf);
+    impl TempDir {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let dir = std::env::temp_dir().join(format!("rl-connection-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+    }
+
+    const COMPLETE: &str = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nabcdef";
+
+    fn download_site(replies: Vec<&'static str>) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        download_site_until(replies, Arc::new(AtomicBool::new(false)))
+    }
+
+    fn download_site_until(replies: Vec<&'static str>, stop: Arc<AtomicBool>) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/asset", listener.local_addr().unwrap());
+        let thread = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for response in replies {
+                let until = Instant::now() + Duration::from_secs(15);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((s, _)) => break s,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock && stop.load(Ordering::Relaxed) => return requests,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock && Instant::now() < until => std::thread::sleep(Duration::from_millis(5)),
+                        Err(e) => panic!("the download route was never requested: {e}"),
+                    }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    let mut buf = [0; 1024];
+                    let n = stream.read(&mut buf).unwrap();
+                    assert!(n > 0);
+                    request.extend_from_slice(&buf[..n]);
+                }
+                stream.write_all(response.as_bytes()).unwrap();
+                requests.push(String::from_utf8(request).unwrap());
+            }
+            requests
+        });
+        (url, thread)
+    }
+
+    fn asset(download: String) -> Asset {
+        Asset {
+            name: "game.zip".into(), size: 6,
+            digest: Some("sha256:bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721".into()),
+            browser_download_url: download, url: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_bodies_resume_through_the_api_with_the_same_hash() {
+        let dir = TempDir::new();
+        let broken = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nab";
+        let stop = Arc::new(AtomicBool::new(false));
+        let (original, primary) = download_site_until(vec![broken; 6], stop.clone());
+        let (api, server) = download_site(vec!["HTTP/1.1 206 Partial Content\r\nContent-Length: 4\r\nContent-Range: bytes 2-5/6\r\nConnection: close\r\n\r\ncdef"]);
+        let result = download_with_api(&reqwest::Client::new(), &asset(original), &dir.0, "body-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
+        stop.store(true, Ordering::Relaxed);
+        let got = result.unwrap_or_else(|e| panic!("the asset API should resume an interrupted body: {e}"));
+        assert_eq!(fs::read(&got.file).unwrap(), b"abcdef");
+        assert!(got.verified);
+        assert_eq!(got.sha256, "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721");
+        assert_eq!(primary.join().unwrap().len(), 3);
+        assert!(server.join().unwrap()[0].to_ascii_lowercase().contains("\r\nrange: bytes=2-\r\n"));
+    }
+
+    #[tokio::test]
+    async fn response_timeouts_recover_through_the_asset_api() {
+        let dir = TempDir::new();
+        // Connections queue, but no server reads or answers them.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let original = format!("http://{}/download", stalled.local_addr().unwrap());
+        let (api, server) = download_site(vec![COMPLETE]);
+        let http = reqwest::Client::builder().read_timeout(Duration::from_millis(100)).build().unwrap();
+        let result = download_with_api(&http, &asset(original), &dir.0, "timeout-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
+        let got = result.unwrap_or_else(|e| panic!("a reachable asset API should recover a stalled download: {e}"));
+        assert_eq!(fs::read(&got.file).unwrap(), b"abcdef");
+        assert!(got.verified);
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_fallback_still_rejects_a_mismatched_checksum() {
+        let dir = TempDir::new();
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut release = asset(format!("http://{}/download", stalled.local_addr().unwrap()));
+        release.digest = Some(format!("sha256:{}", "0".repeat(64)));
+        let (api, server) = download_site(vec![COMPLETE]);
+        let http = reqwest::Client::builder().read_timeout(Duration::from_millis(100)).build().unwrap();
+        let result = download_with_api(&http, &release, &dir.0, "checksum-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
+        let error = match result { Ok(_) => panic!("the wrong bytes must not be accepted"), Err(e) => e.to_string() };
+        assert!(error.contains("checksum doesn't match"), "{error}");
+        assert!(!dir.0.join("game.zip").exists());
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn connection_failures_recover_through_the_asset_api_and_verify_the_bytes() {
+        let dir = TempDir::new();
+        // Pick an unused local port for a connection-refused response.
+        let refused = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let original = format!("http://{}/download", refused.local_addr().unwrap());
+        let (api, server) = download_site(vec![COMPLETE]);
+        drop(refused);
+        // A previously interrupted download resumes with Range; a full API response must reset
+        // that partial hash instead of appending the file twice.
+        let tag = &hex::encode(Sha256::digest(format!("6|{original}").as_bytes()))[..10];
+        fs::write(dir.0.join(format!("game.zip.{tag}.part")), b"ab").unwrap();
+        let result = download_with_api(&reqwest::Client::new(), &asset(original), &dir.0, "connection-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
+        let got = result.unwrap_or_else(|e| panic!("a reachable asset API should recover the download: {e}"));
+        assert_eq!(fs::read(&got.file).unwrap(), b"abcdef");
+        assert!(got.verified);
+        assert_eq!(got.sha256, "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721");
+        let request = server.join().unwrap()[0].to_ascii_lowercase();
+        assert!(request.contains("\r\naccept: application/octet-stream\r\n"));
+        assert!(request.contains("\r\nrange: bytes=2-\r\n"));
     }
 }

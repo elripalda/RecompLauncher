@@ -534,6 +534,57 @@ mod imp {
         }).collect()
     }
 
+    /// Every Visual Studio or Build Tools install's folder (each leaves a note of where it is),
+    /// then the default places.
+    fn vs_installs() -> Vec<PathBuf> {
+        let mut out = vec![];
+        let pd = std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into());
+        let notes = Path::new(&pd).join(r"Microsoft\VisualStudio\Packages\_Instances");
+        for e in std::fs::read_dir(notes).into_iter().flatten().flatten() {
+            if let Some(p) = std::fs::read(e.path().join("state.json")).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()).and_then(|v| v.get("installationPath").and_then(|p| p.as_str()).map(PathBuf::from)) {
+                out.push(p);
+            }
+        }
+        for pf in [std::env::var("ProgramFiles").ok(), std::env::var("ProgramFiles(x86)").ok()].into_iter().flatten() {
+            let vs = Path::new(&pf).join("Microsoft Visual Studio");
+            for year in std::fs::read_dir(&vs).into_iter().flatten().flatten() {
+                for edition in std::fs::read_dir(year.path()).into_iter().flatten().flatten() {
+                    out.push(edition.path());
+                }
+            }
+        }
+        out
+    }
+
+    /// Visual Studio's own Clang ("C++ Clang tools for Windows"), or an LLVM install.
+    pub fn has_clang() -> bool {
+        if vs_installs().iter().any(|p| p.join(r"VC\Tools\Llvm\x64\bin\clang-cl.exe").is_file() || p.join(r"VC\Tools\Llvm\bin\clang-cl.exe").is_file()) {
+            return true;
+        }
+        let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
+        Path::new(&pf).join(r"LLVM\bin\clang.exe").is_file() || on_path("clang.exe").is_some()
+    }
+
+    /// A program on the PATH. Windows' "App execution alias" stubs (WindowsApps), which open the
+    /// Store instead, don't count.
+    fn on_path(name: &str) -> Option<PathBuf> {
+        std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).filter(|d| !d.to_string_lossy().to_lowercase().contains("windowsapps")).map(|d| d.join(name)).find(|f| f.is_file()))
+    }
+
+    /// The newest Python 3 there is ("3.12.4"), from the py launcher or a python.exe on the PATH.
+    pub fn python_version() -> Option<String> {
+        use std::os::windows::process::CommandExt;
+        let run = |exe: &Path, args: &[&str]| -> Option<String> {
+            let o = std::process::Command::new(exe).args(args).creation_flags(0x0800_0000).output().ok()?;
+            let text = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+            text.split_whitespace().skip_while(|w| *w != "Python").nth(1).filter(|v| v.starts_with('3')).map(String::from)
+        };
+        let sys = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let py = Path::new(&sys).join("py.exe");
+        let py = if py.is_file() { Some(py) } else { on_path("py.exe") };
+        py.and_then(|p| run(&p, &["-3", "--version"])).or_else(|| on_path("python.exe").and_then(|p| run(&p, &["--version"])))
+    }
+
     /// Visual Studio's C++ build tools, in any Visual Studio or Build Tools install.
     pub fn has_build_tools() -> bool {
         let has_msvc = |p: &Path| std::fs::read_dir(p.join(r"VC\Tools\MSVC")).map(|mut d| d.next().is_some()).unwrap_or(false);

@@ -6,6 +6,12 @@
   <a href="https://discord.gg/FUzqGM2cvf">Discord</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/elripalda/RecompLauncher/stargazers"><img src="https://img.shields.io/github/stars/elripalda/RecompLauncher?style=flat&color=34f2e8&label=Stars" alt="Stars"></a>
+  <a href="https://github.com/elripalda/RecompLauncher/releases"><img src="https://img.shields.io/github/downloads/elripalda/RecompLauncher/total?style=flat&color=34f2e8&label=Downloads" alt="Downloads"></a>
+  <a href="https://github.com/elripalda/RecompLauncher/releases"><img src="https://img.shields.io/github/v/release/elripalda/RecompLauncher?include_prereleases&style=flat&color=34f2e8&label=Latest" alt="Latest version"></a>
+</p>
+
 ---
 
 RecompLauncher finds, installs, updates and plays PC recomps: native PC versions of console
@@ -79,6 +85,10 @@ with examples in [docs/examples](docs/examples).
 The full source of the launcher is here: the Rust core in `src-tauri/` and the window in `ui/`. You
 can read exactly what it does, or build it yourself with the steps in
 [docs/BUILDING.md](docs/BUILDING.md). It's licensed under the GPL v3 ([LICENSE](LICENSE)).
+
+## Stars over time
+
+<a href="https://star-history.com/#elripalda/RecompLauncher&Date"><img src="https://api.star-history.com/svg?repos=elripalda/RecompLauncher&type=Date&theme=dark" alt="RecompLauncher's stars over time" width="100%"></a>
 
 ## About
 
