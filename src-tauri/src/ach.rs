@@ -70,10 +70,10 @@ pub async fn check_access(app: &AppHandle) -> bool {
         set_access(app, &dir, false);
         return false;
     }
-    match call(app, "GET", "mine", &[("game", "")], None).await {
-        Ok((403 | 401, _)) => set_access(app, &dir, false),
-        Ok(_) => set_access(app, &dir, true),
-        Err(_) => {}
+    match call(app, "GET", "access", &[], None).await {
+        Ok((200, v)) => set_access(app, &dir, v.get("ok").and_then(Value::as_bool).unwrap_or(false)),
+        Ok((401 | 403, _)) => set_access(app, &dir, false),
+        _ => {}
     }
     allowed()
 }
@@ -146,6 +146,9 @@ pub struct Session {
     /// Check-ins the website already has (the rest go with the next call).
     #[serde(default)]
     pub sent_checkins: usize,
+    /// The game sent its native achievements' names after session-start went: sent again with them.
+    #[serde(default)]
+    pub native_pending: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -169,6 +172,10 @@ struct Store {
     mine: BTreeMap<String, Value>,
     #[serde(default)]
     sound: Option<bool>,
+    /// The game's own achievements as its runtime named them (native_list): id, title,
+    /// description, gamerscore.
+    #[serde(default)]
+    native: BTreeMap<String, Vec<Value>>,
 }
 
 static STORE: Mutex<Option<Store>> = Mutex::new(None);
@@ -234,6 +241,50 @@ async fn fetch_list(app: &AppHandle, game: &str) -> Option<Value> {
 
 fn entries(list: &Value) -> Vec<Value> {
     list.get("achievements").and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+/// The list as the player sees it: a native list without titles takes the names the game's runtime
+/// sent (native_list), and with no list at all those names are the list.
+pub fn effective(dir: &Path, game: &str, list: Option<Value>) -> Option<Value> {
+    let names = with_store(dir, |d| (d.native.get(game).cloned().unwrap_or_default(), false));
+    if names.is_empty() {
+        return list;
+    }
+    let mut l = list.unwrap_or_else(|| json!({"format": 1, "game": game, "source": "native", "console": "x360"}));
+    let have = entries(&l);
+    let filled: Vec<Value> = if have.is_empty() {
+        names.iter().map(|n| { let mut e = n.clone(); if e.get("points").is_none() { e["points"] = json!(points_of(n)); } e }).collect()
+    } else {
+        have.into_iter()
+            .map(|mut e| {
+                let nid = num(&e, "native").or_else(|| num(&e, "id"));
+                if let Some(n) = names.iter().find(|n| num(n, "id") == nid) {
+                    for k in ["title", "description", "gamerscore"] {
+                        if e.get(k).map(|v| v.is_null() || v.as_str() == Some("")).unwrap_or(true) {
+                            if let Some(v) = n.get(k) {
+                                e[k] = v.clone();
+                            }
+                        }
+                    }
+                    if e.get("points").is_none() {
+                        e["points"] = json!(points_of(n));
+                    }
+                }
+                e
+            })
+            .collect()
+    };
+    l["achievements"] = json!(filled);
+    Some(l)
+}
+
+/// Every achievement in the game unlocked: by the list's ids, or a native list's "total".
+fn all_unlocked(list: Option<&Value>, have: &std::collections::HashSet<u32>) -> bool {
+    let ids: Vec<u32> = list.map(entries).unwrap_or_default().iter().filter_map(|a| num(a, "id")).map(|x| x as u32).collect();
+    if !ids.is_empty() {
+        return ids.iter().all(|i| have.contains(i));
+    }
+    list.and_then(|l| num(l, "total")).map(|t| t > 0 && have.len() as u64 >= t).unwrap_or(false)
 }
 
 fn num(v: &Value, k: &str) -> Option<u64> {
@@ -683,6 +734,29 @@ fn handle(app: &AppHandle, game: &str, m: &Value) {
             let _ = app.emit("ach-changed", json!({"game": game}));
         }
         "list_ok" => {}
+        "native_list" => {
+            let names: Vec<Value> = m.get("achievements").and_then(Value::as_array).cloned().unwrap_or_default().into_iter()
+                .filter_map(|a| {
+                    let id = num(&a, "id")?;
+                    let st = |k: &str| a.get(k).and_then(Value::as_str).unwrap_or("").chars().take(200).collect::<String>();
+                    Some(json!({"id": id, "title": st("title"), "description": st("description"), "gamerscore": num(&a, "gamerscore").unwrap_or(0)}))
+                })
+                .take(1000)
+                .collect();
+            if !names.is_empty() {
+                let sid = live(|x| x.get(game).map(|l| l.session.clone()));
+                with_store(&dir, |d| {
+                    d.native.insert(game.into(), names);
+                    if let Some(x) = sid.as_ref().and_then(|s| d.sessions.get_mut(s)) {
+                        x.native_pending = true;
+                    }
+                    ((), true)
+                });
+                let a = app.clone();
+                tauri::async_runtime::spawn(async move { sync(&a).await; });
+                let _ = app.emit("ach-changed", json!({"game": game}));
+            }
+        }
         "unlock" => {
             if let Some(id) = id {
                 record(app, game, id, "memory", num(m, "frame"), false, None);
@@ -760,7 +834,7 @@ fn unlocked_ids(dir: &Path, game: &str) -> Vec<u32> {
 fn record(app: &AppHandle, game: &str, id: u32, source: &str, frame: Option<u64>, earlier: bool, why: Option<&str>) {
     let dir = app.state::<App>().dir.clone();
     let Some((session, casual, voided, after_load, list, name)) = live(|m| m.get(game).map(|l| (l.session.clone(), l.casual.clone(), l.voided.clone(), l.save_loaded.map(|t| t.elapsed().as_secs() < AFTER_LOAD_SECS).unwrap_or(false), l.list.clone(), l.name.clone()))) else { return };
-    let list = list.or_else(|| list_for(&dir, game));
+    let list = effective(&dir, game, list.or_else(|| list_for(&dir, game)));
     let reason = if earlier {
         "earlier".to_string()
     } else if let Some(c) = casual {
@@ -779,8 +853,7 @@ fn record(app: &AppHandle, game: &str, id: u32, source: &str, frame: Option<u64>
         }
         d.unlocks.push(u.clone());
         let have: std::collections::HashSet<u32> = d.unlocks.iter().filter(|x| x.game == game).map(|x| x.id).collect();
-        let ids: Vec<u32> = list.as_ref().map(entries).unwrap_or_default().iter().filter_map(|a| num(a, "id")).map(|x| x as u32).collect();
-        ((true, !ids.is_empty() && ids.iter().all(|i| have.contains(i))), true)
+        ((true, all_unlocked(list.as_ref(), &have)), true)
     });
     if !fresh {
         log_line(game, "*", &format!("{id} was already unlocked"));
@@ -848,7 +921,7 @@ pub async fn sync(app: &AppHandle) {
     }
     let (starts, sends) = with_store(&dir, |d| {
         let unsent: std::collections::HashSet<String> = d.unlocks.iter().filter(|u| !u.synced).map(|u| u.session.clone()).collect();
-        let starts: Vec<Session> = d.sessions.values().filter(|s| s.server.is_none() && (s.ended.is_none() || unsent.contains(&s.id))).cloned().collect();
+        let starts: Vec<Session> = d.sessions.values().filter(|s| (s.server.is_none() && (s.ended.is_none() || unsent.contains(&s.id))) || s.native_pending).cloned().collect();
         ((starts, unsent), false)
     });
     for s in starts {
@@ -865,11 +938,16 @@ pub async fn sync(app: &AppHandle) {
         if let Some(f) = with_store(&dir, |d| (d.found.get(&s.game).cloned(), false)) {
             body["unlock_folder"] = json!(f);
         }
+        // The game's own names for its achievements, as its runtime sent them. The same "local"
+        // again gets the same session back, so this is safe to send a second time.
+        if let Some(n) = with_store(&dir, |d| (d.native.get(&s.game).cloned(), false)) {
+            body["native"] = json!(n);
+        }
         match call(app, "POST", "session-start", &[], Some(body)).await {
             Ok((200..=299, v)) => {
                 let server = v.get("session").map(|x| x.as_str().map(str::to_string).unwrap_or_else(|| x.to_string())).filter(|x| !x.is_empty() && x != "null");
                 if let Some(server) = server {
-                    with_store(&dir, |d| { if let Some(x) = d.sessions.get_mut(&s.id) { x.server = Some(server); x.sent_checkins = x.checkins.len(); } ((), true) });
+                    with_store(&dir, |d| { if let Some(x) = d.sessions.get_mut(&s.id) { x.server = Some(server); x.sent_checkins = x.checkins.len(); x.native_pending = false; } ((), true) });
                 }
             }
             Ok(_) | Err(_) => return,
@@ -882,7 +960,7 @@ pub async fn sync(app: &AppHandle) {
             continue;
         }
         let game = list[0].game.clone();
-        let names = list_for(&dir, &game);
+        let names = effective(&dir, &game, list_for(&dir, &game));
         let items: Vec<Value> = list
             .iter()
             .map(|u| {
@@ -1247,7 +1325,7 @@ pub async fn ach_game(app: AppHandle, id: String, fresh: Option<bool>) -> Res<Va
             }
         });
     }
-    let list = list_for(&dir, &id);
+    let list = effective(&dir, &id, list_for(&dir, &id));
     let (unlocks, progress, broken, mine, found, sound) = with_store(&dir, |d| {
         (
             (
@@ -1276,7 +1354,7 @@ pub async fn ach_game(app: AppHandle, id: String, fresh: Option<bool>) -> Res<Va
     let broken: BTreeMap<String, String> = broken.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
     Ok(json!({
         "allowed": true, "list": list, "unlocks": unlocks, "unlocked": ids, "mine": mine, "progress": progress, "broken": broken,
-        "points": got, "total": total, "count": all.len(), "mastered": !all.is_empty() && all.iter().all(|a| num(a, "id").map(|i| ids.contains(&(i as u32))).unwrap_or(false)),
+        "points": got, "total": total, "count": if all.is_empty() { list.as_ref().and_then(|l| num(l, "total")).unwrap_or(0) as usize } else { all.len() }, "mastered": all_unlocked(list.as_ref(), &ids.iter().copied().collect()),
         "live": live_now, "connected": connected, "hello": hello, "session": session, "found": found, "sound": sound, "paused": paused,
     }))
 }
@@ -1382,6 +1460,14 @@ pub fn ach_reset(app: AppHandle, id: String) {
     });
     crate::trail::note(format!("Achievements {id}: unlocks reset on this PC"));
     let _ = app.emit("ach-changed", json!({"game": id}));
+    // And on the account (test accounts only).
+    let a = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let r = call(&a, "POST", "reset", &[], Some(json!({"game": id}))).await;
+        let n = match &r { Ok((200..=299, v)) => num(v, "cleared").unwrap_or(0).to_string(), _ => "none (offline?)".into() };
+        crate::trail::note(format!("Achievements {id}: reset on the account, {n} cleared"));
+        let _ = a.emit("ach-changed", json!({"game": id}));
+    });
 }
 
 /// Dev tools: the toast, to see it over a game.
@@ -1391,7 +1477,7 @@ pub fn ach_test_toast(app: AppHandle, id: String, mastered: Option<bool>) {
         return;
     }
     let dir = app.state::<App>().dir.clone();
-    let list = list_for(&dir, &id);
+    let list = effective(&dir, &id, list_for(&dir, &id));
     let first = list.as_ref().map(entries).unwrap_or_default().into_iter().next();
     if mastered.unwrap_or(false) {
         toast(&app, json!({"title": id, "mastered": true, "points": list.as_ref().map(entries).unwrap_or_default().iter().map(points_of).sum::<u64>()}));
@@ -1755,6 +1841,16 @@ mod tests {
         assert!(version_ok("1.4.0, 1.4.2", "1.4.2") && !version_ok("1.4.0, 1.4.2", "1.4.1"));
         assert!(version_ok(">=1.2 <2.0", "1.9") && !version_ok(">=1.2 <2.0", "2.0.0"));
         assert!(version_ok("1.0.0 || 2.x", "2.3"));
+    }
+
+    #[test]
+    fn mastered_counts_a_native_lists_total() {
+        let have: std::collections::HashSet<u32> = [1, 2, 3].into_iter().collect();
+        assert!(all_unlocked(Some(&json!({"source": "native", "total": 3})), &have));
+        assert!(!all_unlocked(Some(&json!({"source": "native", "total": 4})), &have));
+        assert!(all_unlocked(Some(&json!({"achievements": [{"id": 1}, {"id": 3}]})), &have));
+        assert!(!all_unlocked(Some(&json!({"achievements": [{"id": 1}, {"id": 9}]})), &have));
+        assert!(!all_unlocked(None, &have));
     }
 
     #[test]

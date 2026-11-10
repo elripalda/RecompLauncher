@@ -107,9 +107,11 @@
     // A native list (Xbox 360) can come without titles: its unlocks show by number.
     const shown = list.length ? list : (d.unlocks || []).map((u) => ({ id: u.id, title: '', points: 0 }));
     const got = shown.filter((x) => (d.unlocked || []).includes(Number(x.id))).length;
-    const pct = shown.length ? Math.round((got / shown.length) * 100) : 0;
+    // A native list with only a "total" (no names yet) counts against that.
+    const of = Math.max(shown.length, Number(d.count) || 0);
+    const pct = of ? Math.round((got / of) * 100) : 0;
     const status = d.paused ? tf('Its list is paused for this version: {why}.', { why: d.paused }) : d.live ? (d.connected ? t('The game is connected: unlocks show as they happen.') : t('The game is running. It hasn\'t connected (it may not have achievements built in yet).')) : '';
-    const head = `<div class="card ach-head"><div class="ach-sum"><div><span class="ach-big">${esc(tf('{n} of {total}', { n: got, total: shown.length }))}</span><span class="muted">${esc(d.total ? tf('{n} of {total} points', { n: d.points, total: d.total }) : t('Achievements'))}</span></div>${d.mastered ? `<span class="ach-mastered">${esc(t('Mastered'))}</span>` : ''}</div>
+    const head = `<div class="card ach-head"><div class="ach-sum"><div><span class="ach-big">${esc(tf('{n} of {total}', { n: got, total: of }))}</span><span class="muted">${esc(d.total ? tf('{n} of {total} points', { n: d.points, total: d.total }) : t('Achievements'))}</span></div>${d.mastered ? `<span class="ach-mastered">${esc(t('Mastered'))}</span>` : ''}</div>
       <div class="ach-bar big" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
       ${status ? `<p class="muted" style="margin:12px 0 0">${esc(status)}</p>` : ''}
       <div class="set-row" style="margin-top:12px"><div class="k"><b>${esc(t('Unlock Sound'))}</b><span>${esc(t('A short chime with each toast over the game.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!d.sound}" aria-label="${esc(t('Unlock Sound'))}" data-ach="sound" data-id="${esc(id)}"></button></div></div>`;
