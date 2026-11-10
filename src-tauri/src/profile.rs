@@ -261,7 +261,7 @@ impl Extra {
             if f.is_dir() {
                 link_dir(&f, &to)?;
             } else if std::fs::hard_link(&f, &to).is_err() {
-                std::fs::copy(&f, &to)?;
+                copy_checked(&f, &to)?;
             }
         }
         Ok(())
@@ -1018,6 +1018,24 @@ fn empty_dir(p: &Path) -> bool {
     p.symlink_metadata().map(|m| m.is_dir() && !m.file_type().is_symlink()).unwrap_or(false) && std::fs::read_dir(p).map(|mut r| r.next().is_none()).unwrap_or(false)
 }
 
+/// A copy of the player's file into the game's folder (another drive, so no link), after checking
+/// it fits: a big copy (a whole disc) that fills the drive halfway helps nobody.
+fn copy_checked(from: &Path, to: &Path) -> std::io::Result<()> {
+    let size = std::fs::metadata(from).map(|m| m.len()).unwrap_or(0);
+    if let Some(free) = crate::manage::free_space(to.parent().unwrap_or(to)) {
+        if free < size.saturating_add(64 << 20) {
+            let gb = |b: u64| format!("{:.1} GB", b as f64 / 1_073_741_824.0);
+            return Err(std::io::Error::other(format!(
+                "Not enough space to copy {} ({}) into the game's folder: {} is free on that drive. Free some space, or keep your game files on the same drive as your library so they don't need copying.",
+                from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                gb(size),
+                gb(free)
+            )));
+        }
+    }
+    std::fs::copy(from, to).map(|_| ())
+}
+
 pub fn place(list: &[Place], install: &Path) -> Option<PathBuf> {
     list.iter().find(|p| p.when.is_empty() || Path::new(&fill(&p.when, install, None)).exists()).map(|p| PathBuf::from(fill(&p.path, install, None)))
 }
@@ -1288,7 +1306,7 @@ impl Profile {
             } else if place_z64(&from, &to)? {
                 continue;
             } else if std::fs::hard_link(&from, &to).is_err() {
-                std::fs::copy(&from, &to)?;
+                copy_checked(&from, &to)?;
             }
         }
         Ok(())

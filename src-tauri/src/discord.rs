@@ -16,6 +16,8 @@ const LOGO: &str = "https://recomplauncher.com/assets/logo-512.png";
 
 pub enum Msg {
     Playing { app_id: String, game: String, recomp: String, cover: String, start: u64 },
+    /// The game's own line (Recomp Achievements' rich presence) in place of "via RecompLauncher".
+    State(String),
     Clear,
 }
 
@@ -26,8 +28,33 @@ fn tx() -> &'static Mutex<Sender<Msg>> {
         let (tx, rx) = channel::<Msg>();
         std::thread::spawn(move || {
             let mut client: Option<(String, DiscordIpcClient)> = None;
+            // What's showing, to show again with a new state line.
+            let mut last: Option<(String, String, String, String, u64)> = None;
+            let mut state_line = String::new();
             for m in rx {
+                let m = match m {
+                    Msg::State(text) => match &last {
+                        Some((app_id, game, recomp, cover, start)) if text != state_line => {
+                            state_line = text;
+                            Msg::Playing { app_id: app_id.clone(), game: game.clone(), recomp: recomp.clone(), cover: cover.clone(), start: *start }
+                        }
+                        _ => continue,
+                    },
+                    Msg::Playing { app_id, game, recomp, cover, start } => {
+                        if last.as_ref().map(|l| l.1 != game).unwrap_or(true) {
+                            state_line.clear();
+                        }
+                        last = Some((app_id.clone(), game.clone(), recomp.clone(), cover.clone(), start));
+                        Msg::Playing { app_id, game, recomp, cover, start }
+                    }
+                    Msg::Clear => {
+                        last = None;
+                        state_line.clear();
+                        Msg::Clear
+                    }
+                };
                 match m {
+                    Msg::State(_) => {}
                     Msg::Playing { app_id, game, recomp, cover, start } => {
                         if app_id.is_empty() {
                             continue;
@@ -58,7 +85,7 @@ fn tx() -> &'static Mutex<Sender<Msg>> {
                                 .activity_type(activity::ActivityType::Playing)
                                 .status_display_type(activity::StatusDisplayType::Details)
                                 .details(game.as_str())
-                                .state("via RecompLauncher")
+                                .state(if state_line.is_empty() { "via RecompLauncher" } else { state_line.as_str() })
                                 .timestamps(activity::Timestamps::new().start(start as i64 * 1000))
                                 .assets(assets)
                                 .buttons(vec![activity::Button::new("Get RecompLauncher", "https://recomplauncher.com")])

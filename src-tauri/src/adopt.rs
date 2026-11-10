@@ -34,6 +34,12 @@ fn norm(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase()
 }
 
+/// Program and folder names any game can have.
+fn generic(n: &str) -> bool {
+    matches!(n, "launcher" | "game" | "games" | "play" | "start" | "setup" | "main" | "client" | "release" | "windows" | "win64" | "portable" | "default" | "runner" | "loader" | "program" | "application" | "bin" | "build")
+        || n.starts_with("launcher") && n[8..].chars().all(|c| c.is_ascii_digit())
+}
+
 /// The catalog recomp that `hints` (a repo, a program's name, a folder's name, a Steam name) point to.
 /// A repo that matches wins outright; otherwise the closest name, and nothing when two are as close.
 pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
@@ -49,12 +55,14 @@ pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
             return Some(s(a, "id"));
         }
     }
-    let hints: Vec<String> = hints.iter().map(|h| norm(h)).filter(|h| h.len() >= 4).collect();
+    // A program called Launcher.exe or Game.exe says nothing about which game it is: those words
+    // never match on their own (another launcher's Link's Awakening isn't the OpenGOAL Launcher).
+    let hints: Vec<String> = hints.iter().map(|h| norm(h)).filter(|h| h.len() >= 4 && !generic(h)).collect();
     let mut best: Option<(usize, String)> = None;
     let mut tie = false;
     for a in apps {
         let repo_name = s(a, "repo").rsplit(['/', ':']).next().unwrap_or("").to_string();
-        let keys: Vec<String> = [s(a, "id"), s(a, "name"), repo_name].iter().map(|k| norm(k)).filter(|k| k.len() >= 4).collect();
+        let keys: Vec<String> = [s(a, "id"), s(a, "name"), repo_name].iter().map(|k| norm(k)).filter(|k| k.len() >= 4 && !generic(k)).collect();
         let mut score = 0;
         for h in &hints {
             for k in &keys {
@@ -686,6 +694,14 @@ mod tests {
             {"id": "unleashedrecomp", "name": "Unleashed Recompiled", "repo": "hedge-dev/UnleashedRecomp"},
             {"id": "mk64recomp", "name": "Mario Kart 64 Recomp", "repo": "mk/MK64"},
         ]})
+    }
+
+    #[test]
+    fn a_generic_program_name_matches_nothing() {
+        let c = json!({"apps": [{"id": "launcher", "name": "OpenGOAL Launcher", "repo": "open-goal/launcher"}, {"id": "zelda64recomp", "name": "Zelda 64: Recompiled", "repo": "Zelda64Recomp/Zelda64Recomp"}]});
+        assert_eq!(guess(&c, "", &["TheLegendOfZeldaLinksAwakeningDX-HDUpdated-Recreation", "Launcher"]), None);
+        assert_eq!(guess(&c, "", &["OpenGOAL Launcher"]), Some("launcher".into()));
+        assert_eq!(guess(&c, "open-goal/launcher", &["Launcher"]), Some("launcher".into()));
     }
 
     #[test]
