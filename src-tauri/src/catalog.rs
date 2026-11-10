@@ -59,6 +59,9 @@ pub struct Fetched {
     pub offline: bool,
     /// Seconds since the copy on disk was saved (0 when fresh).
     pub age: u64,
+    /// Best-effort GitHub repository status, separate from the release array.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<bool>,
 }
 
 fn age_of(p: &Path) -> Option<u64> {
@@ -144,7 +147,7 @@ fn save_tag_from(file: &Path, h: &reqwest::header::HeaderMap) {
 /// The copy on disk, if there's one that looks right, with how old it is.
 fn on_disk(file: &Path, check: fn(&Value) -> bool) -> Option<Fetched> {
     let v = load(file).filter(check)?;
-    Some(Fetched { data: v, offline: crate::net::offline(), age: age_of(file).unwrap_or(0) })
+    Some(Fetched { archived: None, data: v, offline: crate::net::offline(), age: age_of(file).unwrap_or(0) })
 }
 
 /// The copy on disk when it's younger than `fresh` seconds; otherwise the site is asked, and the
@@ -153,7 +156,7 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
     let have = on_disk(&file, check);
     if let Some(h) = &have {
         if h.age < fresh || crate::net::resting(url, player) {
-            return Ok(Fetched { data: h.data.clone(), offline: h.age >= fresh, age: h.age });
+            return Ok(Fetched { archived: h.archived, data: h.data.clone(), offline: h.age >= fresh, age: h.age });
         }
     }
     match get_json(http, url, wait, player, have.as_ref().map(|_| file.as_path())).await {
@@ -168,7 +171,7 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
         Ok(Some((v, headers))) if check(&v) => {
             save(&file, &v);
             save_tag_from(&file, &headers);
-            Ok(Fetched { data: v, offline: false, age: 0 })
+            Ok(Fetched { archived: None, data: v, offline: false, age: 0 })
         }
         Ok(Some(_)) => {
             crate::net::bad_answer(url);
@@ -255,7 +258,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     crate::boot::from_catalog(&mut cat);
     let list = mine(dir);
     if list.is_empty() {
-        return cat;
+        return with_known_project_status(dir, cat);
     }
     if !cat.is_object() {
         cat = serde_json::json!({ "apps": [] });
@@ -270,7 +273,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
             apps.push(e);
         }
     }
-    cat
+    with_known_project_status(dir, cat)
 }
 
 /// owner/repo from a GitHub link (or "owner/repo" itself), or gitlab:group/project from a GitLab
@@ -607,6 +610,7 @@ async fn project_id(http: &reqwest::Client, dir: &Path, path: &str) -> Option<u6
 /// A GitLab release list made ready to use: its project's number where the site left it out
 /// (asked of GitLab once when `http` is given, else only from disk), and the files its notes link to.
 async fn with_gitlab(http: Option<&reqwest::Client>, dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
+    f.archived = f.archived.or_else(|| github_archived_on_disk(dir, repo));
     let Some(path) = gitlab_path(repo) else { return f };
     if needs_project_id(&f.data) {
         let id = match http {
@@ -622,6 +626,7 @@ async fn with_gitlab(http: Option<&reqwest::Client>, dir: &Path, repo: &str, mut
 }
 
 fn with_gitlab_assets(dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
+    f.archived = f.archived.or_else(|| github_archived_on_disk(dir, repo));
     if let Some(id) = gitlab_path(repo).filter(|_| needs_project_id(&f.data)).and_then(|p| project_id_on_disk(dir, p)) {
         put_project_id(&mut f.data, id);
     }
@@ -700,16 +705,67 @@ pub fn mark_hosts(cat: &mut Value) {
     }
 }
 
+fn github_status_file(dir: &Path, repo: &str) -> PathBuf {
+    dir.join("cache/github-repositories").join(format!("{}.json", repo.to_ascii_lowercase().replace('/', "__")))
+}
+
+fn github_archived_on_disk(dir: &Path, repo: &str) -> Option<bool> {
+    if !repo_ok(repo) || site_only(repo) {
+        return None;
+    }
+    load(&github_status_file(dir, repo))?.get("archived")?.as_bool()
+}
+
+fn with_known_project_status(dir: &Path, mut cat: Value) -> Value {
+    for a in cat.get_mut("apps").and_then(Value::as_array_mut).into_iter().flatten() {
+        // Keep fallback provenance: a later release response can supersede this cached flag,
+        // while an explicit catalog boolean remains authoritative.
+        if a.get("archived").and_then(Value::as_bool).is_none() {
+            if let Some(archived) = a.get("repo").and_then(Value::as_str).and_then(|repo| github_archived_on_disk(dir, repo)) {
+                a["github_archived"] = Value::Bool(archived);
+            }
+        }
+    }
+    cat
+}
+
+async fn github_archived(http: &reqwest::Client, dir: &Path, repo: &str, api: &str) -> Option<bool> {
+    let read = async {
+        let r = http.get(format!("{api}/repos/{repo}")).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK).send().await.ok()?;
+        if !r.status().is_success() {
+            return None;
+        }
+        let v: Value = r.json().await.ok()?;
+        if !v.get("full_name").and_then(Value::as_str).map(|name| name.eq_ignore_ascii_case(repo)).unwrap_or(false) {
+            return None;
+        }
+        let archived = v.get("archived")?.as_bool()?;
+        save(&github_status_file(dir, repo), &serde_json::json!({"archived": archived}));
+        Some(archived)
+    };
+    read.await.or_else(|| github_archived_on_disk(dir, repo))
+}
+
 /// Release info straight from GitHub, for when the site can't be reached: GitHub's own list (what
 /// gh.php passes on), so installing and updating still work while the site is down. Downloads
 /// always come from GitHub anyway.
 pub(crate) async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Fetched, Error> {
+    from_github_at(http, dir, repo, "https://api.github.com").await
+}
+
+async fn from_github_at(http: &reqwest::Client, dir: &Path, repo: &str, api: &str) -> Result<Fetched, Error> {
     // A GitLab or SourceForge project's releases only come through the site.
     if site_only(repo) {
         return Err(Error::Net("The site couldn't be reached".into()));
     }
-    let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
-    let r = crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, true).await?;
+    let url = format!("{api}/repos/{repo}/releases?per_page=30");
+    // Ask alongside releases so status never adds a second network timeout. A missing/rate-
+    // limited metadata answer must not stop the player installing the available release.
+    let (release, archived) = tokio::join!(
+        crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, true),
+        github_archived(http, dir, repo, api)
+    );
+    let r = release?;
     if !r.status().is_success() {
         return Err(Error::Net(format!("GitHub answered {}", r.status().as_u16())));
     }
@@ -727,7 +783,7 @@ pub(crate) async fn from_github(http: &reqwest::Client, dir: &Path, repo: &str) 
     if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
         crate::trail::note(&format!("note: release info comes from GitHub this time (the site was slow or busy), first for {repo}"));
     }
-    Ok(Fetched { data: v, offline: false, age: 0 })
+    Ok(Fetched { archived, data: v, offline: false, age: 0 })
 }
 
 /// The site's answer, or GitHub's when the site couldn't give one (`fresh`: an old copy on disk
@@ -903,7 +959,7 @@ mod tests {
         let d = std::env::temp_dir().join(format!("rl-glid-{}", std::process::id()));
         let _ = std::fs::create_dir_all(d.join("cache"));
         super::save(&super::project_ids_file(&d), &serde_json::json!({"g/p": 88379810}));
-        let f = super::Fetched { data: serde_json::json!([{"tag_name": "v1", "body": body, "assets": []}]), offline: false, age: 0 };
+        let f = super::Fetched { archived: None, data: serde_json::json!([{"tag_name": "v1", "body": body, "assets": []}]), offline: false, age: 0 };
         let f = super::with_gitlab_assets(&d, "gitlab:g/p", f);
         assert_eq!(f.data[0]["project_id"], 88379810);
         assert_eq!(f.data[0]["assets"].as_array().unwrap().len(), 2);
@@ -1029,4 +1085,88 @@ pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
         .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
         .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod project_status_tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    // Real HTTP responses, without contacting GitHub or the launcher service.
+    fn server(metadata: &'static str, status: u16) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let handle = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let mut requests = 0;
+            while requests < 2 && std::time::Instant::now() < deadline {
+                let Ok((mut stream, _)) = listener.accept() else { std::thread::sleep(Duration::from_millis(2)); continue };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+                let mut bytes = [0; 4096];
+                let n = stream.read(&mut bytes).unwrap();
+                let request = String::from_utf8_lossy(&bytes[..n]);
+                let (status, body) = if request.starts_with("GET /repos/owner/game/releases?") {
+                    (200, r#"[{"tag_name":"v1","assets":[]}]"#)
+                } else {
+                    assert!(request.starts_with("GET /repos/owner/game HTTP/"), "{request}");
+                    (status, metadata)
+                };
+                write!(stream, "HTTP/1.1 {status} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                requests += 1;
+            }
+        });
+        (url, handle)
+    }
+
+    fn dir() -> PathBuf {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!("recomp-project-status-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn fallback_keeps_archived_status_with_releases_and_catalog() {
+        let dir = dir();
+        let (api, server) = server(r#"{"full_name":"OWNER/Game","archived":true}"#, 200);
+        let f = from_github_at(&reqwest::Client::new(), &dir, "owner/game", &api).await.unwrap();
+        server.join().unwrap();
+        assert_eq!(f.data[0]["tag_name"], "v1");
+        assert_eq!(serde_json::to_value(f).unwrap()["archived"], true);
+        let cached = releases_on_disk(&dir, "owner/game").unwrap();
+        assert_eq!(serde_json::to_value(cached).unwrap()["archived"], true);
+        let cat = with_mine(&dir, serde_json::json!({"apps":[{"id":"game","repo":"owner/game"},{"id":"other","repo":"owner/other"}]}));
+        assert_eq!(cat["apps"][0]["github_archived"], true);
+        assert!(cat["apps"][0].get("archived").is_none());
+        assert!(cat["apps"][1].get("archived").is_none());
+        let explicit = with_mine(&dir, serde_json::json!({"apps":[{"id":"game","repo":"owner/game","archived":false}]}));
+        assert_eq!(explicit["apps"][0]["archived"], false);
+        save_mine(&dir, &[serde_json::json!({"id":"mine","repo":"Owner/Game"})]).unwrap();
+        let mine = with_mine(&dir, serde_json::json!({"apps":[]}));
+        assert_eq!(mine["apps"][0]["github_archived"], true);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn optional_metadata_failures_preserve_releases_and_known_status() {
+        let dir = dir();
+        let http = reqwest::Client::new();
+        for (body, status, want) in [
+            (r#"{"message":"rate limited"}"#, 403, Value::Null),
+            (r#"{"full_name":"owner/game","archived":true}"#, 200, serde_json::json!(true)),
+            (r#"{"message":"rate limited"}"#, 403, serde_json::json!(true)),
+            (r#"{"full_name":"other/game","archived":false}"#, 200, serde_json::json!(true)),
+            (r#"{"full_name":"owner/game","archived":"false"}"#, 200, serde_json::json!(true)),
+            (r#"{"full_name":"owner/game","archived":false}"#, 200, serde_json::json!(false)),
+        ] {
+            let (api, server) = server(body, status);
+            let f = from_github_at(&http, &dir, "owner/game", &api).await.unwrap();
+            server.join().unwrap();
+            assert_eq!(f.data[0]["tag_name"], "v1");
+            assert_eq!(serde_json::to_value(f).unwrap()["archived"], want);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
