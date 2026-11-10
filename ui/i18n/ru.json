@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "Ответа всё ещё нет. На recomplauncher.com/status видно, не на нашей ли стороне проблема.",
  "The website can't be reached right now; copies go up when it can.": "Сайт сейчас недоступен; копии загрузятся, когда он станет доступен.",
  "Waiting to upload (1 copy)": "Ждёт загрузки (1 копия)",
- "Waiting to upload ({n} copies)": "Ждёт загрузки ({n} копия)|Ждёт загрузки ({n} копии)|Ждёт загрузки ({n} копий)"
+ "Waiting to upload ({n} copies)": "Ждёт загрузки ({n} копия)|Ждёт загрузки ({n} копии)|Ждёт загрузки ({n} копий)",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Эта сборка распространяется как Flatpak, а у Flatpak-версии RecompLauncher нет разрешения её установить. Разрешите это командой: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Или переключитесь на другую сборку на странице игры."
 }

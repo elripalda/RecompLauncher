@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "仍然沒有回應。可以到 recomplauncher.com/status 查看是否是我們這邊的問題。",
  "The website can't be reached right now; copies go up when it can.": "目前無法連上網站，連上後會上傳副本。",
  "Waiting to upload (1 copy)": "等待上傳（1 份副本）",
- "Waiting to upload ({n} copies)": "等待上傳（{n} 份副本）"
+ "Waiting to upload ({n} copies)": "等待上傳（{n} 份副本）",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "這個組建以 Flatpak 形式提供，而 RecompLauncher 的 Flatpak 沒有安裝它的權限。可用此指令允許：flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher。或在遊戲頁面上切換到其他組建。"
 }

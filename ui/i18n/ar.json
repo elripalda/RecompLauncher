@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "لا يوجد رد حتى الآن. راجع recomplauncher.com/status لمعرفة ما إذا كانت المشكلة من جهتنا.",
  "The website can't be reached right now; copies go up when it can.": "تعذر الوصول إلى الموقع الآن؛ ستُرفع النسخ عندما يصبح ذلك ممكنًا.",
  "Waiting to upload (1 copy)": "بانتظار الرفع (نسخة واحدة)",
- "Waiting to upload ({n} copies)": "بانتظار الرفع (نسختان)|بانتظار الرفع ({n} نسخ)|بانتظار الرفع ({n} نسخة)|بانتظار الرفع ({n} نسخة)"
+ "Waiting to upload ({n} copies)": "بانتظار الرفع (نسختان)|بانتظار الرفع ({n} نسخ)|بانتظار الرفع ({n} نسخة)|بانتظار الرفع ({n} نسخة)",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "يأتي هذا الإصدار بصيغة Flatpak، وFlatpak الخاص بـ RecompLauncher غير مسموح له بتثبيته. اسمح له بالأمر: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. أو انتقل إلى إصدار آخر من صفحة اللعبة."
 }

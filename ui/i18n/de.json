@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "Immer noch keine Antwort. Unter recomplauncher.com/status siehst du, ob es an uns liegt.",
  "The website can't be reached right now; copies go up when it can.": "Die Website ist gerade nicht erreichbar; Kopien werden hochgeladen, sobald es wieder geht.",
  "Waiting to upload (1 copy)": "Wartet aufs Hochladen (1 Kopie)",
- "Waiting to upload ({n} copies)": "Wartet aufs Hochladen ({n} Kopien)"
+ "Waiting to upload ({n} copies)": "Wartet aufs Hochladen ({n} Kopien)",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Dieser Build kommt als Flatpak, und das RecompLauncher-Flatpak darf ihn nicht installieren. Erlaube es mit: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Oder wechsle auf der Seite des Spiels zu einem anderen Build."
 }

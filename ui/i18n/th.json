@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "ยังไม่มีการตอบกลับ ดูที่ recomplauncher.com/status ว่าปัญหาอยู่ที่ฝั่งเราหรือไม่",
  "The website can't be reached right now; copies go up when it can.": "ตอนนี้เชื่อมต่อเว็บไซต์ไม่ได้ สำเนาจะอัปโหลดเมื่อเชื่อมต่อได้",
  "Waiting to upload (1 copy)": "รออัปโหลด (1 สำเนา)",
- "Waiting to upload ({n} copies)": "รออัปโหลด ({n} สำเนา)"
+ "Waiting to upload ({n} copies)": "รออัปโหลด ({n} สำเนา)",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "บิลด์นี้มาในรูปแบบ Flatpak และ Flatpak ของ RecompLauncher ไม่ได้รับอนุญาตให้ติดตั้ง อนุญาตได้ด้วยคำสั่ง: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher หรือสลับไปใช้บิลด์อื่นที่หน้าของเกม"
 }

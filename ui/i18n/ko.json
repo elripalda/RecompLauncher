@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "아직 응답이 없습니다. 저희 쪽 문제인지 recomplauncher.com/status에서 확인하세요.",
  "The website can't be reached right now; copies go up when it can.": "지금은 웹사이트에 연결할 수 없습니다. 연결되면 사본이 올라갑니다.",
  "Waiting to upload (1 copy)": "업로드 대기 중 (사본 1개)",
- "Waiting to upload ({n} copies)": "업로드 대기 중 (사본 {n}개)"
+ "Waiting to upload ({n} copies)": "업로드 대기 중 (사본 {n}개)",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "이 빌드는 Flatpak으로 제공되는데, RecompLauncher Flatpak에는 이를 설치할 권한이 없습니다. 다음 명령으로 허용하세요: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. 또는 게임 페이지에서 다른 빌드로 바꾸세요."
 }

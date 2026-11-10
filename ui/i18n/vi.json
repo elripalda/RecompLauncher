@@ -2386,5 +2386,6 @@
  "Still no answer. See recomplauncher.com/status for whether it's on our side.": "Vẫn chưa có phản hồi. Xem recomplauncher.com/status để biết sự cố có phải từ phía chúng tôi không.",
  "The website can't be reached right now; copies go up when it can.": "Hiện không thể kết nối trang web; các bản sao sẽ được tải lên khi kết nối được.",
  "Waiting to upload (1 copy)": "Đang chờ tải lên (1 bản sao)",
- "Waiting to upload ({n} copies)": "Đang chờ tải lên ({n} bản sao)"
+ "Waiting to upload ({n} copies)": "Đang chờ tải lên ({n} bản sao)",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Bản dựng này ở dạng Flatpak, nhưng bản Flatpak của RecompLauncher chưa được phép cài nó. Hãy cấp quyền bằng lệnh: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Hoặc chuyển sang bản dựng khác trên trang của trò chơi."
 }
