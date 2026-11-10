@@ -1328,14 +1328,20 @@ impl Profile {
     }
 
     pub fn command(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Option<(PathBuf, Vec<String>)> {
+        self.command_for(install, game, picks, true)
+    }
+
+    /// The command it runs. `windows_build`: the installed build is the Windows one (on Windows, or
+    /// through Proton), so the profile's Windows program comes first. With a native build, a program
+    /// with the same name comes first: an old `.exe` left beside it (a switch from the Windows build)
+    /// must not hide the native one.
+    pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
         let _w = WineFill::new(self.through_proton(install));
         let s = self.start.as_ref()?;
-        let exe = s
-            .program
-            .iter()
-            .map(|p| install.join(p))
-            .find(|p| p.is_file())
-            .or_else(|| if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) })?;
+        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
+        let exe = if windows_build { None } else { twin() }
+            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
+            .or_else(twin)?;
         crate::boot::runnable(&exe);
         Some((exe, self.args_for(install, game, picks)))
     }
@@ -2281,6 +2287,29 @@ mod tests {
         assert_eq!(super::native_twin(&d, "pd.i686.exe").unwrap().file_name().unwrap(), "pd.x86_64");
         assert_eq!(super::native_twin(&d, "pd.pal.i686.exe").unwrap().file_name().unwrap(), "pd.pal.x86_64");
         assert!(super::native_twin(&d, "other.exe").is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_build_ignores_a_leftover_windows_exe() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("rl-native-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for n in ["parasite-eve-pc.exe", "parasite-eve-pc"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"x").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["parasite-eve-pc.exe"]}}"#).unwrap();
+        let picks = BTreeMap::new();
+        // A Windows build (through Proton) starts the .exe; a native build starts the native program
+        // even when the old .exe from a previous Windows install is still in the folder.
+        assert_eq!(p.command_for(&d, None, &picks, true).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0.file_name().unwrap(), "parasite-eve-pc");
+        // The plain call keeps the Windows-first behavior for callers that don't know the build.
+        assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
         let _ = std::fs::remove_dir_all(&d);
     }
 

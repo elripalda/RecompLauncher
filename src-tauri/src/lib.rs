@@ -214,10 +214,14 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // with nothing for this system in it (only an updater's files, say): the newest one that has.
     let os0 = os_for(st, &entry, id);
     let pattern0 = entry.get("assets").and_then(|a| a.get(os0)).and_then(Value::as_str);
-    let has_build = |r: &Release| {
-        assets::pick(&r.assets, os0, assets::arch_now(), pattern0).is_some()
-            || (os0 == "linux" && r.assets.iter().any(|a| { let n = a.name.to_lowercase(); (n.contains("linux") || n.ends_with(".appimage")) && assets::pick(std::slice::from_ref(a), "linux", assets::arch_now(), None).is_some() }))
+    // The list is the source of truth for Windows. A Linux or Mac build the list doesn't name yet
+    // (the developer just added one): the release's own file names decide.
+    let named_build = |r: &Release| {
+        os0 != "windows"
+            && !runs_here(&entry, os0)
+            && assets::pick(&named_for(&r.assets, os0), os0, assets::arch_now(), None).is_some()
     };
+    let has_build = |r: &Release| assets::pick(&r.assets, os0, assets::arch_now(), pattern0).is_some() || named_build(r);
     let mut fell_back = false;
     // The release the store checked and let out (the list's "tag"): that one, unless the player
     // picked a version. When it's gone from GitHub or has nothing for this system, the usual rules.
@@ -271,23 +275,23 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         _ => "Linux",
     };
     // The list says which systems a recomp is for: one that isn't for this one isn't installed, even
-    // when its release has a file that looks like it could be.
-    // A Linux build the list doesn't know about yet (the developer just added one): the release
-    // itself says so.
-    // Only a file that says it's for Linux counts.
-    let linux_files: Vec<_> = rel.assets.iter().filter(|a| { let n = a.name.to_lowercase(); n.contains("linux") || n.ends_with(".appimage") }).cloned().collect();
-    let linux_new = os == "linux" && !runs_here(&entry, os) && assets::pick(&linux_files, "linux", arch, None).is_some();
-    if !runs_here(&entry, os) && !linux_new {
+    // when its release has a file that looks like it could be. A build the list doesn't know about
+    // yet (the developer just added one): the release itself says so, when its file names the
+    // system. The list stays the source of truth for Windows; for Linux and macOS the release's own
+    // file names decide, since listings often lag behind a new build.
+    let named = named_for(&rel.assets, os);
+    let os_new = os != "windows" && !runs_here(&entry, os) && assets::pick(&named, os, arch, None).is_some();
+    if !runs_here(&entry, os) && !os_new {
         return Err(Error::Msg(format!("This recomp has no {os_name} version yet.")));
     }
-    let mut asset = (if linux_new { assets::pick(&linux_files, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
+    let mut asset = (if os_new { assets::pick(&named, os, arch, None) } else { assets::pick(&rel.assets, os, arch, pattern) })
         .ok_or_else(|| Error::Msg(format!("The latest release ({}) has no {os_name} version.", rel.tag_name)))?
         .clone();
     // Several builds that fit this PC equally (one per region, say), or in different forms (an
     // AppImage and a plain folder, a portable zip and an installer): the one the player picked, the
     // one most like what they had, or they're asked once, with the usual pick first.
-    let choices = if linux_new { assets::choices(&linux_files, os, arch, None) } else { assets::choices(&rel.assets, os, arch, pattern) };
-    let all = if linux_new { assets::all_for(&linux_files, os, arch, None) } else { assets::all_for(&rel.assets, os, arch, pattern) };
+    let choices = if os_new { assets::choices(&named, os, arch, None) } else { assets::choices(&rel.assets, os, arch, pattern) };
+    let all = if os_new { assets::all_for(&named, os, arch, None) } else { assets::all_for(&rel.assets, os, arch, pattern) };
     // Kinds of build, 32-bit or not alike: a 32-bit copy alone isn't worth asking about (Change Build has it).
     let forms = all.iter().map(|a| assets::describe(&a.name, os).trim_start_matches("32-Bit ").to_lowercase()).collect::<std::collections::HashSet<_>>().len();
     let had = st.lib.lock().unwrap().installed.get(id).map(|g| g.asset.clone()).filter(|a| !a.is_empty());
@@ -693,6 +697,12 @@ fn os_for(st: &App, entry: &Value, id: &str) -> &'static str {
     }
 }
 
+/// Whether the installed build is the Windows one (on Windows, or through Proton). A native build
+/// prefers a native program with the Windows one's name, even when an old `.exe` is still there.
+fn is_windows_build(g: &Installed) -> bool {
+    crate::boot::windows_build(g.proton)
+}
+
 /// A release file that says it's for Linux (its name, or an AppImage).
 fn looks_linux(asset: &str) -> bool {
     let n = asset.to_lowercase();
@@ -730,7 +740,7 @@ fn linux_and_windows(st: &App, entry: &Value, rel: &Release, arch: &str) -> (Vec
     let lin: Vec<assets::Asset> = if runs_here(entry, "linux") {
         assets::all_for(&rel.assets, "linux", arch, pat("linux")).into_iter().cloned().collect()
     } else {
-        let named: Vec<assets::Asset> = rel.assets.iter().filter(|a| { let n = a.name.to_lowercase(); n.contains("linux") || n.ends_with(".appimage") }).cloned().collect();
+        let named = named_for(&rel.assets, "linux");
         assets::all_for(&named, "linux", arch, None).into_iter().cloned().collect()
     };
     let win: Vec<assets::Asset> = assets::all_for(&rel.assets, "windows", arch, pat("windows")).into_iter().cloned().collect();
@@ -738,6 +748,11 @@ fn linux_and_windows(st: &App, entry: &Value, rel: &Release, arch: &str) -> (Vec
         return (vec![], vec![]);
     }
     (lin, win)
+}
+
+/// The files of a release whose names (or kinds) say they are for `os`.
+fn named_for(assets: &[assets::Asset], os: &str) -> Vec<assets::Asset> {
+    assets.iter().filter(|a| assets::says_os(&a.name, os)).cloned().collect()
 }
 
 fn runs_here(entry: &Value, os: &str) -> bool {
@@ -1702,7 +1717,7 @@ fn direct_start(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, Vec<Strin
                 }
                 None => None,
             };
-            p.command(&g.path, copy.as_deref(), &g.picks)?
+            p.command_for(&g.path, copy.as_deref(), &g.picks, is_windows_build(g))?
         }
         Some(p) => (g.path.join(g.exe.as_ref()?), p.setting_args(&g.path, &g.picks)),
         None => (g.path.join(g.exe.as_ref()?), vec![]),
@@ -2267,7 +2282,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
             game_env = p.env_vars(&g.path, copy.as_deref());
             // Its program under another name than the profile's (a Linux build): the one the game
             // starts with, still given the copy and the rest of the profile's command line.
-            p.command(&g.path, copy.as_deref(), &g.picks).or_else(|| {
+            p.command_for(&g.path, copy.as_deref(), &g.picks, is_windows_build(&g)).or_else(|| {
                 let e = g.exe.as_ref().map(|e| g.path.join(e)).filter(|e| e.is_file())?;
                 trail::note(format!("Play {id}: the profile's program isn't here, its arguments go to {}", e.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
                 Some((e, p.args_for(&g.path, copy.as_deref(), &g.picks)))
@@ -4349,7 +4364,7 @@ fn started_exe(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         .as_ref()
         .and_then(|m| m.exe.clone())
         .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
-        .or_else(|| prof.as_ref().and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e)))
+        .or_else(|| prof.as_ref().and_then(|p| p.command_for(&g.path, g.game_copy.as_deref(), &g.picks, is_windows_build(g)).map(|(e, _)| e)))
         .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)))
         .filter(|e| e.is_file())
 }
@@ -4505,7 +4520,7 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         .as_ref()
         .and_then(|m| m.exe.clone())
         .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
-        .or_else(|| prof.as_ref().and_then(|p| p.command(&g.path, g.game_copy.as_deref(), &g.picks).map(|(e, _)| e)))
+        .or_else(|| prof.as_ref().and_then(|p| p.command_for(&g.path, g.game_copy.as_deref(), &g.picks, is_windows_build(&g)).map(|(e, _)| e)))
         .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
     let Some(exe) = exe.filter(|e| e.is_file()) else {
         if g.manual.is_some() {
@@ -7892,6 +7907,15 @@ mod tests {
         assert!(runs_here(&json!({"systems": [], "assets": {}}), "windows"));
         assert!(runs_here(&json!({"systems": ["linux"], "assets": {"windows": "x.zip"}}), "windows"));
         assert!(runs_here(&json!({"name": "no info"}), "macos"));
+    }
+
+    #[test]
+    fn a_release_file_says_which_system_it_is_for() {
+        let a = |n: &str| assets::Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new(), url: None };
+        let rel = [a("Game-windows-x64.zip"), a("Game-linux-x86_64.tar.gz"), a("Game-macOS.zip"), a("SHA256SUMS")];
+        assert_eq!(named_for(&rel, "linux").iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-linux-x86_64.tar.gz"]);
+        assert_eq!(named_for(&rel, "macos").iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
+        assert_eq!(named_for(&rel, "windows").iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-windows-x64.zip"]);
     }
 
     #[test]

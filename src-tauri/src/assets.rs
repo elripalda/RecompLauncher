@@ -257,7 +257,7 @@ pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
 }
 
 /// Does the file's name (or its kind: a .exe, an AppImage, a .dmg) say it's for `os`?
-fn says_os(name: &str, os: &str) -> bool {
+pub(crate) fn says_os(name: &str, os: &str) -> bool {
     let w = words(name);
     let by_kind = matches!((os, kind(name).unwrap_or("")), ("windows", "exe") | ("linux", "appimage") | ("macos", "dmg"));
     by_kind || OS_WORDS.iter().any(|(o, list)| *o == os && w.iter().any(|x| list.contains(&x.as_str())))
@@ -377,6 +377,20 @@ mod tests {
         assert_eq!(all_for(&r, "windows", "x64", None).len(), 2);
         // An editor alone is still picked.
         assert_eq!(pick(&r[..1], "windows", "x64", None).unwrap().name, "fm-editor-v0.3.1-preview.1-windows.zip");
+    }
+
+    #[test]
+    fn a_files_name_says_which_system_it_is_for() {
+        assert!(says_os("Parasite-Eve-0.11-linux-x86_64.tar.gz", "linux"));
+        assert!(says_os("Game.AppImage", "linux"));
+        assert!(says_os("Game-macOS.zip", "macos"));
+        assert!(says_os("Game.dmg", "macos"));
+        assert!(says_os("Game-windows-x64.zip", "windows"));
+        assert!(says_os("Game-Setup.exe", "windows"));
+        // A plain ZIP could be for any system: the list's pattern or the best guess decides.
+        assert!(!says_os("Game.zip", "linux"));
+        // A Linux build is never a Windows one.
+        assert!(!says_os("Game-linux.tar.gz", "windows"));
     }
 
     #[test]
