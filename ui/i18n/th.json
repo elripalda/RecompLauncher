@@ -2642,5 +2642,13 @@
  "Your Disc Image": "ดิสก์อิมเมจของคุณ",
  "Xbox 360 Disc Image": "ดิสก์อิมเมจ Xbox 360",
  "Found {n} achievements.": "พบความสำเร็จ {n} รายการ",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "ไม่พบเกม Xbox 360 ในที่นั้น เลือกดิสก์อิมเมจ (.iso) หรือโฟลเดอร์ที่มี default.xex"
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "ไม่พบเกม Xbox 360 ในที่นั้น เลือกดิสก์อิมเมจ (.iso) หรือโฟลเดอร์ที่มี default.xex",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "บิลด์นี้มาในรูปแบบ Flatpak และ Flatpak ของ RecompLauncher ไม่ได้รับอนุญาตให้ติดตั้ง อนุญาตได้ด้วยคำสั่ง: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher หรือสลับไปใช้บิลด์อื่นที่หน้าของเกม",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak อ่านการตั้งค่าของอีมูเลเตอร์ไม่ได้ เพิ่มโฟลเดอร์เกมของอีมูเลเตอร์ด้วยปุ่มเพิ่มโฟลเดอร์",
+ "For the best performance, install recomps in your Games folder or on another drive.": "เพื่อประสิทธิภาพที่ดีที่สุด ให้ติดตั้ง Recomp ในโฟลเดอร์ Games หรือบนไดรฟ์อื่น",
+ "Use Games/ROMs": "ใช้ Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "ใส่ ROM และอิมเมจดิสก์ไว้ที่นี่ แล้วตัวเปิดเกมจะหาเจอเอง",
+ "Couldn't create the ROMs folder in Games.": "สร้างโฟลเดอร์ ROMs ใน Games ไม่ได้",
+ "or": "หรือ",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "กำลังแตกไฟล์เกมในการเล่นครั้งแรก ครั้งต่อไปจะเปิดได้เร็วขึ้น"
 }

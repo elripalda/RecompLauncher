@@ -3100,7 +3100,7 @@ function pageSettings() {
       break;
     case 'library':
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
-        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 game', '{n} games'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}`,
+        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 game', '{n} games'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Your games'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(tn(S.roms.filter((r) => String(r.path).startsWith(d)).length, '1 game or disc image', '{n} games and disc images'))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
@@ -3646,7 +3646,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   S.running = new Set(st.running || []);
@@ -3925,6 +3925,9 @@ function tellSlow() {
   }, t('The Launcher Is Drawing Slowly Here'));
 }
 async function pickFile(opts) {
+  // As a Flatpak, the launcher's own picker sees only the folders it's allowed: the system's
+  // picker (the portal) reaches every folder, in TV mode too.
+  if (S.flatpak && !opts.launcherPicker) return systemPicker(opts);
   if (document.body.classList.contains('tv-on') && window.tvBrowse) return window.tvBrowse(opts);
   // On the desktop, Windows' own picker unless the player chose the launcher's in Settings: it
   // opens at once, reaches every folder and takes a pasted path.
@@ -4423,6 +4426,12 @@ async function loadLibs() {
   if (S.view === 'settings') render(true);
 }
 
+// As a Flatpak, a folder outside ~/Games and the drives comes through the system's picker as a
+// shared path (/run/user/…/doc/…), which is slower: a note under the install folders says so.
+function sharedLibraryNote(paths) {
+  if (!S.flatpak || !paths.some((p) => /^\/run\/user\/\d+\/doc\//.test(p || ''))) return '';
+  return `<div class="callout lib-note"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI.info}</svg></span><div class="k"><span>${esc(t('For the best performance, install recomps in your Games folder or on another drive.'))}</span></div></div>`;
+}
 async function addLibrary() {
   const p = await pickFile({ title: t('A folder for games, on any drive'), directory: true }).catch(fail);
   if (!p) return null;
@@ -5104,7 +5113,11 @@ async function scanRoms() {
 async function emuFolders(quiet) {
   let found = [];
   try { found = (await invoke('emulator_folders')) || []; } catch (e) { found = []; }
-  if (!found.length) { if (!quiet) toast(t('No emulator game folders found on this PC beyond the ones already added.')); return false; }
+  if (!found.length) {
+    // The Flatpak can't read the emulators' settings: their folders are added by hand.
+    if (!quiet) toast(S.flatpak ? t('The Flatpak can\'t read your emulators\' settings. Add their game folders with Add a folder.') : t('No emulator game folders found on this PC beyond the ones already added.'));
+    return false;
+  }
   const v = await ask(t('Add Your Emulators\' Game Folders?'), `<p>${esc(t('These folders are where your emulators keep games. The launcher only reads them.'))}</p><ul class="lacks">${found.map((f) => `<li><b>${esc(f.emu)}</b> · <span class="path">${esc(f.path)}</span></li>`).join('')}</ul>`,
     [{ label: t('Not Now'), icon: 'chevL', v: null }, { label: tn(found.length, 'Add 1 Folder', 'Add {n} Folders'), icon: 'plus', v: 'add', main: true }]);
   if (v !== 'add') return false;
@@ -5913,8 +5926,10 @@ const TS_TEXT = [
   N_('No updates in 1 year'),
   N_('No updates in {n} years'),
   N_('This build comes as a Flatpak, and Flatpak isn\'t on this PC. Install Flatpak from your system\'s software center, or switch to another build on the game\'s page.'),
+  N_('This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.'),
   N_('This Flatpak file doesn\'t say which app it holds, so it can\'t be installed. Switch to another build on the game\'s page.'),
   N_('Installing its Flatpak for the first time. It can take a few minutes; the game starts when it\'s done.'),
+  N_('Unpacking the game the first time it\'s played. Later starts are quicker.'),
   N_('That\'s inside the launcher\'s own folder. Pick a folder of yours, on any drive.'),
   N_('The launcher can\'t write to that folder. Pick another one.'),
   N_('The launcher isn\'t allowed to write to the library folder. Pick one in your home folder in Settings → Games and Folders.'),

@@ -1,0 +1,64 @@
+name: Flatpak
+
+# Builds the Flathub package from the checked-out source. Separate from the PR checks, so it
+# isn't one of the required ones; it runs when packaging, the Rust code or the lockfile change.
+on:
+  pull_request:
+    paths:
+      - packaging/flatpak/**
+      - src-tauri/**
+      - ui/**
+      - .github/workflows/flatpak.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flatpak:
+    name: Build Flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare the build files
+        shell: bash
+        run: |
+          cd packaging/flatpak
+          git clone --depth 1 https://github.com/flathub/shared-modules shared-modules
+          curl -fsSL -o flatpak-cargo-generator.py https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+          pip3 install --break-system-packages aiohttp tomlkit PyYAML
+          python3 flatpak-cargo-generator.py ../../src-tauri/Cargo.lock -o cargo-sources.json
+          # The release manifest fetches a tagged commit; here the build uses this checkout.
+          python3 - <<'PY'
+          import yaml
+          p = "com.recomplauncher.RecompLauncher.yml"
+          m = yaml.safe_load(open(p))
+          mod = m["modules"][-1]
+          mod["sources"][0] = {"type": "dir", "path": "../.."}
+          yaml.safe_dump(m, open("ci-manifest.yml", "w"), sort_keys=False)
+          PY
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: RecompLauncher.flatpak
+          manifest-path: packaging/flatpak/ci-manifest.yml
+          # Reused while the crates and the manifest stay the same.
+          cache-key: flatpak-builder-${{ hashFiles('src-tauri/Cargo.lock', 'packaging/flatpak/com.recomplauncher.RecompLauncher.yml') }}
+          restore-cache: true
+
+      # Flathub's own checks. Only errors fail it (the release's missing commit is a warning).
+      - name: Lint the manifest and app data
+        run: |
+          flatpak install -y --noninteractive flathub org.flatpak.Builder
+          cd packaging/flatpak
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.recomplauncher.RecompLauncher.yml
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream com.recomplauncher.RecompLauncher.metainfo.xml

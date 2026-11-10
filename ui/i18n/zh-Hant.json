@@ -2642,5 +2642,13 @@
  "Your Disc Image": "您的光碟映像檔",
  "Xbox 360 Disc Image": "Xbox 360 光碟映像檔",
  "Found {n} achievements.": "找到 {n} 個成就。",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "那裡沒有找到 Xbox 360 遊戲。請選擇光碟映像檔（.iso），或包含 default.xex 的資料夾。"
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "那裡沒有找到 Xbox 360 遊戲。請選擇光碟映像檔（.iso），或包含 default.xex 的資料夾。",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "這個組建以 Flatpak 形式提供，而 RecompLauncher 的 Flatpak 沒有安裝它的權限。可用此指令允許：flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher。或在遊戲頁面上切換到其他組建。",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak 版無法讀取你的模擬器設定。請用「新增資料夾」新增它們的遊戲資料夾。",
+ "For the best performance, install recomps in your Games folder or on another drive.": "為獲得最佳效能，請將重新編譯遊戲安裝到 Games 資料夾或其他磁碟機上。",
+ "Use Games/ROMs": "使用 Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "把 ROM 和光碟映像檔放在這裡，啟動器會自己找到它們。",
+ "Couldn't create the ROMs folder in Games.": "無法在 Games 中建立 ROMs 資料夾。",
+ "or": "或",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "首次遊玩時正在解開遊戲。之後啟動會更快。"
 }

@@ -77,17 +77,22 @@
         // The folders the player's emulators already list: one press adds them all.
         if (O.emus === undefined) { O.emus = null; invoke('emulator_folders').then((f) => { O.emus = (f || []).filter((x) => !dirs.includes(x.path)); draw(); }).catch(() => { O.emus = []; }); }
         const emus = (O.emus || []).filter((x) => !dirs.includes(x.path));
-        const emuBtn = emus.length ? `<button type="button" class="btn main oob-add" data-o="emus">${ICON.folder}${esc(tf('Add {n} from {emus}', { n: emus.length, emus: [...new Set(emus.map((x) => x.emu))].join(', ') }))}</button>` : '';
+        // As a Flatpak: ~/Games/ROMs is read directly, no picker. Offered until it's added.
+        const romBtn = S.flatpak && !dirs.some((d) => /\/Games\/ROMs\/?$/.test(d)) ? `<button type="button" class="btn main" data-o="romdir" title="${esc(t('Put your ROMs and disc images here and the launcher finds them on its own.'))}">${ICON.folder}${esc(t('Use Games/ROMs'))}</button>` : '';
+        const emuBtn = emus.length ?`<button type="button" class="btn main oob-add" data-o="emus">${ICON.folder}${esc(tf('Add {n} from {emus}', { n: emus.length, emus: [...new Set(emus.map((x) => x.emu))].join(', ') }))}</button>` : '';
         return `<h1>${esc(t('Where do you keep your games?'))}</h1><p class="oob-lead">${esc(t('Add the folders with your disc images, ROMs and game backups. The launcher finds the games that have recomps. Nothing leaves your PC.'))}</p>
           <div class="oob-box">${dirs.map((d) => `<div class="oob-dir">${ICON.folder}<span title="${esc(d)}">${esc(d)}</span><button type="button" class="btn sm" data-o="rm" data-path="${esc(d)}">${esc(t('Remove'))}</button></div>`).join('')}
-          ${emuBtn}<button type="button" class="btn${dirs.length || emus.length ? '' : ' main'} oob-add" data-o="add">${ICON.folder}${esc(dirs.length ? t('Add another folder') : t('Add a folder'))}</button></div>${status}`;
+          ${emuBtn}${romBtn
+            // The Flatpak: Games/ROMs first and highlighted, the picker beside it.
+            ? `<div class="oob-choice">${romBtn}<span class="oob-or">${esc(t('or'))}</span><button type="button" class="btn" data-o="add">${ICON.folder}${esc(dirs.length ? t('Add another folder') : t('Add a folder'))}</button></div>`
+            : `<button type="button" class="btn${dirs.length || emus.length ? '' : ' main'} oob-add" data-o="add">${ICON.folder}${esc(dirs.length ? t('Add another folder') : t('Add a folder'))}</button>`}</div>${status}`;
       }
       case 'library': {
         const lib = S.settings.library_dir || '';
         const info = (S.libs || []).find((l) => l.path === lib);
         return `<h1>${esc(t('Where should games go?'))}</h1><p class="oob-lead">${esc(t('Recomps install here. You can add more places, on other drives, in Settings.'))}</p>
           <div class="oob-box"><div class="oob-dir big">${ICON.folder}<span title="${esc(lib)}">${esc(lib)}</span><button type="button" class="btn sm" data-o="lib">${esc(t('Change'))}</button></div>
-          ${info && info.free ? `<p class="oob-free">${esc(tf('{free} free on this drive', { free: fmtB(info.free) }))}</p>` : ''}</div>
+          ${info && info.free ? `<p class="oob-free">${esc(tf('{free} free on this drive', { free: fmtB(info.free) }))}</p>` : ''}${sharedLibraryNote([lib])}</div>
           <div class="oob-deck"><div><b>${esc(t('Already have recomps?'))}</b><span>${esc(t('Bring in the ones you installed yourself, with Quiver Launcher or in Steam. They keep updating from here, where they are.'))}</span></div><button type="button" class="btn" data-o="adopt">${esc(t('Bring Your Recomps'))}</button></div>`;
       }
       case 'choices':
@@ -185,6 +190,12 @@
         return;
       case 'add': {
         const p = await pickFile({ title: t('A folder with your games'), directory: true }).catch(fail);
+        if (!p) return;
+        await save({ rom_dirs: uniq([...(S.settings.rom_dirs || []), p]) });
+        return scan();
+      }
+      case 'romdir': {
+        const p = await invoke('games_rom_folder').catch(fail);
         if (!p) return;
         await save({ rom_dirs: uniq([...(S.settings.rom_dirs || []), p]) });
         return scan();

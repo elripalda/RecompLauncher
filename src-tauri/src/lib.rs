@@ -972,6 +972,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     }
     let libs = st.lib.lock().unwrap().settings.all_libraries();
     let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return Ok(json!({})) };
+    // Its AppImage unpacked for the Flatpak: a copy in the launcher's cache, never the player's.
+    flatpak::forget_unpacked(&id);
     // Still open outside the launcher (or still closing): Windows won't let its files go.
     if delete_files && g.exe.as_ref().map(|e| already_open(&if e.is_absolute() { e.clone() } else { g.path.join(e) })).unwrap_or(false) {
         return Err(Error::Msg(format!("{} is still open. Close it, then uninstall it.", g.name)));
@@ -2516,7 +2518,25 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     };
     // A Python script starts through its interpreter.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    // An AppImage in the Flatpak: unpacked once (no FUSE in the sandbox) and started from there.
+    // If it won't unpack, it unpacks itself for this start below, as before.
+    let unpacked = if cfg!(target_os = "linux") && ext == "appimage" && flatpak::sandboxed() {
+        if !flatpak::is_unpacked(&exe, id) {
+            trail::note(format!("Play {id}: unpacking its AppImage once"));
+            let _ = app.emit("note", "Unpacking the game the first time it's played. Later starts are quicker.");
+        }
+        match flatpak::unpacked_appimage(&exe, id) {
+            Ok(dir) => Some(dir),
+            Err(e) => {
+                trail::note(format!("Play {id}: the AppImage didn't unpack ({e}); it unpacks itself this time"));
+                None
+            }
+        }
+    } else {
+        None
+    };
     let mut cmd = match ext.as_str() {
+        _ if unpacked.is_some() => tokio::process::Command::new(unpacked.as_ref().map(|d| d.join("AppRun")).unwrap_or_default()),
         "py" if cfg!(windows) => {
             let mut c = tokio::process::Command::new("py");
             c.arg("-3").arg(&exe);
@@ -2541,6 +2561,9 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
         // A Flatpak bundle: Linux can't run the file itself. Installed for this user the first
         // time (with what it needs from Flathub), then started through Flatpak.
         "flatpak" if !cfg!(windows) => {
+            if flatpak::host_flatpak_blocked() {
+                return Err(Error::Msg("This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.".into()));
+            }
             if !flatpak::available() {
                 return Err(Error::Msg("This build comes as a Flatpak, and Flatpak isn't on this PC. Install Flatpak from your system's software center, or switch to another build on the game's page.".into()));
             }
@@ -2602,7 +2625,19 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // An AppImage on a Linux without FUSE 2 (libfuse.so.2, missing on many new systems): it unpacks
     // itself and runs from there instead of failing to start.
     #[cfg(target_os = "linux")]
-    if ext == "appimage" && !sysenv::has_fuse2() {
+    if let Some(dir) = &unpacked {
+        // What an AppImage's own runtime would have set, for games that look for their files by it.
+        cmd.env("APPIMAGE", &exe).env("APPDIR", dir).env("ARGV0", &exe);
+        trail::note(format!("Play {id}: in the Flatpak, from its unpacked AppImage"));
+    } else if ext == "appimage" && flatpak::sandboxed() {
+        // Inside the Flatpak there is no fusermount, so no AppImage can mount itself. It unpacks
+        // on disk (the sandbox's /tmp is memory, and a game can be several GB).
+        cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+        if let Some(dir) = flatpak::scratch_dir() {
+            cmd.env("TMPDIR", dir);
+        }
+        trail::note(format!("Play {id}: in the Flatpak the AppImage unpacks itself to run"));
+    } else if ext == "appimage" && !sysenv::has_fuse2() {
         cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
         trail::note(format!("Play {id}: no FUSE 2 on this PC, the AppImage unpacks itself to run"));
     }
@@ -5633,6 +5668,10 @@ async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
 /// A newer RecompLauncher, if there is one. Read from the copy on disk when it's younger than
 /// `max_age` seconds.
 pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
+    // A Flatpak is updated by Flatpak (Flathub), never by the launcher itself.
+    if flatpak::sandboxed() {
+        return None;
+    }
     let v = version_json(st, max_age, player).await?;
     // Each non-Windows platform needs its own published build; never offer another OS's update.
     let v = launcher_platform_entry(&v, assets::os_now(), assets::arch_now()).unwrap_or(Value::Null);
@@ -6370,6 +6409,9 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
 /// place of this one on Linux. Anything else opens the download page.
 #[tauri::command]
 async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
+    if flatpak::sandboxed() {
+        return Err(Error::Msg("RecompLauncher updates through Flatpak. Update it from your software center, or run: flatpak update".into()));
+    }
     let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
     let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.
@@ -6460,6 +6502,8 @@ fn get_state(st: State<'_, App>) -> Value {
     json!({
         "os": assets::os_now(),
         "arch": assets::arch_now(),
+        // Run as a Flatpak: files are picked with the system's picker (the sandbox sees few folders).
+        "flatpak": flatpak::sandboxed(),
         "version": env!("CARGO_PKG_VERSION"),
         "site": catalog::base(),
         "thumbs": net::THUMBS,
@@ -7074,8 +7118,22 @@ fn precheck_copy(st: State<'_, App>, id: String, path: String) -> Res<String> {
 /// The game folders the player's emulators know about, that aren't among their game folders yet.
 #[tauri::command(async)]
 fn emulator_folders(st: State<'_, App>) -> Vec<emus::Found> {
+    // The Flatpak can't read the emulators' settings (they're outside its sandbox): the player adds
+    // the folders by hand.
+    if flatpak::sandboxed() {
+        return vec![];
+    }
     let have = st.lib.lock().unwrap().settings.rom_dirs.clone();
     emus::find().into_iter().filter(|f| !have.iter().any(|h| emus::within(&f.path, h))).collect()
+}
+
+/// ~/Games/ROMs, made if it isn't there: a ROM folder the Flatpak reads directly (its sandbox
+/// allows ~/Games), without the system's picker.
+#[tauri::command(async)]
+fn games_rom_folder() -> Res<String> {
+    let dir = dirs::home_dir().ok_or_else(|| Error::Msg("Couldn't find your home folder.".into()))?.join("Games/ROMs");
+    std::fs::create_dir_all(&dir).map_err(|_| Error::Msg("Couldn't create the ROMs folder in Games.".into()))?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 /// For the page as it starts: a game a link asked for before it was ready, once.
@@ -7237,6 +7295,18 @@ fn wait_for_play(args: &[String]) -> bool {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// The single-instance plugin, on the Flatpak's own D-Bus name when the launcher runs as one.
+fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder<R> {
+    let b = tauri_plugin_single_instance::Builder::new();
+    #[cfg(target_os = "linux")]
+    if flatpak::sandboxed() {
+        if let Ok(id) = std::env::var("FLATPAK_ID") {
+            return b.dbus_id(id);
+        }
+    }
+    b
+}
+
 pub fn run() {
     #[cfg(target_os = "linux")]
     sysenv::prepare_start(data_dir_early());
@@ -7248,7 +7318,9 @@ pub fn run() {
     tauri::Builder::default()
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| match play_arg(&argv) {
+        // On D-Bus as the app id, not the Tauri identifier: a Flatpak may only own names under its
+        // own id, so a second copy would start instead of handing over.
+        .plugin(single_instance().callback(|app, argv, _cwd| match play_arg(&argv) {
             _ if argv.iter().any(|a| a == "--quit") => app.exit(0),
             // A game link from the website, clicked while the launcher is open (or by the clock).
             _ if argv.iter().skip(1).any(|a| a.to_ascii_lowercase().starts_with("recomplauncher:")) => {
@@ -7279,7 +7351,7 @@ pub fn run() {
                     let _ = app.emit("bigpicture", true);
                 }
             }
-        }))
+        }).build())
         .on_window_event(|w, ev| {
             if w.label() != "main" {
                 return;
@@ -7594,6 +7666,7 @@ pub fn run() {
             take_link, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             precheck_copy,
             emulator_folders,
+            games_rom_folder,
             add_github,
             github_lookup,
             github_art,

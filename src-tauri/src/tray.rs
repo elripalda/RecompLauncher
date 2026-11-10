@@ -64,8 +64,16 @@ pub fn refresh(app: &AppHandle) {
 
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let Some(icon) = app.default_window_icon().cloned() else { return Ok(()) };
-    TrayIconBuilder::with_id("main")
-        .icon(icon)
+    let mut b = TrayIconBuilder::with_id("main");
+    // On Linux the icon is a picture on disk the panel reads. A Flatpak's own runtime folder is
+    // hidden from the panel, so the picture goes in its cache folder (~/.var/app/<id>/cache),
+    // which the PC sees at the same path.
+    if crate::flatpak::sandboxed() {
+        if let Some(dir) = dirs::cache_dir() {
+            b = b.temp_dir_path(dir.join("tray-icon"));
+        }
+    }
+    b.icon(icon)
         .tooltip("RecompLauncher")
         .menu(&menu(app)?)
         .show_menu_on_left_click(false)

@@ -3,3 +3,11 @@ src-tauri/target/
 src-tauri/gen/
 *.log
 .DS_Store
+
+# Flatpak build files made by the Flatpak workflow / local builds
+packaging/flatpak/shared-modules/
+packaging/flatpak/cargo-sources.json
+packaging/flatpak/flatpak-cargo-generator.py
+packaging/flatpak/ci-manifest.yml
+packaging/flatpak/build/
+packaging/flatpak/.flatpak-builder/

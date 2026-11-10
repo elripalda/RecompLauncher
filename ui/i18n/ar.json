@@ -2642,5 +2642,13 @@
  "Your Disc Image": "صورة قرصك",
  "Xbox 360 Disc Image": "صورة قرص Xbox 360",
  "Found {n} achievements.": "تم العثور على إنجازين.|تم العثور على {n} إنجازات.|تم العثور على {n} إنجازًا.|تم العثور على {n} إنجاز.",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "لم يُعثر على أي لعبة Xbox 360 هناك. اختر صورة القرص (.iso)، أو المجلد الذي يحتوي على default.xex."
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "لم يُعثر على أي لعبة Xbox 360 هناك. اختر صورة القرص (.iso)، أو المجلد الذي يحتوي على default.xex.",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "يأتي هذا الإصدار بصيغة Flatpak، وFlatpak الخاص بـ RecompLauncher غير مسموح له بتثبيته. اسمح له بالأمر: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. أو انتقل إلى إصدار آخر من صفحة اللعبة.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "لا يستطيع Flatpak قراءة إعدادات المحاكيات لديك. أضف مجلدات ألعابها عبر إضافة مجلد.",
+ "For the best performance, install recomps in your Games folder or on another drive.": "للحصول على أفضل أداء، ثبّت الألعاب المعاد تجميعها في مجلد Games أو على محرك أقراص آخر.",
+ "Use Games/ROMs": "استخدام Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "ضع ملفات ROM وصور الأقراص هنا وسيجدها المشغل بنفسه.",
+ "Couldn't create the ROMs folder in Games.": "تعذّر إنشاء مجلد ROMs داخل Games.",
+ "or": "أو",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "يجري فك ضغط اللعبة في أول مرة تُلعب فيها. البدايات التالية أسرع."
 }

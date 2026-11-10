@@ -2642,5 +2642,13 @@
  "Your Disc Image": "Твій образ диска",
  "Xbox 360 Disc Image": "Образ диска Xbox 360",
  "Found {n} achievements.": "Знайдено {n} досягнення.|Знайдено {n} досягнення.|Знайдено {n} досягнень.",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Там не знайдено гри для Xbox 360. Вибери образ диска (.iso) або папку, у якій є default.xex."
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Там не знайдено гри для Xbox 360. Вибери образ диска (.iso) або папку, у якій є default.xex.",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Ця збірка постачається як Flatpak, а Flatpak-версія RecompLauncher не має дозволу її встановити. Дозволь це командою: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Або перейди на іншу збірку на сторінці гри.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak не може прочитати налаштування твоїх емуляторів. Додай їхні папки з іграми кнопкою «Додати папку».",
+ "For the best performance, install recomps in your Games folder or on another drive.": "Для найкращої продуктивності встановлюй рекомпіляції в папку Games або на інший диск.",
+ "Use Games/ROMs": "Використати Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "Поклади сюди ROM-файли й образи дисків, і лаунчер сам їх знайде.",
+ "Couldn't create the ROMs folder in Games.": "Не вдалося створити папку ROMs у Games.",
+ "or": "або",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Гра розпаковується під час першого запуску. Наступні запуски будуть швидшими."
 }

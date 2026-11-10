@@ -2642,5 +2642,13 @@
  "Your Disc Image": "Je schijfkopie",
  "Xbox 360 Disc Image": "Xbox 360-schijfkopie",
  "Found {n} achievements.": "{n} prestaties gevonden.",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Daar is geen Xbox 360-game gevonden. Kies de schijfkopie (.iso) of de map waarin default.xex staat."
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Daar is geen Xbox 360-game gevonden. Kies de schijfkopie (.iso) of de map waarin default.xex staat.",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Deze build is een Flatpak, en de RecompLauncher-Flatpak mag hem niet installeren. Sta het toe met: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Of schakel over naar een andere build op de pagina van de game.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "De Flatpak kan de instellingen van je emulators niet lezen. Voeg hun gamemappen toe met Een map toevoegen.",
+ "For the best performance, install recomps in your Games folder or on another drive.": "Voor de beste prestaties installeer je recomps in je map Games of op een andere schijf.",
+ "Use Games/ROMs": "Games/ROMs gebruiken",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "Zet je ROM's en schijfkopieën hier en de launcher vindt ze vanzelf.",
+ "Couldn't create the ROMs folder in Games.": "Kon de map ROMs in Games niet maken.",
+ "or": "of",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "De game wordt de eerste keer uitgepakt. Volgende keren start hij sneller."
 }

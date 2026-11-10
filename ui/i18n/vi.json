@@ -2642,5 +2642,13 @@
  "Your Disc Image": "Ảnh đĩa của bạn",
  "Xbox 360 Disc Image": "Ảnh đĩa Xbox 360",
  "Found {n} achievements.": "Đã tìm thấy {n} thành tựu.",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Không tìm thấy trò chơi Xbox 360 nào ở đó. Hãy chọn ảnh đĩa (.iso) hoặc thư mục có chứa default.xex."
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Không tìm thấy trò chơi Xbox 360 nào ở đó. Hãy chọn ảnh đĩa (.iso) hoặc thư mục có chứa default.xex.",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Bản dựng này ở dạng Flatpak, nhưng bản Flatpak của RecompLauncher chưa được phép cài nó. Hãy cấp quyền bằng lệnh: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Hoặc chuyển sang bản dựng khác trên trang của trò chơi.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Bản Flatpak không đọc được cài đặt của trình giả lập. Hãy thêm thư mục trò chơi của chúng bằng Thêm thư mục.",
+ "For the best performance, install recomps in your Games folder or on another drive.": "Để có hiệu năng tốt nhất, hãy cài bản recomp vào thư mục Games hoặc một ổ đĩa khác.",
+ "Use Games/ROMs": "Dùng Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "Đặt ROM và ảnh đĩa vào đây, trình khởi chạy sẽ tự tìm thấy chúng.",
+ "Couldn't create the ROMs folder in Games.": "Không tạo được thư mục ROMs trong Games.",
+ "or": "hoặc",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Đang giải nén trò chơi ở lần chơi đầu tiên. Những lần khởi động sau sẽ nhanh hơn."
 }

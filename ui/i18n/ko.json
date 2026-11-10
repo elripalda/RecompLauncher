@@ -2642,5 +2642,13 @@
  "Your Disc Image": "내 디스크 이미지",
  "Xbox 360 Disc Image": "Xbox 360 디스크 이미지",
  "Found {n} achievements.": "업적 {n}개를 찾았습니다.",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "그곳에서 Xbox 360 게임을 찾지 못했습니다. 디스크 이미지(.iso)나 default.xex가 들어 있는 폴더를 선택하세요."
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "그곳에서 Xbox 360 게임을 찾지 못했습니다. 디스크 이미지(.iso)나 default.xex가 들어 있는 폴더를 선택하세요.",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "이 빌드는 Flatpak으로 제공되는데, RecompLauncher Flatpak에는 이를 설치할 권한이 없습니다. 다음 명령으로 허용하세요: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. 또는 게임 페이지에서 다른 빌드로 바꾸세요.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak에서는 에뮬레이터 설정을 읽을 수 없습니다. 폴더 추가로 게임 폴더를 추가하세요.",
+ "For the best performance, install recomps in your Games folder or on another drive.": "최상의 성능을 위해 리컴프는 Games 폴더나 다른 드라이브에 설치하세요.",
+ "Use Games/ROMs": "Games/ROMs 사용",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "ROM과 디스크 이미지를 여기에 두면 런처가 알아서 찾습니다.",
+ "Couldn't create the ROMs folder in Games.": "Games 안에 ROMs 폴더를 만들 수 없습니다.",
+ "or": "또는",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "처음 플레이할 때 게임 압축을 풀고 있습니다. 다음부터는 더 빨리 시작됩니다."
 }

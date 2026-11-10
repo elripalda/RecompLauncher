@@ -2642,5 +2642,13 @@
  "Your Disc Image": "A tua imagem de disco",
  "Xbox 360 Disc Image": "Imagem de disco Xbox 360",
  "Found {n} achievements.": "Foram encontradas {n} conquistas.",
- "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Não foi encontrado nenhum jogo Xbox 360 aí. Escolhe a imagem de disco (.iso) ou a pasta que contém default.xex."
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Não foi encontrado nenhum jogo Xbox 360 aí. Escolhe a imagem de disco (.iso) ou a pasta que contém default.xex.",
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Esta compilação vem como Flatpak, e o Flatpak do RecompLauncher não tem permissão para a instalar. Dá permissão com: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Ou muda para outra compilação na página do jogo.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "O Flatpak não consegue ler as definições dos teus emuladores. Adiciona as pastas de jogos deles com Adicionar uma pasta.",
+ "For the best performance, install recomps in your Games folder or on another drive.": "Para o melhor desempenho, instala as recomps na tua pasta Games ou noutra unidade.",
+ "Use Games/ROMs": "Usar Games/ROMs",
+ "Put your ROMs and disc images here and the launcher finds them on its own.": "Põe aqui as tuas ROMs e imagens de disco e o launcher encontra-as sozinho.",
+ "Couldn't create the ROMs folder in Games.": "Não foi possível criar a pasta ROMs em Games.",
+ "or": "ou",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "A descompactar o jogo da primeira vez que é jogado. Os arranques seguintes são mais rápidos."
 }
