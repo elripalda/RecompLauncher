@@ -201,6 +201,7 @@
       case 'lib': {
         const p = await pickFile({ title: t('Where new games install'), directory: true, defaultPath: S.settings.library_dir }).catch(fail);
         if (!p) return;
+        warnSharedLibrary(p);
         await save({ library_dir: p, asked_location: true });
         try { S.libs = await invoke('libraries'); } catch (err) { /* fine */ }
         return draw();

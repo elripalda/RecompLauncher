@@ -3565,7 +3565,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   S.running = new Set(st.running || []);
@@ -3844,6 +3844,9 @@ function tellSlow() {
   }, t('The Launcher Is Drawing Slowly Here'));
 }
 async function pickFile(opts) {
+  // As a Flatpak, the launcher's own picker sees only the folders it's allowed: the system's
+  // picker (the portal) reaches every folder, in TV mode too.
+  if (S.flatpak && !opts.launcherPicker) return systemPicker(opts);
   if (document.body.classList.contains('tv-on') && window.tvBrowse) return window.tvBrowse(opts);
   // On the desktop, Windows' own picker unless the player chose the launcher's in Settings: it
   // opens at once, reaches every folder and takes a pasted path.
@@ -4342,10 +4345,16 @@ async function loadLibs() {
   if (S.view === 'settings') render(true);
 }
 
+// As a Flatpak, a folder outside ~/Games and the drives comes through the system's picker as a
+// shared path (/run/user/…/doc/…): games there install and start slower, and some may not work.
+function warnSharedLibrary(path) {
+  if (S.flatpak && /^\/run\/user\/\d+\/doc\//.test(path || '')) toast(t('This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.'), true);
+}
 async function addLibrary() {
   const p = await pickFile({ title: t('A folder for games, on any drive'), directory: true }).catch(fail);
   if (!p) return null;
   const path = typeof p === 'string' ? p : p.path;
+  warnSharedLibrary(path);
   await saveSettings({ library_dirs: uniq([...(S.settings.library_dirs || []), path]).filter((d) => d !== S.settings.library_dir) });
   return path;
 }
@@ -5023,7 +5032,11 @@ async function scanRoms() {
 async function emuFolders(quiet) {
   let found = [];
   try { found = (await invoke('emulator_folders')) || []; } catch (e) { found = []; }
-  if (!found.length) { if (!quiet) toast(t('No emulator game folders found on this PC beyond the ones already added.')); return false; }
+  if (!found.length) {
+    // The Flatpak can't read the emulators' settings: their folders are added by hand.
+    if (!quiet) toast(S.flatpak ? t('The Flatpak can\'t read your emulators\' settings. Add their game folders with Add a folder.') : t('No emulator game folders found on this PC beyond the ones already added.'));
+    return false;
+  }
   const v = await ask(t('Add Your Emulators\' Game Folders?'), `<p>${esc(t('These folders are where your emulators keep games. The launcher only reads them.'))}</p><ul class="lacks">${found.map((f) => `<li><b>${esc(f.emu)}</b> · <span class="path">${esc(f.path)}</span></li>`).join('')}</ul>`,
     [{ label: t('Not Now'), icon: 'chevL', v: null }, { label: tn(found.length, 'Add 1 Folder', 'Add {n} Folders'), icon: 'plus', v: 'add', main: true }]);
   if (v !== 'add') return false;
@@ -6358,7 +6371,7 @@ async function act(el, e) {
     }
     case 'libdir': {
       const p = await pickFile({ title: t('Where new games install'), directory: true, defaultPath: S.settings.library_dir }).catch(fail);
-      if (p) saveSettings({ library_dir: typeof p === 'string' ? p : p.path });
+      if (p) { warnSharedLibrary(typeof p === 'string' ? p : p.path); saveSettings({ library_dir: typeof p === 'string' ? p : p.path }); }
       return;
     }
   }

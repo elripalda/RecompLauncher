@@ -6447,6 +6447,8 @@ fn get_state(st: State<'_, App>) -> Value {
     json!({
         "os": assets::os_now(),
         "arch": assets::arch_now(),
+        // Run as a Flatpak: files are picked with the system's picker (the sandbox sees few folders).
+        "flatpak": flatpak::sandboxed(),
         "version": env!("CARGO_PKG_VERSION"),
         "site": catalog::base(),
         "thumbs": net::THUMBS,
@@ -7061,6 +7063,11 @@ fn precheck_copy(st: State<'_, App>, id: String, path: String) -> Res<String> {
 /// The game folders the player's emulators know about, that aren't among their game folders yet.
 #[tauri::command(async)]
 fn emulator_folders(st: State<'_, App>) -> Vec<emus::Found> {
+    // The Flatpak can't read the emulators' settings (they're outside its sandbox): the player adds
+    // the folders by hand.
+    if flatpak::sandboxed() {
+        return vec![];
+    }
     let have = st.lib.lock().unwrap().settings.rom_dirs.clone();
     emus::find().into_iter().filter(|f| !have.iter().any(|h| emus::within(&f.path, h))).collect()
 }
