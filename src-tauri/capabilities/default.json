@@ -4,7 +4,8 @@
   "description": "What the launcher's own window may do",
   "windows": [
     "main",
-    "overlay"
+    "overlay",
+    "toast"
   ],
   "permissions": [
     "core:default",

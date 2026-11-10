@@ -122,6 +122,14 @@ fn not_a_build(name: &str) -> bool {
     let n = name.to_lowercase();
     n.ends_with(".sha256") || n.ends_with(".sig") || n.ends_with(".asc") || n.ends_with(".pdb")
         || w.iter().any(|x| matches!(x.as_str(), "symbols" | "pdb" | "debug" | "dbg" | "source" | "sources" | "src"))
+        || dependency(&n, &w)
+}
+
+/// A compiler, SDK or library a release keeps for building the game (a "deps" mirror):
+/// llvm-mingw-20261006-ucrt-x86_64.zip, SDL3-devel-3.4.18-mingw.tar.gz, FidelityFX-SDK-v2.4.0.zip.
+fn dependency(n: &str, w: &[String]) -> bool {
+    ["llvm-mingw", "mingw-w64", "msys2-", "w64devkit", "vulkansdk", "vulkan-sdk", "fidelityfx-sdk", "dxsdk", "winlibs-"].iter().any(|p| n.starts_with(p))
+        || w.iter().any(|x| matches!(x.as_str(), "devel" | "toolchain" | "toolchains"))
 }
 
 /// Words that tag a file as a build for a console or a phone: never a build for a PC.
@@ -214,7 +222,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
 /// per region, say: Game-JP and Game-US). The player picks; one alone needs no choice.
 pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
     let pool: Vec<&Asset> = match pattern.filter(|p| !p.trim().is_empty()) {
-        Some(p) => assets.iter().filter(|a| wild(p, &a.name)).collect(),
+        Some(p) => matching(assets, p),
         None => assets.iter().collect(),
     };
     let best = pool.iter().map(|a| score(&a.name, os, arch)).max().unwrap_or(i32::MIN);
@@ -229,7 +237,7 @@ pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
 /// it's all there is. With a pattern from the list, only what it matches.
 pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
     let pool: Vec<&Asset> = match pattern.filter(|p| !p.trim().is_empty()) {
-        Some(p) => assets.iter().filter(|a| wild(p, &a.name)).collect(),
+        Some(p) => matching(assets, p),
         None => assets.iter().collect(),
     };
     let mut v: Vec<(i32, &Asset)> = pool.into_iter().map(|a| (score(&a.name, os, arch), a)).filter(|(s, _)| *s != i32::MIN).collect();
@@ -287,11 +295,41 @@ pub fn most_like<'a>(list: &[&'a Asset], before: &str) -> Option<&'a Asset> {
     list.iter().copied().rev().max_by_key(|a| words(&a.name).iter().filter(|w| had.contains(w) && !w.chars().all(|c| c.is_ascii_digit() || c == '.')).count())
 }
 
+/// The files a list's name pattern means in this release. A name with no wildcards that isn't
+/// here also matches the same name with other numbers in it: a list pointing at last week's
+/// "Folklore-20261107-1109.zip" finds "Folklore-20261108-1524.zip", but not "..._eu.zip".
+fn matching<'a>(assets: &'a [Asset], p: &str) -> Vec<&'a Asset> {
+    let exact: Vec<&Asset> = assets.iter().filter(|a| wild(p, &a.name)).collect();
+    if !exact.is_empty() || p.contains(['*', '?']) || !p.chars().any(|c| c.is_ascii_digit()) {
+        return exact;
+    }
+    assets.iter().filter(|a| same_shape(p, &a.name)).collect()
+}
+
+/// Two names alike but for their numbers: each run of digits in one is a run of digits in the other.
+fn same_shape(a: &str, b: &str) -> bool {
+    fn parts(s: &str) -> Vec<(bool, String)> {
+        let mut v: Vec<(bool, String)> = vec![];
+        for c in s.to_lowercase().chars() {
+            let d = c.is_ascii_digit();
+            match v.last_mut() {
+                Some((ld, t)) if *ld == d => t.push(c),
+                _ => v.push((d, c.to_string())),
+            }
+        }
+        v
+    }
+    let (x, y) = (parts(a), parts(b));
+    x.len() == y.len() && x.iter().zip(&y).all(|((dx, tx), (dy, ty))| dx == dy && (*dx || tx == ty))
+}
+
 pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Option<&'a Asset> {
     if let Some(p) = pattern.filter(|p| !p.trim().is_empty()) {
-        let best = assets
+        let named = matching(assets, p);
+        let best = named
             .iter()
-            .filter(|a| wild(p, &a.name) && !other_arch(&a.name, arch) && !not_a_build(&a.name) && !for_other_platform(&a.name))
+            .copied()
+            .filter(|a| !other_arch(&a.name, arch) && !not_a_build(&a.name) && !for_other_platform(&a.name))
             .filter(|a| usable_file(os, &a.name))
             .max_by_key(|a| score(&a.name, os, arch).max(0));
         if best.is_some() {
@@ -301,7 +339,7 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
         // no build for this system (an older release that does is used instead). Only when the
         // pattern names a file that's there but for another processor (a list pointing at the ARM
         // build) is the best guess used.
-        if !assets.iter().any(|a| wild(p, &a.name)) {
+        if named.is_empty() {
             return None;
         }
     }
@@ -415,6 +453,24 @@ mod tests {
         assert_eq!(pick(&r2, "windows", "x64", None).unwrap().name, "ttt2-0.1.7-windows-amd64.zip");
         let only = [a("ttt2-server-0.1.7-windows-amd64.zip")];
         assert!(pick(&only, "windows", "x64", None).is_some());
+    }
+
+    #[test]
+    fn a_dated_name_in_the_list_finds_the_next_release() {
+        let rel = [a("Folklore-20261108-1524.zip"), a("Folklore-20261108-1524_1.10.zip"), a("Folklore-20261108-1524_eu.zip"), a("Folklore-20261108-1524_eu_1.10.zip")];
+        assert_eq!(pick(&rel, "windows", "x64", Some("Folklore-20261107-1109.zip")).map(|x| x.name.as_str()), Some("Folklore-20261108-1524.zip"));
+        assert!(pick(&rel, "windows", "x64", Some("Other-20261107.zip")).is_none());
+        assert!(same_shape("Game-v1.2.zip", "Game-v1.10.zip") && !same_shape("Game-v1.2.zip", "Game-v1.2-eu.zip"));
+    }
+
+    #[test]
+    fn a_releases_build_tools_are_never_the_game() {
+        let rel = [a("FidelityFX-SDK-v2.4.0.zip"), a("llvm-mingw-20261006-ucrt-x86_64.zip"), a("SDL3-devel-3.4.18-mingw.tar.gz"), a("FidelityFX-SDK-license.md")];
+        assert!(pick(&rel, "windows", "x64", None).is_none());
+        assert!(pick(&rel, "linux", "x64", None).is_none());
+        assert!(pick(&rel, "windows", "x64", Some("llvm-mingw-20261006-ucrt-x86_64.zip")).is_none());
+        // A game built with MinGW is still the game.
+        assert!(pick(&[a("Game-windows-mingw.zip")], "windows", "x64", None).is_some());
     }
 
     #[test]

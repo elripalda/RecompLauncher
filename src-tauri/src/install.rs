@@ -609,7 +609,14 @@ fn validate_links(dir: &Path, base: &Path) -> Result<(), Error> {
             let entry = entry?;
             let ty = entry.file_type()?;
             if ty.is_symlink() {
-                let target = fs::canonicalize(entry.path()).map_err(|_| Error::Msg("The archive contains a broken or circular link.".into()))?;
+                // A link to a file the archive doesn't have, or one that loops (common inside Mac
+                // apps: a framework's "Current" left from the developer's machine): it points at
+                // nothing, so it's dropped and the rest installs.
+                let Ok(target) = fs::canonicalize(entry.path()) else {
+                    crate::trail::note(format!("Install: dropped a link that points nowhere ({})", entry.file_name().to_string_lossy()));
+                    fs::remove_file(entry.path())?;
+                    continue;
+                };
                 if !target.starts_with(&root) {
                     return Err(Error::Msg("The archive contains a link outside its installation folder.".into()));
                 }
@@ -1007,7 +1014,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 16;
+pub const EXE_RULES: u8 = 17;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1028,7 +1035,7 @@ const BUILD_TOOLS: [&str; 66] = [
 /// Folders a release keeps its tools, or leftovers from building, in.
 /// "Tools" in other languages too: ferramentas (Portuguese), herramientas (Spanish), outils
 /// (French), werkzeuge (German), strumenti (Italian), narzedzia (Polish), gereedschap (Dutch).
-pub const TOOL_DIRS: [&str; 21] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
+pub const TOOL_DIRS: [&str; 31] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "llvm-mingw", "toolchain", "toolchains", "busybox", "mingw32", "mingw64", "msys64", "msys2", "cmake", "w64devkit", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
@@ -1303,7 +1310,9 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             }
         }
     }
-    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf))
+    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
+    // is asked rather than a tool started.
+    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf)).filter(|r| !looks_like_tool(r, names))
 }
 
 #[cfg(test)]
@@ -1409,6 +1418,36 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_that_point_nowhere_are_dropped() {
+        let d = tmp("dead-links");
+        fs::create_dir_all(d.join("Game.app/Contents/Frameworks/X.framework/Versions/A")).unwrap();
+        fs::write(d.join("Game.app/Contents/Frameworks/X.framework/Versions/A/X"), b"lib").unwrap();
+        std::os::unix::fs::symlink("A", d.join("Game.app/Contents/Frameworks/X.framework/Versions/Current")).unwrap();
+        std::os::unix::fs::symlink("Versions/B/X", d.join("Game.app/Contents/Frameworks/X.framework/X")).unwrap();
+        std::os::unix::fs::symlink("loop", d.join("Game.app/loop")).unwrap();
+        validate_links(&d, &d).unwrap();
+        assert!(fs::symlink_metadata(d.join("Game.app/Contents/Frameworks/X.framework/Versions/Current")).is_ok());
+        assert!(fs::symlink_metadata(d.join("Game.app/Contents/Frameworks/X.framework/X")).is_err());
+        assert!(fs::symlink_metadata(d.join("Game.app/loop")).is_err());
+        // A link out of the folder still stops it.
+        std::os::unix::fs::symlink("/etc", d.join("out")).unwrap();
+        assert!(validate_links(&d, &d).is_err());
+    }
+
+    #[test]
+    fn a_tool_is_never_picked_as_the_game() {
+        let d = tmp("only-tools");
+        put(&d.join("toolchain/bin/clang-23.exe"), 4000);
+        put(&d.join("busybox/bin/watch.exe"), 4000);
+        assert_eq!(find_exe(&d, "windows", &["Racing 8 DX Recomp"]), None);
+        put(&d.join("kartrecomp.exe"), 2000);
+        assert_eq!(find_exe(&d, "windows", &["Racing 8 DX Recomp"]), Some(PathBuf::from("kartrecomp.exe")));
+        assert!(looks_like_tool(Path::new("busybox/bin/watch.exe"), &["YW4 Recomp"]));
+        assert!(looks_like_tool(Path::new("toolchain/bin/game.exe"), &["Game"]));
     }
 
     #[test]

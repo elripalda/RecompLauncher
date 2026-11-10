@@ -1,0 +1,28 @@
+@font-face{font-family:Archivo;font-weight:100 900;font-stretch:62% 125%;font-display:swap;src:url(fonts/archivo-wdth.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:Archivo;font-weight:100 900;font-stretch:62% 125%;font-display:swap;src:url(fonts/archivo-wdth-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:Figtree;font-weight:600;src:url(fonts/figtree-600.woff2) format("woff2")}
+@font-face{font-family:Figtree;font-weight:700;src:url(fonts/figtree-700.woff2) format("woff2")}
+html,body{margin:0;height:100%;overflow:hidden;background:transparent;user-select:none;pointer-events:none}
+body{font:600 15px/1.35 Figtree,system-ui,sans-serif;color:#F4F8FC;-webkit-font-smoothing:antialiased}
+/* Top right, sliding in from the right edge. */
+.toast{position:absolute;top:24px;right:24px;width:420px;min-height:96px;box-sizing:border-box;display:flex;align-items:center;gap:16px;padding:16px 20px 16px 16px;border-radius:20px;
+  background:rgba(9,14,24,.94);border:1px solid rgba(244,248,252,.14);box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 0 1px rgba(52,242,232,.08) inset;
+  transform:translateX(calc(100% + 40px));opacity:0;transition:transform .42s cubic-bezier(.2,.8,.2,1),opacity .3s ease}
+.toast.in{transform:none;opacity:1}
+.toast.out{transform:translateX(calc(100% + 40px));opacity:0;transition:transform .36s cubic-bezier(.6,0,.8,.2),opacity .3s ease .06s}
+.star{flex:none;width:64px;height:64px;display:grid;place-items:center;border-radius:16px;background:radial-gradient(circle at 50% 45%,rgba(52,242,232,.22),rgba(52,242,232,0) 70%)}
+.star svg{transform:scale(.2) rotate(-40deg);opacity:0;filter:drop-shadow(0 0 10px rgba(52,242,232,.55))}
+.toast.in .star svg{animation:pop .62s cubic-bezier(.3,1.6,.5,1) .18s forwards}
+@keyframes pop{0%{transform:scale(.2) rotate(-40deg);opacity:0}60%{transform:scale(1.18) rotate(6deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+.text{min-width:0;display:flex;flex-direction:column;gap:2px}
+.kicker{font:700 12px/1.2 Figtree,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#34F2E8}
+.title{font:800 20px/1.18 Archivo,Figtree,sans-serif;font-stretch:112%;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:14px;color:#A9B4C4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:none}
+/* Every achievement in the game: the bigger one, with the Mastered badge. */
+.toast.big{width:500px;min-height:124px;padding:20px 24px 20px 20px;border-color:rgba(52,242,232,.45);box-shadow:0 22px 60px rgba(0,0,0,.55),0 0 40px rgba(52,242,232,.18)}
+.toast.big .star{width:84px;height:84px}
+.toast.big .star svg{width:84px;height:84px}
+.toast.big .title{font-size:24px}
+.toast.big .badge{display:block;position:absolute;top:-11px;right:22px;padding:3px 12px;border-radius:999px;font:800 12px/1.5 Figtree,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#05080d;background:linear-gradient(180deg,#34F2E8,#377BB6)}
+@media (prefers-reduced-motion:reduce){.toast,.toast.out{transition:opacity .2s ease;transform:none}.toast.in .star svg{animation:none;transform:none;opacity:1}}

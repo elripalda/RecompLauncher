@@ -1918,3 +1918,49 @@ body.mac .tile .glow{display:none}
 /* The crash window: the game's own last error line */
 .modal .fatal-line{display:flex;flex-direction:column;gap:4px;margin:0}
 .modal .fatal-line code{font-size:12.5px;padding:8px 10px;border-radius:10px;background:var(--card2);color:var(--text);overflow-wrap:anywhere;white-space:pre-wrap}
+
+/* ---------- Recomp Achievements (game page tab, test accounts) ---------- */
+.ach-head .ach-sum{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ach-head .ach-sum>div{display:flex;flex-direction:column;gap:2px}
+.ach-big{font:800 26px/1.1 Archivo,Figtree,sans-serif;font-stretch:112%;letter-spacing:-.02em}
+.ach-mastered{padding:5px 14px;border-radius:999px;font-size:12.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#05080d;background:var(--grad)}
+.ach-bar{height:6px;border-radius:99px;background:var(--fill3);overflow:hidden;margin-top:8px}
+.ach-bar.big{height:10px;margin-top:14px}
+.ach-bar i{display:block;height:100%;border-radius:inherit;background:var(--grad)}
+.ach-list{padding:6px 0}
+.ach-row{display:flex;align-items:center;gap:14px;min-height:96px;padding:12px 20px;border-top:1px solid var(--line)}
+.ach-row:first-child{border-top:0}
+.ach-star{flex:none;fill:var(--fill3);stroke:var(--line3);stroke-width:2;stroke-linejoin:round}
+.ach-star.on{fill:var(--cyan);stroke:#e9fffd;filter:drop-shadow(0 0 8px rgba(52,242,232,.35))}
+.ach-row:not(.got) .ach-k b{color:var(--muted)}
+.ach-k{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ach-k>span{color:var(--muted);font-size:14px}
+.ach-k .ach-bar{max-width:320px}
+.ach-pr,.ach-when{font-size:12.5px;color:var(--dim)}
+.ach-broken{font-size:12.5px;color:var(--warn)}
+.ach-side{flex:none;display:flex;align-items:center;gap:10px}
+.ach-side .tag{min-width:78px;justify-content:center}
+.ach-pts{min-width:52px;text-align:right;font-weight:700;color:var(--muted)}
+.ach-dev .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ach-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.ach-tool{display:flex;flex-direction:column;gap:8px;min-width:0}
+.ach-two .ach-tool{height:330px}
+.ach-log,.ach-hex{flex:1;min-height:0;overflow:auto;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);padding:10px 12px;font:12.5px/1.55 ui-monospace,Consolas,monospace;user-select:text;cursor:text}
+.ach-ln{display:grid;grid-template-columns:auto 14px 1fr;gap:8px}
+.ach-ln span{color:var(--dim)}
+.ach-ln code{overflow-wrap:anywhere;font:inherit}
+.ach-ln.din b{color:var(--cyan)}.ach-ln.dout b{color:#9db8ff}.ach-ln.dbad{color:var(--warn)}.ach-ln.dnote{color:var(--muted)}
+.ach-hex div{display:grid;grid-template-columns:auto 1fr auto;gap:12px}
+.ach-hex span{color:var(--dim)}.ach-hex i{font-style:normal;color:var(--muted);white-space:pre}
+.ach-inline{display:flex;gap:8px;align-items:center}
+.ach-inline .field{flex:1}
+.ach-inline .sel{width:auto}
+.ach-mono{font-family:ui-monospace,Consolas,monospace;font-size:13.5px}
+.ach-rule-out{min-height:20px}
+.ach-verdict{margin:8px 0 6px;font-weight:800}.ach-verdict.yes{color:#3ee08f}.ach-verdict.no{color:var(--bad)}
+.ach-grp{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.ach-grp code{font:12.5px ui-monospace,Consolas,monospace;color:var(--muted)}
+.ach-grp code.yes{color:#3ee08f}.ach-grp code.no{color:var(--bad)}
+.ach-bad{margin:0;color:var(--bad)}
+.ach-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+@media (max-width:900px){.ach-two{grid-template-columns:minmax(0,1fr)}}

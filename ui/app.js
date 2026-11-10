@@ -1617,7 +1617,7 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.pluginTabs ? window.pluginTabs(id) : []);
+  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.achTabs ? window.achTabs(id) : [], window.pluginTabs ? window.pluginTabs(id) : []);
   if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
   return tabs;
 }
@@ -1802,6 +1802,7 @@ function gameBody(a) {
   gameTabs(a);
   let body = '';
   if (String(S.tab).startsWith('plug-') && window.pluginTabBody) return window.pluginTabBody(S.tab, id) + gameRail(a);
+  if (S.tab === 'ach' && window.achBody) return window.achBody(a) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const stats = inst
