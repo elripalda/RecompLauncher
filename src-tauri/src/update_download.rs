@@ -89,6 +89,9 @@ mod tests {
                         Err(e) => panic!("request did not arrive: {e}"),
                     }
                 };
+                // Accepted sockets inherit nonblocking mode on some platforms (including
+                // macOS). Read the request with the timeout below rather than racing its arrival.
+                stream.set_nonblocking(false).unwrap();
                 stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                 let mut request = Vec::new();
                 while !request.ends_with(b"\r\n\r\n") {
