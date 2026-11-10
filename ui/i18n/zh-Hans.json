@@ -2586,5 +2586,7 @@
  "Apply": "申请",
  "Tell us at least one recomp you play.": "请至少填写一款你玩的重编译游戏。",
  "Something went wrong. Try again in a bit.": "出了点问题。请稍后再试。",
- "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "这个构建以 Flatpak 形式提供，而 RecompLauncher 的 Flatpak 没有安装它的权限。可用此命令允许：flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher。或在游戏页面上切换到其他构建。"
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "这个构建以 Flatpak 形式提供，而 RecompLauncher 的 Flatpak 没有安装它的权限。可用此命令允许：flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher。或在游戏页面上切换到其他构建。",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak 版无法读取你的模拟器设置。请用“添加文件夹”添加它们的游戏文件夹。",
+ "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "这个文件夹是由系统共享给 Flatpak 的，所以这里的游戏安装和启动会更慢，有些可能无法运行。最好选择 Games 里或其他磁盘上的文件夹。"
 }

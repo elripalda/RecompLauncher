@@ -2586,5 +2586,7 @@
  "Apply": "Daftar",
  "Tell us at least one recomp you play.": "Sebutkan setidaknya satu recomp yang kamu mainkan.",
  "Something went wrong. Try again in a bit.": "Ada yang salah. Coba lagi sebentar lagi.",
- "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Build ini berupa Flatpak, dan Flatpak RecompLauncher tidak diizinkan memasangnya. Izinkan dengan: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Atau ganti ke build lain di halaman game-nya."
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Build ini berupa Flatpak, dan Flatpak RecompLauncher tidak diizinkan memasangnya. Izinkan dengan: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Atau ganti ke build lain di halaman game-nya.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak tidak bisa membaca pengaturan emulatormu. Tambahkan folder game-nya dengan Tambah folder.",
+ "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "Sistemmu membagikan folder ini ke Flatpak, jadi game di sana terpasang dan terbuka lebih lambat, dan sebagian mungkin tidak jalan. Folder di dalam Games atau di drive lain paling cocok."
 }

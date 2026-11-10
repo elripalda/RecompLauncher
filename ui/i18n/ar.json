@@ -2586,5 +2586,7 @@
  "Apply": "تقديم",
  "Tell us at least one recomp you play.": "اذكر لعبة معاد تجميعها واحدة على الأقل تلعبها.",
  "Something went wrong. Try again in a bit.": "حدث خطأ ما. حاول مرة أخرى بعد قليل.",
- "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "يأتي هذا الإصدار بصيغة Flatpak، وFlatpak الخاص بـ RecompLauncher غير مسموح له بتثبيته. اسمح له بالأمر: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. أو انتقل إلى إصدار آخر من صفحة اللعبة."
+ "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "يأتي هذا الإصدار بصيغة Flatpak، وFlatpak الخاص بـ RecompLauncher غير مسموح له بتثبيته. اسمح له بالأمر: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. أو انتقل إلى إصدار آخر من صفحة اللعبة.",
+ "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "لا يستطيع Flatpak قراءة إعدادات المحاكيات لديك. أضف مجلدات ألعابها عبر إضافة مجلد.",
+ "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "يشارك نظامك هذا المجلد مع Flatpak، لذا تُثبَّت الألعاب فيه وتبدأ بشكل أبطأ، وقد لا يعمل بعضها. الأفضل مجلد داخل Games أو على محرك أقراص آخر."
 }
