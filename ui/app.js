@@ -6511,6 +6511,8 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitT
 document.addEventListener('error', (e) => {
   const img = e.target;
   if (!(img instanceof HTMLImageElement)) return;
+  // A small copy that couldn't be had: the full picture instead, once.
+  if (img.dataset.orig && img.getAttribute('src') !== img.dataset.orig) { img.setAttribute('src', img.dataset.orig); return; }
   if (img.parentNode && img.parentNode.classList.contains('sl-logo')) return logoFail(img);
   if (img.dataset.fallback) { const h = document.createElement('h1'); h.textContent = img.alt; if (img.dataset.fallback !== '1') h.className = img.dataset.fallback; img.replaceWith(h); } else img.remove();
 }, true);

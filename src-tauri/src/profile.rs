@@ -261,7 +261,7 @@ impl Extra {
             if f.is_dir() {
                 link_dir(&f, &to)?;
             } else if std::fs::hard_link(&f, &to).is_err() {
-                std::fs::copy(&f, &to)?;
+                copy_checked(&f, &to)?;
             }
         }
         Ok(())
@@ -284,7 +284,7 @@ pub struct Check {
     /// On a PlayStation 2 (or any ISO 9660) disc image, in its top folder.
     #[serde(default)]
     pub iso9660: String,
-    /// A Nintendo Switch 2 `.nup` package's build ID (hex, at least 8 digits; a prefix is fine),
+    /// A Nintendo Switch or Switch 2 `.nup` package's build ID (hex, at least 8 digits; a prefix is fine),
     /// read from its newest title's `exefs/main`. A folder with `exefs/main` is read the same way.
     #[serde(default)]
     pub nup_build_id: String,
@@ -1018,6 +1018,24 @@ fn empty_dir(p: &Path) -> bool {
     p.symlink_metadata().map(|m| m.is_dir() && !m.file_type().is_symlink()).unwrap_or(false) && std::fs::read_dir(p).map(|mut r| r.next().is_none()).unwrap_or(false)
 }
 
+/// A copy of the player's file into the game's folder (another drive, so no link), after checking
+/// it fits: a big copy (a whole disc) that fills the drive halfway helps nobody.
+fn copy_checked(from: &Path, to: &Path) -> std::io::Result<()> {
+    let size = std::fs::metadata(from).map(|m| m.len()).unwrap_or(0);
+    if let Some(free) = crate::manage::free_space(to.parent().unwrap_or(to)) {
+        if free < size.saturating_add(64 << 20) {
+            let gb = |b: u64| format!("{:.1} GB", b as f64 / 1_073_741_824.0);
+            return Err(std::io::Error::other(format!(
+                "Not enough space to copy {} ({}) into the game's folder: {} is free on that drive. Free some space, or keep your game files on the same drive as your library so they don't need copying.",
+                from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                gb(size),
+                gb(free)
+            )));
+        }
+    }
+    std::fs::copy(from, to).map(|_| ())
+}
+
 pub fn place(list: &[Place], install: &Path) -> Option<PathBuf> {
     list.iter().find(|p| p.when.is_empty() || Path::new(&fill(&p.when, install, None)).exists()).map(|p| PathBuf::from(fill(&p.path, install, None)))
 }
@@ -1288,7 +1306,7 @@ impl Profile {
             } else if place_z64(&from, &to)? {
                 continue;
             } else if std::fs::hard_link(&from, &to).is_err() {
-                std::fs::copy(&from, &to)?;
+                copy_checked(&from, &to)?;
             }
         }
         Ok(())
@@ -1335,14 +1353,20 @@ impl Profile {
     }
 
     pub fn command(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>) -> Option<(PathBuf, Vec<String>)> {
+        self.command_for(install, game, picks, true)
+    }
+
+    /// The command it runs. `windows_build`: the installed build is the Windows one (on Windows, or
+    /// through Proton), so the profile's Windows program comes first. With a native build, a program
+    /// with the same name comes first: an old `.exe` left beside it (a switch from the Windows build)
+    /// must not hide the native one.
+    pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
         let _w = WineFill::new(self.through_proton(install));
         let s = self.start.as_ref()?;
-        let exe = s
-            .program
-            .iter()
-            .map(|p| install.join(p))
-            .find(|p| p.is_file())
-            .or_else(|| if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) })?;
+        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
+        let exe = if windows_build { None } else { twin() }
+            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
+            .or_else(twin)?;
         crate::boot::runnable(&exe);
         Some((exe, self.args_for(install, game, picks)))
     }
@@ -2029,7 +2053,7 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     }
     if !g.check.nup_build_id.is_empty() {
         // By the package's magic, not its name; only its headers and `main`'s first bytes are read.
-        let id = if nup::is_package(p) { nup::build_id_of_package(p) } else { Err("That isn't a Nintendo Switch 2 .nup package.".into()) };
+        let id = if nup::is_package(p) { nup::build_id_of_package(p) } else { Err("That isn't a Nintendo Switch .nup package.".into()) };
         return check_nup_build(&g.check.nup_build_id, id);
     }
     let wants_n64 = !g.check.n64_region.is_empty() || !g.check.n64_id.is_empty() || g.check.n64_rev.is_some() || [".z64", ".n64", ".v64"].iter().any(|e| g.name.to_lowercase().ends_with(e));
@@ -2298,6 +2322,29 @@ mod tests {
         assert_eq!(super::native_twin(&d, "pd.i686.exe").unwrap().file_name().unwrap(), "pd.x86_64");
         assert_eq!(super::native_twin(&d, "pd.pal.i686.exe").unwrap().file_name().unwrap(), "pd.pal.x86_64");
         assert!(super::native_twin(&d, "other.exe").is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_build_ignores_a_leftover_windows_exe() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("rl-native-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for n in ["parasite-eve-pc.exe", "parasite-eve-pc"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"x").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["parasite-eve-pc.exe"]}}"#).unwrap();
+        let picks = BTreeMap::new();
+        // A Windows build (through Proton) starts the .exe; a native build starts the native program
+        // even when the old .exe from a previous Windows install is still in the folder.
+        assert_eq!(p.command_for(&d, None, &picks, true).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0.file_name().unwrap(), "parasite-eve-pc");
+        // The plain call keeps the Windows-first behavior for callers that don't know the build.
+        assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -3006,7 +3053,7 @@ mod tests {
         assert!(check_copy(&g("e0f3ccfa"), &d).unwrap_err().contains("exefs/main"));
         // A file is judged by its content, whatever it is called.
         std::fs::write(d.join("a.nup"), b"just text").unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &d.join("a.nup")).unwrap_err().contains("isn't a Nintendo Switch 2"));
+        assert!(check_copy(&g("e0f3ccfa"), &d.join("a.nup")).unwrap_err().contains("isn't a Nintendo Switch .nup"));
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());

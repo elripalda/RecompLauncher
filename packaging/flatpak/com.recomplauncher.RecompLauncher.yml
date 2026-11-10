@@ -61,8 +61,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/elripalda/RecompLauncher.git
-        # The first release with this packaging (Beta 29 and older don't have it).
-        tag: v0.90.0-beta.30
+        # The first release with this packaging (Beta 31 and older don't have it).
+        tag: v0.90.0-beta.32
         # commit: fill in with the release tag's commit
       # Every crate, generated from src-tauri/Cargo.lock:
       #   python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o cargo-sources.json

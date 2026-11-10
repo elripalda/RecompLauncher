@@ -1,4 +1,4 @@
-//! The build ID of a Nintendo Switch 2 `.nup` package (or of a folder with `exefs/main`), for
+//! The build ID of a Nintendo Switch or Switch 2 `.nup` package (or of a folder with `exefs/main`), for
 //! `game.check.nup_build_id`. A content check only: no keys, no extraction, nothing is copied.
 //!
 //! Layout (little-endian), as far as it is needed: `NUP\x01` at 0; a TOC at 0x80 (`TOC\x01`,
@@ -54,10 +54,10 @@ pub fn build_id_of_package(path: &Path) -> Result<String, String> {
 }
 
 fn build_id_in<R: Read + Seek>(r: &mut R, len: u64) -> Result<String, String> {
-    let bad = || "That package can't be read: it may be incomplete or not a Switch 2 .nup.".to_string();
+    let bad = || "That package can't be read: it may be incomplete or not a Switch .nup.".to_string();
     let head = at(r, 0, 0x80).ok_or_else(bad)?;
     if &head[..4] != b"NUP\x01" {
-        return Err("That isn't a Nintendo Switch 2 .nup package.".into());
+        return Err("That isn't a Nintendo Switch .nup package.".into());
     }
     let declared = u64le(&head, 0x40);
     if declared != 0 && len < declared {

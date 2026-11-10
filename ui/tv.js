@@ -416,7 +416,7 @@
   const tabOf = () => (['about', 'saves', 'storage'].includes(TV.view) ? 'settings' : GAMEVIEWS.includes(TV.view) ? TV.from || 'home' : TV.view);
   const clock = () => new Date().toLocaleTimeString(curLocale(), { hour: 'numeric', minute: '2-digit' });
   const bar = () => `<header class="tv-bar"><div class="tv-brand">${MARK}<img class="tv-wm" src="img/${document.body.classList.contains('light') ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher"></div>
-    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}${k === 'achievements' ? ' soon' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
+    <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
     <div class="tv-status"><span class="tv-clock" id="tv-clock">${clock()}</span></div></header>`;
   // The game page has a Back pill instead of the sections.
   const gameBar = () => `<header class="tv-bar"><button type="button" class="tv-back" data-f data-key="back" data-tvact="back">${glyph('b', 'tv-keyg')}<span>${esc(t('Back'))}</span></button><span></span>
@@ -951,17 +951,101 @@
     TV.sheet.onClose = () => done(null);
     show();
   });
-  // Achievements, coming soon: what it'll be, Learn More, and Sign In when you aren't.
+  // Recomp Achievements, sized for the TV. Testers get their profile, events, Beaten and Mastered
+  // games, recent unlocks and the leaderboard; everyone else gets what it is and how to join.
+  // Reporting a problem stays in the desktop view.
+  const ACH_STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2 6.3 20.3l1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
+  const achTag = (k) => `<span class="tv-ach-tag ${k === 'b' ? 'silver' : 'gold'}">${ACH_STAR}${esc(k === 'b' ? t('Beaten') : t('Mastered'))}</span>`;
+  // Columns that never leave one card alone on the last row.
+  const achCols = (n, opts) => (n <= opts[0] ? n : opts.find((c) => n % c !== 1) || opts[0]);
+  const achBar = (n, of, gold) => `<span class="tv-ach-bar${gold ? ' gold' : ''}"><i style="width:${of ? Math.min(100, Math.round((n / of) * 100)) : 0}%"></i></span>`;
   function pageAchTV() {
+    const AT = window.achTV;
+    const pg = AT ? AT.page() : { tester: false };
     const signed = !!(S.account && S.account.signedIn);
-    const cards = achCards().map(([h, d, ic]) => `<div class="tv-ach-card"><span class="lock" aria-hidden="true">${LOCK.replace(/16/g, '22')}</span><span class="ic" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic}</svg></span><b>${esc(h)}</b><p>${esc(d)}</p></div>`).join('');
-    // Signing in is the one thing to do here from the couch; the website is for the desktop.
-    const acts = signed ? '' : btn('ach-in', 'signin', esc(t('Sign in')), { cls: 'main', g: 'a' });
+    if (!pg.tester) {
+      const st = pg.status || {}, app = st.application;
+      const pending = signed && app && app.status === 'pending';
+      const feats = [
+        [t('Unlocks While You Play'), t('Achievements pop up in the corner the moment you earn them, right over your recomp.'), '<path d="M12 3l2.5 5.2 5.7.8-4.1 4 1 5.6L12 16l-5.1 2.6 1-5.6-4.1-4 5.7-.8z"/>'],
+        [t('Your Profile and Rating'), t('Every achievement adds to your points and rank, on every PC you play on.'), '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>'],
+        [t('Leaderboards'), t('See how you stack up against other players, overall and game by game. Only Ranked unlocks count.'), '<path d="M6 20V11M12 20V4M18 20v-7"/>'],
+      ];
+      const cards = feats.map(([h, d, ic]) => `<div class="tv-ach-card"><span class="ic" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic}</svg></span><b>${esc(h)}</b><p>${esc(d)}</p></div>`).join('');
+      const line = !signed ? t('Sign in, then apply to be a tester on the Achievements page in the desktop view.') : pending ? t('You\'re on the list. We approve testers in waves, and this page unlocks on its own once you\'re in.') : t('Apply to be a tester on the Achievements page in the desktop view.');
+      const acts = signed ? '' : btn('ach-in', 'signin', esc(t('Sign in')), { cls: 'main', g: 'a' });
+      return `${backdrop(null)}${bar()}
+        ${region(`<div class="tv-ach">${pageHead(t('Achievements'), t('Earn achievements in your recomps, track them on your profile and climb the leaderboards.'))}<span class="tv-ach-pill">${esc(pending ? t('On the List') : t('Alpha'))}</span>
+          <p class="tv-ach-ok" data-f data-key="ach-line">${esc(line)}</p>
+          <div class="tv-ach-cards">${cards}</div>
+          ${acts ? `<div class="tv-acts">${acts}</div>` : ''}</div>`)}
+        ${hints([['A', t('Select')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
+    }
+    const p = pg.profile || {}, u = (S.account && S.account.user) || {};
+    const rk = (n) => (n ? `<small>#${esc(fmtN(n))}</small>` : '');
+    const box = (v, k, sub) => `<div class="tv-ach-box"><b>${v}${sub || ''}</b><span>${esc(k)}</span></div>`;
+    const prof = `<section class="tv-ach-prof" data-f data-key="ach-prof"><div class="tv-ach-who"><b>${esc(u.username || t('Tester'))}</b><span class="tv-ach-pill in">${esc(t('Tester'))}</span></div>
+      <div class="tv-ach-boxes">${box(esc(fmtN(p.points || 0)), t('Points'), rk(p.rank))}${box(esc(fmtN(p.score || 0)), t('Score'), rk(p.score_rank))}${box(esc(fmtN(p.beaten_count || (p.beaten || []).length || 0)), t('Beaten'))}${box(esc(fmtN(p.mastered_count || 0)), t('Mastered'))}</div>
+      <p class="tv-ach-i"><i aria-hidden="true">i</i><span><b>${esc(t('Score'))}</b> · ${esc(t('Points weighted by how rare each achievement is.'))}</span></p></section>`;
+    // The catalog's copy of the cover first, else the one the website sends with the game.
+    const cover = (g) => { const a = byId(g.id), c = (a && a.cover) || g.cover; return c ? `<img src="${esc(media(c))}" alt="" loading="lazy">` : ''; };
+    const nameOf = (g) => (byId(g.id) || {}).name || g.name || g.id;
+    const sec = (h, inner) => `<section class="tv-block"><h3>${esc(h)}</h3>${inner}</section>`;
+    const evs = p.events || [];
+    const evHtml = evs.length ? sec(t('Events'), `<div class="tv-ach-evs" style="--c:${achCols(evs.length, [3, 2])}">${evs.map((e, i) => `<div class="tv-ach-ev${e.won ? ' won' : ''}" data-f data-key="ach-ev:${i}"><span class="ic">${ACH_STAR}</span><div><b>${esc(e.title || '')}</b>${e.won ? `<em>${esc(t('Finished'))}</em>` : `${achBar(Number(e.have) || 0, Number(e.goal) || 0, true)}<small>${esc(tf('{n} of {total}', { n: fmtN(Number(e.have) || 0), total: fmtN(Number(e.goal) || 0) }))}</small>`}</div></div>`).join('')}</div>`) : '';
+    const ms = (p.mastered || []).map((m) => Object.assign({ kind: 'm' }, m));
+    const done = ms.concat((p.beaten || []).filter((b) => !ms.some((m) => m.id === b.id)).map((b) => Object.assign({ kind: 'b' }, b)));
+    const doneHtml = sec(t('Beaten and Mastered'), done.length
+      ? `<div class="tv-ach-done" style="--c:${done.length <= 6 ? 6 : achCols(done.length, [6, 5, 4])}">${done.map((m) => `<button type="button" class="tv-ach-gm" data-f data-key="ach-g:${esc(m.id)}" data-tvact="page" data-id="${esc(m.id)}"><span class="cv"><span class="ph">${esc(nameOf(m))}</span>${cover(m)}</span>${achTag(m.kind)}<b>${esc(nameOf(m))}</b></button>`).join('')}</div>`
+      : `<p class="tv-empty" data-f data-key="ach-none">${esc(t('Beat a game and it lands here; unlock every achievement and it\'s Mastered.'))}</p>`);
+    const recent = (p.recent || []).slice(0, 6);
+    const recHtml = sec(t('Recent Unlocks'), recent.length
+      ? `<div class="tv-list">${recent.map((r, i) => `<button type="button" class="tv-item tv-ach-un" data-f data-key="ach-r:${i}" data-tvact="page" data-id="${esc(r.game)}"><span class="tv-ach-star">${ACH_STAR}</span><span class="k">${esc(r.title || tf('Achievement {n}', { n: r.id }))}<small>${esc([r.name || nameOf({ id: r.game }), r.rarity != null && AT ? AT.rarityText(r.rarity) : '', r.ranked ? t('Ranked') : t('Casual')].filter(Boolean).join(' · '))}</small></span><span class="tv-pill">${esc(tf('{n} pts', { n: fmtN(r.points || 0) }))}</span></button>`).join('')}</div>`
+      : `<p class="tv-empty" data-f data-key="ach-nr">${esc(t('Your unlocks show here the moment you earn them.'))}</p>`);
+    const rows = (pg.board || []).slice(0, 10);
+    const me = u.username;
+    const lbHtml = rows.length ? sec(t('Leaderboard'), `<div class="tv-ach-lb" data-f data-key="ach-lb">${rows.map((r) => `<div class="${r.username === me ? 'you' : ''}"><span>${esc(String(r.rank || ''))}</span><b>${esc(r.username || '')}</b><em>${esc(fmtN(r.points || 0))}</em></div>`).join('')}</div>`) : '';
+    const n = pg.status && pg.status.note;
+    const note = n && typeof n === 'object' && (n.title || n.text) ? `<section class="tv-ach-pin" data-f data-key="ach-note"><b>${esc(n.title || '')}</b>${String(n.text || '').split(/\n+/).filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join('')}</section>` : '';
     return `${backdrop(null)}${bar()}
-      ${region(`<div class="tv-ach">${pageHead(t('Achievements'), t('Earn achievements in your recomps, track them on your profile and climb the leaderboards. We\'re preparing the system. More info soon.'))}<span class="tv-ach-pill">${esc(t('Coming soon'))}</span>${signed ? `<p class="tv-ach-ok">${esc(t('You\'re all set. Your achievements will be tied to your account.'))}</p>` : ''}
-        <div class="tv-ach-cards">${cards}</div>
-        ${acts ? `<div class="tv-acts">${acts}</div>` : ''}</div>`)}
+      ${region(`<div class="tv-ach">${pageHead(t('Achievements'), t('Your Recomp Achievements across every game. Report problems from the desktop view.'))}${note}${prof}${evHtml}${doneHtml}${recHtml}${lbHtml}</div>`)}
       ${hints([['A', t('Select')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
+  }
+  // A game page's Achievements block: the banner, progress, every achievement with its tag and
+  // rarity, the Bonus group and the leaderboards. Only for testers, and only when it has a list.
+  function achGameTV(id) {
+    const AT = window.achTV;
+    const d = AT && AT.game(id);
+    if (!d || d.allowed === false) return '';
+    const list = d.list && Array.isArray(d.list.achievements) ? d.list.achievements : [];
+    if (!list.length) return '';
+    const mine = d.mine || {};
+    const have = new Set((d.unlocked || []).map(Number));
+    const main = list.filter((x) => !AT.isBonus(x)), bonus = list.filter(AT.isBonus);
+    const got = main.filter((x) => have.has(Number(x.id))).length;
+    const mastered = !!(d.mastered || mine.mastered), beaten = !mastered && !!mine.beaten;
+    const TYPE = { win: t('Win'), progression: t('Progression'), missable: t('Missable') };
+    const item = (x) => {
+      const on = have.has(Number(x.id)), ty = String(x.type || '').toLowerCase();
+      const rare = mine.rarity ? AT.rarityText(((mine.rarity[x.id] || mine.rarity[Number(x.id)] || {}).rate) || 0) : '';
+      return `<div class="tv-ach-row${on ? ' got' : ''}" data-f data-key="ach-a:${esc(x.id)}"><span class="tv-ach-star${on ? ' on' : ''}">${ACH_STAR}</span><span class="k"><b>${esc(x.title || tf('Achievement {n}', { n: x.id }))}${TYPE[ty] ? `<em class="ty ${ty}">${esc(TYPE[ty])}</em>` : ''}</b><small>${esc(x.description || '')}</small>${ty === 'missable' && !on ? `<small class="miss">${esc(t('Can be missed. Read the description before playing on.'))}</small>` : ''}${rare ? `<small class="rare">${esc(rare)}</small>` : ''}</span><span class="pts">${Number(x.points) ? esc(tf('{n} pts', { n: x.points })) : ''}</span></div>`;
+    };
+    const banner = mastered || beaten ? `<div class="tv-ach-banner ${mastered ? 'gold' : 'silver'}">${ACH_STAR}<b>${esc(mastered ? t('Mastered') : t('Beaten'))}</b></div>` : '';
+    const boards = d.list && Array.isArray(d.list.leaderboards) ? d.list.leaderboards : [];
+    const web = (AT.A.web[id] || {}).leaderboards || [];
+    const me = (S.account && S.account.user && S.account.user.username) || '';
+    const lb = boards.map((b, i) => {
+      const w = web.find((x) => String(x.id) === String(b.id)) || {}, fmt = b.format || w.format || 'score';
+      const best = (mine.boards || []).find((x) => String(x.id) === String(b.id));
+      const top = AT.topOf(w).slice(0, 10);
+      return `<div class="tv-ach-board" data-f data-key="ach-b:${i}"><b>${esc(b.title || w.title || t('Leaderboard'))}</b><p class="best"><span>${esc(t('Your Best'))}</span><em>${best ? esc(AT.fmtValue(best.value, fmt)) : '—'}</em></p>${top.length ? `<ol>${top.map((r, j) => `<li class="${AT.nameIn(r) === me ? 'you' : ''}"><span>${esc(String(r.rank || j + 1))}</span><b>${esc(AT.nameIn(r))}</b><em>${esc(r.display || AT.fmtValue(r.value, fmt))}</em></li>`).join('')}</ol>` : `<p class="none">${esc(t('Nobody has an entry yet.'))}</p>`}</div>`;
+    });
+    return `<section class="tv-block tv-ach-game"><h3>${esc(t('Achievements'))} <small>${esc(tf('{n} of {total}', { n: got, total: main.length }))}${d.total ? ' · ' + esc(tf('{n} of {total} points', { n: d.points, total: d.total })) : ''}</small></h3>
+      ${banner}${achBar(got, main.length, mastered)}
+      <div class="tv-ach-rows">${main.map(item).join('')}</div>
+      ${bonus.length ? `<h4 class="tv-lh">${esc(t('Bonus'))}</h4><p class="tv-note">${esc(t('Bonus achievements don\'t count for Beaten or Mastered.'))}</p><div class="tv-ach-rows">${bonus.map(item).join('')}</div>` : ''}
+      ${lb.length ? `<h4 class="tv-lh">${esc(t('Leaderboards'))}</h4><div class="tv-ach-boards">${lb.join('')}</div>` : ''}
+      <p class="tv-note">${esc(t('Report problems from the desktop view'))}</p></section>`;
   }
   function pageDiscover() {
     wantCounts();
@@ -1231,7 +1315,7 @@
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
-          ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}
+          ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}${achGameTV(id)}
         </div>
         ${aside}
       </div>${(() => { const like = moreLike(a); return like.length ? row('like', t('More like this'), like.map((x) => poster(x, 'm:' + x.id)).join('')) : ''; })()}`, 'game')}
@@ -2245,7 +2329,7 @@
       const items = $$('[data-f]', rowEl).filter((e) => !e.disabled);
       const n = items[items.indexOf(cur) + (dir === 'right' ? 1 : -1)];
       if (n) return focus(n);
-      if (rowEl.classList.contains('tv-row') || rowEl.classList.contains('tv-nav')) return;
+      if (rowEl.classList.contains('tv-row') || rowEl.classList.contains('tv-nav') || rowEl.classList.contains('tv-acts')) return;
     }
     // Home: up from the row of your games stops at the team's note first, when there is one.
     // Down from it goes back to the game you were on.

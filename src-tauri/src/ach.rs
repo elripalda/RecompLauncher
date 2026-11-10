@@ -41,6 +41,9 @@ const MAX_LINE: usize = 1 << 20;
 static ACCESS: AtomicU8 = AtomicU8::new(0);
 /// The website's last a=status answer (kept for offline use).
 static STATUS: Mutex<Option<Value>> = Mutex::new(None);
+/// When the website last answered a=status (seconds), so a page open asks again once it's a few minutes old.
+static STATUS_AT: AtomicU64 = AtomicU64::new(0);
+const STATUS_FRESH: u64 = 180;
 
 pub fn allowed() -> bool {
     ACCESS.load(Ordering::Relaxed) == 1
@@ -67,6 +70,7 @@ fn set_status(app: &AppHandle, dir: &Path, v: Option<Value>) {
         None => { let _ = std::fs::remove_file(status_file(dir)); }
     }
     *STATUS.lock().unwrap() = v;
+    STATUS_AT.store(now_ms() / 1000, Ordering::Relaxed);
     if before != ACCESS.load(Ordering::Relaxed) {
         let _ = app.emit("ach-access", json!({"allowed": tester}));
     }
@@ -217,6 +221,27 @@ struct Store {
     /// description, gamerscore.
     #[serde(default)]
     native: BTreeMap<String, Vec<Value>>,
+    /// Games the website has said are Beaten / Mastered for this account (so each toast shows once).
+    #[serde(default)]
+    beaten: BTreeMap<String, bool>,
+    #[serde(default)]
+    mastered_seen: BTreeMap<String, bool>,
+    /// Leaderboard entries, sent like unlocks (offline ones wait).
+    #[serde(default)]
+    lboards: Vec<LbEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LbEntry {
+    pub game: String,
+    pub session: String,
+    pub board: Value,
+    pub value: i64,
+    pub at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<u64>,
+    #[serde(default)]
+    pub synced: bool,
 }
 
 static STORE: Mutex<Option<Store>> = Mutex::new(None);
@@ -321,8 +346,13 @@ pub fn effective(dir: &Path, game: &str, list: Option<Value>) -> Option<Value> {
 
 /// Every achievement in the game unlocked: by the list's ids, or a native list's "total".
 fn all_unlocked(list: Option<&Value>, have: &std::collections::HashSet<u32>) -> bool {
-    let ids: Vec<u32> = list.map(entries).unwrap_or_default().iter().filter_map(|a| num(a, "id")).map(|x| x as u32).collect();
-    if !ids.is_empty() {
+    // Bonus achievements don't count for Mastered.
+    let all = list.map(entries).unwrap_or_default();
+    let ids: Vec<u32> = all.iter().filter(|a| !a.get("bonus").and_then(Value::as_bool).unwrap_or(false)).filter_map(|a| num(a, "id")).map(|x| x as u32).collect();
+    if !ids.is_empty() || !all.is_empty() {
+        if ids.is_empty() {
+            return false;
+        }
         return ids.iter().all(|i| have.contains(i));
     }
     list.and_then(|l| num(l, "total")).map(|t| t > 0 && have.len() as u64 >= t).unwrap_or(false)
@@ -562,6 +592,12 @@ pub fn abort(app: &AppHandle, game: &str) {
 
 fn end_now(app: &AppHandle, game: &str) -> Option<String> {
     let l = live(|m| m.remove(game))?;
+    if TRACKER.lock().unwrap().as_ref().and_then(|t| t.get("game")).and_then(Value::as_str) == Some(game) {
+        tracker(app, None);
+    }
+    if let Some(m) = PRESENCE.lock().unwrap().as_mut() {
+        m.remove(game);
+    }
     for s in l.stop {
         let _ = s.send(());
     }
@@ -769,14 +805,40 @@ fn handle(app: &AppHandle, game: &str, m: &Value) {
             });
             if let Some(list) = list {
                 let rules: Vec<Value> = entries(&list).into_iter().filter_map(|a| { let tr = a.get("trigger").and_then(Value::as_str).filter(|s| !s.trim().is_empty())?; Some(json!({"id": num(&a, "id")?, "trigger": tr})) }).collect();
-                if !rules.is_empty() {
+                let boards = list.get("leaderboards").cloned().filter(|b| b.as_array().map(|a| !a.is_empty()).unwrap_or(false));
+                let presence = list.get("rich_presence").cloned().filter(|p| !p.is_null());
+                if !rules.is_empty() || boards.is_some() || presence.is_some() {
                     let done = unlocked_ids(&dir, game);
-                    send(app, game, json!({"t": "list", "achievements": rules, "unlocked": done}));
+                    let mut msg = json!({"t": "list", "achievements": rules, "unlocked": done});
+                    if let Some(b) = boards {
+                        msg["leaderboards"] = b;
+                    }
+                    if let Some(p) = presence {
+                        msg["rich_presence"] = p;
+                    }
+                    send(app, game, msg);
                 }
             }
             let _ = app.emit("ach-changed", json!({"game": game}));
         }
         "list_ok" => {}
+        "lboard_start" => {
+            let b = board_of(&dir, game, m.get("id"));
+            tracker(app, Some(json!({"game": game, "board": m.get("id"), "title": b.as_ref().and_then(|b| b.get("title")).cloned().unwrap_or(json!("Leaderboard")), "format": b.as_ref().and_then(|b| b.get("format")).cloned().unwrap_or(json!("score")), "started": now_ms()})));
+        }
+        "lboard_cancel" => tracker(app, None),
+        "lboard" => {
+            let Some(value) = m.get("value").and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64))) else { return };
+            let Some(session) = live(|x| x.get(game).map(|l| l.session.clone())) else { return };
+            let e = LbEntry { game: game.into(), session, board: m.get("id").cloned().unwrap_or(Value::Null), value, at: now(), frame: num(m, "frame"), synced: false };
+            with_store(&dir, |d| { d.lboards.push(e); if d.lboards.len() > 2000 { d.lboards.retain(|x| !x.synced); } ((), true) });
+            let a = app.clone();
+            tauri::async_runtime::spawn(async move { sync(&a).await; });
+        }
+        "presence" => {
+            let text = m.get("text").and_then(Value::as_str).unwrap_or("").trim().chars().take(128).collect::<String>();
+            presence(app, game, text);
+        }
         "native_list" => {
             let names: Vec<Value> = m.get("achievements").and_then(Value::as_array).cloned().unwrap_or_default().into_iter()
                 .filter_map(|a| {
@@ -927,6 +989,7 @@ fn record(app: &AppHandle, game: &str, id: u32, source: &str, frame: Option<u64>
             toast(app, card);
         }
         if all_done {
+            with_store(&dir, |d| { d.mastered_seen.insert(game.into(), true); ((), true) });
             toast(app, json!({"title": name, "mastered": true, "points": list.as_ref().map(entries).unwrap_or_default().iter().map(points_of).sum::<u64>()}));
         }
     }
@@ -1047,10 +1110,213 @@ pub async fn sync(app: &AppHandle) {
                 let _ = app.emit("ach-changed", json!({"game": game}));
                 // The page and the sidebar show the profile: it's asked for again.
                 let _ = app.emit("ach-profile", json!({}));
+                completion_toasts(app, &game, &v);
             }
             _ => return,
         }
     }
+    sync_lboards(app).await;
+}
+
+/// The website says a game is now Beaten or Mastered, or an event is done: their toasts, after the
+/// unlocks' own. A batch that makes a game both shows only Mastered; each shows once.
+fn completion_toasts(app: &AppHandle, game: &str, v: &Value) {
+    let dir = app.state::<App>().dir.clone();
+    let mastered = v.get("mastered").and_then(Value::as_bool).unwrap_or(false);
+    let beaten = v.get("beaten").and_then(Value::as_bool).unwrap_or(false);
+    let (show_m, show_b) = with_store(&dir, |d| {
+        let (pm, pb) = (d.mastered_seen.get(game).copied().unwrap_or(false), d.beaten.get(game).copied().unwrap_or(false));
+        if mastered {
+            d.mastered_seen.insert(game.into(), true);
+        }
+        if beaten {
+            d.beaten.insert(game.into(), true);
+        }
+        let new_m = mastered && !pm;
+        ((new_m, beaten && !pb && !new_m && !mastered), new_m || (beaten && !pb))
+    });
+    let name = game_name(app, game);
+    if show_m {
+        let total: u64 = effective(&dir, game, list_for(&dir, game)).as_ref().map(entries).unwrap_or_default().iter().filter(|a| !a.get("bonus").and_then(Value::as_bool).unwrap_or(false)).map(points_of).sum();
+        toast(app, json!({"title": name, "mastered": true, "points": total}));
+    }
+    if show_b {
+        toast(app, json!({"title": name, "beaten": true}));
+    }
+    for e in v.get("events").and_then(Value::as_array).cloned().unwrap_or_default() {
+        let title = e.get("title").and_then(Value::as_str).unwrap_or("").to_string();
+        if !title.is_empty() {
+            toast(app, json!({"title": title, "event": true}));
+        }
+    }
+}
+
+fn game_name(app: &AppHandle, game: &str) -> String {
+    live(|m| m.get(game).map(|l| l.name.clone())).or_else(|| app.state::<App>().lib.lock().unwrap().installed.get(game).map(|g| g.name.clone())).unwrap_or_else(|| game.to_string())
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// A leaderboard from the game's list, by its id.
+fn board_of(dir: &Path, game: &str, id: Option<&Value>) -> Option<Value> {
+    let id = id?;
+    let list = live(|x| x.get(game).and_then(|l| l.list.clone())).or_else(|| list_for(dir, game))?;
+    list.get("leaderboards")?.as_array()?.iter().find(|b| b.get("id") == Some(id) || (b.get("id").and_then(Value::as_u64).is_some() && b.get("id").and_then(Value::as_u64) == id.as_u64())).cloned()
+}
+
+/// Leaderboard entries not on the website yet. One just made gets its answer shown: a New Best
+/// toast, or a quiet "Not your best" in the tracker.
+async fn sync_lboards(app: &AppHandle) {
+    let dir = app.state::<App>().dir.clone();
+    let pending: Vec<(usize, LbEntry, Option<String>)> = with_store(&dir, |d| {
+        let v = d.lboards.iter().enumerate().filter(|(_, e)| !e.synced).map(|(i, e)| (i, e.clone(), d.sessions.get(&e.session).and_then(|s| s.server.clone()))).collect();
+        (v, false)
+    });
+    for (_, e, server) in pending {
+        let Some(server) = server else { continue };
+        match call(app, "POST", "lboard", &[], Some(json!({"session": server, "board": e.board, "value": e.value, "at": e.at}))).await {
+            Ok((200..=299, v)) => {
+                with_store(&dir, |d| {
+                    if let Some(x) = d.lboards.iter_mut().find(|x| x.session == e.session && x.board == e.board && x.at == e.at && x.value == e.value) {
+                        x.synced = true;
+                    }
+                    ((), true)
+                });
+                if now().saturating_sub(e.at) < 120 {
+                    let b = board_of(&dir, &e.game, Some(&e.board));
+                    let title = b.as_ref().and_then(|b| b.get("title")).and_then(Value::as_str).unwrap_or("Leaderboard").to_string();
+                    let format = b.as_ref().and_then(|b| b.get("format")).and_then(Value::as_str).unwrap_or("score").to_string();
+                    if v.get("new_best").and_then(Value::as_bool).unwrap_or(false) {
+                        let rank = v.get("ranked").and_then(Value::as_bool).unwrap_or(false).then(|| num(&v, "rank")).flatten();
+                        toast(app, json!({"title": title, "best": true, "value": fmt_value(e.value, &format), "rank": rank}));
+                    } else {
+                        notice(app, "not_best");
+                    }
+                }
+                let _ = app.emit("ach-changed", json!({"game": e.game}));
+            }
+            Ok((403, _)) | Err(_) => return,
+            Ok(_) => {
+                // Refused for good (a board that's gone): not sent again.
+                with_store(&dir, |d| {
+                    if let Some(x) = d.lboards.iter_mut().find(|x| x.session == e.session && x.board == e.board && x.at == e.at) {
+                        x.synced = true;
+                    }
+                    ((), true)
+                });
+            }
+        }
+    }
+}
+
+/// A leaderboard value as the site shows it: score and value plain; frames and time in 1/60 s as
+/// m:ss.cc; millisecs as m:ss.mmm; seconds as m:ss; minutes as h:mm. Hours in front when any.
+pub fn fmt_value(v: i64, format: &str) -> String {
+    let neg = if v < 0 { "-" } else { "" };
+    let a = v.unsigned_abs();
+    let clock = |secs: u64, tail: String| {
+        let (h, m, s) = (secs / 3600, (secs / 60) % 60, secs % 60);
+        if h > 0 { format!("{neg}{h}:{m:02}:{s:02}{tail}") } else { format!("{neg}{m}:{s:02}{tail}") }
+    };
+    match format {
+        "frames" | "time" => clock(a / 60, format!(".{:02}", (a % 60) * 100 / 60)),
+        "millisecs" => clock(a / 1000, format!(".{:03}", a % 1000)),
+        "seconds" => clock(a, String::new()),
+        "minutes" => format!("{neg}{}:{:02}", a / 60, a % 60),
+        _ => v.to_string(),
+    }
+}
+
+// ---------- the tracker and rich presence ----------
+
+static TRACKER: Mutex<Option<Value>> = Mutex::new(None);
+
+/// The small leaderboard tracker in the overlay's corner (None hides it).
+fn tracker(app: &AppHandle, t: Option<Value>) {
+    let show = t.is_some();
+    *TRACKER.lock().unwrap() = t.clone();
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let w = match a.get_webview_window("toast") {
+            Some(w) => w,
+            None if show => match build_toast(&a) { Ok(w) => w, Err(_) => return },
+            None => return,
+        };
+        if show {
+            place_toast(&a, &w);
+            let _ = w.set_ignore_cursor_events(true);
+            let _ = w.show();
+        }
+        let _ = a.emit_to("toast", "ach-tracker", t.unwrap_or(Value::Null));
+        if !show && TOASTS.lock().unwrap().is_empty() {
+            let _ = a.emit_to("toast", "ach-toast", json!({}));
+        }
+    });
+}
+
+/// A quiet line in the tracker for a few seconds ("not_best").
+fn notice(app: &AppHandle, kind: &str) {
+    if TRACKER.lock().unwrap().is_some() {
+        let _ = app.emit_to("toast", "ach-notice", json!({"kind": kind}));
+    }
+}
+
+#[tauri::command]
+pub fn ach_tracker_get() -> Value {
+    TRACKER.lock().unwrap().clone().unwrap_or(Value::Null)
+}
+
+struct Presence {
+    sent: String,
+    sent_at: Option<Instant>,
+    pending: String,
+    waiting: bool,
+}
+
+static PRESENCE: Mutex<Option<HashMap<String, Presence>>> = Mutex::new(None);
+
+/// The game's rich presence: to the website at most every 15 seconds and only when it changed,
+/// and to Discord's state line when Discord status is on.
+fn presence(app: &AppHandle, game: &str, text: String) {
+    if text.is_empty() {
+        return;
+    }
+    if crate::g_discord(&app.state::<App>()) {
+        crate::discord::send(crate::discord::Msg::State(text.clone()));
+    }
+    let wait = {
+        let mut g = PRESENCE.lock().unwrap();
+        let m = g.get_or_insert_with(HashMap::new);
+        let p = m.entry(game.into()).or_insert(Presence { sent: String::new(), sent_at: None, pending: String::new(), waiting: false });
+        p.pending = text;
+        if p.pending == p.sent || p.waiting {
+            return;
+        }
+        p.waiting = true;
+        p.sent_at.map(|t| Duration::from_secs(15).saturating_sub(t.elapsed())).unwrap_or_default()
+    };
+    let (a, g) = (app.clone(), game.to_string());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(wait).await;
+        let text = {
+            let mut lk = PRESENCE.lock().unwrap();
+            let Some(p) = lk.as_mut().and_then(|m| m.get_mut(&g)) else { return };
+            p.waiting = false;
+            if p.pending == p.sent {
+                return;
+            }
+            p.sent = p.pending.clone();
+            p.sent_at = Some(Instant::now());
+            p.sent.clone()
+        };
+        let dir = a.state::<App>().dir.clone();
+        let server = live(|m| m.get(&g).map(|l| l.session.clone())).and_then(|sid| with_store(&dir, |d| (d.sessions.get(&sid).and_then(|s| s.server.clone()), false)));
+        if let Some(server) = server {
+            let _ = call(&a, "POST", "presence", &[], Some(json!({"session": server, "text": text}))).await;
+        }
+    });
 }
 
 // ---------- ReXGlue's unlock file ----------
@@ -1337,7 +1603,7 @@ fn build_toast(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
 }
 
 const TOAST_W: f64 = 540.0;
-const TOAST_H: f64 = 200.0;
+const TOAST_H: f64 = 250.0;
 
 /// Top right of the screen the game is on (the one with the mouse, else the main one).
 fn place_toast(app: &AppHandle, w: &tauri::WebviewWindow) {
@@ -1361,7 +1627,7 @@ pub fn ach_toast_take() -> Vec<Value> {
 
 #[tauri::command]
 pub fn ach_toast_done(app: AppHandle) {
-    if TOASTS.lock().unwrap().is_empty() {
+    if TOASTS.lock().unwrap().is_empty() && TRACKER.lock().unwrap().is_none() {
         if let Some(w) = app.get_webview_window("toast") {
             let _ = w.hide();
         }
@@ -1384,7 +1650,9 @@ pub async fn ach_access(app: AppHandle, fresh: Option<bool>) -> Res<Value> {
 pub async fn ach_status(app: AppHandle, fresh: Option<bool>) -> Res<Value> {
     let dir = app.state::<App>().dir.clone();
     let signed = crate::cloud::token(&dir).is_some();
-    let st = if fresh.unwrap_or(false) || ACCESS.load(Ordering::Relaxed) == 0 { check_status(&app).await } else { STATUS.lock().unwrap().clone() };
+    // A cached answer a few minutes old is asked again, so a note the team just posted turns up.
+    let stale = (now_ms() / 1000).saturating_sub(STATUS_AT.load(Ordering::Relaxed)) > STATUS_FRESH;
+    let st = if fresh.unwrap_or(false) || stale || ACCESS.load(Ordering::Relaxed) == 0 { check_status(&app).await } else { STATUS.lock().unwrap().clone() };
     let mut v = st.unwrap_or_else(|| json!({}));
     v["signed_in"] = json!(signed);
     v["tester"] = json!(signed && allowed());
@@ -1477,11 +1745,59 @@ pub async fn ach_games(app: AppHandle) -> Res<Value> {
 
 /// The leaderboard (a=board), overall or for one game.
 #[tauri::command]
-pub async fn ach_board(app: AppHandle, game: Option<String>) -> Res<Value> {
+pub async fn ach_board(app: AppHandle, game: Option<String>, by: Option<String>) -> Res<Value> {
     let g = game.unwrap_or_default();
     let safe: String = g.chars().filter(|c| c.is_ascii_alphanumeric() || "-_.".contains(*c)).collect();
-    let q: Vec<(&str, &str)> = if safe.is_empty() { vec![] } else { vec![("game", safe.as_str())] };
-    tester_get(&app, "board", &q, "board", &format!("board-{}", if safe.is_empty() { "all" } else { &safe })).await
+    let by = if by.as_deref() == Some("score") { "score" } else { "points" };
+    let mut q: Vec<(&str, &str)> = if safe.is_empty() { vec![] } else { vec![("game", safe.as_str())] };
+    if by == "score" {
+        q.push(("by", "score"));
+    }
+    tester_get(&app, "board", &q, "board", &format!("board-{}-{by}", if safe.is_empty() { "all" } else { &safe })).await
+}
+
+/// A game's public page data (a=game): its leaderboards with their top 10.
+#[tauri::command]
+pub async fn ach_game_web(app: AppHandle, game: String) -> Res<Value> {
+    let safe: String = game.chars().filter(|c| c.is_ascii_alphanumeric() || "-_.".contains(*c)).collect();
+    if safe.is_empty() {
+        return Ok(Value::Null);
+    }
+    let st = app.state::<App>();
+    let mut req = st.http.get(API).query(&[("a", "game"), ("game", safe.as_str())]).timeout(Duration::from_secs(15));
+    if let Some(t) = crate::cloud::token(&st.dir) {
+        req = req.header("X-RL-Token", t);
+    }
+    let file = cache_file(&st.dir, &format!("game-{safe}"));
+    match req.send().await {
+        Ok(r) if r.status().is_success() => {
+            let v: Value = r.json().await.unwrap_or(Value::Null);
+            let _ = std::fs::create_dir_all(st.dir.join("achievements"));
+            let _ = std::fs::write(&file, v.to_string());
+            Ok(v)
+        }
+        _ => Ok(std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null)),
+    }
+}
+
+/// A problem with one achievement (a=report): kind is didnt_unlock, too_early, wrong_text or other.
+#[tauri::command]
+pub async fn ach_report(app: AppHandle, game: String, id: u32, kind: String, note: Option<String>) -> Res<Value> {
+    if !allowed() {
+        return Ok(json!({"error": "Only testers can report achievements for now."}));
+    }
+    let kind = if matches!(kind.as_str(), "didnt_unlock" | "too_early" | "wrong_text" | "other") { kind } else { "other".into() };
+    let version = app.state::<App>().lib.lock().unwrap().installed.get(&game).map(|g| g.tag.clone()).unwrap_or_default();
+    let note: String = note.unwrap_or_default().trim().chars().take(600).collect();
+    match call(&app, "POST", "report", &[], Some(json!({"game": game, "id": id, "kind": kind, "note": note, "version": version}))).await? {
+        (_, v) if v.get("error").is_some() => Ok(json!({"error": v["error"]})),
+        (200..=299, v) => {
+            let (a, g) = (app.clone(), game.clone());
+            tauri::async_runtime::spawn(async move { let _ = ach_game(a, g, Some(true)).await; });
+            Ok(v)
+        }
+        (code, _) => Ok(json!({"error": format!("The website answered {code}. Try again in a bit.")})),
+    }
 }
 
 /// Everything the Achievements tab shows for a game. The website's list and the account's
@@ -2033,6 +2349,21 @@ mod tests {
         assert!(all_unlocked(Some(&json!({"achievements": [{"id": 1}, {"id": 3}]})), &have));
         assert!(!all_unlocked(Some(&json!({"achievements": [{"id": 1}, {"id": 9}]})), &have));
         assert!(!all_unlocked(None, &have));
+        // Bonus achievements don't count for Mastered.
+        assert!(all_unlocked(Some(&json!({"achievements": [{"id": 1}, {"id": 2}, {"id": 9, "bonus": true}]})), &have));
+        assert!(!all_unlocked(Some(&json!({"achievements": [{"id": 9, "bonus": true}]})), &have));
+    }
+
+    #[test]
+    fn leaderboard_values_read_like_the_site() {
+        assert_eq!(fmt_value(1234567, "score"), "1234567");
+        assert_eq!(fmt_value(5430, "frames"), "1:30.50");
+        assert_eq!(fmt_value(5430, "time"), "1:30.50");
+        assert_eq!(fmt_value(83456, "millisecs"), "1:23.456");
+        assert_eq!(fmt_value(75, "seconds"), "1:15");
+        assert_eq!(fmt_value(3725, "seconds"), "1:02:05");
+        assert_eq!(fmt_value(125, "minutes"), "2:05");
+        assert_eq!(fmt_value(60 * 60 * 61, "frames"), "1:01:00.00");
     }
 
     #[test]

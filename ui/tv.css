@@ -786,11 +786,11 @@ body.light .tv-sheet .tv-item.warn svg{color:#9a7200}
 .tv-stage .tv-tag.f{background:var(--tvink,#F4F8FC);color:var(--tvbg);border-color:transparent;transform:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 60%,transparent)!important}
 body.light .tv-tag{background:rgba(255,255,255,.7);color:#334155}
 
-/* Achievements (coming soon). */
+/* Achievements: the alpha page, the tester page and the game page block. */
 .tv-ach{--gold:#f2c14e;position:relative;max-width:1500px}
 .tv-ach-pill{position:absolute;top:14px;right:0;height:40px;padding:0 18px;border-radius:999px;display:inline-flex;align-items:center;font-size:18px;font-weight:800;color:#1d1503;background:var(--gold)}
 .tv-ach-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:20px}
-.tv-ach-card{position:relative;padding:30px 30px 28px;border-radius:26px;background:rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12);display:flex;flex-direction:column;gap:12px;opacity:.75}
+.tv-ach-card{position:relative;padding:30px 30px 28px;border-radius:26px;background:rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12);display:flex;flex-direction:column;gap:12px}
 .tv-ach-card b{font:700 semi-expanded 24px/1.2 Archivo,sans-serif}
 .tv-ach-card p{margin:0;font-size:19px;line-height:1.45;color:var(--tvsoft,#c9d3e0)}
 .tv-ach-card .ic{width:58px;height:58px;border-radius:16px;display:grid;place-items:center;background:rgba(var(--tvinkrgb,244,248,252),.08)}
@@ -805,6 +805,91 @@ body.light .tv-tag{background:rgba(255,255,255,.7);color:#334155}
 .tv-ach .tv-acts{margin-top:26px}
 .tv-ach-ok{margin:-6px 0 4px;color:var(--gold);font-weight:600}
 body.light .tv-ach-ok{color:#8a6400}
+.tv-ach-ok{display:inline-block;padding:6px 10px;border-radius:12px}
+.tv-ach-pin{margin-top:22px;max-width:1500px;padding:22px 30px;border-radius:24px;border:1px solid rgba(242,193,78,.45);background:linear-gradient(110deg,rgba(242,193,78,.16),rgba(242,193,78,.03) 60%),rgba(var(--tvrgb),.72)}
+.tv-ach-pin b{display:block;font:700 semi-expanded 26px Archivo,sans-serif;color:var(--gold)}
+.tv-ach-pin p{margin:6px 0 0;font-size:20px;color:var(--tvsoft,#c9d3e0)}
+.tv-ach-pill.in{position:static;height:34px;font-size:16px;background:linear-gradient(180deg,#34F2E8,#377BB6);color:#08101c}
+.tv-ach-prof{margin-top:22px;padding:28px 32px;border-radius:28px;background:linear-gradient(120deg,rgba(52,242,232,.12),rgba(55,123,182,.06) 50%,transparent),rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);display:flex;flex-direction:column;gap:20px;max-width:1500px}
+.tv-ach-who{display:flex;align-items:center;gap:16px}
+.tv-ach-who>b{font:800 semi-expanded 32px/1.1 Archivo,sans-serif}
+.tv-ach-boxes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
+.tv-ach-box{padding:18px 22px;border-radius:20px;background:rgba(var(--tvinkrgb,244,248,252),.06);border:1px solid rgba(var(--tvinkrgb,244,248,252),.1)}
+.tv-ach-box b{display:block;font:800 semi-expanded 38px/1.15 Archivo,sans-serif}
+.tv-ach-box b small{font:600 20px Figtree,sans-serif;color:var(--tvdim,#8f9cb0);margin-left:8px}
+.tv-ach-box span{font-size:19px;color:var(--tvmuted,#a7b3c4)}
+.tv-ach-i{display:flex;align-items:center;gap:10px;margin:-6px 0 0;font-size:18px;color:var(--tvmuted,#a7b3c4)}
+.tv-ach-i i{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;font:800 14px Figtree,sans-serif;font-style:normal}
+.tv-ach-i b{color:var(--tvink,#F4F8FC)}
+.tv-ach-bar{display:block;height:10px;border-radius:99px;background:rgba(var(--tvinkrgb,244,248,252),.12);overflow:hidden;margin:8px 0 6px}
+.tv-ach-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#34F2E8,#377BB6)}
+.tv-ach-bar.gold i{background:linear-gradient(90deg,#ffe08a,#f2c14e)}
+.tv-ach-evs{display:grid;grid-template-columns:repeat(var(--c,3),minmax(0,1fr));gap:20px;max-width:1500px}
+.tv-ach-ev{display:grid;grid-template-columns:60px minmax(0,1fr);gap:18px;align-items:center;padding:20px 24px;border-radius:22px;background:rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12)}
+.tv-ach-ev .ic{width:60px;height:60px;border-radius:16px;display:grid;place-items:center;background:rgba(242,193,78,.14)}
+.tv-ach-ev .ic svg{width:32px;height:32px;fill:none;stroke:var(--gold);stroke-width:1.8}
+.tv-ach-ev.won .ic svg{fill:var(--gold);stroke:none}
+.tv-ach-ev b{display:block;font-size:22px}
+.tv-ach-ev small{font-size:17px;color:var(--tvdim,#8f9cb0)}
+.tv-ach-ev em{display:inline-block;margin-top:6px;padding:3px 12px;border-radius:999px;font:700 16px Figtree,sans-serif;font-style:normal;color:#3a2700;background:linear-gradient(180deg,#ffe08a,#f2c14e)}
+.tv-ach-done{display:grid;grid-template-columns:repeat(var(--c,6),minmax(0,1fr));gap:22px;max-width:1500px}
+.tv-ach-gm{position:relative;display:flex;flex-direction:column;gap:10px;text-align:left;border-radius:18px}
+.tv-ach-gm .cv{position:relative;aspect-ratio:2/3;border-radius:18px;overflow:hidden;background:rgba(var(--tvinkrgb,244,248,252),.08);display:flex;align-items:flex-end;padding:12px}
+.tv-ach-gm .cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tv-ach-gm .ph{font:800 18px/1.1 Archivo,sans-serif;text-transform:uppercase}
+.tv-ach-gm>b{font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-ach-gm.f{transform:scale(1.05)}
+.tv-ach-tag{position:absolute;top:10px;right:10px;display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font:800 14px Figtree,sans-serif;letter-spacing:.06em;text-transform:uppercase;z-index:1}
+.tv-ach-tag svg{width:15px;height:15px;fill:currentColor}
+.tv-ach-tag.gold{background:linear-gradient(180deg,#ffe08a,#f2c14e);color:#3a2700}
+.tv-ach-tag.silver{background:linear-gradient(180deg,#f4f7fb,#aab4c2);color:#26303c}
+.tv-ach-star{flex:none;width:56px;height:56px;border-radius:16px;display:grid;place-items:center;background:rgba(var(--tvinkrgb,244,248,252),.06)}
+.tv-ach-star svg{width:30px;height:30px;fill:rgba(var(--tvinkrgb,244,248,252),.22)}
+.tv-ach-un .tv-ach-star,.tv-ach-star.on{background:rgba(52,242,232,.14)}
+.tv-ach-un .tv-ach-star svg,.tv-ach-star.on svg{fill:#34F2E8;filter:drop-shadow(0 0 8px rgba(52,242,232,.5))}
+.tv-ach-lb{display:flex;flex-direction:column;max-width:1000px;padding:12px;border-radius:24px;background:rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12)}
+.tv-ach-lb>div{display:grid;grid-template-columns:60px minmax(0,1fr) auto;gap:18px;align-items:center;padding:12px 18px;border-radius:14px;font-size:21px}
+.tv-ach-lb>div+div{border-top:1px solid rgba(var(--tvinkrgb,244,248,252),.08)}
+.tv-ach-lb>div span{font:800 22px Archivo,sans-serif;color:var(--tvmuted,#a7b3c4);text-align:center}
+.tv-ach-lb>div em{font-style:normal;font-weight:800}
+.tv-ach-lb>div.you{background:rgba(52,242,232,.1)}
+.tv-ach-game .tv-ach-bar{max-width:1300px}
+.tv-ach-banner{display:flex;align-items:center;gap:14px;max-width:1300px;padding:14px 22px;border-radius:20px;border:1px solid}
+.tv-ach-banner svg{width:34px;height:34px}
+.tv-ach-banner b{font:800 semi-expanded 24px Archivo,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.tv-ach-banner.gold{background:linear-gradient(100deg,rgba(242,193,78,.2),rgba(242,193,78,.04));border-color:rgba(242,193,78,.45);color:#f2c14e}
+.tv-ach-banner.gold svg{fill:#f2c14e}
+.tv-ach-banner.silver{background:linear-gradient(100deg,rgba(214,222,232,.18),rgba(214,222,232,.04));border-color:rgba(214,222,232,.4);color:#d6dee8}
+.tv-ach-banner.silver svg{fill:#d6dee8}
+.tv-ach-rows{display:flex;flex-direction:column;gap:10px;max-width:1300px}
+.tv-ach-row{display:flex;align-items:center;gap:20px;min-height:84px;padding:12px 24px;border-radius:20px;background:rgba(var(--tvinkrgb,244,248,252),.05);border:1px solid rgba(var(--tvinkrgb,244,248,252),.1)}
+.tv-ach-row .k{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.tv-ach-row .k b{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:22px}
+.tv-ach-row:not(.got) .k b{color:var(--tvmuted,#a7b3c4)}
+.tv-ach-row .k small{font-size:17px;color:var(--tvdim,#8f9cb0)}
+.tv-ach-row .k small.miss{color:#f5b83d}
+.tv-ach-row .k small.rare{font-size:16px}
+.tv-ach-row .pts{flex:none;font-weight:700;font-size:19px;color:var(--tvmuted,#a7b3c4)}
+.tv-ach-row .ty{padding:2px 9px;border-radius:7px;font:800 13px Figtree,sans-serif;font-style:normal;letter-spacing:.06em;text-transform:uppercase;border:1px solid rgba(var(--tvinkrgb,244,248,252),.2);color:var(--tvmuted,#a7b3c4)}
+.tv-ach-row .ty.win{color:#f2c14e;border-color:rgba(242,193,78,.45)}
+.tv-ach-row .ty.progression{color:#34F2E8;border-color:rgba(52,242,232,.4)}
+.tv-ach-row .ty.missable{color:#f5b83d;border-color:rgba(245,184,61,.5)}
+.tv-ach-row.f{background:rgba(var(--tvinkrgb,244,248,252),.1)}
+.tv-ach-boards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:1300px}
+.tv-ach-board{display:flex;flex-direction:column;gap:10px;padding:20px 24px;border-radius:22px;background:rgba(var(--tvrgb),.72);border:1px solid rgba(var(--tvinkrgb,244,248,252),.12)}
+.tv-ach-board:last-child:nth-child(odd){grid-column:1/-1}
+.tv-ach-board:last-child:nth-child(odd) ol{columns:2;column-gap:30px}
+.tv-ach-board>b{font-size:22px}
+.tv-ach-board .best{display:flex;align-items:baseline;gap:12px;margin:0;font-size:18px;color:var(--tvmuted,#a7b3c4)}
+.tv-ach-board .best em{font:800 semi-expanded 26px Archivo,sans-serif;font-style:normal;color:var(--tvink,#F4F8FC)}
+.tv-ach-board ol{list-style:none;margin:0;padding:0}
+.tv-ach-board li{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:12px;padding:6px 4px;font-size:18px;break-inside:avoid}
+.tv-ach-board li span{color:var(--tvdim,#8f9cb0);font-weight:800;text-align:center}
+.tv-ach-board li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-ach-board li em{font-style:normal;font-weight:700}
+.tv-ach-board li.you{background:rgba(52,242,232,.1);border-radius:10px}
+.tv-ach-board .none{margin:0;font-size:18px;color:var(--tvdim,#8f9cb0)}
+body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body.light .tv-ach-banner.silver{color:#4b5563}body.light .tv-ach-banner.gold svg{fill:#c99a2e}body.light .tv-ach-banner.silver svg{fill:#8d99aa}
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}

@@ -25,4 +25,27 @@ body{font:600 15px/1.35 Figtree,system-ui,sans-serif;color:#F4F8FC;-webkit-font-
 .toast.big .star svg{width:84px;height:84px}
 .toast.big .title{font-size:24px}
 .toast.big .badge{display:block;position:absolute;top:-11px;right:22px;padding:3px 12px;border-radius:999px;font:800 12px/1.5 Figtree,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#05080d;background:linear-gradient(180deg,#34F2E8,#377BB6)}
-@media (prefers-reduced-motion:reduce){.toast,.toast.out{transition:opacity .2s ease;transform:none}.toast.in .star svg{animation:none;transform:none;opacity:1}}
+/* Beaten: the same big card in silver. Event Complete and New Best: the gold star. */
+.toast.silver{border-color:rgba(214,222,232,.5);box-shadow:0 22px 60px rgba(0,0,0,.55),0 0 40px rgba(214,222,232,.16)}
+.toast.silver .star{background:radial-gradient(circle at 50% 45%,rgba(214,222,232,.24),rgba(214,222,232,0) 70%)}
+.toast.silver .star path{fill:url(#silver);stroke:#fff}
+.toast.silver .star svg{filter:drop-shadow(0 0 10px rgba(214,222,232,.5))}
+.toast.silver .kicker{color:#D6DEE8}
+.toast.silver .badge{background:linear-gradient(180deg,#f4f7fb,#8d99aa)}
+.toast.gold .star{background:radial-gradient(circle at 50% 45%,rgba(242,193,78,.24),rgba(242,193,78,0) 70%)}
+.toast.gold .star path{fill:url(#gold);stroke:#fff6dc}
+.toast.gold .star svg{filter:drop-shadow(0 0 10px rgba(242,193,78,.55))}
+.toast.gold .kicker{color:#F2C14E}
+.toast .val{color:#F4F8FC;font-variant-numeric:tabular-nums}
+/* The leaderboard tracker: small and quiet, bottom right of the corner, under the toasts. */
+.trk{position:absolute;right:24px;bottom:16px;max-width:380px;height:44px;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:0 16px 0 12px;border-radius:14px;
+  background:rgba(9,14,24,.82);border:1px solid rgba(244,248,252,.12);color:#A9B4C4;opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease}
+.trk.on{opacity:1;transform:none}
+.trk-ic{flex:none;color:#F2C14E}
+.trk-text{min-width:0;display:flex;flex-direction:column;line-height:1.15}
+.trk-text b{font:700 14px/1.2 Figtree,sans-serif;color:#F4F8FC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trk-text span{font-size:12px;color:#A9B4C4;white-space:nowrap}
+.trk-text span:empty{display:none}
+.trk-v{flex:none;margin-left:auto;font:800 16px/1 Archivo,Figtree,sans-serif;font-variant-numeric:tabular-nums;color:#F4F8FC}
+.trk-v:empty{display:none}
+@media (prefers-reduced-motion:reduce){.toast,.toast.out,.trk{transition:opacity .2s ease;transform:none}.toast.in .star svg{animation:none;transform:none;opacity:1}}

@@ -82,7 +82,7 @@ fn system_for(ext: &str) -> &'static str {
         "sfc" | "smc" => "snes",
         "adf" | "hdf" | "ipf" | "lha" => "amiga",
         "xci" | "nsp" => "switch",
-        // A Switch 2 package (game or update) only runs on Switch 2.
+        // A .nup package is a Switch or Switch 2 dump; `fits` lets it serve either console.
         "nup" => "switch2",
         _ => "",
     }
@@ -402,6 +402,11 @@ const CART_ORIGINS: [&str; 14] = ["n64", "snes", "nes", "gb", "gbc", "gba", "ds"
 /// Can this file be a game for that console? The same console, or one that plays its games
 /// (Game Boy and Game Boy Color), or a disc image of unknown kind for a console that uses discs.
 fn fits(rom: &RomFile, origin: &str) -> bool {
+    // A .nup package (NX Package Format) holds Switch or Switch 2 dumps, and its name doesn't say which.
+    let is_nup = rom.path.extension().and_then(|s| s.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("nup"));
+    if is_nup && rom.system == "switch2" {
+        return matches!(origin, "switch" | "switch2");
+    }
     if matches!(rom.system.as_str(), "ps3" | "ps5" | "switch2") {
         return origin == rom.system.as_str();
     }
@@ -993,6 +998,9 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].path, nup);
         assert_eq!(found[0].system, "switch2");
+        assert!(fits(&found[0], "switch2"));
+        assert!(fits(&found[0], "switch"));
+        assert!(!fits(&found[0], "ps3"));
     }
 
     #[test]

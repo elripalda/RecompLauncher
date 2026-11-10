@@ -1036,7 +1036,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 17;
+pub const EXE_RULES: u8 = 18;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1057,7 +1057,7 @@ const BUILD_TOOLS: [&str; 66] = [
 /// Folders a release keeps its tools, or leftovers from building, in.
 /// "Tools" in other languages too: ferramentas (Portuguese), herramientas (Spanish), outils
 /// (French), werkzeuge (German), strumenti (Italian), narzedzia (Polish), gereedschap (Dutch).
-pub const TOOL_DIRS: [&str; 31] = ["compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "llvm-mingw", "toolchain", "toolchains", "busybox", "mingw32", "mingw64", "msys64", "msys2", "cmake", "w64devkit", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
+pub const TOOL_DIRS: [&str; 32] = ["scripts", "compiler", "compilers", "deps", "dependencies", "tools", "tool", "temp", "tmp", "sdk", "redist", "_commonredist", "shaders", "llvm", "llvm-mingw", "toolchain", "toolchains", "busybox", "mingw32", "mingw64", "msys64", "msys2", "cmake", "w64devkit", "ferramentas", "herramientas", "outils", "werkzeuge", "strumenti", "narzedzia", "narzędzia", "gereedschap"];
 
 /// Whether a program (relative to the game's folder) is one of the game's tools rather than the
 /// game: by its name, or the folder it's in. A word that's in the game's own names doesn't count.
@@ -1089,6 +1089,12 @@ pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     if BUILD_TOOLS.contains(&whole) || whole.starts_with("python3.") || whole.starts_with("llvm-") || whole.contains("clang") || whole.ends_with("-gcc") || whole.ends_with("-g++") {
         return true;
     }
+    // A build or setup script (make_sysroot.sh, build.sh, configure, setup_deps.ps1): it makes the
+    // game or what it needs, it isn't the game.
+    let script = matches!(rel.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(), Some("sh" | "bash" | "ps1" | "bat" | "cmd" | "command") | None);
+    if script && ["make", "build", "configure", "bootstrap", "compile", "setup_", "setup-", "install", "gen_", "generate", "fetch", "download", "extract", "patch"].iter().any(|p| low.starts_with(p)) && !want_has_stem(&low, names) {
+        return true;
+    }
     // A tool word, or a name that ends in one (hactool, gt3tool), that isn't part of the game's name.
     if tokens(stem).iter().any(|t| !want.contains(t) && (TOOL_WORDS.contains(&t.as_str()) || t == "tool" || t == "tools" || t.ends_with("bktr") || (t.len() > 4 && (t.ends_with("tool") || t.ends_with("tools"))))) {
         return true;
@@ -1102,6 +1108,11 @@ pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
             })
         })
         .unwrap_or(false)
+}
+
+/// A script name that is the game's own name (a game called "Build" would be odd, but its name wins).
+fn want_has_stem(low: &str, names: &[&str]) -> bool {
+    names.iter().any(|n| tokens(n).iter().any(|t| t.len() > 3 && low == *t))
 }
 
 /// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
@@ -1458,6 +1469,14 @@ mod tests {
         // A link out of the folder still stops it.
         std::os::unix::fs::symlink("/etc", d.join("out")).unwrap();
         assert!(validate_links(&d, &d).is_err());
+    }
+
+    #[test]
+    fn build_scripts_are_never_the_game() {
+        for p in ["src/scripts/make_sysroot.sh", "build.sh", "configure", "setup_deps.ps1", "install.sh", "scripts/run.sh"] {
+            assert!(looks_like_tool(Path::new(p), &["Harmony Recomp"]), "{p}");
+        }
+        assert!(!looks_like_tool(Path::new("harmony.sh"), &["Harmony Recomp"]));
     }
 
     #[test]
