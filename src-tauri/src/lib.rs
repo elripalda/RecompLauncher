@@ -7097,6 +7097,18 @@ fn wait_for_play(args: &[String]) -> bool {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// The single-instance plugin, on the Flatpak's own D-Bus name when the launcher runs as one.
+fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder<R> {
+    let b = tauri_plugin_single_instance::Builder::new();
+    #[cfg(target_os = "linux")]
+    if flatpak::sandboxed() {
+        if let Ok(id) = std::env::var("FLATPAK_ID") {
+            return b.dbus_id(id);
+        }
+    }
+    b
+}
+
 pub fn run() {
     #[cfg(target_os = "linux")]
     sysenv::prepare_start(data_dir_early());
@@ -7106,7 +7118,9 @@ pub fn run() {
     tauri::Builder::default()
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| match play_arg(&argv) {
+        // On D-Bus as the app id, not the Tauri identifier: a Flatpak may only own names under its
+        // own id, so a second copy would start instead of handing over.
+        .plugin(single_instance().callback(|app, argv, _cwd| match play_arg(&argv) {
             _ if argv.iter().any(|a| a == "--quit") => app.exit(0),
             // A game link from the website, clicked while the launcher is open (or by the clock).
             _ if argv.iter().skip(1).any(|a| a.to_ascii_lowercase().starts_with("recomplauncher:")) => {
@@ -7137,7 +7151,7 @@ pub fn run() {
                     let _ = app.emit("bigpicture", true);
                 }
             }
-        }))
+        }).build())
         .on_window_event(|w, ev| {
             if w.label() != "main" {
                 return;
