@@ -2,7 +2,7 @@
 Categories=Game;
 Comment=One home for PC recomps
 Exec=recomplauncher %u
-StartupWMClass=recomplauncher
+StartupWMClass=com.recomplauncher.app
 Icon=com.recomplauncher.RecompLauncher
 Name=RecompLauncher
 Terminal=false
