@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Games/ROMs kullan",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ROM'larınızı ve disk kalıplarınızı buraya koyun, başlatıcı onları kendisi bulur.",
  "Couldn't create the ROMs folder in Games.": "Games içinde ROMs klasörü oluşturulamadı.",
- "or": "veya"
+ "or": "veya",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Oyun ilk oynandığında açılıyor. Sonraki açılışlar daha hızlı olur."
 }

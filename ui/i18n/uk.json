@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Використати Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Поклади сюди ROM-файли й образи дисків, і лаунчер сам їх знайде.",
  "Couldn't create the ROMs folder in Games.": "Не вдалося створити папку ROMs у Games.",
- "or": "або"
+ "or": "або",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Гра розпаковується під час першого запуску. Наступні запуски будуть швидшими."
 }

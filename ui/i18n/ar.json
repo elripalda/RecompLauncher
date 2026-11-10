@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "استخدام Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ضع ملفات ROM وصور الأقراص هنا وسيجدها المشغل بنفسه.",
  "Couldn't create the ROMs folder in Games.": "تعذّر إنشاء مجلد ROMs داخل Games.",
- "or": "أو"
+ "or": "أو",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "يجري فك ضغط اللعبة في أول مرة تُلعب فيها. البدايات التالية أسرع."
 }

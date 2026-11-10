@@ -966,6 +966,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     }
     let libs = st.lib.lock().unwrap().settings.all_libraries();
     let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return Ok(json!({})) };
+    // Its AppImage unpacked for the Flatpak: a copy in the launcher's cache, never the player's.
+    flatpak::forget_unpacked(&id);
     // Still open outside the launcher (or still closing): Windows won't let its files go.
     if delete_files && g.exe.as_ref().map(|e| already_open(&if e.is_absolute() { e.clone() } else { g.path.join(e) })).unwrap_or(false) {
         return Err(Error::Msg(format!("{} is still open. Close it, then uninstall it.", g.name)));
@@ -2510,7 +2512,25 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     };
     // A Python script starts through its interpreter.
     let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    // An AppImage in the Flatpak: unpacked once (no FUSE in the sandbox) and started from there.
+    // If it won't unpack, it unpacks itself for this start below, as before.
+    let unpacked = if cfg!(target_os = "linux") && ext == "appimage" && flatpak::sandboxed() {
+        if !flatpak::is_unpacked(&exe, id) {
+            trail::note(format!("Play {id}: unpacking its AppImage once"));
+            let _ = app.emit("note", "Unpacking the game the first time it's played. Later starts are quicker.");
+        }
+        match flatpak::unpacked_appimage(&exe, id) {
+            Ok(dir) => Some(dir),
+            Err(e) => {
+                trail::note(format!("Play {id}: the AppImage didn't unpack ({e}); it unpacks itself this time"));
+                None
+            }
+        }
+    } else {
+        None
+    };
     let mut cmd = match ext.as_str() {
+        _ if unpacked.is_some() => tokio::process::Command::new(unpacked.as_ref().map(|d| d.join("AppRun")).unwrap_or_default()),
         "py" if cfg!(windows) => {
             let mut c = tokio::process::Command::new("py");
             c.arg("-3").arg(&exe);
@@ -2599,7 +2619,11 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // An AppImage on a Linux without FUSE 2 (libfuse.so.2, missing on many new systems): it unpacks
     // itself and runs from there instead of failing to start.
     #[cfg(target_os = "linux")]
-    if ext == "appimage" && flatpak::sandboxed() {
+    if let Some(dir) = &unpacked {
+        // What an AppImage's own runtime would have set, for games that look for their files by it.
+        cmd.env("APPIMAGE", &exe).env("APPDIR", dir).env("ARGV0", &exe);
+        trail::note(format!("Play {id}: in the Flatpak, from its unpacked AppImage"));
+    } else if ext == "appimage" && flatpak::sandboxed() {
         // Inside the Flatpak there is no fusermount, so no AppImage can mount itself. It unpacks
         // on disk (the sandbox's /tmp is memory, and a game can be several GB).
         cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");

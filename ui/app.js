@@ -5848,6 +5848,7 @@ const TS_TEXT = [
   N_('This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.'),
   N_('This Flatpak file doesn\'t say which app it holds, so it can\'t be installed. Switch to another build on the game\'s page.'),
   N_('Installing its Flatpak for the first time. It can take a few minutes; the game starts when it\'s done.'),
+  N_('Unpacking the game the first time it\'s played. Later starts are quicker.'),
   N_('That\'s inside the launcher\'s own folder. Pick a folder of yours, on any drive.'),
   N_('The launcher can\'t write to that folder. Pick another one.'),
   N_('The launcher isn\'t allowed to write to the library folder. Pick one in your home folder in Settings → Games and Folders.'),

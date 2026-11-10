@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Usar Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Põe aqui as tuas ROMs e imagens de disco e o launcher encontra-as sozinho.",
  "Couldn't create the ROMs folder in Games.": "Não foi possível criar a pasta ROMs em Games.",
- "or": "ou"
+ "or": "ou",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "A descompactar o jogo da primeira vez que é jogado. Os arranques seguintes são mais rápidos."
 }

@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Dùng Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Đặt ROM và ảnh đĩa vào đây, trình khởi chạy sẽ tự tìm thấy chúng.",
  "Couldn't create the ROMs folder in Games.": "Không tạo được thư mục ROMs trong Games.",
- "or": "hoặc"
+ "or": "hoặc",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Đang giải nén trò chơi ở lần chơi đầu tiên. Những lần khởi động sau sẽ nhanh hơn."
 }

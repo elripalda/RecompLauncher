@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Games/ROMs を使う",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ROM やディスクイメージをここに置くと、ランチャーが自動で見つけます。",
  "Couldn't create the ROMs folder in Games.": "Games 内に ROMs フォルダーを作成できませんでした。",
- "or": "または"
+ "or": "または",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "初回プレイ時にゲームを展開しています。次回からはより速く起動します。"
 }

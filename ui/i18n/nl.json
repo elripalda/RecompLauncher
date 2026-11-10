@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Games/ROMs gebruiken",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Zet je ROM's en schijfkopieën hier en de launcher vindt ze vanzelf.",
  "Couldn't create the ROMs folder in Games.": "Kon de map ROMs in Games niet maken.",
- "or": "of"
+ "or": "of",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "De game wordt de eerste keer uitgepakt. Volgende keren start hij sneller."
 }

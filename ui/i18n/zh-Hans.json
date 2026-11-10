@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "使用 Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "把 ROM 和光盘镜像放在这里，启动器会自己找到它们。",
  "Couldn't create the ROMs folder in Games.": "无法在 Games 中创建 ROMs 文件夹。",
- "or": "或"
+ "or": "或",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "首次游玩时正在解包游戏。之后启动会更快。"
 }

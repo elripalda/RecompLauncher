@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "Pakai Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "Taruh ROM dan image disk di sini, dan launcher akan menemukannya sendiri.",
  "Couldn't create the ROMs folder in Games.": "Tidak bisa membuat folder ROMs di Games.",
- "or": "atau"
+ "or": "atau",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "Membongkar game saat pertama kali dimainkan. Pembukaan berikutnya lebih cepat."
 }

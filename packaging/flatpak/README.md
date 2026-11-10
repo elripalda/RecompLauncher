@@ -24,8 +24,11 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
 ## In the sandbox
 
 - Updates come from Flathub: the launcher's own updater is off (`flatpak::sandboxed()`).
-- Games ship as AppImages. They run inside the sandbox with `APPIMAGE_EXTRACT_AND_RUN=1` (there is
-  no FUSE), unpacked under `~/.var/app/<id>/cache/appimage-run` instead of the sandbox's RAM-backed /tmp.
+- Games ship as AppImages, and there's no FUSE in the sandbox to mount one. Each is unpacked once,
+  the first time it's played and again after an update, into
+  `~/.var/app/<id>/cache/appimage-run/unpacked/<game>`, and started from its `AppRun` after that
+  (not in the game's folder: an update would back it up as the player's files). Uninstalling
+  removes it. If it won't unpack, it falls back to `APPIMAGE_EXTRACT_AND_RUN=1` for that start.
 - A recomp that ships only a `.flatpak` file needs the PC's own flatpak, which the sandbox may not
   reach (Flathub flags `--talk-name=org.freedesktop.Flatpak`, so the manifest leaves it out). The
   launcher says so and shows the command that turns it on for the player:

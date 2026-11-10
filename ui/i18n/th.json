@@ -2649,5 +2649,6 @@
  "Use Games/ROMs": "ใช้ Games/ROMs",
  "Put your ROMs and disc images here and the launcher finds them on its own.": "ใส่ ROM และอิมเมจดิสก์ไว้ที่นี่ แล้วตัวเปิดเกมจะหาเจอเอง",
  "Couldn't create the ROMs folder in Games.": "สร้างโฟลเดอร์ ROMs ใน Games ไม่ได้",
- "or": "หรือ"
+ "or": "หรือ",
+ "Unpacking the game the first time it's played. Later starts are quicker.": "กำลังแตกไฟล์เกมในการเล่นครั้งแรก ครั้งต่อไปจะเปิดได้เร็วขึ้น"
 }
