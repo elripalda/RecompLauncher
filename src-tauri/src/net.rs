@@ -47,6 +47,8 @@ struct Gate {
     last_try: Option<Instant>,
     /// When the last failure was counted: requests already on their way then don't count again.
     last_fail: Option<Instant>,
+    /// A non-trouble answer cleared this cooldown. Older in-flight failures cannot reopen it.
+    last_good: Option<Instant>,
 }
 
 static GATES: Mutex<Option<HashMap<String, Gate>>> = Mutex::new(None);
@@ -169,14 +171,15 @@ fn went_well(url: &str) {
         let g = g.get_or_insert_with(HashMap::new);
         // An answer means the site is up; release info's own rest ends only with an answer about it.
         for x in [&h, &k] {
-            if let Some(gate) = g.get_mut(x) {
-                gate.fails = 0;
-                gate.until = None;
-            }
+            let gate = g.entry(x.clone()).or_default();
+            gate.fails = 0;
+            gate.until = None;
+            gate.last_good = Some(Instant::now());
         }
-    }
-    if is_api(&h) {
-        set_offline(false);
+        // Keep the indicator and its event ordered with the gate transition on other threads.
+        if is_api(&h) {
+            set_offline(false);
+        }
     }
 }
 
@@ -184,9 +187,14 @@ fn went_well(url: &str) {
 /// earlier failure was counted don't count again (an outage is one failure, not ten).
 fn went_badly(url: &str, after: Option<u64>, started: Instant) {
     let k = key(url);
-    let (secs, fails) = {
+    let secs = {
         let mut g = GATES.lock().unwrap();
         let gate = g.get_or_insert_with(HashMap::new).entry(k.clone()).or_default();
+        // A successful answer after this request started already established that the site
+        // recovered. Discard the old failure before it changes the cooldown or Offline mark.
+        if gate.last_good.map(|t| started < t).unwrap_or(false) {
+            return;
+        }
         let counted = gate.last_fail.map(|t| started < t).unwrap_or(false);
         if !counted {
             gate.fails = gate.fails.saturating_add(1);
@@ -203,14 +211,14 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
             return;
         }
         gate.until = Some(until);
-        (secs, gate.fails)
+        // One hiccup does not mean Offline. Publish this while the gate is still locked so a
+        // successful recovery cannot be followed by an older failure's delayed indicator update.
+        if is_api(&k) && gate.fails >= 2 {
+            set_offline(true);
+        }
+        secs
     };
     crate::trail::note(&format!("note: {k} was slow or busy; asking again in {secs}s"));
-    // Offline only once it's more than one hiccup (a slow answer, one refused request): a single
-    // miss shouldn't put the whole launcher in offline mode.
-    if is_api(&k) && fails >= 2 {
-        set_offline(true);
-    }
 }
 
 /// An answer came, but not one that makes sense (a hosting page instead of the list, say): treated
@@ -279,6 +287,14 @@ pub(crate) fn picture_trouble(url: &str, why: &str) {
     }
 }
 
+fn picture_went_well(url: &str) {
+    let mut g = GATES.lock().unwrap();
+    let gate = g.get_or_insert_with(HashMap::new).entry(key(url)).or_default();
+    gate.fails = 0;
+    gate.until = None;
+    gate.last_good = Some(Instant::now());
+}
+
 pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqwest::Response> {
     if resting(url, false) {
         return None;
@@ -294,11 +310,7 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
                 went_badly(url, retry_after(&r), started);
             } else if r.status().is_success() && key(url) != host(url) {
                 // Pictures come again: their own rest is over (the site's isn't touched).
-                let mut g = GATES.lock().unwrap();
-                if let Some(gate) = g.get_or_insert_with(HashMap::new).get_mut(&key(url)) {
-                    gate.fails = 0;
-                    gate.until = None;
-                }
+                picture_went_well(url);
             }
             Some(r)
         }
@@ -354,6 +366,81 @@ mod tests {
         went_badly(u, None, Instant::now() + Duration::from_millis(5));
         let fails = GATES.lock().unwrap().as_ref().unwrap().get("outage-test.example").unwrap().fails;
         assert_eq!(fails, 2);
+    }
+
+    #[test]
+    fn a_recovered_site_is_not_put_back_to_rest_by_an_old_request() {
+        let url = "https://recovered-test.example/api/launcher.php";
+        let old_request = Instant::now() - Duration::from_secs(1);
+        went_badly(url, None, old_request);
+        assert!(resting(url, false));
+        went_well(url);
+        assert!(!resting(url, false));
+        // Another request from the same outage finishes late, after recovery was confirmed.
+        went_badly(url, None, old_request);
+        assert!(!resting(url, false), "a stale failure reopened the site's cooldown");
+        assert_eq!(wait_left(url), 0);
+        // Requests made after recovery still count when they fail.
+        went_badly(url, None, Instant::now());
+        assert!(resting(url, false));
+    }
+
+    #[test]
+    fn the_first_good_answer_also_rejects_older_failures() {
+        let url = "https://first-good-test.example/api/launcher.php";
+        let old_request = Instant::now() - Duration::from_secs(1);
+        went_well(url);
+        went_badly(url, None, old_request);
+        assert!(!resting(url, false));
+    }
+
+    #[test]
+    fn picture_recovery_is_remembered_without_clearing_an_api_outage() {
+        let picture = "https://picture-recovered-test.example/media/a.jpg";
+        let api = "https://picture-recovered-test.example/api/launcher.php";
+        let old_request = Instant::now() - Duration::from_secs(1);
+        went_badly(api, None, old_request);
+        picture_went_well(picture);
+        assert!(resting(api, false), "a picture must not clear the site's API outage");
+        went_well(api);
+        went_badly(picture, None, old_request);
+        assert!(!resting(picture, false), "a stale picture failure reopened its cooldown");
+    }
+
+    #[test]
+    fn offline_state_stays_ordered_with_concurrent_gate_transitions() {
+        let url = format!("{}/api/launcher.php", base());
+        let round = std::sync::Barrier::new(3);
+        let mismatches = AtomicU64::new(0);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for _ in 0..3000 {
+                    round.wait();
+                    went_badly(&url, None, Instant::now());
+                    went_badly(&url, None, Instant::now());
+                    round.wait();
+                }
+            });
+            scope.spawn(|| {
+                for _ in 0..3000 {
+                    round.wait();
+                    went_well(&url);
+                    round.wait();
+                }
+            });
+            for _ in 0..3000 {
+                went_well(&url);
+                round.wait();
+                round.wait();
+                let gates = GATES.lock().unwrap();
+                let failed = gates.as_ref().unwrap().get(&key(&url)).unwrap().fails >= 2;
+                if offline() != failed {
+                    mismatches.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+        went_well(&url);
+        assert_eq!(mismatches.load(Ordering::Relaxed), 0, "Offline disagreed with the latest completed gate transition");
     }
 
     #[test]
