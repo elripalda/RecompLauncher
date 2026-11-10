@@ -54,8 +54,9 @@ modules:
       - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.recomplauncher.RecompLauncher.png
     sources:
       - type: git
-        url: https://github.com/Xarishark/RecompLauncher.git
-        tag: v0.90.0-beta.27
+        url: https://github.com/elripalda/RecompLauncher.git
+        # The first release with this packaging (Beta 28 and older don't have it).
+        tag: v0.90.0-beta.29
         # commit: fill in with the release tag's commit
       # Every crate, generated from src-tauri/Cargo.lock:
       #   python3 flatpak-cargo-generator.py src-tauri/Cargo.lock -o cargo-sources.json
