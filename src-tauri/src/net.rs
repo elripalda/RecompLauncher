@@ -47,6 +47,8 @@ struct Gate {
     last_try: Option<Instant>,
     /// When the last failure was counted: requests already on their way then don't count again.
     last_fail: Option<Instant>,
+    /// A non-trouble answer cleared this cooldown. Older in-flight failures cannot reopen it.
+    last_good: Option<Instant>,
 }
 
 static GATES: Mutex<Option<HashMap<String, Gate>>> = Mutex::new(None);
@@ -169,10 +171,10 @@ fn went_well(url: &str) {
         let g = g.get_or_insert_with(HashMap::new);
         // An answer means the site is up; release info's own rest ends only with an answer about it.
         for x in [&h, &k] {
-            if let Some(gate) = g.get_mut(x) {
-                gate.fails = 0;
-                gate.until = None;
-            }
+            let gate = g.entry(x.clone()).or_default();
+            gate.fails = 0;
+            gate.until = None;
+            gate.last_good = Some(Instant::now());
         }
     }
     if is_api(&h) {
@@ -187,6 +189,11 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
     let (secs, fails) = {
         let mut g = GATES.lock().unwrap();
         let gate = g.get_or_insert_with(HashMap::new).entry(k.clone()).or_default();
+        // A successful answer after this request started already established that the site
+        // recovered. Discard the old failure before it changes the cooldown or Offline mark.
+        if gate.last_good.map(|t| started < t).unwrap_or(false) {
+            return;
+        }
         let counted = gate.last_fail.map(|t| started < t).unwrap_or(false);
         if !counted {
             gate.fails = gate.fails.saturating_add(1);
@@ -279,6 +286,14 @@ pub(crate) fn picture_trouble(url: &str, why: &str) {
     }
 }
 
+fn picture_went_well(url: &str) {
+    let mut g = GATES.lock().unwrap();
+    let gate = g.get_or_insert_with(HashMap::new).entry(key(url)).or_default();
+    gate.fails = 0;
+    gate.until = None;
+    gate.last_good = Some(Instant::now());
+}
+
 pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqwest::Response> {
     if resting(url, false) {
         return None;
@@ -294,11 +309,7 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
                 went_badly(url, retry_after(&r), started);
             } else if r.status().is_success() && key(url) != host(url) {
                 // Pictures come again: their own rest is over (the site's isn't touched).
-                let mut g = GATES.lock().unwrap();
-                if let Some(gate) = g.get_or_insert_with(HashMap::new).get_mut(&key(url)) {
-                    gate.fails = 0;
-                    gate.until = None;
-                }
+                picture_went_well(url);
             }
             Some(r)
         }
@@ -354,6 +365,45 @@ mod tests {
         went_badly(u, None, Instant::now() + Duration::from_millis(5));
         let fails = GATES.lock().unwrap().as_ref().unwrap().get("outage-test.example").unwrap().fails;
         assert_eq!(fails, 2);
+    }
+
+    #[test]
+    fn a_recovered_site_is_not_put_back_to_rest_by_an_old_request() {
+        let url = "https://recovered-test.example/api/launcher.php";
+        let old_request = Instant::now() - Duration::from_secs(1);
+        went_badly(url, None, old_request);
+        assert!(resting(url, false));
+        went_well(url);
+        assert!(!resting(url, false));
+        // Another request from the same outage finishes late, after recovery was confirmed.
+        went_badly(url, None, old_request);
+        assert!(!resting(url, false), "a stale failure reopened the site's cooldown");
+        assert_eq!(wait_left(url), 0);
+        // Requests made after recovery still count when they fail.
+        went_badly(url, None, Instant::now());
+        assert!(resting(url, false));
+    }
+
+    #[test]
+    fn the_first_good_answer_also_rejects_older_failures() {
+        let url = "https://first-good-test.example/api/launcher.php";
+        let old_request = Instant::now() - Duration::from_secs(1);
+        went_well(url);
+        went_badly(url, None, old_request);
+        assert!(!resting(url, false));
+    }
+
+    #[test]
+    fn picture_recovery_is_remembered_without_clearing_an_api_outage() {
+        let picture = "https://picture-recovered-test.example/media/a.jpg";
+        let api = "https://picture-recovered-test.example/api/launcher.php";
+        let old_request = Instant::now() - Duration::from_secs(1);
+        went_badly(api, None, old_request);
+        picture_went_well(picture);
+        assert!(resting(api, false), "a picture must not clear the site's API outage");
+        went_well(api);
+        went_badly(picture, None, old_request);
+        assert!(!resting(picture, false), "a stale picture failure reopened its cooldown");
     }
 
     #[test]
