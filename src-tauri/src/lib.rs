@@ -2234,6 +2234,10 @@ static RUNS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static RUN_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
+    start_game_with_steam(app, id, None)
+}
+
+fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
     let st = app.state::<App>();
     read_screen(app);
     if st.moving.lock().unwrap().contains(id) {
@@ -2528,7 +2532,7 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     // Remote Play can stream its window.
     #[cfg(target_os = "linux")]
     if !matches!(ext.as_str(), "exe" | "cmd" | "bat") {
-        sysenv::steam_overlay_for_game(&mut cmd);
+        sysenv::steam_overlay_for_game(&mut cmd, _steam);
     }
     cmd.args(&args).current_dir(&cwd).kill_on_drop(false);
     // What the game prints, kept for this start: a game that closes right away usually says why
@@ -7156,8 +7160,7 @@ fn wait_for_play(args: &[String]) -> bool {
     let Some(dir) = data_dir_early() else { return false };
     let id = Library::load(&dir).resolve_project_id(&id);
     let Ok(exe) = std::env::current_exe() else { return false };
-    let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
-    rest.push("--handoff".into());
+    let rest = sysenv::play_handoff_args(args, &|k| if cfg!(target_os = "linux") { std::env::var(k).ok() } else { None });
     if std::process::Command::new(exe).args(&rest).spawn().is_err() {
         return false;
     }
@@ -7199,6 +7202,7 @@ pub fn run() {
             }
             Some(id) => {
                 let id = app.state::<App>().lib.lock().unwrap().resolve_project_id(&id);
+                let steam = sysenv::steam_launch_from_args(&argv);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if setup_first(&app, &id) {
@@ -7206,7 +7210,7 @@ pub fn run() {
                     }
                     ready_look(&app, &id).await;
                     cloud::sync_quiet(&app, &id).await;
-                    if let Err(e) = start_game(&app, &id) {
+                    if let Err(e) = start_game_with_steam(&app, &id, steam.as_ref()) {
                         show_main(&app);
                         let _ = app.emit("toast", e.to_string());
                     }
