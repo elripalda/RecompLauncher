@@ -872,7 +872,8 @@ async function supportModal(id) {
     verified: !!((Array.isArray(a.copy_ids) ? a.copy_ids.length : a.copy_ids) || (files && files.sha256)),
     saves: false,
   };
-  // 'dev', 'launcher', '' (not there), or '?' (there, by whom isn't known).
+  // Capability sources: 'dev' means a manifest, not confirmed maintenance by the developer.
+  // 'launcher', '' (not there), or '?' (there, source unknown) keep their catalog meanings.
   const who = (k) => (local && local[k] ? 'dev' : sup ? (sup[k] === 'dev' || sup[k] === 'launcher' ? sup[k] : '') : guess[k] ? '?' : '');
   const sdk = local ? 'release' : sup && sup.sdk ? sup.sdk : 'unknown';
   const hh = a.handheld && a.handheld.ok;
@@ -885,14 +886,18 @@ async function supportModal(id) {
     [t('Save Backups and Cloud Saves'), saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : t('Always on from the launcher\'s side.'), saves],
     [t('Handheld Rating'), hh ? tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') || t('several players') }) : t('From handheld players\' reports. None yet.'), hh ? 'players' : ''],
   ];
-  const tag = (w) => (w === 'dev' ? `<span class="tag ok">${esc(t('By the Developer'))}</span>` : w === 'launcher' ? `<span class="tag cy">${esc(t('By RecompLauncher'))}</span>` : w === 'players' ? `<span class="tag">${esc(t('By Players'))}</span>` : '');
+  const tag = (w) => (w === 'dev' ? `<span class="tag ok">${esc(t('From Manifest'))}</span>` : w === 'launcher' ? `<span class="tag cy">${esc(t('By RecompLauncher'))}</span>` : w === 'players' ? `<span class="tag">${esc(t('By Players'))}</span>` : '');
   // What the developer's own file could add (the handheld rating comes from players).
   const missing = rows.slice(0, 4).some((r) => !r[2]);
-  const own = sdk === 'release' || sdk === 'repo';
+  const source = local ? t('Manifest found in the installed files.') : sdk === 'release' ? t('Manifest included with the release.') : sdk === 'repo' ? t('Manifest in the project repository.') : '';
+  // Only an explicit catalog declaration confirms who maintains the integration. A working
+  // manifest may have been supplied by the player, launcher, or another contributor.
+  const owner = a.maintained_by === 'official' ? 'project' : ['project', 'launcher', 'community'].includes(a.maintained_by) ? a.maintained_by : 'unconfirmed';
   const ask = a.repo && (sdk === 'none' || missing);
   const html = `<h2>${esc(t('Launcher Support'))}</h2><p class="muted">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
     <div class="mh sup-list">${rows.map(([k, d, w]) => `<div class="mh-row sup-row"><span class="sup-mark">${okMark(w ? true : null)}</span><div class="mh-k"><b>${esc(k)}</b><span class="sup-d">${esc(d)}</span></div>${tag(w)}</div>`).join('')}</div>
-    ${own ? `<p class="sup-own">${esc(t('This recomp supports RecompLauncher itself.'))}</p>` : ''}
+    ${source ? `<p class="muted">${esc(source)}</p>` : ''}
+    <p class="sup-own">${esc(t(OWNER_LONG[owner]))}</p>
     ${ask ? `<p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p>` : ''}
     <div class="acts ${ask ? 'grid2' : ''}">${ask ? `<button type="button" class="btn" data-x="ask">${esc(t('Ask the Developer'))}</button>` : ''}<button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`;
   modal(html, (x) => { if (x.dataset.x === 'ask') invoke('open_url', { url: askSupportUrl(a) }).catch(fail); }, t('Launcher Support'));
