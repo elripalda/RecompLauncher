@@ -1,0 +1,32 @@
+name: Release check
+
+# Files get attached to a release by hand after the build (the Windows installer). A file from the
+# wrong version once went out under a newer tag (Beta 33 carried Beta 32's installer), and the
+# updater then installed the old version again. This fails, and so shows red on the Actions page,
+# as soon as a release is published or edited with a file whose version isn't the tag's, a
+# missing installer, or an installer that is another release's file.
+on:
+  release:
+    types: [published, edited, prereleased, released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to check (v0.90.0-beta.33)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Files match the tag
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check the release's files
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | "\(.name) \(.digest // "")"' \
+            | bash tools/check-release-files.sh "$TAG"

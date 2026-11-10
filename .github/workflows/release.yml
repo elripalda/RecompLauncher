@@ -171,6 +171,19 @@ jobs:
           git archive --format=zip --prefix="RecompLauncher-$v/" HEAD -o "out/RecompLauncher-$v-source.zip"
           ls -l out
 
+      # Nothing is uploaded unless every built file is this tag's version and the app itself says so.
+      - name: Check the built files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${TAG#v}"
+          for f in package.json src-tauri/tauri.conf.json; do
+            have=$(jq -r .version "$f")
+            [ "$have" = "$v" ] || { echo "::error::$f says $have, but the tag is $TAG."; exit 1; }
+          done
+          for f in out/*; do echo "$(basename "$f") sha256:$(sha256sum "$f" | cut -d' ' -f1)"; done \
+            | bash tools/check-release-files.sh "$TAG"
+
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -193,3 +206,13 @@ jobs:
           else
             gh release create "$TAG" out/* --draft --prerelease --title "$title" --notes-file body.md --verify-tag
           fi
+
+      # A file added to the draft by hand (the draft is kept between runs) is checked too, so a wrong
+      # one fails this run, which has to be green before the draft is published.
+      - name: Check the draft's files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | \"\(.name) \(.digest // \"\")\"" \
+            | bash tools/check-release-files.sh "$TAG"
