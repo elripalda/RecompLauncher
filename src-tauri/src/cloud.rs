@@ -406,6 +406,16 @@ fn copy_time(name: &str) -> u64 {
     name.strip_suffix(".zip").and_then(|n| n.parse().ok()).unwrap_or(0)
 }
 
+/// Select a retry only after earlier backups/restores finish, and keep them excluded until the
+/// caller finishes uploading it. A restore may have cancelled the queue while this was waiting.
+async fn pending_copy(dir: &Path, id: &str, library: &Mutex<crate::library::Library>) -> (tokio::sync::MutexGuard<'static, ()>, Option<String>) {
+    let guard = BUSY.lock().await;
+    // The game may have been removed or had cloud saves turned off while this retry waited.
+    let enabled = library.lock().unwrap().installed.get(id).map(|g| g.cloud == Some(true)).unwrap_or(false);
+    let pending = if enabled { saves::state(dir, id).pending } else { None };
+    (guard, pending)
+}
+
 /// Copies that didn't get up before (offline, or not signed in yet), one after another. Any that
 /// still don't make it are tried again once the site can be asked again (see net.rs).
 pub async fn upload_pending(app: &AppHandle) {
@@ -416,8 +426,8 @@ pub async fn upload_pending(app: &AppHandle) {
     let ids: Vec<String> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).map(|g| g.id.clone()).collect();
     let mut no_answer = false;
     for id in ids {
-        let s = saves::state(&st.dir, &id);
-        if let Some(name) = s.pending {
+        let (_busy, pending) = pending_copy(&st.dir, &id, &st.lib).await;
+        if let Some(name) = pending {
             match upload(app, &id, &name).await {
                 Ok(()) => {}
                 // The site isn't answering: the rest wait, and go when it does.
@@ -695,6 +705,17 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
 /// Where players see whether the site is having trouble on our side.
 const STATUS_PAGE: &str = "https://recomplauncher.com/status";
 
+fn upload_candidate(dir: &Path, id: &str, running: bool) -> Res<Option<saves::Copy>> {
+    let s = saves::state(dir, id);
+    let latest = saves::list(dir, id).into_iter().next();
+    // The newest local archive can still hold the save from before a restore. During play we
+    // cannot replace it with a current backup, so ask the player to close the game first.
+    if running && latest.as_ref().map(|l| l.hash != s.last_hash).unwrap_or(false) {
+        return Err(Error::Msg("Close the game first to back up and upload its restored save.".into()));
+    }
+    Ok(latest.filter(|l| l.hash != s.synced_hash))
+}
+
 /// Upload Now, from a game's Saves tab: the current save copied (when the game isn't running)
 /// and sent up straight away, and any copies still waiting with it. Asked now, even while the
 /// launcher is leaving the website alone after trouble. Then what the tab shows.
@@ -715,9 +736,7 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
                 let (dir, id2, g2) = (st.dir.clone(), id.clone(), g.clone());
                 blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
             }
-            let s = saves::state(&st.dir, &id);
-            let latest = saves::list(&st.dir, &id).into_iter().next();
-            if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
+            if let Some(l) = upload_candidate(&st.dir, &id, running)? {
                 if let Err(e) = upload(&app, &id, &l.name).await {
                     // It waits, and goes when the site answers again (once: no more tries now).
                     if !e.to_string().starts_with("This save is too big") {
@@ -1082,5 +1101,86 @@ mod sync_tests {
         ] {
             assert_eq!(should_restore(local, synced, cloud, empty), restore, "local={local}, synced={synced}, cloud={cloud}, empty={empty}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_waiting_retry_does_not_keep_the_archive_superseded_by_a_restore() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rl-save-retry-{}", std::process::id()));
+        let app = dir.join("app");
+        let inst = dir.join("game");
+        std::fs::create_dir_all(inst.join("save")).unwrap();
+        let path = inst.join("save/slot.sav");
+        let game = Installed { id: "g".into(), path: inst, cloud: Some(true), ..Default::default() };
+        let mut library = crate::library::Library::default();
+        library.installed.insert("g".into(), game.clone());
+        let library = Mutex::new(library);
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        std::fs::write(&path, "chosen save").unwrap();
+        let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        std::fs::write(&path, "superseded save").unwrap();
+        let queued = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        saves::set_state(&app, "g", &saves::State { pending: Some(queued.name.clone()), ..Default::default() });
+
+        // Restore owns BUSY. Poll the retry once so it really waits before completing restore.
+        let restoring = BUSY.lock().await;
+        let retry = pending_copy(&app, "g", &library);
+        tokio::pin!(retry);
+        assert!(futures_util::poll!(&mut retry).is_pending());
+        saves::restore(&app, "g", &saves::dir_of(&app, "g").join(&chosen.name), &spots, &game).unwrap();
+        drop(restoring);
+
+        let (_upload, pending) = retry.await;
+        assert!(pending.is_none(), "read the queue after restore completes, not before waiting for it");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "chosen save");
+        assert!(saves::dir_of(&app, "g").join(queued.name).is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_waiting_retry_respects_cloud_saves_being_turned_off() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rl-save-retry-disabled-{}", std::process::id()));
+        let mut library = crate::library::Library::default();
+        library.installed.insert("g".into(), Installed { cloud: Some(true), ..Default::default() });
+        let library = Mutex::new(library);
+        saves::set_state(&dir, "g", &saves::State { pending: Some("123.zip".into()), ..Default::default() });
+        let busy = BUSY.lock().await;
+        let retry = pending_copy(&dir, "g", &library);
+        tokio::pin!(retry);
+        assert!(futures_util::poll!(&mut retry).is_pending());
+        library.lock().unwrap().installed.get_mut("g").unwrap().cloud = Some(false);
+        drop(busy);
+        let (upload, pending) = retry.await;
+        assert!(pending.is_none(), "a disabled game must not upload after waiting for another save operation");
+        assert_eq!(saves::state(&dir, "g").pending.as_deref(), Some("123.zip"), "keep the copy queued if cloud saves are enabled later");
+        drop(upload);
+        library.lock().unwrap().installed.get_mut("g").unwrap().cloud = Some(true);
+        let (_upload, pending) = pending_copy(&dir, "g", &library).await;
+        assert_eq!(pending.as_deref(), Some("123.zip"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn uploading_during_play_cannot_send_the_pre_restore_archive() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rl-save-upload-running-{}", std::process::id()));
+        let app = dir.join("app");
+        let inst = dir.join("game");
+        std::fs::create_dir_all(inst.join("save")).unwrap();
+        let path = inst.join("save/slot.sav");
+        let game = Installed { id: "g".into(), path: inst, ..Default::default() };
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        std::fs::write(&path, "chosen save").unwrap();
+        let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        std::fs::write(&path, "superseded save").unwrap();
+        let previous = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        assert_eq!(upload_candidate(&app, "g", true).unwrap().unwrap().hash, previous.hash);
+        saves::restore(&app, "g", &saves::dir_of(&app, "g").join(&chosen.name), &spots, &game).unwrap();
+        assert!(matches!(upload_candidate(&app, "g", true), Err(Error::Msg(_))), "ask the player to close the game rather than upload the superseded save");
+        // Closing the game makes a current backup; Upload Now can then send the chosen save.
+        saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        assert_eq!(upload_candidate(&app, "g", false).unwrap().unwrap().hash, chosen.hash);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

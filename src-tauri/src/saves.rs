@@ -767,6 +767,9 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     }
     let mut st = state(app_dir, id);
     st.last_hash = man.hash.clone();
+    // A successful restore replaces the save that was queued for upload. Keep its archive in
+    // local history, but do not let a retry send it over the player's restored selection.
+    st.pending = None;
     set_state(app_dir, id, &st);
     Ok(n)
 }
@@ -1064,6 +1067,64 @@ mod tests {
         assert!(!inst.join("save/slot2.sav").exists());
         let (_, _, now) = current(&s, &g);
         assert_eq!(now, a.hash);
+    }
+
+    #[test]
+    fn restoring_a_save_cancels_its_superseded_upload_but_keeps_history() {
+        let d = tmp("restore-pending");
+        let app = d.join("app");
+        let inst = d.join("inst");
+        fs::create_dir_all(inst.join("save")).unwrap();
+        let path = inst.join("save/slot1.sav");
+        let g = game(&inst);
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        fs::write(&path, "chosen save").unwrap();
+        let chosen = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        fs::write(&path, "newer local save waiting to upload").unwrap();
+        let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        assert!(queued.when > chosen.when);
+        let queued_path = dir_of(&app, "g").join(&queued.name);
+        let queued_bytes = fs::read(&queued_path).unwrap();
+        set_state(&app, "g", &State { last_hash: queued.hash.clone(), synced_hash: "previous cloud".into(), pending: Some(queued.name.clone()) });
+        set_state(&app, "other", &State { pending: Some("123.zip".into()), ..Default::default() });
+
+        restore(&app, "g", &dir_of(&app, "g").join(&chosen.name), &spots, &g).unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "chosen save");
+        let state = state(&app, "g");
+        assert!(state.pending.is_none(), "the superseded local archive must not upload after a restore");
+        assert_eq!(state.last_hash, chosen.hash);
+        assert_eq!(state.synced_hash, "previous cloud", "a local restore does not claim a cloud upload");
+        assert_eq!(super::state(&app, "other").pending.as_deref(), Some("123.zip"));
+        assert_eq!(fs::read(&queued_path).unwrap(), queued_bytes, "the superseded save remains in local history");
+        // A later session can still back up and upload the restored selection normally.
+        let next = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        assert_eq!(next.hash, chosen.hash);
+        assert!(next.when > queued.when);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_failed_restore_keeps_the_pending_upload() {
+        let d = tmp("restore-pending-error");
+        let app = d.join("app");
+        let inst = d.join("inst");
+        fs::create_dir_all(&inst).unwrap();
+        fs::write(inst.join("slot.sav"), "local save").unwrap();
+        let g = game(&inst);
+        let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
+        let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        set_state(&app, "g", &State { last_hash: queued.hash, pending: Some(queued.name.clone()), ..Default::default() });
+        let invalid = d.join("broken.zip");
+        fs::write(&invalid, b"not a save archive").unwrap();
+        assert!(restore(&app, "g", &invalid, &spots, &g).is_err());
+        assert_eq!(state(&app, "g").pending.as_deref(), Some(queued.name.as_str()));
+        // Even a valid archive can fail after restore has begun (the destination is unwritable).
+        fs::create_dir(inst.join("slot.rl-part")).unwrap();
+        assert!(restore(&app, "g", &dir_of(&app, "g").join(&queued.name), &spots, &g).is_err());
+        assert_eq!(state(&app, "g").pending.as_deref(), Some(queued.name.as_str()));
+        assert_eq!(fs::read_to_string(inst.join("slot.sav")).unwrap(), "local save");
+        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
