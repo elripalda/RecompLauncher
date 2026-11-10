@@ -1999,30 +1999,41 @@ mod connection_fallback_tests {
         fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
     }
 
-    fn api_site() -> (String, std::thread::JoinHandle<String>) {
+    const COMPLETE: &str = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nabcdef";
+
+    fn download_site(replies: Vec<&'static str>) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        download_site_until(replies, Arc::new(AtomicBool::new(false)))
+    }
+
+    fn download_site_until(replies: Vec<&'static str>, stop: Arc<AtomicBool>) -> (String, std::thread::JoinHandle<Vec<String>>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/asset", listener.local_addr().unwrap());
         let thread = std::thread::spawn(move || {
-            let until = Instant::now() + Duration::from_secs(15);
-            let mut stream = loop {
-                match listener.accept() {
-                    Ok((s, _)) => break s,
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock && Instant::now() < until => std::thread::sleep(Duration::from_millis(5)),
-                    Err(e) => panic!("the asset API was never requested: {e}"),
+            let mut requests = Vec::new();
+            for response in replies {
+                let until = Instant::now() + Duration::from_secs(15);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((s, _)) => break s,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock && stop.load(Ordering::Relaxed) => return requests,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock && Instant::now() < until => std::thread::sleep(Duration::from_millis(5)),
+                        Err(e) => panic!("the download route was never requested: {e}"),
+                    }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    let mut buf = [0; 1024];
+                    let n = stream.read(&mut buf).unwrap();
+                    assert!(n > 0);
+                    request.extend_from_slice(&buf[..n]);
                 }
-            };
-            stream.set_nonblocking(false).unwrap();
-            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-            let mut request = Vec::new();
-            while !request.ends_with(b"\r\n\r\n") {
-                let mut buf = [0; 1024];
-                let n = stream.read(&mut buf).unwrap();
-                assert!(n > 0);
-                request.extend_from_slice(&buf[..n]);
+                stream.write_all(response.as_bytes()).unwrap();
+                requests.push(String::from_utf8(request).unwrap());
             }
-            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nabcdef").unwrap();
-            String::from_utf8(request).unwrap()
+            requests
         });
         (url, thread)
     }
@@ -2036,12 +2047,29 @@ mod connection_fallback_tests {
     }
 
     #[tokio::test]
+    async fn interrupted_bodies_resume_through_the_api_with_the_same_hash() {
+        let dir = TempDir::new();
+        let broken = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nab";
+        let stop = Arc::new(AtomicBool::new(false));
+        let (original, primary) = download_site_until(vec![broken; 6], stop.clone());
+        let (api, server) = download_site(vec!["HTTP/1.1 206 Partial Content\r\nContent-Length: 4\r\nContent-Range: bytes 2-5/6\r\nConnection: close\r\n\r\ncdef"]);
+        let result = download_with_api(&reqwest::Client::new(), &asset(original), &dir.0, "body-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
+        stop.store(true, Ordering::Relaxed);
+        let got = result.unwrap_or_else(|e| panic!("the asset API should resume an interrupted body: {e}"));
+        assert_eq!(fs::read(&got.file).unwrap(), b"abcdef");
+        assert!(got.verified);
+        assert_eq!(got.sha256, "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721");
+        assert_eq!(primary.join().unwrap().len(), 3);
+        assert!(server.join().unwrap()[0].to_ascii_lowercase().contains("\r\nrange: bytes=2-\r\n"));
+    }
+
+    #[tokio::test]
     async fn response_timeouts_recover_through_the_asset_api() {
         let dir = TempDir::new();
         // Connections queue, but no server reads or answers them.
         let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let original = format!("http://{}/download", stalled.local_addr().unwrap());
-        let (api, server) = api_site();
+        let (api, server) = download_site(vec![COMPLETE]);
         let http = reqwest::Client::builder().read_timeout(Duration::from_millis(100)).build().unwrap();
         let result = download_with_api(&http, &asset(original), &dir.0, "timeout-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
         let got = result.unwrap_or_else(|e| panic!("a reachable asset API should recover a stalled download: {e}"));
@@ -2056,7 +2084,7 @@ mod connection_fallback_tests {
         let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let mut release = asset(format!("http://{}/download", stalled.local_addr().unwrap()));
         release.digest = Some(format!("sha256:{}", "0".repeat(64)));
-        let (api, server) = api_site();
+        let (api, server) = download_site(vec![COMPLETE]);
         let http = reqwest::Client::builder().read_timeout(Duration::from_millis(100)).build().unwrap();
         let result = download_with_api(&http, &release, &dir.0, "checksum-test", Arc::new(AtomicBool::new(false)), &|_| {}, Some(&api)).await;
         let error = match result { Ok(_) => panic!("the wrong bytes must not be accepted"), Err(e) => e.to_string() };
@@ -2071,7 +2099,7 @@ mod connection_fallback_tests {
         // Pick an unused local port for a connection-refused response.
         let refused = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let original = format!("http://{}/download", refused.local_addr().unwrap());
-        let (api, server) = api_site();
+        let (api, server) = download_site(vec![COMPLETE]);
         drop(refused);
         // A previously interrupted download resumes with Range; a full API response must reset
         // that partial hash instead of appending the file twice.
@@ -2082,7 +2110,7 @@ mod connection_fallback_tests {
         assert_eq!(fs::read(&got.file).unwrap(), b"abcdef");
         assert!(got.verified);
         assert_eq!(got.sha256, "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721");
-        let request = server.join().unwrap().to_ascii_lowercase();
+        let request = server.join().unwrap()[0].to_ascii_lowercase();
         assert!(request.contains("\r\naccept: application/octet-stream\r\n"));
         assert!(request.contains("\r\nrange: bytes=2-\r\n"));
     }
