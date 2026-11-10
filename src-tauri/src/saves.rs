@@ -687,6 +687,22 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
 /// kept as a copy first, so this can be undone.
 pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g: &Installed) -> Result<usize, Error> {
     let man = read_manifest(zip_file).ok_or_else(|| Error::Msg("That isn't a save copy.".into()))?;
+    // A picked folder belongs to this PC: another PC may have a different user/profile ID in
+    // its path. Copies already hold each folder's contents, so keep their indices and use this
+    // PC's folders for both writing and clearing. Old copies need no format change.
+    let same: Vec<Spot> = if !spots_now.is_empty() && spots_now.iter().all(|s| s.from == "player") {
+        if man.spots.len() != spots_now.len() {
+            return Err(Error::Msg(format!("This copy has {} save folders, but you picked {} on this PC. Pick the same number of folders in the same order as on the PC that made the copy, then try again.", man.spots.len(), spots_now.len())));
+        }
+        // A known folder at another index means these were reordered. Mapping by index would
+        // swap saves; reordering the copy's indices would change its checksum for cloud sync.
+        if man.spots.iter().enumerate().any(|(i, t)| spots_now.iter().enumerate().any(|(j, s)| i != j && s.template == *t)) {
+            return Err(Error::Msg("These save folders are in a different order from the copy. Pick them in the same order as on the PC that made the copy, then try again.".into()));
+        }
+        spots_now.to_vec()
+    } else {
+        man.spots.iter().map(|t| Spot { template: t.clone(), from: "copy" }).collect()
+    };
     // What's there now, kept first.
     // Kept means a copy of it exists: a new one now, or the newest one already matches (backup
     // makes no new copy then). Nothing found (or too much to copy) is not kept.
@@ -697,22 +713,21 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         Err(_) => false,
     };
     let mut z = zip::ZipArchive::new(fs::File::open(zip_file)?).map_err(|e| Error::Msg(e.to_string()))?;
-    let roots: Vec<PathBuf> = man.spots.iter().map(|t| resolve_for(t, g)).collect();
+    let roots: Vec<PathBuf> = same.iter().map(|s| resolve_for(&s.template, g)).collect();
     let wanted: HashSet<(usize, String)> = man.files.iter().map(|f| (f.spot, f.rel.clone())).collect();
     // Saves in the same places that the copy doesn't have: only once what's there now is safely
     // kept, and never in the game's own folder as a whole, where other files live too.
     if kept {
-        let same: Vec<Spot> = man.spots.iter().map(|t| Spot { template: t.clone(), from: "copy" }).collect();
         // Where extra saves can go: places the game's developer, the catalog or the player named
         // (never the game's whole folder), and places outside the game's folder. Not a place that
         // was only a guess inside the game's folder, or one that holds programs: those can be part
         // of the game (a runtime it downloaded).
         let named = |t: &str| spots_now.iter().any(|s| s.template == t && matches!(s.from, "developer" | "catalog" | "player"));
-        let may_clear: Vec<bool> = man
-            .spots
+        let may_clear: Vec<bool> = same
             .iter()
             .enumerate()
-            .map(|(i, t)| {
+            .map(|(i, s)| {
+                let t = &s.template;
                 let whole = t.trim_end_matches(['/', '\\']) == "{install}";
                 let in_game = t.starts_with("{install}");
                 !whole && (!in_game || named(t)) && !roots.get(i).map(|r| holds_programs(r)).unwrap_or(true)
@@ -726,7 +741,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         }
     }
     let today: HashSet<&str> = spots_now.iter().map(|s| s.template.as_str()).collect();
-    let skip: HashSet<usize> = man.spots.iter().enumerate().filter(|(i, t)| t.starts_with("{install}/") && !today.contains(t.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
+    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| s.template.starts_with("{install}/") && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
     let mut n = 0;
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| Error::Msg(e.to_string()))?;
@@ -747,9 +762,12 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             continue;
         }
         // A file place (`{install}/game.sav`) is the file itself; a pattern's files sit beside it.
-        let t = &man.spots[spot];
+        let t = &same[spot].template;
         let last = Path::new(t).file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
-        let dest = if last.contains('*') {
+        let dest = if same[spot].from == "player" {
+            // The picker always selects a folder, even if it doesn't exist on this PC yet.
+            root.join(rel)
+        } else if last.contains('*') {
             root.parent().unwrap_or(root).join(rel)
         } else if rel == last && !root.is_dir() {
             root.clone()
@@ -1227,6 +1245,122 @@ mod tests {
         assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"original backup");
         assert!(fs::symlink_metadata(to.join("g")).unwrap().file_type().is_symlink());
         fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn restore_uses_this_devices_selected_folder_and_keeps_previous_saves() {
+        let d = tmp("restore-selected");
+        let source = d.join("source");
+        let target = d.join("target");
+        let source_save = source.join("profile/save/source-id");
+        let target_save = target.join("profile/save/target-id");
+        fs::create_dir_all(source_save.join("slot1")).unwrap();
+        fs::create_dir_all(&target_save).unwrap();
+        fs::write(source_save.join("slot1/progress.sav"), "cloud progress").unwrap();
+        fs::write(target_save.join("previous.sav"), "local progress").unwrap();
+        let mut from = game(&source);
+        from.save_place = Some("{install}/profile/save/source-id".into());
+        let mut to = game(&target);
+        to.save_place = Some("{install}/profile/save/target-id".into());
+        let source_spots = spots(&[], &[], &from);
+        let target_spots = spots(&[], &[], &to);
+        let copy = backup(&d.join("source-app"), "g", &source_spots, &from).unwrap().unwrap();
+        let archive = dir_of(&d.join("source-app"), "g").join(copy.name);
+        let target_app = d.join("target-app");
+
+        assert_eq!(restore(&target_app, "g", &archive, &target_spots, &to).unwrap(), 1);
+        assert_eq!(fs::read_to_string(target_save.join("slot1/progress.sav")).unwrap(), "cloud progress");
+        assert!(!target.join("profile/save/source-id").exists());
+        assert!(!target_save.join("previous.sav").exists());
+        assert_eq!(current(&target_spots, &to).2, copy.hash);
+        let kept = list(&target_app, "g");
+        assert_eq!(kept.len(), 1);
+        let mut kept_zip = zip::ZipArchive::new(fs::File::open(dir_of(&target_app, "g").join(&kept[0].name)).unwrap()).unwrap();
+        let mut previous = String::new();
+        kept_zip.by_name("0/previous.sav").unwrap().read_to_string(&mut previous).unwrap();
+        assert_eq!(previous, "local progress");
+    }
+
+    #[test]
+    fn restore_selected_folder_is_a_directory_even_when_missing() {
+        let d = tmp("restore-missing-selected");
+        let source = d.join("source");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("new-folder"), "progress").unwrap();
+        // Older copies may contain an absolute path from a different PC.
+        let source_spots = vec![Spot { template: source.to_string_lossy().into(), from: "player" }];
+        let from = game(&d.join("source-install"));
+        let copy = backup(&d.join("source-app"), "g", &source_spots, &from).unwrap().unwrap();
+        fs::write(source.join("new-folder"), "source is left alone").unwrap();
+        let to = game(&d.join("target"));
+        let target_spots = vec![Spot { template: "{install}/new-folder".into(), from: "player" }];
+        let archive = dir_of(&d.join("source-app"), "g").join(copy.name);
+
+        assert_eq!(restore(&d.join("target-app"), "g", &archive, &target_spots, &to).unwrap(), 1);
+        assert_eq!(fs::read_to_string(to.path.join("new-folder/new-folder")).unwrap(), "progress");
+        assert_eq!(fs::read_to_string(source.join("new-folder")).unwrap(), "source is left alone");
+    }
+
+    #[test]
+    fn restore_does_not_guess_when_selected_folder_counts_differ() {
+        let d = tmp("restore-count");
+        let g = game(&d.join("game"));
+        fs::create_dir_all(g.path.join("one")).unwrap();
+        fs::create_dir_all(g.path.join("two")).unwrap();
+        fs::write(g.path.join("one/progress.sav"), "one").unwrap();
+        fs::write(g.path.join("two/progress.sav"), "two").unwrap();
+        let source_spots = vec![Spot { template: "{install}/one".into(), from: "player" }, Spot { template: "{install}/two".into(), from: "player" }];
+        let copy = backup(&d.join("app"), "g", &source_spots, &g).unwrap().unwrap();
+        fs::write(g.path.join("one/progress.sav"), "new one").unwrap();
+        fs::write(g.path.join("two/progress.sav"), "new two").unwrap();
+        let archive = dir_of(&d.join("app"), "g").join(copy.name);
+
+        assert!(restore(&d.join("app"), "g", &archive, &source_spots[..1], &g).is_err());
+        assert_eq!(fs::read_to_string(g.path.join("one/progress.sav")).unwrap(), "new one");
+        assert_eq!(fs::read_to_string(g.path.join("two/progress.sav")).unwrap(), "new two");
+    }
+
+    #[test]
+    fn restore_rejects_reordered_selected_folders_before_changing_saves() {
+        let d = tmp("restore-order");
+        let g = game(&d.join("game"));
+        fs::create_dir_all(g.path.join("one")).unwrap();
+        fs::create_dir_all(g.path.join("two")).unwrap();
+        fs::write(g.path.join("one/progress.sav"), "one").unwrap();
+        fs::write(g.path.join("two/progress.sav"), "two").unwrap();
+        let source_spots = vec![Spot { template: "{install}/one".into(), from: "player" }, Spot { template: "{install}/two".into(), from: "player" }];
+        let copy = backup(&d.join("app"), "g", &source_spots, &g).unwrap().unwrap();
+        fs::write(g.path.join("one/progress.sav"), "new one").unwrap();
+        fs::write(g.path.join("two/progress.sav"), "new two").unwrap();
+        let archive = dir_of(&d.join("app"), "g").join(copy.name);
+        let target_spots = vec![source_spots[1].clone(), source_spots[0].clone()];
+
+        assert!(restore(&d.join("app"), "g", &archive, &target_spots, &g).is_err());
+        assert_eq!(fs::read_to_string(g.path.join("one/progress.sav")).unwrap(), "new one");
+        assert_eq!(fs::read_to_string(g.path.join("two/progress.sav")).unwrap(), "new two");
+        assert_eq!(list(&d.join("app"), "g").len(), 1);
+    }
+
+    #[test]
+    fn restore_maps_several_selected_folders_in_order() {
+        let d = tmp("restore-several");
+        let from = game(&d.join("source"));
+        let to = game(&d.join("target"));
+        fs::create_dir_all(from.path.join("one")).unwrap();
+        fs::create_dir_all(from.path.join("two")).unwrap();
+        fs::write(from.path.join("one/progress.sav"), "first game").unwrap();
+        fs::write(from.path.join("two/progress.sav"), "second game").unwrap();
+        let source_spots = vec![Spot { template: "{install}/one".into(), from: "player" }, Spot { template: "{install}/two".into(), from: "player" }];
+        let target_spots = vec![Spot { template: "{install}/first".into(), from: "player" }, Spot { template: "{install}/second".into(), from: "player" }];
+        let copy = backup(&d.join("source-app"), "g", &source_spots, &from).unwrap().unwrap();
+        let archive = dir_of(&d.join("source-app"), "g").join(copy.name);
+
+        assert_eq!(restore(&d.join("target-app"), "g", &archive, &target_spots, &to).unwrap(), 2);
+        assert_eq!(fs::read_to_string(to.path.join("first/progress.sav")).unwrap(), "first game");
+        assert_eq!(fs::read_to_string(to.path.join("second/progress.sav")).unwrap(), "second game");
+        assert_eq!(current(&target_spots, &to).2, copy.hash);
+        assert!(!to.path.join("one").exists());
+        assert!(!to.path.join("two").exists());
     }
 
     #[test]
