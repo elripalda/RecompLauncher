@@ -76,6 +76,12 @@ fn set_status(app: &AppHandle, dir: &Path, v: Option<Value>) {
     }
 }
 
+/// The website's own answer for an account that isn't a tester: its JSON, ok false, an error that
+/// says to apply.
+fn refused_as_not_a_tester(v: &Value) -> bool {
+    v.get("ok") == Some(&Value::Bool(false)) && v.get("error").and_then(Value::as_str).map(|e| e.contains("tester")).unwrap_or(false)
+}
+
 /// A tester-only call answered 403: this account isn't (or is no longer) a tester.
 fn not_a_tester(app: &AppHandle, dir: &Path) {
     let mut v = STATUS.lock().unwrap().clone().unwrap_or_else(|| json!({}));
@@ -136,8 +142,15 @@ async fn call(app: &AppHandle, method: &str, a: &str, query: &[(&str, &str)], bo
     let r = req.query(&q).header("X-RL-Token", token).timeout(Duration::from_secs(15)).send().await.map_err(|e| Error::Msg(format!("ach.php: {e}")))?;
     let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
+    // Only the website's own "not a tester" answer takes tester access away. A 403 from anything
+    // in between (the host's firewall, a proxy) is a failed call: tried again later like any other.
     if code == 403 && !matches!(a, "status" | "apply") {
-        not_a_tester(app, &st.dir);
+        if refused_as_not_a_tester(&v) {
+            not_a_tester(app, &st.dir);
+        } else {
+            crate::trail::note(format!("Achievements: {a} was refused (403), not by the website"));
+            return Err(Error::Msg(format!("ach.php: {a} refused")));
+        }
     }
     Ok((code, v))
 }
@@ -2436,6 +2449,13 @@ mod tests {
         assert!(version_ok("1.4.0, 1.4.2", "1.4.2") && !version_ok("1.4.0, 1.4.2", "1.4.1"));
         assert!(version_ok(">=1.2 <2.0", "1.9") && !version_ok(">=1.2 <2.0", "2.0.0"));
         assert!(version_ok("1.0.0 || 2.x", "2.3"));
+    }
+
+    #[test]
+    fn only_the_websites_own_refusal_takes_tester_access_away() {
+        assert!(refused_as_not_a_tester(&json!({"ok": false, "error": "Recomp Achievements is in alpha. Apply to be a tester."})));
+        assert!(!refused_as_not_a_tester(&Value::Null), "a firewall's HTML page");
+        assert!(!refused_as_not_a_tester(&json!({"ok": false, "error": "Not from our site."})));
     }
 
     #[test]
