@@ -142,10 +142,17 @@
   addEventListener('resize', () => { fit(); if (TV.on && !TV.booting && !$('.tv-boot', root)) draw(true); });
 
   // Names never wrap or get cut off: smaller first, then the short name, then a glide when focused.
-  function fitName(el, floor) {
-    if (el.dataset.full) el.textContent = el.dataset.full; else el.dataset.full = el.textContent;
-    el.style.fontSize = '';
-    el.classList.remove('long');
+  // Back to its full name at its own size. Writes only, and only what changed: a page fits all its
+  // names with every write first and one measuring after (a write then a read lays the whole page
+  // out again, and Home has a hundred names on it).
+  function fitReset(el) {
+    if (!el.dataset.full) el.dataset.full = el.textContent;
+    else if (el.firstElementChild || el.textContent !== el.dataset.full) el.textContent = el.dataset.full;
+    if (el.style.fontSize) el.style.fontSize = '';
+    if (el.classList.contains('long')) el.classList.remove('long');
+  }
+  function fitName(el, floor, isReset) {
+    if (!isReset) fitReset(el);
     const w = el.clientWidth;
     if (!w) return;
     const base = parseFloat(getComputedStyle(el).fontSize);
@@ -162,10 +169,14 @@
       el.style.setProperty('--glide', Math.max(1.2, over / 60).toFixed(2) + 's');
     }
   }
-  function fitAll() {
-    for (const el of $$('.tv-h1', root)) fitName(el, 48);
-    for (const el of $$('.tv-card .cap b', root)) fitName(el, 16);
-    for (const el of $$('.tv-name', root)) fitName(el, 15);
+  const FIT = [['.tv-h1', 48], ['.tv-card .cap b', 16], ['.tv-name', 15]];
+  function fitAll(scope = root) {
+    const els = [];
+    for (const [sel, floor] of FIT) for (const el of $$(sel, scope)) els.push([el, floor]);
+    for (const [el] of els) fitReset(el);
+    // One layout for all of them; only the names that don't fit are worked on one at a time.
+    const over = els.filter(([el]) => el.clientWidth && el.scrollWidth > el.clientWidth + 0.5);
+    for (const [el, floor] of over) fitName(el, floor, true);
   }
 
   // Grids: as many columns as fit, never ending on a lone tile.
@@ -2144,7 +2155,7 @@
       swapBg(a);
       setTone(hid);
       const hero = $('#tv-hero', root);
-      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(); }
+      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(hero); }
     }
     if (TV.view === 'gsettings' || TV.view === 'settings') setPanel(el);
     if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); swapBg(libAppOf(el.dataset.hero)); return; }
