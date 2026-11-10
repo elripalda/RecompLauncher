@@ -63,7 +63,7 @@ pub fn changes_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<Change> {
 
 fn changes() -> &'static [Change] {
     static C: OnceLock<Vec<Change>> = OnceLock::new();
-    C.get_or_init(|| if cfg!(target_os = "linux") { changes_from(&|k| std::env::var(k).ok()) } else { vec![] })
+    C.get_or_init(|| if cfg!(any(test, target_os = "linux")) { changes_from(&|k| std::env::var(k).ok()) } else { vec![] })
 }
 
 pub fn clean_std(c: &mut std::process::Command) {
