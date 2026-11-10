@@ -176,9 +176,10 @@ fn went_well(url: &str) {
             gate.until = None;
             gate.last_good = Some(Instant::now());
         }
-    }
-    if is_api(&h) {
-        set_offline(false);
+        // Keep the indicator and its event ordered with the gate transition on other threads.
+        if is_api(&h) {
+            set_offline(false);
+        }
     }
 }
 
@@ -186,7 +187,7 @@ fn went_well(url: &str) {
 /// earlier failure was counted don't count again (an outage is one failure, not ten).
 fn went_badly(url: &str, after: Option<u64>, started: Instant) {
     let k = key(url);
-    let (secs, fails) = {
+    let secs = {
         let mut g = GATES.lock().unwrap();
         let gate = g.get_or_insert_with(HashMap::new).entry(k.clone()).or_default();
         // A successful answer after this request started already established that the site
@@ -210,14 +211,14 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
             return;
         }
         gate.until = Some(until);
-        (secs, gate.fails)
+        // One hiccup does not mean Offline. Publish this while the gate is still locked so a
+        // successful recovery cannot be followed by an older failure's delayed indicator update.
+        if is_api(&k) && gate.fails >= 2 {
+            set_offline(true);
+        }
+        secs
     };
     crate::trail::note(&format!("note: {k} was slow or busy; asking again in {secs}s"));
-    // Offline only once it's more than one hiccup (a slow answer, one refused request): a single
-    // miss shouldn't put the whole launcher in offline mode.
-    if is_api(&k) && fails >= 2 {
-        set_offline(true);
-    }
 }
 
 /// An answer came, but not one that makes sense (a hosting page instead of the list, say): treated
@@ -404,6 +405,42 @@ mod tests {
         went_well(api);
         went_badly(picture, None, old_request);
         assert!(!resting(picture, false), "a stale picture failure reopened its cooldown");
+    }
+
+    #[test]
+    fn offline_state_stays_ordered_with_concurrent_gate_transitions() {
+        let url = format!("{}/api/launcher.php", base());
+        let round = std::sync::Barrier::new(3);
+        let mismatches = AtomicU64::new(0);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for _ in 0..3000 {
+                    round.wait();
+                    went_badly(&url, None, Instant::now());
+                    went_badly(&url, None, Instant::now());
+                    round.wait();
+                }
+            });
+            scope.spawn(|| {
+                for _ in 0..3000 {
+                    round.wait();
+                    went_well(&url);
+                    round.wait();
+                }
+            });
+            for _ in 0..3000 {
+                went_well(&url);
+                round.wait();
+                round.wait();
+                let gates = GATES.lock().unwrap();
+                let failed = gates.as_ref().unwrap().get(&key(&url)).unwrap().fails >= 2;
+                if offline() != failed {
+                    mismatches.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+        went_well(&url);
+        assert_eq!(mismatches.load(Ordering::Relaxed), 0, "Offline disagreed with the latest completed gate transition");
     }
 
     #[test]
