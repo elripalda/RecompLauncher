@@ -2588,5 +2588,5 @@
  "Something went wrong. Try again in a bit.": "Er ging iets mis. Probeer het zo opnieuw.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Deze build is een Flatpak, en de RecompLauncher-Flatpak mag hem niet installeren. Sta het toe met: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Of schakel over naar een andere build op de pagina van de game.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "De Flatpak kan de instellingen van je emulators niet lezen. Voeg hun gamemappen toe met Een map toevoegen.",
- "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "Je systeem deelt deze map met de Flatpak, dus games daar installeren en starten trager, en sommige werken misschien niet. Een map in Games of op een andere schijf werkt het best."
+ "For the best performance, install recomps in your Games folder or on another drive.": "Voor de beste prestaties installeer je recomps in je map Games of op een andere schijf."
 }

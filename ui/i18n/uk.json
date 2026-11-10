@@ -2588,5 +2588,5 @@
  "Something went wrong. Try again in a bit.": "Щось пішло не так. Спробуй ще раз трохи згодом.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Ця збірка постачається як Flatpak, а Flatpak-версія RecompLauncher не має дозволу її встановити. Дозволь це командою: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Або перейди на іншу збірку на сторінці гри.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak не може прочитати налаштування твоїх емуляторів. Додай їхні папки з іграми кнопкою «Додати папку».",
- "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "Система відкриває цю папку для Flatpak через спільний доступ, тому ігри в ній встановлюються й запускаються повільніше, а деякі можуть не працювати. Найкраще підійде папка в Games або на іншому диску."
+ "For the best performance, install recomps in your Games folder or on another drive.": "Для найкращої продуктивності встановлюй рекомпіляції в папку Games або на інший диск."
 }

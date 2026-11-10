@@ -2588,5 +2588,5 @@
  "Something went wrong. Try again in a bit.": "Algo deu errado. Tente de novo daqui a pouco.",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "Esta build vem como Flatpak, e o Flatpak do RecompLauncher não tem permissão para instalá-la. Dê permissão com: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Ou troque para outra build na página do jogo.",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "O Flatpak não consegue ler as configurações dos seus emuladores. Adicione as pastas de jogos deles com Adicionar uma pasta.",
- "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "Seu sistema compartilha esta pasta com o Flatpak, então os jogos nela instalam e abrem mais devagar, e alguns podem não funcionar. Uma pasta dentro de Games ou em outra unidade funciona melhor."
+ "For the best performance, install recomps in your Games folder or on another drive.": "Para o melhor desempenho, instale os recomps na sua pasta Games ou em outra unidade."
 }

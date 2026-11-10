@@ -2588,5 +2588,5 @@
  "Something went wrong. Try again in a bit.": "問題が発生しました。少ししてからもう一度お試しください。",
  "This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.": "このビルドは Flatpak 形式ですが、RecompLauncher の Flatpak にはインストールの許可がありません。次のコマンドで許可してください: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher。またはゲームページで別のビルドに切り替えてください。",
  "The Flatpak can't read your emulators' settings. Add their game folders with Add a folder.": "Flatpak 版ではエミュレーターの設定を読み取れません。「フォルダーを追加」でゲームフォルダーを追加してください。",
- "This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.": "このフォルダーはシステムによって Flatpak と共有されているため、ここのゲームはインストールや起動が遅くなり、動かないものもあります。Games 内か別のドライブのフォルダーがおすすめです。"
+ "For the best performance, install recomps in your Games folder or on another drive.": "最高のパフォーマンスのため、リコンパイル版は Games フォルダーか別のドライブにインストールしてください。"
 }
