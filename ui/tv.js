@@ -899,11 +899,12 @@
       { label: t('Console'), sub: org ? originName(org) : t('Any'), icon: 'pad', run: pickConsole },
       { label: t('Tag'), sub: TV.dtag || t('Any'), icon: 'pin', run: pickTag },
       { label: t('Show'), sub: t((SHOWS.find(([k]) => k === (TV.dshow || '')) || SHOWS[0])[1]), icon: 'layers', run: pickShow },
-      { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
-      ...(onHandheld() ? [{ label: t('Great on Deck'), sub: TV.ddeck ? t('On') : t('Off'), icon: 'pad', run: () => { TV.ddeck = !TV.ddeck; TV.focusKey = 'g:@filter'; discoverRedraw(); } }] : []),
+      { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', cls: TV.dgreat ? 'on' : '', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Hide ended'), sub: TV.dended ? t('On') : t('Off'), icon: 'history', cls: TV.dended ? 'on' : '', run: () => { TV.dended = !TV.dended; TV.dendedOpen = false; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      ...(onHandheld() ? [{ label: t('Great on Deck'), sub: TV.ddeck ? t('On') : t('Off'), icon: 'pad', cls: TV.ddeck ? 'on' : '', run: () => { TV.ddeck = !TV.ddeck; TV.focusKey = 'g:@filter'; discoverRedraw(); } }] : []),
       ...(S.os !== 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Search'), sub: TV.dq ? TV.dq : t('Find a game by name'), icon: 'search', run: tvSearch },
-      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.ddeck = false; TV.dsort = ''; TV.genre = ''; if (runsNow()) setRunsNow(''); TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Clear All'), sub: t('Every recomp, most popular first'), icon: 'refresh', gap: true, run: () => { TV.dq = ''; TV.dorigin = ''; TV.dtag = ''; TV.dshow = ''; TV.dgreat = false; TV.dended = false; TV.dendedOpen = false; TV.ddeck = false; TV.dsort = ''; TV.genre = ''; if (runsNow()) setRunsNow(''); TV.focusKey = 'g:@filter'; discoverRedraw(); } },
     ]);
   }
   // Search with the controller: an on-screen keyboard (a keyboard types straight in too). The games
@@ -1056,26 +1057,32 @@
     // Search, a console and the order narrow it further (Sort & Filter).
     const q = fold((TV.dq || '').trim()), org = TV.dorigin || '', srt = TV.dsort || 'popular';
     const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDlConsolesFirst;
-    const each = apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
+    // `ended`: the ended projects those filters would show (what "Hide ended" takes out of the list).
+    const chain = (ended) => apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
       .filter((a) => !q || fold(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`).includes(q))
-      .sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
+      .filter((a) => (ended ? isEnded(a) : !TV.dended || !isEnded(a)));
+    const byOrder = (l) => l.sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
+    const each = byOrder(chain(false));
     // Every version counts, not every tile.
     const count = recompCount(each);
     const found = oneEach(each, srt === 'new');
+    // "Hide ended" doesn't lose them: they wait in a closed box under the list, greyed out.
+    const endedList = TV.dended ? oneEach(byOrder(chain(true)), srt === 'new') : [];
+    const endedBox = endedList.length ? `<section class="tv-ended${TV.dendedOpen ? ' open' : ''}${TV.endedAnim ? ' fresh' : ''}"><button type="button" class="tv-chip tool tv-ended-head" data-f data-key="g:@ended" data-tvact="dended" aria-expanded="${!!TV.dendedOpen}">${esc(t('Ended projects'))}<b class="tv-chip-n">${endedList.length}</b></button>${TV.dendedOpen ? `<div class="tv-ended-body">${grid(endedList, 'E')}</div>` : ''}</section>` : '';
     // Discover's own order (no sort picked): turnkey recomps first.
     // On a handheld, the games handheld players say run well come first.
     const hhFirst = (l) => (S.handheld ? [...l].sort((x, y) => (window.greatHandheld(y) ? 1 : 0) - (window.greatHandheld(x) ? 1 : 0)) : l);
     const list = hhFirst(TV.dsort ? found : turnkeyFirst(found));
-    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (runsNow() ? 1 : 0) + (TV.ddeck && onHandheld() ? 1 : 0);
+    const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (TV.dended ? 1 : 0) + (runsNow() ? 1 : 0) + (TV.ddeck && onHandheld() ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
     const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], apps.some(window.greatHandheld) ? [['hh', N_('Great on Handhelds')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'hh' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="3.5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16.5" cy="11" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>' : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'hh' ? t('Great on Handhelds') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
-        <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>`)}
+        <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>${endedBox}`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]])}`;
   }
 
@@ -2489,6 +2496,18 @@
       case 'tag': sfx('select'); TV.dtag = el.dataset.tag; TV.genre = ''; TV.dq = ''; TV.dorigin = ''; TV.gridShown = {}; return go('discover');
       case 'dtagclear': sfx('back'); TV.dtag = ''; TV.focusKey = 'g:@filter'; return discoverRedraw();
       case 'dfilter': return tvFilter();
+      case 'dended': {
+        sfx('select');
+        // Closing: the box fades out first, then the page is drawn without it.
+        if (TV.dendedOpen && !calm()) { const box = el.closest('.tv-ended'); if (box) { box.classList.add('out'); await new Promise((r) => setTimeout(r, 200)); } }
+        TV.dendedOpen = !TV.dendedOpen; TV.endedAnim = TV.dendedOpen; TV.focusKey = 'g:@ended';
+        draw(true);
+        TV.endedAnim = false;
+        // Opening: the page scrolls down with it, so the first row of covers is in view.
+        const head = TV.dendedOpen ? $('.tv-stage:not(.leaving) .tv-ended-head', root) : null, reg = head && $('#tv-scroll', root) && $('#tv-scroll', root).parentElement;
+        if (head && reg) setScroll((TV.scrollY || 0) + r0(head).top - r0(reg).top - 140);
+        return;
+      }
       case 'bind': return bindSheet(id, el.dataset.k, Number(el.dataset.a));
       case 'bindreset': { sfx('select'); try { await invoke('reset_game_bindings', { id, setting: el.dataset.k }); } catch (e) { fail(e); } delete S.setup[id]; TV.focusKey = el.dataset.key; return loadSetup(id); }
       case 'gadv': sfx('select'); await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); TV.focusKey = 'gs:@adv'; return draw(true);

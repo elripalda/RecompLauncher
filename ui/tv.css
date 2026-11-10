@@ -738,6 +738,9 @@ body.light .tv-btn.warn-o{color:#7a5a00;border-color:#d9a900;background:rgba(245
 body.light .tv-btn.warn-o svg,body.light .tv-easy.sreq{color:#7a5a00}
 body.light .tv-sreq-steps li::marker{color:#b38900}
 body.light .tv-sheet .tv-item.warn svg{color:#9a7200}
+/* A switch in a sheet (Sort & Filter) that is on: tinted with the accent, so it stands out from the ones that are off. */
+.tv-sheet .tv-item.on{background:rgba(52,242,232,.12);border-color:rgba(52,242,232,.5)}
+.tv-sheet .tv-item.on svg,.tv-sheet .tv-item.on small{color:var(--acc,#34F2E8)}
 /* The cover the camera flies through when a game opens from Cover Flow: a flat picture, cheap to grow. */
 .tv-thru-card{position:fixed;z-index:150;pointer-events:none;border-radius:8px;overflow:hidden;background:#0b1220;box-shadow:0 30px 80px rgba(0,0,0,.5);transform-origin:50% 50%;will-change:transform,opacity}
 .tv-thru-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -745,6 +748,20 @@ body.light .tv-sheet .tv-item.warn svg{color:#9a7200}
 /* Discover: Search and Sort & Filter sit first among the chips. */
 .tv-chip.tool{gap:10px}
 .tv-chip.tool svg{opacity:.85}
+/* Discover, Hide ended: the ended projects wait in a box under the list, greyed out. */
+.tv-ended{margin-top:64px}
+.tv-ended-head::after{content:"";width:10px;height:10px;margin:-4px 2px 0 4px;border-right:3px solid currentColor;border-bottom:3px solid currentColor;transform:rotate(45deg);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.tv-ended.open .tv-ended-head::after{margin-top:5px;transform:rotate(-135deg)}
+.tv-ended-body{padding-top:36px}
+.tv-ended .tv-cell .aura{display:none}
+.tv-ended .tv-poster img{filter:grayscale(1);opacity:.6;transition:filter .3s,opacity .3s}
+.tv-ended .tv-poster.f img{filter:none;opacity:1}
+.tv-ended.fresh .tv-ended-body{animation:tv-in .45s cubic-bezier(.22,1,.36,1) both}
+.tv-ended.fresh .tv-ended-body .tv-cell{animation:tv-pop .55s cubic-bezier(.22,1,.36,1) both}
+.tv-ended.fresh .tv-cell:nth-child(2){animation-delay:.045s}.tv-ended.fresh .tv-cell:nth-child(3){animation-delay:.09s}.tv-ended.fresh .tv-cell:nth-child(4){animation-delay:.135s}.tv-ended.fresh .tv-cell:nth-child(5){animation-delay:.18s}.tv-ended.fresh .tv-cell:nth-child(6){animation-delay:.225s}.tv-ended.fresh .tv-cell:nth-child(7){animation-delay:.27s}.tv-ended.fresh .tv-cell:nth-child(n+8){animation-delay:.315s}
+.tv-ended.out .tv-ended-body{animation:tv-ended-out .2s cubic-bezier(.2,.8,.2,1) both}
+@keyframes tv-ended-out{to{opacity:0;transform:translateY(10px)}}
+@media (prefers-reduced-motion:reduce){.tv-ended.fresh .tv-ended-body,.tv-ended.fresh .tv-ended-body .tv-cell{animation:none}.tv-ended-head::after{transition:none}}
 .tv-chip.act{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--acc) 70%,transparent)}
 .tv-chip-n{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--acc);color:var(--accink);font-size:15px;font-weight:800;margin-left:4px}
 /* The on-screen keyboard for searching: six keys to a row, the wide ones two to a row. */
