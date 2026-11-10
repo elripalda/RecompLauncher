@@ -35,8 +35,8 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
   `~/.var/app/com.recomplauncher.RecompLauncher/`.
 - Every file or folder pick opens the system's picker (the portal), in TV mode too: the
   launcher's own browser sees only the granted folders. A pick elsewhere comes back as a
-  `/run/user/…/doc/…` path, fine for ROMs. An install folder there gets a warning: it's slower,
-  and some games may not work.
+  `/run/user/…/doc/…` path, fine for ROMs. An install folder there is slower, so an info box
+  suggests ~/Games or another drive.
 - Emulator auto-detect is off: the sandbox can't read the emulators' settings, so players add
   their ROM folders by hand.
 

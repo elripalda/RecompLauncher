@@ -3019,7 +3019,7 @@ function pageSettings() {
       break;
     case 'library':
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
-        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 game', '{n} games'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}`,
+        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 game', '{n} games'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Your games'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(tn(S.roms.filter((r) => String(r.path).startsWith(d)).length, '1 game or disc image', '{n} games and disc images'))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
@@ -4346,15 +4346,15 @@ async function loadLibs() {
 }
 
 // As a Flatpak, a folder outside ~/Games and the drives comes through the system's picker as a
-// shared path (/run/user/…/doc/…): games there install and start slower, and some may not work.
-function warnSharedLibrary(path) {
-  if (S.flatpak && /^\/run\/user\/\d+\/doc\//.test(path || '')) toast(t('This folder is shared with the Flatpak by your system, so games there install and start slower, and some may not work. A folder in Games or on another drive works best.'), true);
+// shared path (/run/user/…/doc/…), which is slower: a note under the install folders says so.
+function sharedLibraryNote(paths) {
+  if (!S.flatpak || !paths.some((p) => /^\/run\/user\/\d+\/doc\//.test(p || ''))) return '';
+  return `<div class="callout lib-note"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI.info}</svg></span><div class="k"><span>${esc(t('For the best performance, install recomps in your Games folder or on another drive.'))}</span></div></div>`;
 }
 async function addLibrary() {
   const p = await pickFile({ title: t('A folder for games, on any drive'), directory: true }).catch(fail);
   if (!p) return null;
   const path = typeof p === 'string' ? p : p.path;
-  warnSharedLibrary(path);
   await saveSettings({ library_dirs: uniq([...(S.settings.library_dirs || []), path]).filter((d) => d !== S.settings.library_dir) });
   return path;
 }
@@ -6371,7 +6371,7 @@ async function act(el, e) {
     }
     case 'libdir': {
       const p = await pickFile({ title: t('Where new games install'), directory: true, defaultPath: S.settings.library_dir }).catch(fail);
-      if (p) { warnSharedLibrary(typeof p === 'string' ? p : p.path); saveSettings({ library_dir: typeof p === 'string' ? p : p.path }); }
+      if (p) saveSettings({ library_dir: typeof p === 'string' ? p : p.path });
       return;
     }
   }
