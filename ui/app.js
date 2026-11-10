@@ -2456,11 +2456,20 @@ function looksTab(a) {
     </div></div>`;
 }
 // The picture looks are shown on: the player's screenshot, or the game's banner.
+// A decoded one is about 3 MB, so only the few most recently shown are kept. The encoded picture
+// stays in the disk/HTTP cache, so one that was let go decodes again quickly.
+const LOOK_PIC_MAX = 3;
 const LOOK_PIC = {};
 function lookPicture(id) {
-  if (LOOK_PIC[id]) return LOOK_PIC[id];
+  if (LOOK_PIC[id]) {
+    // Using one makes it the most recent, so the ones not used lately go first.
+    const pic = LOOK_PIC[id];
+    delete LOOK_PIC[id];
+    LOOK_PIC[id] = pic;
+    return pic;
+  }
   const li = S.looks[id] || {}, a = byId(id) || {};
-  LOOK_PIC[id] = (async () => {
+  const pic = LOOK_PIC[id] = (async () => {
     let src = '';
     if (li.shot) { try { src = await invoke('look_picture', { path: li.shot }); } catch (e) { src = ''; } }
     if (!src) src = media(a.hero || a.cover || '');
@@ -2472,8 +2481,10 @@ function lookPicture(id) {
     return img;
   })();
   // A picture that didn't load is tried again next time.
-  LOOK_PIC[id].then((img) => { if (!img) delete LOOK_PIC[id]; });
-  return LOOK_PIC[id];
+  pic.then((img) => { if (!img && LOOK_PIC[id] === pic) delete LOOK_PIC[id]; });
+  const keys = Object.keys(LOOK_PIC);
+  for (let i = 0; i < keys.length - LOOK_PIC_MAX; i++) if (keys[i] !== id) delete LOOK_PIC[keys[i]];
+  return pic;
 }
 function sizeCanvas(c, ratio) {
   const w = Math.max(1, Math.round(c.clientWidth * devicePixelRatio));
