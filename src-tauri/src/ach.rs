@@ -229,6 +229,10 @@ struct Store {
     /// Leaderboard entries, sent like unlocks (offline ones wait).
     #[serde(default)]
     lboards: Vec<LbEntry>,
+    /// Where the player pointed the launcher to a game's disc (a disc image or folder), when it
+    /// couldn't find it by itself.
+    #[serde(default)]
+    disc: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1464,8 +1468,9 @@ const TABLE_TRIES: [u64; 9] = [0, 4, 10, 20, 35, 60, 120, 240, 480];
 
 /// The game's own achievement table from the player's copy: first the game's folder and the copies
 /// kept aside, then the paths in the game's own settings, then whatever the running game has open.
-fn table_now(install: &Path, roots: &[PathBuf], pid: Option<u32>) -> Option<crate::xex::Table> {
-    let mut exact = crate::gamefiles::from_settings(install);
+fn table_now(install: &Path, roots: &[PathBuf], pid: Option<u32>, picked: Option<PathBuf>) -> Option<crate::xex::Table> {
+    let mut exact: Vec<PathBuf> = picked.into_iter().collect();
+    exact.extend(crate::gamefiles::from_settings(install));
     if let Some(pid) = pid {
         for p in crate::gamefiles::from_process(pid) {
             if !exact.contains(&p) {
@@ -1516,9 +1521,10 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
     let mut table_done = false;
     let started_at = Instant::now();
     let pid_of = |app: &AppHandle, game: &str| app.state::<App>().pids.lock().unwrap().get(game).copied();
+    let picked = with_store(&dir, |d| (d.disc.get(&w.game).map(PathBuf::from), false));
     {
-        let (install, roots2, pid) = (w.install.clone(), roots.clone(), pid_of(&app, &w.game));
-        if let Ok(Some(t)) = tokio::task::spawn_blocking(move || table_now(&install, &roots2, pid)).await {
+        let (install, roots2, pid, pk) = (w.install.clone(), roots.clone(), pid_of(&app, &w.game), picked.clone());
+        if let Ok(Some(t)) = tokio::task::spawn_blocking(move || table_now(&install, &roots2, pid, pk)).await {
             use_table(&app, &mut w, &t);
             table_done = true;
         }
@@ -1588,8 +1594,8 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
         }
         if !table_done && table_try < TABLE_TRIES.len() && started_at.elapsed().as_secs() >= TABLE_TRIES[table_try] {
             table_try += 1;
-            let (install, roots2, pid) = (w.install.clone(), roots.clone(), pid_of(&app, &w.game));
-            if let Ok(Some(t)) = tokio::task::spawn_blocking(move || table_now(&install, &roots2, pid)).await {
+            let (install, roots2, pid, pk) = (w.install.clone(), roots.clone(), pid_of(&app, &w.game), picked.clone());
+            if let Ok(Some(t)) = tokio::task::spawn_blocking(move || table_now(&install, &roots2, pid, pk)).await {
                 // The unlock file is named after the game's title id: a disc that says otherwise is
                 // another game's, and isn't used.
                 let unlock_title = file.as_deref().and_then(title_of_unlock_file);
@@ -1912,7 +1918,40 @@ pub async fn ach_game(app: AppHandle, id: String, fresh: Option<bool>) -> Res<Va
         "allowed": true, "list": list, "unlocks": unlocks, "unlocked": ids, "mine": mine, "progress": progress, "broken": broken,
         "points": got, "total": total, "count": if all.is_empty() { list.as_ref().and_then(|l| num(l, "total")).unwrap_or(0) as usize } else { all.len() }, "mastered": all_unlocked(list.as_ref(), &ids.iter().copied().collect()),
         "live": live_now, "connected": connected, "hello": hello, "session": session, "found": found, "sound": sound, "paused": paused, "dev": dev_ok(&app),
+        "native_known": with_store(&dir, |d| (d.native.contains_key(&id), false)),
     }))
+}
+
+/// The player points the launcher to a game's disc (a disc image, or the folder with default.xex)
+/// when it couldn't find it: the table is read now, remembered, and sent with the game's latest
+/// session, so the website makes the game's list without another play.
+#[tauri::command]
+pub async fn ach_set_disc(app: AppHandle, id: String, path: String) -> Res<Value> {
+    let place = PathBuf::from(&path);
+    let read = tokio::task::spawn_blocking(move || crate::xex::table_from_place(&place)).await.map_err(|e| Error::Msg(e.to_string()))?;
+    let (src, t) = match read {
+        Ok(x) => x,
+        Err(_) => return Ok(json!({"ok": false})),
+    };
+    let names: Vec<Value> = t.achievements.iter().map(|a| json!({"id": a.id, "title": a.title, "description": a.description, "gamerscore": a.gamerscore})).collect();
+    if names.is_empty() {
+        return Ok(json!({"ok": false}));
+    }
+    let dir = app.state::<App>().dir.clone();
+    with_store(&dir, |d| {
+        d.disc.insert(id.clone(), src.to_string_lossy().to_string());
+        d.native.insert(id.clone(), names);
+        if let Some(s) = d.sessions.values_mut().filter(|s| s.game == id).max_by_key(|s| s.started) {
+            s.native_pending = true;
+        }
+        ((), true)
+    });
+    log_line(&id, "*", &format!("achievement table from the disc the player picked: {} achievements, title {}", t.achievements.len(), t.title_id));
+    crate::trail::note(format!("Achievements {id}: the player picked the game's disc ({} achievements)", t.achievements.len()));
+    let _ = app.emit("ach-changed", json!({"game": id}));
+    let a = app.clone();
+    tauri::async_runtime::spawn(async move { sync(&a).await; });
+    Ok(json!({"ok": true, "count": t.achievements.len()}))
 }
 
 #[tauri::command]

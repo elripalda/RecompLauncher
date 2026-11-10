@@ -333,6 +333,13 @@ pub fn game_for_open_file(p: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The table from a place the player picked: a disc image, a default.xex, or a folder with one.
+pub fn table_from_place(place: &Path) -> Result<(PathBuf, Table), String> {
+    let src = find_exact(&[place.to_path_buf()]).or_else(|| find(&[place.to_path_buf()])).ok_or("no Xbox 360 game there")?;
+    let bytes = xex_bytes(&src).ok_or("couldn't read default.xex")?;
+    read(&bytes).map(|t| (src, t))
+}
+
 /// default.xex's bytes, from the file itself or from inside a disc image.
 fn xex_bytes(src: &Path) -> Option<Vec<u8>> {
     if is_disc_image(src) {
