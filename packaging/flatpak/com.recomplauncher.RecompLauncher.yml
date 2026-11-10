@@ -17,6 +17,12 @@ finish-args:
   - --device=all
   # The tray icon.
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Where games install: the default library (~/Games/Recomp Library), and other drives
+  # (external disks, a Steam Deck's SD card). Other folders the player picks go through the portal.
+  - --filesystem=~/Games:create
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/mnt
   # Steam (its own folder, or the Flatpak's): "Add to Steam" writes shortcuts and art there, and
   # a game's Proton goes into its compatibilitytools.d.
   - --filesystem=~/.local/share/Steam
