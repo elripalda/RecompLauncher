@@ -50,6 +50,7 @@ pub mod shortcuts;
 pub mod trail;
 pub mod tray;
 mod update_download;
+mod update_launch;
 pub mod usage;
 pub mod win;
 mod installer;
@@ -6476,13 +6477,8 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     // In that mode the installer closes any copy of the launcher still open before it copies.
     // This one closes right away, so none of our files are in use. /UPDATE: it replaces the files
     // in place and leaves the player's shortcuts alone (a desktop shortcut they deleted stays gone).
-    let mut flags: Vec<String> = vec!["/P".into(), "/UPDATE".into(), "/R".into()];
-    // A portable launcher updates itself where it is, not where an installed one would go.
-    if let (Some(_), Some(d)) = (portable_dir(), exe_dir()) {
-        flags.push(format!("/D={}", d.display()));
-    }
-    std::process::Command::new(&file)
-        .args(&flags)
+    let portable = portable_dir().and_then(|_| exe_dir());
+    update_launch::installer_command(&file, portable.as_deref(), true)
         .spawn()
         .map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
@@ -6562,11 +6558,8 @@ fn update_retry(app: AppHandle) -> Res<()> {
     if installer.is_empty() || !Path::new(&installer).is_file() {
         return Err(Error::Msg("The installer isn't there anymore. Use Update again to download it.".into()));
     }
-    let mut c = std::process::Command::new(&installer);
-    if let (Some(_), Some(d)) = (portable_dir(), exe_dir()) {
-        c.arg(format!("/D={}", d.display()));
-    }
-    c.spawn().map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
+    let portable = portable_dir().and_then(|_| exe_dir());
+    update_launch::installer_command(Path::new(&installer), portable.as_deref(), false).spawn().map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
     Ok(())
 }
