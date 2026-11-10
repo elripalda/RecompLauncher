@@ -284,7 +284,7 @@ pub struct Check {
     /// On a PlayStation 2 (or any ISO 9660) disc image, in its top folder.
     #[serde(default)]
     pub iso9660: String,
-    /// A Nintendo Switch 2 `.nup` package's build ID (hex, at least 8 digits; a prefix is fine),
+    /// A Nintendo Switch or Switch 2 `.nup` package's build ID (hex, at least 8 digits; a prefix is fine),
     /// read from its newest title's `exefs/main`. A folder with `exefs/main` is read the same way.
     #[serde(default)]
     pub nup_build_id: String,
@@ -2053,7 +2053,7 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     }
     if !g.check.nup_build_id.is_empty() {
         // By the package's magic, not its name; only its headers and `main`'s first bytes are read.
-        let id = if nup::is_package(p) { nup::build_id_of_package(p) } else { Err("That isn't a Nintendo Switch 2 .nup package.".into()) };
+        let id = if nup::is_package(p) { nup::build_id_of_package(p) } else { Err("That isn't a Nintendo Switch .nup package.".into()) };
         return check_nup_build(&g.check.nup_build_id, id);
     }
     let wants_n64 = !g.check.n64_region.is_empty() || !g.check.n64_id.is_empty() || g.check.n64_rev.is_some() || [".z64", ".n64", ".v64"].iter().any(|e| g.name.to_lowercase().ends_with(e));
@@ -3053,7 +3053,7 @@ mod tests {
         assert!(check_copy(&g("e0f3ccfa"), &d).unwrap_err().contains("exefs/main"));
         // A file is judged by its content, whatever it is called.
         std::fs::write(d.join("a.nup"), b"just text").unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &d.join("a.nup")).unwrap_err().contains("isn't a Nintendo Switch 2"));
+        assert!(check_copy(&g("e0f3ccfa"), &d.join("a.nup")).unwrap_err().contains("isn't a Nintendo Switch .nup"));
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());

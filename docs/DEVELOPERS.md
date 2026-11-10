@@ -146,7 +146,7 @@ What the player sees:
   - `file`: a file that should be in the folder, like `"default.xex"`.
   - `xdvdfs`: a file on an Xbox 360 disc image.
   - `iso9660`: a file in the top folder of a PlayStation 2 (or any ISO 9660) disc image.
-  - `nup_build_id`: the build ID of a Nintendo Switch 2 `.nup` package, e.g. `"e0f3ccfa"` (hex,
+  - `nup_build_id`: the build ID of a Nintendo Switch or Switch 2 `.nup` package, e.g. `"e0f3ccfa"` (hex,
     at least 8 digits; a prefix of the full 64-digit ID is fine). It is read from the `exefs/main`
     of the package's newest title, from the table rows leading to it and the first 96 bytes of that
     file only, never the whole package, and a folder with `exefs/main` is read the same way. The
