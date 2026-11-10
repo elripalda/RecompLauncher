@@ -662,7 +662,10 @@ function projectState(a) {
   // Finished: everything it set out to do is in. Never shown as ended or quiet, however old its
   // last release is, and it wins over an old catalog's "archived".
   if (a.status === 'complete') return { kind: 'complete', note: a.status_note || t('The developer considers it finished: everything it set out to do is in. Fixes may still come now and then.') };
-  if (a.status === 'ended' || a.archived) return { kind: 'ended', note: a.status_note || (a.status === 'ended' ? t('The developer isn\'t planning any more updates.') : t('The developer archived this project, so no more updates are coming.')) };
+  const remote = (S.rels[a.repo] || {}).archived;
+  const archived = typeof a.archived === 'boolean' ? a.archived : typeof remote === 'boolean' ? remote : a.github_archived === true;
+  const ended = a.status === 'ended' || a.status === 'abandoned';
+  if (ended || archived) return { kind: 'ended', note: a.status_note || (ended ? t('The developer isn\'t planning any more updates.') : t('The developer archived this project, so no more updates are coming.')) };
   if (a.status === 'paused') return { kind: 'paused', note: a.status_note || t('The developer has put it on hold. Updates may pick up again later.') };
   const r = Date.parse(a.released || '');
   if (!r) return null;
@@ -3599,15 +3602,21 @@ T.event.listen('releases-fresh', ({ payload }) => { const repo = payload && payl
 
 async function loadRels(repo, force) {
   if (!repo || (S.rels[repo] && S.rels[repo].loading)) return;
-  S.rels[repo] = { loading: true, list: [] };
+  const previous = (S.rels[repo] || {}).archived;
+  S.rels[repo] = { loading: true, list: [], archived: previous };
+  let statusChanged = false;
   try {
     const r = await invoke('get_releases', { repo, force: !!force });
-    S.rels[repo] = { list: Array.isArray(r.data) ? r.data : [] };
+    const archived = typeof r.archived === 'boolean' ? r.archived : previous;
+    S.rels[repo] = { list: Array.isArray(r.data) ? r.data : [], archived };
+    statusChanged = archived !== previous;
   } catch (e) {
-    S.rels[repo] = { list: [], error: String(e) };
+    S.rels[repo] = { list: [], error: String(e), archived: previous };
   }
   if (S.view === 'game') refreshGame();
   else if (S.view === 'downloads') for (const el of $$('.upd.open')) fillUpd(el);
+  else if (statusChanged && ['home', 'discover', 'library'].includes(S.view)) render(true);
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
 }
 
 // Like the website: when the pointer rests on a game (or it gets focus), what its page shows from

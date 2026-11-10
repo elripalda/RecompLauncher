@@ -120,3 +120,24 @@ When the server doesn't answer, times out, or answers 403, 408, 429 or 5xx, the 
 asking it for 30 seconds, then 1, 2, 4 minutes and so on up to an hour, each with a random part, and
 works from its copies on disk meanwhile (the window shows "Offline"). `Retry-After` on a 429 or 503
 is respected. Requests have short timeouts (10 seconds, 20 for the list).
+
+## Project maintenance status
+
+Catalog app entries may supply `archived` (a boolean), `status` (`ended`, `abandoned`,
+`paused`, or `complete`), and an optional `status_note`. `abandoned` uses the same
+existing warning as `ended`. `complete` takes priority over an archived flag; an old
+release date alone means quiet, not abandoned. These are catalog fields, not setup
+manifest properties in `recomplauncher.schema.json`.
+
+When release lookup falls back to GitHub, the launcher also asks
+`GET /repos/{owner}/{repo}` for its `archived` flag. The request is bounded and runs
+alongside release lookup; a failed or rate-limited metadata response does not reject
+otherwise available releases. The last known flag is cached separately and included
+as optional `archived` in the launcher's release response, without changing its `data`
+array. Cached status is exposed as `github_archived` in catalog and player-added entries
+that lack an explicit flag. Fresh release metadata supersedes that cached fallback;
+an explicit catalog `archived` boolean stays authoritative. Desktop and Big Picture use the
+same status and keep installation available.
+
+This fallback does not infer abandonment from repository activity and does not change
+how the separately hosted catalog service collects its metadata.

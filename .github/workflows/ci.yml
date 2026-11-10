@@ -69,6 +69,7 @@ jobs:
       - name: Run UI tests and JavaScript syntax checks
         run: |
           node --test tests/macos-ui.test.cjs tests/setup-inputs.test.cjs
+          node --test tests/project-status.test.cjs
           node --check ui/app.js
           node --check ui/tv.js
           node --check ui/setup-inputs.js
