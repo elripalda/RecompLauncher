@@ -7184,6 +7184,8 @@ pub fn run() {
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
         return;
     }
+    // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
+    sysenv::tune_allocator();
     tauri::Builder::default()
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.

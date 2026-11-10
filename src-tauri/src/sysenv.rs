@@ -139,6 +139,32 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     }
 }
 
+/// The launcher's memory over a long session. glibc gives each thread that allocates its own
+/// 64 MB "arena" and keeps the freed parts of it for the rest of the run, so a session that
+/// opened a few game pages held tens of MB per worker thread for nothing. Cap the arenas (the
+/// launcher is not allocation-bound, so a couple are plenty) and give the freed parts back to
+/// the system now and then.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub fn tune_allocator() {
+    // glibc's own names, from <malloc.h>: M_ARENA_MAX is -8.
+    extern "C" {
+        fn mallopt(param: i32, value: i32) -> i32;
+        fn malloc_trim(pad: usize) -> i32;
+    }
+    const M_ARENA_MAX: i32 = -8;
+    unsafe { mallopt(M_ARENA_MAX, 2) };
+    // A game page asks the core for the catalog, and the burst it leaves in the arenas stays
+    // until something trims them: once a minute is often enough to keep a session small.
+    std::thread::Builder::new().name("malloc-trim".into()).spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        unsafe { malloc_trim(0) };
+    }).ok();
+}
+
+/// Windows and macOS give memory back on their own; glibc is the one that keeps it.
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+pub fn tune_allocator() {}
+
 /// Settings → Appearance → Graphics Mode, read from library.json before the window opens.
 #[cfg(target_os = "linux")]
 fn graphics_mode(data: &std::path::Path) -> String {
