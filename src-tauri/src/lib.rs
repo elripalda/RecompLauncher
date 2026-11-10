@@ -2786,13 +2786,31 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         let (app_id, game, cover) = discord_info(&st, &id);
         discord::send(discord::Msg::Playing { app_id, game, recomp: g.name.clone(), cover, start: started });
     }
+    // The folder its programs run from, for a game that hands off to another program and closes.
+    let handoff_dir = if exe.starts_with(&g.path) { g.path.clone() } else { exe.parent().map(Path::to_path_buf).unwrap_or_else(|| g.path.clone()) };
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let start = Instant::now();
+        let mut stopped = false;
         let code = tokio::select! {
             r = child.wait() => r.ok().and_then(|s| s.code()),
-            _ = rx => { let _ = child.kill().await; None }
+            _ = rx => { stopped = true; let _ = child.kill().await; None }
         };
+        // Some games start through a small program that opens the game and closes (a launcher, an
+        // updater): it's still being played while a program from its folder runs. Play time, and
+        // the game showing as running, last until the last one closes. Only when what was started
+        // closed within a few minutes: that's a hand-off, not a game that was played and quit.
+        if !stopped && start.elapsed().as_secs() < 180 {
+            let dir = handoff_dir.clone();
+            let mut waited = false;
+            while start.elapsed().as_secs() < 24 * 3600 && tokio::task::spawn_blocking({ let d = dir.clone(); move || still_running_in(&d) }).await.unwrap_or(false) {
+                if !waited {
+                    waited = true;
+                    trail::note(format!("{id}: its program closed, but the game runs on from its folder"));
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
         let secs = start.elapsed().as_secs();
         let st = app2.state::<App>();
         // A game that closes with the same code every time it's quit normally (its profile or the
@@ -5716,6 +5734,40 @@ pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Opti
     (!newest.is_empty() && version_key(&newest) > version_key(env!("CARGO_PKG_VERSION"))).then_some(v)
 }
 
+/// Programs a game leaves behind that aren't the game: crash reporters and the like.
+fn leftover_helper(name: &str) -> bool {
+    let n = name.to_lowercase();
+    ["crash", "report", "helper", "subprocess", "webhelper", "updater", "update", "unins", "setup"].iter().any(|w| n.contains(w))
+}
+
+/// A program from this folder (or deeper) is running, other than RecompLauncher itself. Only for a
+/// game's own folder: a drive or a folder near the top is too broad to tell anything.
+fn still_running_in(dir: &Path) -> bool {
+    if dir.components().count() < 3 {
+        return false;
+    }
+    let me = std::process::id();
+    #[cfg(windows)]
+    {
+        let d = dir.to_string_lossy().trim_end_matches('\\').to_lowercase() + "\\";
+        return win::processes().into_iter().any(|(pid, name)| pid != me && pid != 0 && !leftover_helper(&name) && win::process_file(pid).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(rd) = std::fs::read_dir("/proc") else { return false };
+        return rd
+            .flatten()
+            .filter_map(|e| e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()))
+            .filter(|&p| p != me)
+            .any(|p| std::fs::read_link(format!("/proc/{p}/exe")).map(|f| f.starts_with(dir) && !leftover_helper(&f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())).unwrap_or(false));
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = me;
+        false
+    }
+}
+
 /// An update file that turned out wrong: another version inside it, or two installs from it that
 /// didn't go in. { version, url, sha256, fails }. Two strikes and that exact file isn't offered
 /// again; it's offered again when version.json changes it (a new version, url or sha256).
@@ -6543,10 +6595,11 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
     std::fs::write(&file, &bytes)?;
     // Noted, so the next start can tell whether it went in (see update_check_last).
     let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file, "url": file_url, "sha256": want}).to_string());
-    // Its own small window shows the progress (/P), and RecompLauncher opens again after (/R).
-    // In that mode the installer closes any copy of the launcher still open before it copies.
-    // This one closes right away, so none of our files are in use. /UPDATE: it replaces the files
-    // in place and leaves the player's shortcuts alone (a desktop shortcut they deleted stays gone).
+    // It installs with no window of its own (/S), and RecompLauncher opens again after (/R). The
+    // launcher's window says it's installing, for a moment, then closes so none of our files are in
+    // use (the installer closes any copy still open before it copies). /UPDATE: it replaces the
+    // files in place and leaves the player's shortcuts alone (a desktop shortcut they deleted stays gone).
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
     let portable = portable_dir().and_then(|_| exe_dir());
     update_launch::installer_command(&file, portable.as_deref(), true)
         .spawn()
@@ -7784,6 +7837,30 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_game_that_hands_off_keeps_counting_while_its_folder_runs() {
+        assert!(leftover_helper("UnityCrashHandler64.exe"));
+        assert!(leftover_helper("crashpad_handler"));
+        assert!(!leftover_helper("Hookshot.exe"));
+        // Too broad a folder never counts.
+        assert!(!still_running_in(Path::new("/")));
+        #[cfg(target_os = "linux")]
+        {
+            // A program running from the folder counts; one from elsewhere doesn't.
+            let d = std::env::temp_dir().join(format!("rl-handoff-{}", std::process::id())).join("game");
+            std::fs::create_dir_all(&d).unwrap();
+            let prog = d.join("game-bin");
+            std::fs::copy("/bin/sleep", &prog).unwrap();
+            let mut c = std::process::Command::new(&prog).arg("5").spawn().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(still_running_in(&d));
+            c.kill().unwrap();
+            c.wait().unwrap();
+            assert!(!still_running_in(&d));
+            let _ = std::fs::remove_dir_all(d.parent().unwrap());
+        }
+    }
 
     #[test]
     fn a_wrong_update_file_is_refused_and_not_offered_again() {

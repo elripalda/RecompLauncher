@@ -2667,5 +2667,10 @@
  "Completed": "เสร็จแล้ว",
  "This Update Looks Wrong": "อัปเดตนี้ดูเหมือนจะมีปัญหา",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} ติดตั้งไม่สำเร็จสองครั้ง ไฟล์อัปเดตจึงดูเหมือนจะมีปัญหา จะไม่มีการเสนออัปเดตนี้อีก และเวอร์ชันที่แก้ไขแล้วจะปรากฏขึ้นเองเมื่อออก ไม่ต้องเปลี่ยนอะไรบนพีซีของคุณ",
- "OK": "ตกลง"
+ "OK": "ตกลง",
+ "Later": "ไว้ทีหลัง",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "คุณใช้ {version} อยู่ ซึ่งเก่าเกินกว่าจะใช้กับ Recomp ได้ อัปเดตเพื่อเล่นต่อ ใช้เวลาแค่ครู่เดียว",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "คุณใช้ {version} อยู่ การอัปเดตใช้เวลาครู่เดียว แล้ว RecompLauncher จะเปิดขึ้นใหม่เอง",
+ "Update Now": "อัปเดตเลย",
+ "Later keeps this version on the Downloads page until a newer one is out.": "ไว้ทีหลัง จะเก็บเวอร์ชันนี้ไว้ในหน้าดาวน์โหลดจนกว่าจะมีเวอร์ชันใหม่กว่า"
 }

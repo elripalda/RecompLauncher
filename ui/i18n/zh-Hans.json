@@ -2667,5 +2667,10 @@
  "Completed": "已完成",
  "This Update Looks Wrong": "此更新似乎有问题",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} 两次都未能安装，因此它的更新文件似乎有问题。它不会再次提供，修复后的版本一推出就会自动出现。你的电脑无需做任何更改。",
- "OK": "确定"
+ "OK": "确定",
+ "Later": "以后再说",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "你的版本是 {version}，太旧了，跟不上重编译游戏的更新。请更新以继续游玩。只需片刻。",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "你的版本是 {version}。更新只需片刻，之后 RecompLauncher 会自动重新打开。",
+ "Update Now": "立即更新",
+ "Later keeps this version on the Downloads page until a newer one is out.": "选择“以后再说”后，此版本会保留在下载页面上，直到有更新的版本推出。"
 }

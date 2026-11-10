@@ -2667,5 +2667,10 @@
  "Completed": "Selesai",
  "This Update Looks Wrong": "Pembaruan ini tampaknya bermasalah",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dua kali gagal terpasang, jadi file pembaruannya tampaknya bermasalah. Pembaruan ini tidak akan ditawarkan lagi, dan versi yang sudah diperbaiki akan muncul sendiri begitu dirilis. Tidak ada yang perlu diubah di PC-mu.",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "Nanti",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Kamu punya {version}, yang terlalu lama untuk mengikuti recomp. Perbarui untuk terus bermain. Hanya sebentar.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Kamu punya {version}. Pembaruannya sebentar saja, lalu RecompLauncher terbuka lagi dengan sendirinya.",
+ "Update Now": "Perbarui sekarang",
+ "Later keeps this version on the Downloads page until a newer one is out.": "Nanti menyimpan versi ini di halaman Unduhan sampai ada yang lebih baru."
 }

@@ -2667,5 +2667,10 @@
  "Completed": "Tamamlananlar",
  "This Update Looks Wrong": "Bu güncelleme hatalı görünüyor",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} iki kez yüklenemedi, bu yüzden güncelleme dosyası hatalı görünüyor. Bir daha sunulmayacak; düzeltilmiş olanı çıktığında kendiliğinden görünür. Bilgisayarınızda hiçbir şeyi değiştirmeniz gerekmiyor.",
- "OK": "Tamam"
+ "OK": "Tamam",
+ "Later": "Daha sonra",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Sizde {version} var ve recomp'lara ayak uyduramayacak kadar eski. Oynamaya devam etmek için güncelleyin. Yalnızca birkaç saniye sürer.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Sizde {version} var. Güncelleme birkaç saniye sürer ve RecompLauncher kendiliğinden yeniden açılır.",
+ "Update Now": "Şimdi güncelle",
+ "Later keeps this version on the Downloads page until a newer one is out.": "Daha sonra'yı seçerseniz bu sürüm, daha yenisi çıkana kadar İndirmeler sayfasında kalır."
 }

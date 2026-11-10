@@ -2667,5 +2667,10 @@
  "Completed": "Voltooid",
  "This Update Looks Wrong": "Deze update lijkt niet in orde",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} is twee keer niet geïnstalleerd, dus het updatebestand lijkt niet in orde. Het wordt niet opnieuw aangeboden, en een gerepareerde versie verschijnt vanzelf zodra die uit is. Op je pc hoeft niets te veranderen.",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "Later",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Je hebt {version}, en die is te oud om de recomps bij te houden. Werk bij om verder te spelen. Het duurt maar even.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Je hebt {version}. Bijwerken duurt even, en RecompLauncher opent daarna vanzelf weer.",
+ "Update Now": "Nu bijwerken",
+ "Later keeps this version on the Downloads page until a newer one is out.": "Met Later blijft deze versie op de pagina Downloads staan tot er een nieuwere uit is."
 }

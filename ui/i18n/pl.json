@@ -2667,5 +2667,10 @@
  "Completed": "Ukończone",
  "This Update Looks Wrong": "Ta aktualizacja wygląda na wadliwą",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dwa razy się nie zainstalował, więc plik aktualizacji wygląda na wadliwy. Nie będzie już proponowany, a poprawiony pojawi się sam, gdy tylko zostanie wydany. Na twoim komputerze nie trzeba nic zmieniać.",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "Później",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Masz wersję {version}, która jest za stara, by nadążyć za portami. Zaktualizuj, aby grać dalej. To zajmie tylko chwilę.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Masz wersję {version}. Aktualizacja potrwa chwilę, a potem RecompLauncher sam się uruchomi.",
+ "Update Now": "Aktualizuj teraz",
+ "Later keeps this version on the Downloads page until a newer one is out.": "„Później” zostawia tę wersję na stronie Pobieranie, dopóki nie wyjdzie nowsza."
 }

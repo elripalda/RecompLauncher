@@ -2667,5 +2667,10 @@
  "Completed": "Завершені",
  "This Update Looks Wrong": "Схоже, це оновлення пошкоджене",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} двічі не вдалося встановити, тож файл оновлення, схоже, пошкоджений. Його більше не пропонуватимуть, а виправлений з'явиться сам, щойно вийде. На твоєму ПК нічого змінювати не потрібно.",
- "OK": "ОК"
+ "OK": "ОК",
+ "Later": "Пізніше",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "У тебе версія {version}, вона застара для нових рекомпіляцій. Онови, щоб грати далі. Це займе лише мить.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "У тебе версія {version}. Оновлення займе мить, і RecompLauncher відкриється сам.",
+ "Update Now": "Оновити зараз",
+ "Later keeps this version on the Downloads page until a newer one is out.": "Кнопка «Пізніше» залишить цю версію на сторінці «Завантаження», доки не вийде новіша."
 }

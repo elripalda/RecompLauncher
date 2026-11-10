@@ -1004,5 +1004,10 @@
  "Completed": "Terminés",
  "This Update Looks Wrong": "Cette mise à jour semble défectueuse",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} ne s'est pas installé deux fois de suite, son fichier de mise à jour semble donc défectueux. Il ne sera plus proposé, et une version corrigée apparaîtra d'elle-même dès sa sortie. Rien n'est à changer sur votre PC.",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "Plus tard",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Vous avez la version {version}, trop ancienne pour suivre les recomps. Mettez à jour pour continuer à jouer. Ça ne prend qu'un instant.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Vous avez la version {version}. La mise à jour prend un instant, puis RecompLauncher se rouvre tout seul.",
+ "Update Now": "Mettre à jour maintenant",
+ "Later keeps this version on the Downloads page until a newer one is out.": "« Plus tard » garde cette version sur la page Téléchargements jusqu'à la sortie d'une plus récente."
 }

@@ -6,7 +6,9 @@ use std::process::Command;
 pub fn installer_command(installer: &Path, portable_dir: Option<&Path>, background: bool) -> Command {
     let mut command = Command::new(installer);
     if background {
-        command.args(["/P", "/UPDATE", "/R"]);
+        // /S: no installer window at all (the passive one flashed its Back button as it finished);
+        // the launcher says it is installing. /R: RecompLauncher opens again after.
+        command.args(["/S", "/UPDATE", "/R"]);
     }
     if let Some(dir) = portable_dir {
         install_dir(&mut command, dir);
@@ -37,7 +39,7 @@ mod tests {
     fn installed_updates_keep_their_flags_and_no_directory_override() {
         let command = installer_command(Path::new("installer.exe"), None, true);
         assert_eq!(command.get_program(), OsStr::new("installer.exe"));
-        assert_eq!(command.get_args().collect::<Vec<_>>(), ["/P", "/UPDATE", "/R"]);
+        assert_eq!(command.get_args().collect::<Vec<_>>(), ["/S", "/UPDATE", "/R"]);
         let retry = installer_command(Path::new("installer.exe"), None, false);
         assert_eq!(retry.get_args().count(), 0);
     }
@@ -50,7 +52,7 @@ mod tests {
             let args: Vec<_> = command.get_args().collect();
             assert_eq!(args.last().copied(), Some(OsStr::new(r"/D=C:\Portable Games\RecompLauncher")));
             if background {
-                assert_eq!(&args[..args.len() - 1], ["/P", "/UPDATE", "/R"]);
+                assert_eq!(&args[..args.len() - 1], ["/S", "/UPDATE", "/R"]);
             } else {
                 assert_eq!(args.len(), 1);
             }

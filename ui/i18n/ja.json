@@ -2667,5 +2667,10 @@
  "Completed": "完了",
  "This Update Looks Wrong": "このアップデートに問題があるようです",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} のインストールに 2 回失敗したため、アップデートファイルに問題があるようです。このアップデートは今後表示されず、修正版が出ると自動で表示されます。お使いの PC で変更が必要なことはありません。",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "あとで",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "現在のバージョンは {version} で、リコンパイル版に対応するには古すぎます。プレイを続けるにはアップデートしてください。すぐに終わります。",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "現在のバージョンは {version} です。アップデートはすぐに終わり、RecompLauncher が自動でもう一度開きます。",
+ "Update Now": "今すぐアップデート",
+ "Later keeps this version on the Downloads page until a newer one is out.": "「あとで」を選ぶと、新しいバージョンが出るまでこのバージョンはダウンロードページに残ります。"
 }

@@ -2667,5 +2667,10 @@
  "Completed": "Concluídos",
  "This Update Looks Wrong": "Esta atualização parece com defeito",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "O RecompLauncher {to} não instalou duas vezes, então o arquivo de atualização parece com defeito. Ele não será oferecido de novo, e um corrigido aparece sozinho assim que sair. Você não precisa mudar nada no seu PC.",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "Mais tarde",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Você tem a {version}, que é antiga demais para acompanhar as recomps. Atualize para continuar jogando. Leva só um instante.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Você tem a {version}. A atualização leva um instante, e o RecompLauncher abre de novo sozinho.",
+ "Update Now": "Atualizar agora",
+ "Later keeps this version on the Downloads page until a newer one is out.": "\"Mais tarde\" mantém esta versão na página Downloads até sair uma mais nova."
 }

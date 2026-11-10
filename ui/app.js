@@ -5037,13 +5037,55 @@ function viewShot(i, list = shotList()) {
 // from the last hour is reused); after that the core looks every six hours or so, and sooner when
 // the website pushes a new build ('launcher-update' in more.js). Each new version is announced once.
 const LL = { told: '' };
-async function lookForLauncher() {
+async function lookForLauncher(atStart) {
   let v = null;
   try { v = await invoke('launcher_update', { force: false }); } catch { return; }
   // A file that turned out wrong isn't offered any more, so the banner goes too.
   S.launcherUpd = v && v.version ? v : null;
-  if (v && v.version && v.version !== LL.told) { LL.told = v.version; updateToast(v); }
+  if (v && v.version && v.version !== LL.told) {
+    LL.told = v.version;
+    // When the launcher opens: a screen of its own (unless it was opened for something else).
+    if (atStart && startUpdateDue(v)) setTimeout(() => { if (startUpdateDue(v)) updateStart(v); else updateToast(v); }, 1200);
+    else updateToast(v);
+  }
   renderSide();
+}
+
+// The update screen at start: not during first-time setup, in Big Picture, with a game running
+// (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
+// version the player put off with Later, unless that version is required.
+function startUpdateDue(v) {
+  if (!v || !v.version || !S.settings.setup_done) return false;
+  if (document.body.classList.contains('tv-on') || S.bigArg || S.settings.start_in_tv) return false;
+  if ((S.running && S.running.size) || $('.scrim') || $('.upd-start')) return false;
+  return !!v.required || (S.settings.ui || {}).upd_later !== v.version;
+}
+function updateStart(v) {
+  const el = document.createElement('div');
+  el.className = 'upd-start';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-labelledby', 'upd-start-h');
+  const notes = v.notes ? `<div class="md upd-start-notes">${md(v.notes, true)}</div>` : '';
+  const later = v.required ? '' : `<button type="button" class="btn" data-x="later">${esc(t('Later'))}</button>`;
+  el.innerHTML = `<div class="upd-start-box"><img class="upd-start-mark" src="img/mark.svg" alt=""><h1 id="upd-start-h">${esc(tf('RecompLauncher {version} is ready', { version: verName(v.version) }))}</h1>
+    <p class="muted">${esc(v.required ? tf('You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.', { version: verName(S.version) }) : tf('You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.', { version: verName(S.version) }))}</p>
+    ${notes}<div class="acts ${later ? 'grid2' : ''}">${later}<button type="button" class="btn main" data-x="now">${esc(t('Update Now'))}</button></div>
+    ${later ? `<p class="muted upd-start-small">${esc(t('Later keeps this version on the Downloads page until a newer one is out.'))}</p>` : ''}</div>`;
+  document.body.appendChild(el);
+  const close = () => { el.remove(); document.removeEventListener('keydown', key, true); };
+  const key = (e) => { if (e.key === 'Escape' && !v.required) { e.preventDefault(); e.stopPropagation(); close(); saveUi({ upd_later: v.version }); } };
+  document.addEventListener('keydown', key, true);
+  el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-x]');
+    if (!b) return;
+    if (b.dataset.x === 'later') { close(); saveUi({ upd_later: v.version }); return; }
+    // Update Now: the download's own window takes over; if it doesn't go, this screen goes too, so
+    // the launcher stays usable.
+    close();
+    selfUpdate();
+  });
+  setTimeout(() => { const b = $('[data-x="now"]', el); if (b) b.focus(); }, 50);
 }
 
 // A version too old to keep up (older than the list's "min"): a window, once each time the
@@ -7100,7 +7142,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   invoke('pc_check').then((pc) => { S.pc = pc; if (S.view === 'settings') render(true); }).catch(() => {});
   loadNotes();
   loadLibs();
-  lookForLauncher();
+  lookForLauncher(true);
   upd.finally(() => loadNews());
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));

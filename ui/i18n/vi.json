@@ -2667,5 +2667,10 @@
  "Completed": "Đã hoàn tất",
  "This Update Looks Wrong": "Bản cập nhật này có vẻ bị lỗi",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} đã hai lần không cài được, nên tệp cập nhật có vẻ bị lỗi. Bản này sẽ không được đề xuất nữa, và bản đã sửa sẽ tự xuất hiện khi phát hành. Bạn không cần thay đổi gì trên PC.",
- "OK": "OK"
+ "OK": "OK",
+ "Later": "Để sau",
+ "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Bạn đang dùng {version}, quá cũ để theo kịp các bản recomp. Hãy cập nhật để tiếp tục chơi. Chỉ mất chốc lát.",
+ "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Bạn đang dùng {version}. Việc cập nhật chỉ mất chốc lát, và RecompLauncher sẽ tự mở lại.",
+ "Update Now": "Cập nhật ngay",
+ "Later keeps this version on the Downloads page until a newer one is out.": "Để sau sẽ giữ phiên bản này trên trang Tải xuống cho đến khi có bản mới hơn."
 }

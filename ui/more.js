@@ -13,7 +13,7 @@ T.event.listen('launcher-update', ({ payload: v }) => { if (v && v.version) { S.
 T.event.listen('push', ({ payload: p }) => {
   if (p && p.type === 'game') checkUpdates();
 });
-// The download, then the installer's own small window; RecompLauncher opens again after.
+// The download, then the install (no window of its own); RecompLauncher opens again after.
 let updBox = null;
 T.event.listen('self-update', ({ payload: p }) => {
   if (!updBox || !updBox.isConnected) {
