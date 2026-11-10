@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "すべてのゲームの Recomp Achievements です。問題はデスクトップ表示から報告してください。",
  "Report problems from the desktop view": "問題はデスクトップ表示から報告してください",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Xbox 360 のゲームはすべて対象です。テスターが初めてプレイしたゲームから、実績が全員に追加されます。",
- "Xbox 360 games appear here as testers play them.": "Xbox 360 のゲームは、テスターがプレイするとここに表示されます。"
+ "Xbox 360 games appear here as testers play them.": "Xbox 360 のゲームは、テスターがプレイするとここに表示されます。",
+ "Show This Game's Achievements": "このゲームの実績を表示",
+ "Point RecompLauncher to your game files to show this game's achievements.": "このゲームの実績を表示するには、RecompLauncher にゲームファイルの場所を指定してください。",
+ "Choose Disc Image": "ディスクイメージを選択",
+ "Choose Game Folder": "ゲームフォルダーを選択",
+ "Your Game Folder": "ゲームフォルダー",
+ "Your Disc Image": "ディスクイメージ",
+ "Xbox 360 Disc Image": "Xbox 360 ディスクイメージ",
+ "Found {n} achievements.": "実績が {n} 個見つかりました。",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "そこに Xbox 360 のゲームは見つかりませんでした。ディスクイメージ（.iso）か、default.xex が入っているフォルダーを選んでください。"
 }

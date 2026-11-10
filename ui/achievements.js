@@ -195,7 +195,7 @@
     // An Xbox 360 recomp whose disc the launcher hasn't found yet (it looks while the game runs):
     // the player can point to it.
     const disc = a.origin === 'x360' && !d.native_known && !list.length
-      ? `<div class="card"><p style="margin:0"><b>${esc(t('Show This Game\'s Achievements'))}</b></p><p class="muted" style="margin:6px 0 12px">${esc(A.discMsg[id] || t('RecompLauncher reads the achievements from your copy of the game, and usually finds it by itself while you play. If it doesn\'t, point it to your disc image or game folder.'))}</p><div class="ach-acts"><button type="button" class="btn" data-ach="disc-file" data-id="${esc(id)}">${esc(t('Choose Disc Image'))}</button><button type="button" class="btn" data-ach="disc-folder" data-id="${esc(id)}">${esc(t('Choose Game Folder'))}</button></div></div>`
+      ? `<div class="card"><p style="margin:0"><b>${esc(t('Show This Game\'s Achievements'))}</b></p><p class="muted" style="margin:6px 0 12px">${esc(A.discMsg[id] || t('Point RecompLauncher to your game files to show this game\'s achievements.'))}</p><div class="ach-acts"><button type="button" class="btn" data-ach="disc-file" data-id="${esc(id)}">${esc(t('Choose Disc Image'))}</button><button type="button" class="btn" data-ach="disc-folder" data-id="${esc(id)}">${esc(t('Choose Game Folder'))}</button></div></div>`
       : '';
     return `<div class="stack">${head}${disc}${body}${d.dev || (typeof devOn === 'function' && devOn()) ? devTools(id, d) : ''}</div>`;
   };

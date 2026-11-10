@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Tüm oyunlardaki Recomp Achievements'larınız. Sorunları masaüstü görünümünden bildirin.",
  "Report problems from the desktop view": "Sorunları masaüstü görünümünden bildirin",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Tüm Xbox 360 oyunları açık: bir test kullanıcısı bir oyunu ilk kez oynadığında, oyunun başarımları herkes için eklenir.",
- "Xbox 360 games appear here as testers play them.": "Xbox 360 oyunları, test kullanıcıları oynadıkça burada görünür."
+ "Xbox 360 games appear here as testers play them.": "Xbox 360 oyunları, test kullanıcıları oynadıkça burada görünür.",
+ "Show This Game's Achievements": "Bu oyunun başarımlarını göster",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Bu oyunun başarımlarını görmek için RecompLauncher'a oyun dosyalarınızın yerini gösterin.",
+ "Choose Disc Image": "Disk görüntüsü seç",
+ "Choose Game Folder": "Oyun klasörü seç",
+ "Your Game Folder": "Oyun klasörünüz",
+ "Your Disc Image": "Disk görüntünüz",
+ "Xbox 360 Disc Image": "Xbox 360 disk görüntüsü",
+ "Found {n} achievements.": "{n} başarım bulundu.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Orada Xbox 360 oyunu bulunamadı. Disk görüntüsünü (.iso) veya içinde default.xex olan klasörü seçin."
 }

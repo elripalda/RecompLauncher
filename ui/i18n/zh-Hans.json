@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "你在所有游戏中的 Recomp Achievements。请在桌面视图中报告问题。",
  "Report problems from the desktop view": "请在桌面视图中报告问题",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "所有 Xbox 360 游戏均已开放：测试员第一次玩某款游戏时，它的成就就会为所有人添加。",
- "Xbox 360 games appear here as testers play them.": "测试员玩过的 Xbox 360 游戏会显示在这里。"
+ "Xbox 360 games appear here as testers play them.": "测试员玩过的 Xbox 360 游戏会显示在这里。",
+ "Show This Game's Achievements": "显示此游戏的成就",
+ "Point RecompLauncher to your game files to show this game's achievements.": "告诉 RecompLauncher 你的游戏文件在哪里，即可显示此游戏的成就。",
+ "Choose Disc Image": "选择光盘镜像",
+ "Choose Game Folder": "选择游戏文件夹",
+ "Your Game Folder": "你的游戏文件夹",
+ "Your Disc Image": "你的光盘镜像",
+ "Xbox 360 Disc Image": "Xbox 360 光盘镜像",
+ "Found {n} achievements.": "找到 {n} 个成就。",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "那里没有找到 Xbox 360 游戏。请选择光盘镜像（.iso），或包含 default.xex 的文件夹。"
 }

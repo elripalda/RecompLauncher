@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Recomp Achievements-mu di semua game. Laporkan masalah dari tampilan desktop.",
  "Report problems from the desktop view": "Laporkan masalah dari tampilan desktop",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Semua game Xbox 360 terbuka: saat penguji pertama kali memainkan sebuah game, pencapaiannya ditambahkan untuk semua orang.",
- "Xbox 360 games appear here as testers play them.": "Game Xbox 360 muncul di sini saat penguji memainkannya."
+ "Xbox 360 games appear here as testers play them.": "Game Xbox 360 muncul di sini saat penguji memainkannya.",
+ "Show This Game's Achievements": "Tampilkan pencapaian game ini",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Arahkan RecompLauncher ke file game-mu untuk menampilkan pencapaian game ini.",
+ "Choose Disc Image": "Pilih image disc",
+ "Choose Game Folder": "Pilih folder game",
+ "Your Game Folder": "Folder game-mu",
+ "Your Disc Image": "Image disc-mu",
+ "Xbox 360 Disc Image": "Image disc Xbox 360",
+ "Found {n} achievements.": "{n} pencapaian ditemukan.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Tidak ada game Xbox 360 di sana. Pilih image disc (.iso), atau folder yang berisi default.xex."
 }

@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Recomp Achievements ของคุณจากทุกเกม แจ้งปัญหาได้จากมุมมองเดสก์ท็อป",
  "Report problems from the desktop view": "แจ้งปัญหาได้จากมุมมองเดสก์ท็อป",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "เกม Xbox 360 ทุกเกมเปิดอยู่ ครั้งแรกที่ผู้ทดสอบเล่นเกมไหน ความสำเร็จของเกมนั้นจะถูกเพิ่มให้ทุกคน",
- "Xbox 360 games appear here as testers play them.": "เกม Xbox 360 จะแสดงที่นี่เมื่อผู้ทดสอบเล่น"
+ "Xbox 360 games appear here as testers play them.": "เกม Xbox 360 จะแสดงที่นี่เมื่อผู้ทดสอบเล่น",
+ "Show This Game's Achievements": "แสดงความสำเร็จของเกมนี้",
+ "Point RecompLauncher to your game files to show this game's achievements.": "ชี้ RecompLauncher ไปที่ไฟล์เกมของคุณเพื่อแสดงความสำเร็จของเกมนี้",
+ "Choose Disc Image": "เลือกดิสก์อิมเมจ",
+ "Choose Game Folder": "เลือกโฟลเดอร์เกม",
+ "Your Game Folder": "โฟลเดอร์เกมของคุณ",
+ "Your Disc Image": "ดิสก์อิมเมจของคุณ",
+ "Xbox 360 Disc Image": "ดิสก์อิมเมจ Xbox 360",
+ "Found {n} achievements.": "พบความสำเร็จ {n} รายการ",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "ไม่พบเกม Xbox 360 ในที่นั้น เลือกดิสก์อิมเมจ (.iso) หรือโฟลเดอร์ที่มี default.xex"
 }

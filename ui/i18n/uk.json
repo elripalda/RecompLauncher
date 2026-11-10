@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Твої Recomp Achievements в усіх іграх. Повідомляй про проблеми з версії для ПК.",
  "Report problems from the desktop view": "Повідомляй про проблеми з версії для ПК",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Відкрито всі ігри для Xbox 360: коли тестувальник уперше запускає гру, її досягнення додаються для всіх.",
- "Xbox 360 games appear here as testers play them.": "Ігри для Xbox 360 з'являються тут, щойно в них грають тестувальники."
+ "Xbox 360 games appear here as testers play them.": "Ігри для Xbox 360 з'являються тут, щойно в них грають тестувальники.",
+ "Show This Game's Achievements": "Показати досягнення цієї гри",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Вкажи RecompLauncher файли гри, щоб побачити її досягнення.",
+ "Choose Disc Image": "Вибрати образ диска",
+ "Choose Game Folder": "Вибрати папку з грою",
+ "Your Game Folder": "Твоя папка з грою",
+ "Your Disc Image": "Твій образ диска",
+ "Xbox 360 Disc Image": "Образ диска Xbox 360",
+ "Found {n} achievements.": "Знайдено {n} досягнення.|Знайдено {n} досягнення.|Знайдено {n} досягнень.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Там не знайдено гри для Xbox 360. Вибери образ диска (.iso) або папку, у якій є default.xex."
 }

@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Je Recomp Achievements in alle games. Meld problemen vanuit de desktopweergave.",
  "Report problems from the desktop view": "Meld problemen vanuit de desktopweergave",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Elke Xbox 360-game is open: de eerste keer dat een tester er een speelt, worden de prestaties voor iedereen toegevoegd.",
- "Xbox 360 games appear here as testers play them.": "Xbox 360-games verschijnen hier zodra testers ze spelen."
+ "Xbox 360 games appear here as testers play them.": "Xbox 360-games verschijnen hier zodra testers ze spelen.",
+ "Show This Game's Achievements": "Prestaties van deze game tonen",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Wijs RecompLauncher je gamebestanden aan om de prestaties van deze game te tonen.",
+ "Choose Disc Image": "Schijfkopie kiezen",
+ "Choose Game Folder": "Gamemap kiezen",
+ "Your Game Folder": "Je gamemap",
+ "Your Disc Image": "Je schijfkopie",
+ "Xbox 360 Disc Image": "Xbox 360-schijfkopie",
+ "Found {n} achievements.": "{n} prestaties gevonden.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Daar is geen Xbox 360-game gevonden. Kies de schijfkopie (.iso) of de map waarin default.xex staat."
 }

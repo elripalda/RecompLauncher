@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Vos Recomp Achievements dans tous vos jeux. Signalez les problèmes depuis la vue bureau.",
  "Report problems from the desktop view": "Signalez les problèmes depuis la vue bureau",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Tous les jeux Xbox 360 sont ouverts : la première fois qu'un testeur joue à l'un d'eux, ses succès sont ajoutés pour tout le monde.",
- "Xbox 360 games appear here as testers play them.": "Les jeux Xbox 360 apparaissent ici à mesure que les testeurs y jouent."
+ "Xbox 360 games appear here as testers play them.": "Les jeux Xbox 360 apparaissent ici à mesure que les testeurs y jouent.",
+ "Show This Game's Achievements": "Afficher les succès de ce jeu",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Indiquez à RecompLauncher où sont vos fichiers de jeu pour afficher les succès de ce jeu.",
+ "Choose Disc Image": "Choisir une image disque",
+ "Choose Game Folder": "Choisir le dossier du jeu",
+ "Your Game Folder": "Votre dossier de jeu",
+ "Your Disc Image": "Votre image disque",
+ "Xbox 360 Disc Image": "Image disque Xbox 360",
+ "Found {n} achievements.": "{n} succès trouvés.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Aucun jeu Xbox 360 n'a été trouvé à cet endroit. Choisissez l'image disque (.iso) ou le dossier qui contient default.xex."
 }

@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "إنجازاتك في Recomp Achievements عبر كل الألعاب. أبلغ عن المشكلات من عرض سطح المكتب.",
  "Report problems from the desktop view": "أبلغ عن المشكلات من عرض سطح المكتب",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "كل ألعاب Xbox 360 مفتوحة: في أول مرة يلعب فيها مختبِر إحداها، تُضاف إنجازاتها للجميع.",
- "Xbox 360 games appear here as testers play them.": "تظهر ألعاب Xbox 360 هنا كلما لعبها المختبِرون."
+ "Xbox 360 games appear here as testers play them.": "تظهر ألعاب Xbox 360 هنا كلما لعبها المختبِرون.",
+ "Show This Game's Achievements": "عرض إنجازات هذه اللعبة",
+ "Point RecompLauncher to your game files to show this game's achievements.": "وجّه RecompLauncher إلى ملفات لعبتك لعرض إنجازات هذه اللعبة.",
+ "Choose Disc Image": "اختيار صورة القرص",
+ "Choose Game Folder": "اختيار مجلد اللعبة",
+ "Your Game Folder": "مجلد لعبتك",
+ "Your Disc Image": "صورة قرصك",
+ "Xbox 360 Disc Image": "صورة قرص Xbox 360",
+ "Found {n} achievements.": "تم العثور على إنجازين.|تم العثور على {n} إنجازات.|تم العثور على {n} إنجازًا.|تم العثور على {n} إنجاز.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "لم يُعثر على أي لعبة Xbox 360 هناك. اختر صورة القرص (.iso)، أو المجلد الذي يحتوي على default.xex."
 }

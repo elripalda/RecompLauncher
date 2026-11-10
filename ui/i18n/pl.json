@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Twoje Recomp Achievements ze wszystkich gier. Zgłaszaj problemy w widoku komputerowym.",
  "Report problems from the desktop view": "Zgłaszaj problemy w widoku komputerowym",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Każda gra z Xbox 360 jest otwarta: gdy tester zagra w nią po raz pierwszy, jej osiągnięcia zostają dodane dla wszystkich.",
- "Xbox 360 games appear here as testers play them.": "Gry z Xbox 360 pojawiają się tutaj, gdy testerzy w nie grają."
+ "Xbox 360 games appear here as testers play them.": "Gry z Xbox 360 pojawiają się tutaj, gdy testerzy w nie grają.",
+ "Show This Game's Achievements": "Pokaż osiągnięcia tej gry",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Wskaż RecompLauncherowi pliki gry, aby zobaczyć jej osiągnięcia.",
+ "Choose Disc Image": "Wybierz obraz płyty",
+ "Choose Game Folder": "Wybierz folder gry",
+ "Your Game Folder": "Twój folder gry",
+ "Your Disc Image": "Twój obraz płyty",
+ "Xbox 360 Disc Image": "Obraz płyty Xbox 360",
+ "Found {n} achievements.": "Znaleziono {n} osiągnięcie.|Znaleziono {n} osiągnięcia.|Znaleziono {n} osiągnięć.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Nie znaleziono tam żadnej gry z Xbox 360. Wybierz obraz płyty (.iso) albo folder, w którym jest default.xex."
 }

@@ -2633,5 +2633,14 @@
  "Your Recomp Achievements across every game. Report problems from the desktop view.": "Recomp Achievements của bạn trên mọi trò chơi. Hãy báo lỗi từ chế độ xem máy tính.",
  "Report problems from the desktop view": "Báo lỗi từ chế độ xem máy tính",
  "Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.": "Mọi trò chơi Xbox 360 đều mở: lần đầu một người thử nghiệm chơi trò nào, thành tựu của trò đó sẽ được thêm cho mọi người.",
- "Xbox 360 games appear here as testers play them.": "Các trò chơi Xbox 360 sẽ xuất hiện ở đây khi người thử nghiệm chơi chúng."
+ "Xbox 360 games appear here as testers play them.": "Các trò chơi Xbox 360 sẽ xuất hiện ở đây khi người thử nghiệm chơi chúng.",
+ "Show This Game's Achievements": "Hiện thành tựu của trò chơi này",
+ "Point RecompLauncher to your game files to show this game's achievements.": "Hãy chỉ cho RecompLauncher tệp trò chơi của bạn để hiện thành tựu của trò chơi này.",
+ "Choose Disc Image": "Chọn ảnh đĩa",
+ "Choose Game Folder": "Chọn thư mục trò chơi",
+ "Your Game Folder": "Thư mục trò chơi của bạn",
+ "Your Disc Image": "Ảnh đĩa của bạn",
+ "Xbox 360 Disc Image": "Ảnh đĩa Xbox 360",
+ "Found {n} achievements.": "Đã tìm thấy {n} thành tựu.",
+ "No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.": "Không tìm thấy trò chơi Xbox 360 nào ở đó. Hãy chọn ảnh đĩa (.iso) hoặc thư mục có chứa default.xex."
 }
