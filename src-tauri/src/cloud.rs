@@ -532,6 +532,18 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     Ok(n)
 }
 
+/// Whether the cloud copy can be put in place without replacing locally changed saves.
+fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
+    if cloud == local {
+        return false;
+    }
+    let local_changed = !local.is_empty() && local != synced;
+    let cloud_changed = cloud != synced;
+    // A reset/reinstall can remove the saves while the last synced hash is still remembered.
+    // The cloud copy is needed then even if nobody has played on another PC since that sync.
+    empty || (cloud_changed && !local_changed)
+}
+
 /// Before Play: what to do about the cloud.
 /// "play": go ahead. "restored": a newer save from another PC was put in place. "conflict": both
 /// changed, the player picks (`local` and `cloud` say what each is). "offline": couldn't check.
@@ -561,15 +573,13 @@ pub async fn saves_check(app: AppHandle, id: String) -> Res<Value> {
         }
         return Ok(json!({"action": "play"}));
     }
-    let local_changed = !local.is_empty() && local != s.synced_hash;
-    let cloud_changed = top.hash != s.synced_hash;
-    if !cloud_changed {
-        // Only this PC has played since: it goes up after this session.
-        return Ok(json!({"action": "play"}));
-    }
-    if !local_changed || entries.is_empty() {
+    if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
         let n = take_cloud(&app, &id, &top).await?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
+    }
+    if top.hash == s.synced_hash {
+        // Only this PC has played since: it goes up after this session.
+        return Ok(json!({"action": "play"}));
     }
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
     let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
@@ -1044,5 +1054,33 @@ mod account_tests {
         });
         assert_eq!(missing.load(Ordering::Relaxed), 0, "an account read observed an incomplete refresh");
         assert_eq!(token(&dir.0).as_deref(), Some("test-token"), "the next launch must still be signed in");
+    }
+}
+
+#[cfg(test)]
+mod sync_tests {
+    use super::should_restore;
+
+    #[test]
+    fn missing_local_saves_restore_even_when_the_cloud_has_not_changed() {
+        // The game was reset/reinstalled, but the launcher still remembers its last sync.
+        assert!(should_restore("", "last-save", "last-save", true));
+    }
+
+    #[test]
+    fn automatic_restore_preserves_existing_sync_and_conflict_rules() {
+        for (local, synced, cloud, empty, restore) in [
+            ("same", "same", "same", false, false),
+            ("same", "previous", "same", false, false),
+            ("previous", "previous", "new-cloud", false, true),
+            ("new-local", "previous", "previous", false, false),
+            ("new-local", "previous", "new-cloud", false, false),
+            ("", "", "new-cloud", true, true),
+            ("", "previous", "new-cloud", true, true),
+            // Files whose checksums could not be read are not the same as missing files.
+            ("", "previous", "previous", false, false),
+        ] {
+            assert_eq!(should_restore(local, synced, cloud, empty), restore, "local={local}, synced={synced}, cloud={cloud}, empty={empty}");
+        }
     }
 }
