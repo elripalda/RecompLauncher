@@ -56,9 +56,20 @@ jobs:
           restore-cache: true
 
       # Flathub's own checks. Only errors fail it (the release's missing commit is a warning).
+      # Its check that recomplauncher.com answers is about the website, not the packaging: when the
+      # site is slow or down it's reported, not a failure. Flathub checks it again on submission.
       - name: Lint the manifest and app data
         run: |
           flatpak install -y --noninteractive flathub org.flatpak.Builder
           cd packaging/flatpak
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.recomplauncher.RecompLauncher.yml
+          out=$(flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.recomplauncher.RecompLauncher.yml) || true
+          echo "$out"
+          printf '%s' "$out" | python3 -c '
+          import json, sys
+          text = sys.stdin.read().strip()
+          errors = json.loads(text).get("errors", []) if text else []
+          if "appid-url-not-reachable" in errors:
+              print("::warning::recomplauncher.com did not answer the linter (appid-url-not-reachable)")
+          sys.exit(1 if [e for e in errors if e != "appid-url-not-reachable"] else 0)
+          '
           flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream com.recomplauncher.RecompLauncher.metainfo.xml
