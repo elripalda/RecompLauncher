@@ -146,3 +146,17 @@ test('Big Picture\'s dock and the Library tile follow the same rules', () => {
   assert.match(tv, /data-tvact="moveto"/);
   assert.match(app, /Replaced by \{name\}/);
 });
+
+// ---- Grain over big gradients and blurred art (breaks up colour banding on 8-bit screens) ----
+test('one small shared grain tile covers the big gradients and blurred art', () => {
+  const png = fs.readFileSync(path.join(__dirname, '../ui/img/noise.png'));
+  assert.ok(png.length < 16 * 1024, 'stays tiny');
+  const css = read('app.css'), tvcss = read('tv.css'), ov = read('overlay.css');
+  assert.match(css, /--noise:url\(img\/noise\.png\)/);
+  for (const sel of ['.gp-amb::after', '.slide::after', '.upd-start', '.dl-hero', '.mc', '.beta-hero']) assert.ok(css.includes(`${sel}{`) && new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(css), sel);
+  for (const sel of ['.tv-full::after', '.tv-glow', '.tv-boot']) assert.ok(new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(tvcss), sel);
+  assert.match(tvcss, /\.tv-ambient::after/);
+  assert.match(ov, /\.stage\{[^}]*url\(img\/noise\.png\)/);
+  // No blend modes or animation on it: plain layers stay cheap to draw.
+  assert.doesNotMatch(css + tvcss, /var\(--noise\)[^;}]*;?[^}]*mix-blend-mode/);
+});

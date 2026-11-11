@@ -5,7 +5,7 @@
 @font-face{font-family:Figtree;font-weight:700;src:url(fonts/figtree-700.woff2) format("woff2")}
 html,body{margin:0;height:100%;overflow:hidden;background:transparent;user-select:none}
 body{font:500 20px/1.4 Figtree,system-ui,sans-serif;color:#F4F8FC}
-.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:linear-gradient(90deg,rgba(5,8,13,.55) 0%,rgba(5,8,13,.25) 40%,rgba(5,8,13,.08) 100%);opacity:0;transition:opacity .18s ease}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:url(img/noise.png),linear-gradient(90deg,rgba(5,8,13,.55) 0%,rgba(5,8,13,.25) 40%,rgba(5,8,13,.08) 100%);opacity:0;transition:opacity .18s ease}
 .stage.in{opacity:1}
 .panel{position:absolute;left:0;top:0;bottom:0;width:600px;box-sizing:border-box;padding:56px 48px 40px;display:flex;flex-direction:column;gap:28px;background:rgba(9,14,24,.92);border-right:1px solid rgba(244,248,252,.14);box-shadow:30px 0 80px rgba(0,0,0,.45);transform:translateX(-40px);transition:transform .22s cubic-bezier(.2,.8,.2,1)}
 .stage.in .panel{transform:none}

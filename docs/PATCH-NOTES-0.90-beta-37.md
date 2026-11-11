@@ -11,6 +11,7 @@
 - **Easier fixes for Proton runtime trouble.** — Improved by @elripalda, from @Rsk518's debugging ([#23](https://github.com/elripalda/RecompLauncher/issues/23)).
 - **Move a game to its new listing when the catalog replaces one, keeping your saves and play time.** — Added by @elripalda.
 - **Home's featured games can differ per system.** — Added by @elripalda.
+- **Smoother gradients behind game pages and panels, with less colour banding.** — Improved by @elripalda, from @Xarishark's report.
 - **Games set up by hand now get the copy Easy Setup found.** — Fixed by @elripalda.
 - **General improvements and fixes.** — Improved by @elripalda.
 
