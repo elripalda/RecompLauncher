@@ -251,9 +251,6 @@ pub struct Settings {
     /// Monitor selected for Big Picture mode (empty or "auto": uses Windows primary display).
     #[serde(default)]
     pub tv_monitor: String,
-    /// Monitor used for the normal launcher window (empty or "auto": Windows primary display).
-    #[serde(default)]
-    pub launcher_monitor: String,
     /// TV mode's sounds.
     #[serde(default = "yes")]
     pub sounds: bool,
@@ -358,7 +355,6 @@ impl Default for Settings {
             save_dir: None,
             tv_size: String::new(),
             tv_monitor: String::new(),
-            launcher_monitor: String::new(),
             sounds: true,
             menu_tips: 0,
             discord: true,

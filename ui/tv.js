@@ -1189,7 +1189,7 @@
           ${(() => {
             const cur = (S.settings && S.settings.tv_monitor) || '';
             const list = S.monitors || [];
-            const mon = list.find((m) => m.id === cur || m.device_name === cur || m.name === cur);
+            const mon = list.find((m) => m.id === cur || (cur && m.id.startsWith(`${cur}|`)) || m.name === cur);
             const curName = !cur ? t('Automatic (Primary Display)') : (mon ? mon.name + (mon.is_primary ? ` (${t('Primary')})` : '') : t('Automatic (Primary Display)'));
             return `<button type="button" class="tv-item" data-f data-key="s:monitor" data-tvact="monitor" data-val="${esc(curName)}"><span class="k">${esc(t('Target Monitor'))}<small>${esc(curName)}</small></span><span class="tv-pill on">${esc(t('Change'))}</span></button>`;
           })()}
@@ -1328,6 +1328,7 @@
               await W.setFullscreen(true);
             } catch (e) {
               console.warn(e);
+              try { await W.setFullscreen(true); } catch (_) { /* keep the current Big Picture view */ }
             }
           }
           if (TV.on && TV.view === 'settings') draw(true);
@@ -1335,9 +1336,9 @@
       }
     ];
     for (const m of list) {
-      const isSelected = cur === m.id || cur === m.device_name || cur === m.name;
-      const label = (isSelected ? '✓ ' : '') + m.name + (m.is_primary ? ` (${t('Primary')})` : '');
-      const sub = `${m.width}×${m.height} @ ${m.refresh_rate}Hz${m.is_primary ? ' · ' + t('Windows Primary Display') : ''}`;
+      const isSelected = cur === m.id || (cur && m.id.startsWith(`${cur}|`)) || cur === m.name;
+      const label = (isSelected ? '✓ ' : '') + `${m.name} · ${m.width} × ${m.height}`;
+      const sub = m.is_primary ? t('Windows Primary Display') : '';
       items.push({
         label,
         sub,
@@ -1350,6 +1351,7 @@
               await W.setFullscreen(true);
             } catch (e) {
               console.warn(e);
+              try { await W.setFullscreen(true); } catch (_) { /* keep the current Big Picture view */ }
             }
           }
           if (TV.on && TV.view === 'settings') draw(true);
@@ -2343,12 +2345,12 @@
     } else if (el.dataset.key === 's:monitor') {
       const cur = (S.settings && S.settings.tv_monitor) || '';
       const list = S.monitors || [];
-      const mon = list.find((m) => m.id === cur || m.device_name === cur || m.name === cur);
+      const mon = list.find((m) => m.id === cur || (cur && m.id.startsWith(`${cur}|`)) || m.name === cur);
       const prim = list.find((m) => m.is_primary);
       const active = mon || prim;
       const title = !cur ? t('Automatic (Primary Display)') : (mon ? mon.name : t('Automatic (Primary Display)'));
-      const details = active ? `${active.width}×${active.height} @ ${active.refresh_rate}Hz${active.is_primary ? ' · ' + t('Windows Primary Display') : ''}` : '';
-      html = `<span class="k">${esc(t('Target Monitor'))}</span><h3>${esc(title)}</h3>${details ? `<div class="val solo"><b>${esc(details)}</b></div>` : ''}<p>${esc(t('Which display Big Picture mode and your games open on. Temporarily makes it the primary display while Big Picture is open.'))}</p>`;
+      const details = active ? `${active.width}×${active.height}${active.is_primary ? ' · ' + t('Windows Primary Display') : ''}` : '';
+      html = `<span class="k">${esc(t('Target Monitor'))}</span><h3>${esc(title)}</h3>${details ? `<div class="val solo"><b>${esc(details)}</b></div>` : ''}<p>${esc(t('Which display Big Picture mode opens on. The launcher moves there before fullscreen.'))}</p>`;
     } else if (TV.view === 'settings') {
       // Launcher settings: what it is, its value, and what it does.
       const kEl = $('.k', el), on = el.dataset.sw;
