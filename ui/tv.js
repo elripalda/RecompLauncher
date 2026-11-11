@@ -456,6 +456,9 @@
   // ---------- pages ----------
   // Home's dock: your pinned games (Settings), else the ones you played last, all in one row.
   const DOCK_MAX = 12;
+  // Each row under the dock shows this many at most. Home draws every row at once, and a row of
+  // every Easy Setup game made it hundreds of covers: each move then restyled all of them.
+  const HOME_ROW = 14;
   function dockList() {
     if (homePinned()) { const p = pins().map(libAppOf); if (p.length) return { list: p, kind: 'pinned' }; }
     const mine = installed().map((x) => x.a);
@@ -480,11 +483,11 @@
     // Below the dock, a press of down away: the rest of Home.
     if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
     const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
-    if (owned.length) rows.push(row('own', t('Found in your folders'), owned.map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
+    if (owned.length) rows.push(row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
     const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
     if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
-    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
+    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
     const upd = recentlyUpdated(pool()).slice(0, 14);
