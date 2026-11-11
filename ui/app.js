@@ -3658,6 +3658,88 @@ function renderSide() {
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
   for (const b of $$('.pin', box)) if (!iconsOnly) b.removeAttribute('title');
 }
+// The pinned games in a new order. Pins the launcher can't show right now (a catalog that hasn't
+// loaded yet) keep their place at the end instead of being dropped.
+function savePinOrder(shown) {
+  const all = (S.settings.ui || {}).pins || [];
+  const rest = all.filter((id) => !shown.includes(id));
+  saveUi({ pins: [...shown, ...rest] }, true);
+  renderSide();
+}
+// Moving a pinned game: dragged with the mouse (a press that moves a few pixels; a plain click still
+// opens the game), or Alt+Up/Down on the focused one. Pointer events rather than HTML drag and drop,
+// which the web view hands to the system's file drop on some PCs.
+function pinDrag() {
+  const box = $('#pins');
+  let drag = null, eatClick = false;
+  const rows = () => $$('.pin', box);
+  box.addEventListener('pointerdown', (e) => {
+    const pin = e.target.closest('.pin');
+    if (!pin || e.button !== 0 || rows().length < 2) return;
+    drag = { pin, id: pin.dataset.id, y: e.clientY, on: false, pointer: e.pointerId, to: 0 };
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const dy = e.clientY - drag.y;
+    if (!drag.on && Math.abs(dy) < 6) return;
+    if (!drag.on) {
+      drag.on = true;
+      drag.list = rows();
+      drag.from = drag.list.indexOf(drag.pin);
+      drag.step = drag.pin.offsetHeight + (parseFloat(getComputedStyle(box).rowGap) || 0);
+      drag.pin.setPointerCapture(e.pointerId);
+      box.classList.add('sorting');
+      drag.pin.classList.add('moving');
+    }
+    // The dragged game follows the pointer; the others slide aside to show where it lands.
+    const lowest = -drag.from * drag.step, highest = (drag.list.length - 1 - drag.from) * drag.step;
+    const shift = Math.max(lowest, Math.min(highest, dy));
+    drag.to = drag.from + Math.round(shift / drag.step);
+    drag.pin.style.transform = `translateY(${shift}px)`;
+    drag.list.forEach((b, i) => {
+      if (b === drag.pin) return;
+      const down = drag.to < drag.from && i >= drag.to && i < drag.from;
+      const up = drag.to > drag.from && i <= drag.to && i > drag.from;
+      b.style.transform = down ? `translateY(${drag.step}px)` : up ? `translateY(${-drag.step}px)` : '';
+    });
+  });
+  const drop = (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const d = drag;
+    drag = null;
+    if (!d.on) return;
+    // The click that ends a drag isn't a click on the game.
+    eatClick = true;
+    setTimeout(() => { eatClick = false; }, 0);
+    box.classList.remove('sorting');
+    d.pin.classList.remove('moving');
+    d.list.forEach((b) => { b.style.transform = ''; });
+    if (e.type === 'pointercancel' || d.to === d.from) return;
+    const ids = d.list.map((b) => b.dataset.id);
+    ids.splice(d.to, 0, ids.splice(d.from, 1)[0]);
+    savePinOrder(ids);
+  };
+  box.addEventListener('pointerup', drop);
+  box.addEventListener('pointercancel', drop);
+  box.addEventListener('click', (e) => {
+    if (!eatClick) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  box.addEventListener('keydown', (e) => {
+    const pin = e.target.closest('.pin');
+    if (!pin || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const ids = rows().map((b) => b.dataset.id);
+    const from = ids.indexOf(pin.dataset.id), to = from + (e.key === 'ArrowUp' ? -1 : 1);
+    if (to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    savePinOrder(ids);
+    const moved = $(`.pin[data-id="${CSS.escape(pin.dataset.id)}"]`, box);
+    if (moved) moved.focus();
+  });
+}
+pinDrag();
 // The island at the bottom: what's downloading, always in view.
 function paintIsland() {
   const el = $('#isl');
