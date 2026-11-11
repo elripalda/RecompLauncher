@@ -162,10 +162,10 @@
       el.style.setProperty('--glide', Math.max(1.2, over / 60).toFixed(2) + 's');
     }
   }
-  function fitAll() {
-    for (const el of $$('.tv-h1', root)) fitName(el, 48);
-    for (const el of $$('.tv-card .cap b', root)) fitName(el, 16);
-    for (const el of $$('.tv-name', root)) fitName(el, 15);
+  function fitAll(scope = root) {
+    for (const el of $$('.tv-h1', scope)) fitName(el, 48);
+    for (const el of $$('.tv-card .cap b', scope)) fitName(el, 16);
+    for (const el of $$('.tv-name', scope)) fitName(el, 15);
   }
 
   // Grids: as many columns as fit, never ending on a lone tile.
@@ -2026,6 +2026,8 @@
     if (!TV.on || TV.booting) return;
     // A refresh while the camera is flying would cut it short: it waits until the game's page has landed.
     if (keep && TV.flying) { TV.later = true; return; }
+    // The previous page's grids no longer grow. Release their lists before registering new ones.
+    LAZY.clear();
     const prevKey = keep ? (focused() || {}).dataset?.key : null;
     const prevScroll = keep ? TV.scrollY || 0 : 0;
     const v = TV.view;
@@ -2117,7 +2119,7 @@
       swapBg(a);
       setTone(hid);
       const hero = $('#tv-hero', root);
-      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(); }
+      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); fitAll(hero); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); }
     }
     if (TV.view === 'gsettings' || TV.view === 'settings') setPanel(el);
     if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); swapBg(libAppOf(el.dataset.hero)); return; }
@@ -2323,8 +2325,7 @@
     TV.parked = false;
     const cur = focused();
     const scope = (TV.sheet && topSheet()) || stage();
-    const all = $$('[data-f]', scope).filter((e) => (!e.disabled || e === cur) && !e.closest('.tv-sheet.out'));
-    if (!cur) { if (all[0]) focus(all[0]); return; }
+    if (!cur) { const first = $$('[data-f]', scope).find((e) => !e.disabled && !e.closest('.tv-sheet.out')); if (first) focus(first); return; }
     // Within a row, left and right go to the neighbour wherever it has slid to.
     const rowEl = cur.closest('.tv-row, .tv-acts, .tv-shots, .tv-nav');
     if (rowEl && (dir === 'left' || dir === 'right')) {
@@ -2352,6 +2353,7 @@
     const regionEl = $('.tv-region', root);
     const reg = regionEl ? regionEl.getBoundingClientRect() : null;
     let best = null, bestScore = Infinity;
+    const all = $$('[data-f]', scope).filter((e) => (!e.disabled || e === cur) && !e.closest('.tv-sheet.out'));
     for (const e of all) {
       if (e === cur) continue;
       const q = e.getBoundingClientRect();
@@ -2644,12 +2646,12 @@
   let nativeSeen = false;
   let lastPad = { b: '', t: 0 };
   const BORN = performance.now();
-  function pad(b, kind) {
-    // The same button twice within 70 ms is one press arriving twice (a PlayStation controller
-    // read directly and again through Steam Input): only the first counts, and the button icons
-    // don't flip between the two.
+  function pad(b, kind, native = false) {
+    // The core already filters duplicate presses before sending them. Never filter native events
+    // by their JavaScript arrival time: a busy web view can deliver distinct presses together.
+    // The polled fallback still filters simultaneous reports from Steam Input and the real pad.
     const at = performance.now();
-    if (b !== 'menu-hold' && b === lastPad.b && at - lastPad.t < 70) return;
+    if (!native && b !== 'menu-hold' && b === lastPad.b && at - lastPad.t < 70) return;
     if (b !== 'menu-hold') lastPad = { b, t: at };
     // Waiting for a key binding: the press is the answer.
     if (window.bindPad && b !== 'menu-hold' && window.bindPad(b, kind || S.padKind)) return;
@@ -2680,7 +2682,7 @@
   // Only presses sent to this window (the quick menu over a game gets its own).
   ((w) => (w && typeof w.listen === 'function' ? w.listen.bind(w) : T.event.listen))(T.webviewWindow && T.webviewWindow.getCurrentWebviewWindow && T.webviewWindow.getCurrentWebviewWindow())('pad', ({ payload }) => {
     nativeSeen = true;
-    if (typeof payload === 'string') pad(payload); else pad(payload.b, payload.kind);
+    if (typeof payload === 'string') pad(payload, undefined, true); else pad(payload.b, payload.kind, true);
   });
   const STD = { 0: 'a', 1: 'b', 2: 'x', 3: 'y', 4: 'lb', 5: 'rb', 6: 'lt', 7: 'rt', 8: 'view', 9: 'menu', 10: 'ls', 11: 'rs', 12: 'up', 13: 'down', 14: 'left', 15: 'right', 16: 'guide' };
   const held = {};
@@ -2760,7 +2762,11 @@
   const soon = () => { if (!TV.on || TV.booting || $('.tv-boot', root)) return; clearTimeout(redraw); redraw = setTimeout(() => draw(true), 120); };
   T.event.listen('install', ({ payload: p }) => { if (['done', 'error', 'cancelled', 'prepare', 'queued', 'unpack', 'clone', 'verify', 'backup'].includes(p.phase) || (p.phase === 'download' && !TV.dl[p.id])) { TV.dl[p.id] = p.phase === 'download'; setTimeout(soon, 300); } });
   // A logo that doesn't load becomes the name, sized to fit.
-  root.addEventListener('error', (e) => { if (e.target && e.target.classList && e.target.classList.contains('tv-logo')) setTimeout(fitAll, 0); }, true);
+  root.addEventListener('error', (e) => {
+    if (!e.target?.classList?.contains('tv-logo')) return;
+    const scope = e.target.parentElement;
+    setTimeout(() => { if (scope && scope.isConnected) fitAll(scope); }, 0);
+  }, true);
   T.event.listen('game', () => setTimeout(soon, 300));
   T.event.listen('screenshot', () => setTimeout(soon, 400));
   setInterval(() => { const c = $('#tv-clock', root); if (c) c.textContent = clock(); }, 20000);
