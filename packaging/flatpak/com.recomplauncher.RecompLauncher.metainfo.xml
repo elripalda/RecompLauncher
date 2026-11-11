@@ -42,6 +42,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.36" date="2026-11-11">
+      <description>
+        <p>Recomp Achievements fixes and improvements.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.35" date="2026-11-10">
       <description>
         <p>New versions show up when RecompLauncher opens, smoother updates and more accurate play time.</p>

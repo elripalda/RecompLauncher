@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "У вас версия {version}, она слишком старая для новых рекомпиляций. Обновитесь, чтобы продолжать играть. Это займёт всего мгновение.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "У вас версия {version}. Обновление займёт мгновение, и RecompLauncher откроется сам.",
  "Update Now": "Обновить сейчас",
- "Later keeps this version on the Downloads page until a newer one is out.": "Кнопка «Позже» оставит эту версию на странице «Загрузки», пока не выйдет более новая."
+ "Later keeps this version on the Downloads page until a newer one is out.": "Кнопка «Позже» оставит эту версию на странице «Загрузки», пока не выйдет более новая.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "Отслеживается файл достижений игры: достижения появляются, когда игра их сохраняет.",
+ "Waiting for the game's first unlock.": "Ожидание первого достижения в игре."
 }

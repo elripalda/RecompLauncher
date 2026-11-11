@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "لديك الإصدار {version}، وهو أقدم من أن يواكب الألعاب المعاد تجميعها. حدّث لتواصل اللعب. لن يستغرق الأمر سوى لحظة.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "لديك الإصدار {version}. يستغرق التحديث لحظة، ثم يُفتح RecompLauncher من تلقاء نفسه.",
  "Update Now": "التحديث الآن",
- "Later keeps this version on the Downloads page until a newer one is out.": "يُبقي خيار «لاحقًا» هذا الإصدار في صفحة التنزيلات حتى يصدر إصدار أحدث."
+ "Later keeps this version on the Downloads page until a newer one is out.": "يُبقي خيار «لاحقًا» هذا الإصدار في صفحة التنزيلات حتى يصدر إصدار أحدث.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "تتم مراقبة ملف إنجازات اللعبة: تظهر الإنجازات عندما تحفظها اللعبة.",
+ "Waiting for the game's first unlock.": "في انتظار أول إنجاز في اللعبة."
 }

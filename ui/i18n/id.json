@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Kamu punya {version}, yang terlalu lama untuk mengikuti recomp. Perbarui untuk terus bermain. Hanya sebentar.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Kamu punya {version}. Pembaruannya sebentar saja, lalu RecompLauncher terbuka lagi dengan sendirinya.",
  "Update Now": "Perbarui sekarang",
- "Later keeps this version on the Downloads page until a newer one is out.": "Nanti menyimpan versi ini di halaman Unduhan sampai ada yang lebih baru."
+ "Later keeps this version on the Downloads page until a newer one is out.": "Nanti menyimpan versi ini di halaman Unduhan sampai ada yang lebih baru.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "Memantau file pencapaian game: pencapaian muncul saat game menyimpannya.",
+ "Waiting for the game's first unlock.": "Menunggu pencapaian pertama dari game."
 }

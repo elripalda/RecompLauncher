@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Je hebt {version}, en die is te oud om de recomps bij te houden. Werk bij om verder te spelen. Het duurt maar even.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Je hebt {version}. Bijwerken duurt even, en RecompLauncher opent daarna vanzelf weer.",
  "Update Now": "Nu bijwerken",
- "Later keeps this version on the Downloads page until a newer one is out.": "Met Later blijft deze versie op de pagina Downloads staan tot er een nieuwere uit is."
+ "Later keeps this version on the Downloads page until a newer one is out.": "Met Later blijft deze versie op de pagina Downloads staan tot er een nieuwere uit is.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "Het vrijspeelbestand van de game wordt gevolgd: vrijgespeelde prestaties verschijnen zodra de game ze opslaat.",
+ "Waiting for the game's first unlock.": "Wachten op de eerste vrijgespeelde prestatie van de game."
 }

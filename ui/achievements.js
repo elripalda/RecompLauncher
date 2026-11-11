@@ -180,7 +180,9 @@
     const of = list.length ? main.length : Math.max(shown.length, Number(d.count) || 0);
     const pct = of ? Math.round((got / of) * 100) : 0;
     const mastered = !!(d.mastered || mine.mastered), beaten = !mastered && !!mine.beaten;
-    const status = d.paused ? tf('Its list is paused for this version: {why}.', { why: d.paused }) : d.live ? (d.connected ? t('The game is connected: unlocks show as they happen.') : t('The game is running. It hasn\'t connected (it may not have achievements built in yet).')) : '';
+    // A ReXGlue game is watched through its own unlock file, not the library's channel.
+    const live = d.rex === true ? t('Watching the game\'s unlock file: unlocks show as the game saves them.') : d.rex === false ? t('Waiting for the game\'s first unlock.') : d.connected ? t('The game is connected: unlocks show as they happen.') : t('The game is running. It hasn\'t connected (it may not have achievements built in yet).');
+    const status = d.paused ? tf('Its list is paused for this version: {why}.', { why: d.paused }) : d.live ? live : '';
     const banner = mastered || beaten ? `<div class="ach-banner ${mastered ? 'gold' : 'silver'}">${STAR(true)}<div><b>${esc(mastered ? t('Mastered') : t('Beaten'))}</b><span>${esc(mastered ? t('Every achievement in this game is yours.') : t('You\'ve beaten this game. Mastered is every achievement.'))}</span></div></div>` : '';
     const players = Number(mine.players) || 0;
     const head = `<div class="card ach-head">${banner}<div class="ach-sum"><div><span class="ach-big">${esc(tf('{n} of {total}', { n: got, total: of }))}</span><span class="muted">${esc([d.total ? tf('{n} of {total} points', { n: d.points, total: d.total }) : t('Achievements'), players ? tn(players, '1 player', '{n} players') : ''].filter(Boolean).join(' · '))}</span></div><button type="button" class="btn sm" data-act="url" data-url="${esc(WEB_A + '/' + encodeURIComponent(id))}">${esc(t('View on the Web'))}</button></div>
@@ -374,7 +376,13 @@ Your account's Terms and Privacy still apply.`;
   // Every game with a list, with this player's progress on it.
   function games() {
     const mine = new Map(((A.profile && A.profile.games) || []).map((g) => [g.id, g]));
-    const out = (A.list || []).map((g) => Object.assign({ unlocked: 0, points: 0, points_total: g.points, achievements: g.achievements }, g, mine.get(g.id) || {}));
+    // The list is every game with achievements; whether it's Beaten or Mastered is the player's own
+    // (their profile), never the list's (its counts are other players').
+    const out = (A.list || []).map((g) => {
+      const base = Object.assign({}, g);
+      delete base.mastered; delete base.beaten;
+      return Object.assign({ unlocked: 0, points: 0, points_total: g.points, achievements: g.achievements }, base, mine.get(g.id) || {});
+    });
     for (const g of mine.values()) if (!out.some((x) => x.id === g.id)) out.push(g);
     return out;
   }

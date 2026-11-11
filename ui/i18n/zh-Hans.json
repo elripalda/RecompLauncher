@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "你的版本是 {version}，太旧了，跟不上重编译游戏的更新。请更新以继续游玩。只需片刻。",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "你的版本是 {version}。更新只需片刻，之后 RecompLauncher 会自动重新打开。",
  "Update Now": "立即更新",
- "Later keeps this version on the Downloads page until a newer one is out.": "选择“以后再说”后，此版本会保留在下载页面上，直到有更新的版本推出。"
+ "Later keeps this version on the Downloads page until a newer one is out.": "选择“以后再说”后，此版本会保留在下载页面上，直到有更新的版本推出。",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "正在监视游戏的解锁文件：游戏保存解锁时就会显示。",
+ "Waiting for the game's first unlock.": "正在等待游戏的第一个解锁。"
 }

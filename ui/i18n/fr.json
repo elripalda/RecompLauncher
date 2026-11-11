@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Vous avez la version {version}, trop ancienne pour suivre les recomps. Mettez à jour pour continuer à jouer. Ça ne prend qu'un instant.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Vous avez la version {version}. La mise à jour prend un instant, puis RecompLauncher se rouvre tout seul.",
  "Update Now": "Mettre à jour maintenant",
- "Later keeps this version on the Downloads page until a newer one is out.": "« Plus tard » garde cette version sur la page Téléchargements jusqu'à la sortie d'une plus récente."
+ "Later keeps this version on the Downloads page until a newer one is out.": "« Plus tard » garde cette version sur la page Téléchargements jusqu'à la sortie d'une plus récente.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "Surveillance du fichier de déblocage du jeu : les déblocages s'affichent dès que le jeu les enregistre.",
+ "Waiting for the game's first unlock.": "En attente du premier déblocage du jeu."
 }

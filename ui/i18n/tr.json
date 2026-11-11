@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "Sizde {version} var ve recomp'lara ayak uyduramayacak kadar eski. Oynamaya devam etmek için güncelleyin. Yalnızca birkaç saniye sürer.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "Sizde {version} var. Güncelleme birkaç saniye sürer ve RecompLauncher kendiliğinden yeniden açılır.",
  "Update Now": "Şimdi güncelle",
- "Later keeps this version on the Downloads page until a newer one is out.": "Daha sonra'yı seçerseniz bu sürüm, daha yenisi çıkana kadar İndirmeler sayfasında kalır."
+ "Later keeps this version on the Downloads page until a newer one is out.": "Daha sonra'yı seçerseniz bu sürüm, daha yenisi çıkana kadar İndirmeler sayfasında kalır.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "Oyunun başarım dosyası izleniyor: başarımlar oyun onları kaydettikçe görünür.",
+ "Waiting for the game's first unlock.": "Oyundaki ilk başarım bekleniyor."
 }

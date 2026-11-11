@@ -2660,7 +2660,8 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         if let Some(p) = g.path.parent() {
             roots.push(p.join("Game Copies").join(library::folder_name(id)));
         }
-        ach::start(app, ach::Start { id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, roots })
+        let title = entry.and_then(|e| e.get("title_id").and_then(Value::as_str).or_else(|| e.pointer("/achievements/title_id").and_then(Value::as_str))).map(str::to_string);
+        ach::start(app, ach::Start { id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots })
     };
     if let Some(p) = &ach_session {
         cmd.env("RL_SESSION", p);

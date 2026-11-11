@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "現在のバージョンは {version} で、リコンパイル版に対応するには古すぎます。プレイを続けるにはアップデートしてください。すぐに終わります。",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "現在のバージョンは {version} です。アップデートはすぐに終わり、RecompLauncher が自動でもう一度開きます。",
  "Update Now": "今すぐアップデート",
- "Later keeps this version on the Downloads page until a newer one is out.": "「あとで」を選ぶと、新しいバージョンが出るまでこのバージョンはダウンロードページに残ります。"
+ "Later keeps this version on the Downloads page until a newer one is out.": "「あとで」を選ぶと、新しいバージョンが出るまでこのバージョンはダウンロードページに残ります。",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "ゲームの解除ファイルを監視中です。解除はゲームが保存したときに表示されます。",
+ "Waiting for the game's first unlock.": "ゲームの最初の解除を待っています。"
 }

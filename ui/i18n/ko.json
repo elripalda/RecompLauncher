@@ -2672,5 +2672,7 @@
  "You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.": "현재 {version}을(를) 사용 중인데, 리컴프를 따라가기에는 너무 오래된 버전입니다. 계속 플레이하려면 업데이트하세요. 잠깐이면 됩니다.",
  "You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.": "현재 {version}을(를) 사용 중입니다. 업데이트는 잠깐이면 되고, RecompLauncher가 저절로 다시 열립니다.",
  "Update Now": "지금 업데이트",
- "Later keeps this version on the Downloads page until a newer one is out.": "나중에를 누르면 더 새로운 버전이 나올 때까지 이 버전이 다운로드 페이지에 남아 있습니다."
+ "Later keeps this version on the Downloads page until a newer one is out.": "나중에를 누르면 더 새로운 버전이 나올 때까지 이 버전이 다운로드 페이지에 남아 있습니다.",
+ "Watching the game's unlock file: unlocks show as the game saves them.": "게임의 업적 파일을 지켜보는 중입니다. 업적 달성은 게임이 저장할 때 표시됩니다.",
+ "Waiting for the game's first unlock.": "게임의 첫 업적 달성을 기다리는 중입니다."
 }
