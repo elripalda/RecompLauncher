@@ -302,6 +302,10 @@ pub struct Settings {
     /// "safe" (the way that works everywhere) or empty (picked for this PC). Read at start.
     #[serde(default)]
     pub linux_graphics: String,
+    /// The local control API (src/control): scripts and AI tools see the installed games and
+    /// start one. Off until the player turns it on, and only changed by its own switch.
+    #[serde(default)]
+    pub control_api: bool,
 }
 
 fn yes() -> bool {
@@ -354,6 +358,7 @@ impl Default for Settings {
             minimize_playing: None,
             lighter: None,
             linux_graphics: String::new(),
+            control_api: false,
         }
     }
 }

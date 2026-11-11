@@ -3340,6 +3340,7 @@ function pageSettings() {
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
           + row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('share_stats', st.data_asked && st.share_stats, t('Share anonymous usage stats')))
           + row(t('Your IDs'), S.ids ? tf('Diagnostics {a} · Stats {b}. Quote them to have what was sent removed. A reset starts new ones.', { a: S.ids.usage.slice(0, 8), b: S.ids.stats.slice(0, 8) }) : t('Quote them to have what was sent removed. A reset starts new ones.'), `<span class="set-ctl2"><button type="button" class="btn" data-act="copy-ids">${esc(t('Copy'))}</button><button type="button" class="btn" data-act="reset-ids">${esc(t('Reset'))}</button></span>`))
+        + group(t('Local control'), row(t('Local control'), controlApiNote(), sw('control_api', st.control_api, t('Local control'), 'control-api')))
         + group(t('When you close the window'), row(t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'), sw('close_to_tray', st.close_to_tray, t('Run in background'))));
       break;
     case 'report':
@@ -4010,7 +4011,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound, controlApi: st.controlApi || null });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
@@ -4163,6 +4164,36 @@ function setSection(k, fade = true) {
   const main = $('#main'), wrap = $('.set-wrap', main);
   if (fade && wrap && main.scrollTop > wrap.offsetTop - 20) main.scrollTop = Math.max(0, wrap.offsetTop - 20);
 }
+// The Local control switch, in Settings and in Big Picture mode: the launcher starts or stops its
+// local control API and saves the setting. The switch shows what the core says is true afterwards,
+// and a toast says why when that isn't what was asked, or when it couldn't be saved.
+async function setControlApi(on) {
+  let r;
+  try { r = await invoke('control_api_set', { on }); } catch (e) {
+    fail(e);
+    // Whatever went wrong, the switch shows what's true now.
+    try { await refreshState(); } catch (_) { /* the next refresh shows it */ }
+    return null;
+  }
+  S.settings = Object.assign({}, S.settings, { control_api: !!r.on });
+  S.controlApi = r;
+  if (r.unsaved && r.on) toast(tf('Local control is on, but the setting couldn\'t be saved: {why}', { why: r.unsaved }), true);
+  else if (r.unsaved && on) toast(tf('Local control is off: the setting couldn\'t be saved ({why}).', { why: r.unsaved }), true);
+  else if (r.unsaved) toast(tf('Local control is off, but that couldn\'t be saved ({why}). It may turn on again the next time the launcher starts.', { why: r.unsaved }), true);
+  else if (on && !r.on) toast(tf('Local control couldn\'t turn on: {why}', { why: r.error || '' }), true);
+  return r;
+}
+window.setControlApi = setControlApi;
+// What the Local control switch says under its name.
+function controlApiNote() {
+  const c = S.controlApi || {};
+  if (S.settings.control_api && c.running && c.endpoint) return tf('On. Scripts and AI tools on this PC can see your games and start one. They find the address and key in {file}', { file: c.endpoint });
+  if (S.settings.control_api && c.error) return tf('It couldn\'t start: {why}', { why: c.error });
+  if (!S.settings.control_api && c.stopping) return t('Off. A Play it was getting ready is still finishing that; it won\'t start its game.');
+  return t('Lets scripts and AI tools on this PC see your games and start one with Play. Nothing else: installing, removing and settings stay here.');
+}
+window.controlApiNote = controlApiNote;
+
 // One save at a time, each with everything changed so far: two quick toggles both stick.
 let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
@@ -6887,6 +6918,10 @@ async function act(el, e) {
       const ids = S.ids || await invoke('data_ids');
       try { await navigator.clipboard.writeText(`Diagnostics ID: ${ids.usage}\nStats ID: ${ids.stats}`); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); }
       return;
+    }
+    case 'control-api': {
+      await setControlApi(!S.settings.control_api);
+      return render(true);
     }
     case 'reset-ids': {
       try { S.ids = await invoke('reset_ids'); toast(t('New IDs made')); render(true); } catch (e) { fail(e); }

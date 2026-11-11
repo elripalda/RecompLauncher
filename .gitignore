@@ -11,3 +11,6 @@ packaging/flatpak/flatpak-cargo-generator.py
 packaging/flatpak/ci-manifest.yml
 packaging/flatpak/build/
 packaging/flatpak/.flatpak-builder/
+
+# Python bytecode (tools/control-api tests)
+__pycache__/

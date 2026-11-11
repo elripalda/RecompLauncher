@@ -890,11 +890,11 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
             && !st.jobs.lock().unwrap().contains_key(id) && !st.moving.lock().unwrap().contains(id)
             && !st.running.lock().unwrap().contains_key(id) && !st.pids.lock().unwrap().contains_key(id);
         let offer = || {
-            if !available(&id) || crate::STARTING.lock().unwrap().contains(&id) {
+            if !available(&id) || crate::STARTING.lock().unwrap().iter().any(|(rid, _)| rid == &id) {
                 return None;
             }
             let mut candidates: Vec<_> = peers.iter().filter_map(|g| {
-                if !available(&g.id) || crate::STARTING.lock().unwrap().contains(&g.id) {
+                if !available(&g.id) || crate::STARTING.lock().unwrap().iter().any(|(rid, _)| rid == &g.id) {
                     return None;
                 }
                 let spots = spots_of(&st, &g.id, g);
@@ -920,10 +920,10 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
             }
             let _reserved = {
                 let mut starting = crate::STARTING.lock().unwrap();
-                if [&id, &g.id].into_iter().any(|i| starting.contains(i) || !available(i)) {
+                if [&id, &g.id].into_iter().any(|i| starting.iter().any(|(rid, _)| rid == i) || !available(i)) {
                     return Err(changed());
                 }
-                starting.extend([id.clone(), g.id.clone()]);
+                starting.extend([(id.clone(), id.clone()), (g.id.clone(), g.id.clone())]);
                 (crate::Starting(id.clone()), crate::Starting(g.id.clone()))
             };
             saves::share_save(&st.dir, &id, &spot, &target, &source, &destination)?;
@@ -1275,6 +1275,106 @@ mod sync_tests {
         let (_upload, pending) = pending_copy(&dir, "g", &library).await;
         assert_eq!(pending.as_deref(), Some("123.zip"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn disabling_control_keeps_the_claim_and_save_lock_until_blocking_restore_ends() {
+        use super::*;
+        use crate::control::{self, Launcher, Off, PlayResult};
+        use std::sync::Arc;
+
+        struct Restore {
+            app: Arc<App>,
+            entered: tokio::sync::Notify,
+            release: (Mutex<bool>, std::sync::Condvar),
+            archive: PathBuf,
+            save: PathBuf,
+            game: Installed,
+        }
+
+        impl Restore {
+            fn let_go(&self) {
+                *self.release.0.lock().unwrap() = true;
+                self.release.1.notify_all();
+            }
+        }
+
+        // A failed assertion must not leave the runtime waiting forever for a blocking worker.
+        struct Release(Arc<Restore>);
+        impl Drop for Release {
+            fn drop(&mut self) { self.0.let_go(); }
+        }
+
+        impl Launcher for Arc<Restore> {
+            fn status(&self) -> Value { json!({}) }
+
+            fn play(&self, id: String, off: Off) -> PlayResult {
+                let me = self.clone();
+                Box::pin(async move {
+                    let restore = me.clone();
+                    let ready = move |_rid: String| async move {
+                        // The real cloud lock and blocking helper, in saves_check's order.
+                        let _busy = BUSY.lock().await;
+                        blocking(move || {
+                            restore.entered.notify_one();
+                            let mut released = restore.release.0.lock().unwrap();
+                            while !*released {
+                                released = restore.release.1.wait(released).unwrap();
+                            }
+                            drop(released);
+                            let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+                            saves::restore(&restore.app.dir, "alpha", &restore.archive, &spots, &restore.game).unwrap();
+                        }).await.unwrap();
+                        None
+                    };
+                    let result = crate::claim_then_start(&me.app, &id, ready, |_claim| {
+                        let launched = off.launch(|| std::fs::write(&me.save, "new game progress").unwrap());
+                        Ok(if launched.is_some() { crate::Launch::Started } else { crate::Launch::Off })
+                    }).await;
+                    crate::play_answer(&id, "alpha", result)
+                })
+            }
+        }
+
+        let (dir, app) = crate::tests::control_library("restore-shutdown");
+        let game = app.lib.lock().unwrap().installed["alpha"].clone();
+        std::fs::create_dir_all(game.path.join("save")).unwrap();
+        let save = game.path.join("save/slot.sav");
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        std::fs::write(&save, "old cloud save").unwrap();
+        let copy = saves::backup(&dir, "alpha", &spots, &game).unwrap().unwrap();
+        std::fs::write(&save, "before restore").unwrap();
+        let restore = Arc::new(Restore {
+            app: Arc::new(app), entered: Default::default(), release: Default::default(),
+            archive: saves::dir_of(&dir, "alpha").join(copy.name), save: save.clone(), game,
+        });
+        let release = Release(restore.clone());
+        let first = control::start(&dir, "test", Arc::new(restore.clone())).await.unwrap();
+        let asked = control::tests::play_on(&first, &dir).await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), restore.entered.notified()).await.unwrap();
+        let ending = first.stop_within(std::time::Duration::from_millis(50)).await.expect_err("restore must stay tracked");
+        assert!(!ending.ended());
+        assert!(BUSY.try_lock().is_err(), "save exclusion was released during restore");
+        assert!(matches!(crate::claim_play(&restore.app, "alpha"), Err(Ok(crate::Launch::Starting(_)))), "Player Play acquired the ongoing restore's claim");
+
+        let second = control::start(&dir, "test", Arc::new(restore.clone())).await.unwrap();
+        let (status, body) = tokio::time::timeout(std::time::Duration::from_secs(5), control::tests::play_on(&second, &dir).await).await.unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body["result"], "already_starting");
+        drop(release);
+        assert!(ending.wait(std::time::Duration::from_secs(5)).await.is_ok());
+        assert_eq!(asked.await.unwrap().0, 503, "the old request started after disable");
+        assert_eq!(std::fs::read_to_string(&save).unwrap(), "old cloud save");
+
+        let claim = crate::claim_play(&restore.app, "alpha").ok().expect("claim wasn't released after restore");
+        // A subsequent Player start can now write progress without the old restore overwriting it.
+        std::fs::write(&save, "new game progress").unwrap();
+        drop(claim);
+        assert_eq!(std::fs::read_to_string(&save).unwrap(), "new game progress");
+        assert!(second.stop().await.is_ok());
+        // Other cloud tests also use BUSY, so await it rather than assuming no other test owns it.
+        let _busy = BUSY.lock().await;
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

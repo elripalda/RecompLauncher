@@ -103,13 +103,7 @@ fn picked(app: &AppHandle, id: &str) {
             let id = id["play:".len()..].to_string();
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                let rid = crate::recomp_of(&app.state::<crate::App>(), &id);
-                if crate::setup_first(&app, &rid) {
-                    return;
-                }
-                crate::ready_look(&app, &rid).await;
-                crate::cloud::sync_quiet(&app, &rid).await;
-                if let Err(e) = crate::start_game(&app, &id) {
+                if let Err(e) = crate::play_handed_over(&app, &id, None, &crate::PlayBy::Player).await {
                     show_main(&app);
                     let _ = app.emit("toast", e.to_string());
                 }

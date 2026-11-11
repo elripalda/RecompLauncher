@@ -266,8 +266,9 @@ fn tell(app: &AppHandle, id: &str, name: &str, state: &str) {
     let _ = app.emit("first-setup", json!({"id": id, "name": name, "state": state}));
 }
 
-/// Runs the setup and, once it closes, finds the game.
-pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<&Path>) -> Res<()> {
+/// Runs the setup and, once it closes, finds the game. Only for the player's Play (`MayInstall`):
+/// the control API's never runs a setup.
+pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<&Path>, _: &crate::MayInstall) -> Res<()> {
     {
         let mut o = OPEN.lock().unwrap();
         if o.iter().any(|x| x == id) {

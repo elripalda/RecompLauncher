@@ -13,6 +13,7 @@ pub mod assets;
 pub mod boot;
 pub mod catalog;
 pub mod cloud;
+pub mod control;
 pub mod devtools;
 pub mod dllcheck;
 pub mod discord;
@@ -2361,12 +2362,81 @@ fn runtime_line(l: &str) -> bool {
 }
 
 // Games being started right now, so a second Play while the first is still on its way does nothing.
-static STARTING: Mutex<Vec<String>> = Mutex::new(Vec::new());
+// Each with the game it's starting (its full id when it's one of several).
+static STARTING: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 struct Starting(String);
 impl Drop for Starting {
     fn drop(&mut self) {
-        STARTING.lock().unwrap().retain(|x| x != &self.0);
+        STARTING.lock().unwrap().retain(|(x, _)| x != &self.0);
     }
+}
+
+/// Who pressed Play. The player (in the window, or from a shortcut, Steam or the tray) may get a
+/// game's setup, its installer, or Windows asking for administrator on the way, as always. The
+/// control API only starts a game that's ready: anything else is left to the window.
+#[derive(Clone)]
+pub(crate) enum PlayBy {
+    Player,
+    /// The local control API, with its off switch: once it's off, nothing starts.
+    Api(control::Off),
+}
+
+/// Leave to run a game's setup or installer, or have Windows ask for administrator, on the way to
+/// Play. Only the player's Play gets one, and the helpers that install take one, so the control
+/// API's Play can't reach them.
+impl PlayBy {
+    /// `start` (the game's actual start), as `by` may: the control API's goes through its switch,
+    /// so none starts once it's off. None: it's off, and nothing was run.
+    fn launch<T>(&self, start: impl FnOnce() -> T) -> Option<T> {
+        match self {
+            PlayBy::Player => Some(start()),
+            PlayBy::Api(off) => off.launch(start),
+        }
+    }
+}
+
+mod may_install {
+    pub struct MayInstall(());
+
+    impl super::PlayBy {
+        pub(crate) fn may_install(&self) -> Option<MayInstall> {
+            matches!(self, super::PlayBy::Player).then_some(MayInstall(()))
+        }
+    }
+}
+pub use may_install::MayInstall;
+
+/// What a Play did.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Launch {
+    /// The game's program started (or Windows was asked to start it as administrator).
+    Started,
+    /// Its setup opened, to finish first (the player's Play only).
+    Setup,
+    /// Its recomp was running already, playing this game (a full id). Nothing more was done.
+    Running(String),
+    /// Its recomp was being started already, for this game. Nothing more was done.
+    Starting(String),
+    /// It needs something done in the window first (setting up, installing, administrator): why.
+    /// Only the control API's Play stops here; the player's goes on to do it.
+    NeedsSetup(String),
+    /// The control API was turned off while Play got ready: nothing started.
+    Off,
+}
+
+/// The start of `recomp`, for its game `full`, claimed for this Play. Or, when it's running or
+/// being started already, which game that is: nothing more is done then.
+fn claim_start(st: &App, recomp: &str, full: &str) -> Result<Starting, Launch> {
+    let mut starting = STARTING.lock().unwrap();
+    if let Some((_, game)) = starting.iter().find(|(r, _)| r == recomp) {
+        return Err(Launch::Starting(game.clone()));
+    }
+    if st.running.lock().unwrap().contains_key(recomp) {
+        let game = PLAYING_GAME.lock().unwrap().as_ref().and_then(|m| m.get(recomp).cloned());
+        return Err(Launch::Running(game.unwrap_or_else(|| recomp.to_string())));
+    }
+    starting.push((recomp.to_string(), full.to_string()));
+    Ok(Starting(recomp.to_string()))
 }
 // Each start of a game has its own number. When it closes, it only tidies up after itself: Play
 // pressed again while the last one is still closing must not lose the new one.
@@ -2377,24 +2447,49 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     start_game_with_steam(app, id, None)
 }
 
-fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
-    let st = app.state::<App>();
-    // One game of a recomp that carries several: the recomp starts, with that game's options.
-    let pick = game_of(&st, id);
-    let full_id = id.to_string();
-    let id: &str = pick.as_ref().map(|p| p.recomp.as_str()).unwrap_or(id);
-    read_screen(app);
-    if st.moving.lock().unwrap().contains(id) {
-        return Err(Error::Msg(MOVING.into()));
+fn start_game_with_steam(app: &AppHandle, id: &str, steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
+    start_game_by(app, id, steam, &PlayBy::Player).map(drop)
+}
+
+/// A Play's claim on starting its recomp, for one of its games. Held from before anything is got
+/// ready for it until its game started or didn't: another Play meanwhile does nothing.
+struct Claim {
+    starting: Starting,
+    /// One game of a recomp that carries several: the recomp starts, with that game's options.
+    pick: Option<GamePick>,
+    /// The id Play was asked for.
+    full: String,
+    recomp: String,
+}
+
+/// Claims the start of `id`'s recomp. Err: what to answer instead, nothing done (it's running or
+/// starting already, or being moved).
+fn claim_play(st: &App, id: &str) -> Result<Claim, Res<Launch>> {
+    let pick = game_of(st, id);
+    let recomp = pick.as_ref().map(|p| p.recomp.clone()).unwrap_or_else(|| id.to_string());
+    if st.moving.lock().unwrap().contains(&recomp) {
+        return Err(Err(Error::Msg(MOVING.into())));
     }
-    let _starting = {
-        let mut s = STARTING.lock().unwrap();
-        if s.iter().any(|x| x == id) || st.running.lock().unwrap().contains_key(id) {
-            return Ok(());
-        }
-        s.push(id.to_string());
-        Starting(id.to_string())
-    };
+    match claim_start(st, &recomp, id) {
+        Ok(starting) => Ok(Claim { starting, pick, full: id.to_string(), recomp }),
+        Err(now) => Err(Ok(now)),
+    }
+}
+
+/// Starts a game, as `by` may: see [`PlayBy`]. Answers what it did.
+fn start_game_by(app: &AppHandle, id: &str, steam: Option<&sysenv::SteamLaunch>, by: &PlayBy) -> Res<Launch> {
+    match claim_play(&app.state::<App>(), id) {
+        Ok(claim) => start_claimed(app, claim, steam, by),
+        Err(now) => now,
+    }
+}
+
+/// Starts the game of a claimed Play. The claim is let go when this returns.
+fn start_claimed(app: &AppHandle, claim: Claim, _steam: Option<&sysenv::SteamLaunch>, by: &PlayBy) -> Res<Launch> {
+    let st = app.state::<App>();
+    let Claim { starting: _starting, pick, full: full_id, recomp } = claim;
+    let id: &str = &recomp;
+    read_screen(app);
     let g = st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     // Set Up By Hand: the player's own way, instead of the launcher's.
     let mut manual = g.manual.clone();
@@ -2406,7 +2501,8 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     if rebuild {
         let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit(['/', ':']).next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
         let leftover = manual.as_ref().and_then(|m| m.exe.as_ref()).map(|e| { let rel = e.strip_prefix(&g.path).unwrap_or(e); install::looks_like_tool(rel, &names) }).unwrap_or(false);
-        if leftover && manual.as_ref().map(|m| m.how == "none" || m.how.is_empty()).unwrap_or(false) {
+        // Only when the setup can run now (not for the control API, which leaves setups to the window).
+        if leftover && manual.as_ref().map(|m| m.how == "none" || m.how.is_empty()).unwrap_or(false) && by.may_install().is_some() {
             trail::note(format!("Play {id}: set up by hand on a program in its setup's leftovers; the setup builds the new version and the launcher finds it"));
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                 x.manual = None;
@@ -2455,12 +2551,16 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             return Err(Error::Msg("Its installer hasn't run yet. Press Set Up on its page.".into()));
         }
         if let Some(setup) = own_setup::pending(&st, id, &g) {
+            let Some(may) = by.may_install() else {
+                trail::note(format!("Play {id}: its setup runs first; that's left to the window"));
+                return Ok(Launch::NeedsSetup("Its setup has to run first. Press Play in the launcher's window.".into()));
+            };
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
                 Some(p) => game_copy(&st, id, &g, p)?,
                 None => None,
             };
-            return own_setup::run(app, id, &g, &setup, copy.as_deref());
+            return own_setup::run(app, id, &g, &setup, copy.as_deref(), &may).map(|_| Launch::Setup);
         }
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
@@ -2731,9 +2831,13 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             }
             let app_id = flatpak::app_id(&exe).ok_or_else(|| Error::Msg("This Flatpak file doesn't say which app it holds, so it can't be installed. Switch to another build on the game's page.".into()))?;
             if !flatpak::installed(&app_id) {
+                let Some(may) = by.may_install() else {
+                    trail::note(format!("Play {id}: its Flatpak isn't installed; that's left to the window"));
+                    return Ok(Launch::NeedsSetup("Its Flatpak isn't installed yet. Press Play in the launcher's window to install it.".into()));
+                };
                 trail::note(format!("Play {id}: installing its Flatpak ({app_id})"));
                 let _ = app.emit("note", "Installing its Flatpak for the first time. It can take a few minutes; the game starts when it's done.");
-                if let Err(e) = flatpak::install(&exe) {
+                if let Err(e) = flatpak::install(&exe, &may) {
                     trail::note(format!("Play {id}: its Flatpak didn't install: {e}"));
                     return Err(Error::Msg(format!("Flatpak couldn't install it: {e}")));
                 }
@@ -2832,30 +2936,44 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     }
     note_run(&st, id, &g, &exe, &args, &cwd, prof.as_ref(), look_run.is_some());
     trail::note(format!("Play {id}: {}{}", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), if look_run.is_some() { " with a Look" } else { "" }));
-    let spawned = cmd.spawn();
-    // A program that has to run as administrator (Windows says so, error 740): Windows asks the
-    // player, then it starts. A setup goes through the setup steps, which find the game after.
-    #[cfg(windows)]
-    if let Err(e) = &spawned {
-        if e.raw_os_error() == Some(740) {
-            trail::note(format!("Play {id}: needs administrator, asking Windows"));
-            if install::looks_like_setup(&exe_rel) {
-                return own_setup::run(app, id, &g, &exe, None);
-            }
-            let line = args.iter().map(|a| if a.contains(' ') || a.is_empty() { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ");
-            return win::run_as_admin(&exe, &line, &cwd).map(|_| ()).map_err(|e| Error::Msg(format!("{shown} has to run as administrator, and Windows didn't start it: {e}")));
-        }
-    }
-    if let Err(e) = &spawned {
-        trail::note(format!("Play {id}: didn't start: {e}"));
-    }
-    if spawned.is_err() {
+    // What was set up for this start only, undone when it doesn't start.
+    let undo = || {
         if ach_session.is_some() {
             ach::abort(app, &full_id);
         }
         if let Some(p) = look_run.as_ref().and_then(|r| r.placed.as_ref()) {
             looks::finish(&st.dir, id, p);
         }
+    };
+    // The control API's Play starts nothing once its API was turned off. That holds for one that
+    // was stuck getting ready meanwhile (unpacking above can't be interrupted), even when the API
+    // was turned on again since: its switch is that API's own.
+    let Some(spawned) = by.launch(|| cmd.spawn()) else {
+        trail::note(format!("Play {id}: the control API was turned off; not started"));
+        undo();
+        return Ok(Launch::Off);
+    };
+    // A program that has to run as administrator (Windows says so, error 740): Windows asks the
+    // player, then it starts. A setup goes through the setup steps, which find the game after.
+    let needs_admin = cfg!(windows) && spawned.as_ref().err().and_then(|e| e.raw_os_error()) == Some(740);
+    #[cfg(windows)]
+    if let (true, Some(may)) = (needs_admin, by.may_install()) {
+        trail::note(format!("Play {id}: needs administrator, asking Windows"));
+        if install::looks_like_setup(&exe_rel) {
+            return own_setup::run(app, id, &g, &exe, None, &may).map(|_| Launch::Setup);
+        }
+        let line = args.iter().map(|a| if a.contains(' ') || a.is_empty() { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ");
+        return play_as_admin(&exe, &line, &cwd, &may).map(|_| Launch::Started).map_err(|e| Error::Msg(format!("{shown} has to run as administrator, and Windows didn't start it: {e}")));
+    }
+    if let Err(e) = &spawned {
+        trail::note(format!("Play {id}: didn't start: {e}"));
+    }
+    if spawned.is_err() {
+        undo();
+    }
+    // The control API doesn't have Windows ask for administrator: that's the player's to answer.
+    if needs_admin {
+        return Ok(Launch::NeedsSetup(format!("{shown} has to run as administrator. Press Play in the launcher's window.")));
     }
     let mut child = spawned.map_err(|e| {
         if is_blocked(&e) {
@@ -3101,7 +3219,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             app2.exit(0);
         }
     });
-    Ok(())
+    Ok(Launch::Started)
 }
 
 // ---------- setting a recomp up ----------
@@ -6947,13 +7065,8 @@ fn reopen_after_update(app: &AppHandle) -> bool {
 #[tauri::command(async)]
 fn get_state(st: State<'_, App>) -> Value {
     let l = st.lib.lock().unwrap();
-    let moving = st.moving.lock().unwrap().clone();
-    // Games whose folder isn't there right now stay in the Library, marked missing.
-    let missing: Vec<String> = l.missing().into_iter().filter(|id| !moving.contains(id)).collect();
-    let mut running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
-    // And the game being played in each, when it's one of several (its full id).
-    let playing: Vec<String> = PLAYING_GAME.lock().unwrap().as_ref().map(|m| m.iter().filter(|(k, v)| running.contains(k) && k != v).map(|(_, v)| v.clone()).collect()).unwrap_or_default();
-    running.extend(playing);
+    let missing = missing_now(&st, &l);
+    let running = running_now(&st);
     let jobs: Vec<String> = st.jobs.lock().unwrap().keys().cloned().collect();
     json!({
         "os": assets::os_now(),
@@ -6980,7 +7093,23 @@ fn get_state(st: State<'_, App>) -> Value {
         // Where the web view draws on the processor, the page leaves out what keeps moving.
         "cpuDraw": cpu_draw(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
+        "controlApi": control_state(),
     })
+}
+
+/// Games whose folder isn't there right now (they stay in the Library, marked missing). One being
+/// moved to another drive isn't missing.
+fn missing_now(st: &App, l: &Library) -> Vec<String> {
+    let moving = st.moving.lock().unwrap().clone();
+    l.missing().into_iter().filter(|id| !moving.contains(id)).collect()
+}
+
+/// The recomps running now, and the game being played in each when it's one of several (its full id).
+fn running_now(st: &App) -> Vec<String> {
+    let mut running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
+    let playing: Vec<String> = PLAYING_GAME.lock().unwrap().as_ref().map(|m| m.iter().filter(|(k, v)| running.contains(k) && k != v).map(|(_, v)| v.clone()).collect()).unwrap_or_default();
+    running.extend(playing);
+    running
 }
 
 /// The web view can't play a sound here (see sysenv::sound_works).
@@ -7050,11 +7179,14 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     let save_dir = l.settings.save_dir.clone();
     // The proxy changes only through its own command (its password is sealed there).
     let proxy = (l.settings.proxy.clone(), l.settings.proxy_url.clone(), l.settings.proxy_user.clone(), l.settings.proxy_pass.clone());
+    // The local control API only through its own switch, which starts and stops it too.
+    let control_api = l.settings.control_api;
     l.settings = settings;
     l.settings.tray_told |= told;
     l.settings.save_dir = save_dir;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
+    l.settings.control_api = control_api;
     l.save(&st.dir)?;
     Ok(())
 }
@@ -7195,7 +7327,7 @@ async fn wine_tools(app: AppHandle, st: State<'_, App>, what: String, path: Opti
 /// Settings back to how they start ("settings"), or first-time setup again ("setup"). Games, their
 /// saves, the library folders and pinned games all stay.
 #[tauri::command(async)]
-fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
+fn reset_settings(app: AppHandle, st: State<'_, App>, what: String) -> Res<Settings> {
     let mut l = st.lib.lock().unwrap();
     let old = l.settings.clone();
     match what.as_str() {
@@ -7226,8 +7358,18 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
         "setup" => l.settings.setup_done = false,
         _ => return Err(Error::Msg("Nothing to reset.".into())),
     }
-    l.save(&st.dir)?;
-    Ok(l.settings.clone())
+    let saved = l.save(&st.dir);
+    let settings = l.settings.clone();
+    drop(l);
+    // Back to how it starts, the local control API is off: it stops, in turn with its switch, and
+    // even when the reset couldn't be saved.
+    if old.control_api && !settings.control_api {
+        tauri::async_runtime::spawn(async move {
+            control_follow_setting(&app).await;
+        });
+    }
+    saved?;
+    Ok(settings)
 }
 
 /// Asks WebView2 to give memory back while a window is out of sight, and to take it again when
@@ -7456,6 +7598,324 @@ static SETUP_ASKED: Mutex<Option<String>> = Mutex::new(None);
 #[tauri::command(async)]
 fn take_setup_asked() -> Option<String> {
     SETUP_ASKED.lock().unwrap().take()
+}
+
+/// Play from outside the window (a shortcut handed to the launcher already running, or the local
+/// control API), the way a shortcut always has: a game that needs setting up opens the window to
+/// ask for it; otherwise its shader, its cloud save, then the game. What `by` may do on the way:
+/// see [`PlayBy`]. Answers what it did.
+pub(crate) async fn play_handed_over(app: &AppHandle, id: &str, steam: Option<&sysenv::SteamLaunch>, by: &PlayBy) -> Res<Launch> {
+    let ready = |rid: String| async move {
+        if setup_first(app, &rid) {
+            return Some(Launch::NeedsSetup("It needs setting up first: the launcher's window is open to do that.".into()));
+        }
+        let shader_ready = match by {
+            PlayBy::Api(off) => off.while_on(ready_look(app, &rid)).await.is_some(),
+            PlayBy::Player => { ready_look(app, &rid).await; true }
+        };
+        if !shader_ready {
+            return Some(Launch::Off);
+        }
+        // Finish cloud sync with the claim held. Its blocking restore can't be cancelled, so
+        // dropping this wait could let another Play start while saves are still being replaced.
+        cloud::sync_quiet(app, &rid).await;
+        // The control API, turned off while this got ready: no point going on. (The start itself
+        // checks again, under the switch's lock.)
+        turned_off(by).then_some(Launch::Off)
+    };
+    claim_then_start(&app.state::<App>(), id, ready, |claim| start_claimed(app, claim, steam, by)).await
+}
+
+/// Play's order from outside the window: the start is claimed first, then `ready` gets the game
+/// ready (its shader, its cloud save, which can restore saves), then `start` starts it. A Play
+/// that finds its recomp running or starting already answers so before `ready` touches anything.
+/// `ready` answers Some to stop there.
+async fn claim_then_start<F: std::future::Future<Output = Option<Launch>>>(st: &App, id: &str, ready: impl FnOnce(String) -> F, start: impl FnOnce(Claim) -> Res<Launch>) -> Res<Launch> {
+    let claim = match claim_play(st, id) {
+        Ok(c) => c,
+        Err(now) => return now,
+    };
+    if let Some(stop) = ready(claim.recomp.clone()).await {
+        return Ok(stop);
+    }
+    start(claim)
+}
+
+fn turned_off(by: &PlayBy) -> bool {
+    matches!(by, PlayBy::Api(off) if off.is_off())
+}
+
+/// Has Windows ask the player to start `exe` as administrator. Only for the player's Play.
+#[cfg(windows)]
+fn play_as_admin(exe: &Path, line: &str, cwd: &Path, _: &MayInstall) -> std::io::Result<()> {
+    win::run_as_admin(exe, line, cwd).map(drop)
+}
+
+// ---------- the local control API (src/control, docs/control-api.md) ----------
+
+/// The control API now: its server while it runs, why it last didn't start, and servers turned
+/// off whose requests hadn't all ended in time (none of them can start a game).
+#[derive(Default)]
+struct ControlNow {
+    server: Option<control::Server>,
+    error: Option<String>,
+    ending: Vec<control::Ending>,
+}
+
+/// An async lock: the switch, the launcher starting, Reset and exit take turns, each changing the
+/// setting and the server together.
+static CONTROL: tokio::sync::Mutex<ControlNow> = tokio::sync::Mutex::const_new(ControlNow { server: None, error: None, ending: Vec::new() });
+
+/// For Settings and get_state, which can't wait on CONTROL: the endpoint file while it runs, or
+/// why it didn't start; and servers turned off that were still ending.
+static CONTROL_INFO: Mutex<(Option<PathBuf>, Option<String>, Vec<tokio::task::AbortHandle>)> = Mutex::new((None, None, Vec::new()));
+
+/// What the control API can do here: read the status and Play. Nothing else is reachable.
+struct ControlLauncher(AppHandle);
+
+impl control::Launcher for ControlLauncher {
+    fn status(&self) -> Value {
+        control_status(&self.0.state::<App>())
+    }
+
+    fn play(&self, id: String, off: control::Off) -> control::PlayResult {
+        let app = self.0.clone();
+        Box::pin(async move { control_play(&app, &id, off).await })
+    }
+}
+
+/// One installed game for the control API's status: no paths, nothing private.
+fn control_game(id: &str, g: &Installed, games: &[games::Game], running: &[String], missing: &[String]) -> Value {
+    let sub: Vec<Value> = games
+        .iter()
+        .map(|x| {
+            let full = games::full(id, &x.id);
+            json!({"id": full, "name": x.name, "running": running.contains(&full)})
+        })
+        .collect();
+    let mut v = json!({
+        "id": id,
+        "name": g.name,
+        "version": g.tag,
+        "running": running.iter().any(|r| r == id),
+        "missing": missing.iter().any(|m| m == id),
+    });
+    if !sub.is_empty() {
+        v["games"] = Value::Array(sub);
+    }
+    v
+}
+
+fn control_status(st: &App) -> Value {
+    let (list, missing) = {
+        let l = st.lib.lock().unwrap();
+        let list: Vec<(String, Installed)> = l.installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        (list, missing_now(st, &l))
+    };
+    let running = running_now(st);
+    let games: Vec<Value> = list.iter().map(|(id, g)| control_game(id, g, &games_of(st, id, g), &running, &missing)).collect();
+    json!({
+        "app": {"name": "RecompLauncher", "version": env!("CARGO_PKG_VERSION")},
+        "games": games,
+        "running": running,
+    })
+}
+
+/// What Play through the control API would start: (its id, its recomp's id). Only an installed
+/// game, or one game of an installed recomp, whose folder is there.
+fn control_target(st: &App, id: &str) -> Result<(String, String), control::http::ApiError> {
+    use control::http::ApiError;
+    // Each lock is let go before the next: game_of and recomp_of take the Library's lock too.
+    let id = st.lib.lock().unwrap().resolve_project_id(id);
+    let in_library = st.lib.lock().unwrap().installed.contains_key(&id);
+    if !in_library && game_of(st, &id).is_none() {
+        return Err(ApiError::new(404, "not_installed", "That game isn't installed. The status lists the ids of the ones that are."));
+    }
+    let rid = recomp_of(st, &id);
+    let missing = {
+        let l = st.lib.lock().unwrap();
+        missing_now(st, &l)
+    };
+    if missing.contains(&rid) {
+        return Err(ApiError::new(409, "missing", "Its folder isn't there right now (is its drive connected?)."));
+    }
+    Ok((id, rid))
+}
+
+/// Play through the control API: started as the game's shortcut would start it, except that it
+/// never runs a setup or an installer (see [`PlayBy`]).
+async fn control_play(app: &AppHandle, id: &str, off: control::Off) -> Result<Value, control::http::ApiError> {
+    let (id, rid) = control_target(&app.state::<App>(), id)?;
+    trail::note(format!("Control API: Play {id}"));
+    let launch = play_handed_over(app, &id, None, &PlayBy::Api(off)).await;
+    play_answer(&id, &rid, launch)
+}
+
+/// The control API's answer to Play `id` (of recomp `rid`): what the start itself did. When the
+/// recomp is already playing another of its games, `id` didn't start, and the answer says so.
+fn play_answer(id: &str, rid: &str, launch: Res<Launch>) -> Result<Value, control::http::ApiError> {
+    use control::http::ApiError;
+    let done = |result: &str| json!({"ok": true, "id": id, "recomp": rid, "result": result, "started": result == "started", "already_running": result == "already_running"});
+    // This game, or any of its recomp's when the recomp itself was asked for.
+    let this = |game: &str| game == id || id == rid;
+    match launch {
+        Ok(Launch::Started) => Ok(done("started")),
+        Ok(Launch::Running(game)) if this(&game) => Ok(done("already_running")),
+        Ok(Launch::Starting(game)) if this(&game) => Ok(done("already_starting")),
+        Ok(Launch::Running(game)) => Err(ApiError::new(409, "busy", format!("{game} is running in this recomp: it has to close before {id} can start."))),
+        Ok(Launch::Starting(game)) => Err(ApiError::new(409, "busy", format!("{game} is starting in this recomp: it has to close before {id} can start."))),
+        Ok(Launch::NeedsSetup(why)) => Err(ApiError::new(409, "needs_setup", why)),
+        // Only the player's Play opens a setup, never this one.
+        Ok(Launch::Setup) => Err(ApiError::new(409, "needs_setup", "Its setup opened in the launcher's window.")),
+        Ok(Launch::Off) => Err(ApiError::new(503, "stopped", "The control API was turned off.")),
+        Err(e) => Err(play_error(e.to_string())),
+    }
+}
+
+/// Why Play didn't start it, for the control API. What the window would ask the player for (the
+/// game's files, its update, which program starts it) needs the window here too.
+fn play_error(msg: String) -> control::http::ApiError {
+    use control::http::ApiError;
+    if ["NEED_COPY|", "NEED_UPDATE|", "PICK_EXE|"].iter().any(|p| msg.starts_with(p)) {
+        return ApiError::new(409, "needs_setup", "It needs something chosen in the launcher's window first: its game files, an update, or which program starts it.");
+    }
+    ApiError::new(422, "play_failed", msg)
+}
+
+/// Starts the API, unless it's running already. Why it couldn't is kept for Settings.
+async fn control_start(dir: &Path, now: &mut ControlNow, launcher: Arc<dyn control::Launcher>) {
+    if now.server.is_some() {
+        return;
+    }
+    match control::start(dir, env!("CARGO_PKG_VERSION"), launcher).await {
+        Ok(s) => {
+            trail::note(format!("Control API: on, 127.0.0.1:{}", s.port));
+            now.server = Some(s);
+            now.error = None;
+        }
+        Err(e) => {
+            trail::note(format!("Control API: didn't start: {e}"));
+            now.error = Some(e);
+        }
+    }
+}
+
+/// Stops the API, and waits (briefly) for its requests to end. A Play still getting ready doesn't
+/// start its game; one stuck in work that can't be interrupted is kept in `ending` until it ends.
+/// Games already running keep running.
+async fn control_stop(now: &mut ControlNow) {
+    now.error = None;
+    let Some(s) = now.server.take() else { return };
+    match s.stop().await {
+        Ok(()) => trail::note("Control API: off"),
+        Err(ending) => {
+            trail::note("Control API: off; a Play is still finishing getting ready (it can't start its game)");
+            now.ending.push(ending);
+        }
+    }
+}
+
+fn control_publish(now: &mut ControlNow) {
+    now.ending.retain(|e| !e.ended());
+    let ending = now.ending.iter().map(control::Ending::tracker).collect();
+    *CONTROL_INFO.lock().unwrap() = (now.server.as_ref().map(|s| s.endpoint.clone()), now.error.clone(), ending);
+}
+
+/// What the Local control switch did: whether the API runs now, and why its setting couldn't be
+/// saved, when it couldn't.
+struct Switched {
+    on: bool,
+    unsaved: Option<String>,
+}
+
+/// The Local control switch: the API starts or stops, and the setting is saved. One step, under
+/// CONTROL. Turned on, it's only left on when that's saved. Turned off, it stays off even when
+/// that couldn't be saved; the answer says so (it would come back on when the launcher starts).
+async fn control_switch(st: &App, now: &mut ControlNow, on: bool, launcher: impl FnOnce() -> Arc<dyn control::Launcher>) -> Switched {
+    let was_running = now.server.is_some();
+    if on {
+        control_start(&st.dir, now, launcher()).await;
+    } else {
+        control_stop(now).await;
+    }
+    let running = now.server.is_some();
+    let saved = {
+        let mut l = st.lib.lock().unwrap();
+        l.settings.control_api = running;
+        l.save(&st.dir)
+    };
+    let Err(e) = saved else { return Switched { on: running, unsaved: None } };
+    trail::note(format!("Control API: its setting couldn't be saved: {e}"));
+    // Just turned on, but not saved: back off, so the setting and the API agree.
+    if running && !was_running {
+        control_stop(now).await;
+    }
+    // What's here follows what runs, so the next save of Settings stores that.
+    st.lib.lock().unwrap().settings.control_api = now.server.is_some();
+    Switched { on: now.server.is_some(), unsaved: Some(e.to_string()) }
+}
+
+/// The API as its setting says, now: at start, and after Reset. In turn with the switch, so the
+/// last change wins.
+async fn control_follow_setting(app: &AppHandle) {
+    let mut now = CONTROL.lock().await;
+    let st = app.state::<App>();
+    let want = st.lib.lock().unwrap().settings.control_api;
+    if want {
+        control_start(&st.dir, &mut now, Arc::new(ControlLauncher(app.clone()))).await;
+    } else {
+        control_stop(&mut now).await;
+    }
+    control_publish(&mut now);
+}
+
+/// At start: on when the player turned it on. Off: an endpoint file left by a launcher that
+/// didn't close properly goes, so nothing points at a port that isn't this launcher's.
+fn control_at_start(app: &AppHandle) {
+    let st = app.state::<App>();
+    if !st.lib.lock().unwrap().settings.control_api {
+        let _ = std::fs::remove_file(control::endpoint_file(&st.dir));
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        control_follow_setting(&app).await;
+    });
+}
+
+/// At exit: stops taking requests and removes the endpoint file, without waiting. Skipped when
+/// the switch is busy right then; the API ends with the launcher all the same.
+fn control_halt() {
+    if let Ok(now) = CONTROL.try_lock() {
+        if let Some(s) = now.server.as_ref() {
+            s.halt();
+        }
+    }
+}
+
+/// For Settings (and get_state): whether it's running, its endpoint file, or why it isn't.
+/// `stopping`: turned off, but a Play from before is still finishing getting ready. It won't
+/// start its game.
+fn control_state() -> Value {
+    let (endpoint, error, ending) = CONTROL_INFO.lock().unwrap().clone();
+    let stopping = ending.iter().any(|e| !e.is_finished());
+    json!({"running": endpoint.is_some(), "endpoint": endpoint, "error": error, "stopping": stopping})
+}
+
+/// The Local control switch in Settings, desktop and Big Picture. Answers what's true afterwards,
+/// whatever failed: `on` (it runs, and the setting says so unless `unsaved`), `error` (why it
+/// couldn't start), `unsaved` (why the setting couldn't be saved).
+#[tauri::command]
+async fn control_api_set(app: AppHandle, on: bool) -> Res<Value> {
+    let mut now = CONTROL.lock().await;
+    let st = app.state::<App>();
+    let app2 = app.clone();
+    let switched = control_switch(&st, &mut now, on, move || Arc::new(ControlLauncher(app2))).await;
+    control_publish(&mut now);
+    let mut v = control_state();
+    v["on"] = json!(switched.on);
+    v["unsaved"] = json!(switched.unsaved);
+    Ok(v)
 }
 
 // ---------- the window's size and place, kept for next time ----------
@@ -7848,13 +8308,7 @@ pub fn run() {
                 let steam = sysenv::steam_launch_from_args(&argv);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let rid = recomp_of(&app.state::<App>(), &id);
-                    if setup_first(&app, &rid) {
-                        return;
-                    }
-                    ready_look(&app, &rid).await;
-                    cloud::sync_quiet(&app, &rid).await;
-                    if let Err(e) = start_game_with_steam(&app, &id, steam.as_ref()) {
+                    if let Err(e) = play_handed_over(&app, &id, steam.as_ref(), &PlayBy::Player).await {
                         show_main(&app);
                         let _ = app.emit("toast", e.to_string());
                     }
@@ -8063,6 +8517,8 @@ pub fn run() {
             });
             // Achievements: what the website said about this account last time.
             ach::init(&app.state::<App>().dir);
+            // The local control API, when the player turned it on in Settings.
+            control_at_start(app.handle());
             #[cfg(windows)]
             watch_outside(app.handle().clone());
             // Text Size from last time.
@@ -8174,13 +8630,7 @@ pub fn run() {
             match play {
                 Some(id) => {
                     tauri::async_runtime::spawn(async move {
-                        let rid = recomp_of(&handle.state::<App>(), &id);
-                        if setup_first(&handle, &rid) {
-                            return;
-                        }
-                        ready_look(&handle, &rid).await;
-                        cloud::sync_quiet(&handle, &rid).await;
-                        if let Err(e) = start_game(&handle, &id) {
+                        if let Err(e) = play_handed_over(&handle, &id, None, &PlayBy::Player).await {
                             show_main(&handle);
                             let _ = handle.emit("toast", e.to_string());
                         }
@@ -8207,6 +8657,7 @@ pub fn run() {
             github_lookup,
             github_art,
             update_mine,
+            control_api_set,
             release_builds,
             troubleshoot,
             unblock_game,
@@ -8256,6 +8707,7 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     pads::stop();
                     ping::close(app);
+                    control_halt();
                 }
                 _ => {}
             }
@@ -8902,5 +9354,457 @@ mod tests {
         let got = copies_for(&cat, &found, &HashMap::new());
         assert_eq!(got.get("streetball").map(|r| r.path.clone()), Some(iso));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The launcher's state for a test: this Library, kept in `dir`.
+    fn test_app(dir: &std::path::Path, lib: super::Library) -> super::App {
+        super::App {
+            dir: dir.to_path_buf(),
+            http: reqwest::Client::new(),
+            lib: std::sync::Mutex::new(lib),
+            jobs: Default::default(),
+            running: Default::default(),
+            pids: Default::default(),
+            started: Default::default(),
+            download_slot: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+            moving: Default::default(),
+            overlay_open: std::sync::atomic::AtomicBool::new(false),
+            looked: Default::default(),
+            headless: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// A Library with `alpha` installed in a folder that's there, and `gone` in one that isn't.
+    pub(crate) fn control_library(name: &str) -> (std::path::PathBuf, super::App) {
+        let dir = std::env::temp_dir().join(format!("rl-control-lib-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("alpha")).unwrap();
+        let mut lib = super::Library::default();
+        lib.installed.insert("alpha".into(), installed_at("Alpha", "v1", dir.join("alpha").to_str().unwrap()));
+        lib.installed.insert("gone".into(), installed_at("Gone", "v1", dir.join("gone").to_str().unwrap()));
+        let app = test_app(&dir, lib);
+        (dir, app)
+    }
+
+    #[test]
+    fn control_play_finds_an_installed_game() {
+        let (dir, app) = control_library("found");
+        let (id, rid) = super::control_target(&app, "alpha").unwrap();
+        assert_eq!((id.as_str(), rid.as_str()), ("alpha", "alpha"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn control_play_refuses_a_game_that_isnt_installed() {
+        let (dir, app) = control_library("unknown");
+        // A sub-game id of an installed recomp with no such game, and a plain unknown id: both
+        // look past the Library (game_of), which must not wait on a lock held here.
+        assert_eq!(super::control_target(&app, "alpha--nosuch").unwrap_err().code, "not_installed");
+        assert_eq!(super::control_target(&app, "beta").unwrap_err().code, "not_installed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn control_play_refuses_a_game_whose_folder_is_missing() {
+        let (dir, app) = control_library("missing");
+        assert_eq!(super::control_target(&app, "gone").unwrap_err().code, "missing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // What Play may do, by who pressed it. The helpers that run a setup, install a Flatpak or have
+    // Windows ask for administrator each take a MayInstall, and only the player's Play gets one.
+
+    #[test]
+    fn the_control_apis_play_never_gets_leave_to_install() {
+        assert!(super::PlayBy::Api(super::control::Off::default()).may_install().is_none());
+        assert!(super::PlayBy::Player.may_install().is_some());
+    }
+
+    /// The body of `fn name` in lib.rs, up to the next line that's only a closing brace.
+    fn body_of(name: &str) -> String {
+        let src = include_str!("lib.rs");
+        let start = src.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
+        let end = start + src[start..].find("\n}\n").unwrap();
+        src[start..end].to_string()
+    }
+
+    #[test]
+    fn play_reaches_setups_installers_and_administrator_only_with_leave() {
+        // Every such call on Play's way passes the leave it was given (`&may`), so the compiler
+        // keeps the control API's Play away from them.
+        let risky = ["own_setup::run(", "own_setup::spawn", "flatpak::install(", "run_as_admin(", "play_as_admin("];
+        for name in ["start_game_by", "start_claimed", "play_handed_over", "control_play"] {
+            let body = body_of(name);
+            for line in body.lines().filter(|l| risky.iter().any(|r| l.contains(r))) {
+                assert!(line.contains("&may"), "{name}: {line}");
+            }
+        }
+        // And the one way into them there is: each install, setup or administrator branch gets
+        // its leave from `by` first.
+        let body = body_of("start_claimed");
+        assert_eq!(body.matches("by.may_install()").count(), 4);
+    }
+
+    #[test]
+    fn the_game_starts_only_through_plays_gate() {
+        // Its one start, through the gate the control API's switch holds (tested in
+        // control::tests with a Play stuck past turning it off).
+        let body = body_of("start_claimed");
+        assert_eq!(body.matches(".spawn()").count(), 1);
+        assert!(body.contains("by.launch(|| cmd.spawn())"));
+    }
+
+    #[test]
+    fn the_players_play_always_starts_and_the_apis_not_once_its_off() {
+        let off = super::control::Off::default();
+        let api = super::PlayBy::Api(off.clone());
+        assert_eq!(api.launch(|| 7), Some(7));
+        off.turn_off();
+        assert_eq!(api.launch(|| 7), None);
+        assert_eq!(super::PlayBy::Player.launch(|| 7), Some(7));
+    }
+
+    // Play from outside the window claims its start before it gets anything ready: restoring a
+    // cloud save over a running game's, or over one another Play is starting, changes files a
+    // game has open.
+
+    /// Play `id` in the real order (claim, get ready, start). Getting ready "restores a cloud
+    /// save": a line added to `cloud`, then waits for `hold` when there's one. The start only says
+    /// it started.
+    async fn play_restoring(app: std::sync::Arc<super::App>, id: &str, cloud: std::path::PathBuf, hold: Option<std::sync::Arc<tokio::sync::Notify>>) -> super::Res<super::Launch> {
+        let ready = |_rid: String| async move {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&cloud).unwrap();
+            f.write_all(b"restored\n").unwrap();
+            if let Some(h) = hold {
+                h.notified().await;
+            }
+            None
+        };
+        super::claim_then_start(&app, id, ready, |_claim| Ok(super::Launch::Started)).await
+    }
+
+    fn restores(cloud: &std::path::Path) -> usize {
+        std::fs::read_to_string(cloud).map(|s| s.lines().count()).unwrap_or(0)
+    }
+
+    #[tokio::test]
+    async fn play_of_a_running_game_restores_no_save() {
+        let (dir, app) = control_library("r4-running");
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        app.running.lock().unwrap().insert("r4alpha".into(), tx);
+        let cloud = dir.join("cloud-restore.txt");
+        let now = play_restoring(std::sync::Arc::new(app), "r4alpha", cloud.clone(), None).await.unwrap();
+        assert_eq!(now, super::Launch::Running("r4alpha".into()));
+        assert_eq!(restores(&cloud), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn play_of_another_game_of_a_running_recomp_restores_no_save() {
+        let (dir, mut app) = control_library("r4-other");
+        std::fs::create_dir_all(dir.join("r4box")).unwrap();
+        app.lib.get_mut().unwrap().installed.insert("r4box".into(), installed_at("R4box", "v1", dir.join("r4box").to_str().unwrap()));
+        std::fs::create_dir_all(dir.join("cache")).unwrap();
+        let cat = serde_json::json!({"apps": [{"id": "r4box", "games": [{"id": "one", "name": "One"}, {"id": "two", "name": "Two"}]}]});
+        std::fs::write(dir.join("cache/pc-catalog.json"), cat.to_string()).unwrap();
+        assert_eq!(super::recomp_of(&app, "r4box--two"), "r4box");
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        app.running.lock().unwrap().insert("r4box".into(), tx);
+        super::PLAYING_GAME.lock().unwrap().get_or_insert_with(std::collections::HashMap::new).insert("r4box".into(), "r4box--one".into());
+        let cloud = dir.join("cloud-restore.txt");
+        let now = play_restoring(std::sync::Arc::new(app), "r4box--two", cloud.clone(), None).await.unwrap();
+        assert_eq!(now, super::Launch::Running("r4box--one".into()));
+        assert_eq!(super::play_answer("r4box--two", "r4box", Ok(now)).unwrap_err().code, "busy");
+        assert_eq!(restores(&cloud), 0);
+        super::PLAYING_GAME.lock().unwrap().as_mut().unwrap().remove("r4box");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_second_play_while_the_first_gets_ready_restores_no_save() {
+        let (dir, app) = control_library("r4-second");
+        let app = std::sync::Arc::new(app);
+        let cloud = dir.join("cloud-restore.txt");
+        let hold = std::sync::Arc::new(tokio::sync::Notify::new());
+        let first = tokio::spawn(play_restoring(app.clone(), "r4second", cloud.clone(), Some(hold.clone())));
+        while restores(&cloud) == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let second = play_restoring(app.clone(), "r4second", cloud.clone(), None).await.unwrap();
+        assert_eq!(second, super::Launch::Starting("r4second".into()));
+        assert_eq!(restores(&cloud), 1);
+        hold.notify_one();
+        assert_eq!(first.await.unwrap().unwrap(), super::Launch::Started);
+        // Its claim is let go once it started (here, as it says so).
+        assert_eq!(play_restoring(app, "r4second", cloud.clone(), None).await.unwrap(), super::Launch::Started);
+        assert_eq!(restores(&cloud), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn of_many_plays_at_once_one_gets_ready_and_starts() {
+        let (dir, app) = control_library("r4-many");
+        let app = std::sync::Arc::new(app);
+        let cloud = dir.join("cloud-restore.txt");
+        let hold = std::sync::Arc::new(tokio::sync::Notify::new());
+        let gate = std::sync::Arc::new(tokio::sync::Barrier::new(8));
+        let plays: Vec<_> = (0..8)
+            .map(|_| {
+                let (app, cloud, hold, gate) = (app.clone(), cloud.clone(), hold.clone(), gate.clone());
+                tokio::spawn(async move {
+                    gate.wait().await;
+                    play_restoring(app, "r4many", cloud, Some(hold)).await
+                })
+            })
+            .collect();
+        // The one that claimed waits in getting ready until the others have answered.
+        let others_answered = async {
+            while plays.iter().filter(|p| p.is_finished()).count() < 7 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), others_answered).await.expect("more than one Play got ready");
+        hold.notify_one();
+        let mut answers = vec![];
+        for p in plays {
+            answers.push(p.await.unwrap().unwrap());
+        }
+        assert_eq!(answers.iter().filter(|a| **a == super::Launch::Started).count(), 1);
+        assert_eq!(answers.iter().filter(|a| **a == super::Launch::Starting("r4many".into())).count(), 7);
+        assert_eq!(restores(&cloud), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_play_from_the_api_turned_off_while_it_got_ready_starts_nothing() {
+        // Looked at right before the start: once its API is off, Play stops there.
+        let off = super::control::Off::default();
+        let by = super::PlayBy::Api(off.clone());
+        assert!(!super::turned_off(&by));
+        off.turn_off();
+        assert!(super::turned_off(&by));
+        assert!(!super::turned_off(&super::PlayBy::Player));
+        assert_eq!(super::play_answer("alpha", "alpha", Ok(super::Launch::Off)).unwrap_err().status, 503);
+    }
+
+    // What Play answers comes from the start itself: it claims the recomp's start, or finds it
+    // running or starting already, with which of its games.
+
+    #[test]
+    fn a_second_play_while_the_first_is_starting_does_nothing() {
+        let (dir, app) = control_library("claim");
+        let first = super::claim_start(&app, "claimbox", "claimbox--two").ok();
+        assert!(first.is_some());
+        assert_eq!(super::claim_start(&app, "claimbox", "claimbox--two").err(), Some(super::Launch::Starting("claimbox--two".into())));
+        drop(first);
+        assert!(super::claim_start(&app, "claimbox", "claimbox--two").is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn of_many_plays_at_once_one_starts_the_game() {
+        let (dir, app) = control_library("dup");
+        let app = std::sync::Arc::new(app);
+        let gate = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let claims: Vec<_> = (0..8)
+            .map(|_| {
+                let (app, gate) = (app.clone(), gate.clone());
+                std::thread::spawn(move || {
+                    gate.wait();
+                    super::claim_start(&app, "dupbox", "dupbox")
+                })
+            })
+            .collect();
+        let answers: Vec<_> = claims.into_iter().map(|c| c.join().unwrap()).collect();
+        assert_eq!(answers.iter().filter(|a| a.is_ok()).count(), 1);
+        for a in answers.iter().filter_map(|a| a.as_ref().err()) {
+            assert_eq!(a, &super::Launch::Starting("dupbox".into()));
+            let v = super::play_answer("dupbox", "dupbox", Ok(super::Launch::Starting("dupbox".into()))).unwrap();
+            assert_eq!((v["started"].clone(), v["result"].clone()), (serde_json::json!(false), serde_json::json!("already_starting")));
+        }
+        drop(answers);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn play_of_one_game_while_another_of_its_recomp_runs_is_refused() {
+        let (dir, app) = control_library("collection");
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        app.running.lock().unwrap().insert("colbox".into(), tx);
+        super::PLAYING_GAME.lock().unwrap().get_or_insert_with(std::collections::HashMap::new).insert("colbox".into(), "colbox--one".into());
+        let now = super::claim_start(&app, "colbox", "colbox--two").err().unwrap();
+        assert_eq!(now, super::Launch::Running("colbox--one".into()));
+        // colbox--two didn't start, and the answer doesn't say it did.
+        let refused = super::play_answer("colbox--two", "colbox", Ok(now)).unwrap_err();
+        assert_eq!((refused.status, refused.code), (409, "busy"));
+        assert!(refused.message.contains("colbox--one"));
+        // The game that is running: already running, not started.
+        let same = super::play_answer("colbox--one", "colbox", Ok(super::Launch::Running("colbox--one".into()))).unwrap();
+        assert_eq!((same["started"].clone(), same["already_running"].clone()), (serde_json::json!(false), serde_json::json!(true)));
+        super::PLAYING_GAME.lock().unwrap().as_mut().unwrap().remove("colbox");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn play_answers_started_only_when_it_started() {
+        let v = super::play_answer("alpha", "alpha", Ok(super::Launch::Started)).unwrap();
+        assert_eq!((v["started"].clone(), v["already_running"].clone(), v["result"].clone()), (serde_json::json!(true), serde_json::json!(false), serde_json::json!("started")));
+        let setup = super::play_answer("alpha", "alpha", Ok(super::Launch::NeedsSetup("Its setup has to run first.".into()))).unwrap_err();
+        assert_eq!((setup.status, setup.code), (409, "needs_setup"));
+        let copy = super::play_answer("alpha", "alpha", Err(super::Error::Msg("NEED_COPY|Disc|a.iso".into()))).unwrap_err();
+        assert_eq!((copy.status, copy.code), (409, "needs_setup"));
+        let failed = super::play_answer("alpha", "alpha", Err(super::Error::Msg("Couldn't start it".into()))).unwrap_err();
+        assert_eq!((failed.status, failed.code), (422, "play_failed"));
+    }
+
+    // The Local control switch, with the real server and a Library that can't be saved.
+
+    struct NoGames;
+
+    impl super::control::Launcher for NoGames {
+        fn status(&self) -> serde_json::Value {
+            serde_json::json!({"games": [], "running": []})
+        }
+
+        fn play(&self, _: String, _: super::control::Off) -> super::control::PlayResult {
+            Box::pin(async { Ok(serde_json::json!({})) })
+        }
+    }
+
+    fn no_games() -> std::sync::Arc<dyn super::control::Launcher> {
+        std::sync::Arc::new(NoGames)
+    }
+
+    /// The Library can't be saved any more: its temp file's name is taken by a folder.
+    fn break_saving(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir.join("library.json.tmp")).unwrap();
+    }
+
+    fn saved_setting(dir: &std::path::Path) -> Option<bool> {
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("library.json")).ok()?).ok()?;
+        v["settings"]["control_api"].as_bool()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn turning_local_control_on_saves_it_and_starts_it() {
+        let (dir, app) = control_library("switch-on");
+        let mut now = super::ControlNow::default();
+        let done = super::control_switch(&app, &mut now, true, no_games).await;
+        assert!(done.on && done.unsaved.is_none());
+        assert!(now.server.is_some() && super::control::endpoint_file(&dir).is_file());
+        assert_eq!(saved_setting(&dir), Some(true));
+        super::control_switch(&app, &mut now, false, no_games).await;
+        assert_eq!(saved_setting(&dir), Some(false));
+        assert!(now.server.is_none() && !super::control::endpoint_file(&dir).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn turning_local_control_on_when_it_cant_be_saved_leaves_it_off() {
+        let (dir, app) = control_library("switch-unsaved-on");
+        break_saving(&dir);
+        let mut now = super::ControlNow::default();
+        let done = super::control_switch(&app, &mut now, true, no_games).await;
+        assert!(!done.on);
+        assert!(done.unsaved.is_some());
+        // Not running, nothing for a script to find, and the setting here says off.
+        assert!(now.server.is_none());
+        assert!(!super::control::endpoint_file(&dir).exists());
+        assert!(!app.lib.lock().unwrap().settings.control_api);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn turning_local_control_off_when_it_cant_be_saved_still_stops_it() {
+        let (dir, app) = control_library("switch-unsaved-off");
+        let mut now = super::ControlNow::default();
+        assert!(super::control_switch(&app, &mut now, true, no_games).await.on);
+        break_saving(&dir);
+        let done = super::control_switch(&app, &mut now, false, no_games).await;
+        assert!(!done.on);
+        assert!(done.unsaved.is_some(), "the answer says the opt-out wasn't saved");
+        assert!(now.server.is_none());
+        assert!(!super::control::endpoint_file(&dir).exists());
+        // On disk it's still on (the save failed); here it's off, so the next save stores off.
+        assert_eq!(saved_setting(&dir), Some(true));
+        assert!(!app.lib.lock().unwrap().settings.control_api);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn turning_local_control_off_with_a_play_stuck_says_so_until_it_ends() {
+        // A Play stuck past the real five seconds turning it off waits: still tracked, shown as
+        // still ending, and its game never starts, though it's turned on again meanwhile.
+        let (dir, app) = control_library("switch-stuck");
+        let stuck = std::sync::Arc::new(super::control::tests::Stuck::default());
+        let _let_go = super::control::tests::LetGo(stuck.clone());
+        let launcher = || -> std::sync::Arc<dyn super::control::Launcher> { std::sync::Arc::new(stuck.clone()) };
+        let mut now = super::ControlNow::default();
+        assert!(super::control_switch(&app, &mut now, true, launcher).await.on);
+        let asked = super::control::tests::play_on(now.server.as_ref().unwrap(), &dir).await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), stuck.entered.notified()).await.expect("Play didn't start getting ready");
+        let off = super::control_switch(&app, &mut now, false, launcher).await;
+        assert!(!off.on && now.server.is_none());
+        assert_eq!(now.ending.len(), 1, "the stuck Play is kept, not let go");
+        super::control_publish(&mut now);
+        assert_eq!(super::control_state()["stopping"], true);
+        assert!(super::control_switch(&app, &mut now, true, launcher).await.on);
+        stuck.let_go();
+        let ended = async {
+            while super::control_state()["stopping"] == true {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), ended).await.expect("it never ended");
+        assert_ne!(asked.await.unwrap().0, 200);
+        assert_eq!(stuck.starts(), (1, 0), "a game started after Local control was turned off");
+        super::control_publish(&mut now);
+        assert!(now.ending.is_empty());
+        super::control_switch(&app, &mut now, false, launcher).await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn control_status_lists_the_library_without_paths() {
+        let (dir, app) = control_library("status");
+        let v = super::control_status(&app);
+        let ids: Vec<&str> = v["games"].as_array().unwrap().iter().map(|g| g["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec!["alpha", "gone"]);
+        assert_eq!(v["games"][1]["missing"], true);
+        assert!(!v.to_string().contains(dir.to_str().unwrap()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn installed_at(name: &str, tag: &str, path: &str) -> super::Installed {
+        let id = name.to_ascii_lowercase();
+        super::Installed { id, name: name.into(), tag: tag.into(), path: path.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn control_status_names_the_game_without_its_folder() {
+        let g = installed_at("Alpha Recomp", "v1.2", "/home/someone/Secret Games/alpha");
+        let v = super::control_game("alpha", &g, &[], &["alpha".to_string()], &[]);
+        assert_eq!(v, serde_json::json!({"id": "alpha", "name": "Alpha Recomp", "version": "v1.2", "running": true, "missing": false}));
+        assert!(!v.to_string().contains("Secret Games"));
+    }
+
+    #[test]
+    fn control_status_marks_a_missing_game() {
+        let g = installed_at("Beta", "v2", "/mnt/usb/beta");
+        let v = super::control_game("beta", &g, &[], &[], &["beta".to_string()]);
+        assert_eq!((v["running"].clone(), v["missing"].clone()), (serde_json::json!(false), serde_json::json!(true)));
+    }
+
+    #[test]
+    fn control_status_lists_each_game_of_a_recomp_by_its_full_id() {
+        let g = installed_at("Collection", "v3", "/games/collection");
+        let games = vec![
+            super::games::Game { id: "one".into(), name: "One".into(), ..Default::default() },
+            super::games::Game { id: "two".into(), name: "Two".into(), ..Default::default() },
+        ];
+        let running = vec!["box".to_string(), "box--two".to_string()];
+        let v = super::control_game("box", &g, &games, &running, &[]);
+        assert_eq!(v["games"], serde_json::json!([{"id": "box--one", "name": "One", "running": false}, {"id": "box--two", "name": "Two", "running": true}]));
     }
 }

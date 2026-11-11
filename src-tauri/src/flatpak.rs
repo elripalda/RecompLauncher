@@ -141,8 +141,9 @@ pub fn installed(id: &str) -> bool {
 }
 
 /// Installs the bundle for this user, with what it needs from its usual place (Flathub, for most).
-/// What Flatpak said last when it didn't.
-pub fn install(bundle: &Path) -> Result<(), String> {
+/// What Flatpak said last when it didn't. Only for the player's Play (`MayInstall`): the control
+/// API's never installs.
+pub fn install(bundle: &Path, _: &crate::MayInstall) -> Result<(), String> {
     let out = std_cmd().args(["install", "--user", "--noninteractive", "-y", "--bundle"]).arg(bundle).output().map_err(|e| e.to_string())?;
     if out.status.success() {
         return Ok(());
