@@ -93,20 +93,23 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
     let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
-    // NVIDIA's driver is where the web view's default renderer most often leaves the window
-    // blank, so it gets the one that works everywhere. An AppImage used to get it too, but on a
-    // working GPU that made every frame far more expensive (the hero animation burned ~90% CPU
-    // on a desktop); keep the safe path for AppImages only where there is no render node to use.
+    // On NVIDIA under Wayland, shared-memory frame transfer avoids blank DMA-BUF frames while
+    // keeping GPU rendering. Disabling the renderer entirely makes scrolling costly in newer WebKit.
     let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
     let appimage = std::env::var_os("APPIMAGE").is_some();
     // The player's choice in Settings → Appearance wins over the guess; their own variables win over both.
     let mode = data.map(|d| graphics_mode(&d)).unwrap_or_default();
-    let safe_way = graphics_safe_way(&mode, gamescope, from_steam, nvidia, appimage, has_hardware_rendering());
-    if safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    let hardware = has_hardware_rendering();
+    let wayland = (std::env::var_os("WAYLAND_DISPLAY").is_some() || var("XDG_SESSION_TYPE").eq_ignore_ascii_case("wayland")) && !var("GDK_BACKEND").starts_with("x11");
+    let shared_memory = graphics_shared_memory(&mode, gamescope, from_steam, nvidia, wayland, hardware);
+    if shared_memory && std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none() {
+        std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+    }
+    let safe_way = graphics_safe_way(&mode, gamescope, from_steam, nvidia, appimage, hardware);
+    if !shared_memory && safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    let wayland = (std::env::var_os("WAYLAND_DISPLAY").is_some() || var("XDG_SESSION_TYPE").eq_ignore_ascii_case("wayland")) && !var("GDK_BACKEND").starts_with("x11");
-    if compositing_off(&mode, nvidia, wayland) && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+    if !shared_memory && compositing_off(&mode, nvidia, wayland) && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
     if std::env::var_os("RL_STEAM_CLEAN").is_some() {
@@ -195,6 +198,11 @@ fn compositing_off(mode: &str, nvidia: bool, wayland: bool) -> bool {
         "safe" => true,
         _ => nvidia && wayland,
     }
+}
+
+#[cfg(any(test, target_os = "linux"))]
+fn graphics_shared_memory(mode: &str, gamescope: bool, from_steam: bool, nvidia: bool, wayland: bool, hardware: bool) -> bool {
+    mode.is_empty() && !gamescope && !from_steam && nvidia && wayland && hardware
 }
 
 /// Whether the web view can play a sound. It plays through GStreamer: an AppImage (run as one or
@@ -454,6 +462,30 @@ mod tests {
         assert!(!compositing_off("", false, true));
         assert!(!compositing_off("fast", true, true));
         assert!(compositing_off("safe", false, false));
+    }
+
+    #[test]
+    fn desktop_nvidia_wayland_keeps_gpu_rendering_with_shared_memory() {
+        assert!(graphics_shared_memory("", false, false, true, true, true));
+    }
+
+    #[test]
+    fn explicit_graphics_modes_do_not_select_the_auto_shared_memory_path() {
+        assert!(!graphics_shared_memory("fast", false, false, true, true, true));
+        assert!(!graphics_shared_memory("safe", false, false, true, true, true));
+    }
+
+    #[test]
+    fn steam_and_gamescope_keep_their_existing_renderer() {
+        assert!(!graphics_shared_memory("", true, false, true, true, true));
+        assert!(!graphics_shared_memory("", false, true, true, true, true));
+    }
+
+    #[test]
+    fn shared_memory_gpu_path_requires_nvidia_wayland_and_a_render_node() {
+        assert!(!graphics_shared_memory("", false, false, false, true, true));
+        assert!(!graphics_shared_memory("", false, false, true, false, true));
+        assert!(!graphics_shared_memory("", false, false, true, true, false));
     }
 
     #[test]

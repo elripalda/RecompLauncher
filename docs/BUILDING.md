@@ -25,6 +25,11 @@ npm test           # the core's tests
 npm run build      # installer for this system
 ```
 
+On NVIDIA under Wayland, Auto graphics mode renders on the GPU and transfers frames through
+shared memory. This avoids blank DMA-BUF frames without forcing software rendering. Safer mode
+still disables acceleration; Steam and Gamescope keep their existing renderer defaults. Explicit
+`WEBKIT_*` environment overrides take precedence over these defaults.
+
 On Windows, `npm run build` makes the installer in `src-tauri/target/release/bundle/nsis/`. The
 released installer also has RecompLauncher's own install screens; to add them, install
 [NSIS](https://nsis.sourceforge.io) (with its folder on your PATH) and run `python tools/brand-installer.py src-tauri/target/release`
