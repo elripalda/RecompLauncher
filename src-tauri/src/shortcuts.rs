@@ -250,7 +250,10 @@ pub fn add_shortcut(old: Option<&[u8]>, name: &str, exe: &str, start_dir: &str, 
         }
         if let Node::Map(list) = v {
             // Already there (same program and options): replace it so the name and art stay right.
-            if let Some(slot) = list.iter_mut().find(|(_, e)| e.str("Exe") == quoted && e.str("LaunchOptions") == launch) {
+            // Or the same game added the older way (the launcher with --play, before its launch
+            // script on Linux): replaced too, so it isn't there twice.
+            let same_game = |e: &Node| e.str("AppName") == name && e.str("LaunchOptions").contains("--play ") && launch.is_empty();
+            if let Some(slot) = list.iter_mut().find(|(_, e)| (e.str("Exe") == quoted && e.str("LaunchOptions") == launch) || same_game(e)) {
                 slot.1 = entry;
             } else {
                 let next = list.iter().filter_map(|(k, _)| k.parse::<usize>().ok()).max().map(|n| n + 1).unwrap_or(0);
@@ -479,8 +482,46 @@ pub fn start_steam(steam: &Path) {
 
 /// Write the game into every Steam account's shortcuts and art folder. `art` is (suffix, bytes,
 /// extension): "p" the poster, "_hero" the wide banner, "" the small wide header, "_logo".
-pub fn write_to_steam(steam: &Path, name: &str, id: &str, icon: &str, art: &[(&str, Vec<u8>, &str)]) -> Result<usize, Error> {
+pub fn write_to_steam(steam: &Path, name: &str, id: &str, icon: &str, art: &[(&str, Vec<u8>, &str)], data: &Path) -> Result<usize, Error> {
+    // On Linux from the AppImage, Steam starts a small script for the game instead (see
+    // steam_script): the AppImage would drop what Steam's overlay and capture need.
+    if let Some(script) = steam_script(data, name, id) {
+        return write_entry_with(steam, name, (script.clone(), vec![]), "", icon, art);
+    }
     write_entry(steam, name, &format!("--play {id}"), icon, art)
+}
+
+/// Linux, AppImage: the AppImage runtime drops LD_PRELOAD and Vulkan's layer variables on its way
+/// in, so Steam's overlay never reaches the game, and Steam Link and Remote Play find no window to
+/// stream (a black screen). The shortcut runs this script, which keeps Steam's overlay aside in
+/// RL_STEAM_OVERLAY (the launcher hands it to the game) and then asks the launcher to play it.
+/// None elsewhere (Windows, a Flatpak, a .deb run): the shortcut starts the launcher as before.
+pub fn steam_script(data: &Path, name: &str, id: &str) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") || crate::flatpak::sandboxed() {
+        return None;
+    }
+    let appimage = std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file())?;
+    write_steam_script(data, name, id, &appimage).ok()
+}
+
+pub fn write_steam_script(data: &Path, name: &str, id: &str, appimage: &Path) -> std::io::Result<PathBuf> {
+    let dir = data.join("steam-launch");
+    fs::create_dir_all(&dir)?;
+    let file = dir.join(format!("{}.sh", crate::library::folder_name(id)));
+    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    let body = format!(
+        "#!/bin/sh\n# {name} from Steam, through RecompLauncher. Made by the launcher; it's made again when the game\n# is added to Steam again.\n# The AppImage drops Steam's LD_PRELOAD and Vulkan layer variables on its way in, so Steam's\n# overlay is kept aside here for the game (Steam Link and Remote Play find its window through it).\nRL_STEAM_OVERLAY=\"$(printf '%s' \"$LD_PRELOAD\" | tr ': ' '\\n\\n' | grep gameoverlayrenderer | tr '\\n' ' ')\"\nexport RL_STEAM_OVERLAY\nexec {} --play {} \"$@\"\n",
+        q(&appimage.to_string_lossy()),
+        q(id),
+        name = name.replace(['\n', '\r'], " "),
+    );
+    fs::write(&file, body)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(file)
 }
 
 /// RecompLauncher itself in Steam, opening in Big Picture mode (for a Steam Deck's Gaming Mode, or
@@ -600,7 +641,11 @@ pub fn is_handheld(cpu: &str) -> bool {
 }
 
 fn write_entry(steam: &Path, name: &str, launch: &str, icon: &str, art: &[(&str, Vec<u8>, &str)]) -> Result<usize, Error> {
-    let (exe, pre) = start_command();
+    write_entry_with(steam, name, start_command(), launch, icon, art)
+}
+
+fn write_entry_with(steam: &Path, name: &str, start: (PathBuf, Vec<String>), launch: &str, icon: &str, art: &[(&str, Vec<u8>, &str)]) -> Result<usize, Error> {
+    let (exe, pre) = start;
     let exe_s = exe.to_string_lossy().to_string();
     let dir = exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     let launch = with_start_args(&pre, launch);
@@ -729,5 +774,37 @@ app-path=/var/lib/flatpak/app/com.recomplauncher.RecompLauncher/x86_64/stable/9/
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].1.str("AppName"), "Other");
         assert_eq!(list[0].1.get("Big"), Some(&Node::U64(1 << 40)));
+    }
+
+    #[test]
+    fn steam_starts_a_script_that_keeps_its_overlay_for_the_game() {
+        let d = std::env::temp_dir().join(format!("rl-steam-script-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        let f = write_steam_script(&d, "It's a Game", "metroidprime2port", Path::new("/home/me/Apps/Recomp Launcher's.AppImage")).unwrap();
+        let body = fs::read_to_string(&f).unwrap();
+        assert!(body.starts_with("#!/bin/sh\n"));
+        assert!(body.contains("grep gameoverlayrenderer"));
+        assert!(body.contains("export RL_STEAM_OVERLAY"));
+        // Quoted for the shell, even with a space and an apostrophe in the path.
+        assert!(body.contains("exec '/home/me/Apps/Recomp Launcher'\\''s.AppImage' --play 'metroidprime2port' \"$@\""), "{body}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o755);
+            // It runs: the overlay out of a mixed preload list is what reaches the program.
+            let fake = d.join("fake.sh");
+            fs::write(&fake, "#!/bin/sh\necho \"$RL_STEAM_OVERLAY|$1|$2\"\n").unwrap();
+            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+            let s2 = write_steam_script(&d, "Game", "g", &fake).unwrap();
+            let out = std::process::Command::new(&s2).env("LD_PRELOAD", "/x/libfoo.so:/steam/ubuntu12_64/gameoverlayrenderer.so").output().unwrap();
+            assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "/steam/ubuntu12_64/gameoverlayrenderer.so |--play|g");
+        }
+        // Added again the new way, the older entry for the same game is replaced, not doubled.
+        let (old, _) = add_shortcut(None, "Game", "/apps/RL.AppImage", "/apps", "--play g", "");
+        let (both, _) = add_shortcut(Some(&old), "Game", &f.to_string_lossy(), "/x", "", "");
+        let top = parse_vdf(&both).unwrap();
+        let Node::Map(list) = &top[0].1 else { panic!() };
+        assert_eq!(list.len(), 1);
+        let _ = fs::remove_dir_all(&d);
     }
 }

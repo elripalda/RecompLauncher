@@ -831,6 +831,16 @@ fn handle(app: &AppHandle, game: &str, m: &Value) {
                 }
                 ok
             });
+            // Dreamcast lists work through events for now: the launcher reads no Dreamcast memory
+            // yet, so a list with memory rules is refused (its events still unlock).
+            let list = list.filter(|l| {
+                let why = memory_refused(l);
+                if let Some(why) = &why {
+                    log_line(game, "!", why);
+                    live(|x| { if let Some(e) = x.get_mut(game) { e.paused = Some(why.clone()); } });
+                }
+                why.is_none()
+            });
             if let Some(list) = list {
                 let rules: Vec<Value> = entries(&list).into_iter().filter_map(|a| { let tr = a.get("trigger").and_then(Value::as_str).filter(|s| !s.trim().is_empty())?; Some(json!({"id": num(&a, "id")?, "trigger": tr})) }).collect();
                 let boards = list.get("leaderboards").cloned().filter(|b| b.as_array().map(|a| !a.is_empty()).unwrap_or(false));
@@ -1177,6 +1187,18 @@ fn completion_toasts(app: &AppHandle, game: &str, v: &Value) {
             toast(app, json!({"title": title, "event": true}));
         }
     }
+}
+
+/// The consoles a list can say it's for. Dreamcast ("dc") lists unlock through events only.
+pub const CONSOLES: [&str; 2] = ["x360", "dc"];
+const EVENTS_ONLY: [&str; 1] = ["dc"];
+
+/// Why a list's memory rules can't be used here, when they can't: a console the launcher reads no
+/// memory for yet (Dreamcast).
+pub fn memory_refused(list: &Value) -> Option<String> {
+    let console = list.get("console").and_then(Value::as_str).unwrap_or("");
+    let has_rules = entries(list).iter().any(|a| a.get("trigger").and_then(Value::as_str).is_some_and(|t| !t.trim().is_empty()));
+    (EVENTS_ONLY.contains(&console) && has_rules).then(|| "Dreamcast achievements work through the game's events for now: memory rules aren't read on Dreamcast yet.".to_string())
 }
 
 fn game_name(app: &AppHandle, game: &str) -> String {
@@ -2499,6 +2521,17 @@ mod tests {
         assert_eq!(own.file_name().unwrap(), "4D5307E6.toml");
         assert!(rex_candidates(&watch(&d, Some("4d5307e6"))).iter().all(|p| p.file_name().unwrap() == "4D5307E6.toml"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn dreamcast_lists_unlock_through_events_only() {
+        let events = json!({"format": 1, "console": "dc", "achievements": [{"id": 1, "title": "A", "event": "boss_down"}]});
+        assert!(memory_refused(&events).is_none());
+        let memory = json!({"format": 1, "console": "dc", "achievements": [{"id": 1, "title": "A", "trigger": "0xH1234=1"}]});
+        assert!(memory_refused(&memory).unwrap().contains("Dreamcast"));
+        let x360 = json!({"format": 1, "console": "x360", "achievements": [{"id": 1, "title": "A", "trigger": "0xH1234=1"}]});
+        assert!(memory_refused(&x360).is_none());
+        assert!(CONSOLES.contains(&"dc"));
     }
 
     #[test]

@@ -53,6 +53,8 @@ struct Gate {
 
 static GATES: Mutex<Option<HashMap<String, Gate>>> = Mutex::new(None);
 static OFFLINE: AtomicBool = AtomicBool::new(false);
+/// The server answered, but with trouble (a 5xx or 429): it's busy, not this PC offline.
+static BUSY: AtomicBool = AtomicBool::new(false);
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static SALT: AtomicU64 = AtomicU64::new(0);
 
@@ -63,6 +65,12 @@ pub fn init(app: &AppHandle) {
 /// Is the server resting (it had trouble and isn't being asked right now)?
 pub fn offline() -> bool {
     OFFLINE.load(Ordering::Relaxed)
+}
+
+/// While resting: was it the server saying it's busy (it answered 5xx or 429), rather than no
+/// answer at all? The window then says the website is busy and the launcher is retrying.
+pub fn busy() -> bool {
+    OFFLINE.load(Ordering::Relaxed) && BUSY.load(Ordering::Relaxed)
 }
 
 /// A random number from 0 up to (not including) 1.
@@ -134,10 +142,11 @@ pub fn trouble_status(code: u16) -> bool {
     matches!(code, 403 | 408 | 429) || (500..600).contains(&code)
 }
 
-fn set_offline(v: bool) {
-    if OFFLINE.swap(v, Ordering::Relaxed) != v {
+fn set_offline(v: bool, answered: bool) {
+    let busy_changed = v && BUSY.swap(answered, Ordering::Relaxed) != answered;
+    if OFFLINE.swap(v, Ordering::Relaxed) != v || busy_changed {
         if let Some(app) = APP.get() {
-            let _ = app.emit("net", serde_json::json!({ "offline": v }));
+            let _ = app.emit("net", serde_json::json!({ "offline": v, "busy": v && answered }));
         }
     }
 }
@@ -178,7 +187,7 @@ fn went_well(url: &str) {
         }
         // Keep the indicator and its event ordered with the gate transition on other threads.
         if is_api(&h) {
-            set_offline(false);
+            set_offline(false, false);
         }
     }
 }
@@ -186,6 +195,11 @@ fn went_well(url: &str) {
 /// `started`: when the failed request was sent. Requests that were already on their way when an
 /// earlier failure was counted don't count again (an outage is one failure, not ten).
 fn went_badly(url: &str, after: Option<u64>, started: Instant) {
+    went_badly_as(url, after, started, false)
+}
+
+/// `answered`: the site sent a trouble status (busy), rather than no answer at all.
+fn went_badly_as(url: &str, after: Option<u64>, started: Instant, answered: bool) {
     let k = key(url);
     let secs = {
         let mut g = GATES.lock().unwrap();
@@ -214,7 +228,7 @@ fn went_badly(url: &str, after: Option<u64>, started: Instant) {
         // One hiccup does not mean Offline. Publish this while the gate is still locked so a
         // successful recovery cannot be followed by an older failure's delayed indicator update.
         if is_api(&k) && gate.fails >= 2 {
-            set_offline(true);
+            set_offline(true, answered);
         }
         secs
     };
@@ -255,6 +269,9 @@ pub fn forced() -> bool {
 /// The answer comes back whatever its status, for the caller to read.
 pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Result<reqwest::Response, crate::Error> {
     if !forced() && resting(url, player) {
+        if busy() && is_api(&key(url)) {
+            return Err(crate::Error::Net(format!("{} is busy, retrying in {}s. Using what's saved on this PC.", host(url), wait_left(url).max(1))));
+        }
         return Err(crate::Error::Net(format!("Can't reach {} right now. Using what's saved on this PC.", host(url))));
     }
     tried(url);
@@ -263,7 +280,7 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
         Ok(r) => {
             let code = r.status().as_u16();
             if trouble_status(code) {
-                went_badly(url, if matches!(code, 429 | 503) { retry_after(&r) } else { None }, started);
+                went_badly_as(url, if matches!(code, 429 | 503) { retry_after(&r) } else { None }, started, code == 429 || code >= 500);
             } else {
                 went_well(url);
             }
@@ -504,5 +521,128 @@ mod tests {
         assert!(resting(u, true));
         went_well(u);
         assert!(!resting(u, false));
+    }
+}
+
+// ---------- the proxy (Settings → Network) ----------
+
+/// Off, the system's (HTTPS_PROXY / ALL_PROXY / HTTP_PROXY), or the player's own address. Every
+/// request the launcher makes (the list, GitHub, downloads, the website) goes through it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Proxy {
+    Off,
+    #[default]
+    System,
+    Custom(reqwest::Url),
+}
+
+static PROXY: std::sync::RwLock<Option<Proxy>> = std::sync::RwLock::new(None);
+
+/// Applies the player's setting: "off", "system" (or empty) or "custom" with its address and
+/// optional user and password (put into the address, which is how proxies are told).
+pub fn set_proxy(mode: &str, url: &str, user: &str, pass: &str) -> Result<(), String> {
+    let p = parse_proxy(mode, url, user, pass)?;
+    *PROXY.write().unwrap() = Some(p);
+    Ok(())
+}
+
+pub fn parse_proxy(mode: &str, url: &str, user: &str, pass: &str) -> Result<Proxy, String> {
+    match mode {
+        "off" => Ok(Proxy::Off),
+        "" | "system" => Ok(Proxy::System),
+        "custom" => {
+            let url = url.trim();
+            let with_scheme = if url.contains("://") { url.to_string() } else { format!("http://{url}") };
+            let mut u = reqwest::Url::parse(&with_scheme).map_err(|_| "That isn't a proxy address. Write it like http://127.0.0.1:7890 or socks5://host:1080.".to_string())?;
+            if !matches!(u.scheme(), "http" | "https" | "socks5" | "socks5h") || u.host_str().is_none_or(str::is_empty) {
+                return Err("The proxy has to be an http, https or socks5 address, like http://127.0.0.1:7890.".into());
+            }
+            if !user.is_empty() {
+                let _ = u.set_username(user);
+                let _ = u.set_password(Some(pass).filter(|p| !p.is_empty()));
+            }
+            Ok(Proxy::Custom(u))
+        }
+        _ => Err("Pick Off, System or Custom.".into()),
+    }
+}
+
+/// The system's proxy, from the usual variables (the https one for https addresses).
+fn system_proxy(target: &reqwest::Url) -> Option<reqwest::Url> {
+    let var = |k: &str| std::env::var(k).ok().or_else(|| std::env::var(k.to_ascii_lowercase()).ok()).filter(|v| !v.trim().is_empty());
+    let no = var("NO_PROXY").unwrap_or_default();
+    let host = target.host_str().unwrap_or("");
+    if no.split(',').map(str::trim).any(|n| n == "*" || (!n.is_empty() && (host == n.trim_start_matches('.') || host.ends_with(&format!(".{}", n.trim_start_matches('.')))))) {
+        return None;
+    }
+    let raw = if target.scheme() == "https" { var("HTTPS_PROXY").or_else(|| var("ALL_PROXY")) } else { var("HTTP_PROXY").or_else(|| var("ALL_PROXY")) }?;
+    let raw = if raw.contains("://") { raw } else { format!("http://{raw}") };
+    reqwest::Url::parse(&raw).ok()
+}
+
+/// Where a request to `target` goes through, if anywhere: what the client asks for each request.
+pub fn proxy_for(target: &reqwest::Url) -> Option<reqwest::Url> {
+    if matches!(target.host_str(), Some("127.0.0.1" | "localhost" | "::1")) {
+        return None;
+    }
+    match PROXY.read().unwrap().clone().unwrap_or_default() {
+        Proxy::Off => None,
+        Proxy::System => system_proxy(target),
+        Proxy::Custom(u) => Some(u),
+    }
+}
+
+/// The proxy in use, without its password, for messages ("Couldn't reach the proxy 1.2.3.4:7890").
+pub fn proxy_shown() -> Option<String> {
+    let u = match PROXY.read().unwrap().clone().unwrap_or_default() {
+        Proxy::Off => return None,
+        Proxy::System => system_proxy(&reqwest::Url::parse("https://github.com").ok()?)?,
+        Proxy::Custom(u) => u,
+    };
+    Some(format!("{}:{}", u.host_str()?, u.port_or_known_default().unwrap_or(0)))
+}
+
+/// Every client the launcher makes asks this for its proxy.
+pub fn with_proxy(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    b.no_proxy().proxy(reqwest::Proxy::custom(proxy_for))
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::*;
+
+    #[test]
+    fn the_proxy_setting_reads_and_rejects_clearly() {
+        assert_eq!(parse_proxy("off", "", "", ""), Ok(Proxy::Off));
+        assert_eq!(parse_proxy("", "", "", ""), Ok(Proxy::System));
+        let Ok(Proxy::Custom(u)) = parse_proxy("custom", "127.0.0.1:7890", "me", "pw") else { panic!() };
+        assert_eq!(u.as_str(), "http://me:pw@127.0.0.1:7890/");
+        let Ok(Proxy::Custom(u)) = parse_proxy("custom", "socks5://10.0.0.2:1080", "", "") else { panic!() };
+        assert_eq!(u.scheme(), "socks5");
+        assert!(parse_proxy("custom", "ftp://x:21", "", "").unwrap_err().contains("http, https or socks5"));
+        assert!(parse_proxy("custom", "", "", "").is_err());
+        assert!(parse_proxy("custom", "http://", "", "").is_err());
+    }
+
+    #[test]
+    fn a_dead_proxy_fails_fast_with_its_address() {
+        // Nothing listens on this port: the request through it fails at once (not a hang), and
+        // the error names the proxy.
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = dead.local_addr().unwrap().port();
+        drop(dead);
+        set_proxy("custom", &format!("http://127.0.0.1:{port}"), "", "").unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let c = with_proxy(reqwest::Client::builder()).connect_timeout(Duration::from_secs(5)).build().unwrap();
+        let started = Instant::now();
+        let e = rt.block_on(c.get("https://example.invalid/").send()).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(6));
+        let msg = crate::Error::from(e).to_string();
+        assert!(msg.contains(&format!("127.0.0.1:{port}")), "{msg}");
+        set_proxy("system", "", "", "").unwrap();
+        // Off: never one, whatever the variables say.
+        set_proxy("off", "", "", "").unwrap();
+        assert_eq!(proxy_for(&reqwest::Url::parse("https://github.com").unwrap()), None);
+        set_proxy("system", "", "", "").unwrap();
     }
 }

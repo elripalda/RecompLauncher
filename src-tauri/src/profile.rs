@@ -21,6 +21,10 @@ pub struct Profile {
     pub inputs: Vec<crate::inputs::Input>,
     #[serde(skip)]
     pub input_paths: BTreeMap<String, PathBuf>,
+    /// Optional inputs this launcher skipped (a shared type or role it doesn't know, or DLSS on a PC
+    /// it doesn't apply to): their {input:...} arguments are left out instead of failing.
+    #[serde(skip)]
+    pub skipped_inputs: Vec<String>,
     /// The installed build's platform preference, supplied by the launcher, never a manifest.
     #[serde(skip)]
     pub windows_build: Option<bool>,

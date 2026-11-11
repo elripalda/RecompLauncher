@@ -20,15 +20,17 @@ function namedInputsShell(id, su, ns = {}, game = {}, tv = false) {
     : `<div class="su-in ni-layout"><div class="su-stage ni-art">${disc}<div class="drive"><i></i></div>${summary}</div><div class="su-r ni-content">${namedInputsView(id, su, ns, game)}</div></div>`;
 }
 function namedInputsView(id, su, ns = {}, game = {}) {
-  const rows = namedInputRows(su), required = rows.filter((r) => !r.optional);
+  // DLSS (a file the launcher fetches) never holds setup back: it's always in the optional group.
+  const rows = namedInputRows(su), required = rows.filter((r) => !r.optional && !r.runtime);
   const ready = required.filter((r) => r.path).length, complete = ready === required.length && !su.inputs_error;
   const error = ns.error || su.inputs_error;
   const group = (label, list) => list.length ? `<section class="ni-group" aria-label="${esc(t(label))}"><h3>${esc(t(label))}</h3><div class="ni-rows">${list.map((r) => {
+    if (r.runtime) return runtimeRow(r, ns);
     const status = r.path ? r.shared ? t('Already configured') : baseName(r.path) : t('Not selected');
     const button = (act, text, extra = '') => `<button type="button" class="btn sm" data-ni="${act}" data-input="${esc(r.id)}" aria-label="${esc(t(text) + ': ' + r.label)}" ${extra} ${ns.busy ? 'disabled' : ''}>${esc(t(text))}</button>`;
     return `<div class="ni-row${r.path ? ' selected' : ''}"><span class="ni-status" aria-label="${esc(r.path ? t('Selected') : t('Not selected'))}">${r.path ? CHECK : DISC_S}</span><div class="ni-name"><b>${esc(r.label)}</b><span title="${esc(r.shared ? t('Kept on this PC for other games that need them') : r.path || '')}">${esc(status)}</span></div><div class="ni-actions">${r.file ? button('file', r.path ? 'Change' : r.folder ? 'Choose file' : 'Choose') : ''}${r.folder ? button('folder', r.path && !r.file ? 'Change' : 'Choose folder') : ''}${r.path && r.id !== 'game' && r.id !== 'legacy-update' ? button(r.shared ? 'remove-key' : 'clear', 'Remove') : ''}</div></div>`;
   }).join('')}</div></section>` : '';
-  const optional = rows.filter((r) => r.optional), added = optional.filter((r) => r.path).length;
+  const optional = rows.filter((r) => r.optional || r.runtime), added = optional.filter((r) => r.path).length;
   const optionalLabel = optional.every((r) => r.role === 'dlc') ? t('Optional DLC') : t('Optional content');
   const heading = game.game || game.name;
   const multiple = rows.filter((r) => r.role === 'disc').length > 1;
@@ -37,6 +39,34 @@ function namedInputsView(id, su, ns = {}, game = {}) {
     ${ns.confirm ? `<div class="ni-notice"><p>${esc(t('Removing shared keys affects every game that uses them. Your original file stays where it is.'))}</p><button type="button" class="btn sm" data-ni="remove-confirm" data-input="${esc(ns.confirm)}">${esc(t('Remove shared keys'))}</button><button type="button" class="btn sm" data-ni="cancel-remove">${esc(t('Keep'))}</button></div>` : ''}
     ${error ? `<p class="su-err" role="alert">${esc(t(error))}</p>` : ''}
     <div class="ni-footer"><p>${esc(t('Optional content can be added later.'))}</p><button type="button" class="btn main" data-ni="run" ${!complete || ns.busy ? 'disabled' : ''}>${esc(t(ns.busy ? 'Working…' : 'Set up'))}</button></div>`;
+}
+// NVIDIA DLSS (a file the launcher fetches itself): nothing to choose. It shows where the file
+// comes from, its download, the game's own file when it ships one, and a switch to turn it off.
+function runtimeRow(r, ns) {
+  const d = ns.dlss || {};
+  const pct = d.total ? Math.floor(d.done / d.total * 100) : 0;
+  const status = r.ships ? t('Using the DLSS file this game ships')
+    : r.off ? t('Off for this game')
+      : r.path ? t('Downloaded from NVIDIA')
+        : d.failed ? t('Couldn\'t get NVIDIA\'s DLSS file. The game runs without it.')
+          : d.total ? tf('Downloading from NVIDIA {pct}%', { pct })
+            : t('Downloaded from NVIDIA');
+  const btn = (act, text) => `<button type="button" class="btn sm" data-ni="${act}" data-input="${esc(r.id)}" aria-label="${esc(t(text) + ': ' + r.label)}" ${ns.busy ? 'disabled' : ''}>${esc(t(text))}</button>`;
+  const actions = r.ships ? '' : r.off ? btn('dlss-on', 'Turn On') : `${d.failed && !r.path ? btn('dlss-retry', 'Try Again') : ''}${btn('dlss-off', 'Turn Off')}`;
+  const on = !!r.path || r.ships;
+  return `<div class="ni-row ni-runtime${on ? ' selected' : ''}${d.failed && !r.path && !r.off ? ' failed' : ''}"><span class="ni-status" aria-label="${esc(on ? t('Selected') : t('Not selected'))}">${on ? CHECK : DISC_S}</span><div class="ni-name"><b>${esc(r.label)}</b><span>${esc(status)}</span>${d.total && !r.path && !d.failed && !r.off ? `<i class="ni-bar" style="--p:${pct}%"></i>` : ''}</div><div class="ni-actions">${actions}</div></div>`;
+}
+// Fetches DLSS for a setup that wants it and hasn't got it yet: once per setup window, and again
+// from Try Again. A failure never stops setup.
+async function runtimeFetch(id, ns, redraw) {
+  const su = S.setup[id];
+  const r = su && (su.inputs || []).find((x) => x.runtime && !x.path && !x.off && !x.ships);
+  if (!r || ns.dlssStarted) return;
+  ns.dlssStarted = true; ns.dlss = { done: 0, total: 0 };
+  const off = await T.event.listen('dlss', ({ payload: p }) => { if (p && p.total) { ns.dlss = { done: p.done, total: p.total }; redraw(); } });
+  try { await invoke('dlss_fetch'); S.setup[id] = await invoke('game_setup', { id }); ns.dlss = {}; }
+  catch (e) { ns.dlss = { failed: true }; }
+  finally { off(); redraw(); }
 }
 async function namedInputsAction(id, act, input, ns) {
   if (ns.busy) return;
@@ -47,7 +77,11 @@ async function namedInputsAction(id, act, input, ns) {
   try {
     const su = S.setup[id], row = namedInputRows(su).find((r) => r.id === input);
     if (act === 'run') return 'run';
-    if (act === 'remove-confirm') {
+    if (act === 'dlss-off' || act === 'dlss-on') {
+      await invoke('dlss_set', { id, input, on: act === 'dlss-on' });
+    } else if (act === 'dlss-retry') {
+      ns.dlssStarted = false; ns.dlss = {}; ns.retry = true;
+    } else if (act === 'remove-confirm') {
       await invoke('setup_key_remove', { id, input }); ns.confirm = '';
     } else if (act === 'clear') {
       await invoke('setup_input_set', { id, input, path: null });
@@ -79,6 +113,7 @@ function namedSetup(id) {
     const game = byId(id) || { name: S.library[id]?.name || id };
     $('.ni-shell', scrim).innerHTML = namedInputsShell(id, S.setup[id], SU.named, game);
     $('.ni-scroll', scrim).scrollTop = scroll;
+    runtimeFetch(id, SU.named, draw);
   };
   scrim.addEventListener('click', async (e) => {
     const legacy = e.target.closest('[data-su]');

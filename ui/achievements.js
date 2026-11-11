@@ -2,6 +2,11 @@
 // Recomp Achievements: the game page's Achievements tab, with its dev tools. Only for accounts the
 // website lets in (test accounts for now): the tab doesn't show for anyone else. The core does the
 // channel, the toasts, the local store and the syncing (ach.rs).
+// A list's or a game's console by name ("dc" is Dreamcast, "x360" Xbox 360).
+function achConsole(c) {
+  const hit = (typeof MORE_CONSOLES !== 'undefined' ? MORE_CONSOLES : []).find(([k]) => k === c);
+  return hit ? hit[1] : c || '—';
+}
 (() => {
   const A = (S.ach = S.ach || { allowed: false, games: {}, log: {}, mem: {}, rule: {}, devOpen: false });
   A.discMsg = A.discMsg || {};
@@ -145,7 +150,7 @@
     const r = A.rule[id] || { text: '' };
     const live = d.live ? (d.connected ? t('Connected') : t('Running, not connected')) : t('Not running');
     return `<div class="card ach-dev"><div class="card-h"><h3>${esc(t('Developer Tools'))}</h3><span class="tag">${esc(live)}</span></div>
-      <p class="muted" style="margin:6px 0 14px">${esc(d.session ? tf('Session {id}', { id: d.session }) : t('A session starts when you press Play.'))}${d.hello ? ' · ' + esc(tf('SDK {sdk}, {console}', { sdk: d.hello.sdk, console: d.hello.console || '—' })) : ''}${d.found ? ' · ' + esc(tf('ReXGlue unlock file: {folder}', { folder: d.found })) : ''}</p>
+      <p class="muted" style="margin:6px 0 14px">${esc(d.session ? tf('Session {id}', { id: d.session }) : t('A session starts when you press Play.'))}${d.hello ? ' · ' + esc(tf('SDK {sdk}, {console}', { sdk: d.hello.sdk, console: achConsole(d.hello.console) })) : ''}${d.found ? ' · ' + esc(tf('ReXGlue unlock file: {folder}', { folder: d.found })) : ''}</p>
       <div class="ach-two">
         <div class="ach-tool"><b>${esc(t('Channel Log'))}</b><div class="ach-log" id="ach-log">${logLines(id)}</div></div>
         <div class="ach-tool"><b>${esc(t('Memory Viewer'))}</b>

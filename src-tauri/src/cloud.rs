@@ -190,6 +190,26 @@ async fn post(app: &AppHandle, a_: &str, body: Value, token: bool) -> Res<Value>
     answer(app, crate::net::send(req, &url, true).await?).await
 }
 
+// ---------- the saved list, kept with the account ----------
+
+/// The account's saved PC games (the website's library): {saved: [{id, at}]}. Installed games stay
+/// per PC; only the saved ("Not installed") list goes with the account.
+#[tauri::command]
+pub async fn library_pull(app: AppHandle) -> Res<Value> {
+    get(&app, &[("a", "library")]).await
+}
+
+/// Saves or unsaves games on the account: one (`game`), or up to 500 at once for the first merge.
+#[tauri::command]
+pub async fn library_push(app: AppHandle, games: Vec<String>, on: bool) -> Res<Value> {
+    let games: Vec<String> = games.into_iter().filter(|g| !g.is_empty() && g.len() <= 200).take(500).collect();
+    if games.is_empty() {
+        return Ok(json!({}));
+    }
+    let body = if games.len() == 1 { json!({ "game": games[0], "on": on }) } else { json!({ "games": games, "on": on }) };
+    post(&app, "library-save", body, true).await
+}
+
 // ---------- signing in ----------
 
 /// The sign-in that's waiting for the player to approve it on the website.
@@ -951,6 +971,16 @@ pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
         .find(|p| p.is_dir())
         .ok_or_else(|| Error::Msg("Its save folder isn't there yet. Play once first.".into()))?;
     crate::open_thing(&app, &p.to_string_lossy(), false)
+}
+
+/// Where the launcher keeps this game's save copies (the backups folder the player picked, or the
+/// launcher's own saves/<id>): not where the game itself saves.
+#[tauri::command]
+pub async fn saves_open_backups(app: AppHandle, id: String) -> Res<()> {
+    let st = app.state::<App>();
+    let d = saves::dir_of(&st.dir, &id);
+    std::fs::create_dir_all(&d).map_err(|e| Error::Msg(format!("Couldn't open the backups folder: {e}")))?;
+    crate::open_thing(&app, &d.to_string_lossy(), false)
 }
 
 // ---------- (0.9.1) games sent from the website, and betas ----------

@@ -504,13 +504,29 @@ pub fn is_local(st: &App, id: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn schema() -> Value {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs");
+        serde_json::from_str(&std::fs::read_to_string(root.join("recomplauncher.schema.json")).unwrap()).unwrap()
+    }
+
+    // The docs and the schema stay in step with the launcher (AGENTS.md): recomplauncher.com copies
+    // docs/recomplauncher.schema.json from main, so a feature that isn't in it doesn't exist there.
+
+    #[test]
+    fn the_schema_is_the_one_the_website_copies() {
+        let s = schema();
+        assert_eq!(s["$id"], "https://recomplauncher.com/schema/recomplauncher.json");
+        assert!(s["properties"].get("format").is_some());
+        assert!(s["properties"].get("start").is_some());
+    }
+
     #[test]
     fn the_schema_the_guide_and_the_checker_list_the_same_keys() {
         // Every top-level key the schema allows is known to the checker and described in the guide.
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs");
-        let schema: Value = serde_json::from_str(&std::fs::read_to_string(root.join("recomplauncher.schema.json")).unwrap()).unwrap();
+        let s = schema();
         let guide = std::fs::read_to_string(root.join("DEVELOPERS.md")).unwrap();
-        let props = schema["properties"].as_object().unwrap();
+        let props = s["properties"].as_object().unwrap();
         for k in props.keys() {
             assert!(TOP_KEYS.contains(&k.as_str()), "{k} is in the schema but not the checker");
             assert!(guide.contains(&format!("`{k}`")) || guide.contains(&format!("\"{k}\"")), "{k} is in the schema but not the guide");
@@ -518,11 +534,61 @@ mod tests {
         for k in TOP_KEYS {
             assert!(props.contains_key(*k), "{k} is in the checker but not the schema");
         }
-        // The games list as the schema has it: ids and names, the rest optional.
         let games = &props["games"]["items"];
         assert_eq!(games["required"], serde_json::json!(["id", "name"]));
         for f in ["id", "name", "args", "title_id", "inputs", "saves"] {
             assert!(games["properties"].get(f).is_some(), "games[].{f}");
+        }
+    }
+
+    #[test]
+    fn the_launchers_features_are_the_schemas() {
+        let s = schema();
+        let listed: std::collections::BTreeSet<&str> = s["definitions"]["launcherFeature"]["enum"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        let ours: std::collections::BTreeSet<&str> = crate::boot::FEATURES.iter().copied().collect();
+        assert_eq!(listed, ours, "boot.rs FEATURES and the schema's launcherFeature differ");
+    }
+
+    #[test]
+    fn the_shared_types_and_roles_are_the_schemas() {
+        let s = schema();
+        let input = &s["properties"]["inputs"]["items"]["properties"];
+        let list = |v: &Value| v["enum"].as_array().unwrap().iter().filter_map(Value::as_str).map(str::to_string).collect::<std::collections::BTreeSet<_>>();
+        let shared: std::collections::BTreeSet<String> = ["switch.prod-keys", "switch.title-keys", "wiiu.common-key"]
+            .iter()
+            .filter(|k| crate::inputs::key_name(k).is_some())
+            .map(|k| k.to_string())
+            .chain([crate::dlss::SHARED.to_string()])
+            .collect();
+        assert_eq!(list(&input["shared"]), shared);
+        assert_eq!(list(&input["role"]), crate::inputs::roles().iter().map(|r| r.to_string()).collect());
+    }
+
+    #[test]
+    fn every_field_a_developer_writes_is_in_the_schema() {
+        // Read from profile.rs itself, so a new field can't be added without one or the other.
+        const INTERNAL: [&str; 5] = ["input_paths", "skipped_inputs", "windows_build", "from_boot", "slider_vals"];
+        let src = include_str!("profile.rs");
+        let body = &src[src.find("pub struct Profile {").unwrap() + "pub struct Profile {".len()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        let mut attrs = String::new();
+        let props = schema()["properties"].as_object().unwrap().clone();
+        for line in body.lines().map(str::trim) {
+            if line.starts_with("#[") {
+                attrs.push_str(line);
+                continue;
+            }
+            let Some(rest) = line.strip_prefix("pub ") else { continue };
+            let name = rest.split(':').next().unwrap().trim();
+            let skipped = attrs.contains("serde(skip)");
+            let shown = attrs.split("rename = \"").nth(1).and_then(|r| r.split('"').next()).unwrap_or(name).to_string();
+            attrs.clear();
+            if skipped {
+                assert!(INTERNAL.contains(&name), "{name} is skipped by serde but not on the internal list");
+                continue;
+            }
+            assert!(!INTERNAL.contains(&name), "{name} is on the internal list but a developer can write it");
+            assert!(props.contains_key(&shown), "Profile.{name} isn't in docs/recomplauncher.schema.json");
         }
     }
 

@@ -11,7 +11,7 @@
     "inputs": {
       "type": "array",
       "maxItems": 32,
-      "description": "Named game/disc/DLC inputs and explicit shared-key requirements. See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
+      "description": "Named game/disc/DLC inputs, explicit shared-key requirements and NVIDIA DLSS (a file the launcher downloads from NVIDIA). See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
       "items": {
         "type": "object",
         "required": [
@@ -33,9 +33,11 @@
               "disc",
               "dlc",
               "update",
-              "key"
+              "key",
+              "runtime"
             ],
-            "default": "game"
+            "default": "game",
+            "description": "runtime: a file the launcher fetches itself (only with shared nvidia.dlss)."
           },
           "optional": {
             "type": "boolean",
@@ -45,8 +47,10 @@
             "enum": [
               "switch.prod-keys",
               "switch.title-keys",
-              "wiiu.common-key"
-            ]
+              "wiiu.common-key",
+              "nvidia.dlss"
+            ],
+            "description": "Shared across games, kept once by the launcher. nvidia.dlss is downloaded from NVIDIA on Windows and Linux PCs with an NVIDIA RTX card (first in RecompLauncher 0.90 Beta 37); launchers from then on skip optional inputs with a shared type or role they don't know."
           },
           "destination": {
             "type": "string",
@@ -94,7 +98,43 @@
             "if": {
               "required": [
                 "shared"
-              ]
+              ],
+              "properties": {
+                "shared": {
+                  "const": "nvidia.dlss"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "role"
+              ],
+              "properties": {
+                "role": {
+                  "const": "runtime"
+                }
+              },
+              "not": {
+                "required": [
+                  "formats"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "shared"
+              ],
+              "properties": {
+                "shared": {
+                  "enum": [
+                    "switch.prod-keys",
+                    "switch.title-keys",
+                    "wiiu.common-key"
+                  ]
+                }
+              }
             },
             "then": {
               "required": [
@@ -113,8 +153,17 @@
                   "formats"
                 ]
               }
+            }
+          },
+          {
+            "if": {
+              "not": {
+                "required": [
+                  "shared"
+                ]
+              }
             },
-            "else": {
+            "then": {
               "required": [
                 "formats"
               ],

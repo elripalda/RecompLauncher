@@ -1,4 +1,5 @@
-//! Named Easy Setup inputs. Scope is discs/DLC/game files and three shared key types only.
+//! Named Easy Setup inputs. Scope is discs/DLC/game files, three shared key types, and NVIDIA DLSS
+//! (nvidia.dlss, role runtime: a file the launcher fetches itself, approved by the maintainer).
 //! BIOS, firmware, fonts and generic shared-resource expansion are deliberately out of scope.
 use crate::{library::Installed, profile::Profile};
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,8 @@ use sha2::{Digest, Sha256};
 pub struct Input {
     pub id: String,
     pub label: String,
-    /// game, disc, dlc, update or key. Only affects grouping, never content verification.
+    /// game, disc, dlc, update, key or runtime (a file the launcher fetches itself: nvidia.dlss
+    /// only). Only affects grouping, never content verification.
     #[serde(default = "game_role")]
     pub role: String,
     #[serde(default)]
@@ -50,6 +52,41 @@ pub struct Row {
     pub file: bool,
     pub folder: bool,
     pub extensions: Vec<String>,
+    /// A file the launcher fetches itself (NVIDIA DLSS): no file to choose.
+    pub runtime: bool,
+    /// Turned off for this game by the player.
+    pub off: bool,
+    /// The game's release has its own file at the destination: that one is used, never replaced.
+    pub ships: bool,
+}
+
+const ROLES: [&str; 6] = ["game", "disc", "dlc", "update", "key", "runtime"];
+
+/// The roles an input can have (the schema lists the same ones).
+pub fn roles() -> &'static [&'static str] {
+    &ROLES
+}
+
+/// A shared type or role this launcher knows.
+fn known(i: &Input) -> bool {
+    ROLES.contains(&i.role.as_str()) && (i.shared.is_empty() || key_name(&i.shared).is_some() || i.shared == crate::dlss::SHARED)
+}
+
+/// What this launcher can't or won't use, taken out before anything else reads the profile: an
+/// optional input with a shared type or role it doesn't know (newer than this launcher), and DLSS
+/// on a PC it doesn't apply to. Their {input:...} arguments are left out. A required input it
+/// doesn't know stays, and fails validate as before.
+pub fn prepare(p: &mut Profile, dlss_applies: bool) {
+    let skip: Vec<String> = p.inputs.iter().filter(|i| i.optional && (!known(i) || i.shared == crate::dlss::SHARED && !dlss_applies)).map(|i| i.id.clone()).collect();
+    for id in &skip {
+        static SAID: std::sync::Mutex<Option<BTreeSet<String>>> = std::sync::Mutex::new(None);
+        let i = p.inputs.iter().find(|i| &i.id == id).cloned().unwrap_or_default();
+        if !known(&i) && SAID.lock().unwrap().get_or_insert_with(BTreeSet::new).insert(format!("{}|{}", i.shared, i.role)) {
+            crate::trail::note(format!("Setup: an optional input this launcher doesn't know ({} {}) is skipped", i.role, i.shared));
+        }
+    }
+    p.inputs.retain(|i| !skip.contains(&i.id));
+    p.skipped_inputs.extend(skip);
 }
 
 pub fn key_name(shared: &str) -> Option<&'static str> {
@@ -86,14 +123,20 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     let mut ids = BTreeSet::new();
     let mut destinations = BTreeSet::new();
     let mut shares = BTreeSet::new();
-    for i in &p.inputs {
-        if !i.shared.is_empty() && i.optional { return Err("Shared key requirements must be required or conditional, not optional features.".into()); }
+    for i in p.inputs.iter().filter(|i| !(i.optional && !known(i))) {
+        let dlss = i.shared == crate::dlss::SHARED;
+        if !i.shared.is_empty() && i.optional && !dlss { return Err("Shared key requirements must be required or conditional, not optional features.".into()); }
         if !id_ok(&i.id) || ["game", "legacy-update"].contains(&i.id.as_str()) && p.game.is_some() || !ids.insert(&i.id) || i.label.trim().is_empty() {
             return Err("Setup inputs need unique IDs and a label; game is reserved when the legacy game field is used.".into());
         }
-        if !["game", "disc", "dlc", "update", "key"].contains(&i.role.as_str()) { return Err("Unknown setup input role.".into()); }
-        if !i.shared.is_empty() && (key_name(&i.shared).is_none() || i.role != "key" || !shares.insert(&i.shared)) {
-            return Err("Shared setup inputs support only switch.prod-keys, switch.title-keys and wiiu.common-key, once each.".into());
+        if !ROLES.contains(&i.role.as_str()) { return Err("Unknown setup input role.".into()); }
+        // NVIDIA DLSS: role runtime (a file the launcher fetches itself), no formats, may be optional.
+        if dlss && (i.role != "runtime" || !i.formats.is_empty() || !shares.insert(&i.shared)) {
+            return Err("nvidia.dlss uses role runtime, no formats, and is declared once.".into());
+        }
+        if i.role == "runtime" && !dlss { return Err("The runtime role is only for nvidia.dlss.".into()); }
+        if !dlss && !i.shared.is_empty() && (key_name(&i.shared).is_none() || i.role != "key" || !shares.insert(&i.shared)) {
+            return Err("Shared setup inputs support only switch.prod-keys, switch.title-keys, wiiu.common-key and nvidia.dlss, once each.".into());
         }
         if i.role == "key" && i.shared.is_empty() { return Err("Key inputs must declare a supported shared key type.".into()); }
         if i.shared.is_empty() && i.formats.is_empty() { return Err("A game input must declare its accepted formats.".into()); }
@@ -116,13 +159,13 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     for i in &p.inputs {
         for f in &i.formats {
             for dep in &f.requires {
-                if !p.inputs.iter().any(|k| &k.id == dep && !k.shared.is_empty() && !k.optional) {
+                if !p.inputs.iter().any(|k| &k.id == dep && !k.shared.is_empty() && !k.optional && k.role == "key") {
                     return Err("Format dependencies must name a required shared key input in this profile.".into());
                 }
             }
         }
     }
-    let declarations: BTreeSet<_> = p.inputs.iter().map(|i| i.id.as_str()).collect();
+    let declarations: BTreeSet<_> = p.inputs.iter().map(|i| i.id.as_str()).chain(p.skipped_inputs.iter().map(String::as_str)).collect();
     let mut texts: Vec<&str> = p.start.iter().flat_map(|s| s.args.iter().chain(s.env.values()).map(String::as_str)).collect();
     texts.extend(p.prepare.iter().flat_map(|pr| pr.args.iter().map(String::as_str)));
     for text in texts {
@@ -149,17 +192,22 @@ pub fn rows(p: &Profile, g: &Installed, dir: &Path) -> Result<Vec<Row>, String> 
     let referenced: BTreeSet<&str> = p.inputs.iter().flat_map(|i| &i.formats).flat_map(|f| f.requires.iter().map(String::as_str)).collect();
     Ok(p.inputs.iter().map(|i| {
         let active = i.shared.is_empty() || !referenced.contains(i.id.as_str()) || dependencies.contains(i.id.as_str());
-        let path = if i.shared.is_empty() { selected(i, g).cloned() } else if active { key_path(dir, &i.shared).filter(|p| p.is_file()) } else { None };
+        let runtime = i.role == "runtime";
+        let off = runtime && g.runtime_off.contains(&i.id);
+        // The game's release has its own file there (not the launcher's copy): it's used as it is.
+        let ships = runtime && !i.destination.is_empty() && g.input_staged.get(&i.id) != Some(&i.destination) && g.path.join(&i.destination).is_file();
+        let path = if runtime { (!off && !ships).then(|| crate::dlss::current(dir)).flatten() }
+            else if i.shared.is_empty() { selected(i, g).cloned() } else if active { key_path(dir, &i.shared).filter(|p| p.is_file()) } else { None };
         Row { id: i.id.clone(), label: i.label.clone(), role: i.role.clone(), optional: i.optional, shared: i.shared.clone(), active, path,
-            file: !i.shared.is_empty() || i.formats.iter().any(|f| f.kind == "file"), folder: i.formats.iter().any(|f| f.kind == "folder"),
-            extensions: i.formats.iter().flat_map(|f| f.extensions.clone()).collect() }
+            file: !runtime && (!i.shared.is_empty() || i.formats.iter().any(|f| f.kind == "file")), folder: i.formats.iter().any(|f| f.kind == "folder"),
+            extensions: i.formats.iter().flat_map(|f| f.extensions.clone()).collect(), runtime, off, ships }
     }).collect())
 }
 pub fn resolve(p: &Profile, g: &Installed, dir: &Path) -> Result<BTreeMap<String, PathBuf>, String> {
     let mut paths = BTreeMap::new();
     for r in rows(p, g, dir)?.into_iter().filter(|r| r.active) {
         if let Some(path) = r.path { paths.insert(r.id, path); }
-        else if !r.optional { return Err(format!("Choose {} before continuing.", r.label)); }
+        else if !r.optional && !r.runtime { return Err(format!("Choose {} before continuing.", r.label)); }
     }
     Ok(paths)
 }
@@ -183,7 +231,9 @@ pub fn signature(p: &Profile, g: &Installed, dir: &Path) -> Result<String, Strin
             else if !update.optional { return Err("Choose the game's update first.".into()); }
         }
     }
-    for (id, path) in paths {
+    // Files the launcher fetches itself (DLSS) don't count: one arriving later, or a newer
+    // version, never asks for setup again.
+    for (id, path) in paths.into_iter().filter(|(id, _)| !p.inputs.iter().any(|i| &i.id == id && i.role == "runtime")) {
         hash.update(id.as_bytes()); hash.update(path.to_string_lossy().as_bytes());
         let m = path.metadata().map_err(|_| "A selected input is no longer readable.")?;
         hash.update(m.len().to_le_bytes());
@@ -295,10 +345,12 @@ pub fn stage_cancellable(p: &Profile, g: &mut Installed, dir: &Path, stopped: &d
         let target = destination(&g.path, &i.destination)?;
         if !source.is_file() { return Err("Only files can have an installation destination.".into()); }
         if source.canonicalize().ok() == target.canonicalize().ok() { continue; }
+        // A DLSS file the game ships itself is never replaced.
+        if i.role == "runtime" && target.symlink_metadata().is_ok() && g.input_staged.get(&i.id) != Some(&i.destination) { continue; }
         if target.symlink_metadata().is_ok() && g.input_staged.get(&i.id) != Some(&i.destination) { return Err(format!("{} already exists in the installation. Move it aside before setup.", i.destination)); }
         let metadata = source.metadata().map_err(|_| "Couldn't read the selected file.")?;
         let stamp = format!("{}|{}|{:?}", source.display(), metadata.len(), metadata.modified().ok());
-        if i.shared.is_empty() && g.input_stamps.get(&i.id) == Some(&stamp) && target.metadata().is_ok_and(|m| m.is_file() && m.len() == metadata.len()) { continue; }
+        if (i.shared.is_empty() || i.role == "runtime") && g.input_stamps.get(&i.id) == Some(&stamp) && target.metadata().is_ok_and(|m| m.is_file() && m.len() == metadata.len()) { continue; }
         fs::create_dir_all(target.parent().unwrap()).map_err(|_| "Couldn't create the input folder.")?;
         // Recheck after directory creation, including existing destination symlinks.
         destination(&g.path, &i.destination)?;
@@ -308,8 +360,9 @@ pub fn stage_cancellable(p: &Profile, g: &mut Installed, dir: &Path, stopped: &d
         // A hard link shares the player's file itself: a game writing to it would change their
         // original. Only big disc images (read, never written) are linked; anything smaller is
         // copied.
-        let link_ok = metadata.len() >= LINK_AT_LEAST;
-        let result = if i.shared.is_empty() {
+        // DLSS is read, never written: linked like game files where it can be.
+        let link_ok = metadata.len() >= LINK_AT_LEAST || i.role == "runtime";
+        let result = if i.shared.is_empty() || i.role == "runtime" {
             (if link_ok { fs::hard_link(source, &temp) } else { Err(std::io::Error::other("copy")) }).or_else(|_| {
                 use std::io::{Read, Write};
                 let mut src = fs::File::open(source)?;
@@ -338,6 +391,86 @@ pub fn stage_cancellable(p: &Profile, g: &mut Installed, dir: &Path, stopped: &d
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dlss_profile(optional: bool, extra: serde_json::Value) -> Profile {
+        let mut v = serde_json::json!({ "start": { "program": ["game.exe"], "args": ["--fullscreen", "--dlss={input:dlss}"] }, "inputs": [
+            { "id": "dlss", "label": "NVIDIA DLSS", "role": "runtime", "shared": "nvidia.dlss", "optional": optional, "destination": "nvngx_dlss.dll" }
+        ]});
+        if let Some(o) = extra.as_object() { for (k, x) in o { v["inputs"][0][k] = x.clone(); } }
+        serde_json::from_value(v).unwrap()
+    }
+    #[test]
+    fn dlss_is_runtime_only_may_be_optional_and_has_no_formats() {
+        assert!(validate(&dlss_profile(true, serde_json::json!({}))).is_ok());
+        assert!(validate(&dlss_profile(false, serde_json::json!({}))).is_ok());
+        assert!(validate(&dlss_profile(true, serde_json::json!({ "role": "key" }))).is_err());
+        assert!(validate(&dlss_profile(true, serde_json::json!({ "formats": [{ "type": "file" }] }))).is_err());
+        // Runtime is only for nvidia.dlss, and keys stay required.
+        let p: Profile = serde_json::from_value(serde_json::json!({ "inputs": [{ "id": "x", "label": "X", "role": "runtime", "formats": [{ "type": "file" }] }] })).unwrap();
+        assert!(validate(&p).is_err());
+        let p: Profile = serde_json::from_value(serde_json::json!({ "inputs": [{ "id": "k", "label": "K", "role": "key", "shared": "switch.prod-keys", "optional": true }] })).unwrap();
+        assert!(validate(&p).is_err());
+        // Once per profile.
+        let mut twice = dlss_profile(true, serde_json::json!({}));
+        let mut second = twice.inputs[0].clone(); second.id = "dlss2".into(); second.destination = "b/nvngx_dlss.dll".into();
+        twice.inputs.push(second);
+        assert!(validate(&twice).is_err());
+    }
+    #[test]
+    fn unknown_optional_inputs_are_skipped_and_their_arguments_left_out() {
+        let p: Profile = serde_json::from_value(serde_json::json!({ "start": { "program": ["g.exe"], "args": ["--fw={input:fw}", "--x"] }, "inputs": [
+            { "id": "fw", "label": "Future thing", "role": "firmware", "shared": "future.thing", "optional": true }
+        ]})).unwrap();
+        let mut p2 = p.clone();
+        prepare(&mut p2, true);
+        assert!(p2.inputs.is_empty());
+        assert!(validate(&p2).is_ok());
+        assert_eq!(arguments(&p2.start.as_ref().unwrap().args, &BTreeMap::new(), false), vec!["--x".to_string()]);
+        // The raw file also passes the checker (an older launcher would have failed here).
+        assert!(validate(&p).is_ok());
+        // A required one still fails.
+        let mut req = p.clone(); req.inputs[0].optional = false;
+        prepare(&mut req, true);
+        assert!(validate(&req).is_err());
+    }
+    #[test]
+    fn dlss_is_skipped_where_it_doesnt_apply() {
+        let mut p = dlss_profile(true, serde_json::json!({}));
+        prepare(&mut p, false);
+        assert!(p.inputs.is_empty());
+        assert!(validate(&p).is_ok());
+        assert_eq!(arguments(&p.start.as_ref().unwrap().args, &BTreeMap::new(), false), vec!["--fullscreen".to_string()]);
+    }
+    #[test]
+    fn dlss_is_placed_never_over_a_shipped_file_and_goes_when_turned_off() {
+        let (_, mut g, dir) = fixture();
+        let p = dlss_profile(true, serde_json::json!({}));
+        // Not fetched yet: no row path, setup isn't blocked, the argument is left out.
+        assert!(rows(&p, &g, &dir).unwrap()[0].path.is_none());
+        assert!(resolve(&p, &g, &dir).is_ok());
+        let sig = signature(&p, &g, &dir).unwrap();
+        let shared = dir.join("shared-runtime/nvidia.dlss/310.9.16");
+        fs::create_dir_all(&shared).unwrap();
+        fs::write(shared.join("nvngx_dlss.dll"), b"nvidia").unwrap();
+        fs::write(dir.join("shared-runtime/nvidia.dlss/current.txt"), "310.9.16").unwrap();
+        // Arriving later doesn't ask for setup again.
+        assert_eq!(signature(&p, &g, &dir).unwrap(), sig);
+        stage(&p, &mut g, &dir).unwrap();
+        assert_eq!(fs::read(dir.join("nvngx_dlss.dll")).unwrap(), b"nvidia");
+        assert!(excluded(&g, &dir.join("nvngx_dlss.dll")), "kept out of saves and backups");
+        // Turned off: the managed copy goes.
+        g.runtime_off.insert("dlss".into());
+        assert!(rows(&p, &g, &dir).unwrap()[0].off);
+        stage(&p, &mut g, &dir).unwrap();
+        assert!(!dir.join("nvngx_dlss.dll").exists());
+        // A file the game ships is left alone and used.
+        g.runtime_off.clear();
+        fs::write(dir.join("nvngx_dlss.dll"), b"the game's own").unwrap();
+        assert!(rows(&p, &g, &dir).unwrap()[0].ships);
+        stage(&p, &mut g, &dir).unwrap();
+        assert_eq!(fs::read(dir.join("nvngx_dlss.dll")).unwrap(), b"the game's own");
+        fs::remove_dir_all(dir).unwrap();
+    }
     fn fixture() -> (Profile, Installed, PathBuf) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!("recomp-inputs-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));

@@ -25,6 +25,8 @@ async function loadAccount(fresh) {
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
   // Notify Me: the games they're waiting on (none when signed out).
   if (window.afterSignIn && !S.account.offline) window.afterSignIn();
+  // The saved list, kept with the account.
+  if (S.account.signedIn && !S.account.offline && typeof libSync === 'function') libSync();
 }
 
 // ---------- your reports ----------
@@ -121,6 +123,8 @@ async function signOut() {
   try { await invoke('account_signout'); } catch (e) { /* signed out here anyway */ }
   S.account = { signedIn: false };
   S.saves = {};
+  // The next sign-in merges this PC's saved list with that account's again.
+  saveUi({ lib_synced: null, lib_queue: [] }, true).catch(() => {});
   toast(t('Signed out. Your saves stay on this PC.'));
   renderAccountBits();
   if (window.afterSignIn) window.afterSignIn();
@@ -186,7 +190,7 @@ function savesTab(a) {
       ${on && Array.isArray(s.cloud) ? (s.cloud.length ? s.cloud.map((c) => copyRow(id, c, 'v', c.v, c.hash === s.synced)).join('') : `<p class="set-empty">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`) : ''}</div>`;
   const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`;
   return `<div class="stack">${cloudCard}
-    <div class="card"><div class="card-h"><h3>${esc(t('On this PC'))}</h3><span class="acts"><button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}">${esc(t('Open the folder'))}</button><button type="button" class="btn sm main" data-act="saves-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Back up now'))}</button></span></div>${local}</div>
+    <div class="card"><div class="card-h"><h3>${esc(t('On this PC'))}</h3><span class="acts"><button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}" title="${esc(t('Where the game keeps its saves'))}">${esc(t('Open the Game\'s Save Folder'))}</button><button type="button" class="btn sm" data-act="saves-open-backups" data-id="${esc(id)}" title="${esc(t('Where the launcher keeps its copies of them'))}">${esc(t('Open Backups'))}</button><button type="button" class="btn sm main" data-act="saves-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Back up now'))}</button></span></div>${local}</div>
     <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${where}</div></div>`;
 }
 // Where this game's cloud saves stand, and the buttons to act now: Upload Now, or Check Again
@@ -404,6 +408,7 @@ window.accountAct = async (act, el) => {
       return loadSavesAll();
     }
     case 'saves-open': return invoke('saves_open', { id }).catch(fail);
+    case 'saves-open-backups': return invoke('saves_open_backups', { id }).catch(fail);
     case 'saves-place': {
       // The player knows better (a game that saves somewhere else): their folder from now on.
       const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);

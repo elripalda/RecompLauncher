@@ -16,6 +16,7 @@ pub mod cloud;
 pub mod devtools;
 pub mod dllcheck;
 pub mod discord;
+pub mod dlss;
 pub mod extract;
 pub mod files;
 pub mod gamefiles;
@@ -91,6 +92,9 @@ impl From<reqwest::Error> for Error {
                 Some(h) => Error::Net(format!("{h} took too long to answer. Try again in a minute.")),
                 None => Error::Net("A site took too long to answer. Try again in a minute.".into()),
             }
+        } else if e.is_connect() && net::proxy_shown().is_some() {
+            // Through a proxy that didn't answer: that's what to check, not the site.
+            Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Network, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
         } else if e.is_connect() {
             match site {
                 Some(h) => Error::Net(format!("Couldn't reach {h}. Check your connection, or try again in a minute.")),
@@ -612,6 +616,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         sessions: prev.as_ref().map(|p| p.sessions.clone()).unwrap_or_default(),
         // Each of its games' own time and setup (a recomp that carries several) stays through updates.
         games: prev.as_ref().map(|p| p.games.clone()).unwrap_or_default(),
+        runtime_off: prev.as_ref().map(|p| p.runtime_off.clone()).unwrap_or_default(),
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
@@ -2006,7 +2011,7 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
     }
     let icon = ga.icon.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     let name = shown_name(&st, &id, &g).await;
-    let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art).inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
+    let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art, &st.dir).inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
     trail::note(format!("Add to Steam ({id}): written for {n} account(s) in {}{}", dirs::home_dir().and_then(|h| steam.strip_prefix(h).ok().map(|r| format!("~/{}", r.display()))).unwrap_or_else(|| steam.display().to_string()), if was_running { "" } else { " (Steam was closed)" }));
     if was_running {
         shortcuts::start_steam(&steam);
@@ -2190,7 +2195,64 @@ async fn ge_proton_install(app: AppHandle, st: State<'_, App>) -> Res<String> {
 fn proton_now() -> Value {
     let name = proton::runner().map(|r| r.name());
     let ge = name.as_deref().map(|n| proton::rank(n).0 == 2).unwrap_or(false);
-    json!({ "runner": name, "ge": ge })
+    json!({ "runner": name, "ge": ge, "umu_broken": proton::umu_broken_runtime().is_some() })
+}
+
+/// NVIDIA DLSS (nvidia.dlss): fetches the shared file now (Easy Setup's row, Try Again), with its
+/// progress as "dlss" events. A failure never stops setup: the game plays without it.
+#[tauri::command]
+async fn dlss_fetch(app: AppHandle, st: State<'_, App>) -> Res<String> {
+    if !dlss::applies(&st.dir) {
+        return Err(Error::Msg(dlss::FAILED.into()));
+    }
+    let a = app.clone();
+    let path = dlss::ensure(&st.http, &st.dir, &move |done, total| {
+        let _ = a.emit("dlss", json!({ "done": done, "total": total }));
+    })
+    .await
+    .map_err(Error::Msg)?;
+    let _ = app.emit("dlss", json!({ "ready": true }));
+    Ok(path.to_string_lossy().into())
+}
+
+/// Turns DLSS off (or back on) for one game. Off: the game's own managed copy goes now.
+#[tauri::command(async)]
+fn dlss_set(st: State<'_, App>, id: String, input: String, on: bool) -> Res<()> {
+    let id = recomp_of(&st, &id);
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    if on {
+        g.runtime_off.remove(&input);
+    } else {
+        g.runtime_off.insert(input.clone());
+        if let Some(rel) = g.input_staged.remove(&input) {
+            let target = g.path.join(&rel);
+            if inputs::relative(&rel) && target.is_file() {
+                let _ = std::fs::remove_file(target);
+            }
+            g.input_stamps.remove(&input);
+        }
+    }
+    l.save(&st.dir)?;
+    Ok(())
+}
+
+/// Settings: whether DLSS applies here and the shared file is kept, and removing it (every game
+/// using it plays without it until it's downloaded again when one next needs it).
+#[tauri::command(async)]
+fn dlss_state(st: State<'_, App>) -> Value {
+    json!({ "applies": dlss::applies(&st.dir), "have": dlss::current(&st.dir).is_some() })
+}
+
+#[tauri::command(async)]
+fn dlss_remove(st: State<'_, App>) -> Res<()> {
+    dlss::remove(&st.dir).map_err(Error::Msg)
+}
+
+/// Settings → Your PC: put umu-run's incomplete Steam runtime right (it downloads again).
+#[tauri::command(async)]
+fn umu_repair() -> Res<String> {
+    proton::umu_repair().map_err(Error::Msg)
 }
 
 // ---------- playing ----------
@@ -2365,6 +2427,15 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         }
         let mut staged = g.clone();
         inputs::stage(p, &mut staged, &st.dir).map_err(Error::Msg)?;
+        // DLSS wanted but not fetched yet (setup ran offline, or it was removed): fetched in the
+        // background for next time. This start goes on without it.
+        if p.inputs.iter().any(|i| i.role == "runtime" && !g.runtime_off.contains(&i.id)) && dlss::current(&st.dir).is_none() {
+            let a = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let st = a.state::<App>();
+                let _ = dlss::ensure(&st.http, &st.dir, &|_, _| {}).await;
+            });
+        }
     }
     // Its own installer or first-time setup, the first time: that opens instead of the game.
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
@@ -2806,7 +2877,8 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     pads::QUICK_MENU.store(quick_menu, Ordering::Relaxed);
     let marker = playing_file(&st.dir, &id);
     let _ = std::fs::create_dir_all(marker.parent().unwrap_or(&st.dir));
-    let _ = std::fs::write(&marker, b"");
+    // The launcher's own process id: a marker whose process is gone is stale (see marker_alive).
+    let _ = std::fs::write(&marker, std::process::id().to_string());
     ingame::set_hotkeys(app, true, quick_menu);
     let _ = app.emit("game", json!({"id": id, "game": game_full, "state": "running"}));
     // From Big Picture mode the launcher fills the screen, so it steps aside for the game (its first
@@ -3822,6 +3894,8 @@ fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     profile::find(&g.path, &g.repo, &entry).map(|mut p| {
         p.windows_build = Some(is_windows_build(g));
+        // Optional inputs this launcher can't use (newer shared types, DLSS without an RTX card).
+        inputs::prepare(&mut p, dlss::applies(&st.dir));
         p.input_paths = inputs::available(&p, g, &st.dir);
         p.slider_vals = g.slider_vals.clone();
         p.add_screen_choices(screen_now());
@@ -5702,7 +5776,7 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
 /// Whether the server is resting after trouble (the window shows "Offline" while it is).
 #[tauri::command(async)]
 fn net_state() -> Value {
-    json!({ "offline": net::offline() })
+    json!({ "offline": net::offline(), "busy": net::busy() })
 }
 
 /// The list for the window. Without `force`, the copy on disk comes back at once (the window never
@@ -5812,27 +5886,8 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
                 g.tag = tag;
             }
         }
-        let os_g = if g.proton { "windows" } else { assets::os_now() };
-        let entry = catalog::app(&cat, &g.id);
-        let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
-        // The store says which release is out (the list's "tag"): an update only when that changes
-        // to one newer than what's installed. Releases the store is still checking wait on purpose.
-        if let Some(t) = entry.and_then(catalog_tag) {
-            let at = |tag: &str| rels.iter().position(|r| same_tag(&r.tag_name, tag));
-            if let Some(i) = at(&t) {
-                let r = &rels[i];
-                let newer = at(&g.tag).map(|j| i < j).unwrap_or_else(|| !older_version(&r.tag_name, &g.tag));
-                if !g.pinned && !same_tag(&r.tag_name, &g.tag) && newer && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
-                    out.insert(g.id.clone(), r.tag_name.clone());
-                }
-                continue;
-            }
-        }
-        if let Some(r) = catalog::latest_for(&rels, &g.tag) {
-            let known = rels.iter().any(|x| same_tag(&x.tag_name, &g.tag));
-            if !g.pinned && r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some() {
-                out.insert(g.id.clone(), r.tag_name.clone());
-            }
+        if let Some(tag) = offered_update(&g, catalog::app(&cat, &g.id), &rels) {
+            out.insert(g.id.clone(), tag);
         }
     }
     // A project may have been corrected while its network requests were in flight.
@@ -5845,6 +5900,48 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
         return Err(Error::Msg("Can't reach GitHub right now, so updates can't be checked. Check your connection (some networks block GitHub), then try again.".into()));
     }
     Ok(out)
+}
+
+/// The one rule for whether a game has an update, used by the Library's badge, Settings > Check and
+/// the Updates tab alike: the release the store has checked (the list's "tag") when it's newer than
+/// the installed one and has a build for this system (Windows for a game played through Proton).
+/// Without a checked release, the newest one GitHub has. Releases still being checked wait.
+fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Option<String> {
+    if g.pinned {
+        return None;
+    }
+    let os_g = if g.proton { "windows" } else { assets::os_now() };
+    let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
+    let builds = |r: &Release| assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some();
+    if let Some(t) = entry.and_then(catalog_tag) {
+        let at = |tag: &str| rels.iter().position(|r| same_tag(&r.tag_name, tag));
+        if let Some(i) = at(&t) {
+            let r = &rels[i];
+            let newer = at(&g.tag).map(|j| i < j).unwrap_or_else(|| !older_version(&r.tag_name, &g.tag));
+            return (!same_tag(&r.tag_name, &g.tag) && newer && builds(r)).then(|| r.tag_name.clone());
+        }
+    }
+    let r = catalog::latest_for(rels, &g.tag)?;
+    let known = rels.iter().any(|x| same_tag(&x.tag_name, &g.tag));
+    (r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && builds(r)).then(|| r.tag_name.clone())
+}
+
+/// What the Updates tab shows for each release, by the same rule as the badge: the update on offer,
+/// the release the store has checked, and which releases have a build for this system.
+#[tauri::command]
+async fn update_info(st: State<'_, App>, id: String) -> Res<Value> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
+    let entry = catalog::app(&cat, &id);
+    let f = match catalog::releases_on_disk(&st.dir, &g.repo) {
+        Some(f) => f,
+        None => catalog::releases(&st.http, &st.dir, &g.repo, false).await?,
+    };
+    let rels: Vec<Release> = serde_json::from_value(f.data).unwrap_or_default();
+    let os_g = if g.proton { "windows" } else { assets::os_now() };
+    let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
+    let builds: Vec<&str> = rels.iter().filter(|r| assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some()).map(|r| r.tag_name.as_str()).collect();
+    Ok(json!({ "offered": offered_update(&g, entry, &rels), "checked": entry.and_then(catalog_tag), "builds": builds }))
 }
 
 /// Which release a game added from the player's folder is: the newest one published by the day its
@@ -6895,11 +6992,32 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     let told = l.settings.tray_told;
     // The saves folder changes only through its own button (the copies move with it).
     let save_dir = l.settings.save_dir.clone();
+    // The proxy changes only through its own command (its password is sealed there).
+    let proxy = (l.settings.proxy.clone(), l.settings.proxy_url.clone(), l.settings.proxy_user.clone(), l.settings.proxy_pass.clone());
     l.settings = settings;
     l.settings.tray_told |= told;
     l.settings.save_dir = save_dir;
+    (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     l.save(&st.dir)?;
     Ok(())
+}
+
+/// Settings → Network: the proxy every request goes through. `pass` None keeps the saved one; the
+/// password is sealed like the other secrets and never comes back to the window.
+#[tauri::command(async)]
+fn set_proxy(st: State<'_, App>, mode: String, url: String, user: String, pass: Option<String>) -> Res<Value> {
+    let mut l = st.lib.lock().unwrap();
+    let pass = match pass {
+        Some(p) => p,
+        None => secret::open(&l.settings.proxy_pass).unwrap_or_default(),
+    };
+    net::set_proxy(&mode, &url, &user, &pass).map_err(Error::Msg)?;
+    l.settings.proxy = mode;
+    l.settings.proxy_url = url.trim().to_string();
+    l.settings.proxy_user = user;
+    l.settings.proxy_pass = if pass.is_empty() { String::new() } else { secret::seal(&pass).unwrap_or_default() };
+    l.save(&st.dir)?;
+    Ok(json!({ "shown": net::proxy_shown(), "has_pass": !l.settings.proxy_pass.is_empty() }))
 }
 
 /// Where the copies of the player's saves go: a folder they pick (another drive, a NAS, a folder
@@ -7573,6 +7691,30 @@ fn playing_file(dir: &Path, id: &str) -> PathBuf {
     dir.join("playing").join(library::folder_name(id))
 }
 
+/// A marker left by a launcher that was killed (or a session that ended) names a process that's
+/// gone: it's cleared rather than trusted. An empty marker (older launchers) is judged by its age.
+fn marker_alive(f: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(f) else { return false };
+    let Ok(pid) = text.trim().parse::<u32>() else { return true };
+    let alive = process_alive(pid);
+    if !alive {
+        let _ = std::fs::remove_file(f);
+    }
+    alive
+}
+
+fn process_alive(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    return Path::new(&format!("/proc/{pid}")).exists();
+    #[cfg(windows)]
+    return win::processes().iter().any(|(p, _)| *p == pid);
+    #[allow(unreachable_code)]
+    {
+        let _ = pid;
+        true
+    }
+}
+
 /// Started with `--play` (a Steam or desktop shortcut): this process stays open until the game
 /// closes, so Steam shows the player in the game for the whole session. The work is handed to a
 /// second copy (`--handoff`), which either becomes the launcher or passes the game to the one
@@ -7593,7 +7735,7 @@ fn wait_for_play(args: &[String]) -> bool {
         return false;
     }
     let file = playing_file(&dir, &id);
-    let fresh = |f: &Path| std::fs::metadata(f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() < 90).unwrap_or(false);
+    let fresh = |f: &Path| marker_alive(f) && std::fs::metadata(f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() < 90).unwrap_or(false);
     // Setting a game up, a cloud save and a Look can come first: up to five minutes.
     let until = std::time::Instant::now() + std::time::Duration::from_secs(300);
     while !fresh(&file) {
@@ -7793,7 +7935,15 @@ pub fn run() {
                     let _ = std::fs::remove_file(d.join(f));
                 }
             }
-            let http = reqwest::Client::builder()
+            // The player's proxy (Settings → Network): off, the system's, or their own.
+            {
+                let l = Library::load(&dir);
+                let pass = secret::open(&l.settings.proxy_pass).unwrap_or_default();
+                if let Err(e) = net::set_proxy(&l.settings.proxy, &l.settings.proxy_url, &l.settings.proxy_user, &pass) {
+                    trail::note(format!("Proxy setting not used: {e}"));
+                }
+            }
+            let http = net::with_proxy(reqwest::Client::builder())
                 .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
                 // Redirects are followed (GitHub's and SourceForge's downloads go through them), but
                 // never from https down to plain http.
@@ -7892,6 +8042,19 @@ pub fn run() {
                         if let Ok(fh) = std::fs::OpenOptions::new().append(true).open(&f) {
                             let _ = fh.set_modified(std::time::SystemTime::now());
                         }
+                    }
+                });
+            }
+            // NVIDIA DLSS: when recomplauncher.com names a newer version than the one kept, it's
+            // downloaded in the background. Games get it at their next setup or launch, never
+            // in the middle of play.
+            {
+                let a = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    let st = a.state::<App>();
+                    if dlss::current(&st.dir).is_some() && dlss::applies(&st.dir) {
+                        let _ = dlss::ensure(&st.http, &st.dir, &|_, _| {}).await;
                     }
                 });
             }
@@ -8019,7 +8182,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
+            recomp_games, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
@@ -8036,6 +8199,36 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_badge_check_and_updates_tab_share_one_rule() {
+        use super::{offered_update, Installed, Release};
+        let rel = |tag: &str, files: &[&str]| -> Release {
+            serde_json::from_value(serde_json::json!({ "tag_name": tag, "published_at": "2026-11-01T00:00:00Z",
+                "assets": files.iter().map(|f| serde_json::json!({ "name": f, "browser_download_url": format!("https://github.com/a/b/releases/download/{tag}/{f}"), "size": 10 })).collect::<Vec<_>>() })).unwrap()
+        };
+        // Newest first, like GitHub: v3 isn't checked by the store yet, v2 is, v1 is installed.
+        let rels = vec![rel("v3", &["game-linux.tar.gz", "game-windows.zip"]), rel("v2", &["game-linux.tar.gz", "game-windows.zip"]), rel("v1", &["game-linux.tar.gz", "game-windows.zip"])];
+        let entry = serde_json::json!({ "id": "g", "tag": "v2" });
+        let g = Installed { id: "g".into(), tag: "v1".into(), ..Default::default() };
+        // The checked release, not the newest one on GitHub.
+        assert_eq!(offered_update(&g, Some(&entry), &rels).as_deref(), Some("v2"));
+        // Already on it: nothing, even though GitHub has v3.
+        let on2 = Installed { tag: "v2".into(), ..g.clone() };
+        assert_eq!(offered_update(&on2, Some(&entry), &rels), None);
+        // Played through Proton: the Windows build counts.
+        let proton = Installed { proton: true, ..g.clone() };
+        let win_only = vec![rel("v2", &["game-windows.zip"]), rel("v1", &["game-windows.zip"])];
+        assert_eq!(offered_update(&proton, Some(&entry), &win_only).as_deref(), Some("v2"));
+        // A release with no build for this system isn't offered (on Linux the Windows-only one).
+        #[cfg(target_os = "linux")]
+        assert_eq!(offered_update(&g, Some(&entry), &win_only), None);
+        // Picked by the player: never.
+        let pinned = Installed { pinned: true, ..g.clone() };
+        assert_eq!(offered_update(&pinned, Some(&entry), &rels), None);
+        // No checked release in the list: the newest one.
+        assert_eq!(offered_update(&g, Some(&serde_json::json!({ "id": "g" })), &rels).as_deref(), Some("v3"));
+    }
 
     #[test]
     fn a_game_that_hands_off_keeps_counting_while_its_folder_runs() {

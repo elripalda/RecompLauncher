@@ -68,11 +68,11 @@ jobs:
 
       - name: Run UI tests and JavaScript syntax checks
         run: |
-          node --test tests/macos-ui.test.cjs tests/setup-inputs.test.cjs tests/integration-ownership.test.cjs
-          node --test tests/project-status.test.cjs
+          node --test tests/*.test.cjs
           node --check ui/app.js
           node --check ui/tv.js
           node --check ui/setup-inputs.js
+          node --check ui/games.js
 
       - name: Run Rust tests
         run: npm test -- --locked

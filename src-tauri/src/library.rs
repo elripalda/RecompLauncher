@@ -109,6 +109,10 @@ pub struct Installed {
     /// Sliders passed on the command line: setting id -> the value as written.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub slider_vals: BTreeMap<String, String>,
+    /// Optional files the launcher fetches itself (NVIDIA DLSS) that the player turned off for this
+    /// game in Easy Setup, by input id.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub runtime_off: std::collections::BTreeSet<String>,
     /// A recomp that carries several games: each one's play time and setup (games.rs), by game id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub games: BTreeMap<String, crate::games::Played>,
@@ -200,6 +204,16 @@ fn half() -> u8 {
 pub struct Settings {
     /// Where new games go.
     pub library_dir: PathBuf,
+    /// Settings → Network: "off", "system" (or empty, the default) or "custom", with the custom
+    /// address, its user, and its password sealed (secret::seal), never stored in the clear.
+    #[serde(default)]
+    pub proxy: String,
+    #[serde(default)]
+    pub proxy_url: String,
+    #[serde(default)]
+    pub proxy_user: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub proxy_pass: String,
     #[serde(default)]
     pub hide_ai: bool,
     /// Look for updates when the launcher opens.
@@ -304,6 +318,10 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             library_dir: default_library_dir(),
+            proxy: String::new(),
+            proxy_url: String::new(),
+            proxy_user: String::new(),
+            proxy_pass: String::new(),
             hide_ai: false,
             check_updates: true,
             keep_downloads: false,

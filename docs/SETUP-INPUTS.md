@@ -15,11 +15,15 @@ may accompany a legacy `game` declaration, or replace it entirely. When replacin
 ## Scope constraint for maintainers and coding agents
 
 **Do not expand this feature into a BIOS/firmware manager.** The agreed implementation supports
-only three shared types: `switch.prod-keys`, `switch.title-keys`, and `wiiu.common-key`. The runtime
-and JSON schema use a closed allowlist. BIOS images, firmware bundles, fonts, system libraries,
-emulator profiles, Switch 2 key compatibility, provider/cloud sync and automatic downloading are
-out of scope. Adding any shared type requires a separate explicit user/maintainer decision;
-research notes are not authorization to implement their other findings.
+four shared types: `switch.prod-keys`, `switch.title-keys`, `wiiu.common-key`, and `nvidia.dlss`.
+The runtime and JSON schema use a closed allowlist. BIOS images, firmware bundles, fonts, system
+libraries, emulator profiles, Switch 2 key compatibility and provider/cloud sync are out of scope.
+Adding any shared type, or any other automatic download, requires a separate explicit
+user/maintainer decision; research notes are not authorization to implement their other findings.
+
+`nvidia.dlss` is that decision, made by the maintainer for NVIDIA DLSS only (Beta 37): the one
+shared type the launcher downloads itself, from NVIDIA's own GitHub. No other NVIDIA files
+(Streamline, frame generation, ray reconstruction).
 
 **Multidisc content hashing is deferred.** The launcher checks that the declared files/folders
 exist and match their accepted format, and refuses assigning the same path to two named slots.
@@ -99,6 +103,35 @@ copies, never hard-linked to the user's original or the central master. Prefer a
 when a project supports it. No keys are staged into unrelated emulator directories, arbitrary
 user folders or beside game packages outside the install.
 
+## NVIDIA DLSS (`nvidia.dlss`)
+
+NVIDIA's `nvngx_dlss.dll` isn't open source, so some recomps support DLSS but can't ship it. A
+recomp asks for it once; the player provides nothing:
+
+```json
+{
+  "inputs": [
+    { "id": "dlss", "label": "NVIDIA DLSS", "role": "runtime", "shared": "nvidia.dlss",
+      "optional": true, "destination": "nvngx_dlss.dll" }
+  ]
+}
+```
+
+- Role `runtime` (a file the launcher fetches itself) only, no `formats`, once per profile. Unlike
+  the keys it may be optional. Leave `destination` out and pass `"--dlss={input:dlss}"` in
+  `start.args` to get its path instead.
+- Only on Windows or Linux (Proton) with an NVIDIA RTX card. Everywhere else the row isn't shown
+  and `{input:dlss}` arguments are left out, as for any optional input that isn't there.
+- recomplauncher.com/launcher/dlss.json names the version; the file is downloaded only from
+  `raw.githubusercontent.com/NVIDIA/` or `github.com/NVIDIA/`, checked for its size and signature
+  (NVIDIA Corporation), and kept once in `shared-runtime/nvidia.dlss/<version>/`. Each game gets
+  its own managed copy. A file the game's release ships itself is never replaced.
+- Easy Setup shows a compact optional row ("Downloaded from NVIDIA") the player can turn off per
+  game. A failed download never stops setup: the game plays without DLSS.
+- First in RecompLauncher 0.90 Beta 37. From that version, an **optional** input with a shared
+  type or role the launcher doesn't know is skipped (its `{input:...}` arguments left out) instead
+  of failing, so future shared types don't break launchers. A required one still fails.
+
 ## Persistence, replacement and privacy
 
 Named game inputs live in the installed entry's `setup_inputs`. A preparation fingerprint covers
@@ -125,7 +158,7 @@ For visual review, run `node tests/preview-server.cjs` and open
 simulated selections and never imports files or runs preparation. Its game/DLC labels are fixtures,
 not a supported integration manifest.
 
-- Maximum 32 inputs, unique IDs, nonempty labels and one declaration per shared key type.
+- Maximum 32 inputs, unique IDs, nonempty labels and one declaration per shared type.
 - Shared type/role and accepted formats validated by backend and documented in the JSON schema.
 - Existing single-copy flows retained. New multidisc flow makes no verified-dump claim.
 - Test required slots, optional slots, conditional keys, reuse/replacement/removal, retry/cancel,

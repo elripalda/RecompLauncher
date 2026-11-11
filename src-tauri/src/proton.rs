@@ -295,6 +295,32 @@ fn umu_runtime_broken(dir: &Path) -> bool {
     has_files && !dir.join("umu").exists()
 }
 
+/// umu-run's Steam runtime folder when it's half there (a download that failed its checksum,
+/// parts missing): Settings offers to repair it. None when umu-run isn't used or the runtime is fine.
+pub fn umu_broken_runtime() -> Option<PathBuf> {
+    on_path("umu-run")?;
+    let base = dirs::data_dir()?.join("umu");
+    ["steamrt4", "steamrt3"].into_iter().map(|n| base.join(n)).find(|d| umu_runtime_broken(d) || has_bad_download(d))
+}
+
+/// A download umu-run gave up on leaves its archive next to the runtime (a "Digest mismatched"):
+/// the runtime folder is then missing files it lists.
+fn has_bad_download(dir: &Path) -> bool {
+    let Ok(rd) = std::fs::read_dir(dir) else { return false };
+    let names: Vec<String> = rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    !names.is_empty() && !names.iter().any(|n| n == "_v2-entry-point") && names.iter().any(|n| n.ends_with(".tar.xz") || n.ends_with(".tar.xz.part"))
+}
+
+/// Repair: the broken runtime is moved aside (not deleted, in case the player wants it), and
+/// umu-run downloads it again the next time a game starts. UMU_RUNTIME_UPDATE stays on.
+pub fn umu_repair() -> Result<String, String> {
+    let Some(dir) = umu_broken_runtime() else { return Ok("umu-run's Steam runtime looks complete.".into()) };
+    let aside = dir.with_file_name(format!("{}.broken-{}", dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), crate::library::now()));
+    std::fs::rename(&dir, &aside).map_err(|e| format!("Couldn't move the broken runtime aside: {e}"))?;
+    crate::trail::note(format!("Proton: moved umu-run's incomplete runtime aside to {}", aside.display()));
+    Ok("Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.".into())
+}
+
 /// The best way to start a Windows program on this PC, if there's one.
 pub fn runner() -> Option<Runner> {
     let proton = protons().into_iter().next();

@@ -2303,3 +2303,16 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .upd-start .acts:not(.grid2) .btn{min-width:240px}
 .upd-start-small{font-size:13px}
 @media (prefers-reduced-motion:reduce){.upd-start{animation:none}}
+
+/* Settings → Network: the custom proxy's address, user and password on one row. */
+.proxy-fields{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.proxy-fields #proxy-url{width:240px}
+.proxy-fields #proxy-user,.proxy-fields #proxy-pass{width:130px}
+/* Easy Setup's NVIDIA DLSS row: no file to choose, a thin bar while it downloads. */
+.ni-runtime .ni-name{position:relative}
+.ni-runtime .ni-bar{display:block;height:3px;border-radius:2px;margin-top:6px;background:linear-gradient(90deg,var(--cyan) var(--p,0%),rgba(255,255,255,.12) var(--p,0%))}
+.ni-runtime.failed .ni-name span{color:var(--warn)}
+/* The scan pill opens VirusTotal's report, or says how ClamAV checked the file. */
+button.scan-pill{border:0;font:inherit;cursor:pointer}
+button.scan-pill:hover{filter:brightness(1.15)}
+.scan-pop{position:fixed;z-index:80;max-width:288px;padding:10px 14px;border-radius:12px;background:var(--panel2,#1b2333);color:var(--ink,#eef3f8);font-size:13px;line-height:1.45;box-shadow:0 14px 40px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08)}

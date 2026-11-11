@@ -423,7 +423,7 @@ fn client_for(headers: &BTreeMap<String, String>) -> Res<reqwest::Client> {
             h.insert(n, v);
         }
     }
-    reqwest::Client::builder()
+    crate::net::with_proxy(reqwest::Client::builder())
         .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
         .default_headers(h)
         .redirect(reqwest::redirect::Policy::none())

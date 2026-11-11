@@ -202,6 +202,7 @@ async function addToLibrary(id) {
   const mine = (((S.settings.ui || {}).found_saved) || []).filter((x) => x !== id);
   const skip = (((S.settings.ui || {}).found_skip) || []).filter((x) => x !== id);
   await saveUi({ saved: Object.assign({}, saved(), { [id]: Math.floor(Date.now() / 1000) }), found_saved: mine, found_skip: skip }, true);
+  libSend(id, true);
   const a = byId(id);
   render(true);
   toast(tf('{name} is in your Library. Install it whenever you like.', { name: a ? a.name : id }));
@@ -212,11 +213,59 @@ async function removeFromLibrary(id) {
   // A look at the player's games doesn't put it back.
   const skip = [...new Set([...(((S.settings.ui || {}).found_skip) || []), id])];
   await saveUi({ saved: s2, found_skip: skip }, true);
+  libSend(id, false);
   // One added by its link goes away altogether.
   const a = byId(id);
   if (a && a.custom && !S.library[id]) { await invoke('remove_github', { id }).catch(() => {}); if (S.arts) delete S.arts[id]; await loadCatalog(false); }
   render(true);
 }
+// The saved ("Not installed") list goes with the account when signed in, the same list as the
+// website's library: merged with this PC's on sign-in, each save and unsave sent as it happens
+// (kept for later while the website can't be reached), and read again when the launcher opens and
+// every 10 minutes. Signed out, it's this PC's own list. Installed games always stay per PC.
+const accountId = () => (S.account && S.account.signedIn && S.account.user ? String(S.account.user.uid || S.account.user.username || '') : '');
+async function libSend(id, on) {
+  if (!accountId()) return;
+  try { await invoke('library_push', { games: [id], on }); } catch (e) { libQueue([{ id, on }]); }
+}
+async function libQueue(items) {
+  const ui = (S.settings && S.settings.ui) || {};
+  const q = (ui.lib_queue || []).filter((x) => !items.some((y) => y.id === x.id)).concat(items);
+  await saveUi({ lib_queue: q }, true);
+}
+async function libPushAll(ids, on) {
+  for (let i = 0; i < ids.length; i += 500) await invoke('library_push', { games: ids.slice(i, i + 500), on });
+}
+async function libSync() {
+  const uid = accountId();
+  if (!uid || (S.account && S.account.offline) || S.libSyncing) return;
+  S.libSyncing = true;
+  try {
+    const ui = (S.settings && S.settings.ui) || {};
+    // What waited while the website couldn't be reached goes first.
+    const q = Array.isArray(ui.lib_queue) ? ui.lib_queue : [];
+    if (q.length) {
+      await libPushAll(q.filter((x) => x.on).map((x) => x.id), true);
+      await libPushAll(q.filter((x) => !x.on).map((x) => x.id), false);
+      await saveUi({ lib_queue: [] }, true);
+    }
+    const r = await invoke('library_pull');
+    const now = Math.floor(Date.now() / 1000);
+    const remote = Object.fromEntries(((r && r.saved) || []).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, Number(x.at) || now]));
+    let next = remote;
+    if (ui.lib_synced !== uid) {
+      // The first time on this account: both lists together, and this PC's own go up.
+      const local = saved();
+      const up = Object.keys(local).filter((id) => !remote[id]);
+      if (up.length) await libPushAll(up, true);
+      next = Object.assign({}, remote, local);
+    }
+    const before = Object.keys(saved()).sort().join('|');
+    await saveUi({ saved: next, lib_synced: uid }, true);
+    if (Object.keys(next).sort().join('|') !== before && ['library', 'home'].includes(S.view)) render(true);
+  } catch (e) { /* the website can't be reached: this PC's list stays, and it's tried again later */ } finally { S.libSyncing = false; }
+}
+setInterval(() => { if (!document.hidden) libSync(); }, 10 * 60 * 1000);
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, or SourceForge
@@ -1142,8 +1191,11 @@ function newsSection() {
 // The "Offline" mark: the list is the copy on disk because the site couldn't be reached, or the
 // site is resting after trouble (the launcher waits a while before asking it again).
 const offNow = () => !!(S.offline || S.netOff);
-T.event.listen('net', ({ payload }) => { S.netOff = !!(payload && payload.offline); const o = $('#offline'); if (o) o.hidden = !offNow(); });
-invoke('net_state').then((n) => { S.netOff = !!(n && n.offline); const o = $('#offline'); if (o) o.hidden = !offNow(); }).catch(() => {});
+// The site resting after trouble: "Offline", or, when it answered that it's busy (5xx, 429), that
+// it's busy and the launcher is retrying.
+function netPill() { const o = $('#offline'); if (!o) return; o.hidden = !offNow(); o.textContent = S.netBusy && !S.offline ? t('Website Busy, Retrying') : t('Offline'); }
+T.event.listen('net', ({ payload }) => { S.netOff = !!(payload && payload.offline); S.netBusy = !!(payload && payload.busy); netPill(); });
+invoke('net_state').then((n) => { S.netOff = !!(n && n.offline); S.netBusy = !!(n && n.busy); netPill(); }).catch(() => {});
 
 // ---------- pages ----------
 function offlineNote() {
@@ -1315,7 +1367,7 @@ const discToggles = (f) => `<button type="button" class="toggle" role="switch" a
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.mp}" data-act="mp-f">${esc(t('Multiplayer'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.great}" data-act="great"><span class="dot-great" aria-hidden="true"></span>${esc(t('Plays great'))}<span class="switch" aria-hidden="true"></span></button>
       ${onHandheld() ? `<button type="button" class="toggle deck-t" role="switch" aria-checked="${!!f.deckgreat}" data-act="deck-f">${DECK_ICON(15)}${esc(t('Great on Deck'))}<span class="switch" aria-hidden="true"></span></button>` : ''}
-      <button type="button" class="toggle" role="switch" aria-checked="${!!f.hideEnded}" data-act="ended-f">${esc(t('Hide ended'))}<span class="switch" aria-hidden="true"></span></button>
+      <button type="button" class="toggle" role="switch" aria-checked="${!!f.hideEnded}" data-act="ended-f">${esc(t('Hide Ended'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!S.settings.hide_ai}" data-act="toggle" data-k="hide_ai">${esc(t('Hide AI-assisted'))}<span class="switch" aria-hidden="true"></span></button>`;
 const discGenres = () => { const apps = visible(); return Object.keys(GENRES).filter((k) => apps.some((a) => a.genre === k)); };
 function pageDiscover() {
@@ -1472,7 +1524,7 @@ function revealEnded(head) {
 // "Hide ended" doesn't lose them: they wait in a closed box under the list, with the covers greyed out.
 function endedBoxHtml(list) {
   if (!list.length) return '';
-  return `<section class="ended-box"><button type="button" class="ended-head" data-act="ended-box" aria-expanded="${!!S.endedOpen}" aria-controls="ended-body"><span>${esc(t('Ended projects'))}</span><span class="n">${list.length}</span></button>`
+  return `<section class="ended-box"><button type="button" class="ended-head" data-act="ended-box" aria-expanded="${!!S.endedOpen}" aria-controls="ended-body"><span>${esc(t('Ended Projects'))}</span><span class="n">${list.length}</span></button>`
     + `<div id="ended-body" class="ended-body${S.endedOpen ? ' open' : ''}"><div class="ended-in"><div class="ended-pad"><div class="grid ended-grid" data-n="${list.length}">${list.map((a) => tile(a, { quick: true })).join('')}</div></div></div></div></section>`;
 }
 
@@ -1860,10 +1912,15 @@ function runsCard(a) {
 }
 const viaPx = (x) => !!x && (x.proton === true || x.proton === 1 || x.proton === '1' || x.proton === 'true');
 
+// The catalog's "players": PCs that installed or played it from RecompLauncher in the last 90 days.
+function playersText(a) {
+  const n = Number(a.players);
+  return n > 0 ? tn(n, '1 PC, last 90 days', '{n} PCs, last 90 days') : '';
+}
 function gameRail(a) {
   const facts = [
     [t('Latest version'), a.version ? 'v' + String(a.version).replace(/^v/i, '') : ''], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars && !isSF(a.repo) ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars && !isSF(a.repo) ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   return `<div class="stack">${quickActs(a)}${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
@@ -1920,7 +1977,7 @@ function gameBody(a) {
     else if (r.error) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t(r.error))}</p></div></div>`;
     else if (!r.list.length) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t('No releases yet.'))}</p></div></div>`;
     else body = `<div class="stack">${inst && inst.pinned ? `<div class="card pinned"><div class="set-row"><div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div><button type="button" class="btn main" data-act="install" data-id="${esc(id)}">${esc(t('Go to the newest'))}</button></div></div>` : ''}
-      <div class="card">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => `<div class="rel"><div class="rel-h"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${x.prerelease ? `<span class="pre">${esc(t('Pre-release'))}</span>` : ''}${inst && inst.tag === x.tag_name ? `<span class="ai-tag inst">${esc(t('Installed'))}</span>` : inst && !S.jobs[id] && !S.running.has(id) ? `<button type="button" class="btn sm" data-act="version" data-id="${esc(id)}" data-tag="${esc(x.tag_name)}">${esc(n === 0 ? t('Install this one') : t('Go back to this one'))}</button>` : ''}</div><div class="md">${x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('')}</div></div>`;
+      <div class="card">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => `<div class="rel"><div class="rel-h"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${x.prerelease ? `<span class="pre">${esc(t('Pre-release'))}</span>` : ''}${relState(id, inst, r.list, x, n)}</div><div class="md">${x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('')}</div></div>`;
   } else if (S.tab === 'saves') {
     body = savesTab(a);
   } else if (S.tab === 'dev') {
@@ -1949,6 +2006,23 @@ function gameBody(a) {
       ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div></div>`;
   }
   return body + gameRail(a);
+}
+// What each release in the Updates tab offers, by the same rule as the Library's badge and
+// Settings > Check (update_info): the update on offer, releases the store is still checking,
+// and releases with no build for this system.
+function relState(id, inst, list, x, n) {
+  if (!inst) return '';
+  if (inst.tag === x.tag_name) return `<span class="ai-tag inst">${esc(t('Installed'))}</span>`;
+  const info = (S.updInfo || {})[id];
+  if (info === undefined) { S.updInfo = S.updInfo || {}; S.updInfo[id] = null; invoke('update_info', { id }).then((v) => { S.updInfo[id] = v; if (S.view === 'game' && S.arg === id && S.tab === 'updates') showTab('updates'); }).catch(() => { S.updInfo[id] = false; }); }
+  if (info && Array.isArray(info.builds) && !info.builds.includes(x.tag_name)) return `<span class="pre">${esc(t('No build for your system'))}</span>`;
+  if (S.jobs[id] || S.running.has(id)) return '';
+  const btn = (label, main) => `<button type="button" class="btn sm${main ? ' main' : ''}" data-act="version" data-id="${esc(id)}" data-tag="${esc(x.tag_name)}">${esc(label)}</button>`;
+  if (info && info.offered === x.tag_name) return btn(t('Update'), true);
+  const ci = info && info.checked ? list.findIndex((y) => y.tag_name.replace(/^v/i, '').toLowerCase() === info.checked.replace(/^v/i, '').toLowerCase()) : -1;
+  const li = list.indexOf(x);
+  if (ci > 0 && li < ci) return `<span class="pre">${esc(t('Still being checked'))}</span>${btn(t('Install Anyway'))}`;
+  return btn(n === 0 ? t('Install this one') : t('Go back to this one'));
 }
 // Switching tabs redraws only the part below them: the banner and cover stay where they are.
 function showTab(k) {
@@ -2620,6 +2694,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const el = e.target;
   if (el.matches('[data-act="dl-limit"]')) { saveUi({ dl_limit: Number(el.value) || 0 }).then(sendLimits); return; }
+  if (el.matches('[data-act="proxy-mode"]')) { if (el.value === 'custom') { S.proxyMode = 'custom'; setSection('updates', false); } else saveProxy(el.value); return; }
   if (el.matches('[data-lk-amount]')) {
     const id = el.dataset.lkAmount, v = Number(el.value);
     setLook(id, (S.looks[id] || {}).look || '', v).then(() => paintLooks());
@@ -2835,6 +2910,7 @@ document.addEventListener('input', (e) => {
 async function loadDlHist() {
   try { S.dlHist = (await invoke('download_history')) || []; } catch { S.dlHist = S.dlHist || []; }
   if (S.view === 'downloads') render(true);
+  if (window.tvRedraw) window.tvRedraw();
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
 // (0.91) Each download's speed over its last minute and a half, for the graph at the top of Downloads.
@@ -2880,19 +2956,21 @@ function dlPhase(id) {
 // (0.91) How the store checked a finished download's files (ClamAV or VirusTotal), asked once each.
 S.scans = S.scans || {};
 const scanAsk = new Set();
-function scanPill(h) {
+// What the store's check of a finished download says: { cls, ic, text, scanner, sha }, or null
+// while it isn't known (asked once).
+function scanInfo(h) {
   const key = h.id + '@' + h.tag, files = S.scans[key];
   if (files === undefined && !scanAsk.has(key) && h.tag) {
     scanAsk.add(key);
     invoke('scan_info', { id: h.id, tag: h.tag }).then((r) => (r && r.files) || []).catch(() => []).then((f) => {
       S.scans[key] = f;
       for (const el of document.querySelectorAll(`[data-scan="${CSS.escape(key)}"]`)) el.outerHTML = scanPill(h);
+      if (document.body.classList.contains('tv-on') && window.tvRedraw) window.tvRedraw();
     });
   }
   const mine = (files || []).filter((f) => (f.for || []).includes(S.os));
   const use = mine.length ? mine : files || [];
-  const plain = h.verified ? `<span class="dl-check" data-scan="${esc(key)}">${esc(t('Checksum matched'))}</span>` : `<span data-scan="${esc(key)}"></span>`;
-  if (!use.length) return plain;
+  if (!use.length) return null;
   const rank = { red: 3, yellow: 2, grey: 1, green: 0 };
   const worst = use.reduce((w, f) => (rank[f.verdict] > rank[w.verdict] ? f : w), use[0]);
   const by = worst.scanner === 'clamav' ? 'ClamAV' : 'VirusTotal';
@@ -2900,7 +2978,34 @@ function scanPill(h) {
     : worst.verdict === 'grey' ? ['wait', '…', t('Being checked')]
     : worst.verdict === 'yellow' ? ['warn', '!', worst.scanner === 'clamav' ? tf('Flagged · {by}', { by }) : tf('{n} of {total} engines flagged', { n: worst.found, total: worst.engines })]
     : ['bad', '✕', tf('Flagged · {by}', { by })];
-  return `<span class="scan-pill ${cls}" data-scan="${esc(key)}" title="${esc(t('Checked by the store before it was offered'))}"><i>${ic}</i>${esc(text)}</span>`;
+  return { cls, ic, text, scanner: worst.scanner || '', sha: scanSha(worst) };
+}
+function scanPill(h) {
+  const key = h.id + '@' + h.tag, info = scanInfo(h);
+  if (!info) return h.verified ? `<span class="dl-check" data-scan="${esc(key)}">${esc(t('Checksum matched'))}</span>` : `<span data-scan="${esc(key)}"></span>`;
+  // It isn't files that were flagged: it's the engines (VirusTotal) or ClamAV that checked the
+  // download. The pill opens VirusTotal's report for that file, or says how ClamAV checked it.
+  return `<button type="button" class="scan-pill ${info.cls}" data-scan="${esc(key)}" data-act="scan-open" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}" title="${esc(t('Every release is scanned before it\'s published. A few flags on a new recomp are usually false positives.'))}"><i>${info.ic}</i>${esc(info.text)}</button>`;
+}
+// The file's sha256, from the scan or the catalog's files[] entry for that release.
+function scanSha(f) {
+  const v = String(f.sha256 || f.sha || f.hash || '').replace(/^sha256:/i, '').toLowerCase();
+  return /^[0-9a-f]{64}$/.test(v) ? v : '';
+}
+const VT_URL = (sha) => `https://www.virustotal.com/gui/file/${sha}`;
+function scanOpen(el) {
+  document.querySelectorAll('.scan-pop').forEach((x) => x.remove());
+  if (el.dataset.scanner !== 'clamav' && el.dataset.sha) return invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail);
+  const pop = document.createElement('div');
+  pop.className = 'scan-pop';
+  pop.setAttribute('role', 'status');
+  pop.textContent = el.dataset.scanner === 'clamav' ? t('Checked by ClamAV on recompstore.com before it was published.') : t('Every release is scanned before it\'s published. A few flags on a new recomp are usually false positives.');
+  const r = el.getBoundingClientRect();
+  pop.style.left = Math.max(12, Math.min(innerWidth - 300, r.left)) + 'px';
+  pop.style.top = (r.bottom + 8) + 'px';
+  document.body.append(pop);
+  setTimeout(() => document.addEventListener('pointerdown', () => pop.remove(), { once: true }), 0);
+  setTimeout(() => pop.remove(), 6000);
 }
 function pageDownloads() {
   if (!S.dlHist) loadDlHist();
@@ -3101,6 +3206,34 @@ const SET_ICONS = {
   plugins: '<path d="M10 4.5a2 2 0 0 1 4 0V6h4a1 1 0 0 1 1 1v4h-1.5a2 2 0 0 0 0 4H19v4a1 1 0 0 1-1 1h-4v-1.5a2 2 0 0 0-4 0V20H6a1 1 0 0 1-1-1v-4h1.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h4z"/>',
   beta: '<path d="M9.5 3h5M10 3v6.2L4.8 18.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9.2V3"/><path d="M7.2 14h9.6"/>',
 };
+// Settings → Network: the proxy every request goes through (the list, GitHub, downloads, the
+// website). Off, the system's (HTTPS_PROXY / ALL_PROXY), or the player's own address. The password
+// is sealed by the core and never comes back here.
+function networkGroup(group, row, st) {
+  const mode = S.proxyMode || st.proxy || 'system';
+  const custom = mode === 'custom';
+  const pick = `<select class="sel" data-act="proxy-mode" aria-label="${esc(t('Proxy'))}">${[['off', t('Off')], ['system', t('Use the System Proxy')], ['custom', t('Custom')]].map(([k, n]) => `<option value="${k}"${mode === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+  const fields = custom ? `<div class="set-row proxy-row"><div class="k"><b>${esc(t('Proxy Address'))}</b><span>${esc(t('http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.'))}</span></div>
+    <span class="acts proxy-fields"><input class="field sm" id="proxy-url" type="text" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:7890" value="${esc(st.proxy_url || '')}" aria-label="${esc(t('Proxy Address'))}"><input class="field sm" id="proxy-user" type="text" autocomplete="off" spellcheck="false" placeholder="${esc(t('User'))}" value="${esc(st.proxy_user || '')}" aria-label="${esc(t('User'))}"><input class="field sm" id="proxy-pass" type="password" autocomplete="off" placeholder="${esc(st.proxy_pass ? '••••••' : t('Password'))}" aria-label="${esc(t('Password'))}"><button type="button" class="btn sm main" data-act="proxy-save">${esc(t('Save'))}</button></span></div>` : '';
+  return group(t('Network'), row(t('Proxy'), t('Where the launcher\'s requests go: the list, GitHub, downloads and the website. Use one if GitHub can\'t be reached from your network.'), pick) + fields);
+}
+// The shared NVIDIA DLSS file, when the launcher keeps one: removing it affects every game that uses it.
+function dlssGroup(group, row) {
+  if (S.dlssState === undefined) { S.dlssState = null; invoke('dlss_state').then((v) => { S.dlssState = v; if (S.view === 'settings' && S.setTab === 'library') setSection('library', false); }).catch(() => {}); }
+  if (!S.dlssState || !S.dlssState.have) return '';
+  return group(t('NVIDIA DLSS'), row(t('Remove NVIDIA DLSS File'), t('Every game that uses it plays without DLSS until it\'s downloaded again, which happens when one next needs it. A DLSS file a game ships itself is never touched.'), `<button type="button" class="btn sm danger" data-act="dlss-remove">${esc(t('Remove'))}</button>`));
+}
+async function saveProxy(mode) {
+  const url = ($('#proxy-url') || {}).value || '', user = ($('#proxy-user') || {}).value || '', passEl = $('#proxy-pass');
+  const pass = passEl && passEl.value ? passEl.value : (user ? null : '');
+  try {
+    const r = await invoke('set_proxy', { mode, url, user, pass });
+    Object.assign(S.settings, { proxy: mode, proxy_url: url.trim(), proxy_user: user, proxy_pass: r.has_pass ? 'sealed' : '' });
+    S.proxyMode = null;
+    toast(mode === 'off' ? t('Proxy off.') : mode === 'system' ? (r.shown ? tf('Using the system proxy, {proxy}.', { proxy: r.shown }) : t('Using the system proxy. None is set right now.')) : tf('Using the proxy {proxy}.', { proxy: r.shown || url }));
+    if (S.view === 'settings') setSection('updates', false);
+  } catch (e) { fail(e); }
+}
 const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
 // Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
 // shows the progress, and Windows may ask for permission).
@@ -3125,7 +3258,10 @@ function geRow(row) {
     : now.runner ? tf('Windows recomps play through {name} now. GE-Proton runs more of them, and it\'s free.', { name: now.runner })
     : t('Nothing on this PC can run Windows recomps yet. GE-Proton is free and takes a minute.');
   const label = busy ? (busy.phase === 'download' && busy.total ? tf('Downloading {pct}%', { pct: Math.floor(busy.done / busy.total * 100) }) : t('Unpacking…')) : now.ge ? t('Check for a Newer One') : t('Install GE-Proton');
-  return row(t('GE-Proton'), say, `<button type="button" class="btn sm" data-act="ge-proton"${busy ? ' disabled' : ''}>${esc(label)}</button>`);
+  return row(t('GE-Proton'), say, `<button type="button" class="btn sm" data-act="ge-proton"${busy ? ' disabled' : ''}>${esc(label)}</button>`)
+    // umu-run's Steam runtime half downloaded (a checksum failure, parts missing): Windows recomps
+    // won't start through it until it's downloaded again.
+    + (now.umu_broken ? row(t('Steam Runtime for umu-run'), t('It didn\'t finish downloading, so Windows recomps can\'t start through umu-run. Repair it and it downloads again when a game next starts.'), `<button type="button" class="btn sm main" data-act="umu-repair">${esc(t('Repair Runtime'))}</button>`) : '');
 }
 async function geInstall() {
   if (S.geBusy) return;
@@ -3193,6 +3329,7 @@ function pageSettings() {
         + group(t('Desktop shortcuts'), row(t('Shortcuts Go Through the Launcher'), t('Off: a game\'s desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your shader, cloud saves and play time along.'), sw('shortcut_launcher', ui.shortcut_launcher, t('Shortcuts Go Through the Launcher'), 'ui-toggle')))
         + (S.os === 'windows' ? group(t('Picking files'), row(t('Use the Launcher\'s Own File Browser'), t('Off: Windows\' own window for picking files and folders. On: the launcher\'s, which marks the games it knows and can unzip.'), sw('own_picker', ui.own_picker, t('Use the Launcher\'s Own File Browser'), 'ui-toggle'))) : '')
         + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Recomps you added to Steam, installed with Quiver Launcher or keep in a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="adopt">${esc(t('Find them'))}</button>`))
+        + dlssGroup(group, row)
         + group(t('Game Art'), `<div class="set-row"><div class="k"><b>${esc(t('SteamGridDB API Key'))}</b><span>${esc(t('Optional. With your own free key from steamgriddb.com (Preferences → API), games you add from GitHub get covers, backgrounds and logos.'))}</span></div>
           <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`);
       break;
@@ -3202,7 +3339,8 @@ function pageSettings() {
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
-          + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')));
+          + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
+        + networkGroup(group, row, st);
       break;
     case 'playing': {
       const hh = !!S.handheld, eff = (k) => (st[k] == null ? hh : !!st[k]);
@@ -3856,6 +3994,7 @@ async function checkUpdates(loud) {
     const updates = await invoke('check_updates', { force: !!loud });
     if (revision !== updateCheckRevision) return false;
     S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local));
+    S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }
   renderSide();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
@@ -6391,6 +6530,10 @@ async function act(el, e) {
     case 'rename': return renameModal(id);
     case 'troubleshoot': return troubleshootModal(id);
     case 'edit-info': return editInfo(id);
+    case 'proxy-save': return saveProxy('custom');
+    case 'scan-open': return scanOpen(el);
+    case 'dlss-remove': try { await invoke('dlss_remove'); S.dlssState = { applies: true, have: false }; toast(t('NVIDIA DLSS file removed.')); if (S.view === 'settings') setSection('library', false); } catch (e) { fail(e); } return;
+    case 'umu-repair': try { toast(t(await invoke('umu_repair'))); S.protonNow = await invoke('proton_now').catch(() => S.protonNow); if (S.view === 'settings') setSection(S.setTab); } catch (e) { fail(e); } return;
     case 'sgdb-save': { const v = ($('#sgdb-key') || {}).value || ''; await saveUi({ sgdb_key: v.trim() }); return toast(v.trim() ? t('Saved. Games you add from GitHub get art now.') : t('Key removed.')); }
     case 'build': return changeBuild(id);
     case 'gh-add': return githubModal();

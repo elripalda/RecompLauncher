@@ -217,6 +217,8 @@
     root.style.opacity = '';
   }
   window.enterTV = enter;
+  // A redraw from outside (a download's scan result came in): only on Downloads, keeping focus.
+  window.tvRedraw = () => { if (TV.on && TV.view === 'downloads' && !TV.sheet) draw(true); };
   window.startTV = enter;
 
   function boot() {
@@ -900,7 +902,7 @@
       { label: t('Tag'), sub: TV.dtag || t('Any'), icon: 'pin', run: pickTag },
       { label: t('Show'), sub: t((SHOWS.find(([k]) => k === (TV.dshow || '')) || SHOWS[0])[1]), icon: 'layers', run: pickShow },
       { label: t('Plays great'), sub: TV.dgreat ? t('On') : t('Off'), icon: 'check', cls: TV.dgreat ? 'on' : '', run: () => { TV.dgreat = !TV.dgreat; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
-      { label: t('Hide ended'), sub: TV.dended ? t('On') : t('Off'), icon: 'history', cls: TV.dended ? 'on' : '', run: () => { TV.dended = !TV.dended; TV.dendedOpen = false; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
+      { label: t('Hide Ended'), sub: TV.dended ? t('On') : t('Off'), icon: 'history', cls: TV.dended ? 'on' : '', run: () => { TV.dended = !TV.dended; TV.dendedOpen = false; TV.focusKey = 'g:@filter'; discoverRedraw(); } },
       ...(onHandheld() ? [{ label: t('Great on Deck'), sub: TV.ddeck ? t('On') : t('Off'), icon: 'pad', cls: TV.ddeck ? 'on' : '', run: () => { TV.ddeck = !TV.ddeck; TV.focusKey = 'g:@filter'; discoverRedraw(); } }] : []),
       ...(S.os !== 'linux' ? [{ label: t('Runs On'), sub: runsName, icon: 'pad', run: pickRuns }] : []),
       { label: t('Search'), sub: TV.dq ? TV.dq : t('Find a game by name'), icon: 'search', run: tvSearch },
@@ -1071,7 +1073,7 @@
     const found = oneEach(each, srt === 'new');
     // "Hide ended" doesn't lose them: they wait in a closed box under the list, greyed out.
     const endedList = TV.dended ? oneEach(byOrder(chain(true)), srt === 'new') : [];
-    const endedBox = endedList.length ? `<section class="tv-ended${TV.dendedOpen ? ' open' : ''}${TV.endedAnim ? ' fresh' : ''}"><button type="button" class="tv-chip tool tv-ended-head" data-f data-key="g:@ended" data-tvact="dended" aria-expanded="${!!TV.dendedOpen}">${esc(t('Ended projects'))}<b class="tv-chip-n">${endedList.length}</b></button>${TV.dendedOpen ? `<div class="tv-ended-body">${grid(endedList, 'E')}</div>` : ''}</section>` : '';
+    const endedBox = endedList.length ? `<section class="tv-ended${TV.dendedOpen ? ' open' : ''}${TV.endedAnim ? ' fresh' : ''}"><button type="button" class="tv-chip tool tv-ended-head" data-f data-key="g:@ended" data-tvact="dended" aria-expanded="${!!TV.dendedOpen}">${esc(t('Ended Projects'))}<b class="tv-chip-n">${endedList.length}</b></button>${TV.dendedOpen ? `<div class="tv-ended-body">${grid(endedList, 'E')}</div>` : ''}</section>` : '';
     // Discover's own order (no sort picked): turnkey recomps first.
     // On a handheld, the games handheld players say run well come first.
     const hhFirst = (l) => (S.handheld ? [...l].sort((x, y) => (window.greatHandheld(y) ? 1 : 0) - (window.greatHandheld(x) ? 1 : 0)) : l);
@@ -1090,10 +1092,20 @@
     const act = Object.keys(S.jobs), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
     const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
     const ups = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]);
+    // Recently installed, with how the store checked each one: A opens VirusTotal's report in the
+    // browser (or says how ClamAV checked it).
+    if (!S.dlHist && typeof loadDlHist === 'function') loadDlHist();
+    const done = (S.dlHist || []).filter((h) => h.tag).slice(0, 6).map((h) => {
+      const info = scanInfo(h);
+      if (!info) return '';
+      const a = libAppOf(h.id);
+      return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" data-tvact="scan" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))} · ${esc(info.text)}</small></span><span class="tv-pill">${esc(info.scanner === 'clamav' || !info.sha ? t('How It Was Checked') : t('Open the Report'))}</span></button>`;
+    }).filter(Boolean);
     const items = act.map((id) => item(id, '', 'd:' + id, progress(id))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
-        <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>`)}
+        <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
+        ${done.length ? `<h3 class="tv-lh">${esc(t('Checked Before It Was Published'))}</h3><div class="tv-list">${done.join('')}</div>` : ''}`)}
       ${hints([['A', t('Open')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
   }
 
@@ -1306,7 +1318,7 @@
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
     const devText = a.blurb || notesLine(a.description);
-    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), a.version ? 'v' + String(a.version).replace(/^v/i, '') : ''], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('Size'), a.size]].filter(([, v]) => v);
+    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), a.version ? 'v' + String(a.version).replace(/^v/i, '') : ''], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('Size'), a.size]].filter(([, v]) => v);
     const checkBlock = !g && checks.length ? `<section class="tv-block"><h3>${esc(t('Before you install'))}${bad ? ` <small>${esc(tn(bad, '1 thing to do', '{n} things to do'))}</small>` : ''}</h3><div class="tv-panel tv-checks" data-f data-key="g-checks"><dl>${checks.map((r) => `<div><dt>${esc(r.k)}<small>${esc(r.d || '')}</small></dt><dd>${okMark(r.v)}</dd></div>`).join('')}</dl></div></section>` : '';
     const aside = g
       ? `<aside class="tv-panel" aria-label="${esc(t('Details'))}"><h2>${esc(bad ? t('Before you play') : t('Ready to play'))}</h2><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${tvRuns(a)}</aside>`
@@ -1889,6 +1901,8 @@
     const pickIt = async (folder) => { const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(TS.id)).catch(fail); if (p) tsBegin(typeof p === 'string' ? p : p.path); else tsDraw(); };
     if (TS.stage === 'inputs') {
       body = namedInputsShell(id, su, TS.named, a, true);
+      // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
+      setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'inputs') tsDraw(); }), 0);
     } else if (TS.stage === 'pick') {
       const own = S.owned[id];
       body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
@@ -2526,6 +2540,7 @@
       case 'about': sfx('open'); return go('about');
       case 'support': sfx('select'); return invoke('open_url', { url: 'https://ko-fi.com/recomp' }).catch(fail);
       case 'storage': sfx('open'); TV.sizes = null; return go('storage');
+      case 'scan': sfx('open'); if (el.dataset.scanner !== 'clamav' && el.dataset.sha) { invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail); return toast(t('The report is open in your browser.')); } return toast(el.dataset.scanner === 'clamav' ? t('Checked by ClamAV on recompstore.com before it was published.') : t('Every release is scanned before it\'s published. A few flags on a new recomp are usually false positives.'));
       case 'saves': sfx('open'); TV.savesAll = null; return go('saves');
       case 'gsaves': return go('gsaves', id);
       case 'stor': {
