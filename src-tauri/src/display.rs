@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 /// Information about a connected display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,6 +45,7 @@ pub struct PreTvWindowState {
     pub width: u32,
     pub height: u32,
     pub maximized: bool,
+    pub monitor_device: String,
 }
 
 /// Active Big Picture display state.
@@ -99,7 +100,7 @@ fn fallback_list_monitors(app: &AppHandle) -> Vec<MonitorInfo> {
         .into_iter()
         .enumerate()
         .map(|(idx, m)| {
-            let m_name = m.name().unwrap_or("").to_string();
+            let m_name = m.name().cloned().unwrap_or_default();
             let is_prim = primary_name.as_ref().map(|pn| pn == &m_name).unwrap_or(idx == 0);
             let pos = m.position();
             let size = m.size();
@@ -173,32 +174,51 @@ pub fn prepare_tv_mode(app: &AppHandle, monitor_pref: Option<String>) -> Result<
     let w = app.get_webview_window("main").ok_or_else(|| "Main window not found".to_string())?;
 
     let data_dir = app_data_dir(app);
-    let existing_state = ACTIVE_TV.lock().unwrap().take();
+    let existing_state = ACTIVE_TV.lock().unwrap().clone();
 
-    let pre_window = if let Some(ref prev) = existing_state {
+    let mut pre_window = if let Some(ref prev) = existing_state {
         // If display was previously switched, restore to baseline before switching to new target
-        if prev.display_switched {
-            #[cfg(windows)]
-            {
-                let _ = win_display::restore_primary(&prev.original_primary_device, &prev.original_positions, &data_dir);
-            }
-        }
+        restore_display_layout(prev, &data_dir)?;
         prev.window.clone()
     } else {
         // Capture desktop window placement before TV mode modifications
-        let pos = w.outer_position().unwrap_or_default();
-        let size = w.outer_size().unwrap_or_default();
         let maximized = w.is_maximized().unwrap_or(false);
+        if maximized {
+            w.unmaximize().map_err(|e| format!("Couldn't capture the launcher window state: {e}"))?;
+        }
+        let pos = match w.outer_position() {
+            Ok(pos) => pos,
+            Err(e) => {
+                if maximized { let _ = w.maximize(); }
+                return Err(format!("Couldn't capture the launcher position: {e}"));
+            }
+        };
+        let size = match w.outer_size() {
+            Ok(size) => size,
+            Err(e) => {
+                if maximized { let _ = w.maximize(); }
+                return Err(format!("Couldn't capture the launcher size: {e}"));
+            }
+        };
+        if maximized {
+            w.maximize().map_err(|e| format!("Couldn't preserve the launcher state: {e}"))?;
+        }
         PreTvWindowState {
             x: pos.x,
             y: pos.y,
             width: size.width,
             height: size.height,
             maximized,
+            monitor_device: String::new(),
         }
     };
 
     let monitors = enumerate_monitors(app);
+    if pre_window.monitor_device.is_empty() {
+        pre_window.monitor_device = monitor_at(&monitors, pre_window.x, pre_window.y, pre_window.width, pre_window.height)
+            .or_else(|| monitors.iter().find(|m| m.is_primary)).or_else(|| monitors.first())
+            .map(|m| m.device_name.clone()).unwrap_or_default();
+    }
     let target = resolve_target_monitor(&monitors, monitor_pref.as_deref())
         .ok_or_else(|| "No display monitors detected".to_string())?;
 
@@ -217,6 +237,11 @@ pub fn prepare_tv_mode(app: &AppHandle, monitor_pref: Option<String>) -> Result<
         }).collect(),
     };
 
+    // Leave the window in normal bounds before changing global display coordinates.
+    if w.is_maximized().unwrap_or(false) {
+        w.unmaximize().map_err(|e| format!("Couldn't prepare the launcher window: {e}"))?;
+    }
+
     #[cfg(windows)]
     {
         if !target.is_primary && !target.device_name.is_empty() {
@@ -230,7 +255,13 @@ pub fn prepare_tv_mode(app: &AppHandle, monitor_pref: Option<String>) -> Result<
                     crate::trail::note("Big Picture: target monitor is already primary");
                 }
                 Err(err) => {
-                    crate::trail::note(format!("Big Picture: display switch failed ({err}), proceeding with window move"));
+                    crate::trail::note(format!("Big Picture: display switch failed ({err})"));
+                    if err.starts_with("ROLLBACK_FAILED:") {
+                        state.display_switched = true;
+                        *ACTIVE_TV.lock().unwrap() = Some(state.clone());
+                    }
+                    let rollback = rollback_tv_prepare(&state, &w, &data_dir);
+                    return Err(format!("{err}{}", rollback.err().map(|e| format!("; {e}")).unwrap_or_default()));
                 }
             }
         }
@@ -239,11 +270,20 @@ pub fn prepare_tv_mode(app: &AppHandle, monitor_pref: Option<String>) -> Result<
     // Position window on target monitor
     if state.display_switched {
         // After switching, the target monitor is at origin (0, 0)
-        let _ = w.set_position(PhysicalPosition::new(0, 0));
+        if let Err(e) = w.set_position(PhysicalPosition::new(0, 0)) {
+            let rollback = rollback_tv_prepare(&state, &w, &data_dir);
+            return Err(format!("Couldn't move the launcher to the Big Picture display: {e}{}", rollback.err().map(|e| format!("; {e}")).unwrap_or_default()));
+        }
     } else {
-        let _ = w.set_position(PhysicalPosition::new(target.x, target.y));
+        if let Err(e) = w.set_position(PhysicalPosition::new(target.x, target.y)) {
+            let rollback = rollback_tv_prepare(&state, &w, &data_dir);
+            return Err(format!("Couldn't move the launcher to the Big Picture display: {e}{}", rollback.err().map(|e| format!("; {e}")).unwrap_or_default()));
+        }
     }
-    let _ = w.set_size(PhysicalSize::new(target.width, target.height));
+    if let Err(e) = w.set_size(PhysicalSize::new(target.width, target.height)) {
+        let rollback = rollback_tv_prepare(&state, &w, &data_dir);
+        return Err(format!("Couldn't size the launcher for the Big Picture display: {e}{}", rollback.err().map(|e| format!("; {e}")).unwrap_or_default()));
+    }
 
     *ACTIVE_TV.lock().unwrap() = Some(state);
     Ok(target)
@@ -252,38 +292,42 @@ pub fn prepare_tv_mode(app: &AppHandle, monitor_pref: Option<String>) -> Result<
 /// Restores the original display configuration and returns the launcher window
 /// to its original desktop monitor and placement.
 pub fn leave_tv_mode(app: &AppHandle) -> Result<(), String> {
-    let state = ACTIVE_TV.lock().unwrap().take();
+    let state = ACTIVE_TV.lock().unwrap().clone();
     let data_dir = app_data_dir(app);
 
     // 1. Restore Windows primary display configuration if it was switched
     if let Some(ref st) = state {
         if st.display_switched {
-            #[cfg(windows)]
-            {
-                crate::trail::note("Big Picture: restoring original primary display configuration");
-                if let Err(e) = win_display::restore_primary(&st.original_primary_device, &st.original_positions, &data_dir) {
-                    crate::trail::note(format!("Big Picture: restore display failed: {e}"));
-                }
-            }
+            crate::trail::note("Big Picture: restoring original primary display configuration");
         }
+        restore_display_layout(st, &data_dir)?;
     }
 
     // 2. Restore normal desktop launcher window placement
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_fullscreen(false);
-
-        if let Some(st) = state {
-            let win = st.window;
-            if win.width >= 400 && win.height >= 300 {
-                let _ = w.unmaximize();
-                let _ = w.set_size(PhysicalSize::new(win.width, win.height));
-                let _ = w.set_position(PhysicalPosition::new(win.x, win.y));
-                if win.maximized {
-                    let _ = w.maximize();
+        if let Some(ref st) = state {
+            let mut win = st.window.clone();
+            let monitors = enumerate_monitors(app);
+            let original_monitor = monitors.iter().any(|m| {
+                !win.monitor_device.is_empty() && m.device_name.eq_ignore_ascii_case(&win.monitor_device)
+            });
+            if !original_monitor {
+                if let Some(monitor) = monitors.iter().find(|m| m.is_primary).or_else(|| monitors.first()) {
+                crate::trail::note("Big Picture: original launcher monitor is unavailable; restoring on the primary display");
+                    let x = monitor.x.saturating_add(monitor.width.saturating_sub(win.width.max(640)) as i32 / 2);
+                    let y = monitor.y.saturating_add(monitor.height.saturating_sub(win.height.max(480)) as i32 / 2);
+                    win.x = x;
+                    win.y = y;
+                    win.monitor_device = monitor.device_name.clone();
                 }
             }
+            restore_window_state(&w, &win)?;
+        } else {
+            w.set_fullscreen(false).map_err(|e| format!("Couldn't leave fullscreen mode: {e}"))?;
         }
     }
+
+    *ACTIVE_TV.lock().unwrap() = None;
 
     Ok(())
 }
@@ -318,6 +362,95 @@ fn app_data_dir(app: &AppHandle) -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 
+fn monitor_at<'a>(monitors: &'a [MonitorInfo], x: i32, y: i32, width: u32, height: u32) -> Option<&'a MonitorInfo> {
+    let center_x = x.saturating_add((width / 2) as i32);
+    let center_y = y.saturating_add((height / 2) as i32);
+    monitors.iter().find(|m| {
+        center_x >= m.x && center_x < m.x.saturating_add(m.width as i32)
+            && center_y >= m.y && center_y < m.y.saturating_add(m.height as i32)
+    })
+}
+
+fn restore_window_state(w: &WebviewWindow, state: &PreTvWindowState) -> Result<(), String> {
+    w.set_fullscreen(false).map_err(|e| format!("Couldn't leave fullscreen mode: {e}"))?;
+    if w.is_maximized().unwrap_or(false) {
+        w.unmaximize().map_err(|e| format!("Couldn't restore the launcher window: {e}"))?;
+    }
+    w.set_size(PhysicalSize::new(state.width, state.height))
+        .map_err(|e| format!("Couldn't restore the launcher size: {e}"))?;
+    w.set_position(PhysicalPosition::new(state.x, state.y))
+        .map_err(|e| format!("Couldn't restore the launcher position: {e}"))?;
+    if state.maximized {
+        w.maximize().map_err(|e| format!("Couldn't restore the maximized state: {e}"))?;
+    }
+    Ok(())
+}
+
+fn restore_display_layout(state: &ActiveTvState, data_dir: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    if state.display_switched {
+        return win_display::restore_primary(&state.original_primary_device, &state.original_positions, data_dir).map(|_| ());
+    }
+    let _ = (state, data_dir);
+    Ok(())
+}
+
+fn rollback_tv_prepare(state: &ActiveTvState, w: &WebviewWindow, data_dir: &Path) -> Result<(), String> {
+    let display_error = restore_display_layout(state, data_dir).err();
+    let window_error = restore_window_state(w, &state.window).err();
+    if display_error.is_some() || window_error.is_some() {
+        *ACTIVE_TV.lock().unwrap() = Some(state.clone());
+        return Err(format!("Display rollback: {}; window rollback: {}",
+            display_error.unwrap_or_else(|| "ok".to_string()),
+            window_error.unwrap_or_else(|| "ok".to_string())));
+    }
+    Ok(())
+}
+
+/// Moves the normal launcher window without changing Windows display settings.
+pub fn move_main_window_to_monitor(app: &AppHandle, monitor_pref: Option<String>) -> Result<MonitorInfo, String> {
+    let w = app.get_webview_window("main").ok_or_else(|| "Main window not found".to_string())?;
+    if w.is_fullscreen().unwrap_or(false) {
+        return Err("The launcher window is currently in fullscreen mode".to_string());
+    }
+    let monitors = enumerate_monitors(app);
+    let target = resolve_target_monitor(&monitors, monitor_pref.as_deref())
+        .ok_or_else(|| "No display monitors detected".to_string())?;
+    let old_pos = w.outer_position().map_err(|e| format!("Couldn't read the launcher position: {e}"))?;
+    let initial_size = w.outer_size().map_err(|e| format!("Couldn't read the launcher size: {e}"))?;
+    if monitor_at(&monitors, old_pos.x, old_pos.y, initial_size.width, initial_size.height)
+        .map(|m| m.device_name.eq_ignore_ascii_case(&target.device_name)).unwrap_or(false)
+    {
+        return Ok(target);
+    }
+    let was_maximized = w.is_maximized().unwrap_or(false);
+    if was_maximized {
+        w.unmaximize().map_err(|e| format!("Couldn't restore the launcher window: {e}"))?;
+    }
+    let size = match w.outer_size() {
+        Ok(size) => size,
+        Err(e) => {
+            if was_maximized { let _ = w.maximize(); }
+            return Err(format!("Couldn't read the launcher size: {e}"));
+        }
+    };
+
+    let x = target.x.saturating_add(target.width.saturating_sub(size.width) as i32 / 2);
+    let y = target.y.saturating_add(target.height.saturating_sub(size.height) as i32 / 2);
+    if let Err(e) = w.set_position(PhysicalPosition::new(x, y)) {
+        if was_maximized { let _ = w.maximize(); }
+        return Err(format!("Couldn't move the launcher window to {}: {e}", target.name));
+    }
+    if was_maximized {
+        if let Err(e) = w.maximize() {
+            let _ = w.set_position(old_pos);
+            let _ = w.maximize();
+            return Err(format!("Couldn't maximize the launcher window: {e}"));
+        }
+    }
+    Ok(target)
+}
+
 // ---------------------------------------------------------------------------
 // Windows display implementation using Win32 GDI & CCD APIs
 // ---------------------------------------------------------------------------
@@ -328,6 +461,7 @@ mod win_display {
     use std::collections::HashMap;
     use std::mem::size_of;
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
     pub struct LUID {
@@ -335,6 +469,7 @@ mod win_display {
         pub HighPart: i32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone, Default)]
     pub struct DISPLAYCONFIG_RATIONAL {
@@ -342,6 +477,7 @@ mod win_display {
         pub Denominator: u32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone, Default)]
     pub struct DISPLAYCONFIG_PATH_SOURCE_INFO {
@@ -351,6 +487,7 @@ mod win_display {
         pub statusFlags: u32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone, Default)]
     pub struct DISPLAYCONFIG_PATH_TARGET_INFO {
@@ -366,6 +503,7 @@ mod win_display {
         pub statusFlags: u32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone, Default)]
     pub struct DISPLAYCONFIG_PATH_INFO {
@@ -374,6 +512,7 @@ mod win_display {
         pub flags: u32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct DISPLAYCONFIG_MODE_INFO {
@@ -383,6 +522,7 @@ mod win_display {
         pub modeInfo: [u8; 48],
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct DISPLAYCONFIG_TARGET_DEVICE_NAME {
@@ -399,6 +539,7 @@ mod win_display {
         pub monitorDevicePath: [u16; 128],
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct DISPLAYCONFIG_SOURCE_DEVICE_NAME {
@@ -416,6 +557,7 @@ mod win_display {
         pub y: i32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct DEVMODEW {
@@ -450,6 +592,7 @@ mod win_display {
         pub dmPanningHeight: u32,
     }
 
+    #[allow(non_snake_case)]
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct DISPLAY_DEVICEW {
@@ -653,7 +796,7 @@ mod win_display {
                 // Match scale factor from Tauri monitors by position / device name
                 let scale = tauri_monitors.iter()
                     .find(|tm| {
-                        tm.name().map(|n| n == gdi).unwrap_or(false)
+                        tm.name().map(|n| n.as_str() == gdi.as_str()).unwrap_or(false)
                             || (tm.position().x == x && tm.position().y == y)
                     })
                     .map(|tm| tm.scale_factor())
@@ -703,6 +846,11 @@ mod win_display {
         let dx = -target_pos.x;
         let dy = -target_pos.y;
 
+        // Leave a recovery record before changing any display state, so a crash mid-switch is recoverable.
+        let marker = dir.join(SWITCH_MARKER_FILE);
+        let bytes = serde_json::to_vec_pretty(originals).map_err(|e| format!("Couldn't save the original display layout: {e}"))?;
+        std::fs::write(&marker, bytes).map_err(|e| format!("Couldn't save the original display layout: {e}"))?;
+
         unsafe {
             // 1. Move target display to (0, 0) and set as primary
             let mut dm_target = zero_devmode();
@@ -719,7 +867,7 @@ mod win_display {
                 std::ptr::null_mut(),
             );
             if r_target != DISP_CHANGE_SUCCESSFUL {
-                return Err(format!("ChangeDisplaySettingsExW for target failed: {r_target}"));
+                return Err(rollback_switch(orig_primary_device(originals), originals, dir, format!("ChangeDisplaySettingsExW for target failed: {r_target}")));
             }
 
             // 2. Shift other displays to preserve relative layout
@@ -741,9 +889,7 @@ mod win_display {
                     std::ptr::null_mut(),
                 );
                 if r_other != DISP_CHANGE_SUCCESSFUL {
-                    // Rollback on partial failure
-                    let _ = ChangeDisplaySettingsExW(std::ptr::null(), std::ptr::null(), std::ptr::null_mut(), 0, std::ptr::null_mut());
-                    return Err(format!("ChangeDisplaySettingsExW for {} failed: {r_other}", other.device_name));
+                    return Err(rollback_switch(orig_primary_device(originals), originals, dir, format!("ChangeDisplaySettingsExW for {} failed: {r_other}", other.device_name)));
                 }
             }
 
@@ -756,17 +902,22 @@ mod win_display {
                 std::ptr::null_mut(),
             );
             if r_commit != DISP_CHANGE_SUCCESSFUL {
-                return Err(format!("ChangeDisplaySettingsExW commit failed: {r_commit}"));
+                return Err(rollback_switch(orig_primary_device(originals), originals, dir, format!("ChangeDisplaySettingsExW commit failed: {r_commit}")));
             }
         }
 
-        // Write marker file for crash recovery
-        let marker = dir.join(SWITCH_MARKER_FILE);
-        if let Ok(bytes) = serde_json::to_vec_pretty(originals) {
-            let _ = std::fs::write(marker, bytes);
-        }
-
         Ok(true)
+    }
+
+    fn orig_primary_device(originals: &[OriginalMonitorPos]) -> &str {
+        originals.iter().find(|m| m.is_primary).map(|m| m.device_name.as_str()).unwrap_or("")
+    }
+
+    fn rollback_switch(original_primary: &str, originals: &[OriginalMonitorPos], dir: &Path, cause: String) -> String {
+        match restore_primary(original_primary, originals, dir) {
+            Ok(_) => format!("{cause}; original display layout restored"),
+            Err(rollback) => format!("ROLLBACK_FAILED: {cause}; restoring the original layout also failed: {rollback}"),
+        }
     }
 
     /// Restores the original Windows primary display and relative screen positions.
@@ -794,6 +945,7 @@ mod win_display {
             }
 
             // 2. Restore all other displays to their original coordinates
+            let mut position_error = None;
             for other in originals {
                 if other.device_name.eq_ignore_ascii_case(&prim.device_name) {
                     continue;
@@ -804,13 +956,16 @@ mod win_display {
                 dm_other.dmPosition.y = other.y;
                 let w_other = to_wstring(&other.device_name);
 
-                let _ = ChangeDisplaySettingsExW(
+                let result = ChangeDisplaySettingsExW(
                     w_other.as_ptr(),
                     &dm_other,
                     std::ptr::null_mut(),
                     CDS_UPDATEREGISTRY | CDS_NORESET,
                     std::ptr::null_mut(),
                 );
+                if result != DISP_CHANGE_SUCCESSFUL && position_error.is_none() {
+                    position_error = Some(format!("Restore ChangeDisplaySettingsExW for {} failed: {result}", other.device_name));
+                }
             }
 
             // 3. Commit
@@ -823,6 +978,9 @@ mod win_display {
             );
             if r_commit != DISP_CHANGE_SUCCESSFUL {
                 return Err(format!("Restore ChangeDisplaySettingsExW commit failed: {r_commit}"));
+            }
+            if let Some(error) = position_error {
+                return Err(error);
             }
         }
 
@@ -844,9 +1002,12 @@ mod win_display {
         };
         if let Some(prim) = originals.iter().find(|m| m.is_primary) {
             crate::trail::note("Display recovery: restoring display configuration from previous session");
-            let _ = restore_primary(&prim.device_name, &originals, dir);
+            if let Err(e) = restore_primary(&prim.device_name, &originals, dir) {
+                crate::trail::note(format!("Display recovery failed; keeping the recovery record: {e}"));
+            }
+        } else {
+            crate::trail::note("Display recovery record has no primary display; keeping it for inspection");
         }
-        let _ = std::fs::remove_file(&marker);
     }
 
     fn zero_devmode() -> DEVMODEW {

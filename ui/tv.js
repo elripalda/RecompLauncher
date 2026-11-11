@@ -200,11 +200,16 @@
     await wait(still() ? 0 : 240);
     document.body.classList.add('tv-on');
     try {
-      if (window.invoke) {
-        await invoke('prepare_tv_mode', { monitorId: (S.settings && S.settings.tv_monitor) || '' });
-      }
+      await invoke('prepare_tv_mode', { monitorId: (S.settings && S.settings.tv_monitor) || '' });
     } catch (e) {
       console.warn('prepare_tv_mode failed:', e);
+      TV.on = false;
+      TV.booting = false;
+      document.body.classList.remove('tv-on');
+      root.hidden = true;
+      root.classList.remove('tv-cover', 'out');
+      render(true);
+      return;
     }
     try { await W.setFullscreen(true); } catch (e) { /* the window can stay as it is */ }
     await wait(160);
@@ -219,11 +224,11 @@
     document.body.classList.remove('tv-on');
     try { await W.setFullscreen(false); } catch (e) { /* fine */ }
     try {
-      if (window.invoke) {
-        await invoke('leave_tv_mode');
-      }
+      await invoke('leave_tv_mode');
     } catch (e) {
       console.warn('leave_tv_mode failed:', e);
+      await wait(250);
+      try { await invoke('leave_tv_mode'); } catch (retryError) { console.warn('leave_tv_mode retry failed:', retryError); }
     }
     render(true);
     // Pictures left black by the switch out of full screen: shown or loaded again, now and once the
@@ -1304,10 +1309,8 @@
   async function tvMonitorSheet() {
     let list = S.monitors || [];
     try {
-      if (window.invoke) {
-        list = await invoke('list_monitors');
-        S.monitors = list || [];
-      }
+      list = await invoke('list_monitors');
+      S.monitors = list || [];
     } catch (e) {
       console.warn('list_monitors failed:', e);
     }

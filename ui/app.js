@@ -3447,10 +3447,12 @@ function pageSettings() {
       body = window.pluginSettings ? window.pluginSettings(group, row, sw) : '';
       break;
     case 'bigpicture':
-      if (!S.monitors && window.invoke) invoke('list_monitors').then((m) => { S.monitors = m || []; if (S.view === 'settings') render(true); }).catch(() => { S.monitors = []; });
+      if (!S.monitors) invoke('list_monitors').then((m) => { S.monitors = m || []; if (S.view === 'settings') render(true); }).catch(() => { S.monitors = null; });
       const monitors = S.monitors || [];
+      const selectedLauncherMonitor = st.launcher_monitor || '';
       const selectedMonitor = st.tv_monitor || '';
       body = group(t('Big Picture mode'), row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('start_in_tv', st.start_in_tv, t('Start in Big Picture mode')))
+          + `<div class="set-row"><div class="k"><b>${esc(t('Normal Launcher Monitor'))}</b><span>${esc(t('Where the normal launcher opens and stays.'))}</span></div><select class="field" data-act="launchermonitor" aria-label="${esc(t('Normal Launcher Monitor'))}"><option value="" ${selectedLauncherMonitor ? '' : 'selected'}>${esc(t('Automatic (Primary Display)'))}</option>${monitors.map((m) => `<option value="${esc(m.id)}" ${selectedLauncherMonitor === m.id ? 'selected' : ''}>${esc(m.name)} · ${m.width}×${m.height}${m.is_primary ? ` · ${esc(t('Windows Primary Display'))}` : ''}</option>`).join('')}</select></div>`
           + `<div class="set-row"><div class="k"><b>${esc(t('Target Monitor'))}</b><span>${esc(t('The display Big Picture mode and games open on.'))}</span></div><select class="field" data-act="tvmonitor" aria-label="${esc(t('Target Monitor'))}"><option value="" ${selectedMonitor ? '' : 'selected'}>${esc(t('Automatic (Primary Display)'))}</option>${monitors.map((m) => `<option value="${esc(m.id)}" ${selectedMonitor === m.id ? 'selected' : ''}>${esc(m.name)} · ${m.width}×${m.height}${m.is_primary ? ` · ${esc(t('Windows Primary Display'))}` : ''}</option>`).join('')}</select></div>`
           + `<div class="set-row"><div class="k"><b>${esc(t('Size'))}</b><span>${esc(t('Smaller fits more on a big screen; larger is easier to read from the couch or on a handheld.'))}</span></div>
             <div class="seg" role="radiogroup" aria-label="${esc(t('Big Picture mode size'))}">${[['', t('Auto')], ['small', t('Smaller')], ['medium', t('Medium')], ['large', t('Larger')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.tv_size || '') === k}" data-act="tvsize" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
@@ -4221,6 +4223,16 @@ function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   settingsSaving = settingsSaving.then(() => invoke('save_settings', { settings: S.settings })).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
   return settingsSaving;
+}
+
+async function setLauncherMonitor(monitorId) {
+  try {
+    await invoke('move_launcher_window', { monitorId });
+    await saveSettings({ launcher_monitor: monitorId });
+  } catch (e) {
+    render(true);
+    fail(e);
+  }
 }
 
 // ---------- picking a file or folder: the launcher's own browser ----------
@@ -7145,6 +7157,8 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const s = e.target.closest('select[data-act]');
   if (!s) return;
+  if (s.dataset.act === 'launchermonitor') return setLauncherMonitor(s.value);
+  if (s.dataset.act === 'tvmonitor') return saveSettings({ tv_monitor: s.value });
   if (s.dataset.act === 'gsel') return setGameSetting(s.dataset.id, s.dataset.k, s.value);
   if (s.dataset.act === 'lang') return setLanguage(s.value);
   if (s.dataset.act === 'sort-sel') { S.find.sort = s.value; S.find.picked = true; return updateDiscover(); }
