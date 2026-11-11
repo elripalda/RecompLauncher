@@ -679,7 +679,6 @@
     const g = S.library[el.dataset.hero];
     const cap = $('#tv-flowcap', root);
     if (cap) { cap.innerHTML = `<b>${esc(a.game || a.name)}</b><span>${esc(g ? timeLine(g) : '')}</span>`; cap.classList.remove('swap'); void cap.offsetWidth; cap.classList.add('swap'); }
-    setTone(el.dataset.hero);
   }
 
   // Pictures fetched ahead of time (kept while they're likely to be needed).
@@ -2155,14 +2154,28 @@
       TV.hero = hid;
       TV.heroBelow = !el.closest('.tv-dock');
       const a = libAppOf(hid);
-      swapBg(a);
-      setTone(hid);
+      settle(el, a, instant);
       const hero = $('#tv-hero', root);
       if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(hero); }
     }
     if (TV.view === 'gsettings' || TV.view === 'settings') setPanel(el);
-    if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); swapBg(libAppOf(el.dataset.hero)); return; }
+    if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); settle(el, libAppOf(el.dataset.hero), instant); return; }
     keepInView(el, instant);
+  }
+  // The backdrop and the colours follow the game you stop on, not each one you pass: a change fades
+  // two full-screen pictures into each other and restyles the whole page, too much to start on
+  // every press while you're moving along a row.
+  let settleT = 0;
+  function settle(el, a, instant) {
+    clearTimeout(settleT);
+    const view = TV.view;
+    const run = () => {
+      // Moved on, or off to another page (whose own backdrop is already right): nothing to do.
+      if (TV.view !== view || !el.isConnected || !el.classList.contains('f') || el.closest('.tv-stage.leaving')) return;
+      swapBg(a);
+      setTone(el.dataset.hero);
+    };
+    if (instant) run(); else settleT = setTimeout(run, 220);
   }
   // The backdrop changes to another game's art: the new picture, once it's ready to draw, goes in
   // under the old one, which fades away over it. Moving on before it's ready skips it.
