@@ -2674,5 +2674,13 @@
  "Update Now": "지금 업데이트",
  "Later keeps this version on the Downloads page until a newer one is out.": "나중에를 누르면 더 새로운 버전이 나올 때까지 이 버전이 다운로드 페이지에 남아 있습니다.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "게임의 업적 파일을 지켜보는 중입니다. 업적 달성은 게임이 저장할 때 표시됩니다.",
- "Waiting for the game's first unlock.": "게임의 첫 업적 달성을 기다리는 중입니다."
+ "Waiting for the game's first unlock.": "게임의 첫 업적 달성을 기다리는 중입니다.",
+ "Pick the game in its menu": "메뉴에서 게임 선택",
+ "Part of {name}": "{name}에 포함",
+ "Pick the game in its menu when it starts.": "시작되면 메뉴에서 게임을 고르세요.",
+ "Its {n} games are uninstalled with it: {games}.": "포함된 게임 {n}개도 함께 제거됩니다: {games}.",
+ "Updating {name} updates all {n} of its games.": "{name}을(를) 업데이트하면 포함된 게임 {n}개가 모두 업데이트됩니다.",
+ "{name} is running. Close it first to play another of its games.": "{name}이(가) 실행 중입니다. 포함된 다른 게임을 플레이하려면 먼저 닫으세요.",
+ "Includes 1 Game": "게임 1개 포함",
+ "Includes {n} Games": "게임 {n}개 포함"
 }

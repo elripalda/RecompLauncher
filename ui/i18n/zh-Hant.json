@@ -2674,5 +2674,13 @@
  "Update Now": "立即更新",
  "Later keeps this version on the Downloads page until a newer one is out.": "選擇「稍後再說」後，此版本會保留在下載頁面上，直到有更新的版本推出。",
  "Watching the game's unlock file: unlocks show as the game saves them.": "正在監看遊戲的解鎖檔案：遊戲儲存解鎖時就會顯示。",
- "Waiting for the game's first unlock.": "正在等待遊戲的第一個解鎖。"
+ "Waiting for the game's first unlock.": "正在等待遊戲的第一個解鎖。",
+ "Pick the game in its menu": "在它的選單中選擇遊戲",
+ "Part of {name}": "屬於 {name}",
+ "Pick the game in its menu when it starts.": "啟動後在選單中選擇遊戲。",
+ "Its {n} games are uninstalled with it: {games}.": "其中的 {n} 款遊戲會一併解除安裝：{games}。",
+ "Updating {name} updates all {n} of its games.": "更新 {name} 會同時更新其中全部 {n} 款遊戲。",
+ "{name} is running. Close it first to play another of its games.": "{name} 正在執行。請先關閉它，再玩其中的另一款遊戲。",
+ "Includes 1 Game": "包含 1 款遊戲",
+ "Includes {n} Games": "包含 {n} 款遊戲"
 }

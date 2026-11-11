@@ -2674,5 +2674,13 @@
  "Update Now": "Şimdi güncelle",
  "Later keeps this version on the Downloads page until a newer one is out.": "Daha sonra'yı seçerseniz bu sürüm, daha yenisi çıkana kadar İndirmeler sayfasında kalır.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "Oyunun başarım dosyası izleniyor: başarımlar oyun onları kaydettikçe görünür.",
- "Waiting for the game's first unlock.": "Oyundaki ilk başarım bekleniyor."
+ "Waiting for the game's first unlock.": "Oyundaki ilk başarım bekleniyor.",
+ "Pick the game in its menu": "Oyunu menüsünden seçin",
+ "Part of {name}": "{name} içinde",
+ "Pick the game in its menu when it starts.": "Başladığında oyunu menüsünden seçin.",
+ "Its {n} games are uninstalled with it: {games}.": "{n} oyunu da onunla birlikte kaldırılır: {games}.",
+ "Updating {name} updates all {n} of its games.": "{name} güncellenince {n} oyununun hepsi güncellenir.",
+ "{name} is running. Close it first to play another of its games.": "{name} çalışıyor. Başka bir oyununu oynamak için önce onu kapatın.",
+ "Includes 1 Game": "1 oyun içerir",
+ "Includes {n} Games": "{n} oyun içerir"
 }

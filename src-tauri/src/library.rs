@@ -109,6 +109,9 @@ pub struct Installed {
     /// Sliders passed on the command line: setting id -> the value as written.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub slider_vals: BTreeMap<String, String>,
+    /// A recomp that carries several games: each one's play time and setup (games.rs), by game id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub games: BTreeMap<String, crate::games::Played>,
     /// The player's own launch options, added after everything else.
     #[serde(default)]
     pub args: String,

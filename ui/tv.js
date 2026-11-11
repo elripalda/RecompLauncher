@@ -308,7 +308,7 @@
   // Pinned games (Settings: Home Shows Pinned Games).
   const pins = () => ((S.settings.ui || {}).tv_pins || []).filter((id) => byId(id) || S.library[id]);
   const homePinned = () => (S.settings.ui || {}).tv_home === 'pinned';
-  const installed = () => Object.values(S.library).sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
+  const installed = () => libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
   const pool = () => visible().filter((a) => forOS(a) && !a.soon);
   const timeLine = (g) => (!g ? '' : !g.last_played ? t('Not played yet') : `${ago(g.last_played).replace(/^./, (c) => c.toUpperCase())} · ${playedFor(g)}`);
 
@@ -1275,7 +1275,7 @@
     const checks = readyRows(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
-      [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
+      [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
       g ? [esc(t('Played')), esc(playedFor(g))] : [esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')],
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
@@ -1310,7 +1310,8 @@
         <div class="tv-g-main">
           <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${deckChip}${stChip}</div>
           ${titleOf(a)}
-          ${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
+          ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
+          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>
           ${stNote}
@@ -1318,7 +1319,7 @@
           ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}${achGameTV(id)}
         </div>
         ${aside}
-      </div>${(() => { const like = moreLike(a); return like.length ? row('like', t('More like this'), like.map((x) => poster(x, 'm:' + x.id)).join('')) : ''; })()}`, 'game')}
+      </div>${(() => { const inc = a.parent ? [] : gamesOf(a.id, a).map((x) => byId(a.id + '--' + x.id)).filter(Boolean); return inc.length ? row('inc', tn(inc.length, 'Includes 1 Game', 'Includes {n} Games'), inc.map((x) => poster(x, 'inc:' + x.id)).join('')) : ''; })()}${(() => { const like = moreLike(a); return like.length ? row('like', t('More like this'), like.map((x) => poster(x, 'm:' + x.id)).join('')) : ''; })()}`, 'game')}
       ${hints([['A', t('Select')], ['X', t('Options')], ['B', t('Back')]])}`;
   }
 
@@ -2021,6 +2022,7 @@
   }
   const VIEWS = { home: pageHome, library: pageLibrary, achievements: pageAchTV, discover: pageDiscover, downloads: pageDownloads, settings: pageSettings, about: pageAbout, storage: pageStorage, saves: pageSavesAll };
   function draw(keep) {
+    expandLib();
     if (!TV.on || TV.booting) return;
     // A refresh while the camera is flying would cut it short: it waits until the game's page has landed.
     if (keep && TV.flying) { TV.later = true; return; }

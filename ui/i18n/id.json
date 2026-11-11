@@ -2674,5 +2674,13 @@
  "Update Now": "Perbarui sekarang",
  "Later keeps this version on the Downloads page until a newer one is out.": "Nanti menyimpan versi ini di halaman Unduhan sampai ada yang lebih baru.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "Memantau file pencapaian game: pencapaian muncul saat game menyimpannya.",
- "Waiting for the game's first unlock.": "Menunggu pencapaian pertama dari game."
+ "Waiting for the game's first unlock.": "Menunggu pencapaian pertama dari game.",
+ "Pick the game in its menu": "Pilih game di menunya",
+ "Part of {name}": "Bagian dari {name}",
+ "Pick the game in its menu when it starts.": "Pilih game di menunya saat dimulai.",
+ "Its {n} games are uninstalled with it: {games}.": "{n} game di dalamnya ikut dihapus: {games}.",
+ "Updating {name} updates all {n} of its games.": "Memperbarui {name} akan memperbarui ke-{n} game di dalamnya.",
+ "{name} is running. Close it first to play another of its games.": "{name} sedang berjalan. Tutup dulu untuk memainkan game lain di dalamnya.",
+ "Includes 1 Game": "Berisi 1 game",
+ "Includes {n} Games": "Berisi {n} game"
 }

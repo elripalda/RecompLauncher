@@ -270,6 +270,7 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-based{display:flex;align-items:center;gap:10px;color:var(--tvsoft,#c9d3e0);font-size:23px}
 .tv-based svg{color:var(--tvdim,#8f9cb0);flex:none}
 .tv-based b{color:var(--tvink,#F4F8FC);font-weight:600}
+.tv-partof{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;color:var(--tvsoft,#c9d3e0);font-size:22px;margin:0}
 .tv-easy{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:12px;font-size:18px;font-weight:700;color:#34F2E8;background:rgba(52,242,232,.1);border:1px solid rgba(52,242,232,.3)}
 /* a game's settings: the list, and the one in focus shown large beside it */
 .tv-setwrap{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:56px;align-items:start}

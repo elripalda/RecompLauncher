@@ -308,11 +308,26 @@ pub async fn account_signout(app: AppHandle) -> Res<()> {
 // ---------- a game's saves ----------
 
 fn game(st: &App, id: &str) -> Res<Installed> {
-    st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
+    let g = st.lib.lock().unwrap().installed.get(id).cloned();
+    // One game of several with saves of its own: its copies are its own, on the recomp's install.
+    g.or_else(|| own_saves(st, id).map(|p| p.g)).ok_or_else(|| Error::Msg("It isn't installed.".into()))
+}
+
+/// One game of a recomp that carries several, when it declares its own saves.
+fn own_saves(st: &App, id: &str) -> Option<crate::GamePick> {
+    crate::game_of(st, id).filter(|p| !p.game.saves.is_empty())
 }
 
 /// Where this game's saves are, best first.
 pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
+    if let Some(p) = own_saves(st, id) {
+        // Only the game's own: the recomp's other places are the other games'.
+        let mut g = g.clone();
+        g.save_place = Default::default();
+        g.more_save_places.clear();
+        g.found_saves.clear();
+        return saves::spots(&p.game.saves, &[], &g);
+    }
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let dev = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
@@ -411,7 +426,12 @@ fn copy_time(name: &str) -> u64 {
 async fn pending_copy(dir: &Path, id: &str, library: &Mutex<crate::library::Library>) -> (tokio::sync::MutexGuard<'static, ()>, Option<String>) {
     let guard = BUSY.lock().await;
     // The game may have been removed or had cloud saves turned off while this retry waited.
-    let enabled = library.lock().unwrap().installed.get(id).map(|g| g.cloud == Some(true)).unwrap_or(false);
+    // One game of several keeps its copies under its full id, with the recomp's cloud setting.
+    let enabled = {
+        let l = library.lock().unwrap();
+        let g = l.installed.get(id).or_else(|| crate::games::split(id).and_then(|(r, _)| l.installed.get(r)));
+        g.map(|g| g.cloud == Some(true)).unwrap_or(false)
+    };
     let pending = if enabled { saves::state(dir, id).pending } else { None };
     (guard, pending)
 }

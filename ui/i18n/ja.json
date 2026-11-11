@@ -2674,5 +2674,13 @@
  "Update Now": "今すぐアップデート",
  "Later keeps this version on the Downloads page until a newer one is out.": "「あとで」を選ぶと、新しいバージョンが出るまでこのバージョンはダウンロードページに残ります。",
  "Watching the game's unlock file: unlocks show as the game saves them.": "ゲームの解除ファイルを監視中です。解除はゲームが保存したときに表示されます。",
- "Waiting for the game's first unlock.": "ゲームの最初の解除を待っています。"
+ "Waiting for the game's first unlock.": "ゲームの最初の解除を待っています。",
+ "Pick the game in its menu": "メニューでゲームを選択",
+ "Part of {name}": "{name} に収録",
+ "Pick the game in its menu when it starts.": "起動したらメニューでゲームを選んでください。",
+ "Its {n} games are uninstalled with it: {games}.": "収録されている {n} 本のゲームも一緒にアンインストールされます：{games}。",
+ "Updating {name} updates all {n} of its games.": "{name} をアップデートすると、収録されている {n} 本のゲームがすべてアップデートされます。",
+ "{name} is running. Close it first to play another of its games.": "{name} は実行中です。収録されている別のゲームをプレイするには、先に終了してください。",
+ "Includes 1 Game": "1 本のゲームを収録",
+ "Includes {n} Games": "{n} 本のゲームを収録"
 }

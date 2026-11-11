@@ -2674,5 +2674,13 @@
  "Update Now": "Обновить сейчас",
  "Later keeps this version on the Downloads page until a newer one is out.": "Кнопка «Позже» оставит эту версию на странице «Загрузки», пока не выйдет более новая.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "Отслеживается файл достижений игры: достижения появляются, когда игра их сохраняет.",
- "Waiting for the game's first unlock.": "Ожидание первого достижения в игре."
+ "Waiting for the game's first unlock.": "Ожидание первого достижения в игре.",
+ "Pick the game in its menu": "Выберите игру в её меню",
+ "Part of {name}": "Входит в {name}",
+ "Pick the game in its menu when it starts.": "Выберите игру в меню при запуске.",
+ "Its {n} games are uninstalled with it: {games}.": "Вместе с ней удаляется {n} игра: {games}.|Вместе с ней удаляются {n} игры: {games}.|Вместе с ней удаляются {n} игр: {games}.",
+ "Updating {name} updates all {n} of its games.": "Обновление {name} обновит {n} входящую в неё игру.|Обновление {name} обновит все {n} входящие в неё игры.|Обновление {name} обновит все {n} входящих в неё игр.",
+ "{name} is running. Close it first to play another of its games.": "{name} уже запущена. Сначала закройте её, чтобы играть в другую из её игр.",
+ "Includes 1 Game": "Включает 1 игру",
+ "Includes {n} Games": "Включает {n} игру|Включает {n} игры|Включает {n} игр"
 }

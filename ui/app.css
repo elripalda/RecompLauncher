@@ -327,6 +327,15 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .gp-cover img{width:100%;height:100%;object-fit:cover;display:block}
 .gp-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;padding-bottom:4px}
 .gp-title h1{font-size:clamp(32px,3.4vw,52px);text-shadow:0 4px 30px rgba(0,0,0,.5)}
+.part-of{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 14px;margin-top:-4px;font-size:14px;color:var(--muted);font-weight:600}
+.part-of .link-btn{text-decoration:none;font-weight:700}
+.part-of .link-btn:hover{text-decoration:underline}
+/* A recomp's games on its page: one row when they fit, else rows split evenly (--inc-cols). */
+.gp-includes{position:relative;z-index:2;max-width:var(--gp-max);margin:34px auto 0;padding:0 40px}
+.gp-includes h2{font-size:20px;margin:0 0 16px}
+.inc-grid{grid-template-columns:repeat(var(--inc-cols,4),minmax(0,200px));justify-content:start}
+@media (max-width:1060px){.gp-includes{padding:0 28px}}
+.tile .s .tl-setup{color:var(--cyan);font-weight:700}
 .gp-title .logo{max-width:420px;max-height:120px;object-fit:contain;object-position:left bottom;display:block;filter:drop-shadow(0 6px 18px rgba(0,0,0,.6))}
 .gp-chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .gp-acts{display:flex;gap:10px;align-items:center;padding-bottom:4px}

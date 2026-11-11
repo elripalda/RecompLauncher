@@ -2674,5 +2674,13 @@
  "Update Now": "Cập nhật ngay",
  "Later keeps this version on the Downloads page until a newer one is out.": "Để sau sẽ giữ phiên bản này trên trang Tải xuống cho đến khi có bản mới hơn.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "Đang theo dõi tệp thành tựu của trò chơi: thành tựu sẽ hiện khi trò chơi lưu lại.",
- "Waiting for the game's first unlock.": "Đang chờ thành tựu đầu tiên của trò chơi."
+ "Waiting for the game's first unlock.": "Đang chờ thành tựu đầu tiên của trò chơi.",
+ "Pick the game in its menu": "Chọn trò chơi trong menu của nó",
+ "Part of {name}": "Thuộc {name}",
+ "Pick the game in its menu when it starts.": "Chọn trò chơi trong menu khi khởi động.",
+ "Its {n} games are uninstalled with it: {games}.": "{n} trò chơi bên trong sẽ bị gỡ cùng: {games}.",
+ "Updating {name} updates all {n} of its games.": "Cập nhật {name} sẽ cập nhật cả {n} trò chơi bên trong.",
+ "{name} is running. Close it first to play another of its games.": "{name} đang chạy. Hãy đóng nó trước để chơi trò khác bên trong.",
+ "Includes 1 Game": "Gồm 1 trò chơi",
+ "Includes {n} Games": "Gồm {n} trò chơi"
 }

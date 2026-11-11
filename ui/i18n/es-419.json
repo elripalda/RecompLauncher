@@ -2674,5 +2674,13 @@
  "Update Now": "Actualizar ahora",
  "Later keeps this version on the Downloads page until a newer one is out.": "“Más tarde” deja esta versión en la página Descargas hasta que salga una más nueva.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "Vigilando el archivo de desbloqueos del juego: los desbloqueos aparecen cuando el juego los guarda.",
- "Waiting for the game's first unlock.": "Esperando el primer desbloqueo del juego."
+ "Waiting for the game's first unlock.": "Esperando el primer desbloqueo del juego.",
+ "Pick the game in its menu": "Elige el juego en su menú",
+ "Part of {name}": "Parte de {name}",
+ "Pick the game in its menu when it starts.": "Elige el juego en su menú cuando se inicie.",
+ "Its {n} games are uninstalled with it: {games}.": "Sus {n} juegos se desinstalan con él: {games}.",
+ "Updating {name} updates all {n} of its games.": "Actualizar {name} actualiza sus {n} juegos.",
+ "{name} is running. Close it first to play another of its games.": "{name} está en ejecución. Ciérralo primero para jugar otro de sus juegos.",
+ "Includes 1 Game": "Incluye 1 juego",
+ "Includes {n} Games": "Incluye {n} juegos"
 }

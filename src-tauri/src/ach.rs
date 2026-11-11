@@ -1180,7 +1180,7 @@ fn completion_toasts(app: &AppHandle, game: &str, v: &Value) {
 }
 
 fn game_name(app: &AppHandle, game: &str) -> String {
-    live(|m| m.get(game).map(|l| l.name.clone())).or_else(|| app.state::<App>().lib.lock().unwrap().installed.get(game).map(|g| g.name.clone())).unwrap_or_else(|| game.to_string())
+    live(|m| m.get(game).map(|l| l.name.clone())).or_else(|| app.state::<App>().lib.lock().unwrap().installed.get(game).map(|g| g.name.clone())).or_else(|| crate::game_of(&app.state::<App>(), game).map(|p| p.game.name)).unwrap_or_else(|| game.to_string())
 }
 
 fn now_ms() -> u64 {
@@ -1908,7 +1908,9 @@ pub async fn ach_report(app: AppHandle, game: String, id: u32, kind: String, not
         return Ok(json!({"error": "Only testers can report achievements for now."}));
     }
     let kind = if matches!(kind.as_str(), "didnt_unlock" | "too_early" | "wrong_text" | "other") { kind } else { "other".into() };
-    let version = app.state::<App>().lib.lock().unwrap().installed.get(&game).map(|g| g.tag.clone()).unwrap_or_default();
+    // One game of several: the recomp's version.
+    let recomp = crate::recomp_of(&app.state::<App>(), &game);
+    let version = app.state::<App>().lib.lock().unwrap().installed.get(&recomp).map(|g| g.tag.clone()).unwrap_or_default();
     let note: String = note.unwrap_or_default().trim().chars().take(600).collect();
     match call(&app, "POST", "report", &[], Some(json!({"game": game, "id": id, "kind": kind, "note": note, "version": version}))).await? {
         (_, v) if v.get("error").is_some() => Ok(json!({"error": v["error"]})),
@@ -2496,6 +2498,29 @@ mod tests {
         let own = find_unlock_file(&watch(&d, Some("4D5307E6")), None).unwrap();
         assert_eq!(own.file_name().unwrap(), "4D5307E6.toml");
         assert!(rex_candidates(&watch(&d, Some("4d5307e6"))).iter().all(|p| p.file_name().unwrap() == "4D5307E6.toml"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn each_game_of_a_recomp_reads_its_own_unlock_file() {
+        // One install, two games: each game's session watches the file named after its own title.
+        let d = std::env::temp_dir().join(format!("rl-rex-games-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("achievements")).unwrap();
+        std::fs::write(d.join("achievements").join("4D53082D.toml"), "[unlocked.1]\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(d.join("achievements").join("4D530906.toml"), "[unlocked.2]\n").unwrap();
+        let list = crate::games::parse(&json!([
+            { "id": "gow2", "name": "Two", "title_id": "4D53082D" },
+            { "id": "gow3", "name": "Three", "title_id": "4D530906" }
+        ]));
+        for g in &list {
+            let f = find_unlock_file(&watch(&d, Some(&g.title_id)), None).unwrap();
+            assert_eq!(f.file_stem().unwrap().to_string_lossy(), g.title_id);
+            // Its session and list go by the game's full id, which the website calls keep whole.
+            let full = crate::games::full("cogbox", &g.id);
+            assert!(full.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)));
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 

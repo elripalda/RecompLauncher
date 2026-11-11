@@ -19,6 +19,7 @@ pub mod discord;
 pub mod extract;
 pub mod files;
 pub mod gamefiles;
+pub mod games;
 pub mod flatpak;
 pub mod gamebanana;
 pub mod info;
@@ -609,6 +610,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         files,
         pinned,
         sessions: prev.as_ref().map(|p| p.sessions.clone()).unwrap_or_default(),
+        // Each of its games' own time and setup (a recomp that carries several) stays through updates.
+        games: prev.as_ref().map(|p| p.games.clone()).unwrap_or_default(),
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
@@ -1787,14 +1790,15 @@ fn followed_news(cat: &Value, l: &mut Library, new_ids: &[String], first_time: b
 
 #[tauri::command]
 async fn desktop_shortcut(st: State<'_, App>, id: String, menu: Option<bool>) -> Res<String> {
-    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let g = installed_or_game(&st, &id)?;
     // The player's icon (Customize) or the list's, else the game's program.
     let icon = game_art(&st, &id, &g).await.icon;
     let name = shown_name(&st, &id, &g).await;
     // Straight to the game unless the player asked for shortcuts through the launcher (Settings),
     // or the game can only be started by the launcher for now.
     let direct_on = !st.lib.lock().unwrap().settings.ui.get("shortcut_launcher").and_then(Value::as_bool).unwrap_or(false);
-    let direct = if direct_on { direct_start(&st, &id, &g) } else { None };
+    // One game of several always goes through the launcher (it picks the game, and counts its time).
+    let direct = if direct_on && game_of(&st, &id).is_none() { direct_start(&st, &id, &g) } else { None };
     Ok(shortcuts::desktop_shortcut(&id, &name, icon.as_deref(), direct.as_ref().map(|(e, a)| (e.as_path(), a.as_slice())), menu.unwrap_or(false))?.to_string_lossy().into())
 }
 
@@ -1874,7 +1878,29 @@ struct GameArt {
 
 async fn game_art(st: &App, id: &str, g: &Installed) -> GameArt {
     let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
-    let a = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
+    // One game of several: its own pictures from the catalog, else the recomp's. The player's own
+    // (Customize) are the recomp's, so they're left for the recomp.
+    let sel = game_of(st, id);
+    let a = match &sel {
+        Some(pk) => {
+            let mut a = catalog::app(&cat, &pk.recomp).cloned().unwrap_or_else(|| json!({}));
+            for (k, v) in [("cover", &pk.game.cover), ("hero", &pk.game.hero), ("logo", &pk.game.logo), ("icon", &pk.game.icon)] {
+                if !v.is_empty() {
+                    a[k] = json!(if v.starts_with('/') { format!("{}{}", catalog::base(), v) } else { v.clone() });
+                }
+            }
+            a
+        }
+        None => catalog::app(&cat, id).cloned().unwrap_or(Value::Null),
+    };
+    let plain;
+    let g = match &sel {
+        Some(_) => {
+            plain = Installed { cover_file: None, hero_file: None, logo_file: None, icon_file: None, ..g.clone() };
+            &plain
+        }
+        None => g,
+    };
     async fn pick(st: &App, own: Option<&PathBuf>, url: &str) -> (Vec<u8>, &'static str) {
         if let Some(f) = own.filter(|f| f.is_file()) {
             let ext = if f.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false) { "png" } else { "jpg" };
@@ -1938,8 +1964,17 @@ async fn shown_name(st: &App, id: &str, g: &Installed) -> String {
     let own = st.lib.lock().unwrap().settings.ui.get("names").and_then(|n| n.get(id)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
     match own {
         Some(n) => n,
-        None => game_name(st, id, &g.name).await,
+        None => match game_of(st, id) {
+            Some(pk) => pk.game.name,
+            None => game_name(st, id, &g.name).await,
+        },
     }
+}
+
+/// An installed recomp, or the recomp one of its games is part of.
+fn installed_or_game(st: &App, id: &str) -> Res<Installed> {
+    let g = st.lib.lock().unwrap().installed.get(id).cloned();
+    g.or_else(|| game_of(st, id).map(|p| p.g)).ok_or_else(|| Error::Msg("It isn't installed.".into()))
 }
 
 /// Add the game to Steam. If Steam is open and `restart` is false, nothing changes and the answer
@@ -1948,7 +1983,7 @@ async fn shown_name(st: &App, id: &str, g: &Installed) -> String {
 #[tauri::command]
 async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<String> {
     let steam = shortcuts::steam_dir().ok_or_else(|| Error::Msg("Steam isn't installed on this PC.".into()))?;
-    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let g = installed_or_game(&st, &id)?;
     let was_running = shortcuts::steam_running();
     if was_running {
         if let Some(why) = shortcuts::cant_restart_steam() {
@@ -2273,6 +2308,10 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
 
 fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
     let st = app.state::<App>();
+    // One game of a recomp that carries several: the recomp starts, with that game's options.
+    let pick = game_of(&st, id);
+    let full_id = id.to_string();
+    let id: &str = pick.as_ref().map(|p| p.recomp.as_str()).unwrap_or(id);
     read_screen(app);
     if st.moving.lock().unwrap().contains(id) {
         return Err(Error::Msg(MOVING.into()));
@@ -2307,10 +2346,21 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     }
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
-    let prof = if manual.is_some() { None } else { profile_of(&st, id, &g) };
+    let whole = if manual.is_some() { None } else { profile_of(&st, id, &g) };
+    // One game of several: only its inputs, and its own saves when it has them.
+    let prof = whole.clone().map(|mut p| {
+        if let Some(pk) = &pick {
+            games::scope(&mut p, &pk.game, &pk.all);
+        }
+        p
+    });
     if let Some(p) = prof.as_ref().filter(|p| !p.inputs.is_empty()) {
         inputs::validate(p).map_err(Error::Msg)?;
-        if !inputs::ready(p, &g, &st.dir) {
+        let ready = match (&pick, whole.as_ref()) {
+            (Some(pk), Some(w)) => game_inputs_ready(p, w, &g, &pk.game, &st.dir),
+            _ => inputs::ready(p, &g, &st.dir),
+        };
+        if !ready {
             return Err(Error::Msg("NEED_COPY|Finish choosing this game's files in Easy Setup.".into()));
         }
         let mut staged = g.clone();
@@ -2412,6 +2462,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     };
     // The program picked for this one start (held Play): as it is, no settings on its command line.
     let once = ONCE_EXE.lock().unwrap().as_mut().and_then(|m| m.remove(id));
+    let picked_once = once.is_some();
     let planned = match once {
         Some(rel) => Some((g.path.join(rel), vec![])),
         None => planned,
@@ -2437,6 +2488,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         c.retain(|x| x != id);
         had
     };
+    // The game picked in a recomp that carries several: its options come after the recomp's own.
+    if let Some(pk) = pick.as_ref().filter(|_| !picked_once) {
+        games::add_args(&mut args, &pk.game);
+    }
     if !clean {
         args.extend(join_paths(split_args(&g.args)));
     }
@@ -2490,8 +2545,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     } else {
         exe
     };
+    // A game of several with its own saves: its own copies (by its full id), else the recomp's.
+    let save_id = pick.as_ref().filter(|p| !p.game.saves.is_empty()).map(|_| full_id.clone()).unwrap_or_else(|| id.to_string());
     let watch = {
-        let spots = cloud::spots_of(&st, id, &g);
+        let spots = cloud::spots_of(&st, &save_id, &g);
         if matches!(spots.first().map(|s| s.from), Some("game") | Some("found")) {
             let exe_name = exe.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let repo_name = g.repo.rsplit(['/', ':']).next().unwrap_or("").to_string();
@@ -2661,7 +2718,14 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             roots.push(p.join("Game Copies").join(library::folder_name(id)));
         }
         let title = entry.and_then(|e| e.get("title_id").and_then(Value::as_str).or_else(|| e.pointer("/achievements/title_id").and_then(Value::as_str))).map(str::to_string);
-        ach::start(app, ach::Start { id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots })
+        // One game of several: its own list (by its full id), and only its own unlock file.
+        match &pick {
+            Some(pk) => {
+                let title = Some(pk.game.title_id.clone()).filter(|t| !t.is_empty());
+                ach::start(app, ach::Start { id: &full_id, name: &pk.game.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots })
+            }
+            None => ach::start(app, ach::Start { id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots }),
+        }
     };
     if let Some(p) = &ach_session {
         cmd.env("RL_SESSION", p);
@@ -2687,7 +2751,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     }
     if spawned.is_err() {
         if ach_session.is_some() {
-            ach::abort(app, id);
+            ach::abort(app, &full_id);
         }
         if let Some(p) = look_run.as_ref().and_then(|r| r.placed.as_ref()) {
             looks::finish(&st.dir, id, p);
@@ -2725,6 +2789,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     }
     let started = now();
     st.started.lock().unwrap().insert(id.clone(), started);
+    // Which of its games is being played (a recomp that carries several), for the window.
+    let game_full = pick.as_ref().map(|_| full_id.clone());
+    let game_sub = pick.as_ref().map(|p| p.game.id.clone());
+    PLAYING_GAME.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), full_id.clone());
     let placed = look_run.as_ref().and_then(|r| r.placed.clone());
     if look_run.is_some() {
         st.looked.lock().unwrap().insert(id.clone());
@@ -2740,7 +2808,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     let _ = std::fs::create_dir_all(marker.parent().unwrap_or(&st.dir));
     let _ = std::fs::write(&marker, b"");
     ingame::set_hotkeys(app, true, quick_menu);
-    let _ = app.emit("game", json!({"id": id, "state": "running"}));
+    let _ = app.emit("game", json!({"id": id, "game": game_full, "state": "running"}));
     // From Big Picture mode the launcher fills the screen, so it steps aside for the game (its first
     // window, or a dialog asking for the player's copy, would open behind it). It comes back when
     // the game closes.
@@ -2785,6 +2853,11 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     // Discord: what's being played.
     if g_discord(&st) {
         let (app_id, game, cover) = discord_info(&st, &id);
+        // One game of several: that game, by name.
+        let (game, cover) = match &pick {
+            Some(pk) => (pk.game.name.clone(), if pk.game.cover.starts_with('/') { format!("{}{}", catalog::base(), pk.game.cover) } else if pk.game.cover.is_empty() { cover } else { pk.game.cover.clone() }),
+            None => (game, cover),
+        };
         discord::send(discord::Msg::Playing { app_id, game, recomp: g.name.clone(), cover, start: started });
     }
     // The folder its programs run from, for a game that hands off to another program and closes.
@@ -2838,7 +2911,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             st.running.lock().unwrap().remove(&id);
             st.pids.lock().unwrap().remove(&id);
             st.started.lock().unwrap().remove(&id);
-            ach::end(&app2, &id);
+            ach::end(&app2, game_full.as_deref().unwrap_or(&id));
+            if let Some(m) = PLAYING_GAME.lock().unwrap().as_mut() {
+                m.remove(&id);
+            }
         }
         pads::PLAYING.store(!st.running.lock().unwrap().is_empty(), Ordering::Relaxed);
         if !st.running.lock().unwrap().contains_key(&id) {
@@ -2853,6 +2929,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
                 if n > 500 {
                     g.sessions.drain(..n - 500);
                 }
+            }
+            // And the game itself, when it's one of several.
+            if let Some(sub) = &game_sub {
+                g.games.entry(sub.clone()).or_default().add(started, secs, now());
             }
         }
         st.save();
@@ -2871,7 +2951,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             own.or_else(|| catalog::app(&cached_catalog(&st), &id).and_then(|e| boot::exit_says(e, c)))
         }).filter(|t| !t.trim().eq_ignore_ascii_case("ok"));
         if mine {
-            let _ = app2.emit("game", json!({"id": id, "state": "stopped", "secs": secs, "code": code, "started": started, "said": said}));
+            let _ = app2.emit("game", json!({"id": id, "game": game_full, "state": "stopped", "secs": secs, "code": code, "started": started, "said": said}));
             ping::game_stop(&app2, &id, secs);
         }
         // Where it saved (when it didn't say), then a copy of its saves, and up to the cloud.
@@ -2903,9 +2983,9 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             }
         }
         if secs >= 5 {
-            match cloud::after_session(&app2, &id).await {
+            match cloud::after_session(&app2, &save_id).await {
                 Ok(Some(_)) => {
-                    let _ = app2.emit("saves", json!({"id": id}));
+                    let _ = app2.emit("saves", json!({"id": save_id}));
                 }
                 Ok(None) => {}
                 Err(e) => eprintln!("Save copy for {id}: {e}"),
@@ -3656,6 +3736,87 @@ fn remove_github(st: State<'_, App>, id: String) -> Res<()> {
     Ok(())
 }
 
+/// A recomp's games (games.rs): its developer's list (the file in its release, or the catalog's
+/// launcher profile), else the catalog entry's. Fewer than two: none.
+pub(crate) fn games_of(st: &App, id: &str, g: &Installed) -> Vec<games::Game> {
+    let cat = cached_catalog(st);
+    let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
+    let own = profile::release_profile(&g.path).and_then(|r| r.profile.games).or_else(|| entry.pointer("/launcher/games").cloned());
+    games::of(own.as_ref(), &entry)
+}
+
+/// One game of a recomp that carries several, by its full id (cogbox--gow2): the recomp's id, its
+/// install, the game and all its games. None for anything else (an installed id always wins).
+pub(crate) struct GamePick {
+    pub recomp: String,
+    pub g: Installed,
+    pub game: games::Game,
+    pub all: Vec<games::Game>,
+}
+
+pub(crate) fn game_of(st: &App, full: &str) -> Option<GamePick> {
+    let (recomp, sub) = games::split(full)?;
+    let g = {
+        let l = st.lib.lock().unwrap();
+        if l.installed.contains_key(full) {
+            return None;
+        }
+        l.installed.get(recomp).cloned()?
+    };
+    let all = games_of(st, recomp, &g);
+    let game = all.iter().find(|x| x.id == sub)?.clone();
+    Some(GamePick { recomp: recomp.to_string(), g, game, all })
+}
+
+/// The recomp a game id belongs to: itself for anything but one game of a recomp.
+pub(crate) fn recomp_of(st: &App, id: &str) -> String {
+    game_of(st, id).map(|p| p.recomp).unwrap_or_else(|| id.to_string())
+}
+
+/// One game's inputs are set up: their own setup (its fingerprint kept for that game), or the
+/// recomp's whole setup.
+fn game_inputs_ready(scoped: &profile::Profile, whole: &profile::Profile, g: &Installed, game: &games::Game, dir: &Path) -> bool {
+    let own = g.games.get(&game.id).map(|p| p.inputs_ready.as_str()).unwrap_or("");
+    (!own.is_empty() && inputs::signature(scoped, g, dir).is_ok_and(|s| s == own)) || inputs::ready(whole, g, dir)
+}
+
+/// Every installed recomp that carries several games, with them: the Library's tiles.
+#[derive(Serialize)]
+struct GameSet {
+    games: Vec<games::Game>,
+    /// By game id: its inputs are set up (or it has none to set up).
+    ready: std::collections::BTreeMap<String, bool>,
+}
+
+#[tauri::command(async)]
+fn recomp_games(st: State<'_, App>) -> std::collections::BTreeMap<String, GameSet> {
+    let list: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut out = std::collections::BTreeMap::new();
+    for (id, g) in list {
+        let all = games_of(&st, &id, &g);
+        if all.is_empty() {
+            continue;
+        }
+        let whole = profile_of(&st, &id, &g);
+        let ready = all
+            .iter()
+            .map(|game| {
+                let ok = match whole.as_ref().filter(|p| !p.inputs.is_empty()) {
+                    None => true,
+                    Some(p) => {
+                        let mut scoped = p.clone();
+                        games::scope(&mut scoped, game, &all);
+                        scoped.inputs.is_empty() || game_inputs_ready(&scoped, p, &g, game, &st.dir)
+                    }
+                };
+                (game.id.clone(), ok)
+            })
+            .collect();
+        out.insert(id, GameSet { games: all, ready });
+    }
+    out
+}
+
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
@@ -3846,14 +4007,25 @@ struct Setup {
 #[tauri::command(async)]
 fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
     read_screen(&app);
+    // One game of several: Easy Setup asks only for its own inputs and the shared ones.
+    let pick = game_of(&st, &id);
+    let id = pick.as_ref().map(|p| p.recomp.clone()).unwrap_or(id);
     let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
-    let p = profile_of(&st, &id, &g)?;
+    let whole = profile_of(&st, &id, &g)?;
+    let mut p = whole.clone();
+    if let Some(pk) = &pick {
+        games::scope(&mut p, &pk.game, &pk.all);
+    }
+    let p = p;
     let cur = p.current(&g.path, &g.picks);
     let up = p.game.as_ref().and_then(|c| c.update.as_ref());
     Some(Setup {
         inputs: inputs::rows(&p, &g, &st.dir).unwrap_or_default(),
         inputs_error: inputs::validate(&p).err(),
-        inputs_ready: inputs::ready(&p, &g, &st.dir),
+        inputs_ready: match &pick {
+            Some(pk) => game_inputs_ready(&p, &whole, &g, &pk.game, &st.dir),
+            None => inputs::ready(&p, &g, &st.dir),
+        },
         needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
         copy: g.game_copy.clone().filter(|c| c.exists()).or_else(|| p.already_in_place(&g.path)),
@@ -3978,9 +4150,17 @@ fn setup_key_remove(st: State<'_, App>, id: String, input: String) -> Res<()> {
 /// Multi-input setup deliberately does not read/hash whole discs. Projects validate content.
 #[tauri::command(async)]
 fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
-    if setup_busy(&id) || st.running.lock().unwrap().contains_key(&id) { return Err(Error::Msg("Close the game or stop setup first.".into())); }
-    let mut g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    let mut p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
+    // One game of several: only its inputs are set up, and remembered for that game. `id` stays
+    // what the window asked for (its progress comes back under it); `rid` is the install.
+    let pick = game_of(&st, &id);
+    let rid = pick.as_ref().map(|p| p.recomp.clone()).unwrap_or_else(|| id.clone());
+    let sub = pick.as_ref().map(|p| p.game.id.clone());
+    if setup_busy(&id) || setup_busy(&rid) || st.running.lock().unwrap().contains_key(&rid) { return Err(Error::Msg("Close the game or stop setup first.".into())); }
+    let mut g = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let mut p = profile_of(&st, &rid, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
+    if let Some(pk) = &pick {
+        games::scope(&mut p, &pk.game, &pk.all);
+    }
     if p.inputs.is_empty() { return Err(Error::Msg("This profile doesn't declare named inputs.".into())); }
     p.input_paths = inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
     if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
@@ -3998,7 +4178,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
             let placed = inputs::stage_cancellable(&p, &mut g, &dir, &stopped);
             // Remember managed destinations even after a failed preparation, so retry is safe.
             let st = app.state::<App>();
-            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) { x.input_staged = g.input_staged.clone(); x.input_stamps = g.input_stamps.clone(); }
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) { x.input_staged = g.input_staged.clone(); x.input_stamps = g.input_stamps.clone(); }
             st.save();
             placed?;
             emit("verify", 1.0, "Files selected.".into());
@@ -4011,12 +4191,15 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                 run_prepare(&pr, &g.path, copy, &|pct, text| emit("extras", pct, text), &stopped)?;
             }
             if stopped() { return Err("Stopped.".into()); }
-            let current = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or("The game was removed during setup.")?;
+            let current = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or("The game was removed during setup.")?;
             if inputs::signature(&p, &current, &dir)? != signature { return Err("The selected files changed. Run setup again.".into()); }
             p.prepare(&g.path, g.game_copy.as_deref()).map_err(|_| "Couldn't write the game's settings.")?;
-            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
-                x.inputs_ready = signature;
-                if p.game.is_none() { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
+                match &sub {
+                    Some(sub) => x.games.entry(sub.clone()).or_default().inputs_ready = signature,
+                    None => x.inputs_ready = signature,
+                }
+                if p.game.is_none() && (sub.is_none() || x.game_copy.as_ref().map_or(true, |c| !c.exists())) { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
             }
             st.save();
             Ok(())
@@ -4308,6 +4491,9 @@ fn discord_info(st: &App, id: &str) -> (String, String, String) {
 #[tauri::command]
 async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Option<bool>, program: Option<String>) -> Res<()> {
     BIG_PICTURE.store(big_picture.unwrap_or(false), Ordering::Relaxed);
+    // One game of a recomp that carries several starts the recomp (start_game picks the game).
+    let full = id.clone();
+    let id = recomp_of(&app.state::<App>(), &id);
     // Another of the game's programs, this time only (held Play): one inside its folder.
     if let Some(rel) = program.filter(|p| !p.trim().is_empty()) {
         let st = app.state::<App>();
@@ -4335,8 +4521,12 @@ async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Op
         }
     }
     ready_look(&app, &id).await;
-    start_game(&app, &id)
+    start_game(&app, &full)
 }
+
+/// The game being played in each running recomp, by recomp id: its full id when it's one of
+/// several, else the recomp's own.
+pub(crate) static PLAYING_GAME: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// A program picked for one start (held Play), used instead of the game's usual one.
 static ONCE_EXE: Mutex<Option<HashMap<String, PathBuf>>> = Mutex::new(None);
@@ -6617,7 +6807,10 @@ fn get_state(st: State<'_, App>) -> Value {
     let moving = st.moving.lock().unwrap().clone();
     // Games whose folder isn't there right now stay in the Library, marked missing.
     let missing: Vec<String> = l.missing().into_iter().filter(|id| !moving.contains(id)).collect();
-    let running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
+    let mut running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
+    // And the game being played in each, when it's one of several (its full id).
+    let playing: Vec<String> = PLAYING_GAME.lock().unwrap().as_ref().map(|m| m.iter().filter(|(k, v)| running.contains(k) && k != v).map(|(_, v)| v.clone()).collect()).unwrap_or_default();
+    running.extend(playing);
     let jobs: Vec<String> = st.jobs.lock().unwrap().keys().cloned().collect();
     json!({
         "os": assets::os_now(),
@@ -7390,7 +7583,10 @@ fn wait_for_play(args: &[String]) -> bool {
         return false;
     }
     let Some(dir) = data_dir_early() else { return false };
-    let id = Library::load(&dir).resolve_project_id(&id);
+    let lib = Library::load(&dir);
+    let id = lib.resolve_project_id(&id);
+    // One game of several: the recomp's marker is the one written.
+    let id = games::split(&id).filter(|(r, _)| !lib.installed.contains_key(&id) && lib.installed.contains_key(*r)).map(|(r, _)| r.to_string()).unwrap_or(id);
     let Ok(exe) = std::env::current_exe() else { return false };
     let rest = sysenv::play_handoff_args(args, &|k| if cfg!(target_os = "linux") { std::env::var(k).ok() } else { None });
     if std::process::Command::new(exe).args(&rest).spawn().is_err() {
@@ -7453,11 +7649,12 @@ pub fn run() {
                 let steam = sysenv::steam_launch_from_args(&argv);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    if setup_first(&app, &id) {
+                    let rid = recomp_of(&app.state::<App>(), &id);
+                    if setup_first(&app, &rid) {
                         return;
                     }
-                    ready_look(&app, &id).await;
-                    cloud::sync_quiet(&app, &id).await;
+                    ready_look(&app, &rid).await;
+                    cloud::sync_quiet(&app, &rid).await;
                     if let Err(e) = start_game_with_steam(&app, &id, steam.as_ref()) {
                         show_main(&app);
                         let _ = app.emit("toast", e.to_string());
@@ -7758,11 +7955,12 @@ pub fn run() {
             match play {
                 Some(id) => {
                     tauri::async_runtime::spawn(async move {
-                        if setup_first(&handle, &id) {
+                        let rid = recomp_of(&handle.state::<App>(), &id);
+                        if setup_first(&handle, &rid) {
                             return;
                         }
-                        ready_look(&handle, &id).await;
-                        cloud::sync_quiet(&handle, &id).await;
+                        ready_look(&handle, &rid).await;
+                        cloud::sync_quiet(&handle, &rid).await;
                         if let Err(e) = start_game(&handle, &id) {
                             show_main(&handle);
                             let _ = handle.emit("toast", e.to_string());
@@ -7821,7 +8019,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
+            recomp_games, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install

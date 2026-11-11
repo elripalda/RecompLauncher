@@ -2674,5 +2674,13 @@
  "Update Now": "Nu bijwerken",
  "Later keeps this version on the Downloads page until a newer one is out.": "Met Later blijft deze versie op de pagina Downloads staan tot er een nieuwere uit is.",
  "Watching the game's unlock file: unlocks show as the game saves them.": "Het vrijspeelbestand van de game wordt gevolgd: vrijgespeelde prestaties verschijnen zodra de game ze opslaat.",
- "Waiting for the game's first unlock.": "Wachten op de eerste vrijgespeelde prestatie van de game."
+ "Waiting for the game's first unlock.": "Wachten op de eerste vrijgespeelde prestatie van de game.",
+ "Pick the game in its menu": "Kies de game in het menu",
+ "Part of {name}": "Onderdeel van {name}",
+ "Pick the game in its menu when it starts.": "Kies de game in het menu als hij start.",
+ "Its {n} games are uninstalled with it: {games}.": "De {n} games worden mee verwijderd: {games}.",
+ "Updating {name} updates all {n} of its games.": "Als je {name} bijwerkt, worden alle {n} games bijgewerkt.",
+ "{name} is running. Close it first to play another of its games.": "{name} is actief. Sluit het eerst om een andere game ervan te spelen.",
+ "Includes 1 Game": "Bevat 1 game",
+ "Includes {n} Games": "Bevat {n} games"
 }

@@ -4,7 +4,8 @@
 // through two events: `install` (download progress) and `game` (a game started or closed).
 
 const T = window.__TAURI__;
-const invoke = (cmd, args) => (cmd === 'game_setup' ? T.core.invoke(cmd, args).then(screenLabels) : T.core.invoke(cmd, args));
+// A game of a recomp that carries several is asked about as its recomp, except for what's its own (games.js).
+const invoke = (cmd, args) => { args = gameArgs(cmd, args); return cmd === 'game_setup' ? T.core.invoke(cmd, args).then(screenLabels) : T.core.invoke(cmd, args); };
 // A game's settings: Match My Screen, the launcher's own last choice, in the player's language.
 function screenLabels(su) {
   for (const o of (su && su.settings) || []) if (o.screen && o.choices.length) o.choices[o.choices.length - 1] = tf('Match my screen · {size}', { size: o.screen });
@@ -157,7 +158,7 @@ function sideOnce() {
   }
   saveUi({ side_v26: true, side_order: order }, true);
 }
-function based(a) { return a.game ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></div>` : ''; }
+function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></div>` : ''; }
 // A recomp that needs things on the PC first (Python, build tools, a long build): it says so, and
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
@@ -450,9 +451,11 @@ function hiddenModal() {
 let IDX = { key: '', cat: null, ids: new Map(), titles: new Map() };
 function index() {
   const apps = all();
-  const key = apps.length + '|' + Object.keys(S.library).length + '|' + Object.keys(S.builds || {}).length;
+  const key = apps.length + '|' + Object.keys(S.library).length + '|' + Object.keys(S.builds || {}).length + '|' + (S.gameSetsV || 0);
   if (IDX.cat !== S.cat || IDX.key !== key) {
     const ids = new Map(apps.map((a) => [a.id, a]));
+    // Each game of a recomp that carries several, by its full id (not in Discover's list).
+    addGameApps(ids);
     const titles = new Map();
     for (const ti of (S.cat && S.cat.titles) || []) {
       const every = (ti.pc || []).map((id) => ids.get(id)).filter((a) => a && a.title === ti.id);
@@ -641,13 +644,14 @@ function showOk(a, k) {
 }
 
 function status(a) {
-  const id = a.id, job = S.jobs[id], inst = S.library[id];
+  // One game of several: its install, downloads and updates are the recomp's.
+  const id = a.id, rid = parentId(id), job = S.jobs[rid], inst = S.library[id];
   if (S.running.has(id)) return 'running';
-  if (S.settingUp.has(id)) return 'settingup';
+  if (S.settingUp.has(id) || S.settingUp.has(rid)) return 'settingup';
   if (job) return 'busy';
-  if ((S.paused || {})[id]) return 'paused';
+  if ((S.paused || {})[rid]) return 'paused';
   if (inst && inst.installer_setup) return 'installed';
-  if (inst && S.updates[id]) return 'update';
+  if (inst && S.updates[rid]) return 'update';
   if (inst) return 'installed';
   if (a.soon) return 'soon';
   if (!forOS(a)) return 'nobuild';
@@ -742,11 +746,33 @@ function poster(a, mine, inst, wide, w) {
   return `<div class="poster${lb ? ' local' : ''}"><span class="ph">${esc(a.name)}</span>${pic(thumbOf(a.cover, Math.max(w || 0, tileThumb())), '', 'loading="lazy"')}${lb || badge}${stb}${prog ? prog : easy}${vers}${deckb}</div>`;
 }
 
+// The line under one game of a recomp's tile: its setup still to do, that it's picked in the
+// recomp's own menu, or which recomp it's part of.
+function gameTileLine(a) {
+  const g = S.library[a.id];
+  if (g && g.ready === false) return `<span class="tl-setup">${esc(t('Set Up'))}</span>`;
+  if (a.menuPick) return `<span>${esc(t('Pick the game in its menu'))}</span>`;
+  return `<span>${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</span>`;
+}
+// On one game's page: the recomp it's part of, as a link.
+function partOfLine(a) {
+  if (!a.parent) return '';
+  return `<div class="part-of"><button type="button" class="link-btn" data-act="open" data-id="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</div>`;
+}
+// On a recomp's page: the games it includes, each a tile. One row when they fit, else rows
+// split evenly (never one left over on its own).
+function includesBox(a) {
+  if (a.parent) return '';
+  const list = gamesOf(a.id, a).map((g) => byId(a.id + '--' + g.id)).filter(Boolean);
+  if (!list.length) return '';
+  const rows = Math.ceil(list.length / 6), cols = Math.ceil(list.length / rows);
+  return `<section class="gp-includes"><h2>${esc(tn(list.length, 'Includes 1 Game', 'Includes {n} Games'))}</h2><div class="grid inc-grid" data-n="${list.length}" style="--inc-cols:${cols}">${list.map((x) => tile(x, { quick: true })).join('')}</div></section>`;
+}
 function tile(a, opts = {}) {
   // The glow behind a tile is blurred, so its smallest copy is plenty (the poster itself is the
   // one that has to be sharp, and can still load only when it scrolls in).
   const cov = a.cover ? media(thumbOf(a.cover, 160)) : '';
-  const sub = opts.sub != null ? opts.sub : a.game ? `${DISC_S}<span>${esc(a.game)}</span>` : `<span>${esc(originName(a.origin))}</span>`;
+  const sub = opts.sub != null ? opts.sub : a.parent ? gameTileLine(a) : a.game ? `${DISC_S}<span>${esc(a.game)}</span>` : `<span>${esc(originName(a.origin))}</span>`;
   const vt = (devOf(a) || {}).verified;
   const quick = opts.quick && S.library[a.id] && !S.jobs[a.id];
   // Not in the Library yet: add it from the cover; added: install from the cover.
@@ -1119,7 +1145,7 @@ function pageHome() {
   const feats = turnkeyFirst(bannerApps() || oneEach(uniq([...pool.filter((a) => a.featured && (a.hero || a.cover)), ...pool.filter((a) => a.hero && notPC(a)).sort(byDl), ...pool.filter(notPC).sort(byDl)].map((a) => a.id)).map(byId)).slice(0, 5));
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
   const ready = oneEach(pool.filter(turnkey).sort(byNew), true);
-  const played = Object.values(S.library).sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
+  const played = libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
   const easy = oneEach(pool.filter((a) => S.easy.has(a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
@@ -1248,9 +1274,19 @@ function discoverList() {
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
   S.findCount = recompCount(list);
-  const out = oneEach(list.sort(soonLast), f.sort === 'new');
+  let out = oneEach(list.sort(soonLast), f.sort === 'new');
   // Discover's own order (Popular, not picked by the player): turnkey recomps first.
-  return f.sort === 'popular' && !f.picked ? turnkeyFirst(out) : out;
+  if (f.sort === 'popular' && !f.picked) out = turnkeyFirst(out);
+  // A search also finds the games inside recomps that carry several, after the recomps themselves.
+  if (q) {
+    const kids = [];
+    for (const a of visible()) {
+      if (!forOS(a)) continue;
+      for (const g of gamesOf(a.id, a)) { const c = byId(a.id + '--' + g.id); if (c && !isHidden(c.id) && fold(c.name).includes(q)) kids.push(c); }
+    }
+    out = out.concat(kids);
+  }
+  return out;
 }
 
 const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class="sel" data-act="runs-sel">${runsList().map(([k, n]) => `<option value="${k}"${runsPick() === k ? ' selected' : ''}>${esc(t(n))}</option>`).join('')}</select></label>`;
@@ -1403,7 +1439,7 @@ function discoverGrid() {
 function libFilterOk() {
   const f = S.lib.filter;
   const any = f === 'update' ? Object.keys(S.updates).some((id) => S.library[id])
-    : f === 'setup' ? Object.values(S.library).some(needsCopySetup)
+    : f === 'setup' ? libRecs().some(needsCopySetup)
       : f === 'fav' ? favs().length > 0 : f === 'saved' || f === 'inst' ? savedItems().length > 0 : true;
   if (!any) S.lib.filter = 'all';
   if (S.lib.origin && !Object.values(S.library).some((g) => (byId(g.id) || {}).origin === S.lib.origin)) S.lib.origin = '';
@@ -1415,10 +1451,10 @@ function savedItems() {
 function libList() {
   libFilterOk();
   const q = fold(S.lq.trim());
-  let list = Object.values(S.library).map((g) => ({ g, a: libApp(g) })).concat(savedItems());
+  let list = libRecs().map((g) => ({ g, a: libApp(g) })).concat(savedItems());
   if (S.lib.filter === 'saved') list = list.filter((x) => x.saved);
   if (S.lib.filter === 'inst') list = list.filter((x) => !x.saved);
-  if (S.lib.filter === 'update') list = list.filter((x) => S.updates[x.g.id]);
+  if (S.lib.filter === 'update') list = list.filter((x) => S.updates[parentId(x.g.id)]);
   // Installed games still waiting for the player's copy (as its count says); saved ones are under Not Installed.
   if (S.lib.filter === 'setup') list = list.filter((x) => !x.saved && needsCopySetup(x.g));
   if (S.lib.filter === 'fav') list = list.filter((x) => favs().includes(x.g.id));
@@ -1443,14 +1479,14 @@ function libList() {
 function pageLibrary() {
   libFilterOk();
   const nsaved = savedItems().length;
-  const total = Object.keys(S.library).length + nsaved;
+  const total = libRecs().length + nsaved;
   if (!total) {
     return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(t('Your recomps, kept up to date from each developer\'s own GitHub.'))}</p></div></div>
       <div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>
       <h2>${esc(t('Nothing installed yet'))}</h2><p>${esc(t('Pick a recomp in Discover and install it. It shows up here, ready to play.'))}</p><div class="acts"><button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button><button type="button" class="btn main" data-go="discover">${esc(t('Discover recomps'))}</button>${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}</div></div></div>`;
   }
   const n = Object.keys(S.updates).filter((id) => S.library[id]).length;
-  const setup = Object.values(S.library).filter(needsCopySetup).length;
+  const setup = libRecs().filter(needsCopySetup).length;
   const nf = favs().length;
   // Consoles the player's games are from: a filter once there's more than one.
   const origins = [...new Set(Object.values(S.library).map((g) => (byId(g.id) || {}).origin).filter(Boolean))];
@@ -1461,7 +1497,7 @@ function pageLibrary() {
       <button type="button" class="btn" data-act="gh-add">${BRANCH_S}${esc(t('Add From GitHub or GitLab'))}</button>
       ${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}
       ${consoleSel}<label class="pill-sel">${esc(t('Sort'))}<select class="sel" data-act="libsort"><option value="played"${S.lib.sort === 'played' ? ' selected' : ''}>${esc(t('Recently played'))}</option><option value="time"${S.lib.sort === 'time' ? ' selected' : ''}>${esc(t('Most played'))}</option><option value="az"${S.lib.sort === 'az' ? ' selected' : ''}>${esc(t('A to Z'))}</option></select></label></div></div>
-    ${n || setup || nf || nsaved ? `<div class="chips"><button type="button" class="chip${S.lib.filter === 'all' ? ' on' : ''}" data-act="libf" data-f="all">${esc(t('All'))} <b>${fmtNum(total)}</b></button>${nsaved ? `<button type="button" class="chip${S.lib.filter === 'inst' ? ' on' : ''}" data-act="libf" data-f="inst">${esc(t('Installed'))} <b>${fmtNum(Object.keys(S.library).length)}</b></button>` : ''}${n ? `<button type="button" class="chip${S.lib.filter === 'update' ? ' on' : ''}" data-act="libf" data-f="update">${esc(t('Update ready'))} <b>${fmtNum(n)}</b></button>` : ''}${setup ? `<button type="button" class="chip${S.lib.filter === 'setup' ? ' on' : ''}" data-act="libf" data-f="setup">${esc(t('Needs your copy'))} <b>${fmtNum(setup)}</b></button>` : ''}${nf ? `<button type="button" class="chip${S.lib.filter === 'fav' ? ' on' : ''}" data-act="libf" data-f="fav">${STAR}${esc(t('Favorites'))} <b>${fmtNum(nf)}</b></button>` : ''}${nsaved ? `<button type="button" class="chip${S.lib.filter === 'saved' ? ' on' : ''}" data-act="libf" data-f="saved">${esc(t('Not Installed'))} <b>${fmtNum(nsaved)}</b></button>` : ''}${n > 1 ? `<button type="button" class="chip main" data-act="update-all">${esc(tf('Update All ({n})', { n }))}</button>` : ''}</div>` : ''}
+    ${n || setup || nf || nsaved ? `<div class="chips"><button type="button" class="chip${S.lib.filter === 'all' ? ' on' : ''}" data-act="libf" data-f="all">${esc(t('All'))} <b>${fmtNum(total)}</b></button>${nsaved ? `<button type="button" class="chip${S.lib.filter === 'inst' ? ' on' : ''}" data-act="libf" data-f="inst">${esc(t('Installed'))} <b>${fmtNum(libRecs().length)}</b></button>` : ''}${n ? `<button type="button" class="chip${S.lib.filter === 'update' ? ' on' : ''}" data-act="libf" data-f="update">${esc(t('Update ready'))} <b>${fmtNum(n)}</b></button>` : ''}${setup ? `<button type="button" class="chip${S.lib.filter === 'setup' ? ' on' : ''}" data-act="libf" data-f="setup">${esc(t('Needs your copy'))} <b>${fmtNum(setup)}</b></button>` : ''}${nf ? `<button type="button" class="chip${S.lib.filter === 'fav' ? ' on' : ''}" data-act="libf" data-f="fav">${STAR}${esc(t('Favorites'))} <b>${fmtNum(nf)}</b></button>` : ''}${nsaved ? `<button type="button" class="chip${S.lib.filter === 'saved' ? ' on' : ''}" data-act="libf" data-f="saved">${esc(t('Not Installed'))} <b>${fmtNum(nsaved)}</b></button>` : ''}${n > 1 ? `<button type="button" class="chip main" data-act="update-all">${esc(tf('Update All ({n})', { n }))}</button>` : ''}</div>` : ''}
     <div id="llist" class="${libWide() ? 'wide' : ''}" style="--tile:${libTile()}">${libraryGrid()}</div>
   </div>`;
 }
@@ -1495,7 +1531,7 @@ function libraryGrid() {
   // copies are 160, 400 and 640 wide: the one that covers the tile's real size on this screen.
   const px = libTile() * (devicePixelRatio || 1);
   const w = px > 420 ? 640 : px > 190 ? 400 : 0;
-  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, sub: esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
+  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, sub: x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
 }
 
 
@@ -1518,8 +1554,9 @@ function pageGame(id) {
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
     <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
-      <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
+      <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
       <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
+    ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
 }
@@ -1999,6 +2036,8 @@ async function pickCopy(id, folder) {
 }
 // The game's update, when it needs one beside the copy and it isn't in yet.
 function needsCopySetup(g) {
+  // One game of several whose own inputs aren't set up yet (the others still play).
+  if (g._sub && g.ready === false) return true;
   const su = S.setup[g.id];
   const named = su && su !== 'loading' && su.inputs?.length ? !su.inputs_ready : Object.keys(g.setup_inputs || {}).length > 0 && !g.inputs_ready;
   return S.easy.has(g.id) && (!g.game_copy || named);
@@ -2832,8 +2871,8 @@ function pageDownloads() {
     return a.hero ? pic(thumbOf(a.hero, w), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>'; };
   const total = hist.reduce((n, h) => n + (h.size || 0), 0), secs = hist.reduce((n, h) => n + (h.secs || 0), 0);
   const avg = secs ? total / secs : 0;
-  const nInst = Object.values(S.library).filter((g) => !g.local).length;
-  const disk = Object.values(S.library).reduce((n, g) => n + (g.size || 0), 0);
+  const nInst = libInstalls().filter((g) => !g.local).length;
+  const disk = libInstalls().reduce((n, g) => n + (g.size || 0), 0);
   const stats = [
     [t('Downloaded'), fmtB(total) || '0 MB', tn(hist.length, '1 download', '{n} downloads')],
     [t('In your library'), tn(nInst, '1 game', '{n} games'), fmtB(disk) ? tf('{size} downloaded', { size: fmtB(disk) }) : ''],
@@ -3284,6 +3323,8 @@ function scrollAnchor(main) {
   return first;
 }
 function render(keepScroll) {
+  // Records set from an answer about one of a recomp's games go back on the recomp, and its games' records follow.
+  expandLib();
   const main = $('#main'), top = main.scrollTop;
   const v = S.view;
   // Typing in a search: it keeps its text, caret and focus across a redraw.
@@ -3656,6 +3697,9 @@ async function refreshState() {
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
   S.missing = new Set(st.missing || []);
+  // The games of recomps that carry several: asked again when what's installed changes.
+  const gk = Object.values(S.library).map((g) => g.id + '@' + g.tag).sort().join('|');
+  if (S.gameKey !== gk) { S.gameKey = gk; await loadGameSets(); S.gameSetsV = (S.gameSetsV || 0) + 1; } else expandLib();
   for (const id of Object.keys(S.library)) byId(id);
   // The core's list of jobs is the truth: one it no longer has is over (unless it was only just
   // started here), and one that just ended here isn't brought back by an answer sent a moment before.
@@ -4373,11 +4417,15 @@ function ownFolder(g) {
   return !!g.asset && norm(g.path).split('/').pop() === made;
 }
 function confirmUninstall(id) {
+  id = parentId(id);
   const g = S.library[id];
+  // A recomp with several games: they all go with it.
+  const many = hasGames(id) ? S.gameSets[id].games : null;
   const s = document.createElement('div');
   s.className = 'scrim';
   s.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="u-h"><h2 id="u-h">${esc(tf('Uninstall {name}?', { name: g.name }))}</h2>
     <p>${esc(t('It comes out of your Library. You can install it again from Discover any time.'))}</p>
+    ${many ? `<p>${esc(tf('Its {n} games are uninstalled with it: {games}.', { n: many.length, games: many.map((x) => x.name).join(', ') }))}</p>` : ''}
     ${g.exe && /^([a-z]:[\\/]|\\\\|\/)/i.test(g.exe) && !String(g.exe).toLowerCase().startsWith(String(g.path).toLowerCase()) ? `<p class="muted">${esc(t('Its own installer put the game somewhere else. With the box ticked, its own uninstaller opens too.'))}</p>` : ''}
     ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep it'))}</button><button type="button" class="btn danger" data-x="yes">${esc(t('Uninstall'))}</button></div></div>`;
@@ -4520,6 +4568,10 @@ function wineTools() {
   }, t('Wine Tools'));
 }
 async function startInstall(id, dir, tag, anyway) {
+  // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
+  id = parentId(id);
+  // An update of a recomp with several games: all of them get it.
+  if (S.library[id] && hasGames(id) && S.updates[id] && !tag) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
   if (dir === undefined && !S.library[id] && (!S.settings.asked_location || (S.settings.library_dirs || []).length)) {
     await loadLibs();
     return locationModal(id);
@@ -4749,7 +4801,9 @@ function setupReqModal(id) {
 }
 
 async function playGame(id, program) {
-  if (S.missing && S.missing.has(id)) return missingModal(id);
+  if (S.missing && S.missing.has(parentId(id))) return missingModal(parentId(id));
+  // Another game of the same recomp is running: one at a time, since they share one install.
+  if (subOf(id) && S.running.has(parentId(id)) && !S.running.has(id)) return toast(tf('{name} is running. Close it first to play another of its games.', { name: (S.library[parentId(id)] || {}).name || '' }), true);
   if (setupDue(byId(id) || { id })) return setupReqModal(id);
   // A second press while this one is still on its way (saving a look, the cloud check, ReShade)
   // does nothing.
@@ -4763,7 +4817,7 @@ async function playGame2(id, program) {
   if (window.tvFlushLooks) await window.tvFlushLooks();
   // Cloud saves: asked once per game, and a newer save from another PC put in place first.
   if (window.beforePlay && !(await beforePlay(id))) return;
-  const other = [...S.running].find((x) => x !== id);
+  const other = [...S.running].find((x) => x !== id && parentId(x) !== parentId(id) && !subOf(x));
   const go2 = async (replace) => {
     try { await invoke('play', { id, replace, bigPicture: document.body.classList.contains('tv-on'), program: program || null }); }
     catch (err) {
@@ -6490,7 +6544,7 @@ async function act(el, e) {
       try { S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path }); toast(t('Play starts that program now.')); render(true); } catch (err) { fail(err); }
       return;
     }
-    case 'uninstall': return confirmUninstall(id);
+    case 'uninstall': return confirmUninstall(parentId(id));
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
       const ids = S.ids || await invoke('data_ids');
@@ -6979,9 +7033,10 @@ T.event.listen('install', ({ payload: p }) => {
 });
 
 T.event.listen('game', ({ payload: p }) => {
-  if (p.state === 'running') { S.running.add(p.id); document.body.classList.add('playing'); }
+  if (p.state === 'running') { S.running.add(p.id); if (p.game) S.running.add(p.game); document.body.classList.add('playing'); }
   else {
     S.running.delete(p.id);
+    if (p.game) S.running.delete(p.game);
     // 0xC000013A: its console window was closed, which is how some games are quit.
     if (p.code != null && p.code !== 0 && p.code !== -1073741510 && p.code !== 3221225786) crashModal(p);
     delete S.shots[p.id];

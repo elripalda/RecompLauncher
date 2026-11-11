@@ -585,6 +585,84 @@
         ]
       ]
     },
+    "games": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 32,
+      "description": "Several games in one release (a whole series). Each gets its own tile, play time, achievements and shortcuts; the install, updates and removal stay one. One game or none: the recomp shows as one game. A list in the catalog entry is used when the release has none; this one wins.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]{1,16}$",
+            "description": "Unique within the recomp. The game's full id is <recomp id>--<id>."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Shown on its tile."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Added after start.args when this game is played. None: Play opens your own menu, and the tile says to pick the game there."
+          },
+          "title_id": {
+            "type": "string",
+            "pattern": "^[0-9A-Fa-f]{8}$",
+            "description": "Xbox 360: this game's title id. Its unlock file is <title_id>.toml."
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The setup inputs this game needs. Inputs no game lists are shared by all."
+          },
+          "saves": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where this game keeps its own saves, like the top-level saves. None: the recomp's saves are shared."
+          }
+        }
+      },
+      "examples": [
+        [
+          {
+            "id": "gow2",
+            "name": "Gears of War 2",
+            "args": [
+              "--game=gow2"
+            ],
+            "title_id": "4D53082D",
+            "inputs": [
+              "disc2"
+            ]
+          },
+          {
+            "id": "gow3",
+            "name": "Gears of War 3",
+            "args": [
+              "--game=gow3"
+            ],
+            "title_id": "4D530906",
+            "inputs": [
+              "disc3"
+            ]
+          }
+        ]
+      ]
+    },
     "looks": {
       "type": "object",
       "description": "Looks (ReShade filters) for this game. Leave it out and they work with what the launcher works out itself.",

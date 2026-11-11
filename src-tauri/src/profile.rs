@@ -59,6 +59,10 @@ pub struct Profile {
     /// {documents}, {install}... as everywhere else. Backups and cloud saves copy these.
     #[serde(default)]
     pub saves: Vec<String>,
+    /// The games a recomp that carries several lists (see games.rs), as written: read with
+    /// games::of, which leaves out what doesn't fit instead of failing the whole file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub games: Option<Value>,
     /// Made by the launcher from the catalog's boot profile, not by the game's developer: the
     /// release's own setup still runs first, and its settings only change files that are there.
     #[serde(skip)]

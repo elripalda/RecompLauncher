@@ -246,6 +246,34 @@ Without it, the launcher watches which files the game writes while it runs, and 
 That works for most games, but saying where is better. Only list saves and small settings: game
 files, programs and archives are never copied, and nothing over 64 MB.
 
+### `games`: several games in one release
+
+A release that carries a whole series lists its games. Each one gets its own tile in the Library
+and Big Picture, its own play time, achievements, pins and shortcuts. Installing, updating and
+removing stay one thing for the whole release.
+
+```json
+"games": [
+  { "id": "gow2", "name": "Gears of War 2", "args": ["--game=gow2"], "title_id": "4D53082D", "inputs": ["disc2"] },
+  { "id": "gow3", "name": "Gears of War 3", "args": ["--game=gow3"], "title_id": "4D530906", "inputs": ["disc3"] }
+]
+```
+
+- `id`: 1 to 16 of `a-z` and `0-9`, unique in your release. The game's full id is
+  `<recomp id>--<id>`, used for its achievements, play time and links
+  (`recomplauncher://game/<recomp id>--<id>`).
+- `name`: shown on its tile.
+- `args`: added after `start.args` when this game is played. Without them Play opens your own
+  menu, and the tile says to pick the game there.
+- `title_id` (Xbox 360): this game's title id. Only its own unlock file, `<title_id>.toml`, is read.
+- `inputs`: the ids of the setup inputs this game needs. Inputs no game lists are shared by all.
+  Easy Setup for a game asks only for its own and the shared ones.
+- `saves`: where this game keeps its own saves, like the top-level `saves`. Without it, the
+  release's saves are shared by its games.
+
+With one game or none, the release shows as one game, as before. When your release has no list,
+the one on recomplauncher.com is used. Launchers older than 0.90 Beta 36 skip it and show one tile.
+
 ## Settings: in the launcher
 
 ### `config`: your settings files

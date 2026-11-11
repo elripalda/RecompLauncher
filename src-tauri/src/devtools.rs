@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 const FILE: &str = "recomplauncher.json";
-const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves"];
+const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves", "inputs", "requires", "min", "games"];
 
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
@@ -233,6 +233,16 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
                                 format!("Not part of the format: {}", unknown.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", ")),
                                 "These are skipped. Check the spelling against the developer guide.",
                             ));
+                        }
+                        // Several games in one recomp: each with its own tile, time and achievements.
+                        if let Some(list) = o.get("games") {
+                            match crate::games::check(list) {
+                                Err(why) => items.push(err("\"games\" can't be used as it is", why)),
+                                Ok(()) => match list.as_array().map(Vec::len).unwrap_or(0) {
+                                    0 | 1 => items.push(warn("\"games\" lists fewer than two games", "With one game or none, the recomp shows as one game, as before.")),
+                                    n => items.push(ok(format!("Carries {n} games, each with its own tile"))),
+                                },
+                            }
                         }
                     } else {
                         error = "The file has to be one JSON object, in { }.".into();
@@ -493,6 +503,28 @@ pub fn is_local(st: &App, id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_schema_the_guide_and_the_checker_list_the_same_keys() {
+        // Every top-level key the schema allows is known to the checker and described in the guide.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs");
+        let schema: Value = serde_json::from_str(&std::fs::read_to_string(root.join("recomplauncher.schema.json")).unwrap()).unwrap();
+        let guide = std::fs::read_to_string(root.join("DEVELOPERS.md")).unwrap();
+        let props = schema["properties"].as_object().unwrap();
+        for k in props.keys() {
+            assert!(TOP_KEYS.contains(&k.as_str()), "{k} is in the schema but not the checker");
+            assert!(guide.contains(&format!("`{k}`")) || guide.contains(&format!("\"{k}\"")), "{k} is in the schema but not the guide");
+        }
+        for k in TOP_KEYS {
+            assert!(props.contains_key(*k), "{k} is in the checker but not the schema");
+        }
+        // The games list as the schema has it: ids and names, the rest optional.
+        let games = &props["games"]["items"];
+        assert_eq!(games["required"], serde_json::json!(["id", "name"]));
+        for f in ["id", "name", "args", "title_id", "inputs", "saves"] {
+            assert!(games["properties"].get(f).is_some(), "games[].{f}");
+        }
+    }
 
     #[test]
     fn owner_comes_only_from_the_catalog() {
