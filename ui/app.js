@@ -3929,6 +3929,7 @@ async function refreshState() {
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
+  document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }

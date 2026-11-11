@@ -6955,6 +6955,8 @@ fn get_state(st: State<'_, App>) -> Value {
         // Where the web view can't play a sound (an AppImage, run as one or unpacked, or a PC
         // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
         "noSound": no_sound(),
+        // Where the web view draws on the processor, the page leaves out what keeps moving.
+        "cpuDraw": cpu_draw(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
     })
 }
@@ -6963,6 +6965,14 @@ fn get_state(st: State<'_, App>) -> Value {
 fn no_sound() -> bool {
     #[cfg(target_os = "linux")]
     return !sysenv::sound_works();
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
+/// The web view draws on the processor here (see sysenv::draws_on_cpu).
+fn cpu_draw() -> bool {
+    #[cfg(target_os = "linux")]
+    return sysenv::draws_on_cpu();
     #[cfg(not(target_os = "linux"))]
     false
 }

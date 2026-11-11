@@ -1851,6 +1851,18 @@ body.linux .tile .glow{filter:blur(14px) saturate(1.4)}
 body.linux .su-glow{filter:blur(36px) saturate(1.3)}
 body.linux .oob-aurora i{filter:none;mix-blend-mode:normal}
 
+/* Linux, when the web view draws on the processor (Graphics Mode: Safer, or Auto on NVIDIA): the
+   processor paints every frame of anything that keeps moving. The hero's slow zoom kept a whole
+   core busy while the launcher just sat there, so its picture stands still. A new slide fades in
+   as before, but its words and cover no longer fly in: those repainted the whole hero for most of
+   a second every 8 seconds. The big soft shadows under the hero and the covers are blurred again
+   on every frame of a scroll, so they go too; the thin edges stay. */
+body.cpu-draw .slide>.bg{transform:none;transition:none}
+body.cpu-draw .slide.on .sl-in>*,body.cpu-draw .slide.on .sl-cover{animation:none}
+body.cpu-draw .slider{box-shadow:none}
+body.cpu-draw .sl-cover{box-shadow:inset 0 0 0 1px rgba(244,248,252,.12)}
+body.cpu-draw .poster{box-shadow:inset 0 0 0 1px rgba(244,248,252,.05)}
+
 /* Which systems a recomp runs on, under its cover. */
 .tile .s .osm{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:4px;color:var(--dim);opacity:.85}
 .tile .s .osm .os-ico{width:12px;height:12px}

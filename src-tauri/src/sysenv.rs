@@ -197,6 +197,23 @@ fn compositing_off(mode: &str, nvidia: bool, wayland: bool) -> bool {
     }
 }
 
+/// Whether the web view draws on the processor: WebKit's safe renderer or its compositing is
+/// off, or there's no GPU to draw with. Every frame of anything that keeps moving is then painted
+/// by the processor at the window's full size; the hero's slow zoom alone kept a whole core busy
+/// while the launcher just sat there. The page leaves such things out (body.cpu-draw).
+#[cfg(target_os = "linux")]
+pub fn draws_on_cpu() -> bool {
+    static CPU: OnceLock<bool> = OnceLock::new();
+    *CPU.get_or_init(|| draws_on_cpu_from(&|k| std::env::var(k).ok(), has_hardware_rendering()))
+}
+
+/// WebKit reads these as on when they're set to anything but "0".
+#[cfg(any(test, target_os = "linux"))]
+fn draws_on_cpu_from(get: &dyn Fn(&str) -> Option<String>, hardware: bool) -> bool {
+    let on = |k: &str| get(k).is_some_and(|v| v != "0");
+    !hardware || on("WEBKIT_DISABLE_DMABUF_RENDERER") || on("WEBKIT_DISABLE_COMPOSITING_MODE")
+}
+
 /// Whether the web view can play a sound. It plays through GStreamer: an AppImage (run as one or
 /// unpacked) carries its own GStreamer core and none of the plugins, and the PC's newer plugins
 /// can't load into it, so the web view stops the moment a sound starts. A PC without the base
@@ -454,6 +471,34 @@ mod tests {
         assert!(!compositing_off("", false, true));
         assert!(!compositing_off("fast", true, true));
         assert!(compositing_off("safe", false, false));
+    }
+
+    #[test]
+    fn the_safe_renderer_draws_on_the_processor() {
+        let env = HashMap::from([("WEBKIT_DISABLE_DMABUF_RENDERER", "1")]);
+        assert!(draws_on_cpu_from(&|k| env.get(k).map(|v| v.to_string()), true));
+    }
+
+    #[test]
+    fn compositing_off_draws_on_the_processor() {
+        let env = HashMap::from([("WEBKIT_DISABLE_COMPOSITING_MODE", "1")]);
+        assert!(draws_on_cpu_from(&|k| env.get(k).map(|v| v.to_string()), true));
+    }
+
+    #[test]
+    fn no_render_node_draws_on_the_processor() {
+        assert!(draws_on_cpu_from(&|_| None, false));
+    }
+
+    #[test]
+    fn the_default_renderer_on_a_gpu_draws_on_the_gpu() {
+        assert!(!draws_on_cpu_from(&|_| None, true));
+    }
+
+    #[test]
+    fn a_variable_set_to_zero_leaves_the_gpu_on() {
+        let env = HashMap::from([("WEBKIT_DISABLE_DMABUF_RENDERER", "0"), ("WEBKIT_DISABLE_COMPOSITING_MODE", "0")]);
+        assert!(!draws_on_cpu_from(&|k| env.get(k).map(|v| v.to_string()), true));
     }
 
     #[test]
