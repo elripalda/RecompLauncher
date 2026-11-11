@@ -97,6 +97,18 @@ start (reusing an answer from the last hour) and about every 6 hours, downloads 
 (quiet, then opens again). `notes` (Markdown) shows once as What's new. The admin page's Updates
 tab uploads an installer to `/launcher/` and publishes version.json.
 
+On macOS, the architecture-matched `macos` entry must provide a ZIP or DMG URL, a newer version
+and its SHA-256. The launcher caps the download at 512 MiB, verifies the digest, app identity,
+version, architecture and code signature, and stages it in its own data folder. Only the final
+verified bundle is copied beside the installed app for an atomic swap on the same filesystem.
+After the Mac event loop shuts down, the OS shell runs fixed commands embedded in the installed
+launcher; no helper script or downloaded executable runs from a writable temporary folder.
+It waits for the old process to exit, checks the signature again, swaps the bundles and relaunches
+in the same desktop/Big Picture mode. Failures clean up staging and restore the previous app;
+if restoration itself fails the backup is retained for recovery. The installed app's parent folder
+must be writable. The Windows installer, AppImage updater, and Linux download-page fallback
+remain unchanged.
+
 ## How often the launcher asks
 
 Everything the launcher asks this server goes to one address, `API_BASE` in `src-tauri/src/net.rs`.

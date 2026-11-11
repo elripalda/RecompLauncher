@@ -53,6 +53,8 @@ pub mod trail;
 pub mod tray;
 mod update_download;
 mod update_launch;
+#[cfg(target_os = "macos")]
+mod self_update;
 pub mod usage;
 pub mod win;
 mod installer;
@@ -6832,6 +6834,23 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     }
 }
 
+/// macOS stages a verified bundle and queues the swap for after the event loop shuts down.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option<bool>) -> Res<()> {
+    let result = async {
+        let feed = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
+        let entry = launcher_platform_entry(&feed, assets::os_now(), assets::arch_now())
+            .ok_or_else(|| Error::Msg("No RecompLauncher update is available for this Mac yet.".into()))?;
+        self_update::update(&app, &st, &entry, big_picture.unwrap_or(false)).await
+    }.await;
+    if result.is_err() {
+        let _ = app.emit("self-update", json!({"failed": true}));
+    }
+    result
+}
+
+#[cfg(not(target_os = "macos"))]
 /// Download the newer launcher, check it, and start it: the installer on Windows, the AppImage in
 /// place of this one on Linux. Anything else opens the download page.
 #[tauri::command]
@@ -6956,6 +6975,7 @@ fn get_state(st: State<'_, App>) -> Value {
         // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
         "noSound": no_sound(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
+        "updateError": UPDATE_ERROR.lock().unwrap().clone(),
     })
 }
 
@@ -6971,9 +6991,19 @@ fn no_sound() -> bool {
 /// started from): { to, installer }. The window offers to run that installer the usual way, where
 /// the player sees what stops it.
 static UPDATE_FAILED: Mutex<Option<Value>> = Mutex::new(None);
+static UPDATE_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// At start: did the last update from inside the launcher go in?
 fn update_check_last(dir: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let error = dir.join("self-update-error.txt");
+        if let Ok(message) = std::fs::read_to_string(&error) {
+            trail::note(format!("Launcher update: {}", message.trim()));
+            *UPDATE_ERROR.lock().unwrap() = Some(message);
+            let _ = std::fs::remove_file(error);
+        }
+    }
     let f = dir.join("update-pending.json");
     let Some(v) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
     let (to, from, at) = (str_of(&v, "to").to_string(), str_of(&v, "from").to_string(), v.get("at").and_then(Value::as_u64).unwrap_or(0));
@@ -7795,7 +7825,7 @@ pub fn run() {
     }
     // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
     sysenv::tune_allocator();
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
         // On D-Bus as the app id, not the Tauri identifier: a Flatpak may only own names under its
@@ -8212,13 +8242,21 @@ pub fn run() {
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
-        .expect("RecompLauncher couldn't start")
-        .run(|app, ev| {
-            if let tauri::RunEvent::Exit = ev {
-                pads::stop();
-                ping::close(app);
-            }
-        });
+        .expect("RecompLauncher couldn't start");
+    let on_event = |app: &AppHandle, ev| {
+        if let tauri::RunEvent::Exit = ev {
+            pads::stop();
+            ping::close(app);
+        }
+    };
+    #[cfg(target_os = "macos")]
+    {
+        let code = app.run_return(on_event);
+        self_update::after_exit();
+        std::process::exit(code);
+    }
+    #[cfg(not(target_os = "macos"))]
+    app.run(on_event);
 }
 
 #[cfg(test)]

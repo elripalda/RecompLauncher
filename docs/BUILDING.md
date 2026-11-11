@@ -68,8 +68,17 @@ contents. Saves/settings beside the bundle and in the game's normal Application 
 are retained. Changes made inside the application bundle are replaced with the developer's
 release; games should keep player data outside their signed bundle.
 
-Launcher updates on Mac are manual downloads. A Windows/Linux-only version feed must not
-offer an update on Mac. To advertise a Mac release, the site can add a `macos` entry with
+Launcher updates on Mac download a ZIP or DMG, verify its SHA-256, app identity, version,
+architecture and code signature, then replace the complete installed `.app` and reopen it.
+Downloads and extraction stay in the app's own data folder. The final verified bundle is copied
+beside the installed app so the swap is on the same filesystem. After the Mac event loop closes,
+the OS shell runs commands embedded in the launcher and waits for the old process to exit before
+replacing or relaunching the app. No helper script or downloaded executable runs from a writable
+temporary location. The old bundle is restored if replacement or launch fails, and staging is
+cleaned up; a backup is retained only if restoring it also fails.
+Run the app from a writable location (such as `~/Applications`), rather than its mounted DMG.
+A Windows/Linux-only version feed must not offer an update on Mac. To advertise a Mac release,
+the site can add a `macos` entry with
 `arch: "arm64"` (or `"universal"`), `url`, `sha256`, and optional `version`, `notes` and `min`.
 No Mac release is advertised until that entry exists. The site's release feed and signing
 credentials are managed separately from this repository.

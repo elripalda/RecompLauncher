@@ -3932,6 +3932,7 @@ async function refreshState() {
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
+  if (st.updateError && !S.updateErrorShown) { S.updateErrorShown = true; setTimeout(() => fail(st.updateError), 1500); }
   S.missing = new Set(st.missing || []);
   // The games of recomps that carry several: asked again when what's installed changes.
   const gk = Object.values(S.library).map((g) => g.id + '@' + g.tag).sort().join('|');
@@ -5174,8 +5175,16 @@ function updateFailedModal(f) {
   }, t('The Update Didn\'t Install'));
 }
 async function selfUpdate() {
+  const mac = S.os === 'macos';
+  if (mac && S.selfUpdating) return;
+  if (mac) S.selfUpdating = true;
   toast(t('Downloading the new RecompLauncher…'));
-  try { await invoke('update_launcher'); } catch (e) { if (!blocked('', e)) fail(e); lookForLauncher(); }
+  try {
+    if (mac) await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
+    else await invoke('update_launcher');
+  }
+  catch (e) { if (!blocked('', e)) fail(e); lookForLauncher(); }
+  finally { if (mac) S.selfUpdating = false; }
 }
 
 function libChoices(libs, sel) {
