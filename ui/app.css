@@ -307,6 +307,28 @@ body.oled .slide::after{background:linear-gradient(90deg,#000 0%,rgba(0,0,0,.65)
 .smallsearch input:focus{border-color:rgba(52,242,232,.5)}
 .smallsearch svg{position:absolute;left:15px;top:13px;color:var(--dim)}
 .count-line{color:var(--dim);font-size:13px;font-weight:600;text-align:center;margin-top:-10px}
+.ended-box{margin-top:44px;padding-top:18px;border-top:1px solid var(--line)}
+.ended-head{display:flex;align-items:center;gap:10px;width:100%;padding:12px 16px;border-radius:var(--r);border:1px solid var(--line);background:var(--fill);color:var(--muted);font:inherit;font-weight:700;text-align:left;cursor:pointer;transition:background .2s var(--ease),color .2s var(--ease)}
+@media(hover:hover) and (pointer:fine){.ended-head:hover{background:var(--fill2);color:var(--ink)}}
+.ended-head:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.ended-head .n{margin-left:auto;font-size:12px;font-weight:600;color:var(--dim)}
+.ended-head::after{content:"";width:8px;height:8px;margin:-4px 2px 0 6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .2s var(--ease)}
+.ended-head[aria-expanded="true"]::after{margin-top:4px;transform:rotate(-135deg)}
+/* Opens and closes by animating the row from 0fr to 1fr. visibility keeps a closed box out of the tab order and the screen reader. */
+.ended-box{--soft:cubic-bezier(.22,1,.36,1)}
+.ended-body{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .32s var(--ease),opacity .24s var(--ease),visibility 0s linear .32s}
+.ended-body.open{grid-template-rows:1fr;opacity:1;visibility:visible;transition:grid-template-rows .5s var(--soft),opacity .4s var(--soft) .04s,visibility 0s}
+/* The covers rise in one after another (the first row's worth), a gentle settle rather than a pop. */
+.ended-grid .tile{opacity:0;transform:translateY(14px);transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.ended-body.open .ended-grid .tile{opacity:1;transform:none;transition:opacity .42s var(--soft) calc(.1s + var(--i,0) * 45ms),transform .55s var(--soft) calc(.1s + var(--i,0) * 45ms)}
+.ended-grid .tile:nth-child(n+2){--i:1}.ended-grid .tile:nth-child(n+3){--i:2}.ended-grid .tile:nth-child(n+4){--i:3}.ended-grid .tile:nth-child(n+5){--i:4}.ended-grid .tile:nth-child(n+6){--i:5}.ended-grid .tile:nth-child(n+7){--i:6}.ended-grid .tile:nth-child(n+8){--i:7}
+.ended-in{min-height:0;overflow:hidden;margin:0 -12px}
+.ended-pad{padding:22px 12px 30px}
+.ended-grid .poster img{filter:grayscale(1);opacity:.6;transition:filter .3s var(--ease),opacity .3s var(--ease)}
+.ended-grid .tile:focus-within .poster img{filter:none;opacity:1}
+@media(hover:hover) and (pointer:fine){.ended-grid .tile:hover .poster img{filter:none;opacity:1}}
+.ended-grid .tile .glow{display:none!important}
+@media(prefers-reduced-motion:reduce){.ended-head,.ended-head::after,.ended-grid .poster img{transition:none}.ended-body{transition:opacity .15s linear,visibility 0s linear .15s}.ended-body.open{transition:opacity .15s linear,visibility 0s}.ended-grid .tile,.ended-body.open .ended-grid .tile{transform:none;transition:none}}
 .empty{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:80px 20px;color:var(--muted)}
 .empty h2{color:var(--ink)}
 .empty p{margin:0;max-width:440px}

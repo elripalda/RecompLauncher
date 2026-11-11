@@ -25,8 +25,8 @@ const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
   library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), shelf: {}, slide: 0, lq: '',
-  view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general',
-  find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false },
+  view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
+  find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
   lib: { sel: null, filter: 'all', sort: 'played' },
   tab: 'overview',
 };
@@ -678,6 +678,14 @@ function projectState(a) {
   const months = Math.floor(days / 30.4);
   return { kind: 'quiet', label: months >= 24 ? tn(Math.floor(months / 12), 'No updates in 1 year', 'No updates in {n} years') : months >= 12 ? t('No updates in over a year') : tn(months, 'No updates in 1 month', 'No updates in {n} months') };
 }
+// Ended means archived or abandoned. Discover's "Hide ended" switch takes those out of the list
+// and puts them in the "Ended projects" box under it.
+function isEnded(a) {
+  return projectState(a)?.kind === 'ended';
+}
+function keepEnded(a, f) {
+  return !f.hideEnded || !isEnded(a);
+}
 const STATE_NAME = { ended: N_('Ended'), paused: N_('On hold'), complete: N_('Feature complete') };
 const STATE_PILL = { ended: N_('Project ended'), paused: N_('On hold'), complete: N_('Feature complete') };
 // A check mark before "Feature complete", on the page and in its notice.
@@ -1267,21 +1275,22 @@ function layoutShelves(scope = document) {
   }
 }
 
-function discoverList() {
+// With `ended`, the ended ones the filters would otherwise show (what "Hide ended" took out).
+function discoverList(ended = false) {
   const f = S.find, q = fold(S.q.trim());
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a))
+  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
     && (!q || fold([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ')).includes(q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
-  S.findCount = recompCount(list);
+  if (!ended) S.findCount = recompCount(list);
   let out = oneEach(list.sort(soonLast), f.sort === 'new');
   // Discover's own order (Popular, not picked by the player): turnkey recomps first.
   if (f.sort === 'popular' && !f.picked) out = turnkeyFirst(out);
   // A search also finds the games inside recomps that carry several, after the recomps themselves.
-  if (q) {
+  if (q && !ended) {
     const kids = [];
     for (const a of visible()) {
-      if (!forOS(a)) continue;
+      if (!forOS(a) || !keepEnded(a, f)) continue;
       for (const g of gamesOf(a.id, a)) { const c = byId(a.id + '--' + g.id); if (c && !isHidden(c.id) && fold(c.name).includes(q)) kids.push(c); }
     }
     out = out.concat(kids);
@@ -1301,6 +1310,7 @@ const discToggles = (f) => `<button type="button" class="toggle" role="switch" a
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.mp}" data-act="mp-f">${esc(t('Multiplayer'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.great}" data-act="great"><span class="dot-great" aria-hidden="true"></span>${esc(t('Plays great'))}<span class="switch" aria-hidden="true"></span></button>
       ${onHandheld() ? `<button type="button" class="toggle deck-t" role="switch" aria-checked="${!!f.deckgreat}" data-act="deck-f">${DECK_ICON(15)}${esc(t('Great on Deck'))}<span class="switch" aria-hidden="true"></span></button>` : ''}
+      <button type="button" class="toggle" role="switch" aria-checked="${!!f.hideEnded}" data-act="ended-f">${esc(t('Hide ended'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!S.settings.hide_ai}" data-act="toggle" data-k="hide_ai">${esc(t('Hide AI-assisted'))}<span class="switch" aria-hidden="true"></span></button>`;
 const discGenres = () => { const apps = visible(); return Object.keys(GENRES).filter((k) => apps.some((a) => a.genre === k)); };
 function pageDiscover() {
@@ -1332,7 +1342,7 @@ function pageDiscover() {
 // they're always at hand further down. The rest are under Filters. Outside the page (in the window's
 // frame), so a redraw of the page doesn't touch it, and only on Discover.
 const SLIDERS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>';
-function stickExtras(f) { return [f.show, f.tag, f.easy, f.mp, f.great, onHandheld() && f.deckgreat, S.settings.hide_ai].filter(Boolean).length; }
+function stickExtras(f) { return [f.show, f.tag, f.easy, f.mp, f.great, onHandheld() && f.deckgreat, f.hideEnded, S.settings.hide_ai].filter(Boolean).length; }
 function paintStick() {
   let b = document.getElementById('dstick');
   if (S.view !== 'discover' || !S.cat || !$('#dlist')) {
@@ -1430,8 +1440,35 @@ function discoverGrid() {
   const key = JSON.stringify([S.q, S.find, S.settings.hide_ai, runsPick()]);
   if (S.dkey !== key) { S.dkey = key; S.dshow = DISCOVER_PAGE; }
   const shown = Math.min(S.dshow || DISCOVER_PAGE, list.length);
-  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div><div class="grid" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map((a) => tile(a, { quick: true })).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}`
-    : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p></div>`;
+  const endedBox = f.hideEnded ? endedBoxHtml(discoverList(true)) : '';
+  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div><div class="grid" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map((a) => tile(a, { quick: true })).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
+    : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p></div>${endedBox}`;
+}
+// Opening "Ended projects" scrolls the page down with it, so the first row is in view. The box is still
+// growing, so a single smooth scroll would stop at the page's old end: this follows it frame by frame
+// until it has settled, and gives up the moment the player scrolls or presses anything themselves.
+function revealEnded(head) {
+  const main = $('#main');
+  if (!main) return;
+  const stick = 66 + 16, instant = calm(), ac = new AbortController();
+  let last = performance.now();
+  const until = last + 700;
+  const stop = () => ac.abort();
+  for (const ev of ['wheel', 'touchstart', 'keydown', 'pointerdown']) main.addEventListener(ev, stop, { passive: true, signal: ac.signal });
+  const step = (now) => {
+    if (ac.signal.aborted || !head.isConnected) return ac.abort();
+    const want = head.getBoundingClientRect().top - main.getBoundingClientRect().top - stick;
+    if (want > 1) main.scrollTop += instant ? want : Math.max(1, want * (1 - Math.pow(0.82, (now - last) / 16.7)));
+    last = now;
+    if (now < until) requestAnimationFrame(step); else ac.abort();
+  };
+  requestAnimationFrame(step);
+}
+// "Hide ended" doesn't lose them: they wait in a closed box under the list, with the covers greyed out.
+function endedBoxHtml(list) {
+  if (!list.length) return '';
+  return `<section class="ended-box"><button type="button" class="ended-head" data-act="ended-box" aria-expanded="${!!S.endedOpen}" aria-controls="ended-body"><span>${esc(t('Ended projects'))}</span><span class="n">${list.length}</span></button>`
+    + `<div id="ended-body" class="ended-body${S.endedOpen ? ' open' : ''}"><div class="ended-in"><div class="ended-pad"><div class="grid ended-grid" data-n="${list.length}">${list.map((a) => tile(a, { quick: true })).join('')}</div></div></div></div></section>`;
 }
 
 // A Library filter whose games are all gone (the last update installed, the last copy set up,
@@ -3507,7 +3544,8 @@ function glideFrom(before, rel, ms = 300) {
 }
 // A list of tiles drawn again (a filter, a sort, a search): the tiles that stay are the same
 // elements, so their pictures never reload, and they glide to their new places; new ones fade in.
-function morphList(box, html) {
+// With `opts.exit`, the tiles a filter takes out fade away where they stood while the rest glides over.
+function morphList(box, html, opts = {}) {
   const oldGrid = $('.grid', box);
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
@@ -3526,8 +3564,25 @@ function morphList(box, html) {
     // The rest of the box (the count) comes from the new markup; the grid keeps its elements.
     // The grid that stays never leaves this page: a picture moved into the template and back
     // can be left blank (the covers and logos that went missing in the Library).
-    const keep = oldGrid;
-    keep.replaceChildren(...kids);
+    const keep = oldGrid, stay = new Set(kids);
+    // The tiles on their way out, measured while they still stand in place (the ones on screen only).
+    const gridBox = keep.getBoundingClientRect();
+    const leaving = opts.exit && !calm() ? [...old.values()].filter((el) => !stay.has(el) && before.has(el)).slice(0, 24).map((el) => ({ el, r: el.getBoundingClientRect() })) : [];
+    for (const { el } of leaving) before.delete(el);
+    // Only what has to move moves: a tile that is already in its place is never taken out of the page
+    // (taking it out and back in makes its cover blink), so only the ones that change place glide.
+    for (const c of [...keep.childNodes]) if (!stay.has(c)) c.remove();
+    let slot = keep.firstChild;
+    for (const k of kids) { if (k === slot) slot = slot.nextSibling; else keep.insertBefore(k, slot); }
+    if (leaving.length) {
+      keep.style.position = 'relative';
+      const done = leaving.map(({ el, r }) => {
+        Object.assign(el.style, { position: 'absolute', left: `${r.left - gridBox.left}px`, top: `${r.top - gridBox.top}px`, width: `${r.width}px`, height: `${r.height}px`, margin: '0', pointerEvents: 'none' });
+        keep.append(el);
+        return el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.94)' }], { duration: 200, easing: EASE, fill: 'forwards' }).finished.catch(() => {}).then(() => el.remove());
+      });
+      Promise.all(done).then(() => { keep.style.position = ''; });
+    }
     if (keep.parentNode === box && newGrid.parentNode === tpl.content) {
       const nodes = [...tpl.content.childNodes], at = nodes.indexOf(newGrid);
       for (const c of [...box.childNodes]) if (c !== keep) c.remove();
@@ -3572,6 +3627,8 @@ function updateDiscover() {
   if (mp) mp.setAttribute('aria-checked', String(!!f.mp));
   const dk = $('.dctl [data-act="deck-f"]');
   if (dk) dk.setAttribute('aria-checked', String(!!f.deckgreat));
+  const en = $('.dctl [data-act="ended-f"]');
+  if (en) en.setAttribute('aria-checked', String(!!f.hideEnded));
   const ai = $('.dctl [data-k="hide_ai"]');
   if (ai) ai.setAttribute('aria-checked', String(!!S.settings.hide_ai));
   const h = $('.dhead h1');
@@ -3579,7 +3636,11 @@ function updateDiscover() {
   const vals = { origin: f.origin || '', 'genre-sel': f.genre || '', 'show-sel': f.show || '' };
   for (const sl of $$('#main .dctl select[data-act]')) if (sl.dataset.act in vals && sl.value !== vals[sl.dataset.act]) sl.value = vals[sl.dataset.act];
   if (window.syncDrops) window.syncDrops();
-  morphList($('#dlist'), discoverGrid());
+  const hadEnded = !!$('#dlist .ended-box');
+  morphList($('#dlist'), discoverGrid(), { exit: true });
+  // The "Ended projects" box that has just appeared eases in after the list has settled, instead of popping.
+  const box = $('#dlist .ended-box');
+  if (box && !hadEnded && !calm()) box.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 360, easing: EASE, delay: 160, fill: 'backwards' });
   paintStick();
 }
 function updateLibrary() {
@@ -6385,6 +6446,14 @@ async function act(el, e) {
     case 'note-url': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
+    case 'ended-f': S.find.hideEnded = !S.find.hideEnded; return updateDiscover();
+    case 'ended-box': {
+      S.endedOpen = !S.endedOpen;
+      el.setAttribute('aria-expanded', String(S.endedOpen));
+      if (el.nextElementSibling) el.nextElementSibling.classList.toggle('open', S.endedOpen);
+      if (S.endedOpen) revealEnded(el);
+      return;
+    }
     case 'self-steam': return selfToSteam(false);
     case 'ge-proton': return geInstall();
     case 'use-proton': return useProton(id);

@@ -57,3 +57,17 @@ test('arriving repository status refreshes desktop card lists only when it chang
     assert.equal(refreshes, 2, `${view} should remove an outdated warning`);
   }
 });
+test('Discover can hide ended projects and keeps everything else', () => {
+  const ctx = vm.createContext({ S: { rels: {} }, t: s => s, tn: () => '' });
+  for (const name of ['projectState', 'isEnded', 'keepEnded']) vm.runInContext(source.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0], ctx);
+  const keep = (entry, f) => { ctx.entry = entry; ctx.f = f; return vm.runInContext('keepEnded(entry, f)', ctx); };
+  const ended = [{ status: 'abandoned' }, { status: 'ended' }, { archived: true }];
+  for (const entry of ended) {
+    assert.equal(keep(entry, { hideEnded: false }), true);
+    assert.equal(keep(entry, {}), true);
+    assert.equal(keep(entry, { hideEnded: true }), false);
+  }
+  for (const entry of [{ status: 'paused' }, { status: 'complete', archived: true }, { archived: false }, { soon: true, status: 'ended' }, {}]) {
+    assert.equal(keep(entry, { hideEnded: true }), true);
+  }
+});
