@@ -4620,6 +4620,7 @@ function gameMenu(id) {
         ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
         ...(S.os === 'linux' && g.proton ? [{ act: 'wine-tools', id, label: t('Wine Tools…'), icon: 'exe' }] : []),
       ] },
+      { act: 'saves-game', id, label: t('Manage saves'), icon: 'save' },
       { act: 'customize', id, label: t('Customize…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
