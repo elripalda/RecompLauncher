@@ -7869,20 +7869,18 @@ pub fn run() {
                 return;
             }
             match ev {
-                // With the tray on, X hides the window and the launcher keeps going by the clock.
+                // Run in background hides the window only when the tray can bring it back.
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     let app = w.app_handle();
-                    let tray = app.state::<App>().lib.lock().unwrap().settings.close_to_tray;
-                    if tray && app.tray_by_id("main").is_some() {
-                        api.prevent_close();
-                        let _ = w.hide();
+                    let background = app.state::<App>().lib.lock().unwrap().settings.close_to_tray;
+                    api.prevent_close();
+                    if background && app.tray_by_id("main").is_some() && w.hide().is_ok() {
                         away(w, true);
                         tray::hid(app);
                     } else {
                         // Closing for real: the whole launcher goes. The hidden quick-menu window
                         // would otherwise keep it running with no window, and opening it again
                         // would find nothing to show.
-                        api.prevent_close();
                         app.exit(0);
                     }
                 }

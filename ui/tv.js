@@ -1132,6 +1132,8 @@
           ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
+          ${head(t('When you close the window'))}
+          ${sw('close_to_tray', t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
           ${head(t('Games and updates'))}
           ${sw('notify', t('Notifications'), t('When a new recomp comes out for a game you own'))}
           ${sw('backup_before_update', t('Back up saves before updates'), t('The newest five copies of each game\'s saves'))}
