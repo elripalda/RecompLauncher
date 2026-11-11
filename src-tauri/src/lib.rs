@@ -6776,27 +6776,43 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
             let _ = std::fs::remove_file(&new);
             Error::Msg(format!("Couldn't replace RecompLauncher with the new version: {e}"))
         })?;
-        let mut c = std::process::Command::new(&me);
-        sysenv::clean_std(&mut c);
-        c.spawn().map_err(|e| Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")))?;
+        if reopen_after_update(&app) {
+            let mut c = std::process::Command::new(&me);
+            sysenv::clean_std(&mut c);
+            c.spawn().map_err(|e| Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")))?;
+        }
         app.exit(0);
         return Ok(());
     }
     let file = std::env::temp_dir().join(format!("RecompLauncher-{}-setup.exe", str_of(&v, "version").trim_start_matches('v')));
     std::fs::write(&file, &bytes)?;
+    // It installs with no window of its own (/S), and RecompLauncher opens again after (/R) unless
+    // the player closed it meanwhile. The launcher's window says it's installing, for a moment, then
+    // closes so none of our files are in use (the installer closes any copy still open before it
+    // copies). /UPDATE: it replaces the files in place and leaves the player's shortcuts alone (a
+    // desktop shortcut they deleted stays gone).
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    // Quit during that moment: the launcher is on its way out, so nothing starts behind the
+    // player's back, and the next start doesn't take the update for one that failed.
+    if update_launch::quitting() {
+        return Ok(());
+    }
     // Noted, so the next start can tell whether it went in (see update_check_last).
     let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file, "url": file_url, "sha256": want}).to_string());
-    // It installs with no window of its own (/S), and RecompLauncher opens again after (/R). The
-    // launcher's window says it's installing, for a moment, then closes so none of our files are in
-    // use (the installer closes any copy still open before it copies). /UPDATE: it replaces the
-    // files in place and leaves the player's shortcuts alone (a desktop shortcut they deleted stays gone).
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
     let portable = portable_dir().and_then(|_| exe_dir());
-    update_launch::installer_command(&file, portable.as_deref(), true)
+    let reopen = reopen_after_update(&app);
+    update_launch::installer_command(&file, portable.as_deref(), update_launch::Install::Quiet { reopen })
         .spawn()
         .map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
     Ok(())
+}
+
+/// Whether the launcher opens again after its own update: only while the player still has its
+/// window. Checked as the update goes in, so a window opened again from the tray counts.
+fn reopen_after_update(app: &AppHandle) -> bool {
+    let shown = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(true));
+    update_launch::reopen_after(shown, update_launch::quitting())
 }
 
 // ---------- the launcher ----------
@@ -6878,7 +6894,7 @@ fn update_retry(app: AppHandle) -> Res<()> {
         return Err(Error::Msg("The installer isn't there anymore. Use Update again to download it.".into()));
     }
     let portable = portable_dir().and_then(|_| exe_dir());
-    update_launch::installer_command(Path::new(&installer), portable.as_deref(), false).spawn().map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
+    update_launch::installer_command(Path::new(&installer), portable.as_deref(), update_launch::Install::Shown).spawn().map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
     Ok(())
 }
@@ -8026,11 +8042,15 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("RecompLauncher couldn't start")
-        .run(|app, ev| {
-            if let tauri::RunEvent::Exit = ev {
+        .run(|app, ev| match ev {
+            // Every way out (the window, the tray's Quit, --quit) asks here first. An update still
+            // on its way then leaves the launcher closed (see update_launcher).
+            tauri::RunEvent::ExitRequested { .. } => update_launch::note_quitting(),
+            tauri::RunEvent::Exit => {
                 pads::stop();
                 ping::close(app);
             }
+            _ => {}
         });
 }
 
