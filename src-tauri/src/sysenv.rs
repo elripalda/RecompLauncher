@@ -19,18 +19,25 @@ const SINGLE: [&str; 5] = ["PYTHONHOME", "GTK_EXE_PREFIX", "GTK_DATA_PREFIX", "G
 /// One change to make: a variable set to a value, or taken away.
 type Change = (&'static str, Option<OsString>);
 
+// Marks the NVIDIA setting added by this launcher, so games keep the player's own sync policy.
+const OWN_NV_SYNC: &str = "RL_WEBKIT_NV_SYNC";
+
 fn inside(entry: &str, appdir: &str) -> bool {
     (!appdir.is_empty() && entry.starts_with(appdir)) || entry.contains("/.mount_") || entry.contains("/tmp/appimage")
 }
 
-/// What has to change, worked out once. Empty when the launcher isn't an AppImage.
+/// AppImage paths and launcher-added graphics settings to remove from child programs.
 pub fn changes_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<Change> {
+    let mut out = Vec::new();
+    if get(OWN_NV_SYNC).as_deref() == Some("1") {
+        out.extend([(OWN_NV_SYNC, None), ("__NV_DISABLE_EXPLICIT_SYNC", None)]);
+    }
     let appdir = get("APPDIR").unwrap_or_default();
     if appdir.is_empty() && get("APPIMAGE").is_none() {
-        return vec![];
+        return out;
     }
     let appdir = appdir.trim_end_matches('/').to_string();
-    let mut out: Vec<Change> = OWN.iter().filter(|k| get(k).is_some()).map(|k| (*k, None)).collect();
+    out.extend(OWN.iter().filter(|k| get(k).is_some()).map(|k| (*k, None)));
     for k in LISTS {
         let Some(v) = get(k) else { continue };
         let kept: Vec<&str> = v.split(':').filter(|e| !e.is_empty() && !inside(e, &appdir)).collect();
@@ -93,20 +100,23 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let gamescope = var("XDG_CURRENT_DESKTOP").eq_ignore_ascii_case("gamescope") || std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some();
     let from_steam = ["SteamGameId", "SteamAppId", "SteamClientLaunch", "SteamEnv"].iter().any(|k| std::env::var_os(k).is_some());
-    // NVIDIA's driver is where the web view's default renderer most often leaves the window
-    // blank, so it gets the one that works everywhere. An AppImage used to get it too, but on a
-    // working GPU that made every frame far more expensive (the hero animation burned ~90% CPU
-    // on a desktop); keep the safe path for AppImages only where there is no render node to use.
+    // Avoid forcing every NVIDIA Wayland window through the legacy renderer: at high display
+    // scales even Settings can fall to ~4 fps. Disabling NVIDIA's explicit sync preserves the
+    // accelerated path while avoiding the Wayland protocol error (Tauri #9394, WebKit #324551).
     let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
     let appimage = std::env::var_os("APPIMAGE").is_some();
     // The player's choice in Settings → Appearance wins over the guess; their own variables win over both.
     let mode = data.map(|d| graphics_mode(&d)).unwrap_or_default();
-    let safe_way = graphics_safe_way(&mode, gamescope, from_steam, nvidia, appimage, has_hardware_rendering());
-    if safe_way && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    let wayland = (std::env::var_os("WAYLAND_DISPLAY").is_some() || var("XDG_SESSION_TYPE").eq_ignore_ascii_case("wayland")) && !var("GDK_BACKEND").starts_with("x11");
+    let graphics = graphics_workarounds(&mode, gamescope, from_steam, nvidia, wayland, appimage, has_hardware_rendering());
+    if graphics.explicit_sync_off && std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none() {
+        std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+        std::env::set_var(OWN_NV_SYNC, "1");
+    }
+    if graphics.dmabuf_off && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    let wayland = (std::env::var_os("WAYLAND_DISPLAY").is_some() || var("XDG_SESSION_TYPE").eq_ignore_ascii_case("wayland")) && !var("GDK_BACKEND").starts_with("x11");
-    if compositing_off(&mode, nvidia, wayland) && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+    if graphics.compositing_off && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
     if std::env::var_os("RL_STEAM_CLEAN").is_some() {
@@ -175,25 +185,30 @@ fn graphics_mode(data: &std::path::Path) -> String {
         .unwrap_or_default()
 }
 
-/// Whether Auto mode has to use WebKit's safe renderer: the cases where its default (DMA-BUF)
-/// renderer is known to leave the window blank. "fast" and "safe" are the player's own choice.
-#[cfg(target_os = "linux")]
-fn graphics_safe_way(mode: &str, gamescope: bool, from_steam: bool, nvidia: bool, appimage: bool, hardware: bool) -> bool {
-    match mode {
-        "fast" => false,
-        "safe" => true,
-        _ => gamescope || from_steam || nvidia || (appimage && !hardware),
-    }
+#[cfg(any(test, target_os = "linux"))]
+#[derive(Debug, Default, PartialEq)]
+struct GraphicsWorkarounds {
+    dmabuf_off: bool,
+    compositing_off: bool,
+    explicit_sync_off: bool,
 }
 
-/// Whether WebKit's compositing has to go too. On NVIDIA under Wayland, with it on, Big Picture
-/// shows only its background colour; "fast" and "safe" are the player's own choice.
+/// Direct NVIDIA Wayland launches keep acceleration, with the narrower explicit-sync fix.
+/// Steam/Gamescope, NVIDIA on X11, and AppImages without a render node retain their fallback.
+/// Faster and Safer remain explicit choices; environment overrides are applied at startup.
 #[cfg(any(test, target_os = "linux"))]
-fn compositing_off(mode: &str, nvidia: bool, wayland: bool) -> bool {
+fn graphics_workarounds(mode: &str, gamescope: bool, from_steam: bool, nvidia: bool, wayland: bool, appimage: bool, hardware: bool) -> GraphicsWorkarounds {
     match mode {
-        "fast" => false,
-        "safe" => true,
-        _ => nvidia && wayland,
+        "fast" => GraphicsWorkarounds::default(),
+        "safe" => GraphicsWorkarounds { dmabuf_off: true, compositing_off: true, explicit_sync_off: false },
+        _ if nvidia && wayland && hardware && !gamescope && !from_steam => GraphicsWorkarounds {
+            explicit_sync_off: true, ..Default::default()
+        },
+        _ => GraphicsWorkarounds {
+            dmabuf_off: gamescope || from_steam || nvidia || (appimage && !hardware),
+            compositing_off: nvidia && wayland,
+            explicit_sync_off: false,
+        },
     }
 }
 
@@ -448,12 +463,42 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn compositing_goes_on_nvidia_under_wayland() {
-        assert!(compositing_off("", true, true));
-        assert!(!compositing_off("", true, false));
-        assert!(!compositing_off("", false, true));
-        assert!(!compositing_off("fast", true, true));
-        assert!(compositing_off("safe", false, false));
+    fn auto_keeps_acceleration_on_direct_nvidia_wayland_launches() {
+        let accelerated = GraphicsWorkarounds { explicit_sync_off: true, ..Default::default() };
+        for appimage in [false, true] {
+            assert_eq!(graphics_workarounds("", false, false, true, true, appimage, true), accelerated);
+        }
+        // Steam/Gamescope and a missing render node retain the old fallback, even on Wayland.
+        let fallback = GraphicsWorkarounds { dmabuf_off: true, compositing_off: true, explicit_sync_off: false };
+        assert_eq!(graphics_workarounds("", true, false, true, true, false, true), fallback);
+        assert_eq!(graphics_workarounds("", false, true, true, true, false, true), fallback);
+        assert_eq!(graphics_workarounds("", false, false, true, true, false, false), fallback);
+    }
+
+    #[test]
+    fn explicit_graphics_modes_override_platform_detection() {
+        for nvidia in [false, true] {
+            for wayland in [false, true] {
+                for steam in [false, true] {
+                    assert_eq!(graphics_workarounds("fast", steam, steam, nvidia, wayland, true, true), GraphicsWorkarounds::default());
+                    assert_eq!(graphics_workarounds("safe", steam, steam, nvidia, wayland, true, true), GraphicsWorkarounds {
+                        dmabuf_off: true, compositing_off: true, explicit_sync_off: false,
+                    });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn games_do_not_inherit_the_launchers_nvidia_sync_workaround() {
+        let env = HashMap::from([(OWN_NV_SYNC, "1"), ("__NV_DISABLE_EXPLICIT_SYNC", "1")]);
+        let changes = changes_from(&|k| env.get(k).map(|s| s.to_string()));
+        assert!(changes.contains(&(OWN_NV_SYNC, None)));
+        assert!(changes.contains(&("__NV_DISABLE_EXPLICIT_SYNC", None)));
+        // An explicit player setting, without our marker, belongs to the game's environment.
+        for value in ["0", "1"] {
+            assert!(changes_from(&|k| (k == "__NV_DISABLE_EXPLICIT_SYNC").then(|| value.to_string())).is_empty());
+        }
     }
 
     #[test]
@@ -478,20 +523,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    #[cfg(target_os = "linux")]
     #[test]
     fn auto_keeps_appimages_on_the_fast_path_when_a_gpu_is_there() {
         // AMD/Intel desktop AppImage: the default renderer is fine and much cheaper.
-        assert!(!graphics_safe_way("", false, false, false, true, true));
+        assert_eq!(graphics_workarounds("", false, false, false, false, true, true), GraphicsWorkarounds::default());
+        assert_eq!(graphics_workarounds("", false, false, false, true, true, true), GraphicsWorkarounds::default());
         // No render node (a VM, a remote display, software rendering): keep the safe renderer.
-        assert!(graphics_safe_way("", false, false, false, true, false));
-        // NVIDIA, Steam and Gaming Mode keep it too.
-        assert!(graphics_safe_way("", false, false, true, true, true));
-        assert!(graphics_safe_way("", false, true, false, false, true));
-        assert!(graphics_safe_way("", true, false, false, false, true));
-        // The player's choice wins over the guess.
-        assert!(!graphics_safe_way("fast", true, true, true, true, true));
-        assert!(graphics_safe_way("safe", false, false, false, false, true));
+        let fallback = GraphicsWorkarounds { dmabuf_off: true, ..Default::default() };
+        assert_eq!(graphics_workarounds("", false, false, false, false, true, false), fallback);
+        // NVIDIA X11, Steam and Gaming Mode keep their existing transport workaround.
+        assert_eq!(graphics_workarounds("", false, false, true, false, true, true), fallback);
+        assert_eq!(graphics_workarounds("", false, true, false, false, false, true), fallback);
+        assert_eq!(graphics_workarounds("", true, false, false, false, false, true), fallback);
     }
 
     #[test]
