@@ -103,3 +103,46 @@ test('the proxy setting offers off, the system proxy and a custom address', () =
   assert.match(custom, /id="proxy-pass" type="password"/);
   assert.doesNotMatch(custom, /sealed/, 'the stored password never comes back into the page');
 });
+
+// ---- Replaced listings and the Home banner per system ----
+function appCtx(S, byId) {
+  const c = vm.createContext(Object.assign(base(), { S, byId }));
+  vm.runInContext([fn(app, 'replacedBy'), fn(app, 'replacedNote'), fn(app, 'bannerIds')].join('\n'), c);
+  return c;
+}
+test('a replaced listing offers the move only when the new one is listed and not installed', () => {
+  const apps = { 'new-recomp': { id: 'new-recomp', name: 'New One' } };
+  const S = { cat: { replaced: { 'old-recomp': 'new-recomp' } }, library: { 'old-recomp': { id: 'old-recomp' } } };
+  const c = appCtx(S, (id) => apps[id]);
+  assert.equal(c.replacedBy('old-recomp').id, 'new-recomp');
+  const html = c.replacedNote({ id: 'old-recomp' });
+  assert.match(html, /This listing was replaced by New One/);
+  assert.match(html, /data-act="move-listing" data-id="old-recomp" data-to="new-recomp"/);
+  // Already moved, a game added by hand, a catalog without the key, or a new id it doesn't list: nothing.
+  S.library['new-recomp'] = { id: 'new-recomp' };
+  assert.equal(c.replacedBy('old-recomp'), null);
+  delete S.library['new-recomp'];
+  S.library['old-recomp'].local = true;
+  assert.equal(c.replacedBy('old-recomp'), null);
+  delete S.library['old-recomp'].local;
+  S.cat = {};
+  assert.equal(c.replacedBy('old-recomp'), null);
+  assert.equal(c.replacedNote({ id: 'old-recomp' }), '');
+  S.cat = { replaced: { 'old-recomp': 'gone' } };
+  assert.equal(c.replacedBy('old-recomp'), null);
+});
+test('Home takes this system\'s banner list, else the one for all', () => {
+  const c = appCtx({}, () => null);
+  const cat = { banner: ['a', 'b'], banners: { windows: ['w'], macos: [], linux: ['l1', 'l2'] } };
+  assert.deepEqual([...c.bannerIds(cat, 'windows')], ['w']);
+  assert.deepEqual([...c.bannerIds(cat, 'linux')], ['l1', 'l2']);
+  assert.deepEqual([...c.bannerIds(cat, 'macos')], ['a', 'b'], 'an empty list falls back');
+  assert.deepEqual([...c.bannerIds({ banner: ['a'] }, 'linux')], ['a'], 'older catalogs');
+  assert.deepEqual([...c.bannerIds({}, 'linux')], []);
+  assert.deepEqual([...c.bannerIds({ banners: { linux: 'x' } }, 'linux')], []);
+});
+test('Big Picture\'s dock and the Library tile follow the same rules', () => {
+  assert.match(tv, /bannerApps\(\)/);
+  assert.match(tv, /data-tvact="moveto"/);
+  assert.match(app, /Replaced by \{name\}/);
+});

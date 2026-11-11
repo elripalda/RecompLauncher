@@ -759,6 +759,33 @@ function badNote(a) {
   if (next) return `<div class="gp-note bad-ver" role="note"><b>${esc(t('The Update Is Crashing a Lot'))}</b><span dir="auto">${esc(next.note || tf('{version} is crashing for a lot of players. It\'s fine to wait for the next one.', { version: S.updates[a.id] }))}</span></div>`;
   return '';
 }
+// A listing the catalog replaced ("replaced": {old id: new id}): the new one, when this game is
+// installed under the old id and the new one is listed. Nothing moves until the player says so.
+function replacedBy(id) {
+  const r = S.cat && S.cat.replaced && typeof S.cat.replaced === 'object' ? S.cat.replaced : null;
+  const to = r && typeof r[id] === 'string' ? r[id] : '';
+  const g = S.library[id];
+  return to && to !== id && g && !g._sub && !g.local && !S.library[to] ? byId(to) || null : null;
+}
+function replacedNote(a) {
+  const to = replacedBy(a.id);
+  if (!to) return '';
+  return `<div class="gp-note moved" role="note"><b>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</b><span dir="auto">${esc(t('Move to it to keep getting updates. Your saves, play time and game files come along.'))}</span><button type="button" class="btn sm main" data-act="move-listing" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></div>`;
+}
+async function moveListing(from, to) {
+  if (S.running.has(from) || S.jobs[from]) return toast(t('Close the game and wait for its downloads first.'), true);
+  try {
+    const r = await invoke('move_listing', { from, to });
+    for (const cache of [S.setup, S.mods, S.modList, S.info, S.builds, S.reports, S.updates]) { delete cache[from]; delete cache[to]; }
+    await refreshState();
+    if (S.arg === from) S.arg = to;
+    render(true); renderSide();
+    if (window.tvRefresh) window.tvRefresh();
+    const name = (byId(to) || {}).name || to;
+    if (r && r.reinstall) { toast(tf('Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.', { name })); startInstall(to); }
+    else toast(tf('Moved to {name}. Nothing else changed.', { name }));
+  } catch (e) { fail(e); }
+}
 // The catalog now installs this game with its installer, but this copy came from the old download
 // (a zip without the parts the installer adds): offer to install it the new way.
 function reinstallNote(a) {
@@ -1242,10 +1269,15 @@ function foundSection(found) {
       <span class="in"><span class="kick">${esc(t('You have it'))}</span><b>${esc(a.name)}</b><small class="based">${DISC_S}${esc(baseName(S.owned[a.id].path))}</small><span class="p">${esc([a.game, originName(a.origin)].filter(Boolean).join(' · '))}</span></span></button>
       <div class="acts">${S.jobs[a.id] ? progress(a.id) : `<button type="button" class="btn main" data-act="install" data-id="${esc(a.id)}">${DOWN}${esc(t('Install'))}</button>`}</div></div>`).join('')}</div></section>`;
 }
-// The games Ruben picks for the top of Home (the catalog's "banner"), in his order. Null when the
-// catalog has none, or none of them can be shown here, and Home picks them itself as before.
+// The games Ruben picks for the top of Home, in his order: this system's own list when the catalog
+// has them per system ("banners": {windows, macos, linux}), else the one "banner" for all. Null when
+// none of them can be shown here, and Home picks them itself as before. Big Picture's dock uses it too.
+function bannerIds(cat, os) {
+  const per = cat && cat.banners && typeof cat.banners === 'object' && Array.isArray(cat.banners[os]) ? cat.banners[os] : null;
+  return per && per.length ? per : cat && Array.isArray(cat.banner) ? cat.banner : [];
+}
 window.bannerApps = () => {
-  const ids = S.cat && Array.isArray(S.cat.banner) ? S.cat.banner : [];
+  const ids = bannerIds(S.cat, S.os);
   if (!ids.length) return null;
   const vis = new Set(visible().map((a) => a.id));
   const list = uniq(ids).map(byId).filter((a) => a && vis.has(a.id) && !a.soon && forOS(a) && (a.hero || a.cover));
@@ -1625,7 +1657,7 @@ function libraryGrid() {
   // copies are 160, 400 and 640 wide: the one that covers the tile's real size on this screen.
   const px = libTile() * (devicePixelRatio || 1);
   const w = px > 420 ? 640 : px > 190 ? 400 : 0;
-  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, sub: x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
+  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
 }
 
 
@@ -1649,7 +1681,7 @@ function pageGame(id) {
     <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
-      <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
+      <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
@@ -6531,6 +6563,7 @@ async function act(el, e) {
     case 'troubleshoot': return troubleshootModal(id);
     case 'edit-info': return editInfo(id);
     case 'proxy-save': return saveProxy('custom');
+    case 'move-listing': return moveListing(id, el.dataset.to);
     case 'scan-open': return scanOpen(el);
     case 'dlss-remove': try { await invoke('dlss_remove'); S.dlssState = { applies: true, have: false }; toast(t('NVIDIA DLSS file removed.')); if (S.view === 'settings') setSection('library', false); } catch (e) { fail(e); } return;
     case 'umu-repair': try { toast(t(await invoke('umu_repair'))); S.protonNow = await invoke('proton_now').catch(() => S.protonNow); if (S.view === 'settings') setSection(S.setTab); } catch (e) { fail(e); } return;

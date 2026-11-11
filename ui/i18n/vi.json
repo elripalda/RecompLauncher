@@ -2733,5 +2733,11 @@
  "Turn On": "Bật",
  "Turn Off": "Tắt",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Đã sửa. umu-run sẽ tải lại Steam runtime của nó khi một bản recomp Windows khởi chạy lần tới.",
- "umu-run's Steam runtime looks complete.": "Steam runtime của umu-run có vẻ đầy đủ."
+ "umu-run's Steam runtime looks complete.": "Steam runtime của umu-run có vẻ đầy đủ.",
+ "This listing was replaced by {name}": "Mục này đã được thay bằng {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Hãy chuyển sang mục mới để tiếp tục nhận bản cập nhật. Dữ liệu lưu, thời gian chơi và tệp trò chơi sẽ đi theo.",
+ "Move to It": "Chuyển sang",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Đã chuyển sang {name}. Bản phát hành giờ được đặt vào cùng thư mục, và dữ liệu lưu của bạn được sao lưu trước.",
+ "Moved to {name}. Nothing else changed.": "Đã chuyển sang {name}. Không có gì khác thay đổi.",
+ "Replaced by {name}": "Đã thay bằng {name}"
 }

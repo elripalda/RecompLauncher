@@ -2733,5 +2733,11 @@
  "Turn On": "Włącz",
  "Turn Off": "Wyłącz",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Naprawiono. umu-run pobierze swój runtime Steam ponownie przy następnym uruchomieniu portu na Windowsa.",
- "umu-run's Steam runtime looks complete.": "Runtime Steam dla umu-run wygląda na kompletny."
+ "umu-run's Steam runtime looks complete.": "Runtime Steam dla umu-run wygląda na kompletny.",
+ "This listing was replaced by {name}": "Ten wpis został zastąpiony przez {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Przenieś się do niego, aby dalej dostawać aktualizacje. Twoje zapisy, czas gry i pliki gry przejdą razem z tobą.",
+ "Move to It": "Przenieś się",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Przeniesiono do {name}. Jego wydanie trafia teraz do tego samego folderu, a twoje zapisy są najpierw kopiowane.",
+ "Moved to {name}. Nothing else changed.": "Przeniesiono do {name}. Nic więcej się nie zmieniło.",
+ "Replaced by {name}": "Zastąpiony przez {name}"
 }

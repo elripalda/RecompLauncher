@@ -2733,5 +2733,11 @@
  "Turn On": "Aç",
  "Turn Off": "Kapat",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Onarıldı. umu-run, bir sonraki Windows recomp'u başladığında Steam runtime'ını yeniden indirir.",
- "umu-run's Steam runtime looks complete.": "umu-run'ın Steam runtime'ı eksiksiz görünüyor."
+ "umu-run's Steam runtime looks complete.": "umu-run'ın Steam runtime'ı eksiksiz görünüyor.",
+ "This listing was replaced by {name}": "Bu kaydın yerini {name} aldı",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Güncellemeleri almaya devam etmek için ona geçin. Kayıtlarınız, oynama süreniz ve oyun dosyalarınız da gelir.",
+ "Move to It": "Ona geç",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "{name} kaydına geçildi. Sürümü artık aynı klasöre gider ve kayıtlarınız önce yedeklenir.",
+ "Moved to {name}. Nothing else changed.": "{name} kaydına geçildi. Başka hiçbir şey değişmedi.",
+ "Replaced by {name}": "Yerini {name} aldı"
 }

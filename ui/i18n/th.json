@@ -2733,5 +2733,11 @@
  "Turn On": "เปิด",
  "Turn Off": "ปิด",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "ซ่อมแซมแล้ว umu-run จะดาวน์โหลด Steam runtime ใหม่เมื่อเริ่ม Recomp สำหรับ Windows ครั้งถัดไป",
- "umu-run's Steam runtime looks complete.": "Steam runtime ของ umu-run ดูครบถ้วนแล้ว"
+ "umu-run's Steam runtime looks complete.": "Steam runtime ของ umu-run ดูครบถ้วนแล้ว",
+ "This listing was replaced by {name}": "รายการนี้ถูกแทนที่ด้วย {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "ย้ายไปที่รายการใหม่เพื่อรับอัปเดตต่อ เซฟ เวลาเล่น และไฟล์เกมของคุณจะย้ายไปด้วย",
+ "Move to It": "ย้ายไปที่นั่น",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "ย้ายไปที่ {name} แล้ว รีลีสจะอยู่ในโฟลเดอร์เดิม และเซฟของคุณจะถูกสำรองไว้ก่อน",
+ "Moved to {name}. Nothing else changed.": "ย้ายไปที่ {name} แล้ว ไม่มีอะไรเปลี่ยนแปลงอีก",
+ "Replaced by {name}": "แทนที่ด้วย {name}"
 }

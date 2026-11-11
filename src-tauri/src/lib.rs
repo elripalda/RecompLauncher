@@ -2471,7 +2471,31 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     let mut game_env: Vec<(String, String)> = vec![];
     note_pad();
     let planned = match &prof {
-        _ if manual.is_some() => manual_plan(&g, manual.as_ref().unwrap())?,
+        _ if manual.is_some() => {
+            let m = manual.as_ref().unwrap();
+            // Set up by hand without game files of its own ("the game asks"), on a game whose
+            // profile hands the copy over in a variable (files.how "env"):
+            // the copy chosen in Easy Setup still goes in it. Otherwise the game starts with
+            // nothing and says its data was not found.
+            if m.copy.is_none() && (m.how.is_empty() || m.how == "none") {
+                let p = profile_of(&st, id, &g);
+                let by_env = p.as_ref().and_then(|p| p.start.as_ref()).is_some_and(|s| s.env.values().any(|v| v.contains("{game}")));
+                match (g.game_copy.clone().filter(|c| c.exists()), p.filter(|_| by_env)) {
+                    (Some(c), Some(p)) => {
+                        game_env = p.env_vars(&g.path, Some(&c));
+                        trail::note(format!("Play {id}: set up by hand, its copy still goes in {}", game_env.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>().join(", ")));
+                    }
+                    // No copy anywhere, for a game that only gets it from that variable: Easy
+                    // Setup asks for it, instead of a start that can only say the data is missing.
+                    (None, Some(p)) => {
+                        trail::note(format!("Play {id}: set up by hand with no copy, asking for it"));
+                        return Err(Error::Msg(format!("NEED_COPY|{}", p.game.as_ref().map(|c| c.label.clone()).unwrap_or_default())));
+                    }
+                    _ => {}
+                }
+            }
+            manual_plan(&g, m)?
+        }
         Some(p) if p.start.is_some() => {
             let copy = game_copy(&st, id, &g, p)?;
             p.prepare(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
@@ -8182,7 +8206,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
@@ -8595,6 +8619,44 @@ mod tests {
         assert_eq!(l.installed.len(), 2);
         assert_eq!(l.installed["first"].tag, "v1");
         assert!(l.project_aliases.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_replaced_listing_moves_only_when_asked_and_keeps_everything() {
+        let d = std::env::temp_dir().join(format!("rl-replaced-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut lib = Library::default();
+        let copy = d.join("game.iso");
+        lib.installed.insert("old-recomp".into(), Installed { id: "old-recomp".into(), name: "Old Listing".into(), repo: "someone/old-recomp".into(), tag: "v0.1.1".into(), path: d.join("games/old"), played_secs: 7200, game_copy: Some(copy.clone()), ..Default::default() });
+        std::fs::create_dir_all(saves::dir_of(&d, "old-recomp")).unwrap();
+        std::fs::write(saves::dir_of(&d, "old-recomp").join("1.zip"), b"save").unwrap();
+        let app = app_in(&d, lib);
+        let cat = json!({ "replaced": { "old-recomp": "new-recomp" }, "apps": [{ "id": "new-recomp", "repo": "another/new-recomp", "name": "New Listing" }, { "id": "other", "repo": "x/y" }] });
+        // Only to the listing the catalog says.
+        assert!(adopt::move_listing_in(&app, &cat, "old-recomp", "other").is_err());
+        let r = adopt::move_listing_in(&app, &cat, "old-recomp", "new-recomp").unwrap();
+        // Another project's release: it installs next, into the same folder.
+        assert_eq!(r["reinstall"], json!(true));
+        let l = app.lib.lock().unwrap();
+        let g = &l.installed["new-recomp"];
+        assert!(!l.installed.contains_key("old-recomp"));
+        assert_eq!(g.played_secs, 7200);
+        assert_eq!(g.game_copy.as_ref(), Some(&copy));
+        assert_eq!(g.path, d.join("games/old"));
+        assert_eq!(g.name, "New Listing");
+        assert_eq!(l.project_aliases.get("old-recomp").map(String::as_str), Some("new-recomp"), "old links still open it");
+        assert!(saves::dir_of(&d, "new-recomp").join("1.zip").is_file());
+        drop(l);
+        // The same project under a new id keeps its version and files.
+        let mut lib = Library::default();
+        lib.installed.insert("old".into(), Installed { id: "old".into(), repo: "Me/Game".into(), tag: "v2".into(), asset: "game.zip".into(), ..Default::default() });
+        let app = app_in(&d.join("same"), lib);
+        let cat = json!({ "replaced": { "old": "new" }, "apps": [{ "id": "new", "repo": "me/game", "name": "Game" }] });
+        let r = adopt::move_listing_in(&app, &cat, "old", "new").unwrap();
+        assert_eq!(r["reinstall"], json!(false));
+        assert_eq!(app.lib.lock().unwrap().installed["new"].tag, "v2");
         let _ = std::fs::remove_dir_all(&d);
     }
 

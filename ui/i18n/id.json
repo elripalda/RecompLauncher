@@ -2733,5 +2733,11 @@
  "Turn On": "Nyalakan",
  "Turn Off": "Matikan",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Diperbaiki. umu-run akan mengunduh runtime Steam-nya lagi saat recomp Windows berikutnya dimulai.",
- "umu-run's Steam runtime looks complete.": "Runtime Steam umu-run tampak lengkap."
+ "umu-run's Steam runtime looks complete.": "Runtime Steam umu-run tampak lengkap.",
+ "This listing was replaced by {name}": "Daftar ini digantikan oleh {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Pindah ke sana agar tetap mendapat pembaruan. Save, waktu bermain, dan file game-mu ikut pindah.",
+ "Move to It": "Pindah ke sana",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Pindah ke {name}. Rilisnya kini masuk ke folder yang sama, dan save-mu dicadangkan dulu.",
+ "Moved to {name}. Nothing else changed.": "Pindah ke {name}. Tidak ada yang lain berubah.",
+ "Replaced by {name}": "Digantikan oleh {name}"
 }

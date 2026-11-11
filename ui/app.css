@@ -2316,3 +2316,5 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 button.scan-pill{border:0;font:inherit;cursor:pointer}
 button.scan-pill:hover{filter:brightness(1.15)}
 .scan-pop{position:fixed;z-index:80;max-width:288px;padding:10px 14px;border-radius:12px;background:var(--panel2,#1b2333);color:var(--ink,#eef3f8);font-size:13px;line-height:1.45;box-shadow:0 14px 40px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08)}
+/* A listing the catalog replaced: Move to It. */
+.gp-note.moved{border-color:rgba(53,232,232,.42);background:rgba(53,232,232,.08)}.gp-note.moved b{color:var(--cyan)}.gp-note.moved .btn{align-self:flex-start;margin-top:6px}

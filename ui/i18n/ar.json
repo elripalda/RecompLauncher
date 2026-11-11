@@ -2733,5 +2733,11 @@
  "Turn On": "تفعيل",
  "Turn Off": "إيقاف",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "تم الإصلاح. سيُنزّل umu-run بيئة تشغيل Steam من جديد عند بدء لعبة معاد تجميعها لنظام Windows في المرة القادمة.",
- "umu-run's Steam runtime looks complete.": "تبدو بيئة تشغيل Steam الخاصة بـ umu-run مكتملة."
+ "umu-run's Steam runtime looks complete.": "تبدو بيئة تشغيل Steam الخاصة بـ umu-run مكتملة.",
+ "This listing was replaced by {name}": "حلّت {name} محل هذه الصفحة",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "انتقل إليها لتواصل تلقي التحديثات. ملفات الحفظ ووقت اللعب وملفات اللعبة تنتقل معك.",
+ "Move to It": "الانتقال إليها",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "تم الانتقال إلى {name}. يُثبَّت إصدارها الآن في المجلد نفسه، وتُنسخ ملفات حفظك احتياطيًا أولًا.",
+ "Moved to {name}. Nothing else changed.": "تم الانتقال إلى {name}. لم يتغير شيء آخر.",
+ "Replaced by {name}": "حلّت محلها {name}"
 }

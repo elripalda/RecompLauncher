@@ -2733,5 +2733,11 @@
  "Turn On": "Включить",
  "Turn Off": "Выключить",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Восстановлено. umu-run снова скачает свой Steam runtime при следующем запуске рекомпиляции для Windows.",
- "umu-run's Steam runtime looks complete.": "Steam runtime для umu-run выглядит полным."
+ "umu-run's Steam runtime looks complete.": "Steam runtime для umu-run выглядит полным.",
+ "This listing was replaced by {name}": "Эта страница заменена на {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Перейдите на неё, чтобы и дальше получать обновления. Сохранения, время в игре и файлы игры перенесутся.",
+ "Move to It": "Перейти",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Переход на {name} выполнен. Её релиз теперь ставится в ту же папку, а сохранения сначала копируются в резерв.",
+ "Moved to {name}. Nothing else changed.": "Переход на {name} выполнен. Больше ничего не изменилось.",
+ "Replaced by {name}": "Заменено на {name}"
 }

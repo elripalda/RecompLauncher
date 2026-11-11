@@ -2733,5 +2733,11 @@
  "Turn On": "Увімкнути",
  "Turn Off": "Вимкнути",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Відновлено. umu-run знову завантажить свій Steam runtime під час наступного запуску рекомпіляції для Windows.",
- "umu-run's Steam runtime looks complete.": "Steam runtime для umu-run виглядає повним."
+ "umu-run's Steam runtime looks complete.": "Steam runtime для umu-run виглядає повним.",
+ "This listing was replaced by {name}": "Цю сторінку замінено на {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Перейди на неї, щоб і далі отримувати оновлення. Збереження, час у грі та файли гри перенесуться.",
+ "Move to It": "Перейти",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Перехід на {name} виконано. Її реліз тепер ставиться в ту саму папку, а збереження спершу копіюються в резерв.",
+ "Moved to {name}. Nothing else changed.": "Перехід на {name} виконано. Більше нічого не змінилося.",
+ "Replaced by {name}": "Замінено на {name}"
 }

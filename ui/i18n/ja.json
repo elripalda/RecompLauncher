@@ -2733,5 +2733,11 @@
  "Turn On": "オンにする",
  "Turn Off": "オフにする",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "修復しました。次に Windows 向けリコンパイル版を起動したとき、umu-run が Steam ランタイムを再ダウンロードします。",
- "umu-run's Steam runtime looks complete.": "umu-run の Steam ランタイムは揃っているようです。"
+ "umu-run's Steam runtime looks complete.": "umu-run の Steam ランタイムは揃っているようです。",
+ "This listing was replaced by {name}": "この掲載は {name} に置き換えられました",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "引き続きアップデートを受け取るには移行してください。セーブデータ、プレイ時間、ゲームファイルも引き継がれます。",
+ "Move to It": "移行する",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "{name} に移行しました。今後のリリースは同じフォルダーに入り、セーブデータは事前にバックアップされます。",
+ "Moved to {name}. Nothing else changed.": "{name} に移行しました。ほかに変更はありません。",
+ "Replaced by {name}": "{name} に置き換え"
 }

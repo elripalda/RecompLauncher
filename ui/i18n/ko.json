@@ -2733,5 +2733,11 @@
  "Turn On": "켜기",
  "Turn Off": "끄기",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "복구했습니다. 다음에 Windows 리컴프를 시작할 때 umu-run이 Steam 런타임을 다시 다운로드합니다.",
- "umu-run's Steam runtime looks complete.": "umu-run의 Steam 런타임이 모두 갖춰진 것 같습니다."
+ "umu-run's Steam runtime looks complete.": "umu-run의 Steam 런타임이 모두 갖춰진 것 같습니다.",
+ "This listing was replaced by {name}": "이 항목은 {name}(으)로 대체되었습니다",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "업데이트를 계속 받으려면 새 항목으로 옮기세요. 저장 데이터, 플레이 시간, 게임 파일도 함께 옮겨집니다.",
+ "Move to It": "옮기기",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "{name}(으)로 옮겼습니다. 이제 릴리스가 같은 폴더에 설치되며, 저장 데이터는 먼저 백업됩니다.",
+ "Moved to {name}. Nothing else changed.": "{name}(으)로 옮겼습니다. 다른 것은 바뀌지 않았습니다.",
+ "Replaced by {name}": "{name}(으)로 대체됨"
 }

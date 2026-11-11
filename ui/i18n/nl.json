@@ -2733,5 +2733,11 @@
  "Turn On": "Aanzetten",
  "Turn Off": "Uitzetten",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "Gerepareerd. umu-run downloadt zijn Steam-runtime opnieuw zodra er weer een Windows-recomp start.",
- "umu-run's Steam runtime looks complete.": "De Steam-runtime van umu-run lijkt compleet."
+ "umu-run's Steam runtime looks complete.": "De Steam-runtime van umu-run lijkt compleet.",
+ "This listing was replaced by {name}": "Deze vermelding is vervangen door {name}",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "Stap over om updates te blijven krijgen. Je opgeslagen games, speeltijd en gamebestanden gaan mee.",
+ "Move to It": "Overstappen",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Overgestapt naar {name}. De release komt nu in dezelfde map, en je opgeslagen games worden eerst geback-upt.",
+ "Moved to {name}. Nothing else changed.": "Overgestapt naar {name}. Verder is er niets veranderd.",
+ "Replaced by {name}": "Vervangen door {name}"
 }

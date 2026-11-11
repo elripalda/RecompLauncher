@@ -2733,5 +2733,11 @@
  "Turn On": "開啟",
  "Turn Off": "關閉",
  "Repaired. umu-run downloads its Steam runtime again the next time a Windows recomp starts.": "已修復。下次啟動 Windows 版重新編譯遊戲時，umu-run 會重新下載它的 Steam 執行階段。",
- "umu-run's Steam runtime looks complete.": "umu-run 的 Steam 執行階段看起來是完整的。"
+ "umu-run's Steam runtime looks complete.": "umu-run 的 Steam 執行階段看起來是完整的。",
+ "This listing was replaced by {name}": "此項目已被 {name} 取代",
+ "Move to it to keep getting updates. Your saves, play time and game files come along.": "移轉過去即可繼續取得更新。您的存檔、遊戲時數和遊戲檔案都會一起移轉。",
+ "Move to It": "移轉過去",
+ "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "已移轉到 {name}。它的發行版本現在會放在同一個資料夾中，您的存檔會先備份。",
+ "Moved to {name}. Nothing else changed.": "已移轉到 {name}。其他都沒有變更。",
+ "Replaced by {name}": "已被 {name} 取代"
 }

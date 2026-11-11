@@ -514,6 +514,53 @@ pub fn set_project(st: State<'_, App>, id: String, project: String) -> Res<Insta
     change_project(&st, &id, &project, &crate::cached_catalog(&st))
 }
 
+/// A listing the catalog replaced ("replaced": {old id: new id}), moved to its new listing when
+/// the player presses Move to It: the install, play time, saves (and their backups), the copy of
+/// the game they chose and their settings go with it, and links to the old id still open it.
+/// The same project under a new id keeps its files and version. Another project's release:
+/// `reinstall` is true, and the window installs it into the same folder (an update, saves backed
+/// up first) so nothing is lost if that fails.
+#[tauri::command(async)]
+pub fn move_listing(st: State<'_, App>, from: String, to: String) -> Res<Value> {
+    move_listing_in(&st, &crate::cached_catalog(&st), &from, &to)
+}
+
+pub(crate) fn move_listing_in(st: &App, cat: &Value, from: &str, to: &str) -> Res<Value> {
+    let (from, to) = (from.to_string(), to.to_string());
+    let replaced = cat.get("replaced").and_then(|r| r.get(&from)).and_then(Value::as_str);
+    if replaced != Some(to.as_str()) {
+        return Err(Error::Msg("That listing wasn't replaced. Refresh the list and try again.".into()));
+    }
+    let g = st.lib.lock().unwrap().installed.get(&from).cloned().ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
+    let entry = catalog::app(cat, &to).cloned().ok_or_else(|| Error::Msg("The new listing isn't in the catalog yet. Refresh it and try again.".into()))?;
+    let same = !g.repo.is_empty() && crate::str_of(&entry, "repo").eq_ignore_ascii_case(&g.repo);
+    let mut next = change_project(st, &from, &to, cat)?;
+    next.name = crate::str_of(&entry, "name").to_string();
+    if same {
+        // The same release under a new name: what's installed is still exactly what it was.
+        let k = &g;
+        next.tag = k.tag.clone();
+        next.version = k.version.clone();
+        next.asset = k.asset.clone();
+        next.sha256 = k.sha256.clone();
+        next.size = k.size;
+        next.verified = k.verified;
+        next.files = k.files.clone();
+        next.setup = k.setup.clone();
+        next.setup_done = k.setup_done;
+        next.cloud = k.cloud;
+    }
+    {
+        let mut l = st.lib.lock().unwrap();
+        if let Some(x) = l.installed.get_mut(&to) {
+            *x = next.clone();
+        }
+        l.save(&st.dir)?;
+    }
+    crate::trail::note(format!("Moved {from} to its new listing {to}{}", if same { "" } else { " (its new release installs next)" }));
+    Ok(serde_json::json!({ "id": to, "reinstall": !same, "game": next }))
+}
+
 fn associated_game(g: &Installed, id: &str, entry: Option<&Value>) -> Installed {
     let mut next = g.clone();
     next.id = id.into();

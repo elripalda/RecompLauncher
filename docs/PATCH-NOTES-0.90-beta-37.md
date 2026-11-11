@@ -9,6 +9,9 @@
 - **Steam Link and Remote Play on Linux.** — Fixed by @elripalda, from @cheurteen's debugging ([#2](https://github.com/elripalda/RecompLauncher/issues/2)).
 - **Update checks on Linux.** — Fixed by @elripalda, from @artik's report ([#78](https://github.com/elripalda/RecompLauncher/issues/78)).
 - **Easier fixes for Proton runtime trouble.** — Improved by @elripalda, from @Rsk518's debugging ([#23](https://github.com/elripalda/RecompLauncher/issues/23)).
+- **Move a game to its new listing when the catalog replaces one, keeping your saves and play time.** — Added by @elripalda.
+- **Home's featured games can differ per system.** — Added by @elripalda.
+- **Games set up by hand now get the copy Easy Setup found.** — Fixed by @elripalda.
 - **General improvements and fixes.** — Improved by @elripalda.
 
 Keep the logs coming from the crash window and Settings → Beta. Every one helps.
