@@ -13,7 +13,7 @@ Big Picture behavior consistent and prevent managed key copies from entering bac
 ## Conventions
 
 - Follow existing conventions/patterns if present unless told otherwise.
-- Keep comments and docstrings minimal, terse, and simple: state a constraint the code can't express, nothing more.
+- Comments explain why, in plain words, not what the code already says. They're written for the next person (and agent) who reads the code.
 - When possible, avoid multi line expressions, nested loops, and nested conditionals. Favor early returns and breaking out of loops.
 - Terseness is per line, not per statement: prefer an extra named variable over an expression that spans lines.
 - Keep code simple, readable, and self documenting; avoid cleverness. Favor clarity over performance unless the code is in a hot path.
