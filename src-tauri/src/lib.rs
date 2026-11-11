@@ -8208,7 +8208,8 @@ mod tests {
                 "assets": files.iter().map(|f| serde_json::json!({ "name": f, "browser_download_url": format!("https://github.com/a/b/releases/download/{tag}/{f}"), "size": 10 })).collect::<Vec<_>>() })).unwrap()
         };
         // Newest first, like GitHub: v3 isn't checked by the store yet, v2 is, v1 is installed.
-        let rels = vec![rel("v3", &["game-linux.tar.gz", "game-windows.zip"]), rel("v2", &["game-linux.tar.gz", "game-windows.zip"]), rel("v1", &["game-linux.tar.gz", "game-windows.zip"])];
+        let all = ["game-linux-x64.tar.gz", "game-windows-x64.zip", "game-macos-arm64.zip"];
+        let rels = vec![rel("v3", &all), rel("v2", &all), rel("v1", &all)];
         let entry = serde_json::json!({ "id": "g", "tag": "v2" });
         let g = Installed { id: "g".into(), tag: "v1".into(), ..Default::default() };
         // The checked release, not the newest one on GitHub.
@@ -8218,7 +8219,7 @@ mod tests {
         assert_eq!(offered_update(&on2, Some(&entry), &rels), None);
         // Played through Proton: the Windows build counts.
         let proton = Installed { proton: true, ..g.clone() };
-        let win_only = vec![rel("v2", &["game-windows.zip"]), rel("v1", &["game-windows.zip"])];
+        let win_only = vec![rel("v2", &["game-windows-x64.zip"]), rel("v1", &["game-windows-x64.zip"])];
         assert_eq!(offered_update(&proton, Some(&entry), &win_only).as_deref(), Some("v2"));
         // A release with no build for this system isn't offered (on Linux the Windows-only one).
         #[cfg(target_os = "linux")]

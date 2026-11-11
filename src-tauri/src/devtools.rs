@@ -568,7 +568,8 @@ mod tests {
     fn every_field_a_developer_writes_is_in_the_schema() {
         // Read from profile.rs itself, so a new field can't be added without one or the other.
         const INTERNAL: [&str; 5] = ["input_paths", "skipped_inputs", "windows_build", "from_boot", "slider_vals"];
-        let src = include_str!("profile.rs");
+        // A Windows checkout has CRLF line endings.
+        let src = include_str!("profile.rs").replace("\r\n", "\n");
         let body = &src[src.find("pub struct Profile {").unwrap() + "pub struct Profile {".len()..];
         let body = &body[..body.find("\n}\n").unwrap()];
         let mut attrs = String::new();
