@@ -778,6 +778,8 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 @media (max-width:820px){.fb-in{grid-template-columns:1fr}.fb-side{display:none}}
 
 /* ---------- first-run setup ---------- */
+/* Keep the launcher behind the setup wizard out of rendering and stop its background animations. */
+body.first-run #app{display:none}
 .oob{position:fixed;inset:0;z-index:150;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;animation:fadeIn .5s ease}
 .oob.out{animation:oobOut .45s ease forwards}
 @keyframes oobOut{to{opacity:0;transform:scale(1.02)}}

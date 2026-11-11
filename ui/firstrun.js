@@ -30,6 +30,8 @@
     O.el.setAttribute('role', 'dialog');
     O.el.setAttribute('aria-modal', 'true');
     O.el.innerHTML = '<div class="oob-aurora" aria-hidden="true"><i></i><i></i><i></i></div><div class="oob-top" data-tauri-drag-region><img class="oob-logo-h" src="img/logo.svg" alt="RecompLauncher"><div class="win oob-win"><button type="button" data-o="w-min" aria-label="Minimize"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button><button type="button" data-o="w-max" aria-label="Maximize"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><button type="button" class="close" data-o="w-close" aria-label="Close"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></div></div><div class="oob-stage"></div><div class="oob-foot"></div>';
+    // Stop the home page behind the wizard from drawing covers and running its animations.
+    document.body.classList.add('first-run');
     document.body.append(O.el);
     O.el.addEventListener('click', onClick);
     O.el.addEventListener('keydown', onKey);
@@ -244,6 +246,7 @@
     O.finishing = true;
     await save({ setup_done: true, asked_location: true, data_asked: true });
     if (!O.el) return;
+    document.body.classList.remove('first-run');
     O.el.classList.add('out');
     const tv = !!S.settings.start_in_tv;
     setTimeout(() => { if (O.el) O.el.remove(); O.el = null; }, 450);
