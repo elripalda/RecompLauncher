@@ -8217,10 +8217,12 @@ mod tests {
         // Already on it: nothing, even though GitHub has v3.
         let on2 = Installed { tag: "v2".into(), ..g.clone() };
         assert_eq!(offered_update(&on2, Some(&entry), &rels), None);
-        // Played through Proton: the Windows build counts.
+        // Played through Proton (Linux): the Windows build counts.
         let proton = Installed { proton: true, ..g.clone() };
         let win_only = vec![rel("v2", &["game-windows-x64.zip"]), rel("v1", &["game-windows-x64.zip"])];
+        #[cfg(target_os = "linux")]
         assert_eq!(offered_update(&proton, Some(&entry), &win_only).as_deref(), Some("v2"));
+        let _ = &proton;
         // A release with no build for this system isn't offered (on Linux the Windows-only one).
         #[cfg(target_os = "linux")]
         assert_eq!(offered_update(&g, Some(&entry), &win_only), None);
