@@ -118,7 +118,7 @@ pub fn resolve_target_monitor(
         .or_else(|| monitors.first().cloned())
 }
 
-/// Saves the normal window state once, moves the window, then lets the UI enable fullscreen.
+/// Saves the normal window state once, then enters fullscreen directly on the selected monitor.
 pub fn prepare_tv_mode(app: &AppHandle, preference: Option<String>) -> Result<MonitorInfo, String> {
     let window = app
         .get_webview_window("main")
@@ -136,11 +136,17 @@ pub fn prepare_tv_mode(app: &AppHandle, preference: Option<String>) -> Result<Mo
         first_entry
     };
 
-    if let Err(error) = place_window_at_monitor(&window, &target) {
+    if let Err(error) = window.set_fullscreen_on_monitor(PhysicalPosition::new(
+        target.x as f64,
+        target.y as f64,
+    )) {
         if first_entry {
             let _ = leave_tv_mode(app);
         }
-        return Err(error);
+        return Err(format!(
+            "Couldn't open Big Picture on {}: {error}",
+            target.name
+        ));
     }
     Ok(target)
 }
@@ -270,17 +276,6 @@ fn remember_window_state(active: &mut Option<WindowState>, candidate: WindowStat
     if active.is_none() {
         *active = Some(candidate);
     }
-}
-
-fn place_window_at_monitor(window: &WebviewWindow, target: &MonitorInfo) -> Result<(), String> {
-    if window.is_maximized().unwrap_or(false) {
-        window
-            .unmaximize()
-            .map_err(|e| format!("Couldn't prepare the launcher window: {e}"))?;
-    }
-    window
-        .set_position(PhysicalPosition::new(target.x, target.y))
-        .map_err(|e| format!("Couldn't move the launcher window to {}: {e}", target.name))
 }
 
 fn monitor_at(

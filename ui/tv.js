@@ -211,7 +211,6 @@
       render(true);
       return;
     }
-    try { await W.setFullscreen(true); } catch (e) { /* the window can stay as it is */ }
     await wait(160);
     root.classList.remove('tv-cover');
     boot();
@@ -1325,7 +1324,6 @@
             try {
               await W.setFullscreen(false);
               await invoke('prepare_tv_mode', { monitorId: '' });
-              await W.setFullscreen(true);
             } catch (e) {
               console.warn(e);
               try { await W.setFullscreen(true); } catch (_) { /* keep the current Big Picture view */ }
@@ -1348,7 +1346,6 @@
             try {
               await W.setFullscreen(false);
               await invoke('prepare_tv_mode', { monitorId: m.id });
-              await W.setFullscreen(true);
             } catch (e) {
               console.warn(e);
               try { await W.setFullscreen(true); } catch (_) { /* keep the current Big Picture view */ }

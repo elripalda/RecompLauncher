@@ -8295,7 +8295,7 @@ pub fn run() {
                         let Some(w) = handle.get_webview_window("main") else { return };
                         if tv {
                             match display::prepare_tv_mode(&handle, Some(monitor_id)) {
-                                Ok(_) => { let _ = w.set_fullscreen(true); }
+                                Ok(_) => {}
                                 Err(e) => trail::note(format!("Big Picture startup aborted: {e}")),
                             }
                         }
