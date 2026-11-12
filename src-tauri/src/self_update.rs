@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(args[1], HELPER);
         assert_eq!(args.last().unwrap(), &std::ffi::OsStr::new("--bigpicture"));
         let desktop = Prepared::stage(&bytes, "https://github.com/owner/repo/update.zip", "999.1.0", target.clone(), &data, false).unwrap();
-        assert_eq!(desktop.command().get_args().last().unwrap(), &std::ffi::OsStr::new("--desktop"));
+        assert_eq!(desktop.command().get_args().last().unwrap(), std::ffi::OsStr::new("--desktop"));
         drop(desktop);
         let swap = prepared.swap.0.clone();
         drop(prepared);
