@@ -1264,7 +1264,13 @@ function foundCallout() {
 function foundSection(found) {
   const list = found.length === 1 ? found : found.slice(0, Math.min(4, found.length - (found.length % 2)));
   const more = found.length - list.length;
-  return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('Found in your folders'))}</h2><p>${esc(found.length === 1 ? t('You already have this game. Install one and the launcher sets it up with your copy.') : t('You already have these games. Install one and the launcher sets it up with your copy.'))}${more ? ' ' + esc(tn(more, '1 more in Discover.', '{n} more in Discover.')) : ''}</p></div></div>
+  const one = t('You already have this game. Install one and the launcher sets it up with your copy.');
+  const many = t('You already have these games. Install one and the launcher sets it up with your copy.');
+  // The ones already in the Library aren't here, so the count and the "more in Discover" note
+  // would otherwise read as everything the player owns.
+  const notYet = t('None of them are in your Library yet.');
+  const intro = found.length === 1 ? one : many + ' ' + notYet;
+  return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('Found in your folders'))}</h2><p>${esc(intro)}${more ? ' ' + esc(tn(more, '1 more in Discover.', '{n} more in Discover.')) : ''}</p></div></div>
     <div class="news-grid${list.length === 1 ? ' one' : ''}">${list.map((a) => `<div class="news found-card"><button type="button" class="fc-open" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${a.cover ? pic(thumbOf(a.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}
       <span class="in"><span class="kick">${esc(t('You have it'))}</span><b>${esc(a.name)}</b><small class="based">${DISC_S}${esc(baseName(S.owned[a.id].path))}</small><span class="p">${esc([a.game, originName(a.origin)].filter(Boolean).join(' · '))}</span></span></button>
       <div class="acts">${S.jobs[a.id] ? progress(a.id) : `<button type="button" class="btn main" data-act="install" data-id="${esc(a.id)}">${DOWN}${esc(t('Install'))}</button>`}</div></div>`).join('')}</div></section>`;
