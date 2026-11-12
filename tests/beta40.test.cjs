@@ -65,7 +65,7 @@ test('the crash window has a Report on GitHub button that asks for the graphics 
 });
 
 test('the window opens even when a hidden window gets no frames', () => {
-  assert.match(app, /requestAnimationFrame\(\(\) => requestAnimationFrame\(ready\)\);\n\s*setTimeout\(ready, 150\);/);
+  assert.match(app, /requestAnimationFrame\(\(\) => requestAnimationFrame\(ready\)\);\r?\n\s*setTimeout\(ready, 150\);/);
 });
 
 test('light themes get their own grain so gradients stay smooth', () => {
