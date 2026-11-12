@@ -69,6 +69,10 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .pin .th img{width:100%;height:100%;object-fit:cover;display:block}
 .pin.on .th{box-shadow:0 0 0 2px var(--cyan)}
 .pin .lbl{overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Moving a pinned game: the others slide aside, the one in hand stays on top. */
+.pins.sorting{user-select:none}
+.pins.sorting .pin{transition:transform .15s var(--ease),background .15s,color .15s}
+.pins.sorting .pin.moving{transition:none;position:relative;z-index:1;background:var(--card2);color:var(--ink);cursor:grabbing;box-shadow:0 8px 20px -10px rgba(0,0,0,.8)}
 .pin .run{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:var(--cyan);border:2px solid var(--side)}
 .side-foot{display:flex;flex-direction:column;gap:2px;padding:10px 12px 14px;border-top:1px solid var(--line)}
 #collapse .arr{transition:transform .3s var(--ease);transform-origin:14.5px 12px}
