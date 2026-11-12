@@ -7290,6 +7290,28 @@ pub(crate) fn build_overlay(app: &AppHandle) -> tauri::Result<tauri::WebviewWind
 
 /// The main window is out of sight (minimized, or closed to the tray).
 static AWAY: AtomicBool = AtomicBool::new(false);
+
+/// Set by the page once its first real screen is drawn. The window stays hidden until then, so the
+/// player never sees the empty first draw being replaced by the real one.
+static UI_READY: AtomicBool = AtomicBool::new(false);
+
+/// How long to wait for the page before showing the window anyway (a slow or broken start must
+/// still open a window).
+const UI_READY_WAIT_MS: u64 = 4000;
+
+#[tauri::command]
+fn ui_ready() {
+    UI_READY.store(true, Ordering::Relaxed);
+}
+
+async fn wait_for_ui() {
+    let step = std::time::Duration::from_millis(20);
+    let mut waited = 0;
+    while !UI_READY.load(Ordering::Relaxed) && waited < UI_READY_WAIT_MS {
+        tokio::time::sleep(step).await;
+        waited += 20;
+    }
+}
 // Whether the last Play came from Big Picture mode, for RECOMPLAUNCHER_MODE.
 static BIG_PICTURE: AtomicBool = AtomicBool::new(false);
 /// This PC is a handheld (worked out once at start).
@@ -8222,17 +8244,21 @@ pub fn run() {
                 None => {
                     if let Some(w) = app.get_webview_window("main") {
                         restore_window_place(&w, &app.state::<App>().dir);
+                    }
+                    tauri::async_runtime::spawn(async move {
+                        wait_for_ui().await;
+                        let Some(w) = handle.get_webview_window("main") else { return };
                         if tv {
                             let _ = w.set_fullscreen(true);
                         }
                         let _ = w.show();
-                    }
+                    });
                 }
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             precheck_copy,
             emulator_folders,
             games_rom_folder,

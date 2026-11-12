@@ -7548,6 +7548,8 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && (S.settings.start_in_tv || S.bigArg)) window.startTV();
   else setTimeout(askData, 800);
+  // The window opens only now, with the first real screen already drawn (two frames: the draw, then its paint).
+  requestAnimationFrame(() => requestAnimationFrame(() => invoke('ui_ready').catch(() => {})));
   // Started by a game link from the website: that game's page.
   invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
   // A shortcut asked to play a recomp that still needs setting up: its Set Up window.
