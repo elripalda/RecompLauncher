@@ -49,6 +49,7 @@ mod emus;
 pub mod roms;
 pub mod saves;
 pub mod shortcuts;
+pub mod steam_sync;
 pub mod trail;
 pub mod tray;
 mod update_download;
@@ -1982,6 +1983,16 @@ fn installed_or_game(st: &App, id: &str) -> Res<Installed> {
     g.or_else(|| game_of(st, id).map(|p| p.g)).ok_or_else(|| Error::Msg("It isn't installed.".into()))
 }
 
+/// A game's pictures for Steam's grid folder, as (suffix, bytes, extension), and its icon file.
+/// The player's own pictures (Customize) when they have them, else the list's.
+async fn steam_art(st: &App, id: &str, g: &Installed) -> (Vec<(&'static str, Vec<u8>, &'static str)>, String) {
+    let ga = game_art(st, id, g).await;
+    let wide = wide_capsule(&ga.hero.0, &ga.logo.0).map(|b| (b, "jpg")).unwrap_or_else(|| ga.hero.clone());
+    let icon = ga.icon.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+    let art = vec![("p", ga.cover.0, ga.cover.1), ("_hero", ga.hero.0, ga.hero.1), ("", wide.0, wide.1), ("_logo", ga.logo.0, ga.logo.1)];
+    (art, icon)
+}
+
 /// Add the game to Steam. If Steam is open and `restart` is false, nothing changes and the answer
 /// is "steam_running", so the window can ask first; with `restart`, Steam is closed, the game
 /// added, and Steam started again.
@@ -1998,10 +2009,7 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
     if was_running && !restart {
         return Ok("steam_running".into());
     }
-    // The player's own pictures (Customize) when they have them, else the list's.
-    let ga = game_art(&st, &id, &g).await;
-    let wide = wide_capsule(&ga.hero.0, &ga.logo.0).map(|b| (b, "jpg")).unwrap_or_else(|| ga.hero.clone());
-    let art = vec![("p", ga.cover.0.clone(), ga.cover.1), ("_hero", ga.hero.0.clone(), ga.hero.1), ("", wide.0, wide.1), ("_logo", ga.logo.0.clone(), ga.logo.1)];
+    let (art, icon) = steam_art(&st, &id, &g).await;
     if was_running {
         if let Some(why) = shortcuts::cant_restart_steam() {
             return Err(Error::Msg(why.into()));
@@ -2009,7 +2017,6 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
         trail::note(format!("Add to Steam ({id}): closing Steam"));
         shortcuts::close_steam(&steam).await.inspect_err(|e| trail::note(format!("Add to Steam: {e}")))?;
     }
-    let icon = ga.icon.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     let name = shown_name(&st, &id, &g).await;
     let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art, &st.dir).inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
     trail::note(format!("Add to Steam ({id}): written for {n} account(s) in {}{}", dirs::home_dir().and_then(|h| steam.strip_prefix(h).ok().map(|r| format!("~/{}", r.display()))).unwrap_or_else(|| steam.display().to_string()), if was_running { "" } else { " (Steam was closed)" }));
@@ -8194,6 +8201,8 @@ pub fn run() {
             }
             // Games sent from the website, while signed in.
             cloud::watch_inbox(app.handle().clone());
+            // Settings → Keep Steam in Sync: written whenever Steam is found closed.
+            steam_sync::start(app.handle().clone());
             // A new RecompLauncher: the window looks as it opens; after that, every six hours or so
             // while it runs (it may stay by the clock). A push brings news of a new build sooner.
             {
@@ -8305,7 +8314,7 @@ pub fn run() {
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
-            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
+            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,

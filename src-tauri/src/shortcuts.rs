@@ -497,17 +497,61 @@ pub fn write_to_steam(steam: &Path, name: &str, id: &str, icon: &str, art: &[(&s
 /// RL_STEAM_OVERLAY (the launcher hands it to the game) and then asks the launcher to play it.
 /// None elsewhere (Windows, a Flatpak, a .deb run): the shortcut starts the launcher as before.
 pub fn steam_script(data: &Path, name: &str, id: &str) -> Option<PathBuf> {
-    if !cfg!(target_os = "linux") || crate::flatpak::sandboxed() {
-        return None;
-    }
-    let appimage = std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file())?;
+    let appimage = steam_appimage()?;
     write_steam_script(data, name, id, &appimage).ok()
 }
 
+/// The AppImage a game's launch script starts, when Steam starts games through one (see
+/// steam_script).
+fn steam_appimage() -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") || crate::flatpak::sandboxed() {
+        return None;
+    }
+    std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file())
+}
+
+pub fn steam_script_path(data: &Path, id: &str) -> PathBuf {
+    data.join("steam-launch").join(format!("{}.sh", crate::library::folder_name(id)))
+}
+
+/// The game a launch script in the launcher's data folder plays. None for any other program.
+pub fn script_game(data: &Path, exe: &str) -> Option<String> {
+    let path = Path::new(exe);
+    if !path.starts_with(data.join("steam-launch")) {
+        return None;
+    }
+    let body = fs::read_to_string(path).ok()?;
+    script_body_game(&body)
+}
+
+fn script_body_game(body: &str) -> Option<String> {
+    let exec = body.lines().find(|l| l.starts_with("exec "))?;
+    let (_, after) = exec.split_once(" --play '")?;
+    let (id, _) = after.split_once('\'')?;
+    (!id.is_empty()).then(|| id.to_string())
+}
+
+/// How Steam starts one game, as write_to_steam adds it: the program, its launch options, and on
+/// Linux the AppImage its launch script starts.
+pub struct GameStart {
+    pub exe: PathBuf,
+    pub launch: String,
+    pub appimage: Option<PathBuf>,
+}
+
+pub fn game_start(data: &Path, id: &str) -> GameStart {
+    if let Some(appimage) = steam_appimage() {
+        return GameStart { exe: steam_script_path(data, id), launch: String::new(), appimage: Some(appimage) };
+    }
+    let (exe, pre) = start_command();
+    GameStart { exe, launch: with_start_args(&pre, &format!("--play {id}")), appimage: None }
+}
+
 pub fn write_steam_script(data: &Path, name: &str, id: &str, appimage: &Path) -> std::io::Result<PathBuf> {
-    let dir = data.join("steam-launch");
-    fs::create_dir_all(&dir)?;
-    let file = dir.join(format!("{}.sh", crate::library::folder_name(id)));
+    let file = steam_script_path(data, id);
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir)?;
+    }
     let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let body = format!(
         "#!/bin/sh\n# {name} from Steam, through RecompLauncher. Made by the launcher; it's made again when the game\n# is added to Steam again.\n# The AppImage drops Steam's LD_PRELOAD and Vulkan layer variables on its way in, so Steam's\n# overlay is kept aside here for the game (Steam Link and Remote Play find its window through it).\nRL_STEAM_OVERLAY=\"$(printf '%s' \"$LD_PRELOAD\" | tr ': ' '\\n\\n' | grep gameoverlayrenderer | tr '\\n' ' ')\"\nexport RL_STEAM_OVERLAY\nexec {} --play {} \"$@\"\n",
@@ -666,31 +710,55 @@ fn write_entry_with(steam: &Path, name: &str, start: (PathBuf, Vec<String>), lau
             if !o.is_empty() && parse_vdf(o).is_none() {
                 continue;
             }
-            // The file as it was before the launcher first touched it stays as the backup.
-            let backup = cfg.join("shortcuts.vdf.recomplauncher-backup");
-            if !backup.exists() {
-                let _ = fs::write(backup, o);
-            }
+            keep_backup(&cfg, o);
         }
         let (bytes, app_id) = add_shortcut(old.as_deref(), name, &exe_s, &dir, launch, icon);
         fs::write(&file, bytes)?;
-        let grid = cfg.join("grid");
-        fs::create_dir_all(&grid)?;
-        for (suffix, data, ext) in art {
-            if !data.is_empty() {
-                // The same picture saved before in another format would be the one Steam shows.
-                for old in ["png", "jpg", "jpeg", "webp"] {
-                    let _ = fs::remove_file(grid.join(format!("{app_id}{suffix}.{old}")));
-                }
-                fs::write(grid.join(format!("{app_id}{suffix}.{ext}")), data)?;
-            }
-        }
+        save_art(&cfg, app_id, art)?;
         done += 1;
     }
     if done == 0 {
         return Err(Error::Msg("Steam's list of non-Steam games has something in it the launcher can't read, so it left it as it is. Add the game from Steam instead: Add a Game, then Add a Non-Steam Game.".into()));
     }
     Ok(done)
+}
+
+/// The shortcuts file as it was before the launcher first touched it stays as the backup.
+pub fn keep_backup(cfg: &Path, old: &[u8]) {
+    let backup = cfg.join("shortcuts.vdf.recomplauncher-backup");
+    if !backup.exists() {
+        let _ = fs::write(backup, old);
+    }
+}
+
+const ART_EXTS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
+const ART_SUFFIXES: [&str; 4] = ["p", "_hero", "", "_logo"];
+
+/// A game's pictures in an account's grid folder, named after its app id.
+pub fn save_art(cfg: &Path, app_id: u32, art: &[(&str, Vec<u8>, &str)]) -> std::io::Result<()> {
+    let grid = cfg.join("grid");
+    fs::create_dir_all(&grid)?;
+    for (suffix, data, ext) in art {
+        if data.is_empty() {
+            continue;
+        }
+        // The same picture saved before in another format would be the one Steam shows.
+        for old in ART_EXTS {
+            let _ = fs::remove_file(grid.join(format!("{app_id}{suffix}.{old}")));
+        }
+        fs::write(grid.join(format!("{app_id}{suffix}.{ext}")), data)?;
+    }
+    Ok(())
+}
+
+/// The pictures save_art put there, for a game that left Steam.
+pub fn remove_art(cfg: &Path, app_id: u32) {
+    let grid = cfg.join("grid");
+    for suffix in ART_SUFFIXES {
+        for ext in ART_EXTS {
+            let _ = fs::remove_file(grid.join(format!("{app_id}{suffix}.{ext}")));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -774,6 +842,19 @@ app-path=/var/lib/flatpak/app/com.recomplauncher.RecompLauncher/x86_64/stable/9/
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].1.str("AppName"), "Other");
         assert_eq!(list[0].1.get("Big"), Some(&Node::U64(1 << 40)));
+    }
+
+    #[test]
+    fn a_launch_script_says_which_game_it_plays() {
+        let d = std::env::temp_dir().join(format!("rl-steam-script-game-{}", std::process::id()));
+        let f = write_steam_script(&d, "Game", "cogbox--gow2", Path::new("/apps/RL.AppImage")).unwrap();
+        assert_eq!(script_game(&d, &f.to_string_lossy()).as_deref(), Some("cogbox--gow2"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_program_outside_the_launch_scripts_folder_is_no_game() {
+        assert_eq!(script_game(Path::new("/data"), "/usr/bin/dolphin-emu"), None);
     }
 
     #[test]
