@@ -15,7 +15,9 @@
   --fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065);--fill3:rgba(244,248,252,.11);
   --grad:linear-gradient(180deg,#34F2E8,#377BB6);
   /* A faint grain laid over big gradients and blurred art: it breaks up the colour steps an 8-bit
-     screen shows in them (the webviews have no 10-bit or HDR output). One shared tile. */
+     screen shows in them (the webviews have no 10-bit or HDR output). One shared 256 px tile of
+     blue noise (fine, without clumps), lifting and darkening by about the same amount on dark
+     colours; the light theme has its own, the other way round. */
   --noise:url(img/noise.png);
   --r:16px;--ease:cubic-bezier(.2,.8,.2,1);
   --side-w:248px;
@@ -1517,7 +1519,7 @@ body.lighter *, body.lighter *::before, body.lighter *::after { animation: none 
 body.tv-on .tile-size{display:none}
 /* Light theme (Settings, Appearance). Pictures with text over them (the Home slider, a game's
    header) keep their dark look so the words stay readable. */
-body.light{--bg:#F3F5F8;--bg2:#E9EDF2;--side:#EDF0F4;--card:#FFFFFF;--card2:#F4F6F9;--card3:#E8ECF1;
+body.light{--noise:url(img/noise-light.png);--bg:#F3F5F8;--bg2:#E9EDF2;--side:#EDF0F4;--card:#FFFFFF;--card2:#F4F6F9;--card3:#E8ECF1;
   --ink:#0E1626;--muted:#4A5568;--dim:#6B7688;--cyan:#0B9E97;--blue:#2A6AA5;
   --line:rgba(14,22,38,.08);--line2:rgba(14,22,38,.14);--line3:rgba(14,22,38,.24);
   --fill:rgba(14,22,38,.035);--fill2:rgba(14,22,38,.06);--fill3:rgba(14,22,38,.1);color-scheme:light}

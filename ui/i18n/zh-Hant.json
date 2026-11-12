@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "上次嘗試沒有成功。{when}後再試。",
  "Your cloud saves are full (150 MB).": "你的雲端存檔已滿（150 MB）。",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "你的雲端存檔已滿。刪除舊的雲端副本以騰出空間，上傳會自動重新開始。",
- "{n} s": "{n} 秒"
+ "{n} s": "{n} 秒",
+ "The report is filled in. Attach the full log, then submit it on the page.": "報告已填好。附上完整記錄檔，然後在頁面上提交。"
 }

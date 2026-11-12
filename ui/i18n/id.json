@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "Percobaan terakhir tidak berhasil. Coba lagi dalam {when}.",
  "Your cloud saves are full (150 MB).": "Simpanan cloud-mu penuh (150 MB).",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Simpanan cloud-mu penuh. Hapus salinan cloud lama untuk memberi ruang; unggahan akan mulai lagi dengan sendirinya.",
- "{n} s": "{n} dtk"
+ "{n} s": "{n} dtk",
+ "The report is filled in. Attach the full log, then submit it on the page.": "Laporan sudah terisi. Lampirkan log lengkap, lalu kirim di halaman itu."
 }

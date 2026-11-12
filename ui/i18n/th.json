@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "การลองครั้งล่าสุดไม่สำเร็จ จะลองอีกครั้งใน {when}",
  "Your cloud saves are full (150 MB).": "เซฟบนคลาวด์ของคุณเต็มแล้ว (150 MB)",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "เซฟบนคลาวด์ของคุณเต็มแล้ว ลบสำเนาเก่าบนคลาวด์เพื่อเพิ่มพื้นที่ แล้วการอัปโหลดจะเริ่มใหม่เอง",
- "{n} s": "{n} วิ"
+ "{n} s": "{n} วิ",
+ "The report is filled in. Attach the full log, then submit it on the page.": "กรอกรายงานไว้แล้ว แนบบันทึกฉบับเต็ม แล้วส่งในหน้านั้น"
 }

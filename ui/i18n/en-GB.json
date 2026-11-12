@@ -236,5 +236,6 @@
  "Its installer isn't downloaded anymore. Press Update or Install to get it again.": "Its installer isn't downloaded any more. Press Update or Install to get it again.",
  "The installer isn't there anymore. Use Update again to download it.": "The installer isn't there any more. Use Update again to download it.",
  "That project isn't in the catalog. Refresh it and try again.": "That project isn't in the catalogue. Refresh it and try again.",
- "The new listing isn't in the catalog yet. Refresh it and try again.": "The new listing isn't in the catalogue yet. Refresh it and try again."
+ "The new listing isn't in the catalog yet. Refresh it and try again.": "The new listing isn't in the catalogue yet. Refresh it and try again.",
+ "The report is filled in. Attach the full log, then submit it on the page.": "The report is filled in. Attach the full log, then submit it on the page."
 }
