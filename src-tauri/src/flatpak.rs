@@ -24,6 +24,17 @@ pub fn sandboxed() -> bool {
     cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists())
 }
 
+/// GTK names the windows after the binary (`recomplauncher`), which matches no desktop file in
+/// the Flatpak: X11 desktops and Wayland ones that don't ask Flatpak (Sway, Hyprland) then show a
+/// generic icon. Named after the Flatpak's ID, they match its desktop file everywhere.
+#[cfg(target_os = "linux")]
+pub fn name_windows_after_app() {
+    let Ok(id) = std::env::var("FLATPAK_ID") else {
+        return;
+    };
+    webkit2gtk::glib::set_prgname(Some(&id));
+}
+
 /// A folder on disk for what a program unpacks to run (an AppImage), since the sandbox's own
 /// /tmp is memory.
 pub fn scratch_dir() -> Option<PathBuf> {

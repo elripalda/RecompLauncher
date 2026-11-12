@@ -7841,6 +7841,8 @@ fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder
 pub fn run() {
     #[cfg(target_os = "linux")]
     sysenv::prepare_start(data_dir_early());
+    #[cfg(target_os = "linux")]
+    flatpak::name_windows_after_app();
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
         return;
     }
