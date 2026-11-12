@@ -656,6 +656,10 @@ body.light .tv-ambient.m-grid .sky{background:linear-gradient(180deg,#f7f9fc,#e7
 body.light .tv-ambient.m-drift .d1{background-image:radial-gradient(circle,rgba(11,158,151,.5) 0 1.5px,transparent 2.5px)}
 body.light .tv-ambient.m-drift .d2{background-image:radial-gradient(circle,rgba(55,123,182,.35) 0 2.5px,transparent 4px)}
 body.lighter .tv-ambient i{animation:none!important}
+/* Drawn on the processor (see app.css), the backdrop that moves behind every page cost a whole
+   core and the bobbing arrow half of another, with nothing else on screen moving. Both stand still. */
+body.cpu-draw .tv-ambient i{animation:none!important}
+body.cpu-draw .tv-down{animation:none}
 /* Pages over it are see-through; the game you're on lights the edges. */
 .tv-full.amb{background:transparent}
 .tv-full.amb::after{background:var(--noise),radial-gradient(55% 60% at 88% 12%,color-mix(in srgb,var(--acc) 20%,transparent),transparent 72%),radial-gradient(50% 55% at 6% 100%,color-mix(in srgb,var(--acc) 14%,transparent),transparent 72%),linear-gradient(180deg,transparent 60%,color-mix(in srgb,var(--tvbg) 55%,transparent))}
