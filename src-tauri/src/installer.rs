@@ -138,6 +138,7 @@ pub async fn installer_run(st: State<'_, App>, id: String) -> Res<Value> {
     let suggest = g.path.clone();
     let args = dir_args(k, &suggest);
     crate::trail::note(format!("Installer {id}: running {} ({})", setup.file_name().unwrap_or_default().to_string_lossy(), if k.is_empty() { "other" } else { k }));
+    let started = std::time::SystemTime::now();
     let stop = std::sync::Arc::new(AtomicBool::new(false));
     WAITING.lock().unwrap().push((id.clone(), stop.clone()));
     let s2 = setup.clone();
@@ -150,7 +151,18 @@ pub async fn installer_run(st: State<'_, App>, id: String) -> Res<Value> {
     };
     crate::trail::note(format!("Installer {id}: closed ({})", code.map(|c| c.to_string()).unwrap_or_else(|| "?".into())));
     let n = names(&g, &entry);
-    let found = find(&suggest, &g.path, &entry, &n);
+    let mut found = find(&suggest, &g.path, &entry, &n);
+    // Not in any folder named for it: where its fresh shortcut or its entry in Settings > Apps
+    // points, so a game installed somewhere else doesn't keep asking to be set up.
+    if found.is_empty() {
+        let nr: Vec<&str> = n.iter().map(String::as_str).collect();
+        if let Some((exe, _)) = crate::own_setup::installed_elsewhere(&nr, started, &g.path, None) {
+            if let (Some(root), Some(file)) = (exe.parent(), exe.file_name()) {
+                crate::trail::note(format!("Installer {id}: found it through its shortcut or its Windows entry"));
+                found.push((root.to_path_buf(), PathBuf::from(file)));
+            }
+        }
+    }
     if let [(root, exe)] = found.as_slice() {
         let g = finish(&st, &id, root.clone(), exe.clone())?;
         return Ok(json!({ "done": true, "game": g }));
@@ -219,13 +231,17 @@ pub async fn installer_check(st: State<'_, App>, id: String, path: String) -> Re
     let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
     let n = names(&g, &entry);
     let (root, exe, fits) = tokio::task::spawn_blocking(move || adopt::check_folder(&dir, &entry, &n, "windows")).await.map_err(|e| Error::Msg(e.to_string()))?;
-    let exes: Vec<String> = programs(&root);
+    let names: Vec<String> = names(&g, &catalog::app(&cat, &id).cloned().unwrap_or(Value::Null));
+    let exes: Vec<String> = programs(&root, &names.iter().map(String::as_str).collect::<Vec<_>>(), exe.as_deref());
     Ok(json!({ "path": root, "exe": exe, "fits": fits, "exes": exes }))
 }
 
-/// The programs in a folder (two levels deep), relative to it, for picking the game by hand.
-fn programs(root: &Path) -> Vec<String> {
-    let mut out = vec![];
+/// The programs in a folder (two levels deep), relative to it, for picking the game by hand: the
+/// best guess first, then the biggest. Crash handlers, installers, runtime installers and tools
+/// are left out, so the list never opens on crashpad_handler.exe; when nothing else is there, all
+/// of them are shown.
+fn programs(root: &Path, names: &[&str], guess: Option<&Path>) -> Vec<String> {
+    let mut all: Vec<(String, u64, bool)> = vec![];
     let mut level = vec![root.to_path_buf()];
     for _ in 0..2 {
         let mut next = vec![];
@@ -234,19 +250,25 @@ fn programs(root: &Path) -> Vec<String> {
                 let p = e.path();
                 if p.is_dir() {
                     next.push(p);
-                } else if p.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false) && !install::looks_like_setup(&p) {
-                    let n = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-                    if !n.starts_with("unins") && !n.starts_with("uninstall") {
-                        out.push(p.strip_prefix(root).map(|r| r.to_string_lossy().to_string()).unwrap_or_default());
+                } else if p.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false) {
+                    let rel = p.strip_prefix(root).map(Path::to_path_buf).unwrap_or_default();
+                    let n = rel.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    if n.starts_with("unins") {
+                        continue;
                     }
+                    let helper = install::never_the_game(&rel, names);
+                    all.push((rel.to_string_lossy().to_string(), e.metadata().map(|m| m.len()).unwrap_or(0), helper));
                 }
             }
         }
         level = next;
     }
-    out.sort();
-    out.truncate(40);
-    out
+    if all.iter().any(|(_, _, h)| !h) {
+        all.retain(|(_, _, h)| !h);
+    }
+    let guess = guess.map(|g| g.to_string_lossy().to_string());
+    all.sort_by(|a, b| (Some(&b.0) == guess.as_ref()).cmp(&(Some(&a.0) == guess.as_ref())).then(b.1.cmp(&a.1)).then(a.0.cmp(&b.0)));
+    all.into_iter().map(|(p, _, _)| p).take(40).collect()
 }
 
 /// Done: the game where the installer put it, at the release it installed, with its setup marked
@@ -361,6 +383,27 @@ pub fn run_uninstaller(dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_program_list_opens_on_the_game_not_a_helper() {
+        let d = std::env::temp_dir().join(format!("rl-inst-progs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        for (f, n) in [("crashpad_handler.exe", 3_000_000), ("NX2navi.exe", 2_000_000), ("unins000.exe", 1_000), ("tools/helper.exe", 9_000_000), ("vc_redist.x64.exe", 20_000_000)] {
+            std::fs::create_dir_all(d.join(f).parent().unwrap()).unwrap();
+            std::fs::write(d.join(f), vec![0u8; n]).unwrap();
+        }
+        assert_eq!(programs(&d, &["NX2navi"], None), vec!["NX2navi.exe".to_string()]);
+        // The best guess first, even when it's smaller.
+        std::fs::write(d.join("Big.exe"), vec![0u8; 5_000_000]).unwrap();
+        assert_eq!(programs(&d, &["NX2navi"], Some(Path::new("NX2navi.exe")))[0], "NX2navi.exe");
+        assert_eq!(programs(&d, &["NX2navi"], None)[0], "Big.exe");
+        // Only helpers there: all of them, so the player can still pick.
+        let e = d.join("only");
+        std::fs::create_dir_all(&e).unwrap();
+        std::fs::write(e.join("crashpad_handler.exe"), b"x").unwrap();
+        assert_eq!(programs(&e, &["NX2navi"], None), vec!["crashpad_handler.exe".to_string()]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn tells_installers_apart_and_suggests_the_folder() {

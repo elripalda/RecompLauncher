@@ -260,9 +260,13 @@ pub struct Settings {
     /// The first-run setup has been gone through.
     #[serde(default)]
     pub setup_done: bool,
-    /// Closing the window leaves the launcher running by the clock.
-    #[serde(default = "yes")]
+    /// Settings → Run in background. Keep the existing field name so saved choices still apply.
+    #[serde(default)]
     pub close_to_tray: bool,
+    /// Settings → Controllers: the left stick moves around the launcher as the d-pad does. Off,
+    /// only the d-pad does (for players whose stick drifts, or who move a mouse with it).
+    #[serde(default = "yes")]
+    pub pad_stick: bool,
     /// On Linux: recomps with only a Windows version install that and play through Proton.
     #[serde(default)]
     pub proton: bool,
@@ -331,7 +335,8 @@ impl Default for Settings {
             asked_location: false,
             start_in_tv: false,
             setup_done: false,
-            close_to_tray: true,
+            close_to_tray: false,
+            pad_stick: true,
             proton: false,
             proton_auto: false,
             tray_told: false,
@@ -602,6 +607,31 @@ pub fn folder_name(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn run_in_background_is_off_by_default() {
+        assert!(!super::Settings::default().close_to_tray);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(!settings.close_to_tray);
+    }
+
+    #[test]
+    fn an_existing_background_choice_stays_on() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","close_to_tray":true}"#).unwrap();
+        assert!(settings.close_to_tray);
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(restored.close_to_tray);
+    }
+
+    #[test]
+    fn an_existing_background_choice_stays_off() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","close_to_tray":false}"#).unwrap();
+        assert!(!settings.close_to_tray);
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(!restored.close_to_tray);
+    }
+
     #[test]
     #[cfg(not(windows))]
     fn a_windows_path_reads_on_linux() {

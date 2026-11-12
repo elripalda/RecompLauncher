@@ -70,7 +70,7 @@ const ago = (ts) => {
 };
 const date = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleDateString(curLocale(), { month: 'short', day: 'numeric', year: 'numeric' }); };
 const catIcon = (k) => (GENRES[k] ? `<i class="cat-ico" style="--m:url(img/cat/${k}.png)" aria-hidden="true"></i>` : '');
-const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.png)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
+const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.svg)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
 const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id === id)?.name || id || '';
 const isAI = (a) => !!(a && a.ai);
 // Something the player has to do by hand before the first play, from the game's boot profile.
@@ -1680,7 +1680,8 @@ function pageGame(id) {
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
     <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
-      <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
+      <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
+      <div class="gp-title">${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
       <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
@@ -3339,7 +3340,7 @@ function pageSettings() {
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
           + row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('share_stats', st.data_asked && st.share_stats, t('Share anonymous usage stats')))
           + row(t('Your IDs'), S.ids ? tf('Diagnostics {a} · Stats {b}. Quote them to have what was sent removed. A reset starts new ones.', { a: S.ids.usage.slice(0, 8), b: S.ids.stats.slice(0, 8) }) : t('Quote them to have what was sent removed. A reset starts new ones.'), `<span class="set-ctl2"><button type="button" class="btn" data-act="copy-ids">${esc(t('Copy'))}</button><button type="button" class="btn" data-act="reset-ids">${esc(t('Reset'))}</button></span>`))
-        + (S.os === 'windows' ? group(t('When you close the window'), row(t('Keep running by the clock'), t('Closing the window leaves RecompLauncher by the clock, ready to start a game. Right-click its icon to quit.'), sw('close_to_tray', st.close_to_tray !== false, t('Keep running by the clock')))) : '');
+        + group(t('When you close the window'), row(t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'), sw('close_to_tray', st.close_to_tray, t('Run in background'))));
       break;
     case 'report':
       body = window.reportSection ? window.reportSection(group) : '';
@@ -3409,6 +3410,7 @@ function pageSettings() {
       break;
     case 'pads':
       body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
+        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick'))))
         + group(t('Buttons'), `<div class="pad-guide">${buttonGuide().map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>`);
       break;
     case 'pc':
@@ -3658,6 +3660,88 @@ function renderSide() {
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
   for (const b of $$('.pin', box)) if (!iconsOnly) b.removeAttribute('title');
 }
+// The pinned games in a new order. Pins the launcher can't show right now (a catalog that hasn't
+// loaded yet) keep their place at the end instead of being dropped.
+function savePinOrder(shown) {
+  const all = (S.settings.ui || {}).pins || [];
+  const rest = all.filter((id) => !shown.includes(id));
+  saveUi({ pins: [...shown, ...rest] }, true);
+  renderSide();
+}
+// Moving a pinned game: dragged with the mouse (a press that moves a few pixels; a plain click still
+// opens the game), or Alt+Up/Down on the focused one. Pointer events rather than HTML drag and drop,
+// which the web view hands to the system's file drop on some PCs.
+function pinDrag() {
+  const box = $('#pins');
+  let drag = null, eatClick = false;
+  const rows = () => $$('.pin', box);
+  box.addEventListener('pointerdown', (e) => {
+    const pin = e.target.closest('.pin');
+    if (!pin || e.button !== 0 || rows().length < 2) return;
+    drag = { pin, id: pin.dataset.id, y: e.clientY, on: false, pointer: e.pointerId, to: 0 };
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const dy = e.clientY - drag.y;
+    if (!drag.on && Math.abs(dy) < 6) return;
+    if (!drag.on) {
+      drag.on = true;
+      drag.list = rows();
+      drag.from = drag.list.indexOf(drag.pin);
+      drag.step = drag.pin.offsetHeight + (parseFloat(getComputedStyle(box).rowGap) || 0);
+      drag.pin.setPointerCapture(e.pointerId);
+      box.classList.add('sorting');
+      drag.pin.classList.add('moving');
+    }
+    // The dragged game follows the pointer; the others slide aside to show where it lands.
+    const lowest = -drag.from * drag.step, highest = (drag.list.length - 1 - drag.from) * drag.step;
+    const shift = Math.max(lowest, Math.min(highest, dy));
+    drag.to = drag.from + Math.round(shift / drag.step);
+    drag.pin.style.transform = `translateY(${shift}px)`;
+    drag.list.forEach((b, i) => {
+      if (b === drag.pin) return;
+      const down = drag.to < drag.from && i >= drag.to && i < drag.from;
+      const up = drag.to > drag.from && i <= drag.to && i > drag.from;
+      b.style.transform = down ? `translateY(${drag.step}px)` : up ? `translateY(${-drag.step}px)` : '';
+    });
+  });
+  const drop = (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const d = drag;
+    drag = null;
+    if (!d.on) return;
+    // The click that ends a drag isn't a click on the game.
+    eatClick = true;
+    setTimeout(() => { eatClick = false; }, 0);
+    box.classList.remove('sorting');
+    d.pin.classList.remove('moving');
+    d.list.forEach((b) => { b.style.transform = ''; });
+    if (e.type === 'pointercancel' || d.to === d.from) return;
+    const ids = d.list.map((b) => b.dataset.id);
+    ids.splice(d.to, 0, ids.splice(d.from, 1)[0]);
+    savePinOrder(ids);
+  };
+  box.addEventListener('pointerup', drop);
+  box.addEventListener('pointercancel', drop);
+  box.addEventListener('click', (e) => {
+    if (!eatClick) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  box.addEventListener('keydown', (e) => {
+    const pin = e.target.closest('.pin');
+    if (!pin || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const ids = rows().map((b) => b.dataset.id);
+    const from = ids.indexOf(pin.dataset.id), to = from + (e.key === 'ArrowUp' ? -1 : 1);
+    if (to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    savePinOrder(ids);
+    const moved = $(`.pin[data-id="${CSS.escape(pin.dataset.id)}"]`, box);
+    if (moved) moved.focus();
+  });
+}
+pinDrag();
 // The island at the bottom: what's downloading, always in view.
 function paintIsland() {
   const el = $('#isl');
@@ -3929,6 +4013,7 @@ async function refreshState() {
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
+  document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
@@ -4621,6 +4706,7 @@ function gameMenu(id) {
         ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
         ...(S.os === 'linux' && g.proton ? [{ act: 'wine-tools', id, label: t('Wine Tools…'), icon: 'exe' }] : []),
       ] },
+      { act: 'saves-game', id, label: t('Manage saves'), icon: 'save' },
       { act: 'customize', id, label: t('Customize…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
@@ -7389,13 +7475,20 @@ function openLinkedGame(id) {
   invoke('take_link').catch(() => {});
   clearTimeout(linkWait);
   const started = Date.now();
-  const tryOpen = () => {
+  let asked = false;
+  const tryOpen = async () => {
     const ready = S.cat && S.cat.apps && S.cat.apps.length && !document.querySelector('.oob');
     if (!ready && Date.now() - started < 120000) { linkWait = setTimeout(tryOpen, 400); return; }
-    const a = (S.cat && byId(id)) || null;
-    const known = a || S.library[id];
     const tv = document.body.classList.contains('tv-on') && window.tvGoto;
-    if (known) { if (tv) window.tvGoto('game', id); else go('game', id); return; }
+    const known = () => (S.cat && byId(id)) || S.library[id];
+    // Not in the list on disk: it may be newer than that list. Asked for once, then looked at again.
+    if (!known() && !asked) {
+      asked = true;
+      await loadCatalog(true);
+      render(true);
+      if (window.tvRefresh) window.tvRefresh();
+    }
+    if (known()) { if (tv) window.tvGoto('game', id); else go('game', id); return; }
     if (tv) window.tvGoto('discover'); else go('discover');
     toast(t('That game isn\'t in RecompLauncher yet'), true);
   };

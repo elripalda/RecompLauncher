@@ -51,7 +51,8 @@ function achConsole(c) {
   // How many players have it: "12% of players", or "Nobody yet". rate is 0 to 1.
   const rarityText = (rate) => {
     if (rate == null || rate === '') return '';
-    const p = Number(rate) * 100;
+    // A fraction (0.125), or a percentage already (12.5) from older answers.
+    const p = Number(rate) > 1 ? Number(rate) : Number(rate) * 100;
     if (!(p > 0)) return t('Nobody yet');
     return tf('{pct}% of players', { pct: p < 0.1 ? '<0.1' : p < 1 ? p.toFixed(1) : String(Math.round(p)) });
   };
@@ -111,7 +112,9 @@ function achConsole(c) {
       : `<span class="tag">${esc(t('Locked'))}</span>`;
     const type = TYPES[String(a.type || '').toLowerCase()] ? String(a.type).toLowerCase() : '';
     const typeTag = type ? `<span class="ach-type t-${type}">${type === 'missable' ? WARN : ''}${esc(t(TYPES[type]))}</span>` : '';
-    const rare = mine.rarity ? rarityText(((mine.rarity || {})[id] || {}).rate != null ? mine.rarity[id].rate : 0) : '';
+    // Only with a rate for it: no entry means not counted yet, not "nobody has it".
+    const rate = ((mine.rarity || {})[id] || {}).rate;
+    const rare = rate != null ? rarityText(rate) : '';
     const rep = A.reportedNow[`${d.id}:${id}`] || (mine.reported || {})[id];
     const repTag = rep === 'open' ? `<span class="ach-rep">${esc(t('Reported'))}</span>` : rep === 'fixed' ? `<span class="ach-rep fixed">${esc(t('Fixed'))}</span>` : '';
     const bar = !got && pr && pr.target ? `<div class="ach-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${pr.target}" aria-valuenow="${pr.value}"><i style="width:${Math.min(100, (pr.value / pr.target) * 100)}%"></i></div><span class="ach-pr">${esc(tf('{n} of {total}', { n: fmtN(pr.value), total: fmtN(pr.target) }))}</span>` : '';
@@ -377,6 +380,15 @@ Your account's Terms and Privacy still apply.`;
   const webBtn = (label) => `<button type="button" class="btn" data-act="url" data-url="${WEB}">${EXT}${esc(label)}</button>`;
   // As many columns as there are cards (up to `max`), so a row never has a lone leftover.
   const cols = (n, max) => (n <= max ? n : n % max === 0 ? max : n % (max - 1) === 0 ? max - 1 : max);
+  // Columns for a grid that can't change its count (a list of games): full rows when they divide
+  // evenly, else the count whose last row is fullest, never one card alone on it.
+  const evenCols = (n, max) => {
+    if (n <= max) return Math.max(1, n);
+    for (let c = max; c >= 2; c--) if (n % c === 0) return c;
+    let best = 2, fill = -1;
+    for (let c = max; c >= 2; c--) { const r = n % c; if (r !== 1 && r / c > fill) { fill = r / c; best = c; } }
+    return best;
+  };
 
   // Every game with a list, with this player's progress on it.
   function games() {
@@ -459,7 +471,7 @@ Your account's Terms and Privacy still apply.`;
       return `<div class="achp-gcard" data-ach="open-game" data-id="${esc(g.id)}" role="button" tabindex="0"><div class="achp-cwrap">${cov(g)}${inst ? `<span class="achp-pill c achp-tagm">${esc(t('Installed'))}</span>` : ''}${g.mastered ? badge('m') : isBeaten(g, bset) ? badge('b') : ''}</div><strong>${esc(nameOf(g))}</strong>${bar(g.unlocked, g.achievements, g.mastered)}<div class="achp-row"><span>${esc(info)}</span>${btn}</div></div>`;
     };
     return `<div class="achp-pane"><p class="muted achp-sec-p">${esc(t('Every Xbox 360 game is open: the first time a tester plays one, its achievements are added for everyone.'))}</p><div class="achp-top"><div class="chips">${Object.keys(f).map((k) => `<button type="button" class="chip${A.gfilter === k ? ' on' : ''}" data-ach="gfilter" data-k="${k}">${esc(labels[k])} ${fmtN(counts[k])}</button>`).join('')}</div></div>
-      ${list.length ? `<div class="achp-games">${list.map(card).join('')}</div>` : `<div class="card achp-empty">${STARP}<div><strong>${esc(t('Nothing Here'))}</strong><span>${esc(all.length ? t('No games match this filter yet.') : t('Xbox 360 games appear here as testers play them.'))}</span></div></div>`}</div>`;
+      ${list.length ? `<div class="achp-games" style="--c:${evenCols(list.length, 5)};--cn:${evenCols(list.length, 4)}">${list.map(card).join('')}</div>` : `<div class="card achp-empty">${STARP}<div><strong>${esc(t('Nothing Here'))}</strong><span>${esc(all.length ? t('No games match this filter yet.') : t('Xbox 360 games appear here as testers play them.'))}</span></div></div>`}</div>`;
   }
 
   function paneBoard() {
@@ -470,7 +482,7 @@ Your account's Terms and Privacy still apply.`;
     const picker = `<select class="sel" data-ach="bgame" aria-label="${esc(t('Game'))}">${opts.map(([v, l]) => `<option value="${esc(v)}"${v === A.bgame ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const sw = `<div class="seg achp-seg" role="tablist" aria-label="${esc(t('Rank By'))}">${[['points', t('Points')], ['score', t('Score')]].map(([k, l]) => `<button type="button" role="tab" aria-selected="${A.by === k}" class="${A.by === k ? 'on' : ''}" data-ach="by" data-k="${k}">${esc(l)}</button>`).join('')}</div>`;
     const name = (r, you) => r.username ? `<button type="button" class="achp-pname" data-act="url" data-url="${esc(profileUrl(r.username))}">${esc(r.username)}</button>${you ? ` <em>· ${esc(t('You'))}</em>` : ''}` : '';
-    const row = (r, you) => `<div class="achp-lr${you ? ' you' : ''}"><span class="achp-rk">${esc(String(r.rank || '—'))}</span>${typeof avatar === 'function' ? avatar({ username: r.username, avatar: r.avatar }, 30) : ''}<strong>${name(r, you)}</strong><span class="achp-num">${fmtN((score ? r.score : r.points) || 0)}${score ? '' : `<small>${esc(t('Ranked'))}</small>`}</span><span class="achp-num">${fmtN(r.unlocks || 0)}</span><span class="achp-num">${fmtN(r.mastered || 0)}</span></div>`;
+    const row = (r, you) => `<div class="achp-lr${you ? ' you' : ''}"><span class="achp-rk">${esc(String(r.rank || '—'))}</span>${typeof avatar === 'function' ? avatar({ username: r.username, avatar: r.avatar }, 30) : ''}<strong>${name(r, you)}</strong><span class="achp-num">${fmtN((score ? r.score : r.points) || 0)}</span><span class="achp-num">${fmtN(r.unlocks || 0)}</span><span class="achp-num">${fmtN(r.mastered || 0)}</span></div>`;
     let body;
     if (!rows) body = `<p class="muted" style="margin:12px">${esc(t('Loading the leaderboard…'))}</p>`;
     else if (!rows.length) body = `<p class="muted" style="margin:12px">${esc(t('Nobody has Ranked points here yet.'))}</p>`;

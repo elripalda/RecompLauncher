@@ -796,6 +796,118 @@ pub fn manifest(zip_file: &Path) -> Option<Manifest> {
     read_manifest(zip_file)
 }
 
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct ShareFile {
+    path: PathBuf,
+    hash: String,
+    pub modified: Option<std::time::SystemTime>,
+}
+
+impl ShareFile {
+    pub fn when(&self) -> Option<u64> {
+        self.modified.map(|t| t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
+    }
+}
+
+/// shortcut: copy one file from a known save location, add format-specific support for multi-file saves.
+pub fn share_file(spot: &Spot, g: &Installed, peer: Option<&ShareFile>) -> Option<ShareFile> {
+    if !matches!(spot.from, "developer" | "catalog" | "player") {
+        return None;
+    }
+    let place = resolve_for(&spot.template, g);
+    let folder = spot.from == "player" || place.is_dir();
+    if place.file_name()?.to_str()?.contains('*') || place == g.path || (folder && holds_programs(&place)) {
+        return None;
+    }
+    let entries = collect(std::slice::from_ref(spot), g);
+    let (path, modified) = match entries.as_slice() {
+        [entry] => (entry.abs.clone(), Some(fs::metadata(&entry.abs).ok()?.modified().ok()?)),
+        [] => {
+            let peer = peer?;
+            if !folder && place.file_name() != peer.path.file_name() {
+                return None;
+            }
+            let path = if folder { place.join(peer.path.file_name()?) } else { place };
+            if !matches!(fs::symlink_metadata(&path), Err(e) if e.kind() == io::ErrorKind::NotFound) {
+                return None;
+            }
+            (path, None)
+        }
+        _ => return None,
+    };
+    let name = path.file_name()?.to_str()?;
+    let parent = path.parent()?.canonicalize().ok()?;
+    if folder && (parent != resolve_for(&spot.template, g).canonicalize().ok()?
+        || peer.is_some_and(|p| p.path.file_name() != path.file_name())) {
+        return None;
+    }
+    if crate::inputs::excluded(g, &path) || !is_save_file(name, 0)
+        || g.files.iter().any(|f| lower(&g.path.join(f)) == lower(&path)) {
+        return None;
+    }
+    let hash = if modified.is_some() {
+        if !fs::symlink_metadata(&path).ok()?.is_file() {
+            return None;
+        }
+        sha_file(&path).ok()?
+    } else {
+        String::new()
+    };
+    Some(ShareFile { path: parent.join(name), hash, modified })
+}
+
+pub fn newer_save(source: &ShareFile, target: &ShareFile) -> bool {
+    lower(&source.path) != lower(&target.path) && source.hash != target.hash && source.modified > target.modified
+}
+
+pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: &ShareFile, target: &ShareFile) -> Result<(), Error> {
+    let changed = || Error::Msg("The saves changed. Check them again before copying.".into());
+    if !newer_save(source, target) || share_file(spot, g, Some(source)).as_ref() != Some(target) {
+        return Err(changed());
+    }
+    // Check the contents of the recovery copy before replacing the live save.
+    if target.modified.is_some() {
+        backup(app_dir, id, std::slice::from_ref(spot), g)?;
+        let saved = list(app_dir, id).into_iter().next().ok_or_else(changed)?;
+        let mut zip = zip::ZipArchive::new(fs::File::open(dir_of(app_dir, id).join(saved.name))?)
+            .map_err(|e| Error::Msg(e.to_string()))?;
+        let entry = format!("0/{}", target.path.file_name().unwrap().to_string_lossy());
+        let mut copy = Vec::new();
+        zip.by_name(&entry).map_err(|e| Error::Msg(e.to_string()))?.take(MAX_FILE + 1).read_to_end(&mut copy)?;
+        if copy.len() as u64 > MAX_FILE || hex::encode(Sha256::digest(&copy)) != target.hash {
+            return Err(Error::Msg("The existing save could not be backed up. It was kept in place.".into()));
+        }
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(&source.path)?.take(MAX_FILE + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_FILE || hex::encode(Sha256::digest(&bytes)) != source.hash {
+        return Err(changed());
+    }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temp = target.path.with_file_name(format!(".recomplauncher-save-{}-{n}.tmp", std::process::id()));
+    let mut file = fs::File::create_new(&temp)?;
+    let staged = (|| -> Result<(), Error> {
+        file.write_all(&bytes)?;
+        file.set_modified(source.modified.ok_or_else(changed)?)?;
+        file.sync_all()?;
+        drop(file);
+        if share_file(spot, g, Some(source)).as_ref() != Some(target) {
+            return Err(changed());
+        }
+        fs::rename(&temp, &target.path)?;
+        Ok(())
+    })();
+    if staged.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    staged?;
+    let mut s = state(app_dir, id);
+    s.pending = None;
+    set_state(app_dir, id, &s);
+    Ok(())
+}
+
 // ---------- noticing where a game saves ----------
 
 /// The files in the likely save places when a game started.
@@ -1030,6 +1142,48 @@ mod tests {
 
     fn game(dir: &Path) -> Installed {
         Installed { id: "g".into(), name: "Test Game".into(), path: dir.to_path_buf(), files: vec![PathBuf::from("game.exe"), PathBuf::from("data/a.bin")], played_secs: 60, ..Default::default() }
+    }
+
+    #[test]
+    fn sharing_keeps_the_previous_save_and_the_source() {
+        let d = tmp("sharing-copy");
+        let source = game(&d.join("source"));
+        let target = game(&d.join("target"));
+        let spot = Spot { template: "{install}/saves".into(), from: "player" };
+        for (g, data, seconds) in [(&source, b"new", 2000), (&target, b"old", 1000)] {
+            fs::create_dir_all(g.path.join("saves")).unwrap();
+            let mut file = fs::File::create(g.path.join("saves/slot.sav")).unwrap();
+            file.write_all(data).unwrap();
+            file.set_modified(UNIX_EPOCH + std::time::Duration::from_secs(seconds)).unwrap();
+        }
+        let from = share_file(&spot, &source, None).unwrap();
+        let to = share_file(&spot, &target, Some(&from)).unwrap();
+        share_save(&d, "target", &spot, &target, &from, &to).unwrap();
+        assert_eq!(fs::read(&from.path).unwrap(), b"new");
+        assert_eq!(fs::read(&to.path).unwrap(), b"new");
+        assert_eq!(share_file(&spot, &target, Some(&from)).unwrap().modified, from.modified);
+        let copy = dir_of(&d, "target").join(&list(&d, "target")[0].name);
+        restore(&d, "target", &copy, &[spot], &target).unwrap();
+        assert_eq!(fs::read(&to.path).unwrap(), b"old");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sharing_rejects_a_save_changed_since_the_prompt() {
+        let d = tmp("sharing-stale");
+        let source = game(&d);
+        let target = game(&d);
+        let from_spot = Spot { template: "{install}/from.sav".into(), from: "developer" };
+        let to_spot = Spot { template: "{install}/to.sav".into(), from: "developer" };
+        fs::write(d.join("from.sav"), b"new").unwrap();
+        fs::write(d.join("to.sav"), b"old").unwrap();
+        fs::File::options().write(true).open(d.join("to.sav")).unwrap().set_modified(UNIX_EPOCH).unwrap();
+        let from = share_file(&from_spot, &source, None).unwrap();
+        let to = share_file(&to_spot, &target, Some(&from)).unwrap();
+        fs::write(&from.path, b"changed").unwrap();
+        assert!(share_save(&d, "target", &to_spot, &target, &from, &to).is_err());
+        assert_eq!(fs::read(&to.path).unwrap(), b"old");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

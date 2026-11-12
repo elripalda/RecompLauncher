@@ -1074,7 +1074,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 18;
+pub const EXE_RULES: u8 = 19;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1287,6 +1287,17 @@ pub fn is_program(p: &Path, os: &str) -> bool {
     false
 }
 
+/// A program that comes with a game but is never the game: an uninstaller, installer, crash
+/// handler, runtime installer or one of its tools (crashpad_handler.exe, vc_redist.x64.exe,
+/// x86_64-w64-mingw32-clang++.exe). A word that's in the game's own names doesn't count.
+pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
+    let want: Vec<String> = names.iter().flat_map(|n| tokens(n)).collect();
+    let stem = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    looks_like_setup(rel)
+        || looks_like_tool(rel, names)
+        || tokens(stem).iter().any(|x| !want.contains(x) && NOT_THE_GAME.iter().any(|n| x == n || (n.len() >= 5 && x.starts_with(n))))
+}
+
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
@@ -1371,6 +1382,11 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
                 }
                 if t.first().map(|x| QUICK_WORDS.contains(&x.as_str())).unwrap_or(false) {
                     s -= 10;
+                }
+                // A command-line build beside the windowed one (eden-cli.exe next to eden.exe):
+                // it needs options the player would have to type, so the windowed one goes first.
+                if t.last().map(|x| x == "cli" || x == "cmd" || x == "console").unwrap_or(false) {
+                    s -= 25;
                 }
             }
             if t.iter().any(|x| x == "recompiled" || x == "recomp") {
@@ -1493,6 +1509,22 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    #[test]
+    fn the_windowed_program_goes_ahead_of_its_command_line_build() {
+        let d = tmp("cli-build");
+        put(&d.join("eden.exe"), 8_000_000);
+        put(&d.join("eden-cli.exe"), 9_000_000);
+        put(&d.join("crashpad_handler.exe"), 12_000_000);
+        assert_eq!(find_exe(&d, "windows", &["Eden"]).unwrap(), PathBuf::from("eden.exe"));
+        // Never the game, whatever its size; a word in the game's own name doesn't count.
+        assert!(never_the_game(Path::new("crashpad_handler.exe"), &["NX2navi"]));
+        assert!(never_the_game(Path::new("DKB-Setup.exe"), &["Donkey Kong"]));
+        assert!(never_the_game(Path::new("bin/x86_64-w64-mingw32-clang++.exe"), &["DKB"]));
+        assert!(!never_the_game(Path::new("NX2navi.exe"), &["NX2navi"]));
+        assert!(!never_the_game(Path::new("CrashTagTeam.exe"), &["Crash Tag Team Racing"]));
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[cfg(unix)]

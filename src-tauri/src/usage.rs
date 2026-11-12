@@ -244,7 +244,8 @@ async fn post(st: &App, a: &str, body: Value) -> Res<Value> {
             req = req.header("X-RL-Token", t);
         }
     }
-    let url = api();
+    // Gated by its action: usage and reports rest on their own and never mark the site Offline.
+    let url = format!("{}?a={a}", api());
     let r = crate::net::send(req, &url, a == "report").await?;
     let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);

@@ -2,13 +2,43 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-pub fn installer_command(installer: &Path, portable_dir: Option<&Path>, background: bool) -> Command {
+/// How the installer runs.
+pub enum Install {
+    /// No installer window; the launcher opens again after only when `reopen` is set.
+    Quiet { reopen: bool },
+    /// The installer's own window, which has its own button to open the launcher.
+    Shown,
+}
+
+/// The launcher was asked to close for good (a quit from the tray or the window, or `--quit`).
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+pub fn note_quitting() {
+    QUITTING.store(true, Ordering::Relaxed);
+}
+
+pub fn quitting() -> bool {
+    QUITTING.load(Ordering::Relaxed)
+}
+
+/// Whether the launcher opens again once its update is in. An update takes a while, and a player
+/// who closed the window meanwhile (to the tray, or quitting) is done with it: it stays closed.
+pub fn reopen_after(window_shown: bool, quitting: bool) -> bool {
+    window_shown && !quitting
+}
+
+pub fn installer_command(installer: &Path, portable_dir: Option<&Path>, how: Install) -> Command {
     let mut command = Command::new(installer);
-    if background {
+    if let Install::Quiet { reopen } = how {
         // /S: no installer window at all (the passive one flashed its Back button as it finished);
-        // the launcher says it is installing. /R: RecompLauncher opens again after.
-        command.args(["/S", "/UPDATE", "/R"]);
+        // the launcher says it is installing.
+        command.args(["/S", "/UPDATE"]);
+        // /R: RecompLauncher opens again after.
+        if reopen {
+            command.arg("/R");
+        }
     }
     if let Some(dir) = portable_dir {
         install_dir(&mut command, dir);
@@ -37,26 +67,47 @@ mod tests {
 
     #[test]
     fn installed_updates_keep_their_flags_and_no_directory_override() {
-        let command = installer_command(Path::new("installer.exe"), None, true);
+        let command = installer_command(Path::new("installer.exe"), None, Install::Quiet { reopen: true });
         assert_eq!(command.get_program(), OsStr::new("installer.exe"));
         assert_eq!(command.get_args().collect::<Vec<_>>(), ["/S", "/UPDATE", "/R"]);
-        let retry = installer_command(Path::new("installer.exe"), None, false);
+        let retry = installer_command(Path::new("installer.exe"), None, Install::Shown);
         assert_eq!(retry.get_args().count(), 0);
+    }
+
+    #[test]
+    fn an_update_the_player_closed_during_installs_without_reopening() {
+        let command = installer_command(Path::new("installer.exe"), None, Install::Quiet { reopen: false });
+        assert_eq!(command.get_args().collect::<Vec<_>>(), ["/S", "/UPDATE"]);
     }
 
     #[test]
     fn portable_updates_and_retries_put_the_directory_last() {
         let dir = Path::new(r"C:\Portable Games\RecompLauncher");
-        for background in [true, false] {
-            let command = installer_command(Path::new("installer.exe"), Some(dir), background);
-            let args: Vec<_> = command.get_args().collect();
-            assert_eq!(args.last().copied(), Some(OsStr::new(r"/D=C:\Portable Games\RecompLauncher")));
-            if background {
-                assert_eq!(&args[..args.len() - 1], ["/S", "/UPDATE", "/R"]);
-            } else {
-                assert_eq!(args.len(), 1);
-            }
-        }
+        let quiet = installer_command(Path::new("installer.exe"), Some(dir), Install::Quiet { reopen: true });
+        let quiet_args: Vec<_> = quiet.get_args().collect();
+        assert_eq!(quiet_args, ["/S", "/UPDATE", "/R", r"/D=C:\Portable Games\RecompLauncher"]);
+        let closed = installer_command(Path::new("installer.exe"), Some(dir), Install::Quiet { reopen: false });
+        let closed_args: Vec<_> = closed.get_args().collect();
+        assert_eq!(closed_args, ["/S", "/UPDATE", r"/D=C:\Portable Games\RecompLauncher"]);
+        let shown = installer_command(Path::new("installer.exe"), Some(dir), Install::Shown);
+        let shown_args: Vec<_> = shown.get_args().collect();
+        assert_eq!(shown_args, [r"/D=C:\Portable Games\RecompLauncher"]);
+    }
+
+    #[test]
+    fn the_launcher_reopens_only_when_its_window_is_still_open() {
+        assert!(reopen_after(true, false));
+    }
+
+    #[test]
+    fn closing_to_the_tray_during_an_update_keeps_it_closed() {
+        assert!(!reopen_after(false, false));
+    }
+
+    #[test]
+    fn quitting_during_an_update_keeps_it_closed() {
+        assert!(!reopen_after(true, true));
+        assert!(!reopen_after(false, true));
     }
 
     #[cfg(windows)]

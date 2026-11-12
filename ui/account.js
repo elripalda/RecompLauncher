@@ -174,11 +174,21 @@ async function loadSaves(id) {
   if (S.view === 'game' && S.arg === id && S.tab === 'saves') refreshGame();
 }
 const FROM = { player: N_('You picked this folder'), developer: N_('Its developer says it saves here'), catalog: N_('RecompLauncher knows it saves here'), found: N_('Found while you played'), game: N_('In the game\'s folder') };
+const SHARE_SAVES = N_('Share saves between versions');
+const SHARE_SAVES_HELP = N_('Ask before copying a newer save from another installed version. Requires a single save file in a known location.');
+const saveShareTitle = (id) => !subOf(id) && verGroup(byId(id))?.id;
+const saveShareOn = (title) => ((S.settings.ui || {}).save_share_titles || []).includes(title);
+async function toggleSaveShare(title) {
+  const current = (S.settings.ui || {}).save_share_titles || [];
+  await saveUi({ save_share_titles: current.includes(title) ? current.filter((x) => x !== title) : [...current, title] }, true);
+}
 function savesTab(a) {
   const id = a.id, s = S.saves[id], g = S.library[id] || {};
   if (!s || s === 'loading') { if (!s) loadSaves(id); return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading…'))}</p></div></div>`; }
   if (s.error) return `<div class="stack"><div class="card"><p style="margin:0">${esc(t(s.error))}</p></div></div>`;
   const signed = s.signedIn, on = s.cloudOn === true;
+  const shareTitle = saveShareTitle(id);
+  const shareCard = shareTitle ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t(SHARE_SAVES))}</b><span>${esc(t(SHARE_SAVES_HELP))}</span></div><button type="button" class="switch" role="switch" aria-checked="${saveShareOn(shareTitle)}" aria-label="${esc(t(SHARE_SAVES))}" data-act="saves-share" data-id="${esc(id)}"></button></div></div>` : '';
   // Several folders the player picked (a launcher with more than one game): each can come off the list.
   const many = s.spots.filter((p) => p.from === 'player').length > 1;
   const where = s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${p.from === 'found' ? `<button type="button" class="btn sm" data-act="saves-forget" data-id="${esc(id)}">${esc(t('Not right?'))}</button>` : ''}${many ? `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>` : `${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`}</span></div>`).join('')
@@ -189,7 +199,7 @@ function savesTab(a) {
       ${on ? cloudStatus(id, s) : ''}
       ${on && Array.isArray(s.cloud) ? (s.cloud.length ? s.cloud.map((c) => copyRow(id, c, 'v', c.v, c.hash === s.synced)).join('') : `<p class="set-empty">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`) : ''}</div>`;
   const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`;
-  return `<div class="stack">${cloudCard}
+  return `<div class="stack">${shareCard}${cloudCard}
     <div class="card"><div class="card-h"><h3>${esc(t('On this PC'))}</h3><span class="acts"><button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}" title="${esc(t('Where the game keeps its saves'))}">${esc(t('Open the Game\'s Save Folder'))}</button><button type="button" class="btn sm" data-act="saves-open-backups" data-id="${esc(id)}" title="${esc(t('Where the launcher keeps its copies of them'))}">${esc(t('Open Backups'))}</button><button type="button" class="btn sm main" data-act="saves-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Back up now'))}</button></span></div>${local}</div>
     <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${where}</div></div>`;
 }
@@ -204,7 +214,12 @@ function cloudStatus(id, s) {
     ? `<button type="button" class="btn sm" data-act="saves-check" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Check Again'))}</button>`
     : `<button type="button" class="btn sm main" data-act="saves-upload-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(s.busy ? t('Uploading…') : t('Upload Now'))}</button>`;
   const help = s.failed && s.status ? `<p class="set-note">${esc(t('Still no answer. Check whether the website is having trouble:'))} <button type="button" class="linkish" data-act="url" data-url="${esc(s.status)}">${esc(s.status.replace(/^https:\/\//, ''))}</button></p>` : '';
-  return `<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b></div><span class="acts">${btn}</span></div>${help}`;
+  // Why it's still waiting: the cloud is full, or the last try didn't get through and the next is
+  // on its way by itself.
+  const why = s.waiting && s.full ? t('Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.')
+    : s.waiting && s.retryIn ? tf('The last try didn\'t get through. Next try in {when}.', { when: s.retryIn >= 60 ? tf('{n} min', { n: Math.ceil(s.retryIn / 60) }) : tf('{n} s', { n: s.retryIn }) })
+    : '';
+  return `<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b>${why ? `<span>${esc(why)}</span>` : ''}</div><span class="acts">${btn}</span></div>${help}`;
 }
 function copyRow(id, c, k, v, current) {
   const when = c.when || c.made;
@@ -219,7 +234,8 @@ let savesAllBusy = null;
 async function loadSavesAll() {
   if (savesAllBusy) return savesAllBusy;
   savesAllBusy = (async () => {
-    try { S.savesAll = await invoke('saves_overview'); } catch (e) { S.savesAll = { error: String(e && e.message ? e.message : e), games: [] }; }
+    // Never left empty: an empty answer would ask again on every redraw, without end.
+    try { S.savesAll = (await invoke('saves_overview')) || { games: [] }; } catch (e) { S.savesAll = { error: String(e && e.message ? e.message : e), games: [] }; }
     savesAllBusy = null;
     if (S.view === 'saves') render(true);
   })();
@@ -302,6 +318,30 @@ async function ask(title, text, buttons) {
   });
 }
 async function beforePlay(id) {
+  if (!(await beforeCloudPlay(id))) return false;
+  const title = saveShareTitle(id);
+  if (!title || !saveShareOn(title)) return true;
+  let offer;
+  try { offer = await invoke('saves_share', { id, selection: null }); } catch (e) { fail(e); return true; }
+  if (!offer) return true;
+  const current = offer.destinationWhen == null ? t('No save yet') : whenText(offer.destinationWhen);
+  const newer = whenText(offer.sourceWhen);
+  const compatibility = t('Copy only if both versions support the same save format.');
+  const picked = await ask(tf('Use the newer save from {name}?', { name: offer.name }),
+    `<div class="pick-two"><div class="pick-card"><b>${esc(t('This version'))}</b><span>${esc(current)}</span></div><div class="pick-card"><b>${esc(offer.name)}</b><span>${esc(newer)}</span></div></div><p>${esc(compatibility)} ${esc(t('If you copy it, the current save is backed up first.'))}</p>`,
+    [{ label: t('Keep saves separate'), sub: current, v: 'keep', focus: true },
+      { label: t('Copy the newer save'), sub: `${newer} · ${compatibility}`, v: 'copy', main: true },
+      { label: t('Turn off sharing'), v: 'off', last: true }]);
+  if (picked == null) return false;
+  if (picked === 'off' && saveShareOn(title)) await toggleSaveShare(title);
+  if (picked === 'copy') {
+    try { await invoke('saves_share', { id, selection: offer.selection }); } catch (e) { fail(e); return false; }
+    savesChanged(id);
+    toast(t('The newer save was copied.'));
+  }
+  return true;
+}
+async function beforeCloudPlay(id) {
   const g = S.library[id];
   if (!g || !(S.account && S.account.signedIn)) return true;
   // Asked once per game, unless the player said not to ask (Settings, Account).
@@ -385,13 +425,18 @@ window.accountAct = async (act, el) => {
       toast(on ? t('Cloud saves are on for it.') : t('Cloud saves are off for it. What\'s in the cloud stays there.'));
       return loadSaves(id);
     }
+    case 'saves-share': {
+      const title = saveShareTitle(id);
+      if (title) await toggleSaveShare(title);
+      return refreshGame();
+    }
     case 'saves-now': {
       el.disabled = true;
       try { const c = await invoke('saves_backup', { id }); toast(c ? t('Backed up.') : t('Nothing changed since the last copy.')); } catch (e) { fail(e); }
       if (S.view === 'saves') { el.disabled = false; return loadSavesAll(); }
       return loadSaves(id);
     }
-    case 'saves-game': S.nextTab = 'saves'; return go('game', id, el.querySelector('.slot-art'));
+    case 'saves-game': closeMenu(); S.nextTab = 'saves'; return go('game', id, el.querySelector('.slot-art'));
     case 'saves-root-open': return invoke('saves_open_root').catch(fail);
     case 'saves-root-pick': case 'saves-root-reset': {
       let path = null;
