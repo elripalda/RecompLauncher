@@ -42,6 +42,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.41" date="2026-11-12">
+      <description>
+        <p>Keep Steam in Sync, Sync Now for cloud saves, shared game media across versions, and a smoother Downloads graph.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.40" date="2026-11-12">
       <description>
         <p>A window that opens once drawn, a clearer tray icon, smoother Big Picture on Steam Deck, and crash reports on GitHub.</p>

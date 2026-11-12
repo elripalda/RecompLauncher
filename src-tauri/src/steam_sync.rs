@@ -236,6 +236,15 @@ fn write_whole(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
     fs::rename(&tmp, file)
 }
 
+/// Steam's collections file as it was before the launcher first wrote it stays beside it, like the
+/// shortcuts file's backup, so the player's collections can always be put back by hand.
+fn keep_collections_backup(dir: &Path, old: &str) {
+    let backup = dir.join("cloud-storage-namespace-1.json.recomplauncher-backup");
+    if !backup.exists() {
+        let _ = fs::write(backup, old);
+    }
+}
+
 /// Put the collection right in one account's cloud storage folder. Ok(false): nothing to change.
 fn sync_collection(cfg: &Path, add: &[u32], remove: &[u32]) -> std::io::Result<bool> {
     let dir = cfg.join("cloudstorage");
@@ -246,6 +255,7 @@ fn sync_collection(cfg: &Path, add: &[u32], remove: &[u32]) -> std::io::Result<b
     let Some((new, key)) = with_collection(&old, add, remove, crate::library::now()) else { return Ok(false) };
     let modified = dir.join("cloud-storage-namespace-1.modified.json");
     let old_mod = fs::read_to_string(&modified).unwrap_or_default();
+    keep_collections_backup(&dir, &old);
     write_whole(&file, new.as_bytes())?;
     if let Some(m) = with_modified(&old_mod, &key) {
         write_whole(&modified, m.as_bytes())?;
@@ -533,7 +543,7 @@ mod tests {
 
     #[test]
     fn reads_the_game_a_launch_option_plays() {
-        assert_eq!(played_id("--play zelda64recomp").as_deref(), Some("zelda64recomp"));
+        assert_eq!(played_id("--play some-recomp").as_deref(), Some("some-recomp"));
         assert_eq!(played_id("'run' 'io.github.RecompLauncher' --play cogbox--gow2").as_deref(), Some("cogbox--gow2"));
         assert_eq!(played_id("--bigpicture"), None);
     }
@@ -628,6 +638,17 @@ mod tests {
         let (out, key) = with_collection(&file, &[5], &[], 2).unwrap();
         assert_eq!(key, "user-collections.uc-abc");
         assert_eq!(serde_json::from_str::<Vec<Value>>(&out).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_collections_file_is_backed_up_once_before_the_first_write() {
+        let d = std::env::temp_dir().join(format!("rl-steam-backup-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        keep_collections_backup(&d, "the player's own");
+        keep_collections_backup(&d, "after the launcher wrote");
+        assert_eq!(fs::read_to_string(d.join("cloud-storage-namespace-1.json.recomplauncher-backup")).unwrap(), "the player's own");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
