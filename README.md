@@ -98,7 +98,7 @@ can read exactly what it does, or build it yourself with the steps in
 
 ## About
 
-Made by [Ripalda](https://github.com/elripalda). If you'd like to support it: [Ko-fi](https://ko-fi.com/ripalda).
+Made by [Ripalda](https://github.com/elripalda). If you'd like to support it: [Ko-fi](https://ko-fi.com/recomp).
 
 RecompLauncher is free to download and use. It isn't affiliated with or endorsed by any game's
 makers or platform holders.
