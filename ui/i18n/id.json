@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "Pakai save yang lebih baru dari {name}?",
  "Windows couldn't make the shortcut.": "Windows tidak bisa membuat pintasan.",
  "Windows' prompt was declined, so the installer didn't run.": "Konfirmasi Windows ditolak, jadi installer tidak berjalan.",
- "{n} players": "{n} pemain"
+ "{n} players": "{n} pemain",
+ "The last try didn't get through. Next try in {when}.": "Percobaan terakhir tidak berhasil. Coba lagi dalam {when}.",
+ "Your cloud saves are full (150 MB).": "Simpanan cloud-mu penuh (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Simpanan cloud-mu penuh. Hapus salinan cloud lama untuk memberi ruang; unggahan akan mulai lagi dengan sendirinya.",
+ "{n} s": "{n} dtk"
 }

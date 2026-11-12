@@ -1090,5 +1090,9 @@
  "That plugin isn't installed.": "Cette extension n'est pas installée.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "Le stick gauche se déplace dans le lanceur comme la croix directionnelle. Désactivez-le si votre stick dérive ou si vous l'utilisez comme souris; la croix directionnelle fonctionne toujours.",
  "This game builds itself from its project files, which need Git. Install Git for Windows from git-scm.com, then press Install again.": "Ce jeu se compile à partir de ses fichiers de projet, qui nécessitent Git. Installez Git for Windows à partir de git-scm.com, puis appuyez de nouveau sur Installer.",
- "Use the newer save from {name}?": "Utiliser la sauvegarde plus récente de {name}?"
+ "Use the newer save from {name}?": "Utiliser la sauvegarde plus récente de {name}?",
+ "The last try didn't get through. Next try in {when}.": "La dernière tentative n'a pas abouti. Prochain essai dans {when}.",
+ "Your cloud saves are full (150 MB).": "Vos sauvegardes infonuagiques sont pleines (150 Mo).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Vos sauvegardes infonuagiques sont pleines. Supprimez d'anciennes copies pour faire de la place; les envois reprennent d'eux-mêmes.",
+ "{n} s": "{n} s"
 }

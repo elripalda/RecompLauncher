@@ -36,7 +36,11 @@ pub const LONGER: Duration = Duration::from_secs(20);
 pub const TRANSFER: Duration = Duration::from_secs(60);
 
 const FIRST_WAIT: u64 = 30;
+/// The longest rest for release info, pictures, saves and usage.
 const MOST_WAIT: u64 = 3600;
+/// The longest the site itself rests (the list, the account, updates): five minutes, then it's
+/// asked again (see probe), so an Offline mark never sticks for hours after the site is back.
+const SITE_MOST_WAIT: u64 = 300;
 /// A request the player asked for themselves still waits this long after the last try.
 const PLAYER_GAP: Duration = Duration::from_secs(30);
 
@@ -96,10 +100,20 @@ fn host(url: &str) -> String {
 /// trouble with one repo, which says nothing about the site), which rests on its own, and pictures
 /// (a page of covers asked for at once can meet the site's limit, which says nothing about the
 /// rest of it: the list, updates and reports carry on).
+///
+/// Cloud saves going up or coming down rest on their own ("{host}/saves"): a big upload that's cut
+/// off or too slow says nothing about the list or the account. So does usage and logs
+/// ("{host}/stats"). Only the site's own gate marks it Offline.
 fn key(url: &str) -> String {
     let h = host(url);
-    let path = reqwest::Url::parse(url).map(|u| u.path().to_string()).unwrap_or_default();
-    if path.ends_with("/api/gh.php") {
+    let parsed = reqwest::Url::parse(url).ok();
+    let path = parsed.as_ref().map(|u| u.path().to_string()).unwrap_or_default();
+    let action = parsed.as_ref().and_then(|u| u.query_pairs().find(|(k, _)| k == "a").map(|(_, v)| v.to_string())).unwrap_or_default();
+    if path.ends_with("/api/launcher.php") && matches!(action.as_str(), "save-put" | "save-get" | "save-delete") {
+        format!("{h}/saves")
+    } else if path.ends_with("/api/launcher-ping.php") || path.ends_with("/api/logs.php") || (path.ends_with("/api/launcher.php") && matches!(action.as_str(), "events" | "hello" | "report")) {
+        format!("{h}/stats")
+    } else if path.ends_with("/api/gh.php") {
         format!("{h}/gh")
     } else if path.ends_with("/api/gl.php") {
         format!("{h}/gl")
@@ -115,13 +129,18 @@ fn is_api(k: &str) -> bool {
 }
 
 /// How long to wait after the `fails`-th failure in a row: a random time between half the step and
-/// the whole of it (never under 30 seconds, never over an hour; the first is 30 to 45 seconds).
-/// Steps: 30 s, 60 s, 2 min ... 1 h.
-fn wait_after(fails: u32, r: f64) -> u64 {
-    let step = FIRST_WAIT.saturating_mul(1u64 << fails.saturating_sub(1).min(20)).min(MOST_WAIT);
-    let lo = (step / 2).max(FIRST_WAIT);
-    let hi = step.max(lo + 15).min(MOST_WAIT);
-    lo + ((hi - lo) as f64 * r).round() as u64
+/// the whole of it (never under 30 seconds, never over `most`; the first is 30 to 45 seconds).
+/// Steps: 30 s, 60 s, 2 min ... up to `most`.
+fn wait_after(fails: u32, r: f64, most: u64) -> u64 {
+    let step = FIRST_WAIT.saturating_mul(1u64 << fails.saturating_sub(1).min(20)).min(most);
+    let lo = (step / 2).max(FIRST_WAIT).min(most);
+    let hi = step.max(lo + 15).min(most);
+    lo + ((hi.saturating_sub(lo)) as f64 * r).round() as u64
+}
+
+/// The longest a gate rests: five minutes for the site itself, an hour for the rest.
+fn most_wait(k: &str) -> u64 {
+    if is_api(k) { SITE_MOST_WAIT } else { MOST_WAIT }
 }
 
 /// Retry-After, in seconds or as a date. Capped at six hours.
@@ -142,13 +161,40 @@ pub fn trouble_status(code: u16) -> bool {
     matches!(code, 403 | 408 | 429) || (500..600).contains(&code)
 }
 
+/// Called once each time the site comes back after being Offline (lib.rs asks for the list again).
+static ON_BACK: OnceLock<fn(&AppHandle)> = OnceLock::new();
+
+pub fn on_back(f: fn(&AppHandle)) {
+    let _ = ON_BACK.set(f);
+}
+
 fn set_offline(v: bool, answered: bool) {
     let busy_changed = v && BUSY.swap(answered, Ordering::Relaxed) != answered;
-    if OFFLINE.swap(v, Ordering::Relaxed) != v || busy_changed {
+    let was = OFFLINE.swap(v, Ordering::Relaxed);
+    if was != v || busy_changed {
+        if was != v {
+            crate::trail::note(if v { "note: the site is resting (Offline)" } else { "note: Online again" });
+        }
         if let Some(app) = APP.get() {
             let _ = app.emit("net", serde_json::json!({ "offline": v, "busy": v && answered }));
+            if was && !v {
+                if let Some(f) = ON_BACK.get() {
+                    f(app);
+                }
+            }
         }
     }
+}
+
+/// While Offline: once the site's rest is over, one quick question to it (the list's headers,
+/// nothing downloaded). An answer clears Offline by itself, with nothing for the player to do;
+/// no answer rests it again (five minutes at most).
+pub async fn probe(http: &reqwest::Client) -> bool {
+    let url = format!("{}/pc-catalog.json", base());
+    if !offline() || wait_left(&url) > 0 {
+        return false;
+    }
+    matches!(send(http.head(&url).timeout(QUICK), &url, false).await, Ok(r) if !trouble_status(r.status().as_u16()))
 }
 
 fn gate_rests(g: &HashMap<String, Gate>, k: &str, player: bool) -> bool {
@@ -214,10 +260,14 @@ fn went_badly_as(url: &str, after: Option<u64>, started: Instant, answered: bool
             gate.fails = gate.fails.saturating_add(1);
             gate.last_fail = Some(Instant::now());
         }
-        let mut secs = wait_after(gate.fails.max(1), random());
+        let mut secs = wait_after(gate.fails.max(1), random(), most_wait(&k));
         if let Some(a) = after {
             // The site said when: then, plus a little so everyone doesn't come back together.
+            // Still never past the gate's longest rest for the site itself.
             secs = secs.max(a + (a as f64 * 0.25 * random()).min(300.0) as u64);
+            if is_api(&k) {
+                secs = secs.min(SITE_MOST_WAIT);
+            }
         }
         let until = Instant::now() + Duration::from_secs(secs);
         // Never shortened by a later failure of the same outage.
@@ -232,7 +282,7 @@ fn went_badly_as(url: &str, after: Option<u64>, started: Instant, answered: bool
         }
         secs
     };
-    crate::trail::note(&format!("note: {k} was slow or busy; asking again in {secs}s"));
+    crate::trail::note(&format!("note: {k} was slow or busy; resting {secs}s"));
 }
 
 /// An answer came, but not one that makes sense (a hosting page instead of the list, say): treated
@@ -356,16 +406,21 @@ mod tests {
     #[test]
     fn waits_grow_and_stay_spread() {
         // First: 30 to 45 s. Then up to double each time, never over an hour.
-        assert_eq!(wait_after(1, 0.0), 30);
-        assert_eq!(wait_after(1, 1.0), 45);
-        assert_eq!(wait_after(2, 0.0), 30);
-        assert_eq!(wait_after(2, 1.0), 60);
-        assert_eq!(wait_after(5, 1.0), 480);
-        assert_eq!(wait_after(5, 0.0), 240);
-        assert_eq!(wait_after(8, 1.0), 3600);
-        assert_eq!(wait_after(40, 1.0), 3600);
+        let m = MOST_WAIT;
+        assert_eq!(wait_after(1, 0.0, m), 30);
+        assert_eq!(wait_after(1, 1.0, m), 45);
+        assert_eq!(wait_after(2, 0.0, m), 30);
+        assert_eq!(wait_after(2, 1.0, m), 60);
+        assert_eq!(wait_after(5, 1.0, m), 480);
+        assert_eq!(wait_after(5, 0.0, m), 240);
+        assert_eq!(wait_after(8, 1.0, m), 3600);
+        assert_eq!(wait_after(40, 1.0, m), 3600);
         // At the top, launchers are still spread over half an hour.
-        assert_eq!(wait_after(40, 0.0), 1800);
+        assert_eq!(wait_after(40, 0.0, m), 1800);
+        // The site itself never rests more than five minutes.
+        assert_eq!(wait_after(40, 1.0, SITE_MOST_WAIT), 300);
+        assert_eq!(wait_after(40, 0.0, SITE_MOST_WAIT), 150);
+        assert_eq!(wait_after(1, 1.0, SITE_MOST_WAIT), 45);
     }
 
     #[test]
@@ -424,8 +479,60 @@ mod tests {
         assert!(!resting(picture, false), "a stale picture failure reopened its cooldown");
     }
 
+    /// The tests that read or change the site's Offline mark, one at a time.
+    static SITE: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn saves_and_usage_rest_on_their_own() {
+        let b = base();
+        for a in ["save-put", "save-get", "save-delete"] {
+            assert_eq!(key(&format!("{b}/api/launcher.php?a={a}&game=x")), "recomplauncher.com/saves", "{a}");
+        }
+        for a in ["events", "hello", "report"] {
+            assert_eq!(key(&format!("{b}/api/launcher.php?a={a}")), "recomplauncher.com/stats", "{a}");
+        }
+        assert_eq!(key(&format!("{b}/api/launcher-ping.php")), "recomplauncher.com/stats");
+        assert_eq!(key(&format!("{b}/api/logs.php")), "recomplauncher.com/stats");
+        // The account, the saves list and the list of games are the site itself.
+        for u in [format!("{b}/api/launcher.php?a=me"), format!("{b}/api/launcher.php?a=saves&game=x"), format!("{b}/api/launcher.php"), format!("{b}/pc-catalog.json")] {
+            assert_eq!(key(&u), "recomplauncher.com", "{u}");
+        }
+    }
+
+    #[test]
+    fn a_failed_save_never_takes_the_site_offline() {
+        let _one = SITE.lock().unwrap_or_else(|e| e.into_inner());
+        let (save, list) = (format!("{}/api/launcher.php?a=save-put&game=g", base()), format!("{}/pc-catalog.json", base()));
+        went_well(&list);
+        for _ in 0..4 {
+            went_badly_as(&save, None, Instant::now(), true);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(!offline(), "a cut-off upload isn't the site being down");
+        assert!(!resting(&list, false), "the list, account and updates carry on");
+        assert!(resting(&save, false), "uploads wait their own time");
+        went_well(&save);
+        assert!(!resting(&save, false));
+    }
+
+    #[test]
+    fn the_site_rests_five_minutes_at_most() {
+        let _one = SITE.lock().unwrap_or_else(|e| e.into_inner());
+        let list = format!("{}/pc-catalog.json", base());
+        went_well(&list);
+        for _ in 0..12 {
+            went_badly(&list, Some(6 * 3600), Instant::now());
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(offline());
+        assert!(wait_left(&list) <= SITE_MOST_WAIT, "rests {}s", wait_left(&list));
+        went_well(&list);
+        assert!(!offline());
+    }
+
     #[test]
     fn offline_state_stays_ordered_with_concurrent_gate_transitions() {
+        let _one = SITE.lock().unwrap_or_else(|e| e.into_inner());
         let url = format!("{}/api/launcher.php", base());
         let round = std::sync::Barrier::new(3);
         let mismatches = AtomicU64::new(0);

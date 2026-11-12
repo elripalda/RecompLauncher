@@ -214,7 +214,12 @@ function cloudStatus(id, s) {
     ? `<button type="button" class="btn sm" data-act="saves-check" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Check Again'))}</button>`
     : `<button type="button" class="btn sm main" data-act="saves-upload-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(s.busy ? t('Uploading…') : t('Upload Now'))}</button>`;
   const help = s.failed && s.status ? `<p class="set-note">${esc(t('Still no answer. Check whether the website is having trouble:'))} <button type="button" class="linkish" data-act="url" data-url="${esc(s.status)}">${esc(s.status.replace(/^https:\/\//, ''))}</button></p>` : '';
-  return `<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b></div><span class="acts">${btn}</span></div>${help}`;
+  // Why it's still waiting: the cloud is full, or the last try didn't get through and the next is
+  // on its way by itself.
+  const why = s.waiting && s.full ? t('Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.')
+    : s.waiting && s.retryIn ? tf('The last try didn\'t get through. Next try in {when}.', { when: s.retryIn >= 60 ? tf('{n} min', { n: Math.ceil(s.retryIn / 60) }) : tf('{n} s', { n: s.retryIn }) })
+    : '';
+  return `<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b>${why ? `<span>${esc(why)}</span>` : ''}</div><span class="acts">${btn}</span></div>${help}`;
 }
 function copyRow(id, c, k, v, current) {
   const when = c.when || c.made;

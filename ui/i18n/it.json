@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "Usare il salvataggio più recente di {name}?",
  "Windows couldn't make the shortcut.": "Windows non è riuscito a creare il collegamento.",
  "Windows' prompt was declined, so the installer didn't run.": "La richiesta di Windows è stata rifiutata, quindi il programma di installazione non è stato eseguito.",
- "{n} players": "{n} giocatori"
+ "{n} players": "{n} giocatori",
+ "The last try didn't get through. Next try in {when}.": "L'ultimo tentativo non è andato a buon fine. Prossimo tentativo tra {when}.",
+ "Your cloud saves are full (150 MB).": "I tuoi salvataggi cloud sono pieni (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "I tuoi salvataggi cloud sono pieni. Elimina le vecchie copie cloud per fare spazio; i caricamenti ripartono da soli.",
+ "{n} s": "{n} s"
 }

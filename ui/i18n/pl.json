@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "Użyć nowszego zapisu z {name}?",
  "Windows couldn't make the shortcut.": "Windows nie mógł utworzyć skrótu.",
  "Windows' prompt was declined, so the installer didn't run.": "Monit systemu Windows został odrzucony, więc instalator się nie uruchomił.",
- "{n} players": "{n} gracz|{n} graczy|{n} graczy"
+ "{n} players": "{n} gracz|{n} graczy|{n} graczy",
+ "The last try didn't get through. Next try in {when}.": "Ostatnia próba się nie powiodła. Następna próba za {when}.",
+ "Your cloud saves are full (150 MB).": "Twoje zapisy w chmurze są pełne (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Twoje zapisy w chmurze są pełne. Usuń stare kopie w chmurze, aby zrobić miejsce; wysyłanie wznowi się samo.",
+ "{n} s": "{n} s|{n} s|{n} s"
 }

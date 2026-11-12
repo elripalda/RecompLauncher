@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "Usar o save mais recente de {name}?",
  "Windows couldn't make the shortcut.": "O Windows não conseguiu criar o atalho.",
  "Windows' prompt was declined, so the installer didn't run.": "O aviso do Windows foi recusado, então o instalador não foi executado.",
- "{n} players": "{n} jogadores"
+ "{n} players": "{n} jogadores",
+ "The last try didn't get through. Next try in {when}.": "A última tentativa não passou. Próxima tentativa em {when}.",
+ "Your cloud saves are full (150 MB).": "Seus saves na nuvem estão cheios (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Seus saves na nuvem estão cheios. Apague cópias antigas na nuvem para liberar espaço; os envios recomeçam sozinhos.",
+ "{n} s": "{n} s"
 }

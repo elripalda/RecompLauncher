@@ -7463,13 +7463,20 @@ function openLinkedGame(id) {
   invoke('take_link').catch(() => {});
   clearTimeout(linkWait);
   const started = Date.now();
-  const tryOpen = () => {
+  let asked = false;
+  const tryOpen = async () => {
     const ready = S.cat && S.cat.apps && S.cat.apps.length && !document.querySelector('.oob');
     if (!ready && Date.now() - started < 120000) { linkWait = setTimeout(tryOpen, 400); return; }
-    const a = (S.cat && byId(id)) || null;
-    const known = a || S.library[id];
     const tv = document.body.classList.contains('tv-on') && window.tvGoto;
-    if (known) { if (tv) window.tvGoto('game', id); else go('game', id); return; }
+    const known = () => (S.cat && byId(id)) || S.library[id];
+    // Not in the list on disk: it may be newer than that list. Asked for once, then looked at again.
+    if (!known() && !asked) {
+      asked = true;
+      await loadCatalog(true);
+      render(true);
+      if (window.tvRefresh) window.tvRefresh();
+    }
+    if (known()) { if (tv) window.tvGoto('game', id); else go('game', id); return; }
     if (tv) window.tvGoto('discover'); else go('discover');
     toast(t('That game isn\'t in RecompLauncher yet'), true);
   };

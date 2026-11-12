@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "De nieuwere opgeslagen game van {name} gebruiken?",
  "Windows couldn't make the shortcut.": "Windows kon de snelkoppeling niet maken.",
  "Windows' prompt was declined, so the installer didn't run.": "De Windows-melding is geweigerd, dus het installatieprogramma is niet uitgevoerd.",
- "{n} players": "{n} spelers"
+ "{n} players": "{n} spelers",
+ "The last try didn't get through. Next try in {when}.": "De laatste poging kwam niet door. Volgende poging over {when}.",
+ "Your cloud saves are full (150 MB).": "Je cloudsaves zijn vol (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Je cloudsaves zijn vol. Verwijder oude cloudkopieën om ruimte te maken; uploaden begint daarna vanzelf weer.",
+ "{n} s": "{n} s"
 }

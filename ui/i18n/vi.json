@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "Dùng dữ liệu lưu mới hơn từ {name}?",
  "Windows couldn't make the shortcut.": "Windows không thể tạo lối tắt.",
  "Windows' prompt was declined, so the installer didn't run.": "Lời nhắc của Windows bị từ chối nên trình cài đặt không chạy.",
- "{n} players": "{n} người chơi"
+ "{n} players": "{n} người chơi",
+ "The last try didn't get through. Next try in {when}.": "Lần thử trước không thành công. Thử lại sau {when}.",
+ "Your cloud saves are full (150 MB).": "Bộ nhớ lưu game trên đám mây của bạn đã đầy (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Bộ nhớ lưu game trên đám mây đã đầy. Xóa các bản sao cũ trên đám mây để có chỗ; việc tải lên sẽ tự tiếp tục.",
+ "{n} s": "{n} giây"
 }

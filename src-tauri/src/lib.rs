@@ -5809,6 +5809,22 @@ fn net_state() -> Value {
     json!({ "offline": net::offline(), "busy": net::busy() })
 }
 
+/// The site answered again after being Offline: the list asked for again (Discover and game
+/// links see what's new) and saves waiting to go up are sent.
+fn back_online(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let st = app.state::<App>();
+        if let Ok(f) = catalog::catalog_refresh(&st.http, &st.dir).await {
+            if !f.offline {
+                note_new_apps(&app, &st, &f.data);
+                let _ = app.emit("catalog-fresh", ());
+            }
+        }
+        cloud::upload_pending(&app).await;
+    });
+}
+
 /// The list for the window. Without `force`, the copy on disk comes back at once (the window never
 /// waits on the network for it) and, when it's more than six hours old, a new one is asked for in
 /// the background and sent as "catalog-fresh". `force`: the player pressed Refresh.
@@ -5832,7 +5848,9 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
             return Ok(f);
         }
     }
-    let mut f = catalog::catalog(&st.http, &st.dir, force).await?;
+    // Refresh, or a game link the list on disk doesn't have yet: asked straight away, resting or
+    // not (one question, and the player's own doing).
+    let mut f = if force { net::now(catalog::catalog(&st.http, &st.dir, true)).await? } else { catalog::catalog(&st.http, &st.dir, false).await? };
     merged_mine(&app, &st, &mut f.data);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
@@ -7982,6 +8000,21 @@ pub fn run() {
                 }
             }
             net::init(app.handle());
+            net::on_back(back_online);
+            // While Offline, the site is asked again once its rest is over (five minutes at most),
+            // so the mark clears by itself when the site is back.
+            {
+                let app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                        if net::offline() {
+                            let http = app.state::<App>().http.clone();
+                            net::probe(&http).await;
+                        }
+                    }
+                });
+            }
             proton::set_data(&dir);
             // The files an update moved aside (they were in use while it copied).
             #[cfg(windows)]

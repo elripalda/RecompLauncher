@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "Використати новіше збереження з {name}?",
  "Windows couldn't make the shortcut.": "Windows не вдалося створити ярлик.",
  "Windows' prompt was declined, so the installer didn't run.": "Запит Windows відхилено, тому інсталятор не запустився.",
- "{n} players": "{n} гравець|{n} гравці|{n} гравців"
+ "{n} players": "{n} гравець|{n} гравці|{n} гравців",
+ "The last try didn't get through. Next try in {when}.": "Остання спроба не вдалася. Наступна спроба через {when}.",
+ "Your cloud saves are full (150 MB).": "Ваші хмарні збереження заповнені (150 МБ).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Ваші хмарні збереження заповнені. Видаліть старі копії в хмарі, щоб звільнити місце; вивантаження відновиться само.",
+ "{n} s": "{n} с|{n} с|{n} с"
 }

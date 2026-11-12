@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "{name} içindeki daha yeni kayıt kullanılsın mı?",
  "Windows couldn't make the shortcut.": "Windows kısayolu oluşturamadı.",
  "Windows' prompt was declined, so the installer didn't run.": "Windows istemi reddedildi, bu yüzden yükleyici çalışmadı.",
- "{n} players": "{n} oyuncu"
+ "{n} players": "{n} oyuncu",
+ "The last try didn't get through. Next try in {when}.": "Son deneme ulaşmadı. Sonraki deneme {when} içinde.",
+ "Your cloud saves are full (150 MB).": "Bulut kayıtların dolu (150 MB).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Bulut kayıtların dolu. Yer açmak için eski bulut kopyalarını sil; yüklemeler kendiliğinden yeniden başlar.",
+ "{n} s": "{n} sn"
 }

@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "هل تريد استخدام ملف الحفظ الأحدث من {name}؟",
  "Windows couldn't make the shortcut.": "تعذّر على Windows إنشاء الاختصار.",
  "Windows' prompt was declined, so the installer didn't run.": "رُفضت رسالة Windows، لذا لم يعمل برنامج التثبيت.",
- "{n} players": "لاعبان|{n} لاعبين|{n} لاعبًا|{n} لاعب"
+ "{n} players": "لاعبان|{n} لاعبين|{n} لاعبًا|{n} لاعب",
+ "The last try didn't get through. Next try in {when}.": "لم تنجح المحاولة الأخيرة. المحاولة التالية خلال {when}.",
+ "Your cloud saves are full (150 MB).": "حفظاتك السحابية ممتلئة (150 ميغابايت).",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "حفظاتك السحابية ممتلئة. احذف النسخ السحابية القديمة لإفساح المجال؛ وسيُستأنف الرفع تلقائيًا.",
+ "{n} s": "{n} ث|{n} ث|{n} ث|{n} ث"
 }

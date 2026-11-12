@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "ใช้เซฟที่ใหม่กว่าจาก {name} ไหม",
  "Windows couldn't make the shortcut.": "Windows สร้างช็อตคัตไม่ได้",
  "Windows' prompt was declined, so the installer didn't run.": "มีการปฏิเสธข้อความยืนยันของ Windows ตัวติดตั้งจึงไม่ได้รัน",
- "{n} players": "ผู้เล่น {n} คน"
+ "{n} players": "ผู้เล่น {n} คน",
+ "The last try didn't get through. Next try in {when}.": "การลองครั้งล่าสุดไม่สำเร็จ จะลองอีกครั้งใน {when}",
+ "Your cloud saves are full (150 MB).": "เซฟบนคลาวด์ของคุณเต็มแล้ว (150 MB)",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "เซฟบนคลาวด์ของคุณเต็มแล้ว ลบสำเนาเก่าบนคลาวด์เพื่อเพิ่มพื้นที่ แล้วการอัปโหลดจะเริ่มใหม่เอง",
+ "{n} s": "{n} วิ"
 }

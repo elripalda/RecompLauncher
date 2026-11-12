@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "使用来自 {name} 的较新存档吗？",
  "Windows couldn't make the shortcut.": "Windows 无法创建快捷方式。",
  "Windows' prompt was declined, so the installer didn't run.": "Windows 提示被拒绝，因此安装程序没有运行。",
- "{n} players": "{n} 名玩家"
+ "{n} players": "{n} 名玩家",
+ "The last try didn't get through. Next try in {when}.": "上次尝试没有成功。{when}后再试。",
+ "Your cloud saves are full (150 MB).": "你的云存档已满（150 MB）。",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "你的云存档已满。删除旧的云端副本以腾出空间，上传会自动重新开始。",
+ "{n} s": "{n} 秒"
 }

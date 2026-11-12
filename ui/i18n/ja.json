@@ -2938,5 +2938,9 @@
  "Use the newer save from {name}?": "{name} の新しいセーブデータを使いますか？",
  "Windows couldn't make the shortcut.": "Windows でショートカットを作成できませんでした。",
  "Windows' prompt was declined, so the installer didn't run.": "Windows の確認が拒否されたため、インストーラーは実行されませんでした。",
- "{n} players": "{n} 人プレイ"
+ "{n} players": "{n} 人プレイ",
+ "The last try didn't get through. Next try in {when}.": "前回の送信は届きませんでした。次は{when}後に試します。",
+ "Your cloud saves are full (150 MB).": "クラウドセーブがいっぱいです（150 MB）。",
+ "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "クラウドセーブがいっぱいです。古いクラウドのコピーを削除して空きを作ってください。アップロードは自動で再開します。",
+ "{n} s": "{n}秒"
 }
