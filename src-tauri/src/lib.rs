@@ -6600,6 +6600,15 @@ async fn open_mods(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
 
 // ---------- reports and the launcher's own updates ----------
 
+/// What a log sent to the website is about, so the admin can sort crash logs: "game" with the game's
+/// id when one game's log goes along, "launcher" with no id otherwise.
+fn log_source(game: Option<&str>) -> [(String, String); 2] {
+    match game.filter(|g| !g.is_empty()) {
+        Some(id) => [("source".into(), "game".into()), ("game".into(), id.into())],
+        None => [("source".into(), "launcher".into()), ("game".into(), String::new())],
+    }
+}
+
 /// Send a crash (the game's log and a note) to RecompLauncher's inbox on recomplauncher.com.
 #[tauri::command]
 async fn send_report(st: State<'_, App>, id: String, message: String, log: Option<String>, kind: Option<String>) -> Res<String> {
@@ -6611,6 +6620,7 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
         ("category".into(), category.into()),
         ("message".into(), format!("RecompLauncher {} on {} ({})\n\n{}", env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), message.chars().take(1800).collect::<String>())),
     ];
+    form.extend(log_source(Some(&id)));
     // The log the crash screen found: only from the places it looks (the game's folder, the logs
     // folder its profile names, ReShade's log for this game), and only a .log or .txt.
     let logs_dir = profile_of(&st, &id, &g).and_then(|p| p.folder("logs", &g.path));
@@ -6792,6 +6802,7 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
         ("feedback".into(), match mood.as_deref() { Some("great") | Some("good") => "works", Some("broken") => "crashes", _ => "other" }.into()),
         ("build".into(), format!("RecompLauncher {}", env!("CARGO_PKG_VERSION"))),
     ];
+    form.extend(log_source(game.as_ref().map(|g| g.id.as_str())));
     if attach {
         let dir = st.dir.clone();
         let pc = tokio::task::spawn_blocking(move || usage::pc_info(&dir)).await.unwrap_or_default();
@@ -7290,6 +7301,28 @@ pub(crate) fn build_overlay(app: &AppHandle) -> tauri::Result<tauri::WebviewWind
 
 /// The main window is out of sight (minimized, or closed to the tray).
 static AWAY: AtomicBool = AtomicBool::new(false);
+
+/// Set by the page once its first real screen is drawn. The window stays hidden until then, so the
+/// player never sees the empty first draw being replaced by the real one.
+static UI_READY: AtomicBool = AtomicBool::new(false);
+
+/// How long to wait for the page before showing the window anyway (a slow or broken start must
+/// still open a window).
+const UI_READY_WAIT_MS: u64 = 4000;
+
+#[tauri::command]
+fn ui_ready() {
+    UI_READY.store(true, Ordering::Relaxed);
+}
+
+async fn wait_for_ui() {
+    let step = std::time::Duration::from_millis(20);
+    let mut waited = 0;
+    while !UI_READY.load(Ordering::Relaxed) && waited < UI_READY_WAIT_MS {
+        tokio::time::sleep(step).await;
+        waited += 20;
+    }
+}
 // Whether the last Play came from Big Picture mode, for RECOMPLAUNCHER_MODE.
 static BIG_PICTURE: AtomicBool = AtomicBool::new(false);
 /// This PC is a handheld (worked out once at start).
@@ -8224,17 +8257,21 @@ pub fn run() {
                 None => {
                     if let Some(w) = app.get_webview_window("main") {
                         restore_window_place(&w, &app.state::<App>().dir);
+                    }
+                    tauri::async_runtime::spawn(async move {
+                        wait_for_ui().await;
+                        let Some(w) = handle.get_webview_window("main") else { return };
                         if tv {
                             let _ = w.set_fullscreen(true);
                         }
                         let _ = w.show();
-                    }
+                    });
                 }
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             precheck_copy,
             emulator_folders,
             games_rom_folder,
@@ -8275,7 +8312,7 @@ pub fn run() {
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify, usage::pc_specs,
             adopt::adopt_scan, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -8700,6 +8737,18 @@ mod tests {
         assert_eq!(l.installed["first"].tag, "v1");
         assert!(l.project_aliases.is_empty());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn logs_for_the_website_say_whether_a_game_or_the_launcher_sent_them() {
+        let f = log_source(Some("some-game"));
+        assert_eq!(f[0], ("source".to_string(), "game".to_string()));
+        assert_eq!(f[1], ("game".to_string(), "some-game".to_string()));
+        for none in [None, Some("")] {
+            let f = log_source(none);
+            assert_eq!(f[0].1, "launcher");
+            assert_eq!(f[1], ("game".to_string(), String::new()));
+        }
     }
 
     #[test]

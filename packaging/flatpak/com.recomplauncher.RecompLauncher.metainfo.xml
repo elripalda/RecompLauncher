@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.40" date="2026-11-12">
+      <description>
+        <p>A window that opens once drawn, a clearer tray icon, smoother Big Picture on Steam Deck, and crash reports on GitHub.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.39" date="2026-11-12">
       <description>
         <p>No more false Offline mark, smarter cloud save uploads, and fixes.</p>

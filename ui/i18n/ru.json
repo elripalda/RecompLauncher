@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "Последняя попытка не прошла. Следующая попытка через {when}.",
  "Your cloud saves are full (150 MB).": "Ваши облачные сохранения заполнены (150 МБ).",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Ваши облачные сохранения заполнены. Удалите старые копии в облаке, чтобы освободить место; загрузка возобновится сама.",
- "{n} s": "{n} с|{n} с|{n} с"
+ "{n} s": "{n} с|{n} с|{n} с",
+ "The report is filled in. Attach the full log, then submit it on the page.": "Отчёт заполнен. Прикрепите полный журнал и отправьте его на странице."
 }

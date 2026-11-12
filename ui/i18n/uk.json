@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "Остання спроба не вдалася. Наступна спроба через {when}.",
  "Your cloud saves are full (150 MB).": "Ваші хмарні збереження заповнені (150 МБ).",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Ваші хмарні збереження заповнені. Видаліть старі копії в хмарі, щоб звільнити місце; вивантаження відновиться само.",
- "{n} s": "{n} с|{n} с|{n} с"
+ "{n} s": "{n} с|{n} с|{n} с",
+ "The report is filled in. Attach the full log, then submit it on the page.": "Звіт заповнено. Додайте повний журнал і надішліть його на сторінці."
 }

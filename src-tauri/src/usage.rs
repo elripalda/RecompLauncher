@@ -30,6 +30,12 @@ pub fn install_id(dir: &Path) -> String {
     id
 }
 
+/// This PC's system, processor, memory and graphics card, for a crash report the player writes.
+#[tauri::command(async)]
+pub fn pc_specs(app: AppHandle) -> PcInfo {
+    pc_info(&app.state::<App>().dir)
+}
+
 /// The two random IDs (usage and diagnostics; anonymous stats), as Settings shows them so a player
 /// can quote one when asking for its data to be removed.
 #[tauri::command(async)]

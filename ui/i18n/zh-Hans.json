@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "上次尝试没有成功。{when}后再试。",
  "Your cloud saves are full (150 MB).": "你的云存档已满（150 MB）。",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "你的云存档已满。删除旧的云端副本以腾出空间，上传会自动重新开始。",
- "{n} s": "{n} 秒"
+ "{n} s": "{n} 秒",
+ "The report is filled in. Attach the full log, then submit it on the page.": "报告已填好。附上完整日志，然后在页面上提交。"
 }

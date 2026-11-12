@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "De laatste poging kwam niet door. Volgende poging over {when}.",
  "Your cloud saves are full (150 MB).": "Je cloudsaves zijn vol (150 MB).",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Je cloudsaves zijn vol. Verwijder oude cloudkopieën om ruimte te maken; uploaden begint daarna vanzelf weer.",
- "{n} s": "{n} s"
+ "{n} s": "{n} s",
+ "The report is filled in. Attach the full log, then submit it on the page.": "Het rapport is ingevuld. Voeg het volledige logboek toe en verstuur het op de pagina."
 }

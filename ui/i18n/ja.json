@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "前回の送信は届きませんでした。次は{when}後に試します。",
  "Your cloud saves are full (150 MB).": "クラウドセーブがいっぱいです（150 MB）。",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "クラウドセーブがいっぱいです。古いクラウドのコピーを削除して空きを作ってください。アップロードは自動で再開します。",
- "{n} s": "{n}秒"
+ "{n} s": "{n}秒",
+ "The report is filled in. Attach the full log, then submit it on the page.": "レポートは入力済みです。ログ全体を添付してから、ページで送信してください。"
 }

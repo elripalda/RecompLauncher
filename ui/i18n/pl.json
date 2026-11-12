@@ -2942,5 +2942,6 @@
  "The last try didn't get through. Next try in {when}.": "Ostatnia próba się nie powiodła. Następna próba za {when}.",
  "Your cloud saves are full (150 MB).": "Twoje zapisy w chmurze są pełne (150 MB).",
  "Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.": "Twoje zapisy w chmurze są pełne. Usuń stare kopie w chmurze, aby zrobić miejsce; wysyłanie wznowi się samo.",
- "{n} s": "{n} s|{n} s|{n} s"
+ "{n} s": "{n} s|{n} s|{n} s",
+ "The report is filled in. Attach the full log, then submit it on the page.": "Zgłoszenie jest wypełnione. Dołącz pełny dziennik, a potem wyślij je na stronie."
 }

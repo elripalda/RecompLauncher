@@ -1,6 +1,6 @@
 [package]
 name = "recomplauncher"
-version = "0.90.0-beta.39"
+version = "0.90.0-beta.40"
 description = "RecompLauncher: recompiled and decompiled PC games"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
