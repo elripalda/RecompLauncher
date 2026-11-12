@@ -2902,6 +2902,7 @@
  "The game isn't connected.": "Game tidak terhubung.",
  "The game was removed during setup.": "Game dihapus saat penyiapan.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "Folder game punya pengaturan ReShade sendiri, jadi shader launcher dimatikan. Keluarkan ReShade dari folder untuk memakai shader.",
+ "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "Folder game terlalu besar untuk dicari save-nya. Pilih folder save-nya di Lokasi save, lalu coba lagi.",
  "The installer isn't there anymore. Use Update again to download it.": "Installer-nya sudah tidak ada. Pakai Perbarui lagi untuk mengunduhnya.",
  "The launcher's window isn't open.": "Jendela launcher tidak terbuka.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "Stik kiri bergerak di launcher seperti d-pad. Matikan jika stikmu drift atau kamu memakainya sebagai mouse; d-pad tetap berfungsi.",

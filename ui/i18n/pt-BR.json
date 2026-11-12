@@ -2902,6 +2902,7 @@
  "The game isn't connected.": "O jogo não está conectado.",
  "The game was removed during setup.": "O jogo foi removido durante a configuração.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "A pasta do jogo tem as próprias configurações do ReShade, então o shader do launcher está desativado. Tire o ReShade da pasta para usar shaders.",
+ "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "A pasta do jogo é grande demais para procurar saves nela. Escolha a pasta de saves em Onde salva e tente de novo.",
  "The installer isn't there anymore. Use Update again to download it.": "O instalador não existe mais. Use Atualizar de novo para baixá-lo.",
  "The launcher's window isn't open.": "A janela do launcher não está aberta.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "O analógico esquerdo navega pelo launcher como o direcional. Desative se o seu analógico tiver drift ou se você usar ele como mouse; o direcional continua funcionando.",

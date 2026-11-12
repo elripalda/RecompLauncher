@@ -2902,6 +2902,7 @@
  "The game isn't connected.": "De game is niet verbonden.",
  "The game was removed during setup.": "De game is tijdens de installatie verwijderd.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "De map van de game heeft eigen ReShade-instellingen, dus de shader van de launcher staat uit. Haal ReShade uit de map om shaders te gebruiken.",
+ "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "De map van de game is te groot om op opslagbestanden te doorzoeken. Kies de opslagmap bij Waar hij opslaat en probeer het daarna opnieuw.",
  "The installer isn't there anymore. Use Update again to download it.": "Het installatieprogramma is er niet meer. Gebruik opnieuw Bijwerken om het te downloaden.",
  "The launcher's window isn't open.": "Het venster van de launcher is niet open.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "De linkerstick beweegt door de launcher zoals de d-pad. Zet hem uit als je stick drift of als je hem als muis gebruikt; de d-pad blijft werken.",

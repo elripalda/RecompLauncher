@@ -821,9 +821,17 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     }
     let spots = spots_of(&st, &id, &g);
     let (g2, spots2) = (g.clone(), spots.clone());
-    let (entries, infos, local) = blocking(move || saves::current(&spots2, &g2)).await?;
+    let (entries, infos, local, too_big) = blocking(move || saves::current(&spots2, &g2)).await?;
     if entries.len() != infos.len() {
         return Err(Error::Msg("Some save files couldn't be read. Try syncing again.".into()));
+    }
+    // Its save places were too big to look through, so what this PC has is unknown, not missing.
+    // A cloud copy put in place now could be older than the saves there and replace them.
+    if entries.is_empty() && !too_big.is_empty() {
+        if manual {
+            return Err(saves::too_big_error(&g, &spots, &too_big));
+        }
+        return Ok(json!({"action": "play"}));
     }
     let s = saves::state(&st.dir, &id);
     let Some(top) = top else {
@@ -887,7 +895,7 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
         let top = list.first().filter(|c| c.v == cloud_version).ok_or_else(changed)?;
         let spots = spots_of(&st, &id, &g);
         let (g2, spots2) = (g.clone(), spots.clone());
-        let (entries, infos, hash) = blocking(move || saves::current(&spots2, &g2)).await?;
+        let (entries, infos, hash, _) = blocking(move || saves::current(&spots2, &g2)).await?;
         if hash != local_hash || entries.len() != infos.len() {
             return Err(changed());
         }
