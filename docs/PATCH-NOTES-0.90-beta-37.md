@@ -13,7 +13,6 @@
 - **Home's featured games can differ per system.** — Added by @elripalda.
 - **Smoother gradients behind game pages and panels, with less colour banding.** — Improved by @elripalda, from @Xarishark's report.
 - **Games set up by hand now get the copy Easy Setup found.** — Fixed by @elripalda.
-- **Run in background is now available in Settings on every system and in Big Picture mode.** Turn it off to exit the launcher when closing its window. New installations start with it off; existing saved choices are kept. Quit always exits.
 - **General improvements and fixes.** — Improved by @elripalda.
 
 Keep the logs coming from the crash window and Settings → Beta. Every one helps.
