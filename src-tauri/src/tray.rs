@@ -108,8 +108,8 @@ fn picked(app: &AppHandle, id: &str) {
                     return;
                 }
                 crate::ready_look(&app, &rid).await;
-                crate::cloud::sync_quiet(&app, &rid).await;
-                if let Err(e) = crate::start_game(&app, &id) {
+                let sync = crate::cloud::sync_quiet(&app, &id).await;
+                if let Err(e) = sync.and_then(|()| crate::start_game(&app, &id)) {
                     show_main(&app);
                     let _ = app.emit("toast", e.to_string());
                 }

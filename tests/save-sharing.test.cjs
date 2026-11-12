@@ -46,3 +46,28 @@ test('save sharing is opt-in and copies only on confirmation', async () => {
     assert.deepEqual(calls, expected);
   }
 });
+
+test('Sync now resolves only the selected recomp and submits the copies the player saw', async () => {
+  const helpers = account.slice(account.indexOf('async function pickCloudSave('), account.indexOf('// ---------- actions ----------'));
+  const local = { hash: 'local-hash', when: 200, device: 'Laptop' };
+  const cloud = { v: 'cloud-version', made: 100, device: 'Desktop' };
+  for (const picked of ['local', 'cloud', null]) {
+    const calls = [];
+    const sync = runInNewContext(helpers + '\nsyncCloudNow', {
+      invoke: async (command, args) => {
+        calls.push([command, { ...args }]);
+        return { action: 'conflict', local, cloud };
+      },
+      ask: async (_title, _body, buttons) => {
+        assert.equal(buttons[0].sub, '200 · Laptop');
+        assert.equal(buttons[1].sub, '100 · Desktop');
+        return picked;
+      },
+      t: String, tf: String, esc: String, whenText: String, fmtTime: String, toast() {},
+    });
+    assert.equal(await sync('version-b'), picked !== null);
+    const expected = [['saves_check', { id: 'version-b', manual: true }]];
+    if (picked) expected.push(['saves_pick', { id: 'version-b', keep: picked, localHash: local.hash, cloudVersion: cloud.v }]);
+    assert.deepEqual(calls, expected);
+  }
+});
