@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- The app icon, and the source of every other file in this folder: after changing it, run
+       `npx tauri icon src-tauri/icons/icon.svg` (then drop the android/ and ios/ folders it adds).
+       The mark is ui/img/mark.svg, on its dark tile. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b1d22"/>
+      <stop offset="1" stop-color="#050608"/>
+    </linearGradient>
+    <linearGradient id="m" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34f2e8"/>
+      <stop offset="1" stop-color="#377bb6"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded like other app tiles (Discord, macOS): the corners are about 22% of the side. -->
+  <rect width="256" height="256" rx="56" fill="url(#tile)"/>
+  <g transform="translate(128 128) scale(0.74) translate(-128 -128)">
+    <g fill="url(#m)" transform="translate(4 -2)">
+      <path d="M40 40H88V168H116L64 220L12 168H40Z"/>
+      <path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/>
+      <path d="M132 168H184L236 220H184Z"/>
+    </g>
+  </g>
+</svg>
