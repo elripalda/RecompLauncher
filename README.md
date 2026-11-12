@@ -92,6 +92,9 @@ The full source of the launcher is here: the Rust core in `src-tauri/` and the w
 can read exactly what it does, or build it yourself with the steps in
 [docs/BUILDING.md](docs/BUILDING.md). It's licensed under the GPL v3 ([LICENSE](LICENSE)).
 
+Scripts and AI tools on your PC can see your games and start one, once you turn on Local control
+in Settings. It's off by default and can't do anything else: see [docs/control-api.md](docs/control-api.md).
+
 ## Stars over time
 
 <a href="https://star-history.com/#elripalda/RecompLauncher&Date"><img src="https://api.star-history.com/svg?repos=elripalda/RecompLauncher&type=Date&theme=dark" alt="RecompLauncher's stars over time" width="100%"></a>

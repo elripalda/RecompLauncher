@@ -616,7 +616,7 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
     }
     if [old, new.as_str()].iter().any(|id| st.running.lock().unwrap().contains_key(*id)
         || st.jobs.lock().unwrap().contains_key(*id) || st.moving.lock().unwrap().contains(*id)
-        || crate::STARTING.lock().unwrap().iter().any(|starting| starting == *id)
+        || crate::STARTING.lock().unwrap().iter().any(|(starting, _)| starting == *id)
         || crate::setup_busy(id) || crate::mods_busy(id)) {
         return Err(Error::Msg("Stop the game and wait for its downloads, setup and file operations before changing its project.".into()));
     }

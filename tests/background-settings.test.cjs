@@ -18,7 +18,7 @@ function settingsContext(os, on) {
     tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
     LANGS: [['en', 'English']], systemLang: () => 'en',
     SET_SECTIONS: [['general', 'General']], SET_ICONS: {},
-    okMark: () => '', portableRow: () => '', geRow: () => '',
+    okMark: () => '', portableRow: () => '', geRow: () => '', controlApiNote: () => '',
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s,
     homePinned: () => false, bgMode: () => '', langName: () => 'English',
     svg: () => '', hints: () => '', HEART: '',

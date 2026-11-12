@@ -1155,6 +1155,8 @@
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to put an older one back'))}</small></span>${svg('chevR', 30)}</button>
+          ${head(t('Local control'))}
+          <button type="button" class="tv-item" data-f data-key="s:control_api" data-tvact="control-api" data-sw="${S.settings.control_api ? 1 : 0}"><span class="k">${esc(t('Local control'))}<small>${esc(controlApiNote())}</small></span><span class="switch" aria-checked="${!!S.settings.control_api}"></span></button>
           ${head(t('Controller'))}
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
@@ -2526,6 +2528,7 @@
       case 'page': return go('game', id);
       case 'back': return back();
       case 'leave': return leave();
+      case 'control-api': sfx('select'); await setControlApi(!S.settings.control_api); return draw(true);
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');
