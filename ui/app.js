@@ -7539,7 +7539,8 @@ async function confirmLauncherStartup(loaded) {
   if (['played', 'time', 'az'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
   trayWords();
-  if (S.os === 'macos') await confirmLauncherStartup(loaded);
+  // Not awaited: a hidden window (--play) can pause animation frames, and init must go on without them.
+  if (S.os === 'macos') confirmLauncherStartup(loaded);
   await loadCatalog(false);
   // Both read the list on disk: side by side.
   await Promise.all([loadOwned(), loadEasy(true)]);
