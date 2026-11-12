@@ -520,25 +520,46 @@ function index() {
   }
   return IDX;
 }
+// The pictures Customize changes, and where a catalog object keeps its own while another shows.
+const ART_KINDS = [['cover', '_cov'], ['hero', '_hero'], ['logo', '_logo'], ['icon', '_icon']];
+// What a game's versions share: the name, description and pictures the player set for every
+// version (Customize's "every version" box) are kept under this key, so versions the catalog adds
+// later look the same too.
+const gameKey = (a) => (a && a.title ? 'game--' + a.title : '');
+// A version's own picture of a kind, as the catalog has it, whatever shows in its place.
+function catalogArt(a, k) {
+  const stash = ART_KINDS.find((x) => x[0] === k)[1];
+  return a[stash] !== undefined ? a[stash] : a[k] || '';
+}
+// What shows for a kind when this version has no picture of its own: the one the player set for
+// every version, else (Show Game Media) the recommended version's, else the catalog's.
+function usualArt(a, k) {
+  const shared = (S.arts || {})[gameKey(a)] || {};
+  if (shared[k + '_file']) return 'local:' + shared[k + '_file'];
+  const g = (S.settings.ui || {}).game_media ? verGroup(a) : null;
+  const lead = g && g.pick !== a.id ? index().ids.get(g.pick) : null;
+  return catalogArt(lead || a, k);
+}
 // A cover the player picked for a game (Change Cover) shows instead of the catalog's, and a name
 // they gave it (Rename) instead of its own.
 function applyCover(a, id) {
   if (!a) return a;
   const ui = S.settings.ui || {};
+  const names = ui.names || {}, gk = gameKey(a);
   // Show Game Names: the game's own name instead of the recomp's ("Tears of the Kingdom", not
   // "TotK Recomp"), unless the player named it themselves.
-  const nm = (ui.names || {})[id] || (ui.game_names && a.game ? a.game : '');
+  const nm = names[id] || (gk && names[gk]) || (ui.game_names && a.game ? a.game : '');
   if (nm) { if (a._name === undefined) a._name = a.name; a.name = nm; } else if (a._name !== undefined) { a.name = a._name; delete a._name; }
   // On the installed game, or kept for one that isn't (Customize from Discover, or uninstalled).
   const own = S.library[id] || (S.arts || {})[id] || {};
-  const c = own.cover_file;
-  if (c) { if (a._cov === undefined) a._cov = a.cover || ''; a.cover = 'local:' + c; } else if (a._cov !== undefined) { a.cover = a._cov; delete a._cov; }
-  const h = own.hero_file;
-  if (h) { if (a._hero === undefined) a._hero = a.hero || ''; a.hero = 'local:' + h; } else if (a._hero !== undefined) { a.hero = a._hero; delete a._hero; }
-  const l = own.logo_file;
-  if (l) { if (a._logo === undefined) a._logo = a.logo || ''; a.logo = 'local:' + l; } else if (a._logo !== undefined) { a.logo = a._logo; delete a._logo; }
-  const ic = own.icon_file;
-  if (ic) { if (a._icon === undefined) a._icon = a.icon || ''; a.icon = 'local:' + ic; } else if (a._icon !== undefined) { a.icon = a._icon; delete a._icon; }
+  for (const [k, stash] of ART_KINDS) {
+    const f = own[k + '_file'];
+    const native = catalogArt(a, k);
+    const want = f ? 'local:' + f : usualArt(a, k);
+    if (want === native) { if (a[stash] !== undefined) { a[k] = a[stash]; delete a[stash]; } continue; }
+    if (a[stash] === undefined) a[stash] = a[k] || '';
+    a[k] = want;
+  }
   return a;
 }
 const byId = (id) => applyCover(index().ids.get(id), id);
@@ -1168,7 +1189,7 @@ function devShotView(id, i) {
   draw(m);
 }
 // The player's own words about a game (Customize, Info): on its page, above everything about it.
-const ownAbout = (id) => String(((S.settings.ui || {}).abouts || {})[id] || '').trim();
+const ownAbout = (id) => { const ab = (S.settings.ui || {}).abouts || {}; return String(ab[id] || ab[gameKey(byId(id))] || '').trim(); };
 function ownAboutCard(id) {
   const txt = ownAbout(id);
   if (!txt) return '';
@@ -1711,13 +1732,17 @@ async function selfToSteam(restart) {
 
 // ---------- versions of the same game ----------
 const OS_SHORT = (a) => (a.systems || []).filter((k) => OS_NAME[k]);
+// Each version keeps its own store icon in the versions list, even when Show Game Media or the
+// player's pictures for every version make them all look alike: it's how they're told apart.
+const verIcon = (v) => catalogArt(v, 'icon') || catalogArt(v, 'cover');
 function verRow(v, cur, g, cls) {
   const inst = S.library[v.id], here = v.id === cur;
   const tags = [v.id === g.pick ? `<span class="vtag rec">${esc(t('Recommended'))}</span>` : '', inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
   const line = [esc((devOf(v) || {}).name || v.author || '') + (devOf(v) && devOf(v).verified ? TICK(12) : ''), esc(v.adds || '')].filter(Boolean).join(' · ');
   const os = OS_SHORT(v);
+  const ic = verIcon(v);
   return `<button type="button" class="${cls}${here ? ' on' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
-    <span class="v-ic">${v.icon ? pic(v.icon, '', 'loading="lazy"') : v.cover ? pic(v.cover, '', 'loading="lazy"') : ''}</span>
+    <span class="v-ic">${ic ? pic(ic, '', 'loading="lazy"') : ''}</span>
     <span class="v-txt"><span class="v-n"><b>${esc(v.name)}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}</span>
     <span class="v-os">${os.map((k) => `<span title="${esc(OS_NAME[k])}">${osIcon(k)}</span>`).join('')}</span>
     <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span>
@@ -1735,7 +1760,7 @@ function versionsCard(a) {
   const g = verGroup(a);
   if (!g) return '';
   const hide = !!(S.settings.ui || {}).verHide;
-  return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${v.icon || v.cover ? pic(thumbOf(v.icon || v.cover, 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
+  return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
       <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
       <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
     ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
@@ -3397,6 +3422,7 @@ function pageSettings() {
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
         + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'ui-toggle'))
+        + row(t('Show Game Media'), t('Every version of a game shows the same cover, background, logo and icon: the recommended version\'s. The versions list keeps each one\'s own icon, and pictures you picked yourself stay.'), sw('game_media', ui.game_media, t('Show Game Media'), 'ui-toggle'))
         // Linux: how the window is drawn, read when the launcher starts.
         + (S.os === 'linux' ? `<div class="set-row"><div class="k"><b>${esc(t('Graphics Mode'))}</b><span>${esc(t('How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Graphics Mode'))}">${[['', t('Auto')], ['fast', t('Faster')], ['safe', t('Safer')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.linux_graphics || '') === k}" data-act="gfx-mode" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>` : ''))
         + group(t('Sidebar'), `<p class="set-note">${esc(t('Pick which sections the sidebar shows, and their order.'))}</p>` + sideRows(),

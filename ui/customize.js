@@ -68,13 +68,20 @@
     const key = () => ((S.settings.ui || {}).sgdb_key || '').trim();
     // What's shown now for a kind: the framed picture, else the game's own (an address).
     const usual = (k) => ({ cover: a.cover, hero: a.hero, logo: a.logo, icon: a.icon })[k] || '';
+    // A game with versions: each tab can go to every version of it, and to versions still to come
+    // (kept under the game's key). The tabs ticked for that.
+    const group = verGroup(a);
+    const every = new Set();
     const m = modal(`<button type="button" class="su-x" data-x="no" aria-label="${esc(t('Close'))}">${XMARK}</button>
       <h2>${esc(tf('Customize {name}', { name: a.name }))}</h2>
       <div class="seg cz-tabs" role="tablist">${[{ k: 'name', label: N_('Info') }, ...KINDS].map((x) => `<button type="button" role="tab" data-x="tab" data-k="${x.k}">${esc(t(x.label))}</button>`).join('')}</div>
       <div class="cz-body" id="cz-body"></div>
+      ${group ? `<label class="cz-every"><input type="checkbox" id="cz-every"><span>${esc(tf('Use this for every version of {game}', { game: group.name }))}</span></label>` : ''}
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="save">${esc(t('Save'))}</button></div>`, onClick, t('Customize'));
     const box = $('.modal', m);
     box.classList.add('cz');
+    const everyBox = $('#cz-every', box);
+    if (everyBox) everyBox.addEventListener('change', () => { if (everyBox.checked) every.add(tab); else every.delete(tab); });
 
     // The pictures the player framed before open as they were.
     await Promise.all(KINDS.map(async (spec) => {
@@ -88,13 +95,14 @@
     function current(k) {
       const e = ed[k];
       if (e && !e.reset) return { ed: e };
-      if (e && e.reset) { const u = ({ cover: a._cov, hero: a._hero, logo: a._logo, icon: a._icon })[k]; return { url: u !== undefined ? u : usual(k) }; }
+      if (e && e.reset) return { url: usualArt(a, k) };
       return { url: usual(k) };
     }
 
     function show(k) {
       tab = k;
       browse = null;
+      if (everyBox) everyBox.checked = every.has(k);
       for (const b of $$('[data-x="tab"]', box)) { const on = b.dataset.k === k; b.setAttribute('aria-selected', String(on)); b.classList.toggle('on', on); }
       const body = $('#cz-body', box);
       if (k === 'name') {
@@ -305,20 +313,43 @@
         : `<p class="muted">${esc(t('SteamGridDB has none of these for this game.'))}</p>`;
     }
 
+    // A game that isn't installed (or a game's key) keeps its pictures beside the Library.
+    function keep(x, r) {
+      if (!r) return;
+      if (!r.art_only) { S.library[x] = r; return; }
+      delete r.art_only;
+      if (Object.keys(r).length) S.arts[x] = r; else delete S.arts[x];
+    }
+
     async function save(close) {
       const btn = $('[data-x="save"]', box);
       btn.disabled = true;
       try {
         const ui = S.settings.ui || {};
+        // Ticked for every version: the same goes to each of them, and to the game's key for
+        // versions still to come.
+        const others = group ? [gameKey(a), ...group.every.map((v) => v.id).filter((x) => x !== id)] : [];
+        if (every.has('name')) {
+          for (const x of others) {
+            if (names[id]) names[x] = names[id]; else delete names[x];
+            if (abouts[id]) abouts[x] = abouts[id]; else delete abouts[x];
+          }
+        }
         if (JSON.stringify(ui.names || {}) !== JSON.stringify(names)) await saveUi({ names });
         if (JSON.stringify(ui.abouts || {}) !== JSON.stringify(abouts)) await saveUi({ abouts });
         for (const spec of KINDS) {
           const e = ed[spec.k];
-          if (!e || (!e.changed && !e.reset)) continue;
-          const r = await invoke('art_save', e.reset ? { id, kind: spec.k, data: null, src: null, frame: null }
-            : { id, kind: spec.k, data: renderArt(spec, e), src: e.src, frame: { x: e.x, y: e.y, zoom: e.zoom } });
-          // A game that isn't installed keeps its pictures beside the Library.
-          if (r && r.art_only) { delete r.art_only; if (Object.keys(r).length) S.arts[id] = r; else delete S.arts[id]; } else S.library[id] = r;
+          const all = every.has(spec.k);
+          const mine = !!e && (e.changed || !!e.reset);
+          if (!mine && !all) continue;
+          // Ticked with nothing changed: this version's picture goes to the others as it is, and
+          // with none of its own, the others go back to their usual ones too.
+          const data = e && !e.reset ? renderArt(spec, e) : null;
+          const frame = data ? { x: e.x, y: e.y, zoom: e.zoom } : null;
+          if (mine) keep(id, await invoke('art_save', { id, kind: spec.k, data, src: data ? e.src : null, frame }));
+          // The others get the finished picture only: the picture it was framed from stays this
+          // version's, so changing it later here doesn't take it from under them.
+          if (all) for (const x of others) keep(x, await invoke('art_save', { id: x, kind: spec.k, data, src: null, frame: null }));
         }
         byId(id);
         close();

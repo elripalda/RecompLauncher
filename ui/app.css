@@ -1817,6 +1817,8 @@ body.playing *,body.playing *::before,body.playing *::after{animation-duration:0
 .cz-tabs button{text-align:center}
 .cz-body{min-height:440px;transition:opacity .15s}
 .cz-body.busy{opacity:.55;pointer-events:none}
+.cz-every{display:flex;align-items:center;gap:10px;margin:14px 0 0;font-size:14px;color:var(--dim);cursor:pointer}
+.cz-every input{width:18px;height:18px;flex:none;margin:0;accent-color:var(--cyan)}
 .cz-art{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:20px}
 .cz-stage{position:relative;height:360px;border-radius:16px;background:var(--bg2);border:1px solid var(--line2);overflow:hidden;cursor:grab;touch-action:none;outline:none}
 .cz-stage:active{cursor:grabbing}
