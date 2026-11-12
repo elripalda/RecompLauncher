@@ -42,21 +42,18 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <screenshots>
+    <!-- Pinned to the commit that added them, so the links never change. -->
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/home.jpg</image>
-      <caption>Home</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/2e03584205f688a2da6ff1b786a5582fd61fdd55/docs/images/flathub/home.jpg</image>
+      <caption>Featured projects and games ready to play</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/discover.jpg</image>
-      <caption>Discover</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/2e03584205f688a2da6ff1b786a5582fd61fdd55/docs/images/flathub/discover.jpg</image>
+      <caption>Search and filter every project</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/game.jpg</image>
-      <caption>A game's page</caption>
-    </screenshot>
-    <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/bigpicture.jpg</image>
-      <caption>Big Picture mode</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/2e03584205f688a2da6ff1b786a5582fd61fdd55/docs/images/flathub/game.jpg</image>
+      <caption>A game's page, with what it needs and how it runs</caption>
     </screenshot>
   </screenshots>
   <releases>
