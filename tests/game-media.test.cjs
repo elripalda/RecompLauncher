@@ -66,3 +66,6 @@ test('the versions menu and card draw each version\'s own icon', () => {
   assert.match(app, /const ic = verIcon\(v\);/);
 });
 
+test('Customize offers its every-version box only for a game with versions', () => {
+  assert.match(cz, /\$\{group \? `<label class="cz-every">/);
+});
