@@ -1132,14 +1132,20 @@
     const sub = list.length ? tn(list.length, '1 recomp on the way', '{n} recomps on the way') : t('Nothing announced right now');
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Coming Soon'), sub)}${req}
-        <div class="tv-gridwrap">${list.length ? grid(list, 'C') : `<p class="tv-empty">${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p>`}</div>`)}
+        <div class="tv-gridwrap">${list.length ? grid(list, 'C') : `<p class="tv-empty">${esc(t('Know of a recomp the launcher should have? Press Request a Recomp to ask for it.'))}</p>`}</div>`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['LB+RB', t('Sections')]])}`;
   }
-  // The project's link, typed with the controller. The desktop view also takes a note.
+  // Where the project is (GitHub or GitLab), then the developer and project typed with the
+  // controller. The desktop view also takes a note.
   async function tvRequest() {
     sfx('select');
-    const url = await window.tvType({ title: t('Request a Recomp'), hint: 'github.com/owner/name', max: 300, keys: './:-_' });
-    if (!url) return;
+    const i = await window.tvAsk(t('Where is the project?'), window.REQ_FORGES.map(([, n]) => ({ label: n, icon: 'folder' })));
+    if (i == null || i < 0) return;
+    const forge = window.REQ_FORGES[i][0];
+    const typed = await window.tvType({ title: t('Request a Recomp'), hint: `${forge}.com/${t('developer/project')}`, max: 200, keys: '/.-_' });
+    if (!typed) return;
+    const url = window.reqLink(forge, typed).url;
+    if (!url) return toast(t('Type the developer and the project, like developer/project.'), true);
     const known = window.listedFor(url);
     if (known) { toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
     try {

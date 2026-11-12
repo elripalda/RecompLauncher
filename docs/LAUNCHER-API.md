@@ -88,8 +88,8 @@ accounts are turned off on the website, and are rate limited per IP.
   first one (or with the next hello), 200 at most.
 - `POST ?a=recomp-request {a, install, url, note, version}`: Request a Recomp, from the Coming Soon
   page. `url` is a project link the launcher has already tidied (https, no sign-in, no trailing
-  slash or `.git`, 300 characters at most) on any forge: GitHub, GitLab, Codeberg, SourceForge or a
-  self-hosted one. `note` is up to 500 characters, often empty. Answers `{ok: true}`, or
+  slash or `.git`, 300 characters at most) on GitHub or GitLab only: the player picks one and types
+  `developer/project` (GitLab can have groups in between). `note` is up to 500 characters, often empty. Answers `{ok: true}`, or
   `{ok: false, error}` with words the launcher shows as they are (already requested, too many
   requests today). Until the site has it, the launcher says the request didn't go through.
 

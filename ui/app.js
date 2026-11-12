@@ -5444,12 +5444,25 @@ function pageSoon() {
   const count = list.length ? `<span class="count-line soon-n">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</span>` : '';
   return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
     ${list.length ? `<div class="grid" data-n="${list.length}">${list.map((a) => tile(a)).join('')}</div>`
-      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAL_CLOCK}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p></div>`}
+      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAL_CLOCK}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Press Request a Recomp to ask for it.'))}</p></div>`}
   </div>`;
 }
 
-// Request a recomp: the player pastes a project's link (GitHub, GitLab, Codeberg, anywhere) and a
-// note, and it goes to recomplauncher.com for a look. One the catalog already lists just opens.
+// Request a recomp: the player picks GitHub or GitLab and types the developer and project
+// ("developer/project"), with a note, and it goes to recomplauncher.com for a look. A full link
+// pasted into the box works too and picks its site. One the catalog already lists just opens.
+const REQ_FORGES = [['github', 'GitHub'], ['gitlab', 'GitLab']];
+const reqLink = (forge, typed) => {
+  let s = String(typed || '').replace(/\s+/g, '');
+  const full = s.match(/^(?:https?:\/\/)?(?:www\.)?(github|gitlab)\.com\/(.*)$/i);
+  if (full) { forge = full[1].toLowerCase(); s = full[2]; }
+  const parts = s.replace(/[?#].*$/, '').replace(/\.git\/?$/i, '').split('/').filter(Boolean);
+  // GitHub is always developer/project; GitLab can have groups in between.
+  const ok = parts.length >= 2 && (forge === 'gitlab' || parts.length === 2) && parts.every((x) => /^[\w.-]+$/.test(x) && !/^\.+$/.test(x));
+  return { forge, url: ok ? `https://${forge}.com/${parts.join('/')}` : '' };
+};
+window.reqLink = reqLink;
+window.REQ_FORGES = REQ_FORGES;
 const sameLink = (x, y) => String(x || '').replace(/\/+$/, '').toLowerCase() === String(y || '').replace(/\/+$/, '').toLowerCase();
 function listedFor(link) {
   const full = /^[a-z]+:\/\//i.test(link) ? link : 'https://' + link;
@@ -5457,14 +5470,21 @@ function listedFor(link) {
 }
 window.listedFor = listedFor;
 function requestModal() {
-  const m = modal(`<h2>${esc(t('Request a Recomp'))}</h2><p>${esc(t('Know of a recomp the launcher doesn\'t have? Paste the link to its project on GitHub, GitLab, Codeberg or anywhere else, and it goes to RecompLauncher for a look.'))}</p>
-    <input class="field" id="rq-url" type="url" placeholder="https://github.com/owner/name" spellcheck="false" autocomplete="off" maxlength="300" aria-label="${esc(t('Project link'))}">
+  let forge = 'github';
+  const m = modal(`<h2>${esc(t('Request a Recomp'))}</h2><p>${esc(t('Know of a recomp the launcher doesn\'t have? Pick where its project is, type the developer and the project, and it goes to RecompLauncher for a look.'))}</p>
+    <div class="seg rq-forge" role="radiogroup" aria-label="${esc(t('Where the project is'))}">${REQ_FORGES.map(([k, n]) => `<button type="button" role="radio" aria-checked="${k === forge}" data-x="forge" data-forge="${k}">${esc(n)}</button>`).join('')}</div>
+    <label class="field rq-path"><span class="rq-host">github.com/</span><input id="rq-url" type="text" placeholder="${esc(t('developer/project'))}" spellcheck="false" autocomplete="off" maxlength="200" aria-label="${esc(t('Developer and project'))}"></label>
     <textarea class="field" id="rq-note" rows="3" maxlength="500" placeholder="${esc(t('Anything to add? Which game it is, or why you\'d like it (optional)'))}" aria-label="${esc(t('Note'))}"></textarea>
     <p class="err" id="rq-err" hidden></p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Send Request'))}</button></div>`, async (x, close) => {
+    if (x.dataset.forge) return setForge(x.dataset.forge);
     if (x.dataset.x !== 'yes') return;
-    const url = $('#rq-url', m).value.trim(), note = $('#rq-note', m).value.trim(), err = $('#rq-err', m);
-    if (!url) return $('#rq-url', m).focus();
+    const typed = $('#rq-url', m).value.trim(), note = $('#rq-note', m).value.trim(), err = $('#rq-err', m);
+    if (!typed) return $('#rq-url', m).focus();
+    const r = reqLink(forge, typed);
+    setForge(r.forge);
+    if (!r.url) { err.textContent = t('Type the developer and the project, like developer/project.'); err.hidden = false; return $('#rq-url', m).focus(); }
+    const url = r.url;
     const known = listedFor(url);
     if (known) { close(); toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
     x.disabled = true; err.hidden = true;
@@ -5478,8 +5498,15 @@ function requestModal() {
       x.disabled = false; x.textContent = was;
     }
   }, t('Request a Recomp'));
+  const setForge = (k) => {
+    forge = k;
+    m.querySelectorAll('[data-forge]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.forge === k)));
+    $('.rq-host', m).textContent = `${k}.com/`;
+  };
   const f = $('#rq-url', m); f.focus();
   f.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-x="yes"]', m).click(); });
+  // A whole link pasted in: its site is picked and only developer/project stays in the box.
+  f.addEventListener('input', () => { const full = f.value.trim().match(/^(?:https?:\/\/)?(?:www\.)?(github|gitlab)\.com\/(.+)$/i); if (full) { setForge(full[1].toLowerCase()); f.value = full[2].replace(/\.git\/?$/i, '').replace(/\/+$/, ''); } });
 }
 window.requestModal = requestModal;
 

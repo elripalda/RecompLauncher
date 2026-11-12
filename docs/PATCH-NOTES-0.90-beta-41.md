@@ -1,5 +1,6 @@
 # RecompLauncher 0.90 Beta 41
 
+- **A Coming Soon page, where you can also request a recomp from GitHub or GitLab.** — Added by @Xarishark ([#112](https://github.com/elripalda/RecompLauncher/pull/112)).
 - **Keep Steam in Sync puts your installed games in a RecompLauncher collection in Steam.** — Added by @Xarishark ([#118](https://github.com/elripalda/RecompLauncher/pull/118)).
 - **Sync Now for cloud saves, and the newest cloud save loads before you play.** — Added by @Lui35 ([#113](https://github.com/elripalda/RecompLauncher/pull/113)).
 - **Use a name or picture for every version of a game, and a Show Game Media setting.** — Added by @Xarishark ([#106](https://github.com/elripalda/RecompLauncher/pull/106)).

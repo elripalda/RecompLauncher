@@ -52,3 +52,31 @@ test('a Proton without its starting files gets Install GE-Proton in the crash wi
   assert.match(app, /const armProton = pfxGone \|\|/);
   assert.match(app, /armProton \? esc\(pfxGone \? t\('The Proton it ran through is missing the files/);
 });
+
+// Request a Recomp: GitHub or GitLab, then developer/project.
+function reqLinkFn() {
+  const start = app.indexOf('const reqLink = ');
+  assert.ok(start > 0);
+  const end = app.indexOf('\n};', start) + 3;
+  return new Function(`${app.slice(start, end)} return reqLink;`)();
+}
+
+test('a request is built from the picked site and developer/project', () => {
+  const reqLink = reqLinkFn();
+  assert.deepEqual(reqLink('github', 'some-dev/some-project'), { forge: 'github', url: 'https://github.com/some-dev/some-project' });
+  assert.deepEqual(reqLink('gitlab', 'group/sub/project'), { forge: 'gitlab', url: 'https://gitlab.com/group/sub/project' });
+  assert.equal(reqLink('github', ' dev/project.git ').url, 'https://github.com/dev/project');
+});
+
+test('a whole link pasted in picks its own site', () => {
+  const reqLink = reqLinkFn();
+  assert.deepEqual(reqLink('github', 'https://gitlab.com/dev/project'), { forge: 'gitlab', url: 'https://gitlab.com/dev/project' });
+  assert.equal(reqLink('gitlab', 'github.com/dev/project/').url, 'https://github.com/dev/project');
+  assert.equal(reqLink('github', 'https://github.com/dev/project#readme').url, 'https://github.com/dev/project');
+});
+
+test('a request needs both a developer and a project', () => {
+  const reqLink = reqLinkFn();
+  for (const bad of ['', 'project', 'dev/', '/project', 'dev/../x', 'dev/pro!ject', 'a/b/c']) assert.equal(reqLink('github', bad).url, '', bad);
+  assert.equal(reqLink('github', 'https://codeberg.org/dev/project').url, '');
+});

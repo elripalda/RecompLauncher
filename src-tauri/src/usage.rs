@@ -660,7 +660,7 @@ const REQUEST_NOTE_MAX: usize = 500;
 /// A project link as the player typed it, made into one the site can open: https, a real host, and
 /// a path to the project itself (github.com alone says nothing). A bare "github.com/owner/repo"
 /// gets its https; a trailing slash or ".git" goes, so the same project reads the same twice.
-/// Any forge is fine (GitHub, GitLab, Codeberg, SourceForge, a self-hosted one): the site decides.
+/// The project has to be on GitHub or GitLab, as for submissions on the website.
 pub fn project_link(input: &str) -> Result<String, String> {
     let raw = input.trim();
     if raw.is_empty() {
@@ -687,6 +687,11 @@ pub fn project_link(input: &str) -> Result<String, String> {
     if !host.contains('.') || host.starts_with('.') || host.ends_with('.') {
         return Err("That doesn't look like a project link.".into());
     }
+    let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
+    if host != "github.com" && host != "gitlab.com" {
+        return Err("Request a project on GitHub or GitLab.".into());
+    }
+    let _ = u.set_host(Some(&host));
     let path = u.path().trim_end_matches('/').trim_end_matches(".git").trim_end_matches('/').to_string();
     if path.is_empty() {
         return Err("Link to the project itself, not just the site.".into());
@@ -810,7 +815,14 @@ mod tests {
     fn a_requested_project_link_keeps_its_forge() {
         assert_eq!(project_link("https://github.com/owner/repo").unwrap(), "https://github.com/owner/repo");
         assert_eq!(project_link("https://gitlab.com/group/sub/repo").unwrap(), "https://gitlab.com/group/sub/repo");
-        assert_eq!(project_link("https://codeberg.org/owner/repo").unwrap(), "https://codeberg.org/owner/repo");
+        assert_eq!(project_link("https://www.github.com/owner/repo").unwrap(), "https://github.com/owner/repo");
+    }
+
+    #[test]
+    fn a_requested_project_is_on_github_or_gitlab() {
+        assert!(project_link("https://codeberg.org/owner/repo").is_err());
+        assert!(project_link("https://example.com/owner/repo").is_err());
+        assert!(project_link("https://github.com.example.com/owner/repo").is_err());
     }
 
     #[test]

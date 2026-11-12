@@ -23,7 +23,7 @@ the launcher sets it up.
 - **Discover:** every recomp on recomplauncher.com, with screenshots, what it needs and how it
   runs for other players.
 - **Coming Soon:** the recomps on the way, with Notify Me for an email when each comes out, and
-  Request a Recomp to send a project's link (GitHub, GitLab or anywhere else).
+  Request a Recomp to ask for a project on GitHub or GitLab.
 - **Install and update in one click,** straight from the developer's own GitHub release. Every
   download is checked against GitHub's checksum.
 - **Easy Setup:** point it at your disc image or game folder and it does the rest, for the recomps
