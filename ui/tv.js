@@ -142,10 +142,17 @@
   addEventListener('resize', () => { fit(); if (TV.on && !TV.booting && !$('.tv-boot', root)) draw(true); });
 
   // Names never wrap or get cut off: smaller first, then the short name, then a glide when focused.
-  function fitName(el, floor) {
-    if (el.dataset.full) el.textContent = el.dataset.full; else el.dataset.full = el.textContent;
-    el.style.fontSize = '';
-    el.classList.remove('long');
+  // Back to its full name at its own size. Writes only, and only what changed: a page fits all its
+  // names with every write first and one measuring after (a write then a read lays the whole page
+  // out again, and Home has a hundred names on it).
+  function fitReset(el) {
+    if (!el.dataset.full) el.dataset.full = el.textContent;
+    else if (el.firstElementChild || el.textContent !== el.dataset.full) el.textContent = el.dataset.full;
+    if (el.style.fontSize) el.style.fontSize = '';
+    if (el.classList.contains('long')) el.classList.remove('long');
+  }
+  function fitName(el, floor, isReset) {
+    if (!isReset) fitReset(el);
     const w = el.clientWidth;
     if (!w) return;
     const base = parseFloat(getComputedStyle(el).fontSize);
@@ -162,10 +169,14 @@
       el.style.setProperty('--glide', Math.max(1.2, over / 60).toFixed(2) + 's');
     }
   }
-  function fitAll() {
-    for (const el of $$('.tv-h1', root)) fitName(el, 48);
-    for (const el of $$('.tv-card .cap b', root)) fitName(el, 16);
-    for (const el of $$('.tv-name', root)) fitName(el, 15);
+  const FIT = [['.tv-h1', 48], ['.tv-card .cap b', 16], ['.tv-name', 15]];
+  function fitAll(scope = root) {
+    const els = [];
+    for (const [sel, floor] of FIT) for (const el of $$(sel, scope)) els.push([el, floor]);
+    for (const [el] of els) fitReset(el);
+    // One layout for all of them; only the names that don't fit are worked on one at a time.
+    const over = els.filter(([el]) => el.clientWidth && el.scrollWidth > el.clientWidth + 0.5);
+    for (const [el, floor] of over) fitName(el, floor, true);
   }
 
   // Grids: as many columns as fit, never ending on a lone tile.
@@ -445,6 +456,9 @@
   // ---------- pages ----------
   // Home's dock: your pinned games (Settings), else the ones you played last, all in one row.
   const DOCK_MAX = 12;
+  // Each row under the dock shows this many at most. Home draws every row at once, and a row of
+  // every Easy Setup game made it hundreds of covers: each move then restyled all of them.
+  const HOME_ROW = 14;
   function dockList() {
     if (homePinned()) { const p = pins().map(libAppOf); if (p.length) return { list: p, kind: 'pinned' }; }
     const mine = installed().map((x) => x.a);
@@ -469,11 +483,11 @@
     // Below the dock, a press of down away: the rest of Home.
     if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
     const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
-    if (owned.length) rows.push(row('own', t('Found in your folders'), owned.map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
+    if (owned.length) rows.push(row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
     const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
     if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
-    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
+    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
     const upd = recentlyUpdated(pool()).slice(0, 14);
@@ -665,7 +679,6 @@
     const g = S.library[el.dataset.hero];
     const cap = $('#tv-flowcap', root);
     if (cap) { cap.innerHTML = `<b>${esc(a.game || a.name)}</b><span>${esc(g ? timeLine(g) : '')}</span>`; cap.classList.remove('swap'); void cap.offsetWidth; cap.classList.add('swap'); }
-    setTone(el.dataset.hero);
   }
 
   // Pictures fetched ahead of time (kept while they're likely to be needed).
@@ -2141,14 +2154,28 @@
       TV.hero = hid;
       TV.heroBelow = !el.closest('.tv-dock');
       const a = libAppOf(hid);
-      swapBg(a);
-      setTone(hid);
+      settle(el, a, instant);
       const hero = $('#tv-hero', root);
-      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(); }
+      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(hero); }
     }
     if (TV.view === 'gsettings' || TV.view === 'settings') setPanel(el);
-    if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); swapBg(libAppOf(el.dataset.hero)); return; }
+    if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); settle(el, libAppOf(el.dataset.hero), instant); return; }
     keepInView(el, instant);
+  }
+  // The backdrop and the colours follow the game you stop on, not each one you pass: a change fades
+  // two full-screen pictures into each other and restyles the whole page, too much to start on
+  // every press while you're moving along a row.
+  let settleT = 0;
+  function settle(el, a, instant) {
+    clearTimeout(settleT);
+    const view = TV.view;
+    const run = () => {
+      // Moved on, or off to another page (whose own backdrop is already right): nothing to do.
+      if (TV.view !== view || !el.isConnected || !el.classList.contains('f') || el.closest('.tv-stage.leaving')) return;
+      swapBg(a);
+      setTone(el.dataset.hero);
+    };
+    if (instant) run(); else settleT = setTimeout(run, 220);
   }
   // The backdrop changes to another game's art: the new picture, once it's ready to draw, goes in
   // under the old one, which fades away over it. Moving on before it's ready skips it.
