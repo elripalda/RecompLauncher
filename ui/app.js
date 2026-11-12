@@ -3926,7 +3926,7 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   S.running = new Set(st.running || []);
@@ -5352,12 +5352,15 @@ async function lookForLauncher(atStart) {
   renderSide();
 }
 
+// `--desktop` (a self-update from desktop mode) beats the saved start-in-Big-Picture setting.
+function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+
 // The update screen at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
 // version the player put off with Later, unless that version is required.
 function startUpdateDue(v) {
   if (!v || !v.version || !S.settings.setup_done) return false;
-  if (document.body.classList.contains('tv-on') || S.bigArg || S.settings.start_in_tv) return false;
+  if (document.body.classList.contains('tv-on') || startsInTV()) return false;
   if ((S.running && S.running.size) || $('.scrim') || $('.upd-start')) return false;
   return !!v.required || (S.settings.ui || {}).upd_later !== v.version;
 }
@@ -7469,10 +7472,10 @@ async function confirmLauncherStartup(loaded) {
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
-  else if (window.startTV && (S.settings.start_in_tv || S.bigArg)) window.startTV();
+  else if (window.startTV && startsInTV()) window.startTV();
   else setTimeout(askData, 800);
   // Started by a game link from the website: that game's page.
-  invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
+  invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
   // A shortcut asked to play a recomp that still needs setting up: its Set Up window.
-  invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
+  invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
 })();

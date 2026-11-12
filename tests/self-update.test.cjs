@@ -61,6 +61,16 @@ function fixture(t, newVersion = 'v2', startup = 'ready') {
     '',
   ].join('\n');
   fs.writeFileSync(path.join(next, 'launcher'), programSource, { mode: 0o755 });
+  // The installed (old) binary performs the exchange; a shell double stands in for renamex_np.
+  const exchangeSource = [
+    '#!/bin/sh',
+    '[ "$1" = --exchange-bundles ] || exit 64',
+    '[ -z "$TEST_FAIL_RESTORE" ] || [ ! -e "$TEST_EXCHANGED" ] || exit 23',
+    ': > "$TEST_EXCHANGED"',
+    '/bin/mv "$2" "$2.exchange" && /bin/mv "$3" "$2" && /bin/mv "$2.exchange" "$3"',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(target, 'launcher'), exchangeSource, { mode: 0o755 });
   const opener = path.join(dir, 'test opener');
   const signature = path.join(dir, 'test signature');
   fs.writeFileSync(opener, '#!/bin/sh\nIFS= read -r version < "$2/version"\nprintf "%s\\n" "$version" "$@" > "$TEST_MARKER"\n', { mode: 0o755 });
@@ -68,14 +78,9 @@ function fixture(t, newVersion = 'v2', startup = 'ready') {
   function run(pid, failRestore = false) {
     let source = "printf 'ready\\n' >&3\n" + helper.replace('/usr/bin/open', '"$TEST_OPENER"').replace('/usr/bin/codesign', '"$TEST_CODESIGN"');
     source = source.replace('startup_tries=60', 'startup_tries=30').replaceAll('/bin/sleep 1', '/bin/sleep 0.05');
-    const mover = path.join(dir, 'test mover');
-    if (failRestore) {
-      fs.writeFileSync(mover, '#!/bin/sh\n[ "$1" != "$TEST_PREVIOUS" ] || exit 23\n/bin/mv "$@"\n', { mode: 0o755 });
-      source = source.replaceAll('/bin/mv', '"$TEST_MOVER"');
-    }
     const child = spawn('/bin/sh', ['-c', source, 'mac-update-test', String(pid), target, next, swap, data, error, program, token, '--bigpicture'], {
       cwd: dir,
-      env: { ...process.env, TEST_OPENER: opener, TEST_CODESIGN: signature, TEST_MARKER: marker, TEST_MOVER: mover, TEST_PREVIOUS: path.join(swap, 'previous.app'), TEST_PID_FILE: pidFile, TEST_VERSION: newVersion, TEST_STARTUP: startup },
+      env: { ...process.env, TEST_OPENER: opener, TEST_CODESIGN: signature, TEST_MARKER: marker, TEST_EXCHANGED: path.join(dir, 'exchanged'), TEST_FAIL_RESTORE: failRestore ? '1' : '', TEST_PID_FILE: pidFile, TEST_VERSION: newVersion, TEST_STARTUP: startup },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
     });
     t.after(() => { if (child.exitCode === null) child.kill(); });
@@ -142,7 +147,7 @@ test('the previous bundle remains until the replacement acknowledges startup', {
   await until(() => fs.existsSync(f.pidFile));
   await pause(100);
   assert.equal(run.child.exitCode, null);
-  assert.equal(fs.existsSync(path.join(f.swap, 'previous.app', 'obsolete')), true);
+  assert.equal(fs.existsSync(path.join(f.swap, 'RecompLauncher.app', 'obsolete')), true);
   assert.equal(fs.existsSync(f.data), true);
   f.acknowledge();
   const [code] = await run.done;
@@ -211,7 +216,7 @@ test('failed Mac restoration retains the previous bundle but removes the downloa
   const run = f.run(await exitedPid(), true);
   const [code] = await run.done;
   assert.equal(code, 1, run.stderr());
-  const previous = path.join(f.swap, 'previous.app');
+  const previous = path.join(f.swap, 'RecompLauncher.app');
   assert.equal(fs.readFileSync(path.join(previous, 'version'), 'utf8'), 'v1\n');
   assert.equal(fs.existsSync(f.data), false);
   assert.ok(fs.readFileSync(f.error, 'utf8').includes(previous));
@@ -323,4 +328,18 @@ test('only the Mac progress dialog is held open, and a failed update closes it',
       assert.equal(removed, true);
     }
   }
+});
+
+test('Big Picture B does not dismiss a dialog that is busy', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+  assert.match(source, /if \(name === 'b'\) \{ if \(!dlg\.dataset\.busy\) dlg\.remove\(\); \}/);
+});
+
+test('the desktop flag from a Mac update beats the saved Big Picture setting', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
+  const implementation = source.match(/^function startsInTV\(\)[^\n]*/m)[0];
+  const startsInTV = (S) => vm.runInNewContext(implementation + '; startsInTV()', { S });
+  assert.equal(startsInTV({ settings: { start_in_tv: true }, desktopArg: true }), false);
+  assert.equal(startsInTV({ settings: { start_in_tv: true } }), true);
+  assert.equal(startsInTV({ settings: {}, bigArg: true }), true);
 });

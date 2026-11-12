@@ -19,6 +19,39 @@ const HELPER: &str = include_str!("self_update.sh");
 static UPDATING: AtomicBool = AtomicBool::new(false);
 static PENDING: Mutex<Option<Prepared>> = Mutex::new(None);
 
+extern "C" {
+    fn renamex_np(from: *const std::ffi::c_char, to: *const std::ffi::c_char, flags: std::ffi::c_uint) -> std::ffi::c_int;
+}
+const RENAME_SWAP: std::ffi::c_uint = 0x2;
+
+/// Exchanges two directories in one filesystem operation, so the installed app path never
+/// disappears. The helper script calls this through the installed binary (`--exchange-bundles`)
+/// because `mv` has no atomic swap.
+pub fn exchange_bundles(first: &Path, second: &Path) -> Res<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let from = std::ffi::CString::new(first.as_os_str().as_bytes()).map_err(|_| Error::Msg("Invalid app path.".into()))?;
+    let to = std::ffi::CString::new(second.as_os_str().as_bytes()).map_err(|_| Error::Msg("Invalid app path.".into()))?;
+    // SAFETY: both pointers are NUL-terminated strings that outlive the call.
+    let status = unsafe { renamex_np(from.as_ptr(), to.as_ptr(), RENAME_SWAP) };
+    if status == 0 {
+        return Ok(());
+    }
+    Err(Error::Msg(format!("Couldn't exchange the app bundles: {}", std::io::Error::last_os_error())))
+}
+
+/// `--exchange-bundles <a> <b>` is the helper's atomic swap. Returns the exit code when asked.
+pub fn exchange_command(args: &[String]) -> Option<i32> {
+    let at = args.iter().position(|a| a == "--exchange-bundles")?;
+    let (Some(first), Some(second)) = (args.get(at + 1), args.get(at + 2)) else { return Some(2) };
+    match exchange_bundles(Path::new(first), Path::new(second)) {
+        Ok(()) => Some(0),
+        Err(e) => {
+            eprintln!("{e}");
+            Some(1)
+        }
+    }
+}
+
 struct Work(PathBuf);
 impl Drop for Work {
     fn drop(&mut self) {
@@ -229,9 +262,8 @@ impl Prepared {
         command.args(["-c", HELPER, "recomplauncher-mac-update"])
             .arg(std::process::id().to_string()).arg(&self.target).arg(&self.next)
             .arg(&self.swap.0).arg(&self.data.0).arg(&self.error).arg(&self.program).arg(&self.token);
-        if self.big_picture {
-            command.arg("--bigpicture");
-        }
+        // An explicit desktop flag beats the saved "start in Big Picture" setting on relaunch.
+        command.arg(if self.big_picture { "--bigpicture" } else { "--desktop" });
         command.current_dir(self.target.parent().unwrap()).stdin(Stdio::null());
         command
     }
@@ -477,6 +509,9 @@ mod tests {
         assert_eq!(args[0], "-c");
         assert_eq!(args[1], HELPER);
         assert_eq!(args.last().unwrap(), &std::ffi::OsStr::new("--bigpicture"));
+        let desktop = Prepared::stage(&bytes, "https://github.com/owner/repo/update.zip", "999.1.0", target.clone(), &data, false).unwrap();
+        assert_eq!(desktop.command().get_args().last().unwrap(), &std::ffi::OsStr::new("--desktop"));
+        drop(desktop);
         let swap = prepared.swap.0.clone();
         drop(prepared);
         assert!(!swap.exists(), "cancelled staging removes the adjacent bundle");

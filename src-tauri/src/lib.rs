@@ -6981,6 +6981,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "pictures": ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string()),
         "deck": shortcuts::is_steam_deck(),
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
+        "desktopArg": std::env::args().any(|a| a == "--desktop"),
         "missing": missing,
         // Where the web view can't play a sound (an AppImage, run as one or unpacked, or a PC
         // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
@@ -7828,7 +7829,21 @@ fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder
     b
 }
 
+/// `--desktop` (from a self-update by someone who left Big Picture) beats the saved setting.
+fn starts_in_big_picture(saved: bool) -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--desktop") {
+        return false;
+    }
+    saved || args.iter().any(|a| a == "--bigpicture")
+}
+
 pub fn run() {
+    // The Mac update helper swaps app bundles through the installed binary; no window starts.
+    #[cfg(target_os = "macos")]
+    if let Some(code) = self_update::exchange_command(&std::env::args().collect::<Vec<_>>()) {
+        std::process::exit(code);
+    }
     #[cfg(target_os = "linux")]
     sysenv::prepare_start(data_dir_early());
     if wait_for_play(&std::env::args().collect::<Vec<_>>()) {
@@ -8045,7 +8060,7 @@ pub fn run() {
                 let _ = lib.save(&dir);
             }
             // Big Picture at start only once setup is done: the first-run setup is always in a window.
-            let tv = (lib.settings.start_in_tv || std::env::args().any(|a| a == "--bigpicture")) && lib.settings.setup_done;
+            let tv = starts_in_big_picture(lib.settings.start_in_tv) && lib.settings.setup_done;
             // ReShade left in a game's folder by a start that didn't finish (the launcher closed
             // while the game ran): taken away now.
             {

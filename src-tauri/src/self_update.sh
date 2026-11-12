@@ -10,7 +10,9 @@ error=$6
 program=$7
 token=$8
 shift 8
-previous="$swap/previous.app"
+# After the atomic exchange the staged path holds the old bundle, which is the rollback copy.
+previous="$next"
+relative=${program#"$target"/}
 startup_tries=60
 
 report() {
@@ -90,36 +92,32 @@ if ! /usr/bin/codesign --verify --deep --strict "$next"; then
     exit 1
 fi
 
-if ! /bin/mv "$target" "$previous"; then
+# One atomic exchange, so the installed app path always exists even if this helper is killed
+# midway. The still-installed binary does it because mv can't exchange directories.
+if ! "$program" --exchange-bundles "$target" "$next"; then
     report "Couldn't replace RecompLauncher. Check that its folder is writable, then try Update again."
     cleanup
     start "$@"
     exit 1
 fi
 
-if /bin/mv "$next" "$target"; then
-    # Launch the installed executable directly so the helper owns its PID, including when it
-    # hangs or dies before Rust/JavaScript can send the readiness acknowledgement.
-    "$program" --update-startup "$swap" --update-token "$token" "$@" &
-    child=$!
-    if wait_for_startup; then
-        cleanup
-        exit 0
-    fi
-    if ! stop_replacement; then
-        /bin/rm -rf "$data"
-        report "The Mac update didn't confirm startup and couldn't be stopped. The previous app is kept at $previous."
-        exit 1
-    fi
+# Launch the installed executable directly so the helper owns its PID, including when it
+# hangs or dies before Rust/JavaScript can send the readiness acknowledgement.
+"$program" --update-startup "$swap" --update-token "$token" "$@" &
+child=$!
+if wait_for_startup; then
+    cleanup
+    exit 0
+fi
+if ! stop_replacement; then
+    /bin/rm -rf "$data"
+    report "The Mac update didn't confirm startup and couldn't be stopped. The previous app is kept at $previous."
+    exit 1
 fi
 
 report "The new RecompLauncher didn't confirm successful startup. Restoring the previous version."
-if [ -e "$target" ] && ! /bin/mv "$target" "$swap/failed.app"; then
-    /bin/rm -rf "$data"
-    report "Couldn't restore RecompLauncher. The previous app is kept at $previous."
-    exit 1
-fi
-if /bin/mv "$previous" "$target"; then
+# Exchange back with the old bundle's own binary: the new one is the one that failed.
+if "$previous/$relative" --exchange-bundles "$target" "$previous"; then
     cleanup
     start "$@"
 else

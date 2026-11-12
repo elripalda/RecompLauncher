@@ -111,7 +111,9 @@ replacement's PID. A crash or missing confirmation within 60 seconds stops the r
 before rollback; accepting a LaunchServices request is never treated as startup success.
 The signed target bundle must declare `RLUpdateStartupProtocol: 1`; older releases that cannot
 acknowledge startup are refused before replacement. Failures clean up staging and restore the
-previous app; if the replacement cannot be stopped or restoration fails, the backup is retained
+previous app; the swap is one atomic directory exchange (`renamex_np`), so the app path never
+disappears, and the helper passes `--desktop` when the player left Big Picture so the saved
+start-in-Big-Picture setting does not override it. If the replacement cannot be stopped or restoration fails, the backup is retained
 for recovery. The installed app's parent folder
 must be writable. The Windows installer, AppImage updater, and Linux download-page fallback
 remain unchanged.
