@@ -8214,9 +8214,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("RecompLauncher couldn't start")
         .run(|app, ev| {
-            if let tauri::RunEvent::Exit = ev {
-                pads::stop();
-                ping::close(app);
+            match ev {
+                #[cfg(target_os = "macos")]
+                // Dock and Finder must restore the main window even if a helper window is visible.
+                tauri::RunEvent::Reopen { .. } => show_main(app),
+                tauri::RunEvent::Exit => {
+                    pads::stop();
+                    ping::close(app);
+                }
+                _ => {}
             }
         });
 }
