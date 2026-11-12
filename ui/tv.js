@@ -1198,7 +1198,9 @@
     if (sv && sv.error) body = `<p class="tv-empty">${esc(t(sv.error))}</p>`;
     else if (sv) {
       const on = sv.cloudOn === true;
+      const shareTitle = saveShareTitle(id);
       body = `<div class="tv-list">
+        ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
         ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
@@ -2575,6 +2577,12 @@
         const g = S.library[id] || {};
         try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); } catch (e) { fail(e); }
         return loadGameSaves(id);
+      }
+      case 'gs-share': {
+        sfx('select');
+        const title = saveShareTitle(id);
+        if (title) await toggleSaveShare(title);
+        return draw(true);
       }
       case 'gs-backup': {
         sfx('select');

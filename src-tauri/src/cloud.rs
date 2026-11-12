@@ -869,6 +869,72 @@ pub async fn saves_backup(app: AppHandle, id: String) -> Res<Option<saves::Copy>
     after_session(&app, &id).await
 }
 
+/// Checks a catalog title's other installed recomps, or copies the one the player just approved.
+#[tauri::command]
+pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -> Res<Option<Value>> {
+    let _busy = busy().await?;
+    blocking(move || {
+        let st = app.state::<App>();
+        let cat = crate::cached_catalog(&st);
+        let changed = || Error::Msg("The saves changed or one of the versions is busy. Try again.".into());
+        let unavailable = || if selection.is_some() { Err(changed()) } else { Ok(None) };
+        let title = |id: &str| catalog::app(&cat, id).and_then(|a| a.get("title")).and_then(Value::as_str).filter(|s| !s.is_empty());
+        let Some(group) = title(&id) else { return unavailable() };
+        let (target, peers) = {
+            let lib = st.lib.lock().unwrap();
+            let Some(target) = lib.installed.get(&id).cloned() else { return unavailable() };
+            let peers: Vec<_> = lib.installed.values().filter(|g| g.id != id && title(&g.id) == Some(group)).cloned().collect();
+            (target, peers)
+        };
+        let available = |id: &str| !crate::setup_busy(id)
+            && !st.jobs.lock().unwrap().contains_key(id) && !st.moving.lock().unwrap().contains(id)
+            && !st.running.lock().unwrap().contains_key(id) && !st.pids.lock().unwrap().contains_key(id);
+        let offer = || {
+            if !available(&id) || crate::STARTING.lock().unwrap().contains(&id) {
+                return None;
+            }
+            let mut candidates: Vec<_> = peers.iter().filter_map(|g| {
+                if !available(&g.id) || crate::STARTING.lock().unwrap().contains(&g.id) {
+                    return None;
+                }
+                let spots = spots_of(&st, &g.id, g);
+                let [spot] = spots.as_slice() else { return None };
+                saves::share_file(spot, g, None).map(|file| (g, file))
+            }).collect();
+            candidates.sort_unstable_by(|(a, af), (b, bf)| bf.modified.cmp(&af.modified).then_with(|| a.id.cmp(&b.id)));
+            let spots = spots_of(&st, &id, &target);
+            let [spot] = spots.as_slice() else { return None };
+            let (g, source, destination) = candidates.into_iter().find_map(|(g, source)| {
+                let destination = saves::share_file(spot, &target, Some(&source))?;
+                Some((g, source, destination))
+            })?;
+            saves::newer_save(&source, &destination).then(|| (g, source, destination, spot.clone()))
+        };
+        let Some((g, source, destination, spot)) = offer() else {
+            return unavailable();
+        };
+        let token = json!({ "id": g.id, "source": source, "destination": destination });
+        if let Some(selection) = selection {
+            if token != selection {
+                return Err(changed());
+            }
+            let _reserved = {
+                let mut starting = crate::STARTING.lock().unwrap();
+                if [&id, &g.id].into_iter().any(|i| starting.contains(i) || !available(i)) {
+                    return Err(changed());
+                }
+                starting.extend([id.clone(), g.id.clone()]);
+                (crate::Starting(id.clone()), crate::Starting(g.id.clone()))
+            };
+            saves::share_save(&st.dir, &id, &spot, &target, &source, &destination)?;
+            return Ok(None);
+        }
+        Ok(Some(json!({
+            "selection": token, "name": g.name, "sourceWhen": source.when(), "destinationWhen": destination.when()
+        })))
+    }).await?
+}
+
 /// Puts a copy back: one of this PC's (`name`) or a cloud one (`v`).
 #[tauri::command]
 pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: Option<String>) -> Res<usize> {
