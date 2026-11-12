@@ -2406,6 +2406,11 @@
     const regionEl = $('.tv-region', root);
     const reg = regionEl ? regionEl.getBoundingClientRect() : null;
     let best = null, bestScore = Infinity;
+    // Up and down stay in the page while there's somewhere to go in it: the header (the tabs) is
+    // always on screen, and a row scrolled up out of view under it could lose to the tabs by a
+    // few pixels. The header is for when there's nothing more that way.
+    const page = (dir === 'up' || dir === 'down') && cur.closest('.tv-region');
+    let inBest = null, inScore = Infinity;
     for (const e of all) {
       if (e === cur) continue;
       const q = e.getBoundingClientRect();
@@ -2424,7 +2429,9 @@
       if ((dir === 'down' || dir === 'up') && reg && (q.right < reg.left || q.left > reg.right)) continue;
       const score = main + Math.abs(side) * 2.4;
       if (score < bestScore) { bestScore = score; best = e; }
+      if (page && score < inScore && page.contains(e)) { inScore = score; inBest = e; }
     }
+    if (inBest) best = inBest;
     if (!best) return;
     const into = best.closest('.tv-row');
     if (into && into !== fromRow && TV.row[into.dataset.row]) {
