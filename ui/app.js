@@ -7423,6 +7423,12 @@ T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.c
 T.event.listen('new-recomp', () => loadOwned().then(() => render(true)));
 T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetLooks(p.id); if (S.view === 'game' && S.arg === p.id) loadShots(p.id); });
 
+async function confirmLauncherStartup(loaded) {
+  if (!loaded || S.os !== 'macos') return;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await invoke('launcher_ready').catch(() => {});
+}
+
 (async function start() {
   let loaded = true;
   try { await refreshState(); } catch (e) { loaded = false; fail(e); }
@@ -7437,6 +7443,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (['played', 'time', 'az'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
   trayWords();
+  if (S.os === 'macos') await confirmLauncherStartup(loaded);
   await loadCatalog(false);
   // Both read the list on disk: side by side.
   await Promise.all([loadOwned(), loadEasy(true)]);

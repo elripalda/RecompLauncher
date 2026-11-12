@@ -9,19 +9,33 @@ const { once } = require('node:events');
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const helper = fs.readFileSync(path.join(__dirname, '../src-tauri/src/self_update.sh'), 'utf8');
+async function until(check) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (check()) return;
+    await pause(10);
+  }
+  assert.fail('test replacement did not start');
+}
 
-// Run the embedded commands with test doubles for LaunchServices and codesign. This exercises
-// real directory swaps without opening any installed app or launching a downloaded executable.
-// Rust tests separately exercise codesign against real signed application bundles.
-function fixture(t, newVersion = 'v2') {
+// A small executable represents the new app, with explicit readiness, crash and hang modes.
+// Only recovery uses the LaunchServices double. No installed or downloaded app is launched.
+function fixture(t, newVersion = 'v2', startup = 'ready') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mac-update-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const target = path.join(dir, 'Recomp Launcher $(touch injected) — test.app');
   const swap = path.join(dir, 'adjacent staging');
   const data = path.join(dir, 'app data staging');
   const next = path.join(swap, 'RecompLauncher.app');
   const marker = path.join(dir, 'opened');
+  const pidFile = path.join(dir, 'replacement.pid');
   const error = path.join(dir, 'error');
+  const token = 'a'.repeat(64);
+  const program = path.join(target, 'launcher');
+  t.after(() => {
+    if (fs.existsSync(pidFile)) {
+      try { process.kill(Number(fs.readFileSync(pidFile, 'utf8'))); } catch {}
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
   fs.mkdirSync(target);
   fs.mkdirSync(swap);
   fs.mkdirSync(data);
@@ -30,20 +44,38 @@ function fixture(t, newVersion = 'v2') {
   fs.writeFileSync(path.join(target, 'obsolete'), 'old bundle only');
   fs.writeFileSync(path.join(next, 'version'), newVersion + '\n');
   fs.writeFileSync(path.join(next, 'new-resource'), 'new bundle only');
+  const programSource = [
+    '#!/bin/sh',
+    'printf "%s\\n" "$$" > "$TEST_PID_FILE"',
+    'printf "%s\\n" "$TEST_VERSION" "$@" > "$TEST_MARKER"',
+    '[ "$TEST_VERSION" != bad ] || exit 17',
+    '[ "$TEST_STARTUP" != exit-ok ] || exit 0',
+    'if [ "$TEST_STARTUP" = hang ]; then trap "" TERM; else trap "exit 0" TERM; fi',
+    'case "$TEST_STARTUP" in',
+    '  ready|ack-exit) printf "%s %s\\n" "$$" "$4" > "$2/startup.ready" ;;',
+    '  wrong-token) printf "%s invalid-token\\n" "$$" > "$2/startup.ready" ;;',
+    '  wrong-pid) printf "1 %s\\n" "$4" > "$2/startup.ready" ;;',
+    'esac',
+    '[ "$TEST_STARTUP" != ack-exit ] || exit 0',
+    'while :; do /bin/sleep 0.05; done',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(next, 'launcher'), programSource, { mode: 0o755 });
   const opener = path.join(dir, 'test opener');
   const signature = path.join(dir, 'test signature');
-  fs.writeFileSync(opener, '#!/bin/sh\nIFS= read -r version < "$2/version"\n[ "$version" != bad ] || exit 17\nprintf "%s\\n" "$version" "$@" > "$TEST_MARKER"\n', { mode: 0o755 });
+  fs.writeFileSync(opener, '#!/bin/sh\nIFS= read -r version < "$2/version"\nprintf "%s\\n" "$version" "$@" > "$TEST_MARKER"\n', { mode: 0o755 });
   fs.writeFileSync(signature, '#!/bin/sh\nfor last; do :; done\n[ ! -f "$last/invalid-signature" ]\n', { mode: 0o755 });
   function run(pid, failRestore = false) {
     let source = "printf 'ready\\n' >&3\n" + helper.replace('/usr/bin/open', '"$TEST_OPENER"').replace('/usr/bin/codesign', '"$TEST_CODESIGN"');
+    source = source.replace('startup_tries=60', 'startup_tries=30').replaceAll('/bin/sleep 1', '/bin/sleep 0.05');
     const mover = path.join(dir, 'test mover');
     if (failRestore) {
       fs.writeFileSync(mover, '#!/bin/sh\n[ "$1" != "$TEST_PREVIOUS" ] || exit 23\n/bin/mv "$@"\n', { mode: 0o755 });
       source = source.replaceAll('/bin/mv', '"$TEST_MOVER"');
     }
-    const child = spawn('/bin/sh', ['-c', source, 'mac-update-test', String(pid), target, next, swap, data, error, '--bigpicture'], {
+    const child = spawn('/bin/sh', ['-c', source, 'mac-update-test', String(pid), target, next, swap, data, error, program, token, '--bigpicture'], {
       cwd: dir,
-      env: { ...process.env, TEST_OPENER: opener, TEST_CODESIGN: signature, TEST_MARKER: marker, TEST_MOVER: mover, TEST_PREVIOUS: path.join(swap, 'previous.app') },
+      env: { ...process.env, TEST_OPENER: opener, TEST_CODESIGN: signature, TEST_MARKER: marker, TEST_MOVER: mover, TEST_PREVIOUS: path.join(swap, 'previous.app'), TEST_PID_FILE: pidFile, TEST_VERSION: newVersion, TEST_STARTUP: startup },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
     });
     t.after(() => { if (child.exitCode === null) child.kill(); });
@@ -51,7 +83,11 @@ function fixture(t, newVersion = 'v2') {
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     return { child, ready: once(child.stdio[3], 'data'), done: once(child, 'exit'), stderr: () => stderr };
   }
-  return { dir, target, swap, data, next, marker, error, run };
+  function acknowledge() {
+    const pid = fs.readFileSync(pidFile, 'utf8').trim();
+    fs.writeFileSync(path.join(swap, 'startup.ready'), pid + ' ' + token + '\n');
+  }
+  return { dir, target, swap, data, next, marker, pidFile, error, run, acknowledge };
 }
 
 async function exitedPid() {
@@ -100,6 +136,64 @@ test('a failed Mac relaunch restores the complete previous bundle and cleans sta
   assert.equal(fs.existsSync(f.data), false);
 });
 
+test('the previous bundle remains until the replacement acknowledges startup', { skip: process.platform === 'win32' }, async (t) => {
+  const f = fixture(t, 'v2', 'manual');
+  const run = f.run(await exitedPid());
+  await until(() => fs.existsSync(f.pidFile));
+  await pause(100);
+  assert.equal(run.child.exitCode, null);
+  assert.equal(fs.existsSync(path.join(f.swap, 'previous.app', 'obsolete')), true);
+  assert.equal(fs.existsSync(f.data), true);
+  f.acknowledge();
+  const [code] = await run.done;
+  assert.equal(code, 0, run.stderr());
+  assert.equal(fs.existsSync(f.swap), false);
+  assert.equal(fs.existsSync(f.data), false);
+});
+
+test('exit zero without a readiness signal rolls back', { skip: process.platform === 'win32' }, async (t) => {
+  const f = fixture(t, 'v2', 'exit-ok');
+  const run = f.run(await exitedPid());
+  const [code] = await run.done;
+  assert.equal(code, 1, run.stderr());
+  assert.equal(fs.readFileSync(path.join(f.target, 'version'), 'utf8'), 'v1\n');
+});
+
+test('a crash immediately after sending readiness still rolls back', { skip: process.platform === 'win32' }, async (t) => {
+  const f = fixture(t, 'v2', 'ack-exit');
+  const run = f.run(await exitedPid());
+  const [code] = await run.done;
+  assert.equal(code, 1, run.stderr());
+  assert.equal(fs.readFileSync(path.join(f.target, 'version'), 'utf8'), 'v1\n');
+});
+
+test('a hung replacement is killed before the previous bundle is restored', { skip: process.platform === 'win32' }, async (t) => {
+  const f = fixture(t, 'v2', 'hang');
+  const run = f.run(await exitedPid());
+  const [code] = await run.done;
+  assert.equal(code, 1, run.stderr());
+  assert.equal(fs.readFileSync(path.join(f.target, 'version'), 'utf8'), 'v1\n');
+  const pid = Number(fs.readFileSync(f.pidFile, 'utf8'));
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+  assert.equal(fs.existsSync(f.swap), false);
+});
+
+test('a readiness signal with the wrong challenge cannot discard the backup', { skip: process.platform === 'win32' }, async (t) => {
+  const f = fixture(t, 'v2', 'wrong-token');
+  const run = f.run(await exitedPid());
+  const [code] = await run.done;
+  assert.equal(code, 1, run.stderr());
+  assert.equal(fs.readFileSync(path.join(f.target, 'version'), 'utf8'), 'v1\n');
+});
+
+test('a readiness signal from another PID cannot discard the backup', { skip: process.platform === 'win32' }, async (t) => {
+  const f = fixture(t, 'v2', 'wrong-pid');
+  const run = f.run(await exitedPid());
+  const [code] = await run.done;
+  assert.equal(code, 1, run.stderr());
+  assert.equal(fs.readFileSync(path.join(f.target, 'version'), 'utf8'), 'v1\n');
+});
+
 test('Mac signature failure after shutdown leaves the installed app intact and cleans staging', { skip: process.platform === 'win32' }, async (t) => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.next, 'invalid-signature'), '');
@@ -134,6 +228,44 @@ function updateContext(osName, invoke) {
   vm.runInContext(implementation, context);
   return context;
 }
+
+test('startup is acknowledged only after state loaded and two UI frames rendered', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
+  const implementation = source.match(/^async function confirmLauncherStartup\([^]*?^}/m)[0];
+  const frames = [];
+  const calls = [];
+  const context = vm.createContext({
+    S: { os: 'macos' },
+    requestAnimationFrame: (callback) => frames.push(callback),
+    invoke: async (command) => calls.push(command),
+  });
+  vm.runInContext(implementation, context);
+  const ready = context.confirmLauncherStartup(true);
+  assert.equal(calls.length, 0);
+  frames.shift()();
+  assert.equal(calls.length, 0);
+  frames.shift()();
+  await ready;
+  assert.deepEqual(calls, ['launcher_ready']);
+});
+
+test('failed startup and non-Mac startup cannot send an acknowledgment', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
+  const implementation = source.match(/^async function confirmLauncherStartup\([^]*?^}/m)[0];
+  const calls = [];
+  const context = vm.createContext({
+    S: { os: 'macos' },
+    requestAnimationFrame: () => assert.fail('no readiness frame should be scheduled'),
+    invoke: async (command) => calls.push(command),
+  });
+  vm.runInContext(implementation, context);
+  await context.confirmLauncherStartup(false);
+  context.S.os = 'windows';
+  await context.confirmLauncherStartup(true);
+  context.S.os = 'linux';
+  await context.confirmLauncherStartup(true);
+  assert.equal(calls.length, 0);
+});
 
 test('repeated Mac update clicks make one request and a failure allows retry', async () => {
   let finish;

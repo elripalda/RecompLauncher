@@ -6834,6 +6834,17 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     }
 }
 
+/// Only the rendered launcher window can acknowledge an update's startup challenge.
+#[tauri::command]
+fn launcher_ready(window: tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "main" {
+        return Err(Error::Msg("Only the launcher window can confirm startup.".into()));
+    }
+    #[cfg(target_os = "macos")]
+    self_update::startup_ready()?;
+    Ok(())
+}
+
 /// macOS stages a verified bundle and queues the swap for after the event loop shuts down.
 #[cfg(target_os = "macos")]
 #[tauri::command]
@@ -8231,7 +8242,7 @@ pub fn run() {
             forget_game,
             remove_github,
             take_setup_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, launcher_ready, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,

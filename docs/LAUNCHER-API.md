@@ -103,9 +103,16 @@ version, architecture and code signature, and stages it in its own data folder. 
 verified bundle is copied beside the installed app for an atomic swap on the same filesystem.
 After the Mac event loop shuts down, the OS shell runs fixed commands embedded in the installed
 launcher; no helper script or downloaded executable runs from a writable temporary folder.
-It waits for the old process to exit, checks the signature again, swaps the bundles and relaunches
-in the same desktop/Big Picture mode. Failures clean up staging and restore the previous app;
-if restoration itself fails the backup is retained for recovery. The installed app's parent folder
+It waits for the old process to exit, checks the signature again, swaps the bundles and launches
+the installed executable in the same desktop/Big Picture mode. The previous bundle stays until
+the replacement's main webview confirms that Rust state loaded and its initial UI rendered.
+The confirmation matches a private challenge, the expected installed bundle/version and the
+replacement's PID. A crash or missing confirmation within 60 seconds stops the replacement
+before rollback; accepting a LaunchServices request is never treated as startup success.
+The signed target bundle must declare `RLUpdateStartupProtocol: 1`; older releases that cannot
+acknowledge startup are refused before replacement. Failures clean up staging and restore the
+previous app; if the replacement cannot be stopped or restoration fails, the backup is retained
+for recovery. The installed app's parent folder
 must be writable. The Windows installer, AppImage updater, and Linux download-page fallback
 remain unchanged.
 

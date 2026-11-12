@@ -2,9 +2,11 @@
 //! shell, with commands embedded in this binary, after Tauri's event loop has shut down.
 
 use crate::{App, Error, Res};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -111,7 +113,62 @@ fn verify_bundle(bundle: &Path, version: &str) -> Res<()> {
     if !signature.status.success() {
         return Err(Error::Msg(format!("The downloaded RecompLauncher app has an invalid signature. Try again. {}", String::from_utf8_lossy(&signature.stderr).trim())));
     }
+    let protocol = info.as_dictionary().and_then(|d| d.get("RLUpdateStartupProtocol")).and_then(plist::Value::as_unsigned_integer);
+    if protocol != Some(1) {
+        return Err(Error::Msg("This Mac release cannot confirm successful startup. The installed app hasn't changed; use a release that supports verified startup.".into()));
+    }
     Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+struct StartupRequest {
+    target: PathBuf,
+    version: String,
+    token: String,
+}
+
+fn startup_token() -> Res<String> {
+    let mut bytes = [0u8; 32];
+    fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(hex::encode(bytes))
+}
+
+fn acknowledge(root: &Path, token: &str, target: &Path, version: &str, pid: u32) -> Res<()> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let root_metadata = fs::symlink_metadata(root)?;
+    let canonical = fs::canonicalize(root)?;
+    let private = root_metadata.permissions().mode() & 0o077 == 0;
+    let sibling = canonical.parent() == target.parent();
+    let named = canonical.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(".recomplauncher-update-"));
+    if root_metadata.file_type().is_symlink() || !private || !sibling || !named || canonical != root {
+        return Err(Error::Msg("The Mac update startup request is invalid.".into()));
+    }
+    let request_file = canonical.join("startup.json");
+    let metadata = fs::symlink_metadata(&request_file)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 4096 {
+        return Err(Error::Msg("The Mac update startup request is invalid.".into()));
+    }
+    let request: StartupRequest = serde_json::from_slice(&fs::read(request_file)?)?;
+    let matching = request.target == target && request.version == version && request.token == token;
+    let valid_token = token.len() == 64 && token.bytes().all(|c| c.is_ascii_hexdigit());
+    if !matching || !valid_token || canonical.join("startup.cancelled").exists() {
+        return Err(Error::Msg("The Mac update startup request expired or doesn't match this app.".into()));
+    }
+    let ready = canonical.join("startup.ready");
+    let mut file = fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(ready)?;
+    writeln!(file, "{pid} {token}")?;
+    Ok(())
+}
+
+/// Called by the main webview only after Rust state loaded and the first UI frame was rendered.
+pub fn startup_ready() -> Res<()> {
+    let args: Vec<_> = std::env::args_os().collect();
+    let root = args.windows(2).find(|a| a[0] == "--update-startup").map(|a| PathBuf::from(&a[1]));
+    let Some(root) = root else { return Ok(()) };
+    let token = args.windows(2).find(|a| a[0] == "--update-token").and_then(|a| a[1].to_str()).unwrap_or("");
+    let exe = fs::canonicalize(std::env::current_exe()?)?;
+    let target = bundle_for(&exe).ok_or_else(|| Error::Msg("The Mac update didn't start from its installed bundle.".into()))?;
+    acknowledge(&root, token, &target, env!("CARGO_PKG_VERSION"), std::process::id())
 }
 
 fn stage_mac(bytes: &[u8], url: &str, version: &str, work: &Path) -> Res<PathBuf> {
@@ -140,13 +197,15 @@ struct Prepared {
     swap: Work,
     error: PathBuf,
     big_picture: bool,
+    program: PathBuf,
+    token: String,
 }
 impl Prepared {
     fn stage(bytes: &[u8], url: &str, version: &str, target: PathBuf, data_dir: &Path, big_picture: bool) -> Res<Self> {
         let data = Work::create(data_dir)?;
         let bundle = stage_mac(bytes, url, version, &data.0)?;
-        // Only the final signed bundle goes beside the app, so the two renames are on the same
-        // filesystem even when Application Support and the installed app are on different drives.
+        // Keep download/extraction in app data, but put the signed bundle beside the app so both
+        // renames stay on the same filesystem even when the app is on another drive.
         let swap = Work::create(target.parent().ok_or_else(|| Error::Msg("Couldn't find RecompLauncher's folder.".into()))?)?;
         let next = swap.0.join("RecompLauncher.app");
         let copied = Command::new("/usr/bin/ditto").arg(bundle).arg(&next).output()?;
@@ -154,7 +213,13 @@ impl Prepared {
             return Err(Error::Msg(format!("Couldn't stage the new Mac app: {}", String::from_utf8_lossy(&copied.stderr).trim())));
         }
         verify_bundle(&next, version)?;
-        Ok(Self { target, next, data, swap, error: data_dir.join("self-update-error.txt"), big_picture })
+        let executable = crate::macos::bundle_executable(&next, crate::assets::arch_now()).unwrap();
+        let relative = executable.strip_prefix(&next).map_err(|_| Error::Msg("The Mac update's executable is outside its app bundle.".into()))?;
+        let program = target.join(relative);
+        let token = startup_token()?;
+        let request = StartupRequest { target: target.clone(), version: version.trim_start_matches('v').into(), token: token.clone() };
+        fs::write(swap.0.join("startup.json"), serde_json::to_vec(&request)?)?;
+        Ok(Self { target, next, data, swap, error: data_dir.join("self-update-error.txt"), big_picture, program, token })
     }
 
     fn command(&self) -> Command {
@@ -163,7 +228,7 @@ impl Prepared {
         let mut command = Command::new("/bin/sh");
         command.args(["-c", HELPER, "recomplauncher-mac-update"])
             .arg(std::process::id().to_string()).arg(&self.target).arg(&self.next)
-            .arg(&self.swap.0).arg(&self.data.0).arg(&self.error);
+            .arg(&self.swap.0).arg(&self.data.0).arg(&self.error).arg(&self.program).arg(&self.token);
         if self.big_picture {
             command.arg("--bigpicture");
         }
@@ -176,7 +241,7 @@ impl Prepared {
         let log = fs::File::create(self.error.with_file_name("self-update.log"))?;
         self.command().stdout(log.try_clone()?).stderr(log).spawn()?;
         // The system shell now owns cleanup. It waits for this process to exit before touching
-        // the installed app, then verifies the staged signature once more before either rename.
+        // the installed app, then keeps the previous bundle until the new webview confirms startup.
         std::mem::forget(self.data);
         std::mem::forget(self.swap);
         Ok(())
@@ -230,6 +295,10 @@ mod tests {
     // signature verification as a published update, without replacing or launching this app.
     #[cfg(target_os = "macos")]
     fn fixture(work: &Path, id: &str, version: &str, corrupt: bool) -> Vec<u8> {
+        fixture_with_protocol(work, id, version, corrupt, true)
+    }
+
+    fn fixture_with_protocol(work: &Path, id: &str, version: &str, corrupt: bool, protocol: bool) -> Vec<u8> {
         let app = work.join("source/RecompLauncher.app");
         fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
         fs::create_dir_all(app.join("Contents/Resources")).unwrap();
@@ -241,6 +310,9 @@ mod tests {
             ("CFBundlePackageType", "APPL"),
         ] {
             info.insert(key.into(), value.into());
+        }
+        if protocol {
+            info.insert("RLUpdateStartupProtocol".into(), 1u64.into());
         }
         plist::Value::Dictionary(info).to_file_xml(app.join("Contents/Info.plist")).unwrap();
         let resource = app.join("Contents/Resources/marker");
@@ -265,6 +337,71 @@ mod tests {
         assert!(crate::macos::bundle_executable(&staged, crate::assets::arch_now()).is_some());
         assert_eq!(fs::read_link(staged.join("Contents/Resources/link")).unwrap(), PathBuf::from("marker"));
         assert_eq!(bundle_for(&staged.join("Contents/MacOS/recomplauncher")), Some(staged));
+    }
+
+    #[test]
+    fn mac_update_refuses_a_release_without_startup_confirmation() {
+        let work = Work::create(&std::env::temp_dir()).unwrap();
+        let bytes = fixture_with_protocol(&work.0, "com.recomplauncher.app", "999.1.0", false, false);
+        let error = stage_mac(&bytes, "https://github.com/owner/repo/update.zip", "999.1.0", &work.0).unwrap_err();
+        assert!(error.to_string().contains("cannot confirm successful startup"), "{error}");
+    }
+
+    fn startup_fixture() -> (Work, Work, PathBuf, String) {
+        let root = Work::create(&std::env::temp_dir()).unwrap();
+        let target = root.0.join("RecompLauncher.app");
+        fs::create_dir(&target).unwrap();
+        let swap = Work::create(&root.0).unwrap();
+        let token = "a".repeat(64);
+        let request = StartupRequest { target: target.clone(), version: "999.1.0".into(), token: token.clone() };
+        fs::write(swap.0.join("startup.json"), serde_json::to_vec(&request).unwrap()).unwrap();
+        (root, swap, target, token)
+    }
+
+    #[test]
+    fn startup_acknowledgement_contains_the_pid_and_exact_challenge() {
+        let (_root, swap, target, token) = startup_fixture();
+        acknowledge(&swap.0, &token, &target, "999.1.0", 1234).unwrap();
+        assert_eq!(fs::read_to_string(swap.0.join("startup.ready")).unwrap(), format!("1234 {token}\n"));
+    }
+
+    #[test]
+    fn startup_acknowledgement_rejects_the_wrong_token() {
+        let (_root, swap, target, _token) = startup_fixture();
+        assert!(acknowledge(&swap.0, &"b".repeat(64), &target, "999.1.0", 1234).is_err());
+        assert!(!swap.0.join("startup.ready").exists());
+    }
+
+    #[test]
+    fn startup_acknowledgement_rejects_the_wrong_version() {
+        let (_root, swap, target, token) = startup_fixture();
+        assert!(acknowledge(&swap.0, &token, &target, "999.0.0", 1234).is_err());
+        assert!(!swap.0.join("startup.ready").exists());
+    }
+
+    #[test]
+    fn startup_acknowledgement_rejects_the_wrong_bundle() {
+        let (root, swap, _target, token) = startup_fixture();
+        assert!(acknowledge(&swap.0, &token, &root.0.join("Other.app"), "999.1.0", 1234).is_err());
+        assert!(!swap.0.join("startup.ready").exists());
+    }
+
+    #[test]
+    fn startup_acknowledgement_rejects_a_cancelled_update() {
+        let (_root, swap, target, token) = startup_fixture();
+        fs::write(swap.0.join("startup.cancelled"), "").unwrap();
+        assert!(acknowledge(&swap.0, &token, &target, "999.1.0", 1234).is_err());
+        assert!(!swap.0.join("startup.ready").exists());
+    }
+
+    #[test]
+    fn startup_acknowledgement_does_not_follow_an_existing_marker_symlink() {
+        let (root, swap, target, token) = startup_fixture();
+        let victim = root.0.join("unrelated.txt");
+        fs::write(&victim, "unchanged").unwrap();
+        std::os::unix::fs::symlink(&victim, swap.0.join("startup.ready")).unwrap();
+        assert!(acknowledge(&swap.0, &token, &target, "999.1.0", 1234).is_err());
+        assert_eq!(fs::read_to_string(victim).unwrap(), "unchanged");
     }
 
     #[test]
@@ -332,7 +469,7 @@ mod tests {
         let prepared = Prepared::stage(&bytes, "https://github.com/owner/repo/update.zip", "999.1.0", target.clone(), &data, true).unwrap();
         assert!(prepared.data.0.starts_with(fs::canonicalize(&data).unwrap()));
         assert_eq!(prepared.next.parent().unwrap(), prepared.swap.0);
-        assert_eq!(fs::read_dir(&prepared.swap.0).unwrap().count(), 1, "only the signed replacement bundle is staged beside the app");
+        assert_eq!(fs::read_dir(&prepared.swap.0).unwrap().count(), 2, "only the signed bundle and startup challenge are staged beside the app");
         assert_eq!(fs::read_to_string(target.join("old resource")).unwrap(), "keep until exit");
         let command = prepared.command();
         assert_eq!(command.get_program(), "/bin/sh");

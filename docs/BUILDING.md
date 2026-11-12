@@ -74,8 +74,13 @@ Downloads and extraction stay in the app's own data folder. The final verified b
 beside the installed app so the swap is on the same filesystem. After the Mac event loop closes,
 the OS shell runs commands embedded in the launcher and waits for the old process to exit before
 replacing or relaunching the app. No helper script or downloaded executable runs from a writable
-temporary location. The old bundle is restored if replacement or launch fails, and staging is
-cleaned up; a backup is retained only if restoring it also fails.
+temporary location. The previous bundle is retained until the replacement loads its Rust state,
+renders its initial UI, and acknowledges the update's private startup challenge. A missing
+acknowledgement after 60 seconds stops the replacement and restores the previous bundle.
+Staging is cleaned up; a backup is retained if the replacement cannot be stopped or restoration
+fails. New Mac bundles declare `RLUpdateStartupProtocol: 1` in their signed Info.plist (merged
+from `src-tauri/Info.macos.plist`). Releases without this protocol are refused before replacement,
+so a test of this flow needs both a source build and a target build that support it.
 Run the app from a writable location (such as `~/Applications`), rather than its mounted DMG.
 A Windows/Linux-only version feed must not offer an update on Mac. To advertise a Mac release,
 the site can add a `macos` entry with
