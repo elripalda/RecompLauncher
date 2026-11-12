@@ -3360,6 +3360,7 @@ function pageSettings() {
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
         `<span class="acts"><button type="button" class="btn sm" data-act="rom-scan">${esc(t('Look again'))}</button><button type="button" class="btn sm" data-act="rom-emus">${esc(t('From My Emulators'))}</button><button type="button" class="btn sm main" data-act="rom-add">${esc(t('Add a folder'))}</button></span>`)
         + group(t('Desktop shortcuts'), row(t('Shortcuts Go Through the Launcher'), t('Off: a game\'s desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your shader, cloud saves and play time along.'), sw('shortcut_launcher', ui.shortcut_launcher, t('Shortcuts Go Through the Launcher'), 'ui-toggle')))
+        + (S.steam ? steamSyncGroup(group, row, sw) : '')
         + (S.os === 'windows' ? group(t('Picking files'), row(t('Use the Launcher\'s Own File Browser'), t('Off: Windows\' own window for picking files and folders. On: the launcher\'s, which marks the games it knows and can unzip.'), sw('own_picker', ui.own_picker, t('Use the Launcher\'s Own File Browser'), 'ui-toggle'))) : '')
         + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Recomps you added to Steam, installed with Quiver Launcher or keep in a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="adopt">${esc(t('Find them'))}</button>`))
         + dlssGroup(group, row)
@@ -5333,6 +5334,46 @@ async function addToSteam(id, restart) {
   } catch (e) { fail(e); }
 }
 
+// Settings → Keep Steam in Sync. Steam only reads its games when it starts, so the launcher writes
+// while Steam is closed (it checks every couple of minutes); Sync Now restarts Steam to do it now.
+window.steamSync = steamSync;
+async function steamSync(restart) {
+  let r;
+  try { r = await invoke('steam_sync_now', { restart }); } catch (e) { return fail(e); }
+  S.steamSyncState = undefined;
+  if (r === 'steam_running') {
+    const v = await (window.ask || ask)(t('Restart Steam?'), `<p>${esc(t('Steam only picks up games when it starts. The launcher closes Steam, brings it in line with your Library, and opens Steam again. Or leave it open: the changes go in the next time Steam is closed.'))}</p>`,
+      [{ label: t('Later'), v: null }, { label: t('Restart Steam'), v: 'yes', main: true }]);
+    if (v === 'yes') { toast(t('Bringing Steam in line…')); return steamSync(true); }
+  } else if (r === 'in_sync') {
+    toast(t('Steam already has all your installed games.'));
+  } else if (String(r).startsWith('synced:')) {
+    const [, a, d] = String(r).split(':');
+    toast(tf('Steam is in sync: {a} added, {d} removed.', { a: Number(a) || 0, d: Number(d) || 0 }));
+  }
+  if (S.view === 'settings') render(true);
+}
+
+// What's waiting to go in or out of Steam, for the setting's line. Looked up again after a sync
+// or turning the setting on (false: being looked up).
+function steamSyncLine() {
+  const st = S.steamSyncState;
+  if (st === undefined) { S.steamSyncState = false; invoke('steam_sync_state').then((v) => { S.steamSyncState = v; if (S.view === 'settings' && S.setTab === 'library') setSection('library', false); }).catch(() => {}); }
+  if (!st) return t('Every game that\'s installed and set up, with its art.');
+  const n = (st.add || 0) + (st.remove || 0);
+  if (n) return tn(n, '1 change waits for Steam to close. Sync Now restarts Steam to put it in.', '{n} changes wait for Steam to close. Sync Now restarts Steam to put them in.');
+  if (st.collection) return t('The RecompLauncher collection goes in the next time Steam is closed.');
+  return tn(st.games || 0, 'Steam has your 1 installed game.', 'Steam has all {n} of your installed games.');
+}
+
+function steamSyncGroup(group, row, sw) {
+  const on = !!S.settings.steam_sync;
+  if (!on) S.steamSyncState = undefined;
+  const main = row(t('Keep Steam in Sync'), t('Every game that\'s installed and set up goes in your Steam library with its art, in a RecompLauncher collection, and leaves it when you uninstall it. Games you added to Steam yourself stay. Turning it off leaves Steam as it is.'), sw('steam_sync', on, t('Keep Steam in Sync')));
+  const now = on ? row(t('Sync Now'), steamSyncLine(), `<button type="button" class="btn sm" data-act="steam-sync">${esc(t('Sync Now'))}</button>`) : '';
+  return group(t('Steam'), main + now);
+}
+
 // ---------- screenshots ----------
 async function loadAllShots() {
   try { S.allShots = (await invoke('all_screenshots')) || []; } catch (e) { S.allShots = []; }
@@ -6755,6 +6796,7 @@ async function act(el, e) {
       return;
     }
     case 'self-steam': return selfToSteam(false);
+    case 'steam-sync': return steamSync(false);
     case 'ge-proton': return geInstall();
     case 'use-proton': return useProton(id);
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
@@ -6932,6 +6974,7 @@ async function act(el, e) {
       if (k === 'hide_ai' && S.view === 'discover') { saveSettings({ hide_ai: !S.settings.hide_ai }, true); return updateDiscover(); }
       // Sharing: what shows is what's sent (nothing before the player was asked).
       if (k === 'share_usage' || k === 'share_stats') return saveSettings({ [k]: !(S.settings.data_asked && S.settings[k]), data_asked: true });
+      if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
       return saveSettings({ [k]: !S.settings[k] });
     }
     case 'libdir': {
