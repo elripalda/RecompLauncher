@@ -42,7 +42,7 @@ def page(inner):
 LOGO = f'<div class="c" style="top:56px"><img class="mark" src="file://{HERE}/mark.svg"></div><div class="c" style="top:148px"><img class="wm" src="file://{HERE}/wordmark.svg"></div>'
 SHOTS = {
   # The first screen: Install (or Update). The location line and Change sit under the button as live text.
-  'welcome': page(LOGO + f'<div class="c lead" style="top:190px">One home for PC recomps</div><div class="c" style="top:258px"><div class="btn">{ARROW}Install</div></div><div class="c foot" style="top:424px">Free software under the GPL-3.0 · No game files included</div><div class="x">{X}</div>'),
+  'welcome': page(LOGO + f'<div class="c lead" style="top:190px">Recompiled and decompiled PC games</div><div class="c" style="top:258px"><div class="btn">{ARROW}Install</div></div><div class="c foot" style="top:424px">Free software under the GPL-3.0 · No game files included</div><div class="x">{X}</div>'),
   'update': page(LOGO + f'<div class="c lead" style="top:190px">A new version is ready</div><div class="c" style="top:258px"><div class="btn">{ARROW}Update</div></div><div class="c foot" style="top:424px">Your games, saves and settings stay as they are</div><div class="x">{X}</div>'),
   # Already installed, the same version: put its files back. Uninstall sits under it as live text.
   'repair': page(LOGO + f'<div class="c lead" style="top:190px">Already installed</div><div class="c" style="top:258px"><div class="btn">{WRENCH}Repair</div></div><div class="c foot" style="top:424px">Puts its files back. Your games, saves and settings stay as they are</div><div class="x">{X}</div>'),
