@@ -5353,8 +5353,10 @@ function pageSoon() {
   if (!S.cat) return `<div class="loading">${esc(t('Loading…'))}</div>`;
   const list = soonList();
   const req = `<button type="button" class="btn main" data-act="recomp-req">${PLUS}${esc(t('Request a Recomp'))}</button>`;
-  return `<div class="page">${offlineNote()}<div class="head"><div><h1>${esc(t('Coming Soon'))}</h1><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
-    ${list.length ? `<div class="count-line">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</div><div class="grid" data-n="${list.length}" style="margin-top:20px">${list.map((a) => tile(a)).join('')}</div>`
+  // The count sits beside the title, small, where Discover puts its own above the grid.
+  const count = list.length ? `<span class="count-line soon-n">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</span>` : '';
+  return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
+    ${list.length ? `<div class="grid" data-n="${list.length}">${list.map((a) => tile(a)).join('')}</div>`
       : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOURGLASS}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p></div>`}
   </div>`;
 }
