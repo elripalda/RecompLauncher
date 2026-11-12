@@ -1053,7 +1053,7 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
             let spots = spots_of(&st, &id, &target);
             let [spot] = spots.as_slice() else { return None };
             let (g, source, destination) = candidates.into_iter().find_map(|(g, source)| {
-                let destination = saves::share_file(spot, &target, Some(&source))?;
+                let (source, destination) = saves::share_pair(spot, &target, source)?;
                 Some((g, source, destination))
             })?;
             saves::newer_save(&source, &destination).then(|| (g, source, destination, spot.clone()))
