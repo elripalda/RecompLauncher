@@ -3549,7 +3549,7 @@ function render(keepScroll) {
   // A plugin's page keeps running while the rest of the window is redrawn.
   if (v.startsWith('plug:') && !S.anim && main.dataset.v === v) { renderSide(); paintIsland(); $('#offline').hidden = !offNow(); return; }
   if (keepScroll && v === 'game' && !S.anim && gp && gp.dataset.gp === S.arg) { refreshGame(); renderSide(); paintIsland(); $('#offline').hidden = !offNow(); fitTitles(main); return; }
-  const html = v === 'discover' ? pageDiscover() : v === 'library' ? pageLibrary() : v === 'achievements' ? pageAchievements() : v === 'game' ? pageGame(S.arg) : v === 'downloads' ? pageDownloads() : v === 'settings' ? pageSettings() : v === 'shots' ? pageShots() : v === 'saves' && window.pageSaves ? window.pageSaves() : v.startsWith('plug:') && window.pagePlugin ? window.pagePlugin(v.slice(5)) : pageHome();
+  const html = v === 'discover' ? pageDiscover() : v === 'library' ? pageLibrary() : v === 'achievements' ? pageAchievements() : v === 'game' ? pageGame(S.arg) : v === 'downloads' ? pageDownloads() : v === 'settings' ? pageSettings() : v === 'shots' ? pageShots() : v === 'soon' ? pageSoon() : v === 'saves' && window.pageSaves ? window.pageSaves() : v.startsWith('plug:') && window.pagePlugin ? window.pagePlugin(v.slice(5)) : pageHome();
   // Going to a page draws it fresh, with its entrance. Anything else (the same page with new
   // data) is patched in place, so nothing on screen flickers.
   // Redrawing the same page: whatever was at the top of the view stays there, even when something
@@ -5344,6 +5344,56 @@ const when = (ts) => new Date(ts * 1000).toLocaleString(curLocale(), { month: 's
 // Achievements: the page itself is in achievements.js (testers, and the alpha page for everyone else).
 function pageAchievements() { return window.achPage ? window.achPage() : ''; }
 
+// Coming Soon: every recomp the catalog announces before its first release, newest first. Not only
+// this PC's: a game that's coming tells the player what to look forward to, whatever it runs on.
+const soonList = () => oneEach(visible().filter((a) => a.soon).sort(byNew));
+window.soonList = soonList;
+const HOURGLASS = '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>';
+function pageSoon() {
+  if (!S.cat) return `<div class="loading">${esc(t('Loading…'))}</div>`;
+  const list = soonList();
+  const req = `<button type="button" class="btn main" data-act="recomp-req">${PLUS}${esc(t('Request a Recomp'))}</button>`;
+  return `<div class="page">${offlineNote()}<div class="head"><div><h1>${esc(t('Coming Soon'))}</h1><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
+    ${list.length ? `<div class="count-line">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</div><div class="grid" data-n="${list.length}" style="margin-top:20px">${list.map((a) => tile(a)).join('')}</div>`
+      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOURGLASS}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p></div>`}
+  </div>`;
+}
+
+// Request a recomp: the player pastes a project's link (GitHub, GitLab, Codeberg, anywhere) and a
+// note, and it goes to recomplauncher.com for a look. One the catalog already lists just opens.
+const sameLink = (x, y) => String(x || '').replace(/\/+$/, '').toLowerCase() === String(y || '').replace(/\/+$/, '').toLowerCase();
+function listedFor(link) {
+  const full = /^[a-z]+:\/\//i.test(link) ? link : 'https://' + link;
+  return all().find((a) => a.repo && sameLink(repoHome(a.repo), full)) || null;
+}
+window.listedFor = listedFor;
+function requestModal() {
+  const m = modal(`<h2>${esc(t('Request a Recomp'))}</h2><p>${esc(t('Know of a recomp the launcher doesn\'t have? Paste the link to its project on GitHub, GitLab, Codeberg or anywhere else, and it goes to RecompLauncher for a look.'))}</p>
+    <input class="field" id="rq-url" type="url" placeholder="https://github.com/owner/name" spellcheck="false" autocomplete="off" maxlength="300" aria-label="${esc(t('Project link'))}">
+    <textarea class="field" id="rq-note" rows="3" maxlength="500" placeholder="${esc(t('Anything to add? Which game it is, or why you\'d like it (optional)'))}" aria-label="${esc(t('Note'))}"></textarea>
+    <p class="err" id="rq-err" hidden></p>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Send Request'))}</button></div>`, async (x, close) => {
+    if (x.dataset.x !== 'yes') return;
+    const url = $('#rq-url', m).value.trim(), note = $('#rq-note', m).value.trim(), err = $('#rq-err', m);
+    if (!url) return $('#rq-url', m).focus();
+    const known = listedFor(url);
+    if (known) { close(); toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
+    x.disabled = true; err.hidden = true;
+    const was = x.textContent; x.textContent = t('Sending…');
+    try {
+      await invoke('recomp_request', { url, note: note || null });
+      close();
+      toast(t('Request sent. Thanks! It\'ll be looked at soon.'));
+    } catch (e) {
+      err.textContent = t(String(e && e.message ? e.message : e)); err.hidden = false;
+      x.disabled = false; x.textContent = was;
+    }
+  }, t('Request a Recomp'));
+  const f = $('#rq-url', m); f.focus();
+  f.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-x="yes"]', m).click(); });
+}
+window.requestModal = requestModal;
+
 function pageShots() {
   if (!S.allShots) return `<div class="loading">${esc(t('Loading your screenshots…'))}</div>`;
   const all = S.allShots, list = shotList();
@@ -6656,6 +6706,7 @@ async function act(el, e) {
     case 'sgdb-save': { const v = ($('#sgdb-key') || {}).value || ''; await saveUi({ sgdb_key: v.trim() }); return toast(v.trim() ? t('Saved. Games you add from GitHub get art now.') : t('Key removed.')); }
     case 'build': return changeBuild(id);
     case 'gh-add': return githubModal();
+    case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
     case 'setupdate': {
       const su = S.setup[id] || {};
@@ -6915,7 +6966,7 @@ document.addEventListener('click', (e) => {
   const link = e.target.closest('[data-url]:not([data-act])');
   if (link) { e.preventDefault(); invoke('open_url', { url: link.dataset.url }).catch(fail); return; }
   const g = e.target.closest('[data-go]');
-  if (g) { e.preventDefault(); if (['home', 'discover', 'library', 'achievements', 'downloads', 'shots', 'saves', 'settings'].includes(g.dataset.go) || g.dataset.go.startsWith('plug:')) { if (g.closest('.side')) { if (g.dataset.go === 'discover') S.find.genre = ''; if (g.dataset.go === 'shots') S.shotsGame = ''; } go(g.dataset.go); } return; }
+  if (g) { e.preventDefault(); if (['home', 'discover', 'soon', 'library', 'achievements', 'downloads', 'shots', 'saves', 'settings'].includes(g.dataset.go) || g.dataset.go.startsWith('plug:')) { if (g.closest('.side')) { if (g.dataset.go === 'discover') S.find.genre = ''; if (g.dataset.go === 'shots') S.shotsGame = ''; } go(g.dataset.go); } return; }
   const a = e.target.closest('[data-act]');
   if (a && a.tagName !== 'SELECT') { if (a.closest('.menu')) closeMenu(); act(a, e); }
 });
