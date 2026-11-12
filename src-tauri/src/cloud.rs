@@ -483,8 +483,31 @@ async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
     Ok((list, json!({"used": v.get("used"), "quota": v.get("quota")})))
 }
 
-/// Puts one local copy up.
+const SYNC_CONFLICT: &str = "Both save copies changed. Choose one in Saves → Sync Now.";
+
+/// Puts one local copy up if the cloud hasn't changed since the last sync.
 async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
+    let st = app.state::<App>();
+    let mut state = saves::state(&st.dir, id);
+    let copy = saves::manifest(&saves::dir_of(&st.dir, id).join(name))
+        .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
+    let (list, _) = cloud_list(app, id).await?;
+    let Some(top) = list.first() else { return upload_copy(app, id, name, 0).await };
+    if top.hash == copy.hash {
+        state.synced_hash = copy.hash;
+        if state.pending.as_deref() == Some(name) {
+            state.pending = None;
+        }
+        saves::set_state(&st.dir, id, &state);
+        return Ok(());
+    }
+    if top.hash != state.synced_hash {
+        return Err(Error::Msg(SYNC_CONFLICT.into()));
+    }
+    upload_copy(app, id, name, top.made.saturating_add(1)).await
+}
+
+async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Res<()> {
     let st = app.state::<App>();
     let path = saves::dir_of(&st.dir, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
@@ -512,7 +535,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         return Err(Error::Msg("This save is too big for cloud saves (over 95 MB). It's kept on this PC.".into()));
     }
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    let (made, played) = (man.made.to_string(), man.played.to_string());
+    let (made, played) = (man.made.max(earliest).to_string(), man.played.to_string());
     let size = body.len() as u64;
     let url = api();
     let req = st
@@ -676,7 +699,9 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
                 }
                 // Paused: said once each time the launcher runs, not after every game.
                 static TOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                if too_big {
+                if e.to_string() == SYNC_CONFLICT {
+                    let _ = app.emit("toast", format!("{}: {SYNC_CONFLICT}", g.name));
+                } else if too_big {
                     let _ = app.emit("toast", format!("{}: {e}", g.name));
                 } else if is_full(&e) {
                     if !FULL_TOLD.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -739,72 +764,139 @@ fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
     empty || (cloud_changed && !local_changed)
 }
 
+fn reserve_sync(st: &App, id: &str) -> Res<crate::Starting> {
+    let install = crate::recomp_of(st, id);
+    let mut starting = crate::STARTING.lock().unwrap();
+    if starting.contains(&install) || st.running.lock().unwrap().contains_key(&install)
+        || st.pids.lock().unwrap().contains_key(&install) {
+        return Err(Error::Msg("Close the game first.".into()));
+    }
+    starting.push(install.clone());
+    Ok(crate::Starting(install))
+}
+
+/// Upload the checked live save, even if a different save is still in the backup history.
+async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot>, hash: String, after: u64) -> Res<()> {
+    let dir = app.state::<App>().dir.clone();
+    let id2 = id.to_string();
+    let copy = blocking(move || {
+        saves::backup(&dir, &id2, &spots, &g)?;
+        saves::list(&dir, &id2).into_iter().next().filter(|c| c.hash == hash)
+            .ok_or_else(|| Error::Msg("The saves changed. Try syncing again.".into()))
+    }).await??;
+    // A player can choose a save that was backed up before the current cloud copy.
+    upload_copy(app, id, &copy.name, after.saturating_add(1)).await
+}
+
 /// Before Play: what to do about the cloud.
 /// "play": go ahead. "restored": a newer save from another PC was put in place. "conflict": both
 /// changed, the player picks (`local` and `cloud` say what each is). "offline": couldn't check.
 #[tauri::command]
-pub async fn saves_check(app: AppHandle, id: String) -> Res<Value> {
+pub async fn saves_check(app: AppHandle, id: String, manual: Option<bool>) -> Res<Value> {
+    if manual == Some(true) {
+        return crate::net::now(check_saves(app, id, true)).await;
+    }
+    check_saves(app, id, false).await
+}
+
+async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     let st = app.state::<App>();
     let g = game(&st, &id)?;
     if g.cloud != Some(true) || !signed_in(&st.dir) {
+        if manual {
+            return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
+        }
         return Ok(json!({"action": "play"}));
     }
-    let _busy = BUSY.lock().await;
+    let _busy = busy().await?;
+    let _reserved = reserve_sync(&st, &id)?;
     let (list, _) = match cloud_list(&app, &id).await {
         Ok(x) => x,
         Err(Error::Net(_)) => return Ok(json!({"action": "offline"})),
         Err(e) => return Err(e),
     };
-    let Some(top) = list.first().cloned() else { return Ok(json!({"action": "play"})) };
+    let top = list.first();
+    if !manual && top.is_none() {
+        return Ok(json!({"action": "play"}));
+    }
     let spots = spots_of(&st, &id, &g);
-    let g2 = g.clone();
-    let (entries, _, local) = blocking(move || saves::current(&spots, &g2)).await?;
+    let (g2, spots2) = (g.clone(), spots.clone());
+    let (entries, infos, local) = blocking(move || saves::current(&spots2, &g2)).await?;
+    if entries.len() != infos.len() {
+        return Err(Error::Msg("Some save files couldn't be read. Try syncing again.".into()));
+    }
     let s = saves::state(&st.dir, &id);
+    let Some(top) = top else {
+        if local.is_empty() {
+            return Ok(json!({"action": "play"}));
+        }
+        upload_current(&app, &id, g, spots, local, 0).await?;
+        return Ok(json!({"action": "uploaded"}));
+    };
     if top.hash == local {
-        if s.synced_hash != local {
+        if s.synced_hash != local || s.pending.is_some() {
             let mut s = s;
             s.synced_hash = local;
+            s.pending = None;
             saves::set_state(&st.dir, &id, &s);
         }
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        let n = take_cloud(&app, &id, &top).await?;
+        let n = take_cloud(&app, &id, top).await?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
     }
     if top.hash == s.synced_hash {
-        // Only this PC has played since: it goes up after this session.
+        if manual {
+            upload_current(&app, &id, g, spots, local, top.made).await?;
+            return Ok(json!({"action": "uploaded"}));
+        }
+        // After Play, the local changes go up at the end of the session.
         return Ok(json!({"action": "play"}));
     }
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
     let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
-    Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs}, "cloud": top}))
+    Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
 }
 
-/// Before a start with no window to ask in (a shortcut, the tray): a newer cloud save is put in
-/// place; if both changed, this PC's is played and goes up afterwards as the newest (the cloud keeps
-/// the other one in its history).
-pub async fn sync_quiet(app: &AppHandle, id: &str) {
-    let _ = saves_check(app.clone(), id.to_string()).await;
+/// A shortcut or tray launch has no conflict prompt, so let the player resolve it in the launcher.
+pub async fn sync_quiet(app: &AppHandle, id: &str) -> Res<()> {
+    let st = app.state::<App>();
+    let save_id = if own_saves(&st, id).is_some() { id.to_string() } else { crate::recomp_of(&st, id) };
+    let result = saves_check(app.clone(), save_id, None).await?;
+    if result["action"] == "conflict" {
+        return Err(Error::Msg(SYNC_CONFLICT.into()));
+    }
+    Ok(())
 }
 
 /// The player's pick after a conflict: keep this PC's save (it goes up as the newest), or the
 /// cloud's (this PC's is kept as a local copy first).
 #[tauri::command]
-pub async fn saves_pick(app: AppHandle, id: String, keep: String) -> Res<()> {
+pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: String, cloud_version: String) -> Res<()> {
+    let _busy = busy().await?;
     let st = app.state::<App>();
-    if keep == "cloud" {
-        let _busy = BUSY.lock().await;
-        let (list, _) = cloud_list(&app, &id).await?;
-        let top = list.first().cloned().ok_or_else(|| Error::Msg("There's no cloud save for it.".into()))?;
-        take_cloud(&app, &id, &top).await?;
-        return Ok(());
+    let g = game(&st, &id)?;
+    if g.cloud != Some(true) || !signed_in(&st.dir) {
+        return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
     }
-    // This PC's save: a fresh copy, sent up as the newest.
-    after_session(&app, &id).await?;
-    let latest = saves::list(&st.dir, &id).into_iter().next().ok_or_else(|| Error::Msg("There's no save on this PC.".into()))?;
-    let _busy = BUSY.lock().await;
-    upload(&app, &id, &latest.name).await
+    let _reserved = reserve_sync(&st, &id)?;
+    crate::net::now(async {
+        let changed = || Error::Msg("The saves changed. Try syncing again.".into());
+        let (list, _) = cloud_list(&app, &id).await?;
+        let top = list.first().filter(|c| c.v == cloud_version).ok_or_else(changed)?;
+        let spots = spots_of(&st, &id, &g);
+        let (g2, spots2) = (g.clone(), spots.clone());
+        let (entries, infos, hash) = blocking(move || saves::current(&spots2, &g2)).await?;
+        if hash != local_hash || entries.len() != infos.len() {
+            return Err(changed());
+        }
+        match keep.as_str() {
+            "cloud" => take_cloud(&app, &id, top).await.map(|_| ()),
+            "local" => upload_current(&app, &id, g, spots, hash, top.made).await,
+            _ => Err(Error::Msg("Choose this PC or the cloud.".into())),
+        }
+    }).await
 }
 
 /// Turns cloud saves on or off for a game. On: what's on this PC goes up now (unless the cloud
@@ -827,11 +919,6 @@ pub async fn saves_cloud(app: AppHandle, id: String, on: bool) -> Res<Installed>
             let has_cloud = cloud_list(&app2, &id2).await.map(|(l, _)| !l.is_empty()).unwrap_or(true);
             if !has_cloud {
                 let _ = after_session(&app2, &id2).await;
-                let st = app2.state::<App>();
-                if let Some(l) = saves::list(&st.dir, &id2).into_iter().next() {
-                    let _busy = BUSY.lock().await;
-                    let _ = upload(&app2, &id2, &l.name).await;
-                }
                 let _ = app2.emit("saves", json!({"id": id2}));
             }
         });

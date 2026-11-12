@@ -7910,8 +7910,8 @@ pub fn run() {
                         return;
                     }
                     ready_look(&app, &rid).await;
-                    cloud::sync_quiet(&app, &rid).await;
-                    if let Err(e) = start_game_with_steam(&app, &id, steam.as_ref()) {
+                    let sync = cloud::sync_quiet(&app, &id).await;
+                    if let Err(e) = sync.and_then(|()| start_game_with_steam(&app, &id, steam.as_ref())) {
                         show_main(&app);
                         let _ = app.emit("toast", e.to_string());
                     }
@@ -8251,8 +8251,8 @@ pub fn run() {
                             return;
                         }
                         ready_look(&handle, &rid).await;
-                        cloud::sync_quiet(&handle, &rid).await;
-                        if let Err(e) = start_game(&handle, &id) {
+                        let sync = cloud::sync_quiet(&handle, &id).await;
+                        if let Err(e) = sync.and_then(|()| start_game(&handle, &id)) {
                             show_main(&handle);
                             let _ = handle.emit("toast", e.to_string());
                         }

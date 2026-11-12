@@ -1219,9 +1219,7 @@
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
           const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return sv.offline
-            ? `<button type="button" class="tv-item" data-f data-key="gs:check" data-tvact="gs-check" data-id="${esc(id)}"${sv.busy ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Check Again'))}<small>${esc(sv.failed ? t('Still no answer. See recomplauncher.com/status for whether it\'s on our side.') : t('The website can\'t be reached right now; copies go up when it can.'))}</small></span></button>`
-            : `<button type="button" class="tv-item" data-f data-key="gs:up" data-tvact="gs-upnow" data-id="${esc(id)}"${sv.busy ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(sv.busy ? t('Uploading…') : t('Upload Now'))}<small>${esc(line)}</small></span></button>`;
+          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
         })() : ''}
         <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
@@ -2594,18 +2592,14 @@
           { label: t('Game page'), icon: 'page', run: () => go('game', id) },
         ]);
       }
-      case 'gs-upnow': case 'gs-check': {
+      case 'gs-sync': {
         const sv = TV.saves[id];
+        if (sv?.busy) return;
         if (sv && sv !== 'loading') sv.busy = true;
         draw(true);
-        try {
-          TV.saves[id] = await invoke(act === 'gs-check' ? 'cloud_retry' : 'saves_upload_now', { id });
-          toast(act === 'gs-check' ? t('Connected again.') : t('Your save is in the cloud.'));
-        } catch (e) {
-          if (sv && sv !== 'loading') { sv.busy = false; sv.failed = true; }
-          toast(String(e && e.message ? e.message : e), true);
-        }
-        return draw(true);
+        try { await syncCloudNow(id); } catch (e) { fail(e); }
+        delete S.saves[id];
+        return loadGameSaves(id);
       }
       case 'gs-cloud': {
         sfx('select');
