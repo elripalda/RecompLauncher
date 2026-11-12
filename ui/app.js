@@ -5348,7 +5348,7 @@ function pageAchievements() { return window.achPage ? window.achPage() : ''; }
 // this PC's: a game that's coming tells the player what to look forward to, whatever it runs on.
 const soonList = () => oneEach(visible().filter((a) => a.soon).sort(byNew));
 window.soonList = soonList;
-const HOURGLASS = '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>';
+const CAL_CLOCK = '<path d="M11.8 21H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M15 3v4M7 3v4M3 11h16"/><circle cx="18" cy="18" r="4"/><path d="M18 16.5V18l1 1"/>';
 function pageSoon() {
   if (!S.cat) return `<div class="loading">${esc(t('Loading…'))}</div>`;
   const list = soonList();
@@ -5357,7 +5357,7 @@ function pageSoon() {
   const count = list.length ? `<span class="count-line soon-n">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</span>` : '';
   return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
     ${list.length ? `<div class="grid" data-n="${list.length}">${list.map((a) => tile(a)).join('')}</div>`
-      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOURGLASS}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p></div>`}
+      : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAL_CLOCK}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p></div>`}
   </div>`;
 }
 
