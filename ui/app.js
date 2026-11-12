@@ -2978,13 +2978,27 @@ async function loadDlHist() {
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
 // (0.91) Each download's speed over its last minute and a half, for the graph at the top of Downloads.
+// A short download barely drew a line with one point a second, so the speed is worked out here from
+// the bytes each progress update brings (several a second), smoothed a little, and kept five times a
+// second: a 3-second download draws a real curve.
 const DLSPD = {};
-function noteSpeed(id, v) {
-  const l = DLSPD[id] = DLSPD[id] || [], now = Date.now();
-  if (l.length && now - l.at < 1000) l[l.length - 1] = v; else { l.push(v); l.at = now; }
-  if (l.length > 90) l.splice(0, l.length - 90);
+const DL_STEP = 200, DL_KEEP = 450; // a point every 200 ms, a minute and a half of them
+function noteSpeed(id, p) {
+  const l = DLSPD[id] = DLSPD[id] || [], now = Date.now(), done = p.done || 0;
+  const m = l.m || (l.m = { at: now, done, v: p.speed || 0 });
+  const dt = now - m.at;
+  if (done < m.done) { m.at = now; m.done = done; } // started over (a retry): measure from here
+  else if (dt >= 120) {
+    const got = (done - m.done) / (dt / 1000);
+    m.v = m.v ? m.v * 0.55 + got * 0.45 : got;
+    m.at = now;
+    m.done = done;
+  }
+  const v = Math.round(m.v || p.speed || 0), slot = Math.floor(now / DL_STEP);
+  if (l.length && slot === l.slot) l[l.length - 1] = v; else { l.push(v); l.slot = slot; }
+  if (l.length > DL_KEEP) l.splice(0, l.length - DL_KEEP);
 }
-window.dlSpeedSeed = (id, list) => { DLSPD[id] = list.slice(-90); DLSPD[id].at = Date.now(); };
+window.dlSpeedSeed = (id, list) => { DLSPD[id] = list.slice(-DL_KEEP); DLSPD[id].slot = Math.floor(Date.now() / DL_STEP); };
 function dlGraph(id) {
   // Fills the width from the start, then scrolls once there's a minute and a half of it.
   const l = DLSPD[id] || [], W = 300, H = 96, n = Math.max(l.length, 2);
@@ -7486,7 +7500,7 @@ T.event.listen('install', ({ payload: p }) => {
   const had = S.jobs[id];
   p.at = Date.now();
   S.jobs[id] = p;
-  if (p.phase === 'download') noteSpeed(id, p.speed || 0);
+  if (p.phase === 'download') noteSpeed(id, p);
   if (!had || had.phase !== p.phase) render(true); else { paintProgress(id); paintDlHero(id); paintIsland(); }
 });
 

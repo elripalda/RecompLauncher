@@ -195,7 +195,8 @@ pub async fn download_split(
     let res = loop {
         tokio::select! {
             r = &mut all => break r,
-            _ = tokio::time::sleep(Duration::from_millis(400)) => {
+            // A few updates a second, so the Downloads graph has points to draw even on a short download.
+            _ = tokio::time::sleep(Duration::from_millis(150)) => {
                 let d = done.load(Ordering::Relaxed);
                 if mark.elapsed() >= Duration::from_secs(1) {
                     speed = ((d - mark_bytes) as f64 / mark.elapsed().as_secs_f64()) as u64;
