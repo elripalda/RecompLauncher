@@ -874,7 +874,7 @@
  "On. The newest copy goes up next time the launcher can reach the website.": "เปิด สำเนาล่าสุดจะอัปโหลดเมื่อตัวเปิดเกมเชื่อมต่อเว็บไซต์ได้ครั้งถัดไป",
  "On. The website can't be reached right now; copies go up when it can.": "เปิด ตอนนี้เชื่อมต่อเว็บไซต์ไม่ได้ สำเนาจะอัปโหลดเมื่อเชื่อมต่อได้",
  "On. Your library, settings, play time and save backups are in {folder}, next to the launcher, so they go wherever it goes.": "เปิดอยู่ คลังเกม การตั้งค่า เวลาเล่น และไฟล์สำรองเซฟของคุณอยู่ใน {folder} ข้างตัวเปิดเกม และติดไปด้วยทุกที่",
- "One home for PC recomps: find, install, update and play them, straight from each developer's own GitHub.": "ที่เดียวสำหรับ Recomp บนพีซี: ค้นหา ติดตั้ง อัปเดต และเล่น โดยตรงจาก GitHub ของผู้พัฒนาแต่ละราย",
+ "Recompiled and decompiled PC games: find, install, update and play them, straight from each developer's own GitHub.": "เกมพีซีที่รีคอมไพล์และดีคอมไพล์: ค้นหา ติดตั้ง อัปเดต และเล่น โดยตรงจาก GitHub ของผู้พัฒนาแต่ละราย",
  "One of your games has a recomp. It's in your Library, ready to install.": "เกมของคุณ 1 เกมมี Recomp อยู่ในคลังของคุณแล้ว พร้อมติดตั้ง",
  "One of your games has a recomp. It's waiting on Home.": "มี Recomp สำหรับเกมของคุณ 1 เกม รออยู่ที่หน้าแรก",
  "Only install plugins from people you trust.": "ติดตั้งปลั๊กอินจากคนที่คุณเชื่อถือเท่านั้น",

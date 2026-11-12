@@ -5673,7 +5673,7 @@ function resetModal(what) {
 function aboutModal() {
   modal(`<div class="about"><img src="img/mark.svg" alt="" width="72" height="72"><h2 class="sr">RecompLauncher</h2><img class="about-wm" src="img/wordmark.svg" alt="" height="26">
     <p class="muted">${esc(tf('Version {v}', { v: verName(S.version) }))} · ${OS_NAME[S.os]} ${esc(S.arch)}</p>
-    <p>${esc(t('One home for PC recomps: find, install, update and play them, straight from each developer\'s own GitHub.'))}</p>
+    <p>${esc(t('Recompiled and decompiled PC games: find, install, update and play them, straight from each developer\'s own GitHub.'))}</p>
     <p class="muted" style="font-size:14px">${esc(t('RecompLauncher has no game files and never downloads any. Every recomp runs with your own copy of the game. RecompLauncher is free software under the GPL-3.0; each recomp has its own license, set by its developer.'))}</p>
     ${discordUrl() ? `<div class="acts grid2"><button type="button" class="btn" data-x="site">recomplauncher.com</button><button type="button" class="btn dc-btn" data-x="discord" aria-label="Discord" title="Discord">${DISCORD}</button>
       <button type="button" class="btn" data-x="me">${esc(t('Made by Ripalda'))}</button><button type="button" class="btn" data-x="update">${esc(t('Check for updates'))}</button>
