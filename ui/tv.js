@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['soon', N_('Coming Soon')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -943,7 +943,7 @@
     show();
   }
   // Typing a few words with the controller (a report's note): Send once there are `min` letters.
-  window.tvType = ({ title, hint, min = 0, max = 1000, more = '' }) => new Promise((res) => {
+  window.tvType = ({ title, hint, min = 0, max = 1000, more = '', keys = '' }) => new Promise((res) => {
     let text = '', settled = false;
     const done = (v) => { if (settled) return; settled = true; res(v); };
     const show = () => {
@@ -957,7 +957,9 @@
       if (text.trim().length < min) { sfx('back'); toast(tf('A few more words, please: at least {n} letters.', { n: min })); return; }
       TV.sheet.keep = false; done(text.trim()); closeSheet();
     };
-    const items = KEYS.map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
+    // A link needs a few more keys than words do (`keys`, like "./:-_").
+    const extra = keys.split('').filter((k) => !KEYS.includes(k.toUpperCase()));
+    const items = KEYS.concat(extra).map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
       .concat([{ label: t('Space'), cls: 'key wide', run: () => type(' ') }, { label: t('Delete'), cls: 'key wide', icon: 'erase', run: del }, { label: t('Clear'), cls: 'key wide', run: () => { text = ''; show(); } }, { label: t('Send'), cls: 'key wide done', icon: 'check', run: send }]);
     const head = `<h3>${esc(title)}</h3><div class="tv-kb-field"><span id="tv-kbq"></span><span id="tv-kbph" class="ph">${esc(hint || '')}</span><i class="caret"></i></div><div class="tv-kb-hints"><span>${glyph('y')}${esc(t('Space'))}</span><span>${glyph('x')}${esc(t('Delete'))}</span><span id="tv-kbn"></span></div>${more}`;
     sheet(title, items, 'kb', head);
@@ -1120,6 +1122,30 @@
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
         ${done.length ? `<h3 class="tv-lh">${esc(t('Checked Before It Was Published'))}</h3><div class="tv-list">${done.join('')}</div>` : ''}`)}
       ${hints([['A', t('Open')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
+  }
+
+  // Coming Soon: what the catalog announces before its first release (Discover here leaves them out),
+  // with Request a Recomp first on the row, as on the desktop page.
+  function pageSoonTV() {
+    const list = window.soonList();
+    const req = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="soon-tools"><button type="button" class="tv-chip tool" data-f data-key="c:@req" data-tvact="recomp-req">${svg('plus', 20)}${esc(t('Request a Recomp'))}</button></div></div>`;
+    const sub = list.length ? tn(list.length, '1 recomp on the way', '{n} recomps on the way') : t('Nothing announced right now');
+    return `${backdrop(null)}${bar()}
+      ${region(`${pageHead(t('Coming Soon'), sub)}${req}
+        <div class="tv-gridwrap">${list.length ? grid(list, 'C') : `<p class="tv-empty">${esc(t('Know of a recomp the launcher should have? Send its project\'s link.'))}</p>`}</div>`)}
+      ${hints([['A', t('Open')], ['X', t('Options')], ['LB+RB', t('Sections')]])}`;
+  }
+  // The project's link, typed with the controller. The desktop view also takes a note.
+  async function tvRequest() {
+    sfx('select');
+    const url = await window.tvType({ title: t('Request a Recomp'), hint: 'github.com/owner/name', max: 300, keys: './:-_' });
+    if (!url) return;
+    const known = window.listedFor(url);
+    if (known) { toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
+    try {
+      await invoke('recomp_request', { url, note: null });
+      toast(t('Request sent. Thanks! It\'ll be looked at soon.'));
+    } catch (e) { fail(e); }
   }
 
   // Settings in groups, with the focused one shown large on the right (what it does, and its value).
@@ -2060,7 +2086,7 @@
           <figure><img src="img/qr-support.svg" alt=""><figcaption><b class="tv-heart">${HEART}${esc(t('Support Us'))}</b><span>ko-fi.com/recomp</span></figcaption></figure></div></div>`)}
       ${hints([['B', t('Back')]])}`;
   }
-  const VIEWS = { home: pageHome, library: pageLibrary, achievements: pageAchTV, discover: pageDiscover, downloads: pageDownloads, settings: pageSettings, about: pageAbout, storage: pageStorage, saves: pageSavesAll };
+  const VIEWS = { home: pageHome, library: pageLibrary, achievements: pageAchTV, discover: pageDiscover, soon: pageSoonTV, downloads: pageDownloads, settings: pageSettings, about: pageAbout, storage: pageStorage, saves: pageSavesAll };
   function draw(keep) {
     expandLib();
     if (!TV.on || TV.booting) return;
@@ -2548,6 +2574,7 @@
       case 'setupreq': return (isInstallerApp(byId(id)) || installerDue(id)) ? installerModal(id) : tvSetupReq(id);
       case 'addlib': sfx('select'); await addToLibrary(id); TV.focusKey = 'g-main'; return draw(true);
       case 'dsearch': return tvSearch();
+      case 'recomp-req': return tvRequest();
       case 'signin': sfx('select'); return window.signIn && window.signIn(false);
       case 'tag': sfx('select'); TV.dtag = el.dataset.tag; TV.genre = ''; TV.dq = ''; TV.dorigin = ''; TV.gridShown = {}; return go('discover');
       case 'dtagclear': sfx('back'); TV.dtag = ''; TV.focusKey = 'g:@filter'; return discoverRedraw();
