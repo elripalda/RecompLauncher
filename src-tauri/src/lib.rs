@@ -9422,10 +9422,23 @@ mod tests {
 
     /// The body of `fn name` in lib.rs, up to the next line that's only a closing brace.
     fn body_of(name: &str) -> String {
-        let src = include_str!("lib.rs");
+        body_in(include_str!("lib.rs"), name)
+    }
+
+    fn body_in(src: &str, name: &str) -> String {
+        // Git's Windows checkout uses CRLF; the policy checks must read the same body there.
+        let src = src.replace("\r\n", "\n");
         let start = src.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
         let end = start + src[start..].find("\n}\n").unwrap();
         src[start..end].to_string()
+    }
+
+    #[test]
+    fn play_policy_checks_read_lf_and_crlf_source() {
+        let src = "fn first() {\n    by.launch(|| cmd.spawn());\n}\nfn second() {}\n";
+        let expected = "fn first() {\n    by.launch(|| cmd.spawn());";
+        assert_eq!(body_in(src, "first"), expected);
+        assert_eq!(body_in(&src.replace('\n', "\r\n"), "first"), expected);
     }
 
     #[test]
