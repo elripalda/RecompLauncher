@@ -229,7 +229,8 @@ let savesAllBusy = null;
 async function loadSavesAll() {
   if (savesAllBusy) return savesAllBusy;
   savesAllBusy = (async () => {
-    try { S.savesAll = await invoke('saves_overview'); } catch (e) { S.savesAll = { error: String(e && e.message ? e.message : e), games: [] }; }
+    // Never left empty: an empty answer would ask again on every redraw, without end.
+    try { S.savesAll = (await invoke('saves_overview')) || { games: [] }; } catch (e) { S.savesAll = { error: String(e && e.message ? e.message : e), games: [] }; }
     savesAllBusy = null;
     if (S.view === 'saves') render(true);
   })();

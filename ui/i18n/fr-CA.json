@@ -1076,5 +1076,19 @@
  "Move to It": "Y passer",
  "Moved to {name}. Its release goes in the same folder now, and your saves are backed up first.": "Passé à {name}. Sa version va désormais dans le même dossier, et vos sauvegardes sont copiées avant.",
  "Moved to {name}. Nothing else changed.": "Passé à {name}. Rien d'autre n'a changé.",
- "Replaced by {name}": "Remplacée par {name}"
+ "Replaced by {name}": "Remplacée par {name}",
+ "A plugin can keep 1 MB at most.": "Une extension peut conserver 1 Mo au maximum.",
+ "Ask before copying a newer save from another installed version. Requires a single save file in a known location.": "Demander avant de copier une sauvegarde plus récente d'une autre version installée. Nécessite un seul fichier de sauvegarde à un emplacement connu.",
+ "File formats cannot overlap; each extension must have one dependency rule.": "Les formats de fichier ne peuvent pas se chevaucher; chaque extension doit avoir une seule règle de dépendance.",
+ "It wants to connect to the internet but doesn't list the sites.": "Elle veut se connecter à Internet mais n'indique pas les sites.",
+ "It's too big for a plugin (64 MB at most).": "Elle est trop grosse pour une extension (64 Mo au maximum).",
+ "Plugins can install .zip, .7z and .rar files only.": "Les extensions ne peuvent installer que des fichiers .zip, .7z et .rar.",
+ "Remove shared keys from the shared-key controls.": "Retirez les clés partagées à partir des commandes des clés partagées.",
+ "Setup inputs need unique IDs and a label; game is reserved when the legacy game field is used.": "Les entrées de configuration doivent avoir des ID uniques et un libellé; game est réservé quand l'ancien champ game est utilisé.",
+ "That isn't a plugin file (it isn't a zip).": "Ce n'est pas un fichier d'extension (ce n'est pas un zip).",
+ "That plugin is off.": "Cette extension est désactivée.",
+ "That plugin isn't installed.": "Cette extension n'est pas installée.",
+ "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "Le stick gauche se déplace dans le lanceur comme la croix directionnelle. Désactivez-le si votre stick dérive ou si vous l'utilisez comme souris; la croix directionnelle fonctionne toujours.",
+ "This game builds itself from its project files, which need Git. Install Git for Windows from git-scm.com, then press Install again.": "Ce jeu se compile à partir de ses fichiers de projet, qui nécessitent Git. Installez Git for Windows à partir de git-scm.com, puis appuyez de nouveau sur Installer.",
+ "Use the newer save from {name}?": "Utiliser la sauvegarde plus récente de {name}?"
 }

@@ -2351,6 +2351,15 @@ fn stats_line(l: &str) -> bool {
     WORDS.iter().any(|w| l.contains(w))
 }
 
+/// A line from what runs a game on Linux, not from the game: Proton and its fixes, umu, Wine,
+/// Steam's runtime, and the loader skipping Steam's 32-bit overlay ("ProtonFixes WARN: Game title
+/// not found in CSV", "Proton: Error: unable to use parent for game drive"). Never the reason a
+/// game didn't start. Takes a lowercased line.
+fn runtime_line(l: &str) -> bool {
+    const WORDS: [&str; 10] = ["protonfixes", "proton:", "umu-launcher", "umu:", "pressure-vessel", "steam-runtime", "steamrt", "gameoverlayrenderer", "wine: ", "fsync:"];
+    WORDS.iter().any(|w| l.contains(w)) || (l.contains("ld.so: object") && l.contains("ignored"))
+}
+
 // Games being started right now, so a second Play while the first is still on its way does nothing.
 static STARTING: Mutex<Vec<String>> = Mutex::new(Vec::new());
 struct Starting(String);
@@ -2475,8 +2484,8 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             let m = manual.as_ref().unwrap();
             // Set up by hand without game files of its own ("the game asks"), on a game whose
             // profile hands the copy over in a variable (files.how "env"):
-            // the copy chosen in Easy Setup still goes in it. Otherwise the game starts with
-            // nothing and says its data was not found.
+            // the copy chosen in Easy Setup still goes in it. Otherwise the game would start with
+            // nothing and say its data was not found.
             if m.copy.is_none() && (m.how.is_empty() || m.how == "none") {
                 let p = profile_of(&st, id, &g);
                 let by_env = p.as_ref().and_then(|p| p.start.as_ref()).is_some_and(|s| s.env.values().any(|v| v.contains("{game}")));
@@ -2485,12 +2494,8 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
                         game_env = p.env_vars(&g.path, Some(&c));
                         trail::note(format!("Play {id}: set up by hand, its copy still goes in {}", game_env.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>().join(", ")));
                     }
-                    // No copy anywhere, for a game that only gets it from that variable: Easy
-                    // Setup asks for it, instead of a start that can only say the data is missing.
-                    (None, Some(p)) => {
-                        trail::note(format!("Play {id}: set up by hand with no copy, asking for it"));
-                        return Err(Error::Msg(format!("NEED_COPY|{}", p.game.as_ref().map(|c| c.label.clone()).unwrap_or_default())));
-                    }
+                    // No copy chosen: the player set it up themselves (some games prepare their
+                    // own data), so it starts as it is. Set up by hand never stops a start.
                     _ => {}
                 }
             }
@@ -2858,6 +2863,10 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         } else if ext == "py" && e.kind() == std::io::ErrorKind::NotFound {
             // A Python game, and Python isn't on this PC (Windows' py launcher comes with it).
             Error::Msg(format!("{shown} is a Python program, and Python 3 isn't on this PC. Install it from python.org (on Windows, tick \"Add python.exe to PATH\" in its installer), then press Play again."))
+        } else if matches!(e.raw_os_error(), Some(4551) | Some(4556)) && cfg!(windows) {
+            // ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION: Smart App Control (or a work or school
+            // policy) blocks programs that aren't signed. It has no list of allowed programs.
+            Error::Msg(format!("Smart App Control blocked {shown}, because the program isn't signed. Windows can't allow one game at a time: to play it, turn Smart App Control off in Windows Security → App & browser control → Smart App Control settings (Windows only turns it back on after a reset). On a work or school PC, ask whoever manages it."))
         } else if e.raw_os_error() == Some(1455) && cfg!(windows) {
             // ERROR_COMMITMENT_LIMIT: memory and the page file together are full.
             Error::Msg(format!("Windows ran out of memory to start {shown}. Close other games and apps, and check that the page file is on (Advanced system settings → Performance → Virtual memory), then press Play again."))
@@ -5198,7 +5207,7 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         // It said it's missing something (its game files, most often).
         let missing = text.lines().rev().take(80).find(|l| {
             let l = l.to_lowercase();
-            !stats_line(&l) && (l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing"))
+            !stats_line(&l) && !runtime_line(&l) && (l.contains("status=missing") || l.contains("no executable found") || l.contains("could not find") || l.contains("couldn't find") || l.contains("not found") || l.contains("no such file") || l.contains(" missing"))
         });
         let needs_copy = prof.as_ref().map(|p| p.game.is_some()).unwrap_or(false);
         let said = |w: &str| text.lines().rev().take(120).any(|l| l.contains(w));
@@ -5208,9 +5217,6 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         } else if said("--game_data_root") {
             // An Xbox 360 recomp that takes the game's files from a folder it's given.
             out.push(check("bad", "It needs to be told where your game files are", "This recomp reads your extracted game from a folder given to it when it starts, and its page doesn't set that up yet. Use Set Up By Hand and pick the folder with your game's files (the one with default.xex).", "manual"));
-        } else if said("Required extensions are missing") || said("Missing required extension: VK_") || said("Unable to create instance") {
-            // Vulkan's own words for a graphics driver that can't run it: not a missing file.
-            out.push(check("bad", "Your graphics driver can't run it", "Vulkan couldn't start with the parts this game needs. Update your graphics driver from NVIDIA, AMD or Intel; on a laptop, make sure it uses its faster graphics card.", "driver"));
         } else if said("Required extensions are missing") || said("Missing required extension: VK_") || said("Unable to create instance") {
             // Vulkan's own words for a graphics driver that can't run it: not a missing file.
             out.push(check("bad", "Your graphics driver can't run it", "Vulkan couldn't start with the parts this game needs. Update your graphics driver from NVIDIA, AMD or Intel; on a laptop, make sure it uses its faster graphics card.", "driver"));
@@ -7048,6 +7054,7 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     l.settings.tray_told |= told;
     l.settings.save_dir = save_dir;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
+    pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
     l.save(&st.dir)?;
     Ok(())
 }
@@ -8114,6 +8121,7 @@ pub fn run() {
                     HANDHELD.store(shortcuts::is_handheld(&pc.cpu), Ordering::Relaxed);
                 });
             }
+            pads::STICK.store(app.state::<App>().lib.lock().unwrap().settings.pad_stick, Ordering::Relaxed);
             pads::start(app.handle().clone());
             if let Err(e) = tray::start(app.handle()) {
                 eprintln!("No tray icon: {e}");
@@ -8435,6 +8443,10 @@ mod tests {
         assert!(super::stats_line("[host] frametime: 60 s: 3509 frames in 60.0 s, mean 58.5 fps"));
         assert!(!super::stats_line("error: default.xex is missing"));
         assert!(!super::stats_line("could not find game data in ./assets"));
+        for l in ["ProtonFixes[56194] WARN: Game title not found in CSV", "Proton: Error: unable to use parent for game drive, path /run/media/duke/GamingDrive", "ERROR: ld.so: object '/home/wes/.local/share/Steam/steamrt32/gameoverlayrenderer.so' from LD_PRELOAD cannot be preloaded (wrong ELF class: ELFCLASS32): ignored."] {
+            assert!(super::runtime_line(&l.to_lowercase()), "{l}");
+        }
+        assert!(!super::runtime_line("error: default.xex is missing"));
     }
 
     #[test]

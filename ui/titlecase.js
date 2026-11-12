@@ -6,7 +6,7 @@
   const SMALL = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'for', 'so', 'at', 'by', 'in', 'of', 'on', 'to', 'as', 'via', 'per', 'from', 'with', 'into', 'than', 'vs']);
   // Where it applies, and where it never does (names, paths, logs, sentences).
   const SEL = 'h1, h2, h3, h4, .btn, .linkbtn, .toggle, .seg button, .tabs-in button, .chip, .tag, .badge, .pill-sel, .set-tab span, .side .lbl, .menu button, .set-row .k > b, .card-h h3, .shelf-h h2, .sec-h, .stats span, .slot-n, .dl-when, .upd-when, .count-line, .tv-head h2, .tv-btn span, .tv-item .k, .tv-chip, .tv-pill, .tv-lh, .tv-sec h3, .tv-tab, .tv-cycle b, option';
-  const SKIP = '.t, .ph, .pin, pre, code, textarea, input, small, p, .gp-title, .gp h1, .fb-path, .logbox, [data-raw], .tv-title, .tv-game-title';
+  const SKIP = '.t, .ph, .pin, pre, code, textarea, input, small, p, .gp-title, .gp-name, .gp h1, .fb-path, .logbox, [data-raw], .tv-title, .tv-game-title';
   const fix = (s) => {
     const ws = [...s.matchAll(/[A-Za-z][A-Za-z'’]*/g)];
     if (!ws.length) return s;

@@ -99,6 +99,13 @@ impl Axes {
         use sdl::SDL_GamepadAxis as A;
         // Which name each way is: SDL's stick Y is positive downwards.
         let (i, names): (usize, [&'static str; 2]) = match axis {
+            // Settings → Controllers can leave the stick out: let go of whatever it was holding.
+            A::LEFTX | A::LEFTY if !STICK.load(Ordering::Relaxed) => {
+                let i = if axis == A::LEFTX { 0 } else { 1 };
+                let held = std::mem::take(&mut self.dir[i]);
+                let names = if i == 0 { ["left", "right"] } else { ["up", "down"] };
+                return if held == 0 { vec![] } else { vec![(false, if held > 0 { names[1] } else { names[0] })] };
+            }
             A::LEFTX => (0, ["left", "right"]),
             A::LEFTY => (1, ["up", "down"]),
             A::LEFT_TRIGGER => (4, ["", "lt"]),
@@ -443,6 +450,8 @@ fn send(app: &AppHandle, name: &str, kind: &str) {
 pub static FOCUSED: AtomicBool = AtomicBool::new(false);
 /// A game is running (its quick menu needs the controller).
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
+/// Settings → Controllers: whether the left stick moves around the launcher.
+pub static STICK: AtomicBool = AtomicBool::new(true);
 /// The player wants the quick menu over games (Settings, While Playing).
 pub static QUICK_MENU: AtomicBool = AtomicBool::new(true);
 

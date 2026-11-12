@@ -42,6 +42,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.38" date="2026-11-12">
+      <description>
+        <p>Save sharing between versions of a game, a Run in background setting, drag to reorder pinned games, cleaner game and Achievements pages, and fixes.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.37" date="2026-11-11">
       <description>
         <p>NVIDIA DLSS for recomps that ask for it, saved games that sync between PCs, proxy support, and fixes.</p>

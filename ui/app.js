@@ -70,7 +70,7 @@ const ago = (ts) => {
 };
 const date = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleDateString(curLocale(), { month: 'short', day: 'numeric', year: 'numeric' }); };
 const catIcon = (k) => (GENRES[k] ? `<i class="cat-ico" style="--m:url(img/cat/${k}.png)" aria-hidden="true"></i>` : '');
-const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.png)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
+const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.svg)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
 const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id === id)?.name || id || '';
 const isAI = (a) => !!(a && a.ai);
 // Something the player has to do by hand before the first play, from the game's boot profile.
@@ -1680,7 +1680,8 @@ function pageGame(id) {
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
     <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
-      <div class="gp-title">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1>${esc(a.name)}</h1>${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
+      <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
+      <div class="gp-title">${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
       <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
@@ -3409,6 +3410,7 @@ function pageSettings() {
       break;
     case 'pads':
       body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
+        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick'))))
         + group(t('Buttons'), `<div class="pad-guide">${buttonGuide().map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>`);
       break;
     case 'pc':

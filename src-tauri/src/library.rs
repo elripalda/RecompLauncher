@@ -263,6 +263,10 @@ pub struct Settings {
     /// Settings → Run in background. Keep the existing field name so saved choices still apply.
     #[serde(default)]
     pub close_to_tray: bool,
+    /// Settings → Controllers: the left stick moves around the launcher as the d-pad does. Off,
+    /// only the d-pad does (for players whose stick drifts, or who move a mouse with it).
+    #[serde(default = "yes")]
+    pub pad_stick: bool,
     /// On Linux: recomps with only a Windows version install that and play through Proton.
     #[serde(default)]
     pub proton: bool,
@@ -332,6 +336,7 @@ impl Default for Settings {
             start_in_tv: false,
             setup_done: false,
             close_to_tray: false,
+            pad_stick: true,
             proton: false,
             proton_auto: false,
             tray_told: false,

@@ -710,7 +710,7 @@ fn want_of(names: &[&str]) -> Vec<String> {
 /// Where an installer put the game: (program, its options). Its fresh shortcuts first, then its
 /// entry in Settings > Apps, then older shortcuts.
 #[cfg(windows)]
-fn installed_elsewhere(names: &[&str], since: SystemTime, ours: &Path, then: Option<&Path>) -> Option<(PathBuf, String)> {
+pub(crate) fn installed_elsewhere(names: &[&str], since: SystemTime, ours: &Path, then: Option<&Path>) -> Option<(PathBuf, String)> {
     let mut list = installed_apps();
     // Shortcuts on the desktops and in the Start menu, two folders deep.
     let env = |k: &str| std::env::var(k).ok().map(PathBuf::from);
@@ -758,7 +758,7 @@ fn installed_apps() -> Vec<Value> {
 }
 
 #[cfg(not(windows))]
-fn installed_elsewhere(_names: &[&str], _since: SystemTime, _ours: &Path, _then: Option<&Path>) -> Option<(PathBuf, String)> {
+pub(crate) fn installed_elsewhere(_names: &[&str], _since: SystemTime, _ours: &Path, _then: Option<&Path>) -> Option<(PathBuf, String)> {
     None
 }
 
@@ -900,7 +900,19 @@ fn pick(list: &[Value], names: &[&str], since: SystemTime, ours: &Path, then: Op
             }
         }
     }
-    lnk(false)
+    if let Some(x) = lnk(false) {
+        return Some(x);
+    }
+    // One shortcut made while the installer ran, whatever it's called ("Crash TOTT" for Crash of
+    // the Titans): that's where it went. With more than one, nothing is guessed.
+    let fresh: Vec<(PathBuf, String)> = list.iter()
+        .filter(|v| s(v, "k") == "lnk" && v.get("t").and_then(Value::as_i64).unwrap_or(0) >= since)
+        .map(|v| (PathBuf::from(s(v, "p")), s(v, "a")))
+        .filter(|(p, _)| good(p))
+        .collect();
+    let mut dirs: Vec<PathBuf> = fresh.iter().filter_map(|(p, _)| p.parent().map(Path::to_path_buf)).collect();
+    dirs.dedup();
+    if dirs.len() == 1 { fresh.into_iter().next() } else { None }
 }
 
 #[cfg(test)]
@@ -915,6 +927,26 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn one_fresh_shortcut_points_to_the_game_whatever_its_name() {
+        let d = std::env::temp_dir().join(format!("rl-fresh-lnk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        for f in ["Games/CrashTOTT/Crash.exe", "Games/Other/Other.exe", "ours/x.exe"] {
+            std::fs::create_dir_all(d.join(f).parent().unwrap()).unwrap();
+            std::fs::write(d.join(f), b"x").unwrap();
+        }
+        let since = SystemTime::now() - std::time::Duration::from_secs(10);
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let lnk = |n: &str, p: &Path, t: i64| json!({"k": "lnk", "n": n, "p": p.to_string_lossy(), "a": "", "t": t});
+        let names = ["Crash of the Titans", "crashott-pc"];
+        let one = vec![lnk("Crash TOTT", &d.join("Games/CrashTOTT/Crash.exe"), now), lnk("Old Thing", &d.join("Games/Other/Other.exe"), now - 99_999)];
+        assert_eq!(pick(&one, &names, since, &d.join("ours"), None).map(|x| x.0), Some(d.join("Games/CrashTOTT/Crash.exe")));
+        // Two fresh shortcuts to different places: nothing is guessed.
+        let two = vec![lnk("Crash TOTT", &d.join("Games/CrashTOTT/Crash.exe"), now), lnk("Something", &d.join("Games/Other/Other.exe"), now)];
+        assert_eq!(pick(&two, &names, since, &d.join("ours"), None), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn knows_its_own_apps() {
