@@ -801,6 +801,8 @@ pub struct ShareFile {
     path: PathBuf,
     hash: String,
     pub modified: Option<std::time::SystemTime>,
+    #[serde(default)]
+    pub is_dir: bool,
 }
 
 impl ShareFile {
@@ -809,7 +811,78 @@ impl ShareFile {
     }
 }
 
-/// shortcut: copy one file from a known save location, add format-specific support for multi-file saves.
+fn ensure_writable(p: &Path) {
+    if let Ok(m) = fs::metadata(p) {
+        let mut perms = m.permissions();
+        if perms.readonly() {
+            perms.set_readonly(false);
+            let _ = fs::set_permissions(p, perms);
+        }
+    }
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else if ty.is_file() {
+            if to.exists() {
+                ensure_writable(&to);
+                let _ = fs::remove_file(&to);
+            }
+            fs::copy(&from, &to)?;
+            if let Ok(m) = fs::metadata(&from) {
+                if let Ok(mod_time) = m.modified() {
+                    let _ = fs::File::options().write(true).open(&to).and_then(|f| f.set_modified(mod_time));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn flush_nx_tx(place: &Path) {
+    let Some(profile) = place.parent().and_then(|p| p.parent()) else { return };
+    let tx = profile.join("save-tx");
+    if !tx.is_dir() { return; }
+    let Ok(entries) = fs::read_dir(&tx) else { return };
+    let mut ready_dirs: Vec<(u64, PathBuf)> = Vec::new();
+    for e in entries.flatten() {
+        if let Ok(ft) = e.file_type() {
+            if ft.is_dir() {
+                let name = e.file_name();
+                let s = name.to_string_lossy();
+                if let Some(num_str) = s.strip_prefix("ready-") {
+                    if let Ok(num) = num_str.parse::<u64>() {
+                        ready_dirs.push((num, e.path()));
+                    }
+                }
+            }
+        }
+    }
+    ready_dirs.sort_unstable_by_key(|(n, _)| *n);
+    if let Some((_, newest_ready)) = ready_dirs.last() {
+        let _ = copy_dir_all(newest_ready, place);
+    }
+    for (_, r) in ready_dirs {
+        let _ = fs::remove_dir_all(r);
+    }
+}
+
+fn clear_nx_tx(place: &Path) {
+    let Some(profile) = place.parent().and_then(|p| p.parent()) else { return };
+    let tx = profile.join("save-tx");
+    if tx.is_dir() {
+        let _ = fs::remove_dir_all(&tx);
+    }
+}
+
+/// Shortcut: copy one file or directory save from a known save location between recomp versions.
 pub fn share_file(spot: &Spot, g: &Installed, peer: Option<&ShareFile>) -> Option<ShareFile> {
     if !matches!(spot.from, "developer" | "catalog" | "player") {
         return None;
@@ -819,11 +892,26 @@ pub fn share_file(spot: &Spot, g: &Installed, peer: Option<&ShareFile>) -> Optio
     if place.file_name()?.to_str()?.contains('*') || place == g.path || (folder && holds_programs(&place)) {
         return None;
     }
+
+    if folder {
+        flush_nx_tx(&place);
+    }
+
     let entries = collect(std::slice::from_ref(spot), g);
-    let (path, modified) = match entries.as_slice() {
-        [entry] => (entry.abs.clone(), Some(fs::metadata(&entry.abs).ok()?.modified().ok()?)),
-        [] => {
-            let peer = peer?;
+
+    if entries.is_empty() {
+        let peer = peer?;
+        if peer.is_dir {
+            if !folder {
+                return None;
+            }
+            return Some(ShareFile {
+                path: place,
+                hash: String::new(),
+                modified: None,
+                is_dir: true,
+            });
+        } else {
             if !folder && place.file_name() != peer.path.file_name() {
                 return None;
             }
@@ -831,29 +919,77 @@ pub fn share_file(spot: &Spot, g: &Installed, peer: Option<&ShareFile>) -> Optio
             if !matches!(fs::symlink_metadata(&path), Err(e) if e.kind() == io::ErrorKind::NotFound) {
                 return None;
             }
-            (path, None)
+            return Some(ShareFile {
+                path,
+                hash: String::new(),
+                modified: None,
+                is_dir: false,
+            });
         }
-        _ => return None,
-    };
-    let name = path.file_name()?.to_str()?;
-    let parent = path.parent()?.canonicalize().ok()?;
-    if folder && (parent != resolve_for(&spot.template, g).canonicalize().ok()?
-        || peer.is_some_and(|p| p.path.file_name() != path.file_name())) {
-        return None;
     }
-    if crate::inputs::excluded(g, &path) || !is_save_file(name, 0)
-        || g.files.iter().any(|f| lower(&g.path.join(f)) == lower(&path)) {
-        return None;
-    }
-    let hash = if modified.is_some() {
+
+    // Single-file save: exactly 1 file directly inside the folder (or place is a file), and peer is not is_dir.
+    if entries.len() == 1 && (!folder || entries[0].rel.find(['/', '\\']).is_none()) && peer.map_or(true, |p| !p.is_dir) {
+        let entry = &entries[0];
+        let path = entry.abs.clone();
+        let name = path.file_name()?.to_str()?;
+        let parent = path.parent()?.canonicalize().ok()?;
+        if folder && (parent != resolve_for(&spot.template, g).canonicalize().ok()?
+            || peer.is_some_and(|p| p.path.file_name() != path.file_name())) {
+            return None;
+        }
+        if crate::inputs::excluded(g, &path) || !is_save_file(name, 0)
+            || g.files.iter().any(|f| lower(&g.path.join(f)) == lower(&path)) {
+            return None;
+        }
         if !fs::symlink_metadata(&path).ok()?.is_file() {
             return None;
         }
-        sha_file(&path).ok()?
-    } else {
-        String::new()
-    };
-    Some(ShareFile { path: parent.join(name), hash, modified })
+        let hash = sha_file(&path).ok()?;
+        let modified = Some(fs::metadata(&path).ok()?.modified().ok()?);
+        return Some(ShareFile {
+            path: parent.join(name),
+            hash,
+            modified,
+            is_dir: false,
+        });
+    }
+
+    // Multi-file / directory save.
+    if !folder {
+        return None;
+    }
+    if let Some(peer) = peer {
+        if !peer.is_dir {
+            return None;
+        }
+    }
+    for e in &entries {
+        let name = e.abs.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if crate::inputs::excluded(g, &e.abs) || !is_save_file(name, 0)
+            || g.files.iter().any(|f| lower(&g.path.join(f)) == lower(&e.abs)) {
+            return None;
+        }
+        if !fs::symlink_metadata(&e.abs).ok()?.is_file() {
+            return None;
+        }
+    }
+
+    let modified = entries.iter().filter_map(|e| fs::metadata(&e.abs).ok()?.modified().ok()).max();
+    let infos: Vec<FileInfo> = entries
+        .iter()
+        .filter_map(|e| Some(FileInfo { spot: e.spot, rel: e.rel.clone(), size: e.size, sha256: sha_file(&e.abs).ok()? }))
+        .collect();
+    if infos.len() != entries.len() {
+        return None;
+    }
+    let hash = set_hash(&infos);
+    Some(ShareFile {
+        path: place,
+        hash,
+        modified,
+        is_dir: true,
+    })
 }
 
 pub fn newer_save(source: &ShareFile, target: &ShareFile) -> bool {
@@ -869,39 +1005,122 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
     if target.modified.is_some() {
         backup(app_dir, id, std::slice::from_ref(spot), g)?;
         let saved = list(app_dir, id).into_iter().next().ok_or_else(changed)?;
-        let mut zip = zip::ZipArchive::new(fs::File::open(dir_of(app_dir, id).join(saved.name))?)
-            .map_err(|e| Error::Msg(e.to_string()))?;
-        let entry = format!("0/{}", target.path.file_name().unwrap().to_string_lossy());
-        let mut copy = Vec::new();
-        zip.by_name(&entry).map_err(|e| Error::Msg(e.to_string()))?.take(MAX_FILE + 1).read_to_end(&mut copy)?;
-        if copy.len() as u64 > MAX_FILE || hex::encode(Sha256::digest(&copy)) != target.hash {
-            return Err(Error::Msg("The existing save could not be backed up. It was kept in place.".into()));
+        let zip_path = dir_of(app_dir, id).join(saved.name);
+        if !target.is_dir {
+            let mut zip = zip::ZipArchive::new(fs::File::open(&zip_path)?)
+                .map_err(|e| Error::Msg(e.to_string()))?;
+            let entry = format!("0/{}", target.path.file_name().unwrap().to_string_lossy());
+            let mut copy = Vec::new();
+            zip.by_name(&entry).map_err(|e| Error::Msg(e.to_string()))?.take(MAX_FILE + 1).read_to_end(&mut copy)?;
+            if copy.len() as u64 > MAX_FILE || hex::encode(Sha256::digest(&copy)) != target.hash {
+                return Err(Error::Msg("The existing save could not be backed up. It was kept in place.".into()));
+            }
+        } else {
+            let man = read_manifest(&zip_path).ok_or_else(changed)?;
+            if man.hash != target.hash {
+                return Err(Error::Msg("The existing save could not be backed up. It was kept in place.".into()));
+            }
         }
     }
-    let mut bytes = Vec::new();
-    fs::File::open(&source.path)?.take(MAX_FILE + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_FILE || hex::encode(Sha256::digest(&bytes)) != source.hash {
-        return Err(changed());
-    }
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let temp = target.path.with_file_name(format!(".recomplauncher-save-{}-{n}.tmp", std::process::id()));
-    let mut file = fs::File::create_new(&temp)?;
-    let staged = (|| -> Result<(), Error> {
-        file.write_all(&bytes)?;
-        file.set_modified(source.modified.ok_or_else(changed)?)?;
-        file.sync_all()?;
-        drop(file);
-        if share_file(spot, g, Some(source)).as_ref() != Some(target) {
+
+    if !source.is_dir && !target.is_dir {
+        let mut bytes = Vec::new();
+        fs::File::open(&source.path)?.take(MAX_FILE + 1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_FILE || hex::encode(Sha256::digest(&bytes)) != source.hash {
             return Err(changed());
         }
-        fs::rename(&temp, &target.path)?;
-        Ok(())
-    })();
-    if staged.is_err() {
-        let _ = fs::remove_file(temp);
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temp = target.path.with_file_name(format!(".recomplauncher-save-{}-{n}.tmp", std::process::id()));
+        let mut file = fs::File::create_new(&temp)?;
+        let staged = (|| -> Result<(), Error> {
+            file.write_all(&bytes)?;
+            file.set_modified(source.modified.ok_or_else(changed)?)?;
+            file.sync_all()?;
+            drop(file);
+            if share_file(spot, g, Some(source)).as_ref() != Some(target) {
+                return Err(changed());
+            }
+            fs::rename(&temp, &target.path)?;
+            Ok(())
+        })();
+        if staged.is_err() {
+            let _ = fs::remove_file(temp);
+        }
+        staged?;
+    } else if source.is_dir && target.is_dir {
+        let mut src_found = Vec::new();
+        let none = HashSet::new();
+        if !walk(&source.path, &mut src_found, &none, SPOT_MAX, WALK_SECS) {
+            return Err(Error::Msg("Source save files are too large.".into()));
+        }
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temp_dir = target.path.with_file_name(format!(".recomplauncher-savedir-{}-{n}.tmp", std::process::id()));
+        let staged = (|| -> Result<(), Error> {
+            fs::create_dir_all(&temp_dir)?;
+            let mut staged_infos = Vec::new();
+            for (rel, abs_src, size) in &src_found {
+                let temp_dest = temp_dir.join(rel);
+                if let Some(parent) = temp_dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut bytes = Vec::new();
+                fs::File::open(abs_src)?.take(MAX_FILE + 1).read_to_end(&mut bytes)?;
+                if bytes.len() as u64 > MAX_FILE {
+                    return Err(Error::Msg("A save file is too large.".into()));
+                }
+                let sha256 = hex::encode(Sha256::digest(&bytes));
+                staged_infos.push(FileInfo {
+                    spot: 0,
+                    rel: rel.clone(),
+                    size: *size,
+                    sha256,
+                });
+                let mut f = fs::File::create_new(&temp_dest)?;
+                f.write_all(&bytes)?;
+                if let Ok(m) = fs::metadata(abs_src) {
+                    if let Ok(mod_time) = m.modified() {
+                        f.set_modified(mod_time)?;
+                    }
+                }
+                f.sync_all()?;
+            }
+            if set_hash(&staged_infos) != source.hash {
+                return Err(changed());
+            }
+
+            fs::create_dir_all(&target.path)?;
+            let src_rels: HashSet<String> = src_found.iter().map(|(r, _, _)| r.clone()).collect();
+            let mut dst_found = Vec::new();
+            walk(&target.path, &mut dst_found, &none, SPOT_MAX, WALK_SECS);
+            for (rel, abs_dst, _) in dst_found {
+                if !src_rels.contains(&rel) {
+                    ensure_writable(&abs_dst);
+                    let _ = fs::remove_file(&abs_dst);
+                }
+            }
+            for (rel, _, _) in &src_found {
+                let staged_file = temp_dir.join(rel);
+                let final_dst = target.path.join(rel);
+                if let Some(parent) = final_dst.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                ensure_writable(&final_dst);
+                if final_dst.is_file() {
+                    let _ = fs::remove_file(&final_dst);
+                }
+                fs::rename(&staged_file, &final_dst)?;
+            }
+            clear_nx_tx(&target.path);
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&temp_dir);
+        staged?;
+    } else {
+        return Err(changed());
     }
-    staged?;
+
     let mut s = state(app_dir, id);
     s.pending = None;
     set_state(app_dir, id, &s);
@@ -1165,6 +1384,100 @@ mod tests {
         let copy = dir_of(&d, "target").join(&list(&d, "target")[0].name);
         restore(&d, "target", &copy, &[spot], &target).unwrap();
         assert_eq!(fs::read(&to.path).unwrap(), b"old");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sharing_multi_file_directory_save() {
+        let d = tmp("sharing-multi");
+        let source = game(&d.join("source"));
+        let target = game(&d.join("target"));
+        let spot = Spot { template: "{install}/save".into(), from: "player" };
+        let src_dir = source.path.join("save");
+        let tgt_dir = target.path.join("save");
+        fs::create_dir_all(src_dir.join("slot_00")).unwrap();
+        fs::create_dir_all(tgt_dir.join("slot_00")).unwrap();
+
+        fs::write(src_dir.join("account.sav"), b"account-new").unwrap();
+        fs::File::options().write(true).open(src_dir.join("account.sav")).unwrap()
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(3000)).unwrap();
+        fs::write(src_dir.join("slot_00/progress.sav"), b"progress-new").unwrap();
+        fs::File::options().write(true).open(src_dir.join("slot_00/progress.sav")).unwrap()
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(3000)).unwrap();
+
+        fs::write(tgt_dir.join("account.sav"), b"account-old").unwrap();
+        fs::File::options().write(true).open(tgt_dir.join("account.sav")).unwrap()
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(1000)).unwrap();
+        fs::write(tgt_dir.join("slot_00/progress.sav"), b"progress-old").unwrap();
+        fs::File::options().write(true).open(tgt_dir.join("slot_00/progress.sav")).unwrap()
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(1000)).unwrap();
+
+        let from = share_file(&spot, &source, None).unwrap();
+        assert!(from.is_dir);
+        let to = share_file(&spot, &target, Some(&from)).unwrap();
+        assert!(to.is_dir);
+        assert!(newer_save(&from, &to));
+
+        share_save(&d, "target", &spot, &target, &from, &to).unwrap();
+        assert_eq!(fs::read(tgt_dir.join("account.sav")).unwrap(), b"account-new");
+        assert_eq!(fs::read(tgt_dir.join("slot_00/progress.sav")).unwrap(), b"progress-new");
+
+        // previous target save was backed up
+        let copy = dir_of(&d, "target").join(&list(&d, "target")[0].name);
+        restore(&d, "target", &copy, &[spot], &target).unwrap();
+        assert_eq!(fs::read(tgt_dir.join("account.sav")).unwrap(), b"account-old");
+        assert_eq!(fs::read(tgt_dir.join("slot_00/progress.sav")).unwrap(), b"progress-old");
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sharing_multi_file_directory_to_empty_destination() {
+        let d = tmp("sharing-multi-empty");
+        let source = game(&d.join("source"));
+        let target = game(&d.join("target"));
+        let spot = Spot { template: "{install}/save".into(), from: "player" };
+        let src_dir = source.path.join("save");
+        let tgt_dir = target.path.join("save");
+        fs::create_dir_all(src_dir.join("slot_00")).unwrap();
+        fs::write(src_dir.join("account.sav"), b"account-new").unwrap();
+        fs::write(src_dir.join("slot_00/progress.sav"), b"progress-new").unwrap();
+
+        let from = share_file(&spot, &source, None).unwrap();
+        let to = share_file(&spot, &target, Some(&from)).unwrap();
+        assert_eq!(to.modified, None);
+        assert!(newer_save(&from, &to));
+
+        share_save(&d, "target", &spot, &target, &from, &to).unwrap();
+        assert_eq!(fs::read(tgt_dir.join("account.sav")).unwrap(), b"account-new");
+        assert_eq!(fs::read(tgt_dir.join("slot_00/progress.sav")).unwrap(), b"progress-new");
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sharing_flushes_transactional_journal() {
+        let d = tmp("sharing-tx");
+        let source = game(&d.join("source"));
+        let spot = Spot { template: "{install}/profile/save/uid1".into(), from: "player" };
+        let save_dir = source.path.join("profile/save/uid1");
+        let tx_ready = source.path.join("profile/save-tx/ready-0000000001");
+        fs::create_dir_all(&save_dir).unwrap();
+        fs::create_dir_all(&tx_ready).unwrap();
+
+        fs::write(save_dir.join("slot.sav"), b"stale-committed").unwrap();
+        fs::File::options().write(true).open(save_dir.join("slot.sav")).unwrap()
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(1000)).unwrap();
+
+        fs::write(tx_ready.join("slot.sav"), b"newest-tx").unwrap();
+        fs::File::options().write(true).open(tx_ready.join("slot.sav")).unwrap()
+            .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(5000)).unwrap();
+
+        let from = share_file(&spot, &source, None).unwrap();
+        assert_eq!(fs::read(save_dir.join("slot.sav")).unwrap(), b"newest-tx");
+        assert!(!tx_ready.exists());
+        assert_eq!(from.when(), Some(5000));
+
         let _ = fs::remove_dir_all(&d);
     }
 
