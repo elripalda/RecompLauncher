@@ -63,7 +63,8 @@ pub fn refresh(app: &AppHandle) {
 }
 
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
-    let Some(icon) = app.default_window_icon().cloned() else { return Ok(()) };
+    // The bare mark, not the app icon: the dark tile shrinks the logo to a smudge at 16 px.
+    let icon = tauri::include_image!("icons/tray.png");
     let mut b = TrayIconBuilder::with_id("main");
     // On Linux the icon is a picture on disk the panel reads. A Flatpak's own runtime folder is
     // hidden from the panel, so the picture goes in its cache folder (~/.var/app/<id>/cache),
