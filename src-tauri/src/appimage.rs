@@ -90,6 +90,27 @@ fn payload_offset(file: &mut File) -> io::Result<u64> {
     Ok(end)
 }
 
+/// Check a launcher update's container and native runtime before making it executable.
+#[cfg(target_os = "linux")]
+pub(crate) fn validate_runtime(path: &Path) -> io::Result<()> {
+    let mut file = File::open(path)?;
+    payload_offset(&mut file)?;
+    file.seek(SeekFrom::Start(0))?;
+    let mut header = [0u8; 20];
+    file.read_exact(&mut header)?;
+    let machine = match std::env::consts::ARCH {
+        "x86_64" => 62,
+        "aarch64" => 183,
+        _ => return Err(invalid("Unsupported AppImage architecture")),
+    };
+    if header[4] != 2 || header[5] != 1 || number(&header, 18, 2, true) != machine {
+        return Err(invalid(
+            "The update's AppImage runtime is for a different architecture",
+        ));
+    }
+    Ok(())
+}
+
 /// Only an unambiguous, regular AppImage at the install root is eligible.
 /// Never follow a symlink or guess between several independent game builds.
 pub(crate) fn installed_image(dir: &Path) -> Option<PathBuf> {

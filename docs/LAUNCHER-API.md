@@ -103,6 +103,36 @@ start (reusing an answer from the last hour) and about every 6 hours, downloads 
 (quiet, then opens again). `notes` (Markdown) shows once as What's new. The admin page's Updates
 tab uploads an installer to `/launcher/` and publishes version.json.
 
+For Linux, publish a `linux` object with an HTTPS AppImage `url` (from GitHub, this site, or the
+update server itself, which `RL_API` can point at a local copy for testing), its own 64-digit `sha256`,
+and optional `version`, `notes`, `min` and `size`. Only `version` and `notes` fall back to the
+shared fields; Windows checksums and minimum versions never apply to Linux. The AppImage
+updater requires a newer version and a valid checksum, bounds the download to 512 MiB, and
+checks the type-2 AppImage container and native runtime architecture before staging it.
+Missing or invalid AppImage metadata produces an error inside the launcher, allowing retry.
+
+The updater stages in a private directory beside the running AppImage, so its folder must be
+writable. That's checked before the download: when this account can't change the folder, a
+window says so and offers the new AppImage to download instead. A system-shell helper waits
+for the old process to exit, atomically replaces the same filename, and starts it in the
+current desktop or Big Picture mode if the window is still open. Quitting during preparation
+cancels the update; closing to the tray leaves it closed after replacement. Symlinks and
+shortcuts keep their original paths. The previous image is restored if the new runtime exits
+with an error in the first two seconds. This checks immediate launch failure; it does not
+verify that the new UI rendered or recover from later crashes. Preparation failures leave the
+installed image untouched. If the swap fails, the unchanged launcher opens again.
+
+A failed update is reported the way it is on Windows and Mac: `update-pending.json` is written
+before the handoff, and when the old version is the one that starts next, it shows "The Update
+Didn't Start" with Try Again. The second failure from the same file (same version, `url` and
+`sha256`) stops it being offered until version.json changes it. The helper notes what went
+wrong in `launcher-trail.log`. A staging directory an interrupted update left behind is
+removed at the next start once it's an hour old.
+
+The `.deb` and plain Linux executable keep the download-page fallback. Flatpak updates remain
+managed by Flatpak. On every platform, an update error now closes the progress dialog so the
+player can retry (on Windows it used to stay open); otherwise Windows installs as before.
+
 ## How often the launcher asks
 
 Everything the launcher asks this server goes to one address, `API_BASE` in `src-tauri/src/net.rs`.
