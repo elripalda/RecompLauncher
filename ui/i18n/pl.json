@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} z {b}",
  "{n} games are in your Library now.": "{n} gra jest już w twojej Bibliotece.|{n} gry są już w twojej Bibliotece.|{n} gier jest już w twojej Bibliotece.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} gra jest już w twojej Bibliotece. Zainstaluj ją, kiedy chcesz.|{n} gry są już w twojej Bibliotece. Zainstaluj je, kiedy chcesz.|{n} gier jest już w twojej Bibliotece. Zainstaluj je, kiedy chcesz.",
- "{n} games it found are already in your Library.": "{n} znaleziona gra jest już w twojej Bibliotece.|{n} znalezione gry są już w twojej Bibliotece.|{n} znalezionych gier jest już w twojej Bibliotece."
+ "{n} games it found are already in your Library.": "{n} znaleziona gra jest już w twojej Bibliotece.|{n} znalezione gry są już w twojej Bibliotece.|{n} znalezionych gier jest już w twojej Bibliotece.",
+ "1 more version is Windows-only and hidden because Proton is off.": "Jeszcze 1 wersja jest tylko na Windows i jest ukryta, bo Proton jest wyłączony.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "Jeszcze {n} wersja jest tylko na Windows i jest ukryta, bo Proton jest wyłączony.|Jeszcze {n} wersje są tylko na Windows i są ukryte, bo Proton jest wyłączony.|Jeszcze {n} wersji jest tylko na Windows i jest ukrytych, bo Proton jest wyłączony.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 port tylko na Windows jest ukryty, bo Proton jest wyłączony.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} port tylko na Windows jest ukryty, bo Proton jest wyłączony.|{n} porty tylko na Windows są ukryte, bo Proton jest wyłączony.|{n} portów tylko na Windows jest ukrytych, bo Proton jest wyłączony.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Gdy ta opcja jest wyłączona, te recompy nie pojawiają się w Odkrywaj, w wyszukiwarce ani na stronach gier."
 }

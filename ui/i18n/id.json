@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} dari {b}",
  "{n} games are in your Library now.": "{n} game sekarang ada di Pustaka-mu.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} game sekarang ada di Pustaka-mu. Pasang kapan saja kamu mau.",
- "{n} games it found are already in your Library.": "{n} game yang ditemukan sudah ada di Pustaka-mu."
+ "{n} games it found are already in your Library.": "{n} game yang ditemukan sudah ada di Pustaka-mu.",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 versi lagi hanya untuk Windows dan disembunyikan karena Proton mati.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} versi lagi hanya untuk Windows dan disembunyikan karena Proton mati.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 recomp khusus Windows disembunyikan karena Proton mati.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomp khusus Windows disembunyikan karena Proton mati.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Saat ini mati, recomp tersebut tidak muncul di Jelajahi, pencarian, dan halaman game."
 }

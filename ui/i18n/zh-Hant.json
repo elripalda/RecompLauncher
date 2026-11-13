@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "{n} 款遊戲已加入您的收藏庫。",
  "{n} games are in your Library now. Install them whenever you like.": "{n} 款遊戲已加入您的收藏庫。隨時都可以安裝。",
- "{n} games it found are already in your Library.": "找到的 {n} 款遊戲已在您的收藏庫中。"
+ "{n} games it found are already in your Library.": "找到的 {n} 款遊戲已在您的收藏庫中。",
+ "1 more version is Windows-only and hidden because Proton is off.": "另有 1 個版本僅支援 Windows，因 Proton 已關閉而被隱藏。",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "另有 {n} 個版本僅支援 Windows，因 Proton 已關閉而被隱藏。",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 款僅限 Windows 的重新編譯遊戲因 Proton 已關閉而被隱藏。",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} 款僅限 Windows 的重新編譯遊戲因 Proton 已關閉而被隱藏。",
+ "With this off, those recomps are left out of Discover, search and game pages.": "關閉後，這些重製不會出現在「探索」、搜尋和遊戲頁面中。"
 }

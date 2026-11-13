@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} من {b}",
  "{n} games are in your Library now.": "أصبحت لعبتان في مكتبتك الآن.|أصبحت {n} ألعاب في مكتبتك الآن.|أصبحت {n} لعبة في مكتبتك الآن.|أصبحت {n} لعبة في مكتبتك الآن.",
  "{n} games are in your Library now. Install them whenever you like.": "أصبحت لعبتان في مكتبتك الآن. ثبّتهما متى شئت.|أصبحت {n} ألعاب في مكتبتك الآن. ثبّتها متى شئت.|أصبحت {n} لعبة في مكتبتك الآن. ثبّتها متى شئت.|أصبحت {n} لعبة في مكتبتك الآن. ثبّتها متى شئت.",
- "{n} games it found are already in your Library.": "لعبتان عُثر عليهما موجودتان في مكتبتك بالفعل.|{n} ألعاب عُثر عليها موجودة في مكتبتك بالفعل.|{n} لعبة عُثر عليها موجودة في مكتبتك بالفعل.|{n} لعبة عُثر عليها موجودة في مكتبتك بالفعل."
+ "{n} games it found are already in your Library.": "لعبتان عُثر عليهما موجودتان في مكتبتك بالفعل.|{n} ألعاب عُثر عليها موجودة في مكتبتك بالفعل.|{n} لعبة عُثر عليها موجودة في مكتبتك بالفعل.|{n} لعبة عُثر عليها موجودة في مكتبتك بالفعل.",
+ "1 more version is Windows-only and hidden because Proton is off.": "إصدار واحد آخر لنظام Windows فقط ومخفي لأن Proton متوقف.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "إصداران آخران لنظام Windows فقط ومخفيان لأن Proton متوقف.|{n} إصدارات أخرى لنظام Windows فقط ومخفية لأن Proton متوقف.|{n} إصدارًا آخر لنظام Windows فقط ومخفية لأن Proton متوقف.|{n} إصدار آخر لنظام Windows فقط ومخفية لأن Proton متوقف.",
+ "1 Windows-only recomp is hidden because Proton is off.": "لعبة واحدة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "لعبتان معاد تجميعهما لنظام Windows فقط مخفيتان لأن Proton متوقف.|{n} ألعاب معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.|{n} لعبة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.|{n} لعبة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "عند إيقاف هذا الخيار، لا تظهر هذه الألعاب في «استكشاف» ولا في البحث ولا في صفحات الألعاب."
 }

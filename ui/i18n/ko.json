@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "게임 {n}개가 이제 라이브러리에 있습니다.",
  "{n} games are in your Library now. Install them whenever you like.": "게임 {n}개가 이제 라이브러리에 있습니다. 원할 때 설치하세요.",
- "{n} games it found are already in your Library.": "찾은 게임 {n}개는 이미 라이브러리에 있습니다."
+ "{n} games it found are already in your Library.": "찾은 게임 {n}개는 이미 라이브러리에 있습니다.",
+ "1 more version is Windows-only and hidden because Proton is off.": "Windows 전용 버전이 1개 더 있지만 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "Windows 전용 버전이 {n}개 더 있지만 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "1 Windows-only recomp is hidden because Proton is off.": "Windows 전용 리컴프 1개가 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Windows 전용 리컴프 {n}개가 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "이 옵션을 끄면 해당 리컴프는 탐색, 검색, 게임 페이지에 표시되지 않습니다."
 }

@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} sur {b}",
  "{n} games are in your Library now.": "{n} jeux sont maintenant dans votre bibliothèque.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} jeux sont maintenant dans votre bibliothèque. Installez-les quand vous voulez.",
- "{n} games it found are already in your Library.": "{n} jeux trouvés sont déjà dans votre bibliothèque."
+ "{n} games it found are already in your Library.": "{n} jeux trouvés sont déjà dans votre bibliothèque.",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 version de plus est réservée à Windows et masquée, car Proton est désactivé.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} versions de plus sont réservées à Windows et masquées, car Proton est désactivé.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 recomp réservée à Windows est masquée, car Proton est désactivé.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomps réservées à Windows sont masquées, car Proton est désactivé.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Quand c'est désactivé, ces recomps n'apparaissent ni dans Découvrir, ni dans la recherche, ni sur les pages des jeux."
 }

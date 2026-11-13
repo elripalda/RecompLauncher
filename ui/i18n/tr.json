@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} / {b}",
  "{n} games are in your Library now.": "{n} oyun artık Kitaplığınızda.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} oyun artık Kitaplığınızda. İstediğiniz zaman yükleyin.",
- "{n} games it found are already in your Library.": "Bulduğu {n} oyun zaten Kitaplığınızda."
+ "{n} games it found are already in your Library.": "Bulduğu {n} oyun zaten Kitaplığınızda.",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 sürüm daha yalnızca Windows için ve Proton kapalı olduğu için gizli.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} sürüm daha yalnızca Windows için ve Proton kapalı olduğu için gizli.",
+ "1 Windows-only recomp is hidden because Proton is off.": "Yalnızca Windows için olan 1 recomp, Proton kapalı olduğu için gizli.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Yalnızca Windows için olan {n} recomp, Proton kapalı olduğu için gizli.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Bu kapalıyken bu recomp'lar Keşfet'te, aramada ve oyun sayfalarında görünmez."
 }

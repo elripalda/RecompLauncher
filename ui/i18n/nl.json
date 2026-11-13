@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} van {b}",
  "{n} games are in your Library now.": "{n} games staan nu in je bibliotheek.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} games staan nu in je bibliotheek. Installeer ze wanneer je wilt.",
- "{n} games it found are already in your Library.": "{n} gevonden games staan al in je bibliotheek."
+ "{n} games it found are already in your Library.": "{n} gevonden games staan al in je bibliotheek.",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 andere versie is alleen voor Windows en verborgen omdat Proton uit staat.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} andere versies zijn alleen voor Windows en verborgen omdat Proton uit staat.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 recomp alleen voor Windows is verborgen omdat Proton uit staat.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomps alleen voor Windows zijn verborgen omdat Proton uit staat.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Als dit uit staat, verschijnen die recomps niet in Ontdekken, het zoeken en de spelpagina's."
 }

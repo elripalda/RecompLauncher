@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} จาก {b}",
  "{n} games are in your Library now.": "ตอนนี้มี {n} เกมอยู่ในคลังของคุณแล้ว",
  "{n} games are in your Library now. Install them whenever you like.": "ตอนนี้มี {n} เกมอยู่ในคลังของคุณแล้ว ติดตั้งเมื่อไหร่ก็ได้",
- "{n} games it found are already in your Library.": "เกมที่พบ {n} เกมอยู่ในคลังของคุณแล้ว"
+ "{n} games it found are already in your Library.": "เกมที่พบ {n} เกมอยู่ในคลังของคุณแล้ว",
+ "1 more version is Windows-only and hidden because Proton is off.": "อีก 1 เวอร์ชันมีแค่สำหรับ Windows และถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "อีก {n} เวอร์ชันมีแค่สำหรับ Windows และถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "1 Windows-only recomp is hidden because Proton is off.": "Recomp สำหรับ Windows อย่างเดียว 1 รายการถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Recomp สำหรับ Windows อย่างเดียว {n} รายการถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "With this off, those recomps are left out of Discover, search and game pages.": "เมื่อปิดตัวเลือกนี้ Recomp เหล่านั้นจะไม่แสดงในหน้าค้นพบ การค้นหา และหน้าเกม"
 }

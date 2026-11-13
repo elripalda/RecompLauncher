@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "{n} trò chơi đã có trong Thư viện.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} trò chơi đã có trong Thư viện. Hãy cài đặt bất cứ khi nào bạn muốn.",
- "{n} games it found are already in your Library.": "{n} trò chơi tìm thấy đã có sẵn trong Thư viện."
+ "{n} games it found are already in your Library.": "{n} trò chơi tìm thấy đã có sẵn trong Thư viện.",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 phiên bản nữa chỉ có cho Windows và đang bị ẩn vì Proton đang tắt.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} phiên bản nữa chỉ có cho Windows và đang bị ẩn vì Proton đang tắt.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 bản recomp chỉ có cho Windows đang bị ẩn vì Proton đang tắt.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} bản recomp chỉ có cho Windows đang bị ẩn vì Proton đang tắt.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Khi tắt mục này, các bản recomp đó sẽ không hiện trong Khám phá, tìm kiếm và trang game."
 }

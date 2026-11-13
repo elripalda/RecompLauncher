@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a} з {b}",
  "{n} games are in your Library now.": "{n} гра тепер у твоїй бібліотеці.|{n} гри тепер у твоїй бібліотеці.|{n} ігор тепер у твоїй бібліотеці.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} гра тепер у твоїй бібліотеці. Встанови її, коли захочеш.|{n} гри тепер у твоїй бібліотеці. Встанови їх, коли захочеш.|{n} ігор тепер у твоїй бібліотеці. Встанови їх, коли захочеш.",
- "{n} games it found are already in your Library.": "{n} знайдена гра вже є у твоїй бібліотеці.|{n} знайдені гри вже є у твоїй бібліотеці.|{n} знайдених ігор уже є у твоїй бібліотеці."
+ "{n} games it found are already in your Library.": "{n} знайдена гра вже є у твоїй бібліотеці.|{n} знайдені гри вже є у твоїй бібліотеці.|{n} знайдених ігор уже є у твоїй бібліотеці.",
+ "1 more version is Windows-only and hidden because Proton is off.": "Ще 1 версія лише для Windows прихована, бо Proton вимкнено.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "Ще {n} версія лише для Windows прихована, бо Proton вимкнено.|Ще {n} версії лише для Windows приховано, бо Proton вимкнено.|Ще {n} версій лише для Windows приховано, бо Proton вимкнено.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 рекомпіляція лише для Windows прихована, бо Proton вимкнено.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} рекомпіляція лише для Windows прихована, бо Proton вимкнено.|{n} рекомпіляції лише для Windows приховано, бо Proton вимкнено.|{n} рекомпіляцій лише для Windows приховано, бо Proton вимкнено.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Коли це вимкнено, ці рекомпи не показуються в «Огляді», пошуку та на сторінках ігор."
 }

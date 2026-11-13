@@ -3029,5 +3029,10 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "{n} 本のゲームがライブラリに入りました。",
  "{n} games are in your Library now. Install them whenever you like.": "{n} 本のゲームがライブラリに入りました。好きなときにインストールしてください。",
- "{n} games it found are already in your Library.": "見つかった {n} 本のゲームはすでにライブラリにあります。"
+ "{n} games it found are already in your Library.": "見つかった {n} 本のゲームはすでにライブラリにあります。",
+ "1 more version is Windows-only and hidden because Proton is off.": "ほかに Windows 専用のバージョンが 1 つあり、Proton がオフのため非表示です。",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "ほかに Windows 専用のバージョンが {n} つあり、Proton がオフのため非表示です。",
+ "1 Windows-only recomp is hidden because Proton is off.": "Windows 専用のリコンパイル版 1 本は、Proton がオフのため非表示です。",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Windows 専用のリコンパイル版 {n} 本は、Proton がオフのため非表示です。",
+ "With this off, those recomps are left out of Discover, search and game pages.": "オフにすると、これらのリコンプは「見つける」、検索、ゲームページに表示されません。"
 }
