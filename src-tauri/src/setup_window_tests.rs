@@ -26,7 +26,7 @@ impl Fixture {
             pids: Mutex::default(),
             started: Mutex::default(),
             download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
-            moving: Mutex::default(),
+            moving: Arc::default(),
             uninstalling: Mutex::default(),
             overlay_open: AtomicBool::new(false),
             looked: Mutex::default(),

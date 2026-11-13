@@ -1135,3 +1135,6 @@ body.light .tv-badge.soon{color:#1a1400}
   .tv-kb-field{border:2px solid var(--acc)}
   .tv-ach-toast{border:1px solid rgba(242,193,78,.4)}
 }
+
+.tv-setup .engine-progress{width:1000px;font-size:22px;text-align:left}
+.tv-engine-versions .card{font-size:20px;line-height:1.45;overflow-wrap:anywhere}

@@ -94,6 +94,12 @@ fn one_way_inputs(v: &mut Value) {
     let Some(games) = v.get_mut("installed").and_then(Value::as_object_mut) else { return };
     for g in games.values_mut() {
         let Some(g) = g.as_object_mut() else { continue };
+        // An engine game's fingerprint identifies its completed build, and its picks are what that
+        // build is recovered from: neither is an old setup to read once or put back.
+        if g.get("engine_build").is_some_and(|e| !e.is_null()) {
+            g.remove("setup_before");
+            continue;
+        }
         put_back_open_setup(g);
         let mut inputs = g.remove("setup_inputs").and_then(|x| x.as_object().cloned()).unwrap_or_default();
         for (old, id) in [("game_copy", "game"), ("update_copy", "update")] {
@@ -212,6 +218,22 @@ mod tests {
         let mut v = json!({ "format": 4, "installed": { "hopper": {} }, "settings": { "ui": { "easy_skip_all": true } } });
         assert!(!to_current(&mut v));
         assert_eq!(mode(&v, "hopper"), None);
+    }
+
+    #[test]
+    fn an_engine_game_keeps_its_fingerprint_and_picks() {
+        let mut v = json!({ "installed": { "hopper": {
+            "engine_build": { "state": "prepared" },
+            "inputs_ready": "fingerprint",
+            "setup_inputs": { "base": "/games/hopper.nsp" },
+            "setup_before": { "setup_inputs": { "base": "/games/older.nsp" } }
+        } } });
+        assert!(to_current(&mut v));
+        let g = &v["installed"]["hopper"];
+        assert_eq!(g["inputs_ready"], "fingerprint");
+        assert_eq!(g["setup_inputs"]["base"], "/games/hopper.nsp");
+        assert!(g.get("setup_before").is_none());
+        assert!(g.get("upgrade").is_none());
     }
 
     #[test]

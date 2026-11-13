@@ -76,7 +76,7 @@ impl Site {
         let app = App {
             dir, http: reqwest::Client::builder().no_proxy().build().unwrap(), lib: Mutex::new(lib),
             jobs: Mutex::new(HashMap::new()), running: Mutex::new(HashMap::new()), pids: Mutex::new(HashMap::new()), started: Mutex::new(HashMap::new()),
-            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::new(HashSet::new()), uninstalling: Mutex::default(), overlay_open: AtomicBool::new(false), looked: Mutex::new(HashSet::new()), headless: AtomicBool::new(false),
+            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Arc::new(Mutex::new(HashSet::new())), uninstalling: Mutex::default(), overlay_open: AtomicBool::new(false), looked: Mutex::new(HashSet::new()), headless: AtomicBool::new(false),
         };
         Self { app, approved, catalogs, stop, server: Some(server) }
     }
@@ -146,7 +146,7 @@ impl MovedHookshot {
         Self(App {
             dir, http: reqwest::Client::new(), lib: Mutex::new(lib),
             jobs: Mutex::default(), running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
-            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(), uninstalling: Mutex::default(), overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
+            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Arc::default(), uninstalling: Mutex::default(), overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
         })
     }
 }
