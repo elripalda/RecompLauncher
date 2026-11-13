@@ -609,10 +609,12 @@ const verGroup = (a) => {
   const g = a && a.title ? index().titles.get(a.title) : null;
   return g && (g.list.length >= 2 || (g.list.length && !g.list.includes(a))) ? g : null;
 };
+// A recomp whose latest release isn't its first one: an update, not a new arrival.
+const wasUpdated = (a) => !!a.released && (Number(a.releases) || (a.releases || []).length || 0) > 1 && a.released !== a.first;
 // Recomps that put out a new version lately (not just their first one), each game once.
 function recentlyUpdated(list) {
   const seen = new Set();
-  return list.filter((a) => notPC(a) && a.released && (Number(a.releases) || (a.releases || []).length || 0) > 1 && a.released !== a.first)
+  return list.filter((a) => notPC(a) && wasUpdated(a))
     .sort((x, y) => String(y.released).localeCompare(String(x.released)) || byDl(x, y))
     .filter((a) => { const k = a.title && index().titles.has(a.title) ? 't:' + a.title : a.id; if (seen.has(k)) return false; seen.add(k); return true; });
 }
@@ -696,9 +698,19 @@ const byDlConsolesFirst = (x, y) => (isPC(x) ? 1 : 0) - (isPC(y) ? 1 : 0) || byD
 // How many recomps a list holds: every version, not every tile (a game with three versions is
 // one tile and three recomps). Coming Soon ones aren't counted.
 const recompCount = (list) => list.filter((a) => !a.soon).length;
-const byUpdated = (x, y) => String(y.released || '').localeCompare(String(x.released || ''));
-// Discover's Show filter: everything, what's installed, what isn't, or what needs setting up first.
-const SHOWS = [['', N_('Everything')], ['inst', N_('Installed')], ['notinst', N_('Not installed')], ['lib', N_('In your Library')], ['setup', N_('Setup Required')], ['handheld', N_('Great on Handhelds')]];
+// Updated recomps first, as on Home's Recently updated, so a brand-new one doesn't read as an update.
+const byUpdated = (x, y) => (wasUpdated(y) ? 1 : 0) - (wasUpdated(x) ? 1 : 0) || String(y.released || '').localeCompare(String(x.released || ''));
+// Discover's Show filter: everything, what's installed, what isn't, what needs setting up first,
+// and the same games as Home's From developers you follow and Found in your folders.
+const SHOWS = [['', N_('Everything')], ['inst', N_('Installed')], ['notinst', N_('Not installed')], ['lib', N_('In your Library')], ['setup', N_('Setup Required')], ['handheld', N_('Great on Handhelds')], ['follow', N_('From developers you follow')], ['owned', N_('Found in your folders')]];
+// The Show choices that can find something: Following once you follow a developer, Found once a
+// folder scan found a game. The one picked stays, so the menu still names it.
+const showsNow = (cur = '') => SHOWS.filter(([k]) => k === cur || showHasAny(k));
+const showHasAny = (k) => {
+  if (k === 'follow') return follows().length > 0;
+  if (k === 'owned') return Object.keys(S.owned).length > 0;
+  return true;
+};
 // Several handheld players say it runs well (the catalog's "handheld", worked out by the site).
 const greatHandheld = (a) => !!(a && a.handheld && a.handheld.ok);
 window.greatHandheld = greatHandheld;
@@ -710,6 +722,9 @@ function showOk(a, k) {
   if (k === 'lib') return !!S.library[a.id] || isSaved(a.id);
   if (k === 'setup') return needsSetup(a) && !setupDone(a.id);
   if (k === 'handheld') return greatHandheld(a);
+  if (k === 'follow') return !!a.dev && follows().includes(a.dev);
+  // As on Home: found in a folder and not in the Library yet, this version or another.
+  if (k === 'owned') return !!S.owned[a.id] && !haveAny(a);
   return true;
 }
 
@@ -1420,7 +1435,7 @@ const sortOpts = () => [['popular', t('Popular')], ['new', t('Newest')], ['updat
 const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n]) => `<option value="${esc(k)}"${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
 const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name])], f.origin, cls);
 const genreSel = (f, genres, cls) => pillSel(t('Genre'), 'genre-sel', [['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])], f.genre, cls);
-const showSel = (f) => pillSel(t('Show'), 'show-sel', SHOWS.map(([k, n]) => [k, t(n)]), f.show || '');
+const showSel = (f) => pillSel(t('Show'), 'show-sel', showsNow(f.show || '').map(([k, n]) => [k, t(n)]), f.show || '');
 const tagSel = (f) => pillSel(t('Tag'), 'tag-sel', [['', t('Any')], ...allTags().map((k) => [k, k])], f.tag || '');
 const discToggles = (f) => `<button type="button" class="toggle" role="switch" aria-checked="${!!f.easy}" data-act="easy-f">${DISC_S}${esc(t('Easy Setup'))}<span class="switch" aria-hidden="true"></span></button>
       <button type="button" class="toggle" role="switch" aria-checked="${!!f.mp}" data-act="mp-f">${esc(t('Multiplayer'))}<span class="switch" aria-hidden="true"></span></button>

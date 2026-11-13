@@ -901,7 +901,7 @@
     const pickRuns = () => sheet(t('Runs On'), runsList().map(([k, n]) => ({ label: t(n), icon: runsNow() === k ? 'check' : '', run: () => { setRunsNow(k); TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const runsName = t((runsList().find(([k]) => k === runsNow()) || runsList()[0])[1]);
     const SORTS = [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
-    const pickShow = () => sheet(t('Show'), SHOWS.map(([k, n]) => ({ label: t(n), icon: (TV.dshow || '') === k ? 'check' : '', run: () => { TV.dshow = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
+    const pickShow = () => sheet(t('Show'), showsNow(TV.dshow || '').map(([k, n]) => ({ label: t(n), icon: (TV.dshow || '') === k ? 'check' : '', run: () => { TV.dshow = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const origins = ((S.cat && S.cat.origins) || []).map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
     const pickSort = () => sheet(t('Sort'), SORTS.map(([k, n]) => ({ label: n, icon: k === srt ? 'check' : '', run: () => { TV.dsort = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const pickConsole = () => sheet(t('Console'), [{ label: t('Any'), icon: org ? '' : 'check', run: () => { TV.dorigin = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } }].concat(origins.map(([o, n]) => ({ label: o.name, sub: tn(n, '1 recomp', '{n} recomps'), icon: o.id === org ? 'check' : '', run: () => { TV.dorigin = o.id; TV.focusKey = 'g:@filter'; discoverRedraw(); } }))));
