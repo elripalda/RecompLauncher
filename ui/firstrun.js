@@ -95,7 +95,7 @@
         return `<h1>${esc(t('Where should games go?'))}</h1><p class="oob-lead">${esc(t('Recomps install here. You can add more places, on other drives, in Settings.'))}</p>
           <div class="oob-box"><div class="oob-dir big">${ICON.folder}<span title="${esc(lib)}">${esc(lib)}</span><button type="button" class="btn sm" data-o="lib">${esc(t('Change'))}</button></div>
           ${info && info.free ? `<p class="oob-free">${esc(tf('{free} free on this drive', { free: fmtB(info.free) }))}</p>` : ''}${sharedLibraryNote([lib])}</div>
-          <div class="oob-deck"><div><b>${esc(t('Already have recomps?'))}</b><span>${esc(t('Bring in the ones you installed yourself, with Quiver Launcher or in Steam. They keep updating from here, where they are.'))}</span></div><button type="button" class="btn" data-o="adopt">${esc(t('Bring Your Recomps'))}</button></div>`;
+          <div class="oob-deck"><div><b>${esc(t('Already have recomps?'))}</b><span>${esc(t('Bring in the ones you installed yourself, with another launcher or in Steam. They keep updating from here, where they are.'))}</span></div><button type="button" class="btn" data-o="adopt">${esc(t('Bring Your Recomps'))}</button></div>`;
       }
       case 'choices':
         return `<h1>${esc(t('A few choices'))}</h1><p class="oob-lead">${esc(t('All of these are in Settings later.'))}</p>

@@ -3275,6 +3275,7 @@ const SET_ICONS = {
   general: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   library: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/>',
   updates: '<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/>',
+  bring: '<path d="M12 3v11M7.5 9.5 12 14l4.5-4.5"/><path d="M4 14v4.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V14"/>',
   look: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 1 0 17" fill="currentColor"/>',
   bigpicture: '<rect x="2.5" y="4.5" width="19" height="13" rx="2.5"/><path d="M8 21h8"/><path d="m10.5 8.5 4 2.5-4 2.5z" fill="currentColor"/>',
   pads: '<path d="M7 9h10a4 4 0 0 1 3.9 4.9l-.8 3.4a2 2 0 0 1-3.5.8L15 16H9l-1.6 2.1a2 2 0 0 1-3.5-.8l-.8-3.4A4 4 0 0 1 7 9z"/><path d="M8.5 11.5v3M7 13h3"/>',
@@ -3312,7 +3313,7 @@ async function saveProxy(mode) {
     if (S.view === 'settings') setSection('updates', false);
   } catch (e) { fail(e); }
 }
-const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
+const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
 // Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
 // shows the progress, and Windows may ask for permission).
 let vcBusy = false;
@@ -3407,10 +3408,13 @@ function pageSettings() {
         + group(t('Desktop shortcuts'), row(t('Shortcuts Go Through the Launcher'), t('Off: a game\'s desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your shader, cloud saves and play time along.'), sw('shortcut_launcher', ui.shortcut_launcher, t('Shortcuts Go Through the Launcher'), 'ui-toggle')))
         + (S.steam ? steamSyncGroup(group, row, sw) : '')
         + (S.os === 'windows' ? group(t('Picking files'), row(t('Use the Launcher\'s Own File Browser'), t('Off: Windows\' own window for picking files and folders. On: the launcher\'s, which marks the games it knows and can unzip.'), sw('own_picker', ui.own_picker, t('Use the Launcher\'s Own File Browser'), 'ui-toggle'))) : '')
-        + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Recomps you added to Steam, installed with Quiver Launcher or keep in a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="adopt">${esc(t('Find them'))}</button>`))
+        + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Games from another launcher, Steam or a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="mig-open">${esc(t('Bring Your Games'))}</button>`))
         + dlssGroup(group, row)
         + group(t('Game Art'), `<div class="set-row"><div class="k"><b>${esc(t('SteamGridDB API Key'))}</b><span>${esc(t('Optional. With your own free key from steamgriddb.com (Preferences → API), games you add from GitHub get covers, backgrounds and logos.'))}</span></div>
           <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`);
+      break;
+    case 'bring':
+      body = window.migratePage ? window.migratePage(group) : '';
       break;
     case 'updates':
       body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
@@ -6850,6 +6854,7 @@ async function act(el, e) {
   if (/^beta-/.test(a) && window.moreAct) return window.moreAct(a, el);
   if (a === 'project-association') return changeProject(id);
   if (a === 'adopt' && window.adoptAct) return window.adoptAct(a, el);
+  if (/^mig-/.test(a) && window.migrateAct) return window.migrateAct(a, el);
   switch (a) {
     case 'open': e.preventDefault(); closeMenu(); return go('game', id, el.closest('.tile') ? el : null);
     case 'back': return back();

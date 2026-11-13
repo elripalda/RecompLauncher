@@ -1,4 +1,4 @@
-//! Recomps the player already has: added to Steam as non-Steam games, installed by Quiver Launcher,
+//! Recomps the player already has: added to Steam as non-Steam games, installed by another launcher,
 //! or in a folder they point at. Each one is matched to its recomp in the catalog and added to the
 //! Library where it is (or moved into the Recomp Library), and from then on it updates like any other.
 
@@ -20,12 +20,27 @@ pub struct Found {
     pub path: PathBuf,
     /// The program, relative to `path`.
     pub exe: Option<PathBuf>,
-    /// The release it's on, when that's known (Quiver writes it down); empty means "not known".
+    /// The release it's on, when that's known (another launcher may write it down); empty means "not known".
     pub tag: String,
-    /// steam, quiver or folder.
+    /// steam, launcher (another launcher's library) or folder.
     pub from: String,
     /// Already in the Library (the same folder, or the same recomp).
     pub have: bool,
+    /// Its project's link, when the place it came from names one.
+    #[serde(default)]
+    pub link: String,
+    /// The match is certain: its project is the recomp's.
+    #[serde(default)]
+    pub sure: bool,
+    /// Only in another launcher's list, not on this PC.
+    #[serde(default)]
+    pub missing: bool,
+    /// Hidden in the launcher it came from.
+    #[serde(default)]
+    pub hidden: bool,
+    /// When it isn't sure: the closest recomps by name, best first.
+    #[serde(default)]
+    pub guesses: Vec<String>,
 }
 
 // ---------- matching a name to a recomp ----------
@@ -40,26 +55,30 @@ fn generic(n: &str) -> bool {
         || n.starts_with("launcher") && n[8..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// The catalog recomp that `hints` (a repo, a program's name, a folder's name, a Steam name) point to.
-/// A repo that matches wins outright; otherwise the closest name, and nothing when two are as close.
-pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
+/// The catalog recomp whose project is `repo` (owner/name, or a GitHub or GitLab link).
+pub fn repo_match(cat: &Value, repo: &str) -> Option<String> {
     let apps = cat.get("apps")?.as_array()?;
     let s = |a: &Value, k: &str| a.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-    if !repo.is_empty() {
-        let r = repo.trim().trim_end_matches(".git").trim_end_matches('/').to_lowercase();
-        let r = match r.split_once("gitlab.com/") {
-            Some((_, p)) => format!("gitlab:{p}"),
-            None => r.rsplit("github.com/").next().unwrap_or(&r).to_string(),
-        };
-        if let Some(a) = apps.iter().find(|a| s(a, "repo").to_lowercase() == r) {
-            return Some(s(a, "id"));
-        }
+    if repo.trim().is_empty() {
+        return None;
     }
-    // A program called Launcher.exe or Game.exe says nothing about which game it is: those words
-    // never match on their own (another launcher's Link's Awakening isn't the OpenGOAL Launcher).
+    let r = repo.trim().trim_end_matches('/').trim_end_matches(".git").to_lowercase();
+    let r = match r.split_once("gitlab.com/") {
+        Some((_, p)) => format!("gitlab:{p}"),
+        None => r.rsplit("github.com/").next().unwrap_or(&r).to_string(),
+    };
+    apps.iter().find(|a| s(a, "repo").to_lowercase() == r).map(|a| s(a, "id"))
+}
+
+/// Recomps whose names are close to `hints` (a program's name, a folder's name, a Steam name),
+/// best first. A program called Launcher.exe or Game.exe says nothing about which game it is:
+/// those words never match on their own (another launcher's Link's Awakening isn't the OpenGOAL
+/// Launcher).
+fn scored(cat: &Value, hints: &[&str]) -> Vec<(usize, String)> {
+    let Some(apps) = cat.get("apps").and_then(Value::as_array) else { return vec![] };
+    let s = |a: &Value, k: &str| a.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let hints: Vec<String> = hints.iter().map(|h| norm(h)).filter(|h| h.len() >= 4 && !generic(h)).collect();
-    let mut best: Option<(usize, String)> = None;
-    let mut tie = false;
+    let mut out = vec![];
     for a in apps {
         let repo_name = s(a, "repo").rsplit(['/', ':']).next().unwrap_or("").to_string();
         let keys: Vec<String> = [s(a, "id"), s(a, "name"), repo_name].iter().map(|k| norm(k)).filter(|k| k.len() >= 4 && !generic(k)).collect();
@@ -76,22 +95,31 @@ pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
                 score = score.max(sc);
             }
         }
-        if score == 0 {
-            continue;
-        }
-        match &best {
-            Some((b, _)) if score < *b => {}
-            Some((b, _)) if score == *b => tie = true,
-            _ => {
-                best = Some((score, s(a, "id")));
-                tie = false;
-            }
+        if score > 0 {
+            out.push((score, s(a, "id")));
         }
     }
-    if tie {
-        return None;
+    // Stable: equally close ones keep the catalog's order.
+    out.sort_by(|x, y| y.0.cmp(&x.0));
+    out
+}
+
+/// The catalog recomp that `hints` point to. A repo that matches wins outright; otherwise the
+/// closest name, and nothing when two are as close.
+pub fn guess(cat: &Value, repo: &str, hints: &[&str]) -> Option<String> {
+    if let Some(id) = repo_match(cat, repo) {
+        return Some(id);
     }
-    best.map(|(_, id)| id)
+    match scored(cat, hints).as_slice() {
+        [(a, _), (b, _), ..] if a == b => None,
+        [(_, id), ..] => Some(id.clone()),
+        [] => None,
+    }
+}
+
+/// Up to `n` recomps to offer when it isn't sure which one a game is, best first.
+pub fn guesses(cat: &Value, hints: &[&str], n: usize) -> Vec<String> {
+    scored(cat, hints).into_iter().map(|(_, id)| id).take(n).collect()
 }
 
 // ---------- where they are ----------
@@ -123,9 +151,9 @@ fn steam_games() -> Vec<(String, PathBuf, PathBuf)> {
     out
 }
 
-/// Folders Quiver Launcher keeps its library in (apps.json beside Apps), in the usual places: where
+/// Folders another launcher keeps its library in (apps.json beside Apps), in the usual places: where
 /// its installer puts it, and folders people unzip the portable version into.
-pub fn quiver_roots() -> Vec<PathBuf> {
+pub fn library_roots() -> Vec<PathBuf> {
     let mut look: Vec<PathBuf> = vec![];
     for var in ["LOCALAPPDATA", "APPDATA"] {
         if let Ok(v) = std::env::var(var) {
@@ -137,7 +165,7 @@ pub fn quiver_roots() -> Vec<PathBuf> {
         for d in ["Downloads", "Desktop", "Documents", "Games", ""] {
             let base = if d.is_empty() { home.clone() } else { home.join(d) };
             look.push(base.clone());
-            // One level down: Downloads\QuiverLauncher-win-Portable, Desktop\Quiver, ...
+            // One level down, where a portable copy was unzipped.
             for e in std::fs::read_dir(&base).into_iter().flatten().flatten() {
                 let n = e.file_name().to_string_lossy().to_lowercase();
                 if n.contains("quiver") && e.path().is_dir() {
@@ -151,6 +179,19 @@ pub fn quiver_roots() -> Vec<PathBuf> {
             }
         }
     }
+    // Linux and Mac: beside the app, or in the system's own data folder when that isn't writable.
+    if let Ok(v) = std::env::var("XDG_DATA_HOME") {
+        look.push(PathBuf::from(v).join("QuiverLauncher"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        look.push(home.join(".local/share/QuiverLauncher"));
+        look.push(home.join("Library/Application Support/QuiverLauncher"));
+    }
+    if let Ok(v) = std::env::var("APPIMAGE") {
+        if let Some(d) = Path::new(&v).parent() {
+            look.push(d.to_path_buf());
+        }
+    }
     for drive in ["C:\\", "D:\\", "E:\\"] {
         for d in ["QuiverLauncher", "Quiver Launcher", "Quiver", "Games\\QuiverLauncher"] {
             look.push(PathBuf::from(drive).join(d));
@@ -158,29 +199,81 @@ pub fn quiver_roots() -> Vec<PathBuf> {
     }
     let mut out: Vec<PathBuf> = vec![];
     for p in look {
-        if is_quiver(&p) && !out.contains(&p) {
+        if is_library(&p) && !out.contains(&p) {
             out.push(p);
         }
     }
     out
 }
 
-pub fn is_quiver(dir: &Path) -> bool {
+pub fn is_library(dir: &Path) -> bool {
     let Ok(b) = std::fs::read(dir.join("apps.json")) else { return false };
     serde_json::from_slice::<Value>(&b).ok().and_then(|v| v.get("apps").map(Value::is_array)).unwrap_or(false)
         && (dir.join("settings.json").is_file() || dir.join("Apps").is_dir())
 }
 
-/// The apps in one Quiver library that are installed: (name, repo, folder, tag, program).
-pub fn quiver_apps(root: &Path) -> Vec<(String, String, PathBuf, String, Option<PathBuf>)> {
+/// One project in another launcher's list.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LibEntry {
+    pub name: String,
+    /// Its project as that launcher wrote it (owner/name or a link); empty for a game added by hand.
+    pub repo: String,
+    /// Where its folder is, or would be.
+    pub path: PathBuf,
+    pub installed: bool,
+    pub tag: String,
+    /// The program, relative to `path`.
+    pub exe: Option<PathBuf>,
+    pub hidden: bool,
+}
+
+/// A project's name or link in one comparable form.
+fn mark_key(s: &str) -> String {
+    let s = s.trim().trim_end_matches('/').trim_end_matches(".git").to_lowercase();
+    let s = s.trim_start_matches("https://").trim_start_matches("http://").trim_start_matches("www.");
+    s.trim_start_matches("github.com/").to_string()
+}
+
+/// What another launcher marked hidden: flags on its entries, and the list it keeps beside them
+/// (JSON or one per line).
+fn hidden_marks(root: &Path) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    let Ok(text) = std::fs::read_to_string(root.join("apps.json.lock")) else { return out };
+    fn walk(v: &Value, out: &mut std::collections::HashSet<String>) {
+        match v {
+            Value::String(s) => {
+                out.insert(mark_key(s));
+            }
+            Value::Array(l) => l.iter().for_each(|x| walk(x, out)),
+            Value::Object(m) => m.iter().for_each(|(k, x)| {
+                out.insert(mark_key(k));
+                walk(x, out);
+            }),
+            _ => {}
+        }
+    }
+    match serde_json::from_str::<Value>(&text) {
+        Ok(v) => walk(&v, &mut out),
+        Err(_) => text.lines().map(str::trim).filter(|l| !l.is_empty()).for_each(|l| {
+            out.insert(mark_key(l));
+        }),
+    }
+    out.remove("");
+    out
+}
+
+/// Everything in another launcher's list (apps.json beside Apps), on this PC or not.
+pub fn library_entries(root: &Path) -> Vec<LibEntry> {
     let read = |f: &str| std::fs::read(root.join(f)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null);
     let apps = read("apps.json");
     let settings = read("settings.json");
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let flag = |v: &Value, k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
     let apps_dir = {
         let p = s(&settings, "AppsPath");
         if p.is_empty() { root.join("Apps") } else { PathBuf::from(p) }
     };
+    let marks = hidden_marks(root);
     let mut out = vec![];
     for a in apps.get("apps").and_then(Value::as_array).cloned().unwrap_or_default() {
         let install = s(&a, "installPath");
@@ -188,20 +281,80 @@ pub fn quiver_apps(root: &Path) -> Vec<(String, String, PathBuf, String, Option<
         let path = if !install.is_empty() {
             PathBuf::from(install)
         } else if !folder.is_empty() {
-            apps_dir.join(folder)
+            apps_dir.join(&folder)
         } else {
             continue;
         };
-        if !path.is_dir() {
+        let installed = path.is_dir();
+        let tag = if installed { std::fs::read_to_string(path.join("version.txt")).map(|t| t.trim().to_string()).unwrap_or_default() } else { String::new() };
+        let exe = if installed {
+            std::fs::read_to_string(path.join("selected_executable.txt"))
+                .ok()
+                .map(|t| PathBuf::from(t.trim()))
+                .filter(|p| p.is_file())
+                .and_then(|p| p.strip_prefix(&path).ok().map(Path::to_path_buf))
+        } else {
+            None
+        };
+        let (name, repo) = (s(&a, "name"), s(&a, "repository"));
+        let hidden = flag(&a, "hidden") || flag(&a, "isHidden") || [&name, &repo, &folder, &s(&a, "id")].iter().any(|k| !k.is_empty() && marks.contains(&mark_key(k)));
+        out.push(LibEntry { name, repo, path, installed, tag, exe, hidden });
+    }
+    out
+}
+
+/// The installed apps in another launcher's list: (name, repo, folder, tag, program).
+pub fn installed_entries(root: &Path) -> Vec<(String, String, PathBuf, String, Option<PathBuf>)> {
+    library_entries(root).into_iter().filter(|e| e.installed).map(|e| (e.name, e.repo, e.path, e.tag, e.exe)).collect()
+}
+
+/// A project as a link the launcher can add from: owner/name is on GitHub.
+fn project_link(repo: &str) -> String {
+    let r = repo.trim().trim_end_matches('/').trim_end_matches(".git");
+    if r.is_empty() {
+        String::new()
+    } else if r.starts_with("http://") || r.starts_with("https://") {
+        r.to_string()
+    } else if let Some(p) = r.strip_prefix("gitlab:") {
+        format!("https://gitlab.com/{p}")
+    } else if r.matches('/').count() == 1 && !r.contains(' ') {
+        format!("https://github.com/{r}")
+    } else {
+        String::new()
+    }
+}
+
+/// Another launcher's whole list, matched: sure when its project is a recomp's, otherwise with
+/// the closest recomps to choose from. Projects only in the list come along so they can be added
+/// from their link; ones added by hand that aren't on this PC have nothing to bring.
+fn from_library(cat: &Value, root: &Path, os: &str) -> Vec<Found> {
+    let mut out = vec![];
+    for e in library_entries(root) {
+        let link = project_link(&e.repo);
+        if !e.installed && link.is_empty() {
             continue;
         }
-        let tag = std::fs::read_to_string(path.join("version.txt")).map(|t| t.trim().to_string()).unwrap_or_default();
-        let exe = std::fs::read_to_string(path.join("selected_executable.txt"))
-            .ok()
-            .map(|t| PathBuf::from(t.trim()))
-            .filter(|p| p.is_file())
-            .and_then(|p| p.strip_prefix(&path).ok().map(Path::to_path_buf));
-        out.push((s(&a, "name"), s(&a, "repository"), path, tag, exe));
+        let folder = e.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let stem = e.exe.as_ref().and_then(|x| x.file_stem()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let hints = [e.name.as_str(), folder.as_str(), stem.as_str()];
+        let sure = repo_match(cat, &e.repo);
+        let id = sure.clone().or_else(|| guess(cat, "", &hints)).unwrap_or_default();
+        let near = if sure.is_some() { vec![] } else { guesses(cat, &hints, 3) };
+        let exe = if e.installed { e.exe.or_else(|| install::find_exe(&e.path, os, &[&e.name])) } else { None };
+        out.push(Found {
+            id,
+            name: e.name,
+            path: e.path,
+            exe,
+            tag: e.tag,
+            from: "launcher".into(),
+            have: false,
+            link,
+            sure: sure.is_some(),
+            missing: !e.installed,
+            hidden: e.hidden,
+            guesses: near,
+        });
     }
     out
 }
@@ -226,51 +379,75 @@ fn names(cat: &Value, id: &str) -> Vec<String> {
     vec![s("name"), s("repo").rsplit(['/', ':']).next().unwrap_or("").to_string(), s("game")]
 }
 
-/// Every recomp found on this PC that matches one in the catalog (and those Steam or Quiver have
-/// that it couldn't place, with an empty id, so the player can say which it is).
+/// Every recomp found on this PC that matches one in the catalog (and those Steam or another
+/// launcher has that it couldn't place, with an empty id, so the player can say which it is).
+/// `every` (Settings → Bring Your Games) also keeps another launcher's projects that aren't on this
+/// PC and the ones in its list that don't look like recomps: the player decides about those.
+fn scan(cat: &Value, every: bool) -> Vec<Found> {
+    let os = crate::assets::os_now();
+    let mut out: Vec<Found> = vec![];
+    for root in library_roots() {
+        for f in from_library(cat, &root, os) {
+            let looks = f.name.to_lowercase().contains("recomp") || f.link.to_lowercase().contains("recomp");
+            if !every && (f.missing || f.id.is_empty() && !looks) {
+                continue;
+            }
+            if out.iter().any(|o| o.path == f.path) {
+                continue;
+            }
+            out.push(f);
+        }
+    }
+    for (name, exe, start) in steam_games() {
+        let (path, rel) = split(&exe, Some(&start));
+        if out.iter().any(|f| f.path == path) {
+            continue;
+        }
+        let folder = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let stem = exe.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let repo = read_repo(&path);
+        let id = guess(cat, &repo, &[&name, &stem, &folder]).unwrap_or_default();
+        let looks = [&name, &stem, &folder].iter().any(|s| s.to_lowercase().contains("recomp"));
+        if id.is_empty() && !looks {
+            continue;
+        }
+        let sure = repo_match(cat, &repo).is_some();
+        let near = if sure { vec![] } else { guesses(cat, &[&name, &stem, &folder], 3) };
+        out.push(Found { id, name, path, exe: rel, tag: String::new(), from: "steam".into(), have: false, link: project_link(&repo), sure, guesses: near, ..Default::default() });
+    }
+    out
+}
+
 #[tauri::command(async)]
 pub async fn adopt_scan(st: State<'_, App>) -> Res<Vec<Found>> {
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
+    let mut found = tokio::task::spawn_blocking(move || scan(&cat, false)).await.map_err(|e| Error::Msg(e.to_string()))?;
+    let have: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    mark(&mut found, &have);
+    Ok(found)
+}
+
+/// Settings → Bring Your Games: everything in other launchers' lists and in Steam, sure matches
+/// and the rest, for the player to bring over.
+#[tauri::command(async)]
+pub async fn migrate_scan(st: State<'_, App>) -> Res<Vec<Found>> {
+    let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
+    let mut found = tokio::task::spawn_blocking(move || scan(&cat, true)).await.map_err(|e| Error::Msg(e.to_string()))?;
+    let have: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    mark(&mut found, &have);
+    Ok(found)
+}
+
+/// Settings → Bring Your Games, a folder the player picked: another launcher's whole list when it's
+/// that launcher's folder, otherwise what's in the folder.
+#[tauri::command(async)]
+pub async fn migrate_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
+    let p = PathBuf::from(&path);
+    let root = if is_library(&p) { Some(p.clone()) } else { p.parent().filter(|d| is_library(d)).map(Path::to_path_buf) };
+    let Some(root) = root else { return adopt_pick(st, path).await };
+    let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let os = crate::assets::os_now();
-    let found = tokio::task::spawn_blocking({
-        let cat = cat.clone();
-        move || {
-            let mut out: Vec<Found> = vec![];
-            for root in quiver_roots() {
-                for (name, repo, path, tag, exe) in quiver_apps(&root) {
-                    let folder = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    let stem = exe.as_ref().and_then(|e| e.file_stem()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    let id = guess(&cat, &repo, &[&name, &folder, &stem]).unwrap_or_default();
-                    // Quiver installs anything from GitHub; only recomps (or ones it can't place but
-                    // that look like one) come along.
-                    if id.is_empty() && !(name.to_lowercase().contains("recomp") || repo.to_lowercase().contains("recomp")) {
-                        continue;
-                    }
-                    let exe = exe.or_else(|| install::find_exe(&path, os, &[&name]));
-                    out.push(Found { id, name, path, exe, tag, from: "quiver".into(), have: false });
-                }
-            }
-            for (name, exe, start) in steam_games() {
-                let (path, rel) = split(&exe, Some(&start));
-                if out.iter().any(|f| f.path == path) {
-                    continue;
-                }
-                let folder = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let stem = exe.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let repo = read_repo(&path);
-                let id = guess(&cat, &repo, &[&name, &stem, &folder]).unwrap_or_default();
-                let looks = [&name, &stem, &folder].iter().any(|s| s.to_lowercase().contains("recomp"));
-                if id.is_empty() && !looks {
-                    continue;
-                }
-                out.push(Found { id, name, path, exe: rel, tag: String::new(), from: "steam".into(), have: false });
-            }
-            out
-        }
-    })
-    .await
-    .map_err(|e| Error::Msg(e.to_string()))?;
-    let mut found = found;
+    let mut found = tokio::task::spawn_blocking(move || from_library(&cat, &root, os)).await.map_err(|e| Error::Msg(e.to_string()))?;
     let have: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
     mark(&mut found, &have);
     Ok(found)
@@ -287,7 +464,8 @@ fn read_repo(dir: &Path) -> String {
 
 const SHARED: &str = "That folder holds more than the game, like Downloads or a whole drive. Put the game in a folder of its own, then pick that folder.";
 
-/// A folder or a program the player picked: what's in it. A Quiver library gives all of its recomps.
+/// A folder or a program the player picked: what's in it. Another launcher's folder gives the recomps
+/// of its list that are on this PC.
 #[tauri::command(async)]
 pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
@@ -299,16 +477,11 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
     let look = if p.is_dir() { p.clone() } else { p.parent().map(Path::to_path_buf).unwrap_or_default() };
     for (id, folder, exe) in crate::own_setup::attach_built(&st, &look) {
         let name = st.lib.lock().unwrap().installed.get(&id).map(|g| g.name.clone()).unwrap_or_default();
-        out.push(Found { id, name, path: folder, exe: exe.file_name().map(PathBuf::from), tag: String::new(), from: "linked".into(), have: true });
+        out.push(Found { id, name, path: folder, exe: exe.file_name().map(PathBuf::from), tag: String::new(), from: "linked".into(), have: true, ..Default::default() });
     }
-    let quiver = if is_quiver(&p) { Some(p.clone()) } else { p.parent().filter(|d| is_quiver(d)).map(Path::to_path_buf) };
-    if let Some(root) = quiver {
-        for (name, repo, path, tag, exe) in quiver_apps(&root) {
-            let folder = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let id = guess(&cat, &repo, &[&name, &folder]).unwrap_or_default();
-            let exe = exe.or_else(|| install::find_exe(&path, os, &[&name]));
-            out.push(Found { id, name, path, exe, tag, from: "quiver".into(), have: false });
-        }
+    let other = if is_library(&p) { Some(p.clone()) } else { p.parent().filter(|d| is_library(d)).map(Path::to_path_buf) };
+    if let Some(root) = other {
+        out.extend(from_library(&cat, &root, os).into_iter().filter(|f| !f.missing));
     } else if p.is_file() {
         let (dir, rel) = split(&p, None);
         if crate::library::shared_folder(&dir, &st.lib.lock().unwrap().settings.all_libraries()) {
@@ -317,7 +490,7 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
         let folder = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let stem = p.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let id = guess(&cat, &read_repo(&dir), &[&stem, &folder]).unwrap_or_default();
-        out.push(Found { id, name: folder, path: dir, exe: rel, tag: String::new(), from: "folder".into(), have: false });
+        out.push(Found { id, name: folder, path: dir, exe: rel, tag: String::new(), from: "folder".into(), have: false, ..Default::default() });
     } else if p.is_dir() {
         if crate::library::shared_folder(&p, &st.lib.lock().unwrap().settings.all_libraries()) {
             return Err(Error::Msg(SHARED.into()));
@@ -339,7 +512,7 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
                 // Ones it can't name come too (id empty): the player says which game, or adds it anyway.
                 let id = guess(&cat, &read_repo(&sd), &[&name, &stem]).unwrap_or_default();
                 let rel = exe.strip_prefix(&sd).map(Path::to_path_buf).unwrap_or(exe);
-                many.push(Found { id, name, path: sd, exe: Some(rel), tag: String::new(), from: "folder".into(), have: false });
+                many.push(Found { id, name, path: sd, exe: Some(rel), tag: String::new(), from: "folder".into(), have: false, ..Default::default() });
             }
             if !many.is_empty() {
                 let have: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
@@ -357,7 +530,7 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
             return Err(Error::Msg("There's no program in that folder.".into()));
         }
         if !out.iter().any(|f| f.path == p) {
-            out.push(Found { id, name: folder, path: p, exe, tag: String::new(), from: "folder".into(), have: false });
+            out.push(Found { id, name: folder, path: p, exe, tag: String::new(), from: "folder".into(), have: false, ..Default::default() });
         }
     } else {
         return Err(Error::Msg("That isn't there.".into()));
@@ -763,9 +936,104 @@ mod tests {
         assert_eq!(guess(&c, "", &["Recomp"]), None);
     }
 
+    /// A catalog with neutral names for the tests below.
+    fn plain_cat() -> Value {
+        json!({"apps": [
+            {"id": "skyracer", "name": "Sky Racer Recompiled", "repo": "dev-a/SkyRacerRecomp"},
+            {"id": "skyracerdx", "name": "Sky Racer DX", "repo": "dev-b/SkyRacerDX"},
+            {"id": "cavequest", "name": "Cave Quest Recomp", "repo": "gitlab:group/cave-quest"},
+        ]})
+    }
+
+    /// Another launcher's folder with three projects: one installed, one only in its list, one
+    /// added by hand and not installed.
+    fn other_library(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-lib-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let app = d.join("Apps").join("MyRacer");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("SkyRacer.exe"), b"MZ").unwrap();
+        std::fs::write(app.join("version.txt"), "v2.0\n").unwrap();
+        std::fs::write(d.join("settings.json"), "{}").unwrap();
+        std::fs::write(d.join("apps.json"), r#"{"apps":[
+            {"name":"My Racer","repository":"dev-a/SkyRacerRecomp","folderName":"MyRacer"},
+            {"name":"Some Port","repository":"someone/some-port","folderName":"SomePort"},
+            {"name":"By Hand","repository":"","folderName":"ByHand"}
+        ]}"#).unwrap();
+        d
+    }
+
     #[test]
-    fn reads_a_quiver_library() {
-        let d = std::env::temp_dir().join(format!("rl-quiver-{}", std::process::id()));
+    fn another_launchers_whole_list_is_read_installed_or_not() {
+        let d = other_library("all");
+        let all = library_entries(&d);
+        assert_eq!(all.len(), 3);
+        assert!(all[0].installed && !all[1].installed && !all[2].installed);
+        assert_eq!(all[0].tag, "v2.0");
+        assert!(all.iter().all(|e| !e.hidden));
+        // The older reader still gives just the installed ones.
+        assert_eq!(installed_entries(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn games_hidden_in_another_launcher_stay_hidden() {
+        let d = other_library("hid");
+        std::fs::write(d.join("apps.json.lock"), "someone/some-port\n").unwrap();
+        let all = library_entries(&d);
+        assert!(!all[0].hidden && all[1].hidden);
+        // The same list as JSON, by name or by link.
+        std::fs::write(d.join("apps.json.lock"), r#"{"hidden":["My Racer","https://github.com/someone/some-port"]}"#).unwrap();
+        let all = library_entries(&d);
+        assert!(all[0].hidden && all[1].hidden && !all[2].hidden);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn bringing_games_over_is_sure_only_when_the_project_matches() {
+        let d = other_library("sure");
+        let found = from_library(&plain_cat(), &d, "windows");
+        // The one added by hand and not installed has nothing to bring.
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].id, "skyracer");
+        assert!(found[0].sure && !found[0].missing && found[0].guesses.is_empty());
+        assert_eq!(found[0].exe.as_deref(), Some(Path::new("SkyRacer.exe")));
+        assert_eq!(found[0].from, "launcher");
+        // Only in the list, and not a recomp the launcher knows: it comes with its link to add from.
+        assert!(found[1].missing && !found[1].sure && found[1].id.is_empty());
+        assert_eq!(found[1].link, "https://github.com/someone/some-port");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn close_names_are_offered_best_first() {
+        let c = plain_cat();
+        // The exact name first, then the close one.
+        assert_eq!(guesses(&c, &["Sky Racer DX"], 3), vec!["skyracerdx".to_string(), "skyracer".to_string()]);
+        assert_eq!(guesses(&c, &["Sky Racer DX"], 1), vec!["skyracerdx".to_string()]);
+        // An exact name wins outright; one both are as close to is offered both ways, and guess
+        // won't pick for the player.
+        assert_eq!(guess(&c, "", &["SkyRacer"]).as_deref(), Some("skyracer"));
+        assert_eq!(guesses(&c, &["Sky Rac"], 3).len(), 2);
+        assert_eq!(guess(&c, "", &["Sky Rac"]), None);
+        assert!(guesses(&c, &["Launcher"], 3).is_empty());
+        assert_eq!(repo_match(&c, "https://gitlab.com/group/cave-quest/"), Some("cavequest".into()));
+        assert_eq!(repo_match(&c, "https://github.com/dev-a/SkyRacerRecomp.git"), Some("skyracer".into()));
+        assert_eq!(repo_match(&c, ""), None);
+    }
+
+    #[test]
+    fn a_project_becomes_a_link_to_add_from() {
+        assert_eq!(project_link("owner/name"), "https://github.com/owner/name");
+        assert_eq!(project_link("https://gitlab.com/g/sub/p.git"), "https://gitlab.com/g/sub/p");
+        assert_eq!(project_link("gitlab:g/p"), "https://gitlab.com/g/p");
+        assert_eq!(project_link(""), "");
+        assert_eq!(project_link("not a project"), "");
+    }
+
+    #[test]
+    fn reads_another_launchers_library() {
+        let d = std::env::temp_dir().join(format!("rl-other-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let app = d.join("Apps").join("Zelda64Recomp");
         std::fs::create_dir_all(&app).unwrap();
@@ -774,8 +1042,8 @@ mod tests {
         std::fs::write(app.join("selected_executable.txt"), app.join("Zelda64Recompiled.exe").to_string_lossy().as_bytes()).unwrap();
         std::fs::write(d.join("settings.json"), "{}").unwrap();
         std::fs::write(d.join("apps.json"), r#"{"apps":[{"name":"Zelda 64","repository":"Zelda64Recomp/Zelda64Recomp","folderName":"Zelda64Recomp"},{"name":"Not installed","repository":"a/b","folderName":"Gone"}]}"#).unwrap();
-        assert!(is_quiver(&d));
-        let apps = quiver_apps(&d);
+        assert!(is_library(&d));
+        let apps = installed_entries(&d);
         assert_eq!(apps.len(), 1);
         assert_eq!(apps[0].3, "v1.2.2");
         assert_eq!(apps[0].4.as_deref(), Some(Path::new("Zelda64Recompiled.exe")));
