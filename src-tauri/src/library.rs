@@ -76,6 +76,10 @@ pub struct Installed {
     /// The player's copy of the game (disc image or folder), for recomps the launcher sets up.
     #[serde(default)]
     pub game_copy: Option<PathBuf>,
+    /// Brought into the Library from a folder where it already plays: its game files are there, so
+    /// Easy Setup doesn't ask for the player's copy.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub files_in_place: bool,
     /// Set Up By Hand: the player says which program starts it and how it gets their game files.
     /// While it's on, it's used instead of the launcher's own setup for this game.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1122,12 +1122,12 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 19;
+pub const EXE_RULES: u8 = 20;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
 /// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 26] = ["config", "configure", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
+const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
 const BUILD_TOOLS: [&str; 66] = [
@@ -1456,6 +1456,19 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_settings_program_beside_the_game_is_never_the_game() {
+        let d = std::env::temp_dir().join(format!("rl-settings-exe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("NightWatchSettings.exe"), vec![0u8; 900_000]).unwrap();
+        std::fs::write(d.join("NightWatch.exe"), vec![0u8; 400_000]).unwrap();
+        std::fs::write(d.join("GameOptions.exe"), vec![0u8; 900_000]).unwrap();
+        let got = find_exe(&d, "windows", &["Harbor"]).map(|p| p.to_string_lossy().to_string());
+        assert_eq!(got.as_deref(), Some("NightWatch.exe"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn a_disk_images_window_dressing_stays_behind() {
         for n in [".background", ".DS_Store", ".fseventsd", "Applications", "VolumeIcon.icns", "Icon\r"] {

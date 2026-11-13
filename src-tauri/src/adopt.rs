@@ -55,7 +55,7 @@ fn generic(n: &str) -> bool {
         || n.starts_with("launcher") && n[8..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// The catalog recomp whose project is `repo` (owner/name, or a GitHub or GitLab link).
+/// The catalog recomp whose project is `repo` (owner/name, or a GitHub, GitLab or Forgejo link).
 pub fn repo_match(cat: &Value, repo: &str) -> Option<String> {
     let apps = cat.get("apps")?.as_array()?;
     let s = |a: &Value, k: &str| a.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -63,11 +63,14 @@ pub fn repo_match(cat: &Value, repo: &str) -> Option<String> {
         return None;
     }
     let r = repo.trim().trim_end_matches('/').trim_end_matches(".git").to_lowercase();
+    // A link to a project on a Forgejo server is the catalog's forgejo:<server>/<owner>/<name>.
+    let bare = r.trim_start_matches("https://").trim_start_matches("http://");
+    let forgejo = format!("forgejo:{bare}");
     let r = match r.split_once("gitlab.com/") {
         Some((_, p)) => format!("gitlab:{p}"),
         None => r.rsplit("github.com/").next().unwrap_or(&r).to_string(),
     };
-    apps.iter().find(|a| s(a, "repo").to_lowercase() == r).map(|a| s(a, "id"))
+    apps.iter().find(|a| { let ar = s(a, "repo").to_lowercase(); ar == r || ar == forgejo }).map(|a| s(a, "id"))
 }
 
 /// Recomps whose names are close to `hints` (a program's name, a folder's name, a Steam name),
@@ -317,6 +320,8 @@ fn project_link(repo: &str) -> String {
         r.to_string()
     } else if let Some(p) = r.strip_prefix("gitlab:") {
         format!("https://gitlab.com/{p}")
+    } else if let Some(p) = r.strip_prefix("forgejo:") {
+        format!("https://{p}")
     } else if r.matches('/').count() == 1 && !r.contains(' ') {
         format!("https://github.com/{r}")
     } else {
@@ -659,6 +664,7 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
                 look_amount: 50,
                 // Played somewhere else before: its setup, if it has one, already ran.
                 setup_checked: true,
+                files_in_place: true,
                 exe_rules: install::EXE_RULES,
                 proton: it.proton,
                 ..Default::default()
@@ -1023,10 +1029,20 @@ mod tests {
     }
 
     #[test]
+    fn a_link_to_a_forgejo_project_matches_its_catalog_entry() {
+        let c = serde_json::json!({"apps": [{"id": "hopper", "name": "Hopper", "repo": "forgejo:git.example.dev/Studio/Hopper"}]});
+        assert_eq!(repo_match(&c, "https://git.example.dev/Studio/Hopper"), Some("hopper".into()));
+        assert_eq!(repo_match(&c, "git.example.dev/studio/hopper.git"), Some("hopper".into()));
+        assert_eq!(repo_match(&c, "https://other.example.dev/Studio/Hopper"), None);
+        assert_eq!(repo_match(&c, "Studio/Hopper"), None);
+    }
+
+    #[test]
     fn a_project_becomes_a_link_to_add_from() {
         assert_eq!(project_link("owner/name"), "https://github.com/owner/name");
         assert_eq!(project_link("https://gitlab.com/g/sub/p.git"), "https://gitlab.com/g/sub/p");
         assert_eq!(project_link("gitlab:g/p"), "https://gitlab.com/g/p");
+        assert_eq!(project_link("forgejo:git.example.dev/Studio/Hopper"), "https://git.example.dev/Studio/Hopper");
         assert_eq!(project_link(""), "");
         assert_eq!(project_link("not a project"), "");
     }
