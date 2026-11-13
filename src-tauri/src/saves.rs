@@ -1266,6 +1266,24 @@ mod tests {
         assert_eq!(e.to_string(), "Test Game's save folder is too big to be just saves ({install}/save), so it wasn't backed up.");
     }
 
+    /// Cloud sync stops on any place left out, so it has to be reported even when another place
+    /// had saves in it.
+    #[test]
+    fn a_place_too_big_next_to_one_with_saves_is_still_reported() {
+        let d = tmp("big-next-to-saves");
+        fs::create_dir_all(d.join("saves")).unwrap();
+        fs::write(d.join("saves/slot1.sav"), "one").unwrap();
+        fs::create_dir_all(d.join("cache")).unwrap();
+        for name in ["cache-a.dat", "cache-b.dat"] {
+            fs::File::create(d.join("cache").join(name)).unwrap().set_len(30 * 1024 * 1024).unwrap();
+        }
+        let g = Installed { found_saves: vec!["{install}/cache".into(), "{install}/saves".into()], ..game(&d) };
+        let s = spots(&[], &[], &g);
+        let (entries, too_big) = look(&s, &g);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(too_big, vec![0]);
+    }
+
     #[test]
     fn copies_skip_unchanged_and_restore_exactly() {
         let d = tmp("copy");

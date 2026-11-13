@@ -2903,6 +2903,7 @@
  "The game was removed during setup.": "أُزيلت اللعبة أثناء الإعداد.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "لمجلد اللعبة إعدادات ReShade خاصة به، لذا شيدر المشغّل متوقف. أخرج ReShade من المجلد لاستخدام الشيدرات.",
  "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "مجلد اللعبة أكبر من أن يُبحث فيه عن ملفات الحفظ. اختر مجلد الحفظ الخاص بها من «مكان الحفظ»، ثم حاول مرة أخرى.",
+ "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "الحفظ السحابي لهذه اللعبة متوقف مؤقتًا: مجلد الحفظ الخاص بها أكبر من أن يُبحث فيه. اختر مجلد الحفظ الخاص بها من «مكان الحفظ» لتشغيله من جديد.",
  "The installer isn't there anymore. Use Update again to download it.": "لم يعد برنامج التثبيت موجودًا. استخدم تحديث مرة أخرى لتنزيله.",
  "The launcher's window isn't open.": "نافذة المشغّل ليست مفتوحة.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "تتنقل العصا اليسرى في المشغّل مثل أزرار الاتجاه. أوقفها إذا كانت عصاك تنجرف أو كنت تستخدمها كفأرة؛ تبقى أزرار الاتجاه تعمل.",

@@ -2903,6 +2903,7 @@
  "The game was removed during setup.": "Гру видалено під час налаштування.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "У папці гри є власні налаштування ReShade, тому шейдер лаунчера вимкнено. Прибери ReShade з папки, щоб користуватися шейдерами.",
  "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "Папка гри завелика, щоб шукати в ній збереження. Вибери папку збережень у розділі «Де зберігається» і спробуй ще раз.",
+ "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "Хмарні збереження для цієї гри призупинено: папка збережень завелика, щоб шукати в ній. Вибери папку збережень у розділі «Де зберігається», щоб знову їх увімкнути.",
  "The installer isn't there anymore. Use Update again to download it.": "Інсталятора більше немає. Знову натисни «Оновити», щоб завантажити його.",
  "The launcher's window isn't open.": "Вікно лаунчера не відкрите.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "Лівий стик переміщує по лаунчеру, як хрестовина. Вимкни це, якщо стик дрейфує або ти використовуєш його як мишу; хрестовина далі працюватиме.",

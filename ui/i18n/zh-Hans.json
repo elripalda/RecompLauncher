@@ -2903,6 +2903,7 @@
  "The game was removed during setup.": "游戏在设置过程中被移除了。",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "游戏的文件夹有自己的 ReShade 设置，因此启动器的着色器已关闭。要使用着色器，请将 ReShade 从文件夹中移除。",
  "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "游戏文件夹太大，无法在其中查找存档。请在“存档位置”中选择它的存档文件夹，然后重试。",
+ "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "此游戏的云存档已暂停：它的存档文件夹太大，无法查找。请在“存档位置”中选择它的存档文件夹以重新开启。",
  "The installer isn't there anymore. Use Update again to download it.": "安装程序已不存在。请再次使用“更新”来下载它。",
  "The launcher's window isn't open.": "启动器的窗口没有打开。",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "左摇杆可以像方向键一样在启动器中移动。如果你的摇杆漂移，或者你把它当鼠标用，请关闭此项；方向键仍然可用。",

@@ -485,6 +485,26 @@ async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
 
 const SYNC_CONFLICT: &str = "Both save copies changed. Choose one in Saves → Sync Now.";
 
+/// Before Play, when a save place was too big to look through. A fixed text without the game's
+/// name, so the window can translate it: the player just pressed Play on that game.
+const SYNC_PAUSED: &str = "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.";
+
+/// Games already told that their cloud saves are paused, so it's said once each time the
+/// launcher runs, not before every Play.
+static PAUSED_TOLD: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// True the first time it's asked about a game, false after.
+fn first_time_paused(id: &str) -> bool {
+    let Ok(mut told) = PAUSED_TOLD.lock() else {
+        return false;
+    };
+    if told.iter().any(|t| t == id) {
+        return false;
+    }
+    told.push(id.to_string());
+    true
+}
+
 /// Puts one local copy up if the cloud hasn't changed since the last sync.
 async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
@@ -825,11 +845,15 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     if entries.len() != infos.len() {
         return Err(Error::Msg("Some save files couldn't be read. Try syncing again.".into()));
     }
-    // Its save places were too big to look through, so what this PC has is unknown, not missing.
-    // A cloud copy put in place now could be older than the saves there and replace them.
-    if entries.is_empty() && !too_big.is_empty() {
+    // A save place was too big to look through, so what this PC has there is unknown, not missing.
+    // A cloud copy put in place now could be older than the saves there and replace them. That
+    // holds even when other places had saves: the copy writes into every place it holds.
+    if !too_big.is_empty() {
         if manual {
             return Err(saves::too_big_error(&g, &spots, &too_big));
+        }
+        if first_time_paused(&id) {
+            let _ = app.emit("toast", SYNC_PAUSED);
         }
         return Ok(json!({"action": "play"}));
     }
@@ -1463,7 +1487,14 @@ mod account_tests {
 
 #[cfg(test)]
 mod sync_tests {
-    use super::should_restore;
+    use super::{first_time_paused, should_restore};
+
+    #[test]
+    fn paused_sync_is_said_once_per_game() {
+        assert!(first_time_paused("paused-a"));
+        assert!(!first_time_paused("paused-a"));
+        assert!(first_time_paused("paused-b"));
+    }
 
     #[test]
     fn missing_local_saves_restore_even_when_the_cloud_has_not_changed() {
