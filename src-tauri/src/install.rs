@@ -962,7 +962,7 @@ fn unpack_appimage_in(dir: &Path, staging: &Path) {
 /// anything beside it, not the Applications shortcut or the window's background) copied out with
 /// ditto so the bundle stays whole, then closed again.
 #[cfg(target_os = "macos")]
-fn undmg(file: &Path, staging: &Path) -> Result<(), Error> {
+pub(crate) fn undmg(file: &Path, staging: &Path) -> Result<(), Error> {
     let mount = staging.with_extension("mount");
     let _ = fs::remove_dir(&mount);
     fs::create_dir_all(&mount)?;
