@@ -68,11 +68,16 @@ contents. Saves/settings beside the bundle and in the game's normal Application 
 are retained. Changes made inside the application bundle are replaced with the developer's
 release; games should keep player data outside their signed bundle.
 
-Launcher updates on Mac are manual downloads. A Windows/Linux-only version feed must not
-offer an update on Mac. To advertise a Mac release, the site can add a `macos` entry with
-`arch: "arm64"` (or `"universal"`), `url`, `sha256`, and optional `version`, `notes` and `min`.
-No Mac release is advertised until that entry exists. The site's release feed and signing
-credentials are managed separately from this repository.
+The launcher updates itself on Mac from the release's DMG: Update Now downloads it, checks its
+`sha256`, mounts it read-only, checks that the app inside is the version on offer and that its
+ad hoc signature verifies (it's signed ad hoc again if not), swaps it in for the running
+RecompLauncher.app and opens it again. When the running app's folder can't be written (it runs
+from the DMG itself, from a folder macOS moved it to, or from one only an administrator can
+change), or the feed's file isn't a `.dmg`, the DMG link opens instead for a manual install.
+A Windows/Linux-only version feed must not offer an update on Mac. To advertise a Mac release,
+the site can add a `macos` entry with `arch: "arm64"` (or `"universal"`), `url`, `sha256`, and
+optional `version`, `notes` and `min`. No Mac release is advertised until that entry exists.
+The site's release feed and signing credentials are managed separately from this repository.
 
 In-game screenshot capture, visual effects and platform-specific overlays are not implemented
 for Mac in this release. Controller and game compatibility depend on the individual recomp;
