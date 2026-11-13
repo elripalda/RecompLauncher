@@ -1,4 +1,9 @@
+mod engine_registry;
+
 fn main() {
+    println!("cargo:rerun-if-changed=src/engines/adapters");
+    let registry = engine_registry::generate(std::path::Path::new("src/engines/adapters")).expect("engine adapters");
+    std::fs::write(std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("engine-adapters.rs"), registry).unwrap();
     pack();
     // Cross-building for Windows with MinGW: unrar's C++ is built without a C++ library, so
     // libstdc++ goes in statically (the program needs no MinGW DLLs), with the Windows libraries

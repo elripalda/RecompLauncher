@@ -263,6 +263,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     crate::boot::from_catalog(&mut cat);
     let list = mine(dir);
     if list.is_empty() {
+        crate::engines::catalog::merge(&mut cat, crate::engines::Target::current());
         return with_repo_profiles(dir, with_known_project_status(dir, cat));
     }
     if !cat.is_object() {
@@ -278,6 +279,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
             apps.push(e);
         }
     }
+    crate::engines::catalog::merge(&mut cat, crate::engines::Target::current());
     with_repo_profiles(dir, with_known_project_status(dir, cat))
 }
 

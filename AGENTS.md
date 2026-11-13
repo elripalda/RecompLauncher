@@ -12,6 +12,22 @@ value, a shared type, a launcher feature in FEATURES) must, in the same commit:
 
 `cargo test` fails when they drift (devtools.rs: the schema parity test).
 
+# Engine and game-profile updates
+
+Before adding an engine, read [docs/ADDING-ENGINES.md](docs/ADDING-ENGINES.md). Keep platform and
+game-system support, catalog/input rules, provisioning and preparation in the adapter folder.
+Use automatic discovery and the shared contract; do not add engine-name branches to shared flows.
+
+Before updating an engine checkpoint, build dependency, adapter, or game-profile catalog, read
+[docs/UPDATING-ENGINES.md](docs/UPDATING-ENGINES.md). It covers **both engine updates and game-profile
+updates**, including their source relationship, artwork, compatibility and required validation.
+
+Keep nxnative source and game profiles tied to the same verified upstream commit. Integrate
+nxnative directly; do not obtain the engine or its tools from NX2Apple's frontend distribution.
+Preserve existing prepared games and their saved pins: an engine or profile refresh must never
+silently rebuild or retarget them. Pending retries and completed-result recovery have different
+rules; follow the guide. Keep the normal file-selection workflow and both setup views consistent.
+
 # Named Easy Setup input scope
 
 When changing named setup inputs or shared keys, read [docs/SETUP-INPUTS.md](docs/SETUP-INPUTS.md).

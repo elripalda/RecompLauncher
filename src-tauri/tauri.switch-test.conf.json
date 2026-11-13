@@ -1,0 +1,6 @@
+{
+  "productName": "RecompLauncher Switch Test",
+  "identifier": "com.recomplauncher.switchtest",
+  "app": {"windows": [{"title":"RecompLauncher Switch Test","width":1360,"height":860,"minWidth":640,"minHeight":480,"decorations":false,"center":true,"backgroundColor":"#0B1220","label":"main","visible":false}]},
+  "plugins": {"deep-link":{"desktop":{"schemes":["recomplauncher-switchtest"]}}}
+}

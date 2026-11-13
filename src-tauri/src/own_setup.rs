@@ -40,7 +40,7 @@ pub fn pending_for_play(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
 
 /// Installs from before the launcher knew about setups are looked at once here.
 fn pending_with(st: &App, id: &str, g: &Installed, play: bool) -> Option<PathBuf> {
-    if g.local {
+    if g.local || g.engine_build.is_some() {
         return None;
     }
     let mut g = g.clone();
@@ -304,6 +304,7 @@ fn tell(app: &AppHandle, id: &str, name: &str, state: &str) {
 
 /// Runs the setup and, once it closes, finds the game.
 pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<&Path>) -> Res<()> {
+    crate::engines::ensure_legacy_setup(g).map_err(Error::Msg)?;
     {
         let mut o = OPEN.lock().unwrap();
         if o.iter().any(|x| x == id) {
@@ -430,7 +431,7 @@ pub fn attach_built(st: &App, dir: &Path) -> Vec<(String, PathBuf, PathBuf)> {
         let l = st.lib.lock().unwrap();
         l.installed
             .values()
-            .filter(|g| !g.local && !g.exe.as_ref().map(|e| g.path.join(e).is_file()).unwrap_or(false))
+            .filter(|g| !g.local && g.engine_build.is_none() && !g.exe.as_ref().map(|e| g.path.join(e).is_file()).unwrap_or(false))
             .filter_map(|g| crate::boot::of_build(&st.dir, &g.id, crate::boot::windows_build(g.proton)).and_then(|b| b.then_name()).map(|w| (g.id.clone(), w)))
             .collect()
     };

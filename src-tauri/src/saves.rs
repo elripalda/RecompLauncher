@@ -261,7 +261,7 @@ pub struct Entry {
 /// Every save file under a folder. Gives up (false) on a folder far too big to be a save place:
 /// more than WALK_MAX entries, or longer than WALK_SECS to look through (a slow or network drive).
 /// Links aren't followed, so a folder that links back into itself can't loop forever.
-fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<String>, budget: u64, secs: u64, strict: bool) -> bool {
+fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<String>, budget: u64, secs: u64, strict: bool, game: Option<&Installed>) -> bool {
     let start = std::time::Instant::now();
     let mut seen = 0usize;
     let mut total = 0u64;
@@ -286,6 +286,7 @@ fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<St
                 continue;
             }
             let p = e.path();
+            if game.is_some_and(|g| crate::inputs::excluded(g, &p)) { continue; }
             let Ok(m) = fs::symlink_metadata(&p) else {
                 if strict { return false; }
                 continue;
@@ -355,6 +356,7 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
     let mut too_big = vec![];
     for (i, s) in spots.iter().enumerate() {
         let p = resolve_for(&s.template, g);
+        if crate::inputs::excluded(g, &p) { continue; }
         let last = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let mut found: Vec<(String, PathBuf, u64)> = vec![];
         if last.contains('*') {
@@ -376,18 +378,18 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
             // The game's own folder: only what the release didn't put there.
             let rel_of_install = s.template.starts_with("{install}");
             let skip = if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none };
-            if !walk(&p, &mut found, skip, SPOT_MAX, WALK_SECS, false) {
+            if !walk(&p, &mut found, skip, SPOT_MAX, WALK_SECS, false, Some(g)) {
                 too_big.push(i);
                 found.clear();
             }
         }
+        found.retain(|(_, abs, _)| !crate::inputs::excluded(g, abs));
         // No save place is ever this big.
         let total: u64 = found.iter().map(|f| f.2).sum();
         if total > SPOT_MAX {
             too_big.push(i);
             found.clear();
         }
-        found.retain(|(_, abs, _)| !crate::inputs::excluded(g, abs));
         found.sort();
         out.extend(found.into_iter().map(|(rel, abs, size)| Entry { spot: i, rel, abs, size }));
     }
@@ -1074,7 +1076,7 @@ fn share_dir_files(path: &Path) -> Option<Vec<(String, PathBuf, u64)>> {
     let mut files = Vec::new();
     match fs::symlink_metadata(path) {
         Ok(m) if m.is_dir() && !is_save_link(&m) => {
-            if !walk(path, &mut files, &HashSet::new(), SPOT_MAX, WALK_SECS, true) { return None; }
+            if !walk(path, &mut files, &HashSet::new(), SPOT_MAX, WALK_SECS, true, None) { return None; }
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         _ => return None,

@@ -2768,3 +2768,8 @@ body.light .set-row .k .svp-set{color:#127a45}
 .svh-del:hover{color:var(--bad)}
 /* One RecompLauncher set is the launcher's cyan, so it reads apart from the developer's green. */
 .set-row .k .svp-set.ours{color:var(--cyan)}
+
+.engine-progress{position:relative;width:100%}
+.engine-progress progress{display:block;width:100%;height:12px;accent-color:var(--cyan)}
+.engine-progress h3{margin:12px 0}
+.engine-progress p{margin:12px 0;overflow-wrap:anywhere}
