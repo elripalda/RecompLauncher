@@ -219,10 +219,10 @@ async function removeFromLibrary(id) {
   if (a && a.custom && !S.library[id]) { await invoke('remove_github', { id }).catch(() => {}); if (S.arts) delete S.arts[id]; await loadCatalog(false); }
   render(true);
 }
-// The saved ("Not installed") list goes with the account when signed in, the same list as the
+// The player's saved ("Not installed") choices go with the account when signed in, the same list as the
 // website's library: merged with this PC's on sign-in, each save and unsave sent as it happens
 // (kept for later while the website can't be reached), and read again when the launcher opens and
-// every 10 minutes. Signed out, it's this PC's own list. Installed games always stay per PC.
+// every 10 minutes. Automatically found entries and installed games stay per PC.
 const accountId = () => (S.account && S.account.signedIn && S.account.user ? String(S.account.user.uid || S.account.user.username || '') : '');
 async function libSend(id, on) {
   if (!accountId()) return;
@@ -252,16 +252,22 @@ async function libSync() {
     const r = await invoke('library_pull');
     const now = Math.floor(Date.now() / 1000);
     const remote = Object.fromEntries(((r && r.saved) || []).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, Number(x.at) || now]));
-    let next = remote;
+    let next = Object.assign({}, remote);
     if (ui.lib_synced !== uid) {
-      // The first time on this account: both lists together, and this PC's own go up.
-      const local = saved();
+      // Only explicit choices go up. Automatic discoveries follow this PC's scans.
+      const found = new Set(((S.settings.ui || {}).found_saved) || []);
+      const local = Object.fromEntries(Object.entries(saved()).filter(([id]) => !found.has(id)));
       const up = Object.keys(local).filter((id) => !remote[id]);
       if (up.length) await libPushAll(up, true);
       next = Object.assign({}, remote, local);
     }
+    // A scan may have finished while the request waited. Keep its latest additions locally;
+    // an entry also saved on the account is an explicit choice that scans must no longer remove.
+    const current = saved();
+    const found = (((S.settings.ui || {}).found_saved) || []).filter((id) => !remote[id]);
+    for (const id of found) { if (current[id]) next[id] = current[id]; }
     const before = Object.keys(saved()).sort().join('|');
-    await saveUi({ saved: next, lib_synced: uid }, true);
+    await saveUi({ saved: next, found_saved: found, lib_synced: uid }, true);
     if (Object.keys(next).sort().join('|') !== before && ['library', 'home'].includes(S.view)) render(true);
   } catch (e) { /* the website can't be reached: this PC's list stays, and it's tried again later */ } finally { S.libSyncing = false; }
 }
