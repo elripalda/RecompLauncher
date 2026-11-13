@@ -1139,17 +1139,13 @@
         <div class="tv-gridwrap">${list.length ? grid(list, 'C') : `<p class="tv-empty">${esc(t('Know of a recomp the launcher should have? Press Request a Recomp to ask for it.'))}</p>`}</div>`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['LB+RB', t('Sections')]])}`;
   }
-  // Where the project is (GitHub or GitLab), then the developer and project typed with the
-  // controller. The desktop view also takes a note.
+  // The project's link typed with the controller (GitHub, GitLab, SourceForge, or a Forgejo or
+  // Gitea server). The desktop view also takes a note.
   async function tvRequest() {
     sfx('select');
-    const i = await window.tvAsk(t('Where is the project?'), window.REQ_FORGES.map(([, n]) => ({ label: n, icon: 'folder' })));
-    if (i == null || i < 0) return;
-    const forge = window.REQ_FORGES[i][0];
-    const typed = await window.tvType({ title: t('Request a Recomp'), hint: `${forge}.com/${t('developer/project')}`, max: 200, keys: '/.-_' });
+    const typed = await window.tvType({ title: t('Request a Recomp'), hint: 'https://...', max: 300, keys: ':/.-_' });
     if (!typed) return;
-    const url = window.reqLink(forge, typed).url;
-    if (!url) return toast(t('Type the developer and the project, like developer/project.'), true);
+    const url = window.reqUrl(typed);
     const known = window.listedFor(url);
     if (known) { toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
     try {

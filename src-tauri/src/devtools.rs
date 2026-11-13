@@ -263,6 +263,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     let used = profile::find(&dir, &g.repo, &entry);
     let source = match (&prof, &used) {
         (Some(p), Some(_)) if p.format == 1 => if embedded.is_some() { "appimage" } else { "folder" },
+        (_, Some(_)) if entry.get("launcher_from").and_then(Value::as_str) == Some("repo") => "repo",
         (_, Some(_)) if entry.get("launcher").is_some() => "catalog",
         (_, Some(_)) => "built-in",
         _ => "none",
@@ -456,9 +457,9 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
     }
     // Level 3: prepare and dumps
     if let Some(pr) = p.prepare.as_ref() {
-        match pr.program.iter().find(|x| dir.join(profile::fill(x, dir, None)).is_file()) {
+        match pr.program_in(dir) {
             Some(x) => {
-                items.push(ok(format!("Setup step: {x}")));
+                items.push(ok(format!("Setup step: {}", x.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())));
                 if level >= 2 {
                     level = 3;
                 }

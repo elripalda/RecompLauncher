@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.44" date="2026-11-13">
+      <description>
+        <p>Add a Recomp and Request a Recomp take a link to any project, including Forgejo and Gitea servers, whose recomps show their README and get Easy Setup from their own setup file.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.43" date="2026-11-13">
       <description>
         <p>Recomps from Forgejo servers, a Library that keeps every game, prod.keys accepted, self-updates on Linux, and fixes for covers, search and setup.</p>

@@ -1686,7 +1686,7 @@ function pageLibrary() {
   return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one for versions, launch options and more.', '{n} games. Right-click one for versions, launch options and more.'))}</p></div>
       <div class="dctl"><label class="smallsearch"><span class="sr">${esc(t('Search your games'))}</span>${SEARCH.replace('width="20" height="20"', 'width="16" height="16"')}<input id="lq" type="search" placeholder="${esc(t('Search your games'))}" value="${esc(S.lq)}" autocomplete="off" spellcheck="false"></label>
       <button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button>
-      <button type="button" class="btn" data-act="gh-add">${BRANCH_S}${esc(t('Add From GitHub or GitLab'))}</button>
+      <button type="button" class="btn" data-act="gh-add">${BRANCH_S}${esc(t('Add a Recomp'))}</button>
       ${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}
       ${consoleSel}<label class="pill-sel">${esc(t('Sort'))}<select class="sel" data-act="libsort"><option value="played"${S.lib.sort === 'played' ? ' selected' : ''}>${esc(t('Recently played'))}</option><option value="time"${S.lib.sort === 'time' ? ' selected' : ''}>${esc(t('Most played'))}</option><option value="az"${S.lib.sort === 'az' ? ' selected' : ''}>${esc(t('A to Z'))}</option></select></label></div></div>
     ${n || setup || nf || nsaved ? `<div class="chips"><button type="button" class="chip${S.lib.filter === 'all' ? ' on' : ''}" data-act="libf" data-f="all">${esc(t('All'))} <b>${fmtNum(total)}</b></button>${nsaved ? `<button type="button" class="chip${S.lib.filter === 'inst' ? ' on' : ''}" data-act="libf" data-f="inst">${esc(t('Installed'))} <b>${fmtNum(libRecs().length)}</b></button>` : ''}${n ? `<button type="button" class="chip${S.lib.filter === 'update' ? ' on' : ''}" data-act="libf" data-f="update">${esc(t('Update ready'))} <b>${fmtNum(n)}</b></button>` : ''}${setup ? `<button type="button" class="chip${S.lib.filter === 'setup' ? ' on' : ''}" data-act="libf" data-f="setup">${esc(t('Needs your copy'))} <b>${fmtNum(setup)}</b></button>` : ''}${nf ? `<button type="button" class="chip${S.lib.filter === 'fav' ? ' on' : ''}" data-act="libf" data-f="fav">${STAR}${esc(t('Favorites'))} <b>${fmtNum(nf)}</b></button>` : ''}${nsaved ? `<button type="button" class="chip${S.lib.filter === 'saved' ? ' on' : ''}" data-act="libf" data-f="saved">${esc(t('Not Installed'))} <b>${fmtNum(nsaved)}</b></button>` : ''}${n > 1 ? `<button type="button" class="chip main" data-act="update-all">${esc(tf('Update All ({n})', { n }))}</button>` : ''}</div>` : ''}
@@ -2039,12 +2039,11 @@ function gameRail(a) {
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
     </div>`;
 }
-// The recomp's README from its GitHub, folded away under its heading until it's opened. Loaded
-// as the page opens (the launcher keeps a copy for a day), so it opens at once.
+// The recomp's README from its GitHub or its Forgejo server, folded away under its heading until
+// it's opened. Loaded as the page opens (the launcher keeps a copy for a day), so it opens at once.
 S.readme = {};
 function readmeCard(a) {
-  // A Forgejo project's README isn't read: the catalog's description (From the developer) stands in.
-  if (!a.repo || a.local || isFJ(a.repo)) return '';
+  if (!a.repo || a.local) return '';
   const r = S.readme[a.repo];
   if (r === undefined) {
     S.readme[a.repo] = 'loading';
@@ -2053,7 +2052,7 @@ function readmeCard(a) {
   }
   if (!r || r === 'loading') return '';
   const open = !!S.readmeOpen;
-  return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(isLab(a.repo) ? t('From its GitLab') : t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
+  return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(isLab(a.repo) ? t('From its GitLab') : isFJ(a.repo) ? tf('From {host}', { host: fjServer(a.repo) }) : t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
 }
 function gameBody(a) {
   const id = a.id, inst = S.library[id];
@@ -3302,7 +3301,7 @@ function devTab(a) {
   if (r === undefined) { devCheck(id); return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Checking…'))}</p></div></div>`; }
   if (r === 'loading') return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Checking…'))}</p></div></div>`;
   const flow = FLOW_NAME[r.flow || ''] || FLOW_NAME[''];
-  const src = { appimage: t('The manifest inside the AppImage'), folder: t('Your recomplauncher.json'), catalog: t('The file on recomplauncher.com'), 'built-in': t('The file built into the launcher'), none: t('No file yet') }[r.source] || '';
+  const src = { appimage: t('The manifest inside the AppImage'), folder: t('Your recomplauncher.json'), catalog: t('The file on recomplauncher.com'), 'built-in': t('The file built into the launcher'), repo: t('The recomplauncher.json in its project'), none: t('No file yet') }[r.source] || '';
   const errs = r.items.filter((x) => x.level === 'err').length, warns = r.items.filter((x) => x.level === 'warn').length;
   return `<div class="stack">
     <div class="card dev-head"><div class="dev-sum"><span class="kick">${esc(t('Local build'))}</span><h3>${esc(src)}</h3>
@@ -4161,6 +4160,8 @@ async function loadCatalog(force) {
 }
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
 T.event.listen('catalog-fresh', () => loadCatalog(false).then(() => render(true)).catch(() => {}));
+// A Forgejo project's own setup file came in: Easy Setup can show for it now.
+T.event.listen('profiles-fresh', () => loadCatalog(false).then(() => loadEasy(true)).then(() => render(true)).catch(() => {}));
 // A game the player added by its link is on the list now: their copy moved over to the list's one.
 T.event.listen('mine-merged', async (e) => {
   const list = (e && e.payload) || [];
@@ -5627,21 +5628,12 @@ function pageSoon() {
   </div>`;
 }
 
-// Request a recomp: the player picks GitHub or GitLab and types the developer and project
-// ("developer/project"), with a note, and it goes to recomplauncher.com for a look. A full link
-// pasted into the box works too and picks its site. One the catalog already lists just opens.
-const REQ_FORGES = [['github', 'GitHub'], ['gitlab', 'GitLab']];
-const reqLink = (forge, typed) => {
-  let s = String(typed || '').replace(/\s+/g, '');
-  const full = s.match(/^(?:https?:\/\/)?(?:www\.)?(github|gitlab)\.com\/(.*)$/i);
-  if (full) { forge = full[1].toLowerCase(); s = full[2]; }
-  const parts = s.replace(/[?#].*$/, '').replace(/\.git\/?$/i, '').split('/').filter(Boolean);
-  // GitHub is always developer/project; GitLab can have groups in between.
-  const ok = parts.length >= 2 && (forge === 'gitlab' || parts.length === 2) && parts.every((x) => /^[\w.-]+$/.test(x) && !/^\.+$/.test(x));
-  return { forge, url: ok ? `https://${forge}.com/${parts.join('/')}` : '' };
-};
-window.reqLink = reqLink;
-window.REQ_FORGES = REQ_FORGES;
+// Request a recomp: the player pastes its project's link (GitHub, GitLab, SourceForge, or a
+// Forgejo or Gitea server), with a note, and it goes to recomplauncher.com for a look. One the
+// catalog already lists just opens.
+// The link as typed, with https:// in front when it was left out.
+const reqUrl = (typed) => { const s = String(typed || '').replace(/\s+/g, ''); return !s || /^https?:\/\//i.test(s) ? s : 'https://' + s; };
+window.reqUrl = reqUrl;
 const sameLink = (x, y) => String(x || '').replace(/\/+$/, '').toLowerCase() === String(y || '').replace(/\/+$/, '').toLowerCase();
 function listedFor(link) {
   const full = /^[a-z]+:\/\//i.test(link) ? link : 'https://' + link;
@@ -5649,21 +5641,14 @@ function listedFor(link) {
 }
 window.listedFor = listedFor;
 function requestModal() {
-  let forge = 'github';
-  const m = modal(`<h2>${esc(t('Request a Recomp'))}</h2><p>${esc(t('Know of a recomp the launcher doesn\'t have? Pick where its project is, type the developer and the project, and it goes to RecompLauncher for a look.'))}</p>
-    <div class="seg rq-forge" role="radiogroup" aria-label="${esc(t('Where the project is'))}">${REQ_FORGES.map(([k, n]) => `<button type="button" role="radio" aria-checked="${k === forge}" data-x="forge" data-forge="${k}">${esc(n)}</button>`).join('')}</div>
-    <label class="field rq-path"><span class="rq-host">github.com/</span><input id="rq-url" type="text" placeholder="${esc(t('developer/project'))}" spellcheck="false" autocomplete="off" maxlength="200" aria-label="${esc(t('Developer and project'))}"></label>
+  const m = modal(`<h2>${esc(t('Request a Recomp'))}</h2><p>${esc(t('Know of a recomp the launcher doesn\'t have? Paste the link to its project page, and it goes to RecompLauncher for a look.'))}</p>
+    <input class="field" id="rq-url" type="url" placeholder="https://..." spellcheck="false" autocomplete="off" maxlength="300" aria-label="${esc(t('Request a Recomp'))}">
     <textarea class="field" id="rq-note" rows="3" maxlength="500" placeholder="${esc(t('Anything to add? Which game it is, or why you\'d like it (optional)'))}" aria-label="${esc(t('Note'))}"></textarea>
     <p class="err" id="rq-err" hidden></p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Send Request'))}</button></div>`, async (x, close) => {
-    if (x.dataset.forge) return setForge(x.dataset.forge);
     if (x.dataset.x !== 'yes') return;
-    const typed = $('#rq-url', m).value.trim(), note = $('#rq-note', m).value.trim(), err = $('#rq-err', m);
-    if (!typed) return $('#rq-url', m).focus();
-    const r = reqLink(forge, typed);
-    setForge(r.forge);
-    if (!r.url) { err.textContent = t('Type the developer and the project, like developer/project.'); err.hidden = false; return $('#rq-url', m).focus(); }
-    const url = r.url;
+    const url = reqUrl($('#rq-url', m).value), note = $('#rq-note', m).value.trim(), err = $('#rq-err', m);
+    if (!url) return $('#rq-url', m).focus();
     const known = listedFor(url);
     if (known) { close(); toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
     x.disabled = true; err.hidden = true;
@@ -5677,15 +5662,8 @@ function requestModal() {
       x.disabled = false; x.textContent = was;
     }
   }, t('Request a Recomp'));
-  const setForge = (k) => {
-    forge = k;
-    m.querySelectorAll('[data-forge]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.forge === k)));
-    $('.rq-host', m).textContent = `${k}.com/`;
-  };
   const f = $('#rq-url', m); f.focus();
   f.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-x="yes"]', m).click(); });
-  // A whole link pasted in: its site is picked and only developer/project stays in the box.
-  f.addEventListener('input', () => { const full = f.value.trim().match(/^(?:https?:\/\/)?(?:www\.)?(github|gitlab)\.com\/(.+)$/i); if (full) { setForge(full[1].toLowerCase()); f.value = full[2].replace(/\.git\/?$/i, '').replace(/\/+$/, ''); } });
 }
 window.requestModal = requestModal;
 
@@ -6401,11 +6379,12 @@ async function crashModal(p) {
 }
 
 // The player's own name for a game: shown everywhere in the launcher instead of its own.
-// Add a recomp by its GitHub link: one the catalog lists opens its page; another is read first
-// (its game, console and art), shown to the player to check, then added to the Library.
+// Add a recomp by its project's link (GitHub, GitLab, SourceForge, or a Forgejo or Gitea server):
+// one the catalog lists opens its page; another is read first (its game, console and art), shown
+// to the player to check, then added to the Library.
 function githubModal() {
-  const m = modal(`<h2>${esc(t('Add From GitHub or GitLab'))}</h2><p>${esc(t('Paste the link to a recomp\'s page on GitHub, GitLab or SourceForge. The launcher reads its releases and adds it to your Library, ready to install and keep up to date.'))}</p>
-    <input class="field" id="ghl" type="url" placeholder="https://github.com/owner/name" spellcheck="false" autocomplete="off" aria-label="${esc(t('GitHub or GitLab link'))}">
+  const m = modal(`<h2>${esc(t('Add a Recomp'))}</h2><p>${esc(t('Paste the link to the recomp\'s project page. GitHub, GitLab, SourceForge and Forgejo or Gitea servers all work.'))}</p>
+    <input class="field" id="ghl" type="url" placeholder="https://..." spellcheck="false" autocomplete="off" aria-label="${esc(t('Add a Recomp'))}">
     <p class="err" id="ghe" hidden></p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Next'))}</button></div>`, async (x, close) => {
     if (x.dataset.x !== 'yes') return;
@@ -6422,7 +6401,7 @@ function githubModal() {
       err.textContent = t(String(e && e.message ? e.message : e)); err.hidden = false;
       x.disabled = false; x.textContent = was;
     }
-  }, t('Add From GitHub or GitLab'));
+  }, t('Add a Recomp'));
   const f = $('#ghl', m); f.focus();
   f.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-x="yes"]', m).click(); });
 }
@@ -6724,6 +6703,7 @@ const TS_TEXT = [
   N_('GitHub\'s answer about GE-Proton didn\'t make sense. Try again later.'),
   N_('That isn\'t a GitHub or GitLab link. It looks like github.com/owner/name or gitlab.com/group/name.'),
   N_('That isn\'t a GitHub, GitLab or SourceForge link. It looks like github.com/owner/name, gitlab.com/group/name or sourceforge.net/projects/name.'),
+  N_('We couldn\'t read that project. Check the link, or make sure it has a release with your builds.'),
   N_('That file isn\'t in this recomp\'s own releases, so it wasn\'t downloaded.'),
   N_('Windows needs your permission to install it. Press the button again and choose Yes when Windows asks.'),
   N_('That isn\'t an N64 ROM. Pick your game\'s .z64, .n64 or .v64 file.'),

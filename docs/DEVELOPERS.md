@@ -68,6 +68,10 @@ The launcher uses the first one it finds:
    executable. It also provides a fallback for AppImages without valid embedded metadata.
 3. **The catalog.** If you can't ship it, send it to us and we'll add it to your entry on
    recomplauncher.com.
+4. **Your repo, on a Forgejo or Gitea server.** For a project hosted there, the launcher also reads
+   `recomplauncher.json` from the top of the repo's default branch
+   (`https://{server}/api/v1/repos/{owner}/{name}/raw/recomplauncher.json`) when neither of the
+   above has one. For example, `git.example.dev/studio/game` with the file next to its README.
 
 ### AppImages
 

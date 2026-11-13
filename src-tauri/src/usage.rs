@@ -688,9 +688,6 @@ pub fn project_link(input: &str) -> Result<String, String> {
         return Err("That doesn't look like a project link.".into());
     }
     let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
-    if host != "github.com" && host != "gitlab.com" {
-        return Err("Request a project on GitHub or GitLab.".into());
-    }
     let _ = u.set_host(Some(&host));
     let path = u.path().trim_end_matches('/').trim_end_matches(".git").trim_end_matches('/').to_string();
     if path.is_empty() {
@@ -708,6 +705,10 @@ pub fn project_link(input: &str) -> Result<String, String> {
 pub async fn recomp_request(app: AppHandle, url: String, note: Option<String>) -> Res<Value> {
     let st = app.state::<App>();
     let link = project_link(&url).map_err(Error::Msg)?;
+    // GitHub, GitLab and SourceForge by their address; any other server only when it answers as a
+    // Forgejo or Gitea server, as Add a Recomp asks.
+    let known = ["https://github.com/", "https://gitlab.com/", "https://sourceforge.net/"].iter().any(|h| link.starts_with(h));
+    let link = if known { link } else { crate::catalog::repo_home(&crate::repo_of_link(&st, &link).await?) };
     let note: String = note.unwrap_or_default().trim().chars().take(REQUEST_NOTE_MAX).collect();
     let version = app.package_info().version.to_string();
     let body = json!({"a": "recomp-request", "install": install_id(&st.dir), "url": link, "note": note, "version": version});
@@ -819,10 +820,11 @@ mod tests {
     }
 
     #[test]
-    fn a_requested_project_is_on_github_or_gitlab() {
-        assert!(project_link("https://codeberg.org/owner/repo").is_err());
-        assert!(project_link("https://example.com/owner/repo").is_err());
-        assert!(project_link("https://github.com.example.com/owner/repo").is_err());
+    fn a_requested_project_on_another_server_keeps_its_own_address() {
+        // Whether that server is a Forgejo or Gitea one is asked when it's sent (repo_of_link).
+        assert_eq!(project_link("https://codeberg.org/owner/repo").unwrap(), "https://codeberg.org/owner/repo");
+        assert_eq!(project_link("https://github.com.example.com/owner/repo").unwrap(), "https://github.com.example.com/owner/repo");
+        assert!(project_link("https://sourceforge.net/projects/gamebox").unwrap().starts_with("https://sourceforge.net/"));
     }
 
     #[test]

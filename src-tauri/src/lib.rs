@@ -198,6 +198,14 @@ async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>
     }
 }
 
+/// An Xbox 360 game's title id from the list: its "title_id", the one under "achievements", or (for
+/// Easy Setup) the id its disc files must have. The first that is one (8 hex digits) counts, so a
+/// mistyped title_id doesn't hide a good disc id. In capitals, as the unlock file is named.
+fn catalog_title(entry: &Value) -> Option<String> {
+    let ok = |t: &&str| t.trim().len() == 8 && t.trim().chars().all(|c| c.is_ascii_hexdigit());
+    ["/title_id", "/achievements/title_id", "/boot/files/id"].iter().filter_map(|k| entry.pointer(k).and_then(Value::as_str)).find(ok).map(|t| t.trim().to_ascii_uppercase())
+}
+
 /// The release the store checked and let out for a recomp (its "tag" in the list), if it says.
 fn catalog_tag(entry: &Value) -> Option<String> {
     entry.get("tag").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
@@ -219,6 +227,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let cat = getting_ready(catalog::catalog(&st.http, &st.dir, false), &cancel).await?.data;
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
+    // A Forgejo project's own setup file, so Easy Setup is ready when the download is in.
+    if catalog::is_forgejo(&repo) {
+        catalog::repo_profile(&st.http, &st.dir, &repo, false).await;
+    }
     trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
     let rels: Vec<Release> = serde_json::from_value(getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?;
     trail::note(format!("Install {id}: {} releases", rels.len()));
@@ -2077,32 +2089,37 @@ async fn launcher_to_steam(st: State<'_, App>, restart: bool) -> Res<String> {
 /// when GitHub can't be reached. None when the repo has none.
 #[tauri::command]
 async fn repo_readme(st: State<'_, App>, repo: String) -> Res<Option<String>> {
-    // Only GitHub's README is read: a GitLab, SourceForge or Forgejo project shows the catalog's
-    // description instead.
-    if catalog::site_only(&repo) {
+    // GitHub's README, or a Forgejo project's from its own server. A GitLab or SourceForge project
+    // shows the catalog's description instead.
+    let fj = catalog::is_forgejo(&repo) && catalog::repo_ok(&repo);
+    if catalog::site_only(&repo) && !fj {
         return Ok(None);
     }
-    let ok = repo.split('/').count() == 2 && !repo.contains("..") && repo.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c));
+    let ok = fj || (repo.split('/').count() == 2 && !repo.contains("..") && repo.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c)));
     if !ok {
         return Ok(None);
     }
-    let file = st.dir.join("cache/readme").join(format!("{}.md", repo.replace('/', "__")));
+    let file = st.dir.join("cache/readme").join(format!("{}.md", repo.replace(':', "_").replace('/', "__")));
     let age = std::fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|m| m.elapsed().ok()).map(|d| d.as_secs());
     let disk = || std::fs::read_to_string(&file).ok();
     if age.map(|a| a < 24 * 3600).unwrap_or(false) {
         return Ok(disk().filter(|t| !t.is_empty()));
     }
-    let got = st
-        .http
-        .get(format!("https://api.github.com/repos/{repo}/readme"))
-        .header("Accept", "application/vnd.github.raw")
-        .timeout(std::time::Duration::from_secs(20))
-        .send()
-        .await;
-    let text = match got {
-        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => Some(String::new()),
-        Ok(r) if r.status().is_success() => r.text().await.ok(),
-        _ => None,
+    let text = if fj {
+        catalog::forgejo_readme(&st.http, &repo).await
+    } else {
+        let got = st
+            .http
+            .get(format!("https://api.github.com/repos/{repo}/readme"))
+            .header("Accept", "application/vnd.github.raw")
+            .timeout(std::time::Duration::from_secs(20))
+            .send()
+            .await;
+        match got {
+            Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => Some(String::new()),
+            Ok(r) if r.status().is_success() => r.text().await.ok(),
+            _ => None,
+        }
     };
     match text {
         Some(mut t) => {
@@ -2839,11 +2856,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         if let Some(p) = g.path.parent() {
             roots.push(p.join("Game Copies").join(library::folder_name(id)));
         }
-        // The list keeps it as title_id, under achievements, or (for Easy Setup) as the id its
-        // disc files must have.
-        let title = entry
-            .and_then(|e| e.get("title_id").and_then(Value::as_str).or_else(|| e.pointer("/achievements/title_id").and_then(Value::as_str)).or_else(|| e.pointer("/boot/files/id").and_then(Value::as_str)))
-            .map(str::to_string);
+        let title = entry.and_then(catalog_title);
         // One game of several: its own list (by its full id), and only its own unlock file.
         match &pick {
             Some(pk) => {
@@ -3428,7 +3441,7 @@ fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
 /// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
     use std::io::BufRead;
-    let exe = pr.program.iter().map(|x| install.join(x)).find(|x| x.is_file()).ok_or("Its setup program is missing. Reinstall the game.")?;
+    let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
     let args: Vec<String> = pr.args.iter().map(|a| profile::fill(a, install, Some(copy))).collect();
     let mut c = std::process::Command::new(&exe);
     sysenv::clean_std(&mut c);
@@ -3638,12 +3651,30 @@ pub(crate) fn cached_catalog(st: &App) -> Value {
     catalog::with_mine(&st.dir, cat)
 }
 
+/// Said for a link that isn't a project the launcher can read, or one with no release to install.
+const CANT_READ: &str = "We couldn't read that project. Check the link, or make sure it has a release with your builds.";
+
+/// The project a pasted link is: GitHub, GitLab or SourceForge by its address; any other server
+/// only when it answers as a Forgejo or Gitea server does (their addresses are their own).
+pub(crate) async fn repo_of_link(st: &App, link: &str) -> Res<String> {
+    if let Some(r) = catalog::repo_from_link(link) {
+        return Ok(r);
+    }
+    let Some((host, owner, name)) = catalog::forgejo_from_link(link) else { return Err(Error::Msg(CANT_READ.into())) };
+    if !catalog::forgejo_server(&st.http, &host).await {
+        return Err(Error::Msg(CANT_READ.into()));
+    }
+    let repo = format!("forgejo:{host}/{owner}/{name}");
+    trail::note(format!("Add a Recomp: {host} is a Forgejo server, so {repo}"));
+    Ok(repo)
+}
+
 /// What a GitHub repo is, read before it's added: the catalog's entry when it has one; else the
 /// game and console its description, topics and README point at, a catalog game it looks like, and
 /// art from SteamGridDB when the player gave their key.
 #[tauri::command]
 async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub, GitLab or SourceForge link. It looks like github.com/owner/name, gitlab.com/group/name or sourceforge.net/projects/name.".into()))?;
+    let repo = repo_of_link(&st, &link).await?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let apps = cat.get("apps").and_then(Value::as_array).cloned().unwrap_or_default();
     if let Some(a) = apps.iter().find(|a| str_of(a, "repo").eq_ignore_ascii_case(&repo)) {
@@ -3661,7 +3692,10 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         }
         r.send()
     };
-    let (info, readme) = if lab {
+    let fj = catalog::is_forgejo(&repo);
+    let (info, readme) = if fj {
+        catalog::forgejo_info(&st.http, &repo).await
+    } else if lab {
         (Value::Null, String::new())
     } else {
         let (info, readme) = tokio::join!(get(api.clone(), false), get(format!("{api}/readme"), true));
@@ -3733,7 +3767,7 @@ async fn github_lookup(st: State<'_, App>, link: String, sgdb_key: Option<String
         "art": art,
         "art_error": art_error,
         "hero_default": if lab { String::new() } else { format!("https://opengraph.githubassets.com/1/{repo}") },
-        "host": if lab { "gitlab" } else { "github" },
+        "host": if fj { "forgejo" } else if lab { "gitlab" } else { "github" },
     }))
 }
 
@@ -3745,9 +3779,9 @@ async fn github_art(st: State<'_, App>, game: String, sgdb_key: String) -> Res<V
 
 /// The system its releases have a version for: this PC's, or Windows through Proton.
 async fn github_os(st: &App, repo: &str) -> Res<&'static str> {
-    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, repo, true).await.map_err(|_| Error::Msg("Couldn't read that repo's releases. Check the link, and that it's public.".into()))?.data).unwrap_or_default();
+    let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, repo, true).await.map_err(|_| Error::Msg(CANT_READ.into()))?.data).unwrap_or_default();
     if rels.is_empty() {
-        return Err(Error::Msg("That repo hasn't put out a release yet, so there's nothing to install.".into()));
+        return Err(Error::Msg(CANT_READ.into()));
     }
     let (here, arch) = (assets::os_now(), assets::arch_now());
     let has = |os: &str| rels.iter().any(|r| !r.draft && assets::pick(&r.assets, os, arch, None).is_some());
@@ -3775,8 +3809,8 @@ const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero
 /// game, origin, cover, hero, logo), once its releases have a version for this PC. Returns
 /// { id, known, name }.
 #[tauri::command]
-async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
-    let repo = catalog::repo_from_link(&link).ok_or_else(|| Error::Msg("That isn't a GitHub, GitLab or SourceForge link. It looks like github.com/owner/name, gitlab.com/group/name or sourceforge.net/projects/name.".into()))?;
+async fn add_github(app: AppHandle, st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
+    let repo = repo_of_link(&st, &link).await?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
     if let Some(a) = cat.get("apps").and_then(Value::as_array).and_then(|l| l.iter().find(|a| same(a))) {
@@ -3787,7 +3821,10 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
     // What the repo says about itself, when GitHub answers (it's fine without). A GitLab
     // project's (or a SourceForge one's) releases are all that's read of it.
     let lab = catalog::site_only(&repo);
-    let meta: Value = if lab {
+    let fj = catalog::is_forgejo(&repo);
+    let meta: Value = if fj {
+        catalog::forgejo_info(&st.http, &repo).await.0
+    } else if lab {
         Value::Null
     } else {
         match st.http.get(format!("https://api.github.com/repos/{repo}")).timeout(std::time::Duration::from_secs(10)).send().await {
@@ -3797,7 +3834,7 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
     };
     let path = catalog::host_path(&repo).to_string();
     let owner = path.split('/').next().unwrap_or("").to_string();
-    let id: String = format!("{}-{}", if catalog::is_sourceforge(&repo) { "sf" } else if lab { "gl" } else { "gh" }, path.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
+    let id: String = format!("{}-{}", if catalog::is_sourceforge(&repo) { "sf" } else if fj { "fj" } else if lab { "gl" } else { "gh" }, path.to_lowercase().replace('/', "-")).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' }).collect();
     let newest = rels.iter().find(|r| !r.draft);
     let mut entry = json!({
         "id": id,
@@ -3808,10 +3845,12 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
         "systems": [os],
         "hero": if lab { String::new() } else { format!("https://opengraph.githubassets.com/1/{repo}") },
         "released": newest.and_then(|r| r.published_at.clone()).unwrap_or_default(),
-        "stars": meta.get("stargazers_count").cloned().unwrap_or(Value::Null),
+        "stars": meta.get("stargazers_count").or_else(|| meta.get("stars_count")).cloned().unwrap_or(Value::Null),
         "custom": true,
     });
-    if lab {
+    if fj {
+        entry["host"] = json!("forgejo");
+    } else if lab {
         entry["host"] = json!("gitlab");
     }
     if let Some(i) = info.as_ref().and_then(Value::as_object) {
@@ -3823,6 +3862,10 @@ async fn add_github(st: State<'_, App>, link: String, info: Option<Value>) -> Re
         list.retain(|e| str_of(e, "id") != id);
         list.push(entry.clone());
         catalog::save_mine(&st.dir, &list)?;
+    }
+    // A Forgejo project's own setup file, read now so Easy Setup shows for it straight away.
+    if fj && catalog::repo_profile(&st.http, &st.dir, &repo, true).await {
+        let _ = app.emit("profiles-fresh", ());
     }
     Ok(json!({"id": id, "known": false, "name": str_of(&entry, "name")}))
 }
@@ -5859,6 +5902,7 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     if !force {
         if let Some((mut f, stale)) = catalog::catalog_now(&st.dir) {
             merged_mine(&app, &st, &mut f.data);
+            refresh_repo_profiles(&app, &st, &f.data, false);
             if stale {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -5878,10 +5922,35 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     // not (one question, and the player's own doing).
     let mut f = if force { net::now(catalog::catalog(&st.http, &st.dir, true)).await? } else { catalog::catalog(&st.http, &st.dir, false).await? };
     merged_mine(&app, &st, &mut f.data);
+    refresh_repo_profiles(&app, &st, &f.data, force);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
     }
     Ok(f)
+}
+
+/// Forgejo projects' own recomplauncher.json, read in the background when it isn't on disk yet or
+/// is old (`force`: the player pressed Refresh). The window hears when one came or changed
+/// ("profiles-fresh"), so Easy Setup shows for it.
+fn refresh_repo_profiles(app: &AppHandle, st: &App, cat: &Value, force: bool) {
+    let due = catalog::repo_profiles_due(&st.dir, cat, force);
+    if due.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let st = app.state::<App>();
+        let mut changed = false;
+        for repo in due {
+            if catalog::repo_profile(&st.http, &st.dir, &repo, true).await {
+                trail::note(format!("Setup file for {repo} read from its project"));
+                changed = true;
+            }
+        }
+        if changed {
+            let _ = app.emit("profiles-fresh", ());
+        }
+    });
 }
 
 /// merge_mine, with the list sent to the window without the entries moved over, and the window
@@ -8435,6 +8504,17 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_catalogs_xbox_360_title_id_is_used_first_and_in_capitals() {
+        use super::catalog_title;
+        let e = |v: serde_json::Value| catalog_title(&v);
+        assert_eq!(e(serde_json::json!({"title_id": "4d5307e6", "boot": {"files": {"id": "454108D2"}}})).as_deref(), Some("4D5307E6"));
+        assert_eq!(e(serde_json::json!({"achievements": {"title_id": "4D5307E6"}})).as_deref(), Some("4D5307E6"));
+        // A mistyped one doesn't hide a good disc id; none at all is none.
+        assert_eq!(e(serde_json::json!({"title_id": "4D53-07E6", "boot": {"files": {"id": "454108D2"}}})).as_deref(), Some("454108D2"));
+        assert_eq!(e(serde_json::json!({"id": "a"})), None);
+    }
 
     #[test]
     fn the_badge_check_and_updates_tab_share_one_rule() {
