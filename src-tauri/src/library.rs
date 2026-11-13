@@ -306,6 +306,24 @@ pub struct Settings {
     /// RecompLauncher collection, and leaves it when uninstalled (steam_sync.rs).
     #[serde(default)]
     pub steam_sync: bool,
+    /// Settings → Data Hoarder Mode: every release of every game in the Library (installed or just
+    /// added) is downloaded and kept, with its notes, in `hoard_root` (hoard.rs). Nothing is
+    /// installed by it.
+    #[serde(default)]
+    pub hoarder: bool,
+    /// Where the hoard goes. None: a Releases folder inside the default library folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hoard_dir: Option<PathBuf>,
+    /// Hoard only the builds that run on this PC, not every platform's.
+    #[serde(default)]
+    pub hoard_this_pc_only: bool,
+}
+
+impl Settings {
+    /// The folder Data Hoarder Mode keeps releases in: Releases/<game>/<release>/.
+    pub fn hoard_root(&self) -> PathBuf {
+        self.hoard_dir.clone().unwrap_or_else(|| self.library_dir.join("Releases"))
+    }
 }
 
 fn yes() -> bool {
@@ -359,6 +377,9 @@ impl Default for Settings {
             lighter: None,
             linux_graphics: String::new(),
             steam_sync: false,
+            hoarder: false,
+            hoard_dir: None,
+            hoard_this_pc_only: false,
         }
     }
 }

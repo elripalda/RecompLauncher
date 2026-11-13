@@ -786,6 +786,42 @@ async fn from_github_at(http: &reqwest::Client, dir: &Path, repo: &str, api: &st
     Ok(Fetched { archived, data: v, offline: false, age: 0 })
 }
 
+/// Every release a project has ever published, for Data Hoarder Mode. The usual list is the newest
+/// thirty; for a GitHub project with that many, GitHub is asked for the older pages too (a hundred a
+/// page, at most ten pages), so old releases can be saved before they disappear. If GitHub won't
+/// answer (its hourly limit, say) the list the site gave is all there is this time. GitLab and
+/// SourceForge projects only come through the site, so they're whatever it lists.
+pub async fn releases_all(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Vec<Value>, Error> {
+    let first = releases(http, dir, repo, false).await?;
+    let mut all: Vec<Value> = first.data.as_array().cloned().unwrap_or_default();
+    if site_only(repo) || all.len() < 30 {
+        return Ok(all);
+    }
+    let mut older: Vec<Value> = vec![];
+    for page in 1..=10 {
+        let url = format!("https://api.github.com/repos/{repo}/releases?per_page=100&page={page}");
+        let sent = crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, false).await;
+        let Ok(r) = sent else { break };
+        if !r.status().is_success() {
+            break;
+        }
+        let Ok(v) = r.json::<Value>().await else { break };
+        let Some(got) = v.as_array() else { break };
+        older.extend(got.iter().cloned());
+        if got.len() < 100 {
+            break;
+        }
+    }
+    all.extend(older);
+    Ok(dedupe_by_tag(all))
+}
+
+/// The first release for each tag, in order (the site's copy of a release comes before GitHub's).
+fn dedupe_by_tag(list: Vec<Value>) -> Vec<Value> {
+    let mut seen = std::collections::HashSet::new();
+    list.into_iter().filter(|r| r.get("tag_name").and_then(Value::as_str).map(|t| seen.insert(t.to_string())).unwrap_or(false)).collect()
+}
+
 /// The site's answer, or GitHub's when the site couldn't give one (`fresh`: an old copy on disk
 /// isn't good enough, as for an install).
 async fn or_github(http: &reqwest::Client, dir: &Path, repo: &str, got: Result<Fetched, Error>, fresh: bool) -> Result<Fetched, Error> {

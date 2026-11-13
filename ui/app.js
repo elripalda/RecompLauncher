@@ -202,6 +202,7 @@ async function addToLibrary(id) {
   const mine = (((S.settings.ui || {}).found_saved) || []).filter((x) => x !== id);
   const skip = (((S.settings.ui || {}).found_skip) || []).filter((x) => x !== id);
   await saveUi({ saved: Object.assign({}, saved(), { [id]: Math.floor(Date.now() / 1000) }), found_saved: mine, found_skip: skip }, true);
+  hoardNow();
   libSend(id, true);
   const a = byId(id);
   render(true);
@@ -3423,6 +3424,7 @@ function pageSettings() {
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
+        + hoarderGroup(group, row, sw, st)
         + networkGroup(group, row, st);
       break;
     case 'playing': {
@@ -4163,6 +4165,7 @@ async function checkUpdates(loud) {
     if (revision !== updateCheckRevision) return false;
     S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local));
     S.updInfo = {};
+    hoardNow();
   } catch (e) { if (loud) fail(e); return false; }
   renderSide();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
@@ -5449,6 +5452,49 @@ async function steamSync(restart) {
 
 // What's waiting to go in or out of Steam, for the setting's line. Looked up again after a sync
 // or turning the setting on (false: being looked up).
+// ---------- Data Hoarder Mode ----------
+// Keeps every release of every game in the Library, with its notes, in Releases/<game>/<release>/
+// (hoard.rs does the work). Asked to look whenever something might have changed; it only acts
+// while the mode is on.
+const hoardNow = () => { if (S.settings && S.settings.hoarder) invoke('hoard_now').catch(() => {}); };
+function hoardRoot() {
+  const st = S.settings;
+  if (st.hoard_dir) return st.hoard_dir;
+  const sep = S.os === 'windows' ? '\\' : '/';
+  return st.library_dir + sep + 'Releases';
+}
+function hoardLine() {
+  const h = S.hoard;
+  if (h === undefined) { S.hoard = false; invoke('hoard_state').then((v) => { S.hoard = v; paintHoard(); }).catch(() => {}); }
+  if (!h) return t('Waiting for the first look.');
+  if (h.running && h.game) {
+    const pct = h.total ? ` ${Math.floor(Math.min(100, (h.done / h.total) * 100))}%` : '';
+    return tf('Saving {game} {release}: {file}{pct}', { game: h.game, release: h.release, file: h.file, pct });
+  }
+  if (h.running) return t('Looking for releases to save…');
+  const bits = [];
+  if (h.last_done) bits.push(tf('Last look {when}.', { when: ago(h.last_done) }));
+  if (h.saved) bits.push(tn(h.saved, '1 file saved.', '{n} files saved.'));
+  if (h.failed && h.failed.length) bits.push(tn(h.failed.length, '1 file couldn\'t be saved and will be tried again.', '{n} files couldn\'t be saved and will be tried again.'));
+  if (h.stopped) bits.push(cleanMsg(h.stopped));
+  return bits.join(' ') || t('Waiting for the first look.');
+}
+function paintHoard() {
+  const el = $('#hoard-line');
+  if (el) el.textContent = hoardLine();
+}
+function hoarderGroup(group, row, sw, st) {
+  const on = !!st.hoarder;
+  const main = row(t('Data Hoarder Mode'), t('Projects get taken down. With this on, every release of every game in your Library, installed or not, is downloaded and kept, including old ones, with its notes. Games you add to the Library are saved right away. Nothing is installed: installed games update only the usual way.'), sw('hoarder', on, t('Data Hoarder Mode')));
+  if (!on) return group(t('Data Hoarder'), main);
+  const where = row(t('Hoard folder'), `<span class="path">${esc(hoardRoot())}</span> · ${esc(t('Releases/Game/Release/, with each release\'s notes as RELEASE-NOTES.md.'))}`,
+    `<span class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(hoardRoot())}">${esc(t('Open'))}</button><button type="button" class="btn sm" data-act="hoard-dir">${esc(t('Change'))}</button>${st.hoard_dir ? `<button type="button" class="btn sm" data-act="hoard-dir-reset">${esc(t('Reset'))}</button>` : ''}</span>`);
+  const mine = row(t('Only builds for this PC'), t('Off: every platform\'s files are kept. On: only the ones that run on this PC, which takes far less room.'), sw('hoard_this_pc_only', !!st.hoard_this_pc_only, t('Only builds for this PC')));
+  const now = row(t('Save Now'), `<span id="hoard-line">${esc(hoardLine())}</span>`, `<button type="button" class="btn sm" data-act="hoard-now">${esc(t('Save Now'))}</button>`);
+  return group(t('Data Hoarder'), main + where + mine + now);
+}
+T.event.listen('hoard', ({ payload }) => { S.hoard = payload; paintHoard(); });
+
 function steamSyncLine() {
   const st = S.steamSyncState;
   if (st === undefined) { S.steamSyncState = false; invoke('steam_sync_state').then((v) => { S.steamSyncState = v; if (S.view === 'settings' && S.setTab === 'library') setSection('library', false); }).catch(() => {}); }
@@ -6990,6 +7036,13 @@ async function act(el, e) {
     }
     case 'self-steam': return selfToSteam(false);
     case 'steam-sync': return steamSync(false);
+    case 'hoard-now': hoardNow(); toast(t('Looking for releases to save.')); return;
+    case 'hoard-dir': {
+      const p = await pickFile({ title: t('Where Data Hoarder Mode keeps releases'), directory: true, defaultPath: hoardRoot() }).catch(fail);
+      if (p) await saveSettings({ hoard_dir: typeof p === 'string' ? p : p.path });
+      return;
+    }
+    case 'hoard-dir-reset': return saveSettings({ hoard_dir: null });
     case 'ge-proton': return geInstall();
     case 'use-proton': return useProton(id);
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
@@ -7611,7 +7664,7 @@ T.event.listen('install', ({ payload: p }) => {
     delete DLSPD[id];
     ENDED[id] = Date.now();
     S.recent = [p].concat(S.recent.filter((r) => r.id !== id)).slice(0, 20);
-    if (p.phase === 'done') S.dlHist = null;
+    if (p.phase === 'done') { S.dlHist = null; hoardNow(); }
     const name = byId(id)?.name || id;
     if (p.phase === 'done') {
       delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; loadNews();

@@ -25,6 +25,7 @@ pub mod gamefiles;
 pub mod games;
 pub mod flatpak;
 pub mod gamebanana;
+pub mod hoard;
 pub mod info;
 pub mod inputs;
 pub mod ingame;
@@ -7131,14 +7132,20 @@ fn update_retry(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command(async)]
-fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
+fn save_settings(app: AppHandle, st: State<'_, App>, settings: Settings) -> Res<()> {
     if settings.library_dir.as_os_str().is_empty() || !settings.library_dir.is_absolute() {
         return Err(Error::Msg("Pick a folder for the library.".into()));
     }
     if settings.library_dirs.iter().chain(settings.rom_dirs.iter()).any(|d| !d.is_absolute()) {
         return Err(Error::Msg("Pick folders, not names.".into()));
     }
+    if settings.hoard_dir.as_ref().is_some_and(|d| !d.is_absolute()) {
+        return Err(Error::Msg("Pick a folder for Data Hoarder Mode, not a name.".into()));
+    }
     let mut l = st.lib.lock().unwrap();
+    let hoarding = l.settings.hoarder;
+    let hoard_root = l.settings.hoard_root();
+    let hoard_pc_only_before = l.settings.hoard_this_pc_only;
     let told = l.settings.tray_told;
     // The saves folder changes only through its own button (the copies move with it).
     let save_dir = l.settings.save_dir.clone();
@@ -7150,7 +7157,32 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
     l.save(&st.dir)?;
+    // Data Hoarder Mode: turning it on (or pointing it at another folder, or at every platform
+    // instead of this PC's) starts a sweep; turning it off stops the one running.
+    let (on, root, pc_only) = (l.settings.hoarder, l.settings.hoard_root(), l.settings.hoard_this_pc_only);
+    drop(l);
+    if hoarding && !on {
+        hoard::stop();
+    }
+    if on && (!hoarding || root != hoard_root || pc_only != hoard_pc_only_before) {
+        hoard::stop();
+        hoard::kick(&app);
+    }
     Ok(())
+}
+
+/// Data Hoarder Mode's state for the Settings page: whether a sweep is running, what it's saving,
+/// and what couldn't be saved.
+#[tauri::command]
+fn hoard_state() -> hoard::Status {
+    hoard::status()
+}
+
+/// Sweep now (Settings → Data Hoarder Mode → Save Now, and after a game is added to the Library
+/// or updates are checked). Does nothing while the mode is off.
+#[tauri::command]
+fn hoard_now(app: AppHandle) {
+    hoard::kick(&app);
 }
 
 /// Settings → Network: the proxy every request goes through. `pass` None keeps the saved one; the
@@ -7313,6 +7345,7 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
                 share_stats: old.share_stats,
                 data_asked: old.data_asked,
                 save_dir: old.save_dir.clone(),
+                hoard_dir: old.hoard_dir.clone(),
                 ui: Value::Object(keep),
                 ..Settings::default()
             };
@@ -8267,6 +8300,8 @@ pub fn run() {
             cloud::watch_inbox(app.handle().clone());
             // Settings → Keep Steam in Sync: written whenever Steam is found closed.
             steam_sync::start(app.handle().clone());
+            // Settings → Data Hoarder Mode: keeps every release of the games in the Library.
+            hoard::start(app.handle().clone());
             // A new RecompLauncher: the window looks as it opens; after that, every six hours or so
             // while it runs (it may stay by the clock). A push brings news of a new build sooner.
             {
@@ -8378,7 +8413,7 @@ pub fn run() {
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
-            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
+            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, hoard_state, hoard_now, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
