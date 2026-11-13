@@ -287,20 +287,22 @@ fn newer_runtime(proton: &Path) -> bool {
     matches!(id.as_deref(), Some(x) if x != "1628350" && x != "1391110")
 }
 
-/// umu-run's runtime folder (~/.local/share/umu/steamrt4) is there but an umu-run before 1.4 can't
-/// start anything from it: its entry point (umu) is missing ("_v2-entry-point (umu) cannot be
-/// found"). No folder at all is fine: umu-run fetches it.
-fn umu_runtime_broken(dir: &Path) -> bool {
+/// Before 1.4, umu-run needs the runtime's compatibility entry point (umu). Newer versions can
+/// use the original _v2-entry-point too, so its missing compatibility link needs no repair.
+/// No folder at all is fine: umu-run fetches it.
+fn umu_runtime_broken(dir: &Path, version: Option<(u32, u32, u32)>) -> bool {
     let has_files = std::fs::read_dir(dir).map(|mut d| d.next().is_some()).unwrap_or(false);
-    has_files && !dir.join("umu").exists()
+    let original_entry = version.is_some_and(|v| v >= (1, 4, 0)) && dir.join("_v2-entry-point").is_file();
+    has_files && !dir.join("umu").exists() && !original_entry
 }
 
 /// umu-run's Steam runtime folder when it's half there (a download that failed its checksum,
 /// parts missing): Settings offers to repair it. None when umu-run isn't used or the runtime is fine.
 pub fn umu_broken_runtime() -> Option<PathBuf> {
-    on_path("umu-run")?;
+    let umu = on_path("umu-run")?;
+    let version = umu_version(&umu);
     let base = dirs::data_dir()?.join("umu");
-    ["steamrt4", "steamrt3"].into_iter().map(|n| base.join(n)).find(|d| umu_runtime_broken(d) || has_bad_download(d))
+    ["steamrt4", "steamrt3"].into_iter().map(|n| base.join(n)).find(|d| umu_runtime_broken(d, version) || has_bad_download(d))
 }
 
 /// A download umu-run gave up on leaves its archive next to the runtime (a "Digest mismatched"):
@@ -335,7 +337,7 @@ pub fn runner() -> Option<Runner> {
         // there, and every umu-run puts a missing umu-shim back itself.
         let broken = proton.is_some()
             && umu_version(&umu).map(|v| v < (1, 4, 0)).unwrap_or(false)
-            && dirs::data_dir().map(|d| umu_runtime_broken(&d.join("umu").join(if newer { "steamrt4" } else { "steamrt3" }))).unwrap_or(false);
+            && dirs::data_dir().map(|d| umu_runtime_broken(&d.join("umu").join(if newer { "steamrt4" } else { "steamrt3" }), umu_version(&umu))).unwrap_or(false);
         if !old && !broken {
             return Some(Runner::Umu(umu, proton.map(|p| p.0)));
         }
@@ -503,15 +505,45 @@ printf '%s\n' 'umu-launcher version 1.3.0'
         let _ = std::fs::remove_dir_all(&d);
         let rt = d.join("steamrt4");
         // Not downloaded yet: umu-run fetches it itself.
-        assert!(!super::umu_runtime_broken(&rt));
+        assert!(!super::umu_runtime_broken(&rt, Some((1, 3, 0))));
         std::fs::create_dir_all(&rt).unwrap();
-        assert!(!super::umu_runtime_broken(&rt));
+        assert!(!super::umu_runtime_broken(&rt, Some((1, 3, 0))));
         // Unpacked by hand: the entry point is still called _v2-entry-point.
         std::fs::write(rt.join("_v2-entry-point"), b"").unwrap();
-        assert!(super::umu_runtime_broken(&rt));
+        assert!(super::umu_runtime_broken(&rt, Some((1, 3, 0))));
         std::fs::write(rt.join("umu"), b"").unwrap();
-        assert!(!super::umu_runtime_broken(&rt));
+        assert!(!super::umu_runtime_broken(&rt, Some((1, 3, 0))));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_modern_umu_runtime_can_use_its_original_entry_point() {
+        let dir = std::env::temp_dir().join(format!("rl-umu-modern-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_v2-entry-point"), b"#!/bin/sh\n").unwrap();
+        assert!(!super::umu_runtime_broken(&dir, Some((1, 4, 0))), "modern umu can launch this runtime without the compatibility link");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_unknown_umu_version_still_needs_the_compatibility_entry_point() {
+        let dir = std::env::temp_dir().join(format!("rl-umu-unknown-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_v2-entry-point"), b"#!/bin/sh\n").unwrap();
+        assert!(super::umu_runtime_broken(&dir, None));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_modern_runtime_without_either_entry_point_still_needs_repair() {
+        let dir = std::env::temp_dir().join(format!("rl-umu-no-entry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("VERSIONS.txt"), b"incomplete runtime").unwrap();
+        assert!(super::umu_runtime_broken(&dir, Some((1, 4, 0))));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
