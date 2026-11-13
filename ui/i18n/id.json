@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a} dari {b}",
  "{n} games are in your Library now.": "{n} game sekarang ada di Pustaka-mu.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} game sekarang ada di Pustaka-mu. Pasang kapan saja kamu mau.",
- "{n} games it found are already in your Library.": "{n} game yang ditemukan sudah ada di Pustaka-mu."
+ "{n} games it found are already in your Library.": "{n} game yang ditemukan sudah ada di Pustaka-mu.",
+ "Clock": "Jam",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Cara waktu ditampilkan di launcher, Mode Big Picture, dan menu cepat.",
+ "Same as the language ({time})": "Sama dengan bahasa ({time})",
+ "12-hour ({time})": "12 jam ({time})",
+ "24-hour ({time})": "24 jam ({time})",
+ "Auto follows the language": "Otomatis mengikuti bahasa"
 }

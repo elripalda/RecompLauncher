@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a} van {b}",
  "{n} games are in your Library now.": "{n} games staan nu in je bibliotheek.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} games staan nu in je bibliotheek. Installeer ze wanneer je wilt.",
- "{n} games it found are already in your Library.": "{n} gevonden games staan al in je bibliotheek."
+ "{n} games it found are already in your Library.": "{n} gevonden games staan al in je bibliotheek.",
+ "Clock": "Klok",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Hoe tijden worden getoond in de launcher, de Big Picture-modus en het snelmenu.",
+ "Same as the language ({time})": "Zelfde als de taal ({time})",
+ "12-hour ({time})": "12-uursnotatie ({time})",
+ "24-hour ({time})": "24-uursnotatie ({time})",
+ "Auto follows the language": "Auto volgt de taal"
 }

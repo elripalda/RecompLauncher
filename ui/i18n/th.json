@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a} จาก {b}",
  "{n} games are in your Library now.": "ตอนนี้มี {n} เกมอยู่ในคลังของคุณแล้ว",
  "{n} games are in your Library now. Install them whenever you like.": "ตอนนี้มี {n} เกมอยู่ในคลังของคุณแล้ว ติดตั้งเมื่อไหร่ก็ได้",
- "{n} games it found are already in your Library.": "เกมที่พบ {n} เกมอยู่ในคลังของคุณแล้ว"
+ "{n} games it found are already in your Library.": "เกมที่พบ {n} เกมอยู่ในคลังของคุณแล้ว",
+ "Clock": "นาฬิกา",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "รูปแบบเวลาที่แสดงในตัวเปิดเกม โหมด Big Picture และเมนูด่วน",
+ "Same as the language ({time})": "เหมือนกับภาษา ({time})",
+ "12-hour ({time})": "12 ชั่วโมง ({time})",
+ "24-hour ({time})": "24 ชั่วโมง ({time})",
+ "Auto follows the language": "อัตโนมัติจะเป็นไปตามภาษา"
 }

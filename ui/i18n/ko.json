@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "게임 {n}개가 이제 라이브러리에 있습니다.",
  "{n} games are in your Library now. Install them whenever you like.": "게임 {n}개가 이제 라이브러리에 있습니다. 원할 때 설치하세요.",
- "{n} games it found are already in your Library.": "찾은 게임 {n}개는 이미 라이브러리에 있습니다."
+ "{n} games it found are already in your Library.": "찾은 게임 {n}개는 이미 라이브러리에 있습니다.",
+ "Clock": "시계",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "런처, Big Picture 모드, 빠른 메뉴에서 시간을 표시하는 방식.",
+ "Same as the language ({time})": "언어와 같게({time})",
+ "12-hour ({time})": "12시간제({time})",
+ "24-hour ({time})": "24시간제({time})",
+ "Auto follows the language": "자동은 언어를 따릅니다"
 }

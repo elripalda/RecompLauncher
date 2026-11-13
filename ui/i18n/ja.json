@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "{n} 本のゲームがライブラリに入りました。",
  "{n} games are in your Library now. Install them whenever you like.": "{n} 本のゲームがライブラリに入りました。好きなときにインストールしてください。",
- "{n} games it found are already in your Library.": "見つかった {n} 本のゲームはすでにライブラリにあります。"
+ "{n} games it found are already in your Library.": "見つかった {n} 本のゲームはすでにライブラリにあります。",
+ "Clock": "時計",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "ランチャー、Big Picture モード、クイックメニューでの時刻の表示方法。",
+ "Same as the language ({time})": "言語と同じ（{time}）",
+ "12-hour ({time})": "12時間制（{time}）",
+ "24-hour ({time})": "24時間制（{time}）",
+ "Auto follows the language": "「自動」は言語に合わせます"
 }

@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a} de {b}",
  "{n} games are in your Library now.": "{n} jogos já estão na tua Biblioteca.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} jogos já estão na tua Biblioteca. Instala-os quando quiseres.",
- "{n} games it found are already in your Library.": "{n} jogos encontrados já estão na tua Biblioteca."
+ "{n} games it found are already in your Library.": "{n} jogos encontrados já estão na tua Biblioteca.",
+ "Clock": "Relógio",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Como as horas aparecem no launcher, no modo Big Picture e no menu rápido.",
+ "Same as the language ({time})": "Igual ao idioma ({time})",
+ "12-hour ({time})": "12 horas ({time})",
+ "24-hour ({time})": "24 horas ({time})",
+ "Auto follows the language": "Auto segue o idioma"
 }

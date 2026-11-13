@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a} / {b}",
  "{n} games are in your Library now.": "{n} oyun artık Kitaplığınızda.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} oyun artık Kitaplığınızda. İstediğiniz zaman yükleyin.",
- "{n} games it found are already in your Library.": "Bulduğu {n} oyun zaten Kitaplığınızda."
+ "{n} games it found are already in your Library.": "Bulduğu {n} oyun zaten Kitaplığınızda.",
+ "Clock": "Saat",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Saatlerin başlatıcıda, Big Picture modunda ve hızlı menüde nasıl görüneceği.",
+ "Same as the language ({time})": "Dille aynı ({time})",
+ "12-hour ({time})": "12 saat ({time})",
+ "24-hour ({time})": "24 saat ({time})",
+ "Auto follows the language": "Otomatik, dile göre ayarlanır"
 }

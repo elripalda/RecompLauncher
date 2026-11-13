@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a}/{b}",
  "{n} games are in your Library now.": "{n} 款遊戲已加入您的收藏庫。",
  "{n} games are in your Library now. Install them whenever you like.": "{n} 款遊戲已加入您的收藏庫。隨時都可以安裝。",
- "{n} games it found are already in your Library.": "找到的 {n} 款遊戲已在您的收藏庫中。"
+ "{n} games it found are already in your Library.": "找到的 {n} 款遊戲已在您的收藏庫中。",
+ "Clock": "時鐘",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "啟動器、大螢幕模式和快速選單中時間的顯示方式。",
+ "Same as the language ({time})": "與語言相同（{time}）",
+ "12-hour ({time})": "12 小時制（{time}）",
+ "24-hour ({time})": "24 小時制（{time}）",
+ "Auto follows the language": "「自動」會跟隨語言"
 }

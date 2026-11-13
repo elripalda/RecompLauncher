@@ -3029,5 +3029,11 @@
  "{a} of {b}": "{a} з {b}",
  "{n} games are in your Library now.": "{n} гра тепер у твоїй бібліотеці.|{n} гри тепер у твоїй бібліотеці.|{n} ігор тепер у твоїй бібліотеці.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} гра тепер у твоїй бібліотеці. Встанови її, коли захочеш.|{n} гри тепер у твоїй бібліотеці. Встанови їх, коли захочеш.|{n} ігор тепер у твоїй бібліотеці. Встанови їх, коли захочеш.",
- "{n} games it found are already in your Library.": "{n} знайдена гра вже є у твоїй бібліотеці.|{n} знайдені гри вже є у твоїй бібліотеці.|{n} знайдених ігор уже є у твоїй бібліотеці."
+ "{n} games it found are already in your Library.": "{n} знайдена гра вже є у твоїй бібліотеці.|{n} знайдені гри вже є у твоїй бібліотеці.|{n} знайдених ігор уже є у твоїй бібліотеці.",
+ "Clock": "Годинник",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Як показується час у лаунчері, режимі Big Picture і швидкому меню.",
+ "Same as the language ({time})": "Як прийнято в мові ({time})",
+ "12-hour ({time})": "12-годинний ({time})",
+ "24-hour ({time})": "24-годинний ({time})",
+ "Auto follows the language": "«Авто» — як прийнято в мові"
 }
