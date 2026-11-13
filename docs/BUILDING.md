@@ -30,6 +30,15 @@ released installer also has RecompLauncher's own install screens; to add them, i
 [NSIS](https://nsis.sourceforge.io) (with its folder on your PATH) and run `python tools/brand-installer.py src-tauri/target/release`
 after the build.
 
+### Arch Linux (native x86_64 package)
+
+Use `bash tools/build-arch-package.sh --noconfirm` to build a native pacman package
+from this checkout. The result is in `dist/arch/`; install it with
+`sudo pacman -U dist/arch/recomplauncher-0.90.0beta.42-1-x86_64.pkg.tar.zst`.
+See [the Arch packaging guide](../packaging/arch/README.md) for dependencies,
+version spelling, rebuilding and updates. The Arch CI job also adds this format
+to release drafts. Flatpak has its own [build guide](../packaging/flatpak/README.md).
+
 ### macOS (initial Apple Silicon support)
 
 Install Xcode Command Line Tools, Rust, CMake (for example `brew install cmake`) and Node.js 20
@@ -112,6 +121,10 @@ and `.dmg` packages. The Mac job builds natively on Apple Silicon, using the def
 `src-tauri/target/release/bundle/` output path before staging its artifacts. Artifacts
 are retained for 14 days; these builds do not publish a release. Windows CI packages
 use Tauri's standard installer screens; the optional branding step above is not run.
+
+A separate `Arch Linux package` reusable workflow builds a native x86_64 `.pkg.tar.zst`
+on Arch Linux for these events. Manual runs retain `installers-arch-x86_64` for three
+days. Release builds include the package in the draft; updates use `pacman -U`.
 
 A repository administrator must require `Build and test (windows-latest)`,
 `Build and test (ubuntu-24.04)` and `Build and test (macos-15)` in the target branch's ruleset

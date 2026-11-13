@@ -177,9 +177,18 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  arch:
+    needs: tag
+    if: needs.tag.outputs.go == 'true'
+    uses: ./.github/workflows/arch.yml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
+      artifact-name: release-Arch
+      upload: true
+
   draft:
     name: Put the files in a draft
-    needs: [tag, build]
+    needs: [tag, build, arch]
     env:
       TAG: ${{ needs.tag.outputs.tag }}
     runs-on: ubuntu-24.04

@@ -14,6 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  arch:
+    uses: ./.github/workflows/arch.yml
+    with:
+      upload: ${{ github.event_name == 'workflow_dispatch' }}
+
   build:
     name: Build and test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
