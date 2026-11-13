@@ -1259,7 +1259,7 @@ function pageHome() {
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
   const ready = oneEach(pool.filter(turnkey).sort(byNew), true);
   const played = libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
-  const found = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
+  const found = foundInFolders();
   const easy = oneEach(pool.filter((a) => S.easy.has(a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
   return `<div class="page home">${offlineNote()}
@@ -1275,6 +1275,14 @@ function pageHome() {
     ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
     ${newsSection()}
   </div>`;
+}
+
+// Games found in the scan that have no version in the Library, including saved games that
+// are not installed yet. Desktop and Big Picture Home use the same selection and count.
+function foundInFolders() {
+  const have = new Set([...Object.keys(S.library), ...Object.keys(saved())]);
+  const titles = new Set([...have].map(byId).filter(Boolean).map((a) => a.title).filter(Boolean));
+  return oneEach(Object.keys(S.owned).filter((id) => !have.has(id)).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !(a.title && titles.has(a.title))).sort(byDlConsolesFirst));
 }
 
 // Games the player owns (found in their ROM folders) that have a recomp they haven't installed.
