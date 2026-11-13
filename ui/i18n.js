@@ -17,6 +17,14 @@
   // English in a table that t() is given later.
   const N_ = (s) => s;
   const locale = () => (lang === 'ar' ? 'ar-u-nu-latn' : lang);
+  // The clock in Settings. Left on auto it follows the language, so English (US) shows 3:30 PM even
+  // to a player in Europe who wants 15:30; '12' or '24' sets it either way.
+  const HOUR_CYCLE = { 12: 'h12', 24: 'h23' };
+  let clock = '';
+  const setClock = (c) => { clock = HOUR_CYCLE[c] ? String(c) : ''; };
+  // The options for a time, with the player's clock added: toLocaleTimeString(curLocale(), timeOpts({...})).
+  // h23 rather than hour12: false, which some engines show as 24:05 after midnight.
+  const timeOpts = (o) => (clock ? Object.assign({}, o, { hourCycle: HOUR_CYCLE[clock] }) : Object.assign({}, o));
   const fmtNum = (n, digits) => {
     try { return new Intl.NumberFormat(locale(), digits == null ? {} : { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n); }
     catch (e) { return digits == null ? String(n) : Number(n).toFixed(digits); }
@@ -83,5 +91,5 @@
       for (const a in o.attrs) el.setAttribute(a, t(o.attrs[a]));
     }
   }
-  Object.assign(window, { tDom, t, tf, tn, N_, fmtNum, LANGS, matchLang, systemLang, loadLang, curLang: () => lang, curLocale: locale, isRtl: () => lang === 'ar' });
+  Object.assign(window, { tDom, t, tf, tn, N_, fmtNum, LANGS, matchLang, systemLang, loadLang, curLang: () => lang, curLocale: locale, setClock, timeOpts, isRtl: () => lang === 'ar' });
 })();

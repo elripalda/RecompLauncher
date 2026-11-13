@@ -12,7 +12,7 @@ S.saves = {};
 // The signed-in player's reports (Settings > Account > Your Reports), with developers' answers.
 S.myReports = null;
 
-const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), timeOpts({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : '');
 const avatar = (u, size = 28) => (u && u.avatar ? `<img class="acc-pic" src="${esc(u.avatar)}" alt="" width="${size}" height="${size}">` : `<span class="acc-pic none" style="width:${size}px;height:${size}px">${esc(((u && u.username) || '?').slice(0, 1).toUpperCase())}</span>`);
 const inTV = () => document.body.classList.contains('tv-on');
 

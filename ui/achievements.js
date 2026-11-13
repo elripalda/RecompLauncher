@@ -127,7 +127,7 @@ function achConsole(c) {
   function logLines(id) {
     const l = A.log[id] || [];
     if (!l.length) return `<p class="muted" style="margin:0">${esc(t('Nothing yet. Start the game from here: its messages show as they come.'))}</p>`;
-    return l.slice(-250).map((x) => `<div class="ach-ln d${x.dir === '<' ? 'in' : x.dir === '>' ? 'out' : x.dir === '!' ? 'bad' : 'note'}"><span>${esc(new Date(x.at * 1000).toLocaleTimeString(curLocale()))}</span><b>${esc(x.dir)}</b><code>${esc(x.line)}</code></div>`).join('');
+    return l.slice(-250).map((x) => `<div class="ach-ln d${x.dir === '<' ? 'in' : x.dir === '>' ? 'out' : x.dir === '!' ? 'bad' : 'note'}"><span>${esc(new Date(x.at * 1000).toLocaleTimeString(curLocale(), timeOpts({})))}</span><b>${esc(x.dir)}</b><code>${esc(x.line)}</code></div>`).join('');
   }
 
   function hexDump(base, hex) {

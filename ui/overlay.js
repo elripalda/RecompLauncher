@@ -13,9 +13,9 @@ fit();
 
 function mark() { items.forEach((b, i) => b.classList.toggle('f', i === at)); items[at].focus({ preventScroll: true }); }
 function mins(s) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? tf('{h} h {m} min', { h, m }) : tf('{m} min', { m: Math.max(1, m) }); }
-// The player's language, from the launcher's settings: read each time the menu opens, in case it changed.
+// The player's language and clock, from the launcher's settings: read each time the menu opens, in case they changed.
 async function lang() {
-  try { const st = await invoke('get_state'); const l = ((st.settings || {}).ui || {}).lang; const want = l && l !== 'auto' ? l : systemLang(); if (want !== curLang() || !lang.done) { await loadLang(want); tDom(); lang.done = true; } } catch (e) { /* stays in English */ }
+  try { const st = await invoke('get_state'); const ui = (st.settings || {}).ui || {}; setClock(ui.clock); const l = ui.lang; const want = l && l !== 'auto' ? l : systemLang(); if (want !== curLang() || !lang.done) { await loadLang(want); tDom(); lang.done = true; } } catch (e) { /* stays in English */ }
 }
 lang();
 function act(a) {
@@ -35,7 +35,7 @@ async function open(p) {
   document.getElementById('name').textContent = p.name;
   document.getElementById('sub').textContent = tf('Playing for {time} · {total} total', { time: mins(p.session), total: mins(p.played + p.session) });
   document.getElementById('shots').textContent = p.shots ? String(p.shots) : '';
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString(curLocale(), { hour: 'numeric', minute: '2-digit' });
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString(curLocale(), timeOpts({ hour: 'numeric', minute: '2-digit' }));
   at = 0;
   mark();
   fit();

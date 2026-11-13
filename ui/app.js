@@ -3362,6 +3362,13 @@ T.event.listen('ge_progress', ({ payload: p }) => {
   S.geBusy = p;
   if (moved && S.view === 'settings') { const b = document.querySelector('[data-act="ge-proton"]'); if (b) b.textContent = p.phase === 'download' && p.total ? tf('Downloading {pct}%', { pct: pct(p) }) : t('Unpacking…'); }
 });
+// 3:30 in the afternoon, the way each clock shows it, so the choices explain themselves.
+const clockSample = (c) => new Date(2000, 0, 1, 15, 30).toLocaleTimeString(curLocale(), c ? { hour: 'numeric', minute: '2-digit', hourCycle: c === '24' ? 'h23' : 'h12' } : { hour: 'numeric', minute: '2-digit' });
+const CLOCKS = [['', N_('Same as the language ({time})')], ['12', N_('12-hour ({time})')], ['24', N_('24-hour ({time})')]];
+function clockSelect(cur) {
+  const opts = CLOCKS.map(([c, label]) => `<option value="${c}"${(cur || '') === c ? ' selected' : ''}>${esc(tf(label, { time: clockSample(c) }))}</option>`).join('');
+  return `<select class="sel" data-act="clock" aria-label="${esc(t('Clock'))}">${opts}</select>`;
+}
 function pageSettings() {
   const st = S.settings, ui = st.ui || {}, sw = (k, on, label, act = 'toggle') => `<button type="button" class="switch" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}" data-k="${k}"></button>`;
   const libs = S.libs.length ? S.libs : [{ path: st.library_dir, default: true, games: Object.keys(S.library).length }];
@@ -3375,7 +3382,8 @@ function pageSettings() {
   switch (sec) {
     case 'general':
       if (!S.ids && !S.idsAsked) { S.idsAsked = true; invoke('data_ids').then((ids) => { S.ids = ids; if (S.view === 'settings') render(true); }).catch(() => {}); }
-      body = group(t('Language'), row(t('Language'), t('The launcher and its quick menu over your games.'), `<select class="sel" data-act="lang" aria-label="${esc(t('Language'))}">${[['auto', tf('Same as your computer ({lang})', { lang: (LANGS.find((x) => x[0] === systemLang()) || ['', 'English (US)'])[1] })]].concat(LANGS).map(([c, n]) => `<option value="${c}"${(ui.lang || 'auto') === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`))
+      body = group(t('Language'), row(t('Language'), t('The launcher and its quick menu over your games.'), `<select class="sel" data-act="lang" aria-label="${esc(t('Language'))}">${[['auto', tf('Same as your computer ({lang})', { lang: (LANGS.find((x) => x[0] === systemLang()) || ['', 'English (US)'])[1] })]].concat(LANGS).map(([c, n]) => `<option value="${c}"${(ui.lang || 'auto') === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`)
+          + row(t('Clock'), t('How times show in the launcher, Big Picture mode and the quick menu.'), clockSelect(ui.clock)))
         + group(t('Discover'), row(t('Refresh Discover'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
           + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
           + row(t('Show the AI-assisted tag'), t('The tag on game pages. What the developer used AI for is always in the game\'s Overview.'), sw('show_ai_tag', ui.show_ai_tag, t('Show the AI-assisted tag'), 'ui-toggle'))
@@ -4062,6 +4070,7 @@ function paintProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
+  setClock((S.settings.ui || {}).clock);
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
@@ -4219,6 +4228,7 @@ let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
 function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
+  setClock((S.settings.ui || {}).clock);
   settingsSaving = settingsSaving.then(() => invoke('save_settings', { settings: S.settings })).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
   return settingsSaving;
 }
@@ -5473,7 +5483,7 @@ async function loadAllShots() {
   if (S.view === 'shots') render(true);
 }
 const shotList = () => (S.allShots || []).filter((x) => !S.shotsGame || x.id === S.shotsGame);
-const when = (ts) => new Date(ts * 1000).toLocaleString(curLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const when = (ts) => new Date(ts * 1000).toLocaleString(curLocale(), timeOpts({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
 
 // Achievements: the page itself is in achievements.js (testers, and the alpha page for everyone else).
 function pageAchievements() { return window.achPage ? window.achPage() : ''; }
@@ -7193,6 +7203,7 @@ document.addEventListener('change', (e) => {
   if (!s) return;
   if (s.dataset.act === 'gsel') return setGameSetting(s.dataset.id, s.dataset.k, s.value);
   if (s.dataset.act === 'lang') return setLanguage(s.value);
+  if (s.dataset.act === 'clock') return saveUi({ clock: s.value });
   if (s.dataset.act === 'sort-sel') { S.find.sort = s.value; S.find.picked = true; return updateDiscover(); }
   if (s.dataset.act === 'origin') { S.find.origin = s.value; return updateDiscover(); }
   if (s.dataset.act === 'genre-sel') { S.find.genre = s.value; return updateDiscover(); }
