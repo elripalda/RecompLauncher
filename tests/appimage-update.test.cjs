@@ -147,6 +147,9 @@ test('AppImage helper leaves the original intact when replacement fails', { skip
   assert.equal(fs.readFileSync(f.target, 'utf8'), f.old);
   assert.match(fs.readFileSync(f.trail, 'utf8'), /installed launcher hasn't changed/);
   assert.equal(fs.existsSync(f.work), false);
+  // The helper reopens the unchanged launcher in the background; let it write its marker before
+  // the folder is removed, or the removal can race it and fail.
+  for (let i = 0; i < 30 && !fs.existsSync(f.marker); i++) await pause(10);
 });
 
 test('AppImage helper reopens the unchanged launcher when replacement fails', { skip: process.platform !== 'linux' }, async (t) => {
