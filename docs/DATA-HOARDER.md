@@ -15,7 +15,8 @@ first and then back through the old ones, and saves each release's description n
 - **Nothing is installed.** The hoard is a separate folder. Installed games keep working and keep
   updating only through the usual update flow, and the hoarder never touches a game's own folder.
 - **Old releases too** (with Releases to keep on All). For a GitHub project with more than 30 releases, the launcher also asks
-  GitHub for the older pages (up to 1,000 releases).
+  GitHub for the older pages (up to 1,000 releases). Those pages are remembered for six hours, so
+  adding games or checking for updates doesn't use up GitHub's hourly allowance.
 - **Drafts are skipped.** Pre-releases are kept.
 - Games added from a local folder (your own builds) have no releases and are skipped.
 
@@ -42,7 +43,7 @@ first and then back through the old ones, and saves each release's description n
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Data Hoarder Mode | off | Turns the whole thing on. Turning it off stops the sweep after the file it is saving. Files already saved stay. |
+| Data Hoarder Mode | off | Turns the whole thing on. Turning it off stops the sweep at once; the file it was saving keeps its `.part` file and carries on if you turn the mode on again. Files already saved stay. |
 | Hoard folder | `<library folder>/Releases` | Where releases are kept. Changing it starts a new sweep into the new folder; the old folder is not moved. |
 | Releases to keep | all | **All releases**, **Latest release only**, or **Latest releases, a number** (the newest N, 5 to start). Counted per game, newest first, drafts never counted (a pre-release counts as a release). Narrowing it never deletes anything already saved. |
 | Only builds for this PC | off | Off keeps every platform's files. On keeps only the builds that run on this PC, which takes much less room. |
