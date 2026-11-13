@@ -3049,5 +3049,11 @@
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Deze Linux-update heeft nog geen geldige checksum gepubliceerd. Probeer het later opnieuw.",
  "Turn On Proton": "Proton aanzetten",
  "View on {host}": "Bekijken op {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "Nog {n} versies hebben alleen een Windows-build. Zet Proton aan om ze te zien."
+ "{n} more versions only have a Windows build. Turn on Proton to see them.": "Nog {n} versies hebben alleen een Windows-build. Zet Proton aan om ze te zien.",
+ "Add a Recomp": "Recomp toevoegen",
+ "The recomplauncher.json in its project": "De recomplauncher.json in zijn project",
+ "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "We konden dat project niet lezen. Controleer de link, of zorg dat het een release met jouw builds heeft.",
+ "From {host}": "Van {host}",
+ "Know of a recomp the launcher doesn't have? Paste the link to its project page, and it goes to RecompLauncher for a look.": "Ken je een recomp die de launcher niet heeft? Plak de link naar de projectpagina, dan gaat hij naar RecompLauncher om te bekijken.",
+ "Paste the link to the recomp's project page. GitHub, GitLab, SourceForge and Forgejo or Gitea servers all work.": "Plak de link naar de projectpagina van de recomp. GitHub, GitLab, SourceForge en Forgejo- of Gitea-servers werken allemaal."
 }

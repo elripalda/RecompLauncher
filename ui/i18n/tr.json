@@ -3049,5 +3049,11 @@
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Bu Linux güncellemesi henüz geçerli bir sağlama toplamı yayımlamadı. Daha sonra tekrar deneyin.",
  "Turn On Proton": "Proton'u aç",
  "View on {host}": "{host} üzerinde görüntüle",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "{n} sürümün daha yalnızca Windows derlemesi var. Görmek için Proton'u açın."
+ "{n} more versions only have a Windows build. Turn on Proton to see them.": "{n} sürümün daha yalnızca Windows derlemesi var. Görmek için Proton'u açın.",
+ "Add a Recomp": "Recomp ekle",
+ "The recomplauncher.json in its project": "Projesindeki recomplauncher.json",
+ "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "Bu projeyi okuyamadık. Bağlantıyı kontrol edin veya projenin sizin derlemelerinizi içeren bir sürümü olduğundan emin olun.",
+ "From {host}": "{host} üzerinden",
+ "Know of a recomp the launcher doesn't have? Paste the link to its project page, and it goes to RecompLauncher for a look.": "Başlatıcıda olmayan bir recomp mu biliyorsunuz? Proje sayfasının bağlantısını yapıştırın, incelenmek üzere RecompLauncher'a gitsin.",
+ "Paste the link to the recomp's project page. GitHub, GitLab, SourceForge and Forgejo or Gitea servers all work.": "Recomp'un proje sayfasının bağlantısını yapıştırın. GitHub, GitLab, SourceForge ve Forgejo ya da Gitea sunucularının hepsi çalışır."
 }

@@ -92,6 +92,19 @@ pub struct Prepare {
     pub timeout: u64,
 }
 
+impl Prepare {
+    /// Its program in the game's folder: a name it gives, or on Linux and Mac the native build by
+    /// the same name (a release's Game-nightly-4-x86_64.AppImage for "Game.AppImage"), as Play
+    /// finds the game's own program.
+    pub fn program_in(&self, install: &Path) -> Option<PathBuf> {
+        let named = self.program.iter().map(|p| install.join(p)).find(|p| p.is_file());
+        if named.is_some() || cfg!(windows) {
+            return named;
+        }
+        self.program.iter().find_map(|p| native_twin(install, p))
+    }
+}
+
 fn five_min() -> u64 {
     300
 }
@@ -2795,6 +2808,24 @@ mod tests {
         p.place(&install, Some(&copy)).unwrap();
         assert!(install.join("targets/exefs/main").is_file() && install.join("targets/romfs/data.arc").is_file());
         assert!(p.missing_after_place(&install).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_setup_step_named_for_a_plain_appimage_finds_the_releases_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("rl-prepare-twin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let image = d.join("Hopper-nightly-4-abc123-x86_64.AppImage");
+        std::fs::write(&image, b"\x7fELF").unwrap();
+        std::fs::set_permissions(&image, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let pr: Prepare = serde_json::from_value(serde_json::json!({"program": ["Hopper.AppImage", "HopperBuilder.exe"], "args": ["--prepare"]})).unwrap();
+        assert_eq!(pr.program_in(&d), Some(image.clone()));
+        // A program by its exact name is still the one taken.
+        std::fs::write(d.join("Hopper.AppImage"), b"x").unwrap();
+        assert_eq!(pr.program_in(&d), Some(d.join("Hopper.AppImage")));
         let _ = std::fs::remove_dir_all(&d);
     }
 

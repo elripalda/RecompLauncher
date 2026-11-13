@@ -3049,5 +3049,11 @@
  "This Linux update hasn't published a valid checksum yet. Try again later.": "此 Linux 更新尚未发布有效的校验和。请稍后再试。",
  "Turn On Proton": "开启 Proton",
  "View on {host}": "在 {host} 上查看",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "还有 {n} 个版本只有 Windows 构建。开启 Proton 即可看到它们。"
+ "{n} more versions only have a Windows build. Turn on Proton to see them.": "还有 {n} 个版本只有 Windows 构建。开启 Proton 即可看到它们。",
+ "Add a Recomp": "添加重编译游戏",
+ "The recomplauncher.json in its project": "其项目中的 recomplauncher.json",
+ "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "无法读取该项目。请检查链接，或确认它有包含你所需版本的发行版。",
+ "From {host}": "来自 {host}",
+ "Know of a recomp the launcher doesn't have? Paste the link to its project page, and it goes to RecompLauncher for a look.": "知道启动器里没有的重编译游戏？粘贴它的项目页面链接，就会发给 RecompLauncher 查看。",
+ "Paste the link to the recomp's project page. GitHub, GitLab, SourceForge and Forgejo or Gitea servers all work.": "粘贴重编译游戏项目页面的链接。GitHub、GitLab、SourceForge 以及 Forgejo 或 Gitea 服务器都可以。"
 }

@@ -317,11 +317,6 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .smallsearch svg{position:absolute;left:15px;top:13px;color:var(--dim)}
 .count-line{color:var(--dim);font-size:13px;font-weight:600;text-align:center;margin-top:-10px}
 .soon-title{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-.rq-forge{display:grid;grid-template-columns:1fr 1fr;margin:4px 0 10px}
-.rq-forge button{width:100%}
-.rq-path{display:flex;align-items:center;gap:0;padding-top:0;padding-bottom:0;cursor:text}
-.rq-path .rq-host{color:var(--muted);flex:none;user-select:none}
-.rq-path input{flex:1;min-width:0;border:0;background:none;color:inherit;font:inherit;outline:none;padding:12px 0}
 .soon-title .soon-n{margin:0;text-align:left}
 .ended-box{margin-top:44px;padding-top:18px;border-top:1px solid var(--line)}
 .ended-head{display:flex;align-items:center;gap:10px;width:100%;padding:12px 16px;border-radius:var(--r);border:1px solid var(--line);background:var(--fill);color:var(--muted);font:inherit;font-weight:700;text-align:left;cursor:pointer;transition:background .2s var(--ease),color .2s var(--ease)}

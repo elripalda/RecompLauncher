@@ -3049,5 +3049,11 @@
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Esta actualización para Linux todavía no publica una suma de verificación válida. Inténtalo de nuevo más tarde.",
  "Turn On Proton": "Activar Proton",
  "View on {host}": "Ver en {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "{n} versiones más solo están disponibles para Windows. Activa Proton para verlas."
+ "{n} more versions only have a Windows build. Turn on Proton to see them.": "{n} versiones más solo están disponibles para Windows. Activa Proton para verlas.",
+ "Add a Recomp": "Agregar un recomp",
+ "The recomplauncher.json in its project": "El recomplauncher.json de su proyecto",
+ "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "No pudimos leer ese proyecto. Revisa el enlace o asegúrate de que tenga una versión con tus compilaciones.",
+ "From {host}": "De {host}",
+ "Know of a recomp the launcher doesn't have? Paste the link to its project page, and it goes to RecompLauncher for a look.": "¿Conoces un recomp que el launcher no tiene? Pega el enlace a la página de su proyecto y llegará a RecompLauncher para que lo revisen.",
+ "Paste the link to the recomp's project page. GitHub, GitLab, SourceForge and Forgejo or Gitea servers all work.": "Pega el enlace a la página del proyecto del recomp. Funcionan GitHub, GitLab, SourceForge y servidores Forgejo o Gitea."
 }

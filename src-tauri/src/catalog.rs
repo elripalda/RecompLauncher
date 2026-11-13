@@ -263,7 +263,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     crate::boot::from_catalog(&mut cat);
     let list = mine(dir);
     if list.is_empty() {
-        return with_known_project_status(dir, cat);
+        return with_repo_profiles(dir, with_known_project_status(dir, cat));
     }
     if !cat.is_object() {
         cat = serde_json::json!({ "apps": [] });
@@ -278,7 +278,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
             apps.push(e);
         }
     }
-    with_known_project_status(dir, cat)
+    with_repo_profiles(dir, with_known_project_status(dir, cat))
 }
 
 /// owner/repo from a GitHub link (or "owner/repo" itself), or gitlab:group/project from a GitLab
@@ -315,6 +315,100 @@ pub fn repo_from_link(s: &str) -> Option<String> {
     let r = r.strip_suffix(".git").unwrap_or(r);
     let repo = format!("{o}/{r}");
     repo_ok(&repo).then_some(repo)
+}
+
+/// A link to a project on some other server, as host, owner and name: https://<host>/<owner>/<name>
+/// and anything after it (/releases, /src/branch/main). Whether that server is a Forgejo or Gitea
+/// one only the server can say (forgejo_server).
+pub fn forgejo_from_link(s: &str) -> Option<(String, String, String)> {
+    let s = s.trim().trim_end_matches('/');
+    let s = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://"))?;
+    let mut parts = s.split(['/', '?', '#']);
+    let host = parts.next()?.to_ascii_lowercase();
+    let owner = parts.next()?.to_string();
+    let name = parts.next()?;
+    let name = name.strip_suffix(".git").unwrap_or(name).to_string();
+    let known = ["github.com", "www.github.com", "gitlab.com", "www.gitlab.com", "sourceforge.net", "www.sourceforge.net"];
+    if known.contains(&host.as_str()) || !server_ok(&host) || !part_ok(&owner) || !part_ok(&name) {
+        return None;
+    }
+    Some((host, owner, name))
+}
+
+/// Servers that answered as Forgejo or Gitea since the launcher opened: a second link to one is
+/// taken at once.
+static FORGEJO_SERVERS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Whether `host` is a Forgejo or Gitea server: both answer /api/v1/version with {"version": ...}.
+/// Only a public host name is asked, briefly, with nothing of the player's.
+pub async fn forgejo_server(http: &reqwest::Client, host: &str) -> bool {
+    if !server_ok(host) {
+        return false;
+    }
+    if FORGEJO_SERVERS.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|h| h == host) {
+        return true;
+    }
+    if !forgejo_version(http, &format!("https://{host}/api/v1/version")).await {
+        return false;
+    }
+    FORGEJO_SERVERS.lock().unwrap_or_else(|e| e.into_inner()).push(host.to_string());
+    true
+}
+
+async fn forgejo_version(http: &reqwest::Client, url: &str) -> bool {
+    let Ok(r) = http.get(url).timeout(Duration::from_secs(6)).send().await else { return false };
+    if !r.status().is_success() {
+        return false;
+    }
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    v.get("version").and_then(Value::as_str).is_some_and(|x| !x.trim().is_empty())
+}
+
+/// A project's page: GitHub's, GitLab's, SourceForge's, or its Forgejo server's.
+pub fn repo_home(repo: &str) -> String {
+    if let Some((server, owner, name)) = forgejo_parts(repo) {
+        return format!("https://{server}/{owner}/{name}");
+    }
+    if let Some(p) = gitlab_path(repo) {
+        return format!("https://gitlab.com/{p}");
+    }
+    if let Some(n) = sourceforge_name(repo) {
+        return format!("https://sourceforge.net/projects/{n}");
+    }
+    format!("https://github.com/{repo}")
+}
+
+/// A Forgejo project's README, straight from its server (the default branch's README.md): Some("")
+/// when it has none, None when the server couldn't be asked. No token is sent.
+pub async fn forgejo_readme(http: &reqwest::Client, repo: &str) -> Option<String> {
+    let (server, owner, name) = forgejo_parts(repo).filter(|_| repo_ok(repo))?;
+    let url = format!("https://{server}/api/v1/repos/{owner}/{name}/raw/README.md");
+    let r = http.get(&url).timeout(Duration::from_secs(20)).send().await.ok()?;
+    if r.status() == reqwest::StatusCode::NOT_FOUND {
+        return Some(String::new());
+    }
+    if !r.status().is_success() {
+        return None;
+    }
+    r.text().await.ok()
+}
+
+/// What a Forgejo project says about itself (its description, stars and topics) and its README,
+/// for recognizing the game when the player adds it. Either can be missing.
+pub async fn forgejo_info(http: &reqwest::Client, repo: &str) -> (Value, String) {
+    let Some((server, owner, name)) = forgejo_parts(repo).filter(|_| repo_ok(repo)) else { return (Value::Null, String::new()) };
+    let api = format!("https://{server}/api/v1/repos/{owner}/{name}");
+    let wait = std::time::Duration::from_secs(10);
+    let (info, readme) = tokio::join!(http.get(&api).timeout(wait).send(), http.get(format!("{api}/raw/README.md")).timeout(wait).send());
+    let info: Value = match info {
+        Ok(r) if r.status().is_success() => r.json().await.unwrap_or(Value::Null),
+        _ => Value::Null,
+    };
+    let readme = match readme {
+        Ok(r) if r.status().is_success() => r.text().await.unwrap_or_default(),
+        _ => String::new(),
+    };
+    (info, readme)
 }
 
 /// A repo's name as a game's: "burnout3-pc" -> "Burnout3 PC".
@@ -503,7 +597,7 @@ fn part_ok(s: &str) -> bool {
     !s.is_empty() && s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) && s != "." && s != ".."
 }
 
-pub(crate) fn repo_ok(repo: &str) -> bool {
+pub fn repo_ok(repo: &str) -> bool {
     if let Some(n) = sourceforge_name(repo) {
         return sf_name_ok(n);
     }
@@ -920,6 +1014,94 @@ pub async fn releases_within(http: &reqwest::Client, dir: &Path, repo: &str, sec
     Ok(with_gitlab(Some(http), dir, repo, f).await)
 }
 
+// ---------- a Forgejo project's own recomplauncher.json ----------
+
+/// A Forgejo project's recomplauncher.json, read from its repo (the catalog can't carry it for
+/// these): the same file a developer would put in their release, used the same way until one is.
+fn repo_profile_url(origin: &str, owner: &str, name: &str) -> String {
+    format!("{origin}/api/v1/repos/{owner}/{name}/raw/recomplauncher.json")
+}
+
+fn repo_profile_file(dir: &Path, repo: &str) -> PathBuf {
+    dir.join("cache/repo-profiles").join(format!("{}.json", repo.replace(':', "_").replace('/', "__")))
+}
+
+/// A file worth keeping: a format 1 profile. A project without one is kept as `{"none": true}`,
+/// so it isn't asked for again until the copy is old.
+fn profile_ok(v: &Value) -> bool {
+    v.get("format").and_then(Value::as_u64) == Some(1)
+}
+
+/// The repo's file as kept on disk, if it is one.
+pub fn repo_profile_on_disk(dir: &Path, repo: &str) -> Option<Value> {
+    load(&repo_profile_file(dir, repo)).filter(profile_ok)
+}
+
+/// Asked again only when the copy on disk is older than the release info's six hours, or missing
+/// (`force`: asked now, as for an install). True when what's kept changed.
+pub async fn repo_profile(http: &reqwest::Client, dir: &Path, repo: &str, force: bool) -> bool {
+    let Some((server, owner, name)) = forgejo_parts(repo).filter(|_| repo_ok(repo)) else { return false };
+    let file = repo_profile_file(dir, repo);
+    if !force && age_of(&file).is_some_and(|a| a < RELEASES_FRESH) {
+        return false;
+    }
+    let url = repo_profile_url(&format!("https://{server}"), owner, name);
+    let Some(got) = fetch_profile(http, &url).await else { return false };
+    if load(&file).as_ref() == Some(&got) {
+        touch(&file);
+        return false;
+    }
+    save(&file, &got);
+    true
+}
+
+/// The file at `url`: the profile, `{"none": true}` when the project has none (404), or None when
+/// the server couldn't be asked (the copy on disk stays). No token is sent.
+async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
+    let r = crate::net::send(http.get(url).timeout(crate::net::QUICK), url, false).await.ok()?;
+    if r.status() == reqwest::StatusCode::NOT_FOUND {
+        return Some(serde_json::json!({ "none": true }));
+    }
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
+}
+
+/// Forgejo entries without the catalog's own "launcher" get the one from their repo, kept on disk,
+/// marked as the project's ("launcher_from": "repo").
+fn with_repo_profiles(dir: &Path, mut cat: Value) -> Value {
+    for a in cat.get_mut("apps").and_then(Value::as_array_mut).into_iter().flatten() {
+        if a.get("launcher").is_some() {
+            continue;
+        }
+        let Some(repo) = a.get("repo").and_then(Value::as_str).filter(|r| is_forgejo(r)).map(str::to_string) else { continue };
+        if let Some(p) = repo_profile_on_disk(dir, &repo) {
+            a["launcher"] = p;
+            a["launcher_from"] = Value::String("repo".into());
+        }
+    }
+    cat
+}
+
+/// The Forgejo projects in the list whose file isn't on disk yet or is old (`force`: all of them).
+pub fn repo_profiles_due(dir: &Path, cat: &Value, force: bool) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
+        let from_repo = a.get("launcher_from").and_then(Value::as_str) == Some("repo");
+        if a.get("launcher").is_some() && !from_repo {
+            continue;
+        }
+        let Some(repo) = a.get("repo").and_then(Value::as_str).filter(|r| is_forgejo(r) && repo_ok(r)) else { continue };
+        let fresh = age_of(&repo_profile_file(dir, repo)).is_some_and(|x| x < RELEASES_FRESH);
+        if (force || !fresh) && !out.iter().any(|r| r == repo) {
+            out.push(repo.to_string());
+        }
+    }
+    out
+}
+
 /// A recomp's releases as kept on disk (any age), without asking anyone.
 pub fn releases_on_disk(dir: &Path, repo: &str) -> Option<Fetched> {
     if !repo_ok(repo) {
@@ -1211,6 +1393,117 @@ mod tests {
         take_newer(&mut lowered, "0.90.0-beta.43");
         mark_hosts(&mut lowered);
         assert_eq!(lowered["apps"][0]["repo"], "forgejo:git.example.dev/Studio/Hopper");
+    }
+
+    /// A one-answer server on this PC: the request it got, and the answer it gave.
+    fn answer_once(status: &str, body: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", l.local_addr().unwrap());
+        let status = status.to_string();
+        let seen = std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = c.read(&mut buf).unwrap_or(0);
+            let resp = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let _ = c.write_all(resp.as_bytes());
+            String::from_utf8_lossy(&buf[..n]).to_lowercase()
+        });
+        (origin, seen)
+    }
+
+    #[test]
+    fn a_link_to_another_server_is_read_as_host_owner_and_name() {
+        let got = |s: &str| forgejo_from_link(s).map(|(h, o, n)| format!("{h} {o} {n}"));
+        assert_eq!(got("https://Git.Example.dev/Studio/Hopper").as_deref(), Some("git.example.dev Studio Hopper"));
+        assert_eq!(got("https://git.example.dev/Studio/Hopper/releases").as_deref(), Some("git.example.dev Studio Hopper"));
+        assert_eq!(got("https://git.example.dev/Studio/Hopper.git/").as_deref(), Some("git.example.dev Studio Hopper"));
+        assert_eq!(got("http://git.example.dev/Studio/Hopper?tab=readme").as_deref(), Some("git.example.dev Studio Hopper"));
+        // Not one: no project in it, GitHub's or GitLab's, a machine on the local network, no scheme.
+        assert_eq!(got("https://www.example.com"), None);
+        assert_eq!(got("https://example.com/news"), None);
+        assert_eq!(got("https://github.com/Studio/Hopper"), None);
+        assert_eq!(got("https://gitlab.com/Studio/Hopper"), None);
+        assert_eq!(got("https://192.168.1.20/Studio/Hopper"), None);
+        assert_eq!(got("https://localhost/Studio/Hopper"), None);
+        assert_eq!(got("git.example.dev/Studio/Hopper"), None);
+    }
+
+    #[test]
+    fn every_kind_of_project_has_its_own_page() {
+        assert_eq!(repo_home("forgejo:git.example.dev/Studio/Hopper"), "https://git.example.dev/Studio/Hopper");
+        assert_eq!(repo_home("gitlab:group/sub/game"), "https://gitlab.com/group/sub/game");
+        assert_eq!(repo_home("sourceforge:gamebox"), "https://sourceforge.net/projects/gamebox");
+        assert_eq!(repo_home("owner/game"), "https://github.com/owner/game");
+    }
+
+    #[test]
+    fn a_server_that_answered_is_known_for_the_rest_of_the_session() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        FORGEJO_SERVERS.lock().unwrap().push("code.known-test.dev".into());
+        // Answered from memory: nothing is asked (there's no such server).
+        assert!(rt.block_on(forgejo_server(&reqwest::Client::new(), "code.known-test.dev")));
+        // Never a machine on the player's network, known or not.
+        FORGEJO_SERVERS.lock().unwrap().push("10.0.0.5".into());
+        assert!(!rt.block_on(forgejo_server(&reqwest::Client::new(), "10.0.0.5")));
+    }
+
+    #[test]
+    fn a_forgejo_server_says_its_version() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let http = reqwest::Client::new();
+        let (origin, seen) = answer_once("200 OK", r#"{"version":"11.0.1+gitea-1.22.0"}"#);
+        assert!(rt.block_on(forgejo_version(&http, &format!("{origin}/api/v1/version"))));
+        let req = seen.join().unwrap();
+        assert!(!req.contains("authorization") && !req.contains("cookie"), "{req}");
+        let (origin, seen) = answer_once("200 OK", r#"<html>A shop</html>"#);
+        assert!(!rt.block_on(forgejo_version(&http, &format!("{origin}/api/v1/version"))));
+        seen.join().unwrap();
+        let (origin, seen) = answer_once("404 Not Found", r#"{"message":"not found"}"#);
+        assert!(!rt.block_on(forgejo_version(&http, &format!("{origin}/api/v1/version"))));
+        seen.join().unwrap();
+    }
+
+    #[test]
+    fn a_forgejo_projects_setup_file_is_read_from_its_repo() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let http = reqwest::Client::new();
+        let (origin, seen) = answer_once("200 OK", r#"{"format":1,"game":{"kind":"iso_or_folder","label":"Your copy"},"start":{"program":["Hopper.AppImage"]}}"#);
+        let url = repo_profile_url(&origin, "Studio", "Hopper");
+        let got = rt.block_on(fetch_profile(&http, &url)).unwrap();
+        let req = seen.join().unwrap();
+        assert!(req.starts_with("get /api/v1/repos/studio/hopper/raw/recomplauncher.json http/1.1"), "{req}");
+        assert!(!req.contains("authorization") && !req.contains("cookie"), "{req}");
+        assert_eq!(got["format"], 1);
+        // None in the project: kept as such, so it isn't asked again until the copy is old.
+        let (origin, seen) = answer_once("404 Not Found", r#"{"message":"not found"}"#);
+        let none = rt.block_on(fetch_profile(&http, &repo_profile_url(&origin, "Studio", "Hopper"))).unwrap();
+        seen.join().unwrap();
+        assert_eq!(none, serde_json::json!({"none": true}));
+        assert!(!profile_ok(&none));
+    }
+
+    #[test]
+    fn a_forgejo_entry_gets_its_projects_setup_file_from_disk() {
+        let dir = std::env::temp_dir().join(format!("rl-repo-profile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = "forgejo:git.example.dev/Studio/Hopper";
+        save(&repo_profile_file(&dir, repo), &serde_json::json!({"format": 1, "game": {"kind": "iso_or_folder"}}));
+        let cat = serde_json::json!({"apps": [
+            {"id": "hopper", "host": "forgejo", "repo": "git.example.dev/Studio/Hopper"},
+            {"id": "own", "host": "forgejo", "repo": "git.example.dev/Studio/Hopper", "launcher": {"format": 1}},
+            {"id": "gh", "repo": "owner/game"},
+        ]});
+        let cat = with_mine(&dir, cat);
+        assert_eq!(cat["apps"][0]["launcher"]["game"]["kind"], "iso_or_folder");
+        assert_eq!(cat["apps"][0]["launcher_from"], "repo");
+        // The catalog's own file stays the catalog's; a GitHub entry gets nothing.
+        assert!(cat["apps"][1].get("launcher_from").is_none());
+        assert!(cat["apps"][2].get("launcher").is_none());
+        // Just read: not due again (unless the player refreshes).
+        assert!(repo_profiles_due(&dir, &cat, false).is_empty());
+        assert_eq!(repo_profiles_due(&dir, &cat, true), vec![repo.to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
