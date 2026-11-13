@@ -1470,8 +1470,11 @@ fn unlock_files_near(w: &RexWatch) -> Vec<PathBuf> {
             }
         }
     }
+    // One file reached two ways (the game's folder inside AppData, or a short 8.3 name on Windows
+    // beside the long one) is one file: the first path found for it is kept.
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|p| seen.insert(std::fs::canonicalize(p).unwrap_or_else(|_| p.clone())));
     out.sort();
-    out.dedup();
     out
 }
 
