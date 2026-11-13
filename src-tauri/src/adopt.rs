@@ -165,15 +165,21 @@ pub fn quiver_roots() -> Vec<PathBuf> {
     out
 }
 
+// Quiver 3 writes UTF-8 settings with a byte-order mark. Treat that preamble as encoding,
+// otherwise its custom AppsPath is silently lost and installed games appear to be missing.
+fn quiver_json(file: &Path) -> Option<Value> {
+    let bytes = std::fs::read(file).ok()?;
+    serde_json::from_slice(bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes)).ok()
+}
+
 pub fn is_quiver(dir: &Path) -> bool {
-    let Ok(b) = std::fs::read(dir.join("apps.json")) else { return false };
-    serde_json::from_slice::<Value>(&b).ok().and_then(|v| v.get("apps").map(Value::is_array)).unwrap_or(false)
+    quiver_json(&dir.join("apps.json")).and_then(|v| v.get("apps").map(Value::is_array)).unwrap_or(false)
         && (dir.join("settings.json").is_file() || dir.join("Apps").is_dir())
 }
 
 /// The apps in one Quiver library that are installed: (name, repo, folder, tag, program).
 pub fn quiver_apps(root: &Path) -> Vec<(String, String, PathBuf, String, Option<PathBuf>)> {
-    let read = |f: &str| std::fs::read(root.join(f)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null);
+    let read = |f: &str| quiver_json(&root.join(f)).unwrap_or(Value::Null);
     let apps = read("apps.json");
     let settings = read("settings.json");
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
@@ -761,6 +767,36 @@ mod tests {
         assert_eq!(guess(&c, "", &["Photoshop", "Adobe"]), None);
         assert_eq!(guess(&c, "", &["MK64"]).as_deref(), Some("mk64recomp"));
         assert_eq!(guess(&c, "", &["Recomp"]), None);
+    }
+
+    #[test]
+    fn reads_quiver_settings_with_utf8_bom() {
+        let d = std::env::temp_dir().join(format!("rl-quiver-bom-settings-{}", std::process::id()));
+        let app = d.join("Custom Games").join("Zelda64Recomp");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("Zelda64Recompiled.exe"), b"MZ").unwrap();
+        std::fs::write(d.join("apps.json"), r#"{"apps":[{"name":"Zelda 64","repository":"Zelda64Recomp/Zelda64Recomp","folderName":"Zelda64Recomp"}]}"#).unwrap();
+        // Quiver 3's FileSettingsStore writes Encoding.UTF8, which includes this preamble.
+        let settings = serde_json::json!({ "AppsPath": d.join("Custom Games") });
+        std::fs::write(d.join("settings.json"), format!("\u{feff}{settings}")).unwrap();
+        assert!(is_quiver(&d));
+        let apps = quiver_apps(&d);
+        assert_eq!(apps.len(), 1, "a valid custom AppsPath must not silently fall back to Apps");
+        assert_eq!(apps[0].2, app);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn reads_quiver_library_with_utf8_bom() {
+        let d = std::env::temp_dir().join(format!("rl-quiver-bom-library-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("Apps/TestRecomp")).unwrap();
+        std::fs::write(d.join("apps.json"), concat!("\u{feff}", r#"{"apps":[{"name":"Test Recomp","repository":"owner/recomp","folderName":"TestRecomp"}]}"#)).unwrap();
+        assert!(is_quiver(&d), "the preamble does not invalidate a Quiver library");
+        assert_eq!(quiver_apps(&d).len(), 1);
+        std::fs::write(d.join("apps.json"), b"\xef\xbb\xbfnot JSON").unwrap();
+        assert!(!is_quiver(&d));
+        assert!(quiver_apps(&d).is_empty());
+        std::fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
