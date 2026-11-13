@@ -6,9 +6,9 @@ const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 
 // protonHidden out of app.js, run against a game with a Linux version and two Windows-only ones.
 function load(over = {}) {
-  const start = app.indexOf('function protonHidden(');
+  const start = app.indexOf('const hiddenByProton');
   // app.js has Windows line endings, so the closing brace is found without the line break after it.
-  const end = app.indexOf('\n}', start) + 2;
+  const end = app.indexOf('\n}', app.indexOf('function protonHidden(')) + 2;
   assert.ok(start >= 0 && end > start);
   const linux = { id: 'oot-linux', title: 'oot', systems: ['linux', 'windows'] };
   const hook = { id: 'oot-hook', title: 'oot', systems: ['windows'] };
@@ -20,8 +20,9 @@ function load(over = {}) {
   const index = () => ({ titles: new Map([['oot', { every }]]) });
   const isHidden = () => false;
   const isAI = (a) => !!a.ai;
-  const f = new Function('S', 'forOS', 'hasWindowsBuild', 'index', 'isHidden', 'isAI', `${app.slice(start, end)} return protonHidden;`);
-  return { run: f(S, forOS, hasWindowsBuild, index, isHidden, isAI), linux, hook, sacred, S };
+  const f = new Function('S', 'forOS', 'hasWindowsBuild', 'index', 'isHidden', 'isAI', `${app.slice(start, end)} return { protonHidden, hiddenByProton };`);
+  const fns = f(S, forOS, hasWindowsBuild, index, isHidden, isAI);
+  return { run: fns.protonHidden, left: fns.hiddenByProton, linux, hook, sacred, S };
 }
 
 test('with Proton off, Windows-only versions are reported as hidden', () => {
@@ -47,4 +48,15 @@ test('an installed Windows version is not counted as hidden', () => {
 test('on Windows nothing is hidden because of Proton', () => {
   const x = load({ os: 'windows' });
   assert.equal(x.run(x.linux).length, 0);
+});
+
+test('Discover leaves out a Windows-only recomp when Proton is off, but not one with a Linux version', () => {
+  const x = load();
+  assert.equal(x.left(x.hook), true);
+  assert.equal(x.left(x.linux), false);
+});
+
+test('Discover leaves out nothing when Proton is on', () => {
+  const x = load({ settings: { proton: true } });
+  assert.equal(x.left(x.hook), false);
 });
