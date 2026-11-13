@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.42" date="2026-11-13">
+      <description>
+        <p>Bring Your Games for moving over from another launcher, self-updates on a Mac, and Big Picture fixes.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.41" date="2026-11-12">
       <description>
         <p>A Coming Soon page with recomp requests, Keep Steam in Sync, Sync Now for cloud saves, shared game media across versions, and a smoother Downloads graph.</p>
