@@ -1,8 +1,8 @@
 {
   "name": "recomplauncher",
-  "version": "0.90.0-beta.39",
+  "version": "0.90.0-beta.41",
   "private": true,
-  "description": "One home for PC recomps: find, install, update and play them from each developer's own GitHub.",
+  "description": "Recompiled and decompiled PC games: find, install, update and play them from each developer's own GitHub.",
   "license": "GPL-3.0-or-later",
   "scripts": {
     "tauri": "tauri",

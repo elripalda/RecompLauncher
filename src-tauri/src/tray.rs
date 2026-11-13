@@ -63,7 +63,8 @@ pub fn refresh(app: &AppHandle) {
 }
 
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
-    let Some(icon) = app.default_window_icon().cloned() else { return Ok(()) };
+    // The bare mark, not the app icon: the dark tile shrinks the logo to a smudge at 16 px.
+    let icon = tauri::include_image!("icons/tray.png");
     let mut b = TrayIconBuilder::with_id("main");
     // On Linux the icon is a picture on disk the panel reads. A Flatpak's own runtime folder is
     // hidden from the panel, so the picture goes in its cache folder (~/.var/app/<id>/cache),
@@ -108,8 +109,8 @@ fn picked(app: &AppHandle, id: &str) {
                     return;
                 }
                 crate::ready_look(&app, &rid).await;
-                crate::cloud::sync_quiet(&app, &rid).await;
-                if let Err(e) = crate::start_game(&app, &id) {
+                let sync = crate::cloud::sync_quiet(&app, &id).await;
+                if let Err(e) = sync.and_then(|()| crate::start_game(&app, &id)) {
                     show_main(&app);
                     let _ = app.emit("toast", e.to_string());
                 }

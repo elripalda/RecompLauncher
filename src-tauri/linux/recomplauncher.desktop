@@ -1,6 +1,6 @@
 [Desktop Entry]
 Categories=Game;
-Comment=One home for PC recomps
+Comment=Recompiled and decompiled PC games
 Exec=recomplauncher %u
 StartupWMClass=recomplauncher
 Icon=recomplauncher

@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['soon', N_('Coming Soon')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -142,10 +142,17 @@
   addEventListener('resize', () => { fit(); if (TV.on && !TV.booting && !$('.tv-boot', root)) draw(true); });
 
   // Names never wrap or get cut off: smaller first, then the short name, then a glide when focused.
-  function fitName(el, floor) {
-    if (el.dataset.full) el.textContent = el.dataset.full; else el.dataset.full = el.textContent;
-    el.style.fontSize = '';
-    el.classList.remove('long');
+  // Back to its full name at its own size. Writes only, and only what changed: a page fits all its
+  // names with every write first and one measuring after (a write then a read lays the whole page
+  // out again, and Home has a hundred names on it).
+  function fitReset(el) {
+    if (!el.dataset.full) el.dataset.full = el.textContent;
+    else if (el.firstElementChild || el.textContent !== el.dataset.full) el.textContent = el.dataset.full;
+    if (el.style.fontSize) el.style.fontSize = '';
+    if (el.classList.contains('long')) el.classList.remove('long');
+  }
+  function fitName(el, floor, isReset) {
+    if (!isReset) fitReset(el);
     const w = el.clientWidth;
     if (!w) return;
     const base = parseFloat(getComputedStyle(el).fontSize);
@@ -162,10 +169,14 @@
       el.style.setProperty('--glide', Math.max(1.2, over / 60).toFixed(2) + 's');
     }
   }
-  function fitAll() {
-    for (const el of $$('.tv-h1', root)) fitName(el, 48);
-    for (const el of $$('.tv-card .cap b', root)) fitName(el, 16);
-    for (const el of $$('.tv-name', root)) fitName(el, 15);
+  const FIT = [['.tv-h1', 48], ['.tv-card .cap b', 16], ['.tv-name', 15]];
+  function fitAll(scope = root) {
+    const els = [];
+    for (const [sel, floor] of FIT) for (const el of $$(sel, scope)) els.push([el, floor]);
+    for (const [el] of els) fitReset(el);
+    // One layout for all of them; only the names that don't fit are worked on one at a time.
+    const over = els.filter(([el]) => el.clientWidth && el.scrollWidth > el.clientWidth + 0.5);
+    for (const [el, floor] of over) fitName(el, floor, true);
   }
 
   // Grids: as many columns as fit, never ending on a lone tile.
@@ -445,6 +456,9 @@
   // ---------- pages ----------
   // Home's dock: your pinned games (Settings), else the ones you played last, all in one row.
   const DOCK_MAX = 12;
+  // Each row under the dock shows this many at most. Home draws every row at once, and a row of
+  // every Easy Setup game made it hundreds of covers: each move then restyled all of them.
+  const HOME_ROW = 14;
   function dockList() {
     if (homePinned()) { const p = pins().map(libAppOf); if (p.length) return { list: p, kind: 'pinned' }; }
     const mine = installed().map((x) => x.a);
@@ -469,11 +483,11 @@
     // Below the dock, a press of down away: the rest of Home.
     if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
     const owned = oneEach(Object.keys(S.owned).filter((id) => !S.library[id]).map(byId).filter((a) => a && !a.soon && forOS(a) && !(S.settings.hide_ai && isAI(a)) && !isHidden(a.id) && !haveAny(a)).sort(byDlConsolesFirst));
-    if (owned.length) rows.push(row('own', t('Found in your folders'), owned.map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
+    if (owned.length) rows.push(row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
     const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
     if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
-    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
+    if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
     const upd = recentlyUpdated(pool()).slice(0, 14);
@@ -665,7 +679,6 @@
     const g = S.library[el.dataset.hero];
     const cap = $('#tv-flowcap', root);
     if (cap) { cap.innerHTML = `<b>${esc(a.game || a.name)}</b><span>${esc(g ? timeLine(g) : '')}</span>`; cap.classList.remove('swap'); void cap.offsetWidth; cap.classList.add('swap'); }
-    setTone(el.dataset.hero);
   }
 
   // Pictures fetched ahead of time (kept while they're likely to be needed).
@@ -930,7 +943,7 @@
     show();
   }
   // Typing a few words with the controller (a report's note): Send once there are `min` letters.
-  window.tvType = ({ title, hint, min = 0, max = 1000, more = '' }) => new Promise((res) => {
+  window.tvType = ({ title, hint, min = 0, max = 1000, more = '', keys = '' }) => new Promise((res) => {
     let text = '', settled = false;
     const done = (v) => { if (settled) return; settled = true; res(v); };
     const show = () => {
@@ -944,7 +957,9 @@
       if (text.trim().length < min) { sfx('back'); toast(tf('A few more words, please: at least {n} letters.', { n: min })); return; }
       TV.sheet.keep = false; done(text.trim()); closeSheet();
     };
-    const items = KEYS.map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
+    // A link needs a few more keys than words do (`keys`, like "./:-_").
+    const extra = keys.split('').filter((k) => !KEYS.includes(k.toUpperCase()));
+    const items = KEYS.concat(extra).map((k) => ({ label: k, cls: 'key', run: () => type(k.toLowerCase()) }))
       .concat([{ label: t('Space'), cls: 'key wide', run: () => type(' ') }, { label: t('Delete'), cls: 'key wide', icon: 'erase', run: del }, { label: t('Clear'), cls: 'key wide', run: () => { text = ''; show(); } }, { label: t('Send'), cls: 'key wide done', icon: 'check', run: send }]);
     const head = `<h3>${esc(title)}</h3><div class="tv-kb-field"><span id="tv-kbq"></span><span id="tv-kbph" class="ph">${esc(hint || '')}</span><i class="caret"></i></div><div class="tv-kb-hints"><span>${glyph('y')}${esc(t('Space'))}</span><span>${glyph('x')}${esc(t('Delete'))}</span><span id="tv-kbn"></span></div>${more}`;
     sheet(title, items, 'kb', head);
@@ -1101,12 +1116,46 @@
       const a = libAppOf(h.id);
       return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" data-tvact="scan" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))} · ${esc(info.text)}</small></span><span class="tv-pill">${esc(info.scanner === 'clamav' || !info.sha ? t('How It Was Checked') : t('Open the Report'))}</span></button>`;
     }).filter(Boolean);
-    const items = act.map((id) => item(id, '', 'd:' + id, progress(id))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    // The launcher's own update is counted in the Downloads badge, so it needs a row here too, or the
+    // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
+    const lu = S.launcherUpd;
+    const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
         ${done.length ? `<h3 class="tv-lh">${esc(t('Checked Before It Was Published'))}</h3><div class="tv-list">${done.join('')}</div>` : ''}`)}
       ${hints([['A', t('Open')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
+  }
+
+  // Coming Soon: what the catalog announces before its first release (Discover here leaves them out),
+  // with Request a Recomp first on the row, as on the desktop page.
+  function pageSoonTV() {
+    const list = window.soonList();
+    const req = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="soon-tools"><button type="button" class="tv-chip tool" data-f data-key="c:@req" data-tvact="recomp-req">${svg('plus', 20)}${esc(t('Request a Recomp'))}</button></div></div>`;
+    const sub = list.length ? tn(list.length, '1 recomp on the way', '{n} recomps on the way') : t('Nothing announced right now');
+    return `${backdrop(null)}${bar()}
+      ${region(`${pageHead(t('Coming Soon'), sub)}${req}
+        <div class="tv-gridwrap">${list.length ? grid(list, 'C') : `<p class="tv-empty">${esc(t('Know of a recomp the launcher should have? Press Request a Recomp to ask for it.'))}</p>`}</div>`)}
+      ${hints([['A', t('Open')], ['X', t('Options')], ['LB+RB', t('Sections')]])}`;
+  }
+  // Where the project is (GitHub or GitLab), then the developer and project typed with the
+  // controller. The desktop view also takes a note.
+  async function tvRequest() {
+    sfx('select');
+    const i = await window.tvAsk(t('Where is the project?'), window.REQ_FORGES.map(([, n]) => ({ label: n, icon: 'folder' })));
+    if (i == null || i < 0) return;
+    const forge = window.REQ_FORGES[i][0];
+    const typed = await window.tvType({ title: t('Request a Recomp'), hint: `${forge}.com/${t('developer/project')}`, max: 200, keys: '/.-_' });
+    if (!typed) return;
+    const url = window.reqLink(forge, typed).url;
+    if (!url) return toast(t('Type the developer and the project, like developer/project.'), true);
+    const known = window.listedFor(url);
+    if (known) { toast(tf('{name} is already in the launcher. Here it is.', { name: known.name })); return go('game', known.id); }
+    try {
+      await invoke('recomp_request', { url, note: null });
+      toast(t('Request sent. Thanks! It\'ll be looked at soon.'));
+    } catch (e) { fail(e); }
   }
 
   // Settings in groups, with the focused one shown large on the right (what it does, and its value).
@@ -1140,6 +1189,8 @@
           ${sw('backup_before_update', t('Back up saves before updates'), t('The newest five copies of each game\'s saves'))}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in Discover'))}
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
+          ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
+          ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to put an older one back'))}</small></span>${svg('chevR', 30)}</button>
           ${head(t('Controller'))}
@@ -1206,9 +1257,7 @@
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
           const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return sv.offline
-            ? `<button type="button" class="tv-item" data-f data-key="gs:check" data-tvact="gs-check" data-id="${esc(id)}"${sv.busy ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Check Again'))}<small>${esc(sv.failed ? t('Still no answer. See recomplauncher.com/status for whether it\'s on our side.') : t('The website can\'t be reached right now; copies go up when it can.'))}</small></span></button>`
-            : `<button type="button" class="tv-item" data-f data-key="gs:up" data-tvact="gs-upnow" data-id="${esc(id)}"${sv.busy ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(sv.busy ? t('Uploading…') : t('Upload Now'))}<small>${esc(line)}</small></span></button>`;
+          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
         })() : ''}
         <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
@@ -2047,7 +2096,7 @@
           <figure><img src="img/qr-support.svg" alt=""><figcaption><b class="tv-heart">${HEART}${esc(t('Support Us'))}</b><span>ko-fi.com/recomp</span></figcaption></figure></div></div>`)}
       ${hints([['B', t('Back')]])}`;
   }
-  const VIEWS = { home: pageHome, library: pageLibrary, achievements: pageAchTV, discover: pageDiscover, downloads: pageDownloads, settings: pageSettings, about: pageAbout, storage: pageStorage, saves: pageSavesAll };
+  const VIEWS = { home: pageHome, library: pageLibrary, achievements: pageAchTV, discover: pageDiscover, soon: pageSoonTV, downloads: pageDownloads, settings: pageSettings, about: pageAbout, storage: pageStorage, saves: pageSavesAll };
   function draw(keep) {
     expandLib();
     if (!TV.on || TV.booting) return;
@@ -2141,14 +2190,28 @@
       TV.hero = hid;
       TV.heroBelow = !el.closest('.tv-dock');
       const a = libAppOf(hid);
-      swapBg(a);
-      setTone(hid);
+      settle(el, a, instant);
       const hero = $('#tv-hero', root);
-      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(); }
+      if (hero) { hero.innerHTML = heroText(a, S.library[hid], true); hero.classList.remove('swap'); void hero.offsetWidth; hero.classList.add('swap'); fitAll(hero); }
     }
     if (TV.view === 'gsettings' || TV.view === 'settings') setPanel(el);
-    if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); swapBg(libAppOf(el.dataset.hero)); return; }
+    if (el.classList.contains('tv-fcase')) { flowLayout(el, instant); settle(el, libAppOf(el.dataset.hero), instant); return; }
     keepInView(el, instant);
+  }
+  // The backdrop and the colours follow the game you stop on, not each one you pass: a change fades
+  // two full-screen pictures into each other and restyles the whole page, too much to start on
+  // every press while you're moving along a row.
+  let settleT = 0;
+  function settle(el, a, instant) {
+    clearTimeout(settleT);
+    const view = TV.view;
+    const run = () => {
+      // Moved on, or off to another page (whose own backdrop is already right): nothing to do.
+      if (TV.view !== view || !el.isConnected || !el.classList.contains('f') || el.closest('.tv-stage.leaving')) return;
+      swapBg(a);
+      setTone(el.dataset.hero);
+    };
+    if (instant) run(); else settleT = setTimeout(run, 220);
   }
   // The backdrop changes to another game's art: the new picture, once it's ready to draw, goes in
   // under the old one, which fades away over it. Moving on before it's ready skips it.
@@ -2379,6 +2442,11 @@
     const regionEl = $('.tv-region', root);
     const reg = regionEl ? regionEl.getBoundingClientRect() : null;
     let best = null, bestScore = Infinity;
+    // Up and down stay in the page while there's somewhere to go in it: the header (the tabs) is
+    // always on screen, and a row scrolled up out of view under it could lose to the tabs by a
+    // few pixels. The header is for when there's nothing more that way.
+    const page = (dir === 'up' || dir === 'down') && cur.closest('.tv-region');
+    let inBest = null, inScore = Infinity;
     for (const e of all) {
       if (e === cur) continue;
       const q = e.getBoundingClientRect();
@@ -2397,7 +2465,9 @@
       if ((dir === 'down' || dir === 'up') && reg && (q.right < reg.left || q.left > reg.right)) continue;
       const score = main + Math.abs(side) * 2.4;
       if (score < bestScore) { bestScore = score; best = e; }
+      if (page && score < inScore && page.contains(e)) { inScore = score; inBest = e; }
     }
+    if (inBest) best = inBest;
     if (!best) return;
     const into = best.closest('.tv-row');
     if (into && into !== fromRow && TV.row[into.dataset.row]) {
@@ -2469,7 +2539,7 @@
       setScroll(keepY, false);
       return;
     }
-    if (el.dataset.toggle) { sfx('select'); const k = el.dataset.toggle, on = k === 'sounds' || k === 'discord' ? S.settings[k] !== false : !!S.settings[k]; await saveSettings({ [k]: !on }); return draw(true); }
+    if (el.dataset.toggle) { sfx('select'); const k = el.dataset.toggle, on = k === 'sounds' || k === 'discord' ? S.settings[k] !== false : !!S.settings[k]; await saveSettings({ [k]: !on }); draw(true); if (k === 'steam_sync' && !on && window.steamSync) window.steamSync(false); return; }
     if (el.dataset.shotI !== undefined) { sfx('select'); return shotView(Number(el.dataset.shotI)); }
     if (el.dataset.gset) return cycleSetting(el, 1);
     if (el.dataset.gbmod) return tvGbMod(TV.arg, el.dataset.gbmod);
@@ -2488,6 +2558,7 @@
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
       case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
       case 'dl-resume': sfx('select'); return resumeDl(id);
+      case 'selfupdate': sfx('select'); return selfUpdate();
       case 'install': sfx('select'); return startInstall(id, S.settings.library_dir).then(() => draw(true));
       case 'page': return go('game', id);
       case 'back': return back();
@@ -2514,6 +2585,7 @@
       case 'setupreq': return (isInstallerApp(byId(id)) || installerDue(id)) ? installerModal(id) : tvSetupReq(id);
       case 'addlib': sfx('select'); await addToLibrary(id); TV.focusKey = 'g-main'; return draw(true);
       case 'dsearch': return tvSearch();
+      case 'recomp-req': return tvRequest();
       case 'signin': sfx('select'); return window.signIn && window.signIn(false);
       case 'tag': sfx('select'); TV.dtag = el.dataset.tag; TV.genre = ''; TV.dq = ''; TV.dorigin = ''; TV.gridShown = {}; return go('discover');
       case 'dtagclear': sfx('back'); TV.dtag = ''; TV.focusKey = 'g:@filter'; return discoverRedraw();
@@ -2546,6 +2618,7 @@
       case 'about': sfx('open'); return go('about');
       case 'support': sfx('select'); return invoke('open_url', { url: 'https://ko-fi.com/recomp' }).catch(fail);
       case 'storage': sfx('open'); TV.sizes = null; return go('storage');
+      case 'steamsync': sfx('select'); return window.steamSync && window.steamSync(false);
       case 'moveto': sfx('open'); return moveListing(id, el.dataset.to).then(() => { if (TV.view === 'game' && TV.arg === id) { TV.arg = el.dataset.to; draw(true); } });
       case 'scan': sfx('open'); if (el.dataset.scanner !== 'clamav' && el.dataset.sha) { invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail); return toast(t('The report is open in your browser.')); } return toast(el.dataset.scanner === 'clamav' ? t('Checked by ClamAV on recompstore.com before it was published.') : t('Every release is scanned before it\'s published. A few flags on a new recomp are usually false positives.'));
       case 'saves': sfx('open'); TV.savesAll = null; return go('saves');
@@ -2560,18 +2633,14 @@
           { label: t('Game page'), icon: 'page', run: () => go('game', id) },
         ]);
       }
-      case 'gs-upnow': case 'gs-check': {
+      case 'gs-sync': {
         const sv = TV.saves[id];
+        if (sv?.busy) return;
         if (sv && sv !== 'loading') sv.busy = true;
         draw(true);
-        try {
-          TV.saves[id] = await invoke(act === 'gs-check' ? 'cloud_retry' : 'saves_upload_now', { id });
-          toast(act === 'gs-check' ? t('Connected again.') : t('Your save is in the cloud.'));
-        } catch (e) {
-          if (sv && sv !== 'loading') { sv.busy = false; sv.failed = true; }
-          toast(String(e && e.message ? e.message : e), true);
-        }
-        return draw(true);
+        try { await syncCloudNow(id); } catch (e) { fail(e); }
+        delete S.saves[id];
+        return loadGameSaves(id);
       }
       case 'gs-cloud': {
         sfx('select');
@@ -2644,7 +2713,7 @@
     if (dlg) {
       // Up and down scroll a dialog's long text (What's New), which a controller can't reach otherwise.
       if (name === 'up' || name === 'down') { dialogScroll(dlg, name === 'down' ? 1 : -1); return true; }
-      if (name === 'b') dlg.remove();
+      if (name === 'b') { if (!dlg.dataset.busy) dlg.remove(); }
       else if (name === 'a') { const b = $('[data-x="yes"], .btn.main', dlg) || $('[data-x]', dlg); if (b) b.click(); }
       return true;
     }

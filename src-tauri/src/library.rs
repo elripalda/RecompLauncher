@@ -302,6 +302,10 @@ pub struct Settings {
     /// "safe" (the way that works everywhere) or empty (picked for this PC). Read at start.
     #[serde(default)]
     pub linux_graphics: String,
+    /// Settings → Keep Steam in Sync: every installed game that's ready to play is in Steam, in a
+    /// RecompLauncher collection, and leaves it when uninstalled (steam_sync.rs).
+    #[serde(default)]
+    pub steam_sync: bool,
 }
 
 fn yes() -> bool {
@@ -354,6 +358,7 @@ impl Default for Settings {
             minimize_playing: None,
             lighter: None,
             linux_graphics: String::new(),
+            steam_sync: false,
         }
     }
 }

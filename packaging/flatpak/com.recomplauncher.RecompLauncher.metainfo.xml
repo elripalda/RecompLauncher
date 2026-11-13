@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>com.recomplauncher.RecompLauncher</id>
   <name>RecompLauncher</name>
-  <summary>One home for PC recomps</summary>
+  <summary>Recompiled and decompiled PC games</summary>
   <developer id="com.recomplauncher">
     <name>Ripalda</name>
   </developer>
@@ -11,37 +11,66 @@
   <url type="homepage">https://recomplauncher.com</url>
   <url type="vcs-browser">https://github.com/elripalda/RecompLauncher</url>
   <url type="bugtracker">https://github.com/elripalda/RecompLauncher/issues</url>
+  <url type="contact">https://discord.gg/FUzqGM2cvf</url>
+  <url type="donation">https://ko-fi.com/recomp</url>
   <launchable type="desktop-id">com.recomplauncher.RecompLauncher.desktop</launchable>
   <description>
-    <p>RecompLauncher finds, installs, updates and starts PC recomps from each developer's own GitHub.</p>
-    <p>No game files are included: every game needs your own copy.</p>
+    <p>Recompilations and decompilations are native PC versions of console games, rebuilt by their developers from the original game. RecompLauncher finds, installs, updates and starts them, straight from each developer's own GitHub release.</p>
+    <ul>
+      <li>Discover every project, with what it needs and how it runs for other players</li>
+      <li>Install and update in one click, with every download checked against GitHub's checksum</li>
+      <li>Easy Setup: point it at your disc image or game folder and it does the rest</li>
+      <li>Save backups before every update, and optional cloud saves</li>
+      <li>Big Picture mode for a controller and a TV</li>
+    </ul>
+    <p>No game files are included: every game needs your own copy, which you choose the first time you set it up.</p>
   </description>
+  <branding>
+    <color type="primary" scheme_preference="light">#34f2e8</color>
+    <color type="primary" scheme_preference="dark">#377bb6</color>
+  </branding>
   <categories>
     <category>Game</category>
   </categories>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>gamepad</control>
+  </supports>
   <provides>
     <binary>recomplauncher</binary>
   </provides>
   <content_rating type="oars-1.1"/>
   <screenshots>
+    <!-- Pinned to the commit that added them, so the links never change. -->
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/home.jpg</image>
-      <caption>Home</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/2e03584205f688a2da6ff1b786a5582fd61fdd55/docs/images/flathub/home.jpg</image>
+      <caption>Featured projects and games ready to play</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/discover.jpg</image>
-      <caption>Discover</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/2e03584205f688a2da6ff1b786a5582fd61fdd55/docs/images/flathub/discover.jpg</image>
+      <caption>Search and filter every project</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/game.jpg</image>
-      <caption>A game's page</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/2e03584205f688a2da6ff1b786a5582fd61fdd55/docs/images/flathub/game.jpg</image>
+      <caption>A game's page, with what it needs and how it runs</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/v0.90.0-beta.33/docs/images/bigpicture.jpg</image>
-      <caption>Big Picture mode</caption>
+      <image>https://raw.githubusercontent.com/elripalda/RecompLauncher/dcba4ac61f6e56bf83f293d5d440a26065e7688b/docs/images/flathub/bigpicture.jpg</image>
+      <caption>Big Picture mode, made for a controller and a TV</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.41" date="2026-11-12">
+      <description>
+        <p>A Coming Soon page with recomp requests, Keep Steam in Sync, Sync Now for cloud saves, shared game media across versions, and a smoother Downloads graph.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.40" date="2026-11-12">
+      <description>
+        <p>A window that opens once drawn, a clearer tray icon, smoother Big Picture on Steam Deck, and crash reports on GitHub.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.39" date="2026-11-12">
       <description>
         <p>No more false Offline mark, smarter cloud save uploads, and fixes.</p>

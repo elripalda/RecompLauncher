@@ -42,7 +42,7 @@ test('rarity reads a fraction or a percentage, and nothing when there is no rate
   assert.equal(rarityText(0.004), '0.4% of players');
   assert.equal(rarityText(0), 'Nobody yet');
   assert.equal(rarityText(null), '');
-  assert.match(ach, /const rate = \(\(mine\.rarity \|\| \{\}\)\[id\] \|\| \{\}\)\.rate;\n\s*const rare = rate != null \? rarityText\(rate\) : '';/);
+  assert.match(ach, /const rate = \(\(mine\.rarity \|\| \{\}\)\[id\] \|\| \{\}\)\.rate;\r?\n\s*const rare = rate != null \? rarityText\(rate\) : '';/);
 });
 
 test('the game page title has the whole width above the details and buttons', () => {

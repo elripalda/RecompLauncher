@@ -1,8 +1,8 @@
 [Desktop Entry]
 Categories=Game;
-Comment=One home for PC recomps
+Comment=Recompiled and decompiled PC games
 Exec=recomplauncher %u
-StartupWMClass=com.recomplauncher.app
+StartupWMClass=com.recomplauncher.RecompLauncher
 Icon=com.recomplauncher.RecompLauncher
 Name=RecompLauncher
 Terminal=false

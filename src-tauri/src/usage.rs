@@ -30,6 +30,12 @@ pub fn install_id(dir: &Path) -> String {
     id
 }
 
+/// This PC's system, processor, memory and graphics card, for a crash report the player writes.
+#[tauri::command(async)]
+pub fn pc_specs(app: AppHandle) -> PcInfo {
+    pc_info(&app.state::<App>().dir)
+}
+
 /// The two random IDs (usage and diagnostics; anonymous stats), as Settings shows them so a player
 /// can quote one when asking for its data to be removed.
 #[tauri::command(async)]
@@ -645,6 +651,80 @@ pub async fn report_reply(app: AppHandle, id: i64, text: String) -> Res<Value> {
     Ok(v)
 }
 
+// ---------- Request a recomp: a project link the player wants in the launcher ----------
+
+/// The longest link and note a request carries. Anything longer is a paste gone wrong.
+const REQUEST_URL_MAX: usize = 300;
+const REQUEST_NOTE_MAX: usize = 500;
+
+/// A project link as the player typed it, made into one the site can open: https, a real host, and
+/// a path to the project itself (github.com alone says nothing). A bare "github.com/owner/repo"
+/// gets its https; a trailing slash or ".git" goes, so the same project reads the same twice.
+/// The project has to be on GitHub or GitLab, as for submissions on the website.
+pub fn project_link(input: &str) -> Result<String, String> {
+    let raw = input.trim();
+    if raw.is_empty() {
+        return Err("Paste the project's link first.".into());
+    }
+    if raw.len() > REQUEST_URL_MAX || raw.chars().any(char::is_whitespace) {
+        return Err("That doesn't look like a project link.".into());
+    }
+    let with_scheme = if raw.contains("://") { raw.to_string() } else { format!("https://{raw}") };
+    let Ok(mut u) = reqwest::Url::parse(&with_scheme) else {
+        return Err("That doesn't look like a project link.".into());
+    };
+    if u.scheme() == "http" {
+        let _ = u.set_scheme("https");
+    }
+    if u.scheme() != "https" {
+        return Err("Use the project's web link (https://…).".into());
+    }
+    // A sign-in tucked into the link would go to the site in the open.
+    if !u.username().is_empty() || u.password().is_some() {
+        return Err("Leave the sign-in out of the link.".into());
+    }
+    let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+    if !host.contains('.') || host.starts_with('.') || host.ends_with('.') {
+        return Err("That doesn't look like a project link.".into());
+    }
+    let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
+    if host != "github.com" && host != "gitlab.com" {
+        return Err("Request a project on GitHub or GitLab.".into());
+    }
+    let _ = u.set_host(Some(&host));
+    let path = u.path().trim_end_matches('/').trim_end_matches(".git").trim_end_matches('/').to_string();
+    if path.is_empty() {
+        return Err("Link to the project itself, not just the site.".into());
+    }
+    u.set_path(&path);
+    u.set_fragment(None);
+    Ok(u.to_string())
+}
+
+/// Asks recomplauncher.com for a recomp the launcher doesn't list yet: its project link, and what
+/// the player wants to say about it. A signed-in player's request goes under their name, so the
+/// site can tell them when it's added; anyone else's goes with the install's random id only.
+#[tauri::command]
+pub async fn recomp_request(app: AppHandle, url: String, note: Option<String>) -> Res<Value> {
+    let st = app.state::<App>();
+    let link = project_link(&url).map_err(Error::Msg)?;
+    let note: String = note.unwrap_or_default().trim().chars().take(REQUEST_NOTE_MAX).collect();
+    let version = app.package_info().version.to_string();
+    let body = json!({"a": "recomp-request", "install": install_id(&st.dir), "url": link, "note": note, "version": version});
+    let api = pc_api();
+    let mut req = st.http.post(&api).query(&[("a", "recomp-request")]).json(&body).timeout(crate::net::QUICK);
+    if let Some(t) = token(&st.dir) {
+        req = req.header("X-RL-Token", t);
+    }
+    let r = crate::net::send(req, &api, true).await?;
+    let code = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if code >= 400 || !v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("The website didn't take the request. Try again later.").to_string()));
+    }
+    Ok(v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -729,5 +809,37 @@ mod tests {
         assert_eq!(specs_line(&pc), "SteamOS 3.7.13 · Custom APU 0405 · Custom GPU 0405 · 15 GB");
         let pc = PcInfo { osver: "Windows 10".into(), cpu: "Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz".into(), ..Default::default() };
         assert_eq!(specs_line(&pc), "Windows 10 · Core i7-9700K");
+    }
+
+    #[test]
+    fn a_requested_project_link_keeps_its_forge() {
+        assert_eq!(project_link("https://github.com/owner/repo").unwrap(), "https://github.com/owner/repo");
+        assert_eq!(project_link("https://gitlab.com/group/sub/repo").unwrap(), "https://gitlab.com/group/sub/repo");
+        assert_eq!(project_link("https://www.github.com/owner/repo").unwrap(), "https://github.com/owner/repo");
+    }
+
+    #[test]
+    fn a_requested_project_is_on_github_or_gitlab() {
+        assert!(project_link("https://codeberg.org/owner/repo").is_err());
+        assert!(project_link("https://example.com/owner/repo").is_err());
+        assert!(project_link("https://github.com.example.com/owner/repo").is_err());
+    }
+
+    #[test]
+    fn a_requested_project_link_is_tidied() {
+        assert_eq!(project_link("  github.com/owner/repo/ ").unwrap(), "https://github.com/owner/repo");
+        assert_eq!(project_link("http://github.com/owner/repo.git").unwrap(), "https://github.com/owner/repo");
+        assert_eq!(project_link("https://github.com/owner/repo#readme").unwrap(), "https://github.com/owner/repo");
+    }
+
+    #[test]
+    fn a_requested_project_link_must_point_at_a_project() {
+        assert!(project_link("").is_err());
+        assert!(project_link("https://github.com/").is_err());
+        assert!(project_link("not a link").is_err());
+        assert!(project_link("localhost/repo").is_err());
+        assert!(project_link("ftp://example.com/repo").is_err());
+        assert!(project_link("https://user:pass@github.com/owner/repo").is_err());
+        assert!(project_link(&format!("https://github.com/{}", "a".repeat(400))).is_err());
     }
 }
