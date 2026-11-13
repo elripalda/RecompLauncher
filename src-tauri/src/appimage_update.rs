@@ -123,18 +123,24 @@ async fn download(
     Ok(bytes)
 }
 
-/// The AppImage runtime keeps its mount open through descriptor 1023 in every program it starts.
-/// The helper, and the new launcher it starts, would hold the old image's mount that way, so the
-/// old runtime stayed running beside the new launcher until it closed. Neither needs the old mount.
+extern "C" {
+    fn close_range(first: u32, last: u32, flags: i32) -> i32;
+}
+const CLOSE_RANGE_CLOEXEC: i32 = 4;
+
+/// The AppImage runtime hands every program it starts two descriptors of its own: its mount (1023)
+/// and the read end of a pipe it watches, staying up until no program holds that end any more. The
+/// helper inherited both and passed them to the new launcher, so the old runtime kept running
+/// beside it until it closed. The helper needs nothing past stdin, stdout and stderr, so all of
+/// them close at its exec. (Close-on-exec rather than closing now: std's own pipe that reports a
+/// failed exec stays usable until then.)
 fn forget_old_mount(command: &mut Command) {
     use std::os::unix::process::CommandExt;
-    extern "C" {
-        fn close(fd: i32) -> i32;
-    }
-    // close() is async-signal-safe, as pre_exec requires; a descriptor that isn't open is fine.
+    // close_range is async-signal-safe, as pre_exec requires (Linux 5.11 and later). If it ever
+    // fails, the update still goes in; only the old runtime stays until the new launcher closes.
     unsafe {
         command.pre_exec(|| {
-            close(1023);
+            close_range(3, u32::MAX, CLOSE_RANGE_CLOEXEC);
             Ok(())
         });
     }
@@ -374,6 +380,24 @@ mod tests {
         assert!(!work.exists());
         assert!(link.is_symlink());
         assert_eq!(fs::read(&link).unwrap(), b"old image");
+    }
+
+    #[test]
+    fn helper_does_not_inherit_the_runtimes_descriptors() {
+        use std::os::fd::AsRawFd;
+        extern "C" {
+            fn fcntl(fd: i32, cmd: i32, ...) -> i32;
+        }
+        const F_SETFD: i32 = 2;
+        // Left inheritable, as the AppImage runtime leaves its mount and keepalive pipe.
+        let file = fs::File::open("/dev/null").unwrap();
+        let fd = file.as_raw_fd();
+        assert_eq!(unsafe { fcntl(fd, F_SETFD, 0) }, 0);
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", &format!("[ -e /proc/self/fd/{fd} ] && echo open || echo closed")]);
+        forget_old_mount(&mut command);
+        let out = command.output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "closed");
     }
 
     #[test]
