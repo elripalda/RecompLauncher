@@ -1001,3 +1001,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv .btn:focus,.ni-tv .btn.f{outline:3px solid var(--cyan);outline-offset:3px}
 .ni-tv .ni-optional-toggle{font-size:21px;min-height:60px;padding:12px}
 .ni-tv .ni-optional-toggle.f{outline:3px solid var(--cyan);outline-offset:2px}
+
+.tv-setup .engine-progress{width:1000px;font-size:22px;text-align:left}

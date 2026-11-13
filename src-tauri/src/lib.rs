@@ -20,6 +20,7 @@ pub mod display;
 pub mod dllcheck;
 pub mod discord;
 pub mod dlss;
+pub mod engines;
 pub mod extract;
 pub mod files;
 pub mod gamefiles;
@@ -147,7 +148,7 @@ pub struct App {
     /// One download at a time; the rest wait their turn.
     download_slot: Arc<tokio::sync::Semaphore>,
     /// Games being moved to another drive (their folder is briefly in two places).
-    moving: Mutex<HashSet<String>>,
+    moving: Arc<Mutex<HashSet<String>>>,
     overlay_open: AtomicBool,
     /// Games running with a look on (their screenshots show it).
     looked: Mutex<HashSet<String>>,
@@ -219,6 +220,23 @@ fn same_tag(a: &str, b: &str) -> bool {
 }
 
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
+    engines::ensure_legacy_install(st.lib.lock().unwrap().installed.get(id)).map_err(Error::Msg)?;
+    if let Some(game) = engines::catalog::game(id) {
+        let target = engines::Target::current().ok_or_else(|| Error::Msg("No game engine is available for this computer.".into()))?;
+        engines::preflight(&game.engine, target).map_err(Error::Msg)?;
+        let root = dir.unwrap_or_else(|| st.lib.lock().unwrap().settings.library_dir.clone());
+        let g = engines::pending::create_for(&game, target, &root.join(folder_name(id))).map_err(Error::Msg)?;
+        {
+            let mut l = st.lib.lock().unwrap();
+            let old = l.clone();
+            l.put(id, g.clone());
+            l.settings.asked_location = true;
+            if let Err(e) = l.save(&st.dir) { *l = old; let _ = std::fs::remove_dir(&g.path); return Err(e.into()); }
+        }
+        st.jobs.lock().unwrap().remove(id);
+        let _ = app.emit("install", Progress::new(id, "done", 1, 1));
+        return Ok(());
+    }
     let picked_tag = tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -479,6 +497,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
 
     // An update: keep a copy of the player's saves and settings first.
+    engines::ensure_legacy_install(st.lib.lock().unwrap().installed.get(id)).map_err(Error::Msg)?;
     if let (Some(p), true) = (&prev, backup_first) {
         report(Progress::new(id, "backup", 0, 0));
         let (dir, files, bdir) = (p.path.clone(), inputs::release_files(p), backups_dir(p));
@@ -645,6 +664,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
         inputs_ready: String::new(),
+        engine_build: None,
         input_staged: prev.as_ref().map(|p| p.input_staged.clone()).unwrap_or_default(),
         input_stamps: prev.as_ref().map(|p| p.input_stamps.clone()).unwrap_or_default(),
         proton: os == "windows" && assets::os_now() == "linux",
@@ -863,6 +883,7 @@ fn human(b: u64) -> String {
 
 #[tauri::command]
 async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, tag: Option<String>, file: Option<String>) -> Res<()> {
+    engines::ensure_legacy_install(st.lib.lock().unwrap().installed.get(&id)).map_err(Error::Msg)?;
     if st.moving.lock().unwrap().contains(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
@@ -1003,6 +1024,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     if st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
+    let _mutation = InstallationMutation::acquire(&st,&id)?;
+    if setup_busy(&id) { return Err(Error::Msg(MOVING.into())); }
     let libs = st.lib.lock().unwrap().settings.all_libraries();
     let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return Ok(json!({})) };
     // Its AppImage unpacked for the Flatpak: a copy in the launcher's cache, never the player's.
@@ -1167,6 +1190,17 @@ fn clear_read_only(dir: &Path) {
 
 // ---------- libraries, moving, backups ----------
 
+struct InstallationMutation { moving: Arc<Mutex<HashSet<String>>>, id: String }
+impl InstallationMutation {
+    fn acquire(st: &App, id: &str) -> Res<Self> {
+        if !st.moving.lock().unwrap().insert(id.into()) { return Err(Error::Msg(MOVING.into())); }
+        Ok(Self {moving:st.moving.clone(),id:id.into()})
+    }
+}
+impl Drop for InstallationMutation {
+    fn drop(&mut self) { self.moving.lock().unwrap().remove(&self.id); }
+}
+
 const MOVING: &str = "It's busy being moved or updated. Try again once that's done.";
 
 #[derive(Serialize)]
@@ -1238,8 +1272,10 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String) -
     if dest == g.path {
         return Ok(g);
     }
+    let _mutation = InstallationMutation::acquire(&st,&id)?;
+    if setup_busy(&id) { return Err(Error::Msg(MOVING.into())); }
+    engines::pending::check_move(&g).map_err(Error::Msg)?;
     looks::tidy(&st.dir, &id);
-    st.moving.lock().unwrap().insert(id.clone());
     let (from, d2, app2, id2) = (g.path.clone(), dest.clone(), app.clone(), id.clone());
     let r = tokio::task::spawn_blocking(move || {
         let last = std::cell::Cell::new(Instant::now());
@@ -1252,7 +1288,6 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String) -
     })
     .await
     .map_err(|e| Error::Msg(e.to_string()))?;
-    st.moving.lock().unwrap().remove(&id);
     r?;
     // Its backups go with it.
     let old_b = backups_dir(&g);
@@ -1639,11 +1674,12 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
     if list.is_empty() {
         return vec![];
     }
-    let apps: Vec<&Value> = cat.get("apps").and_then(Value::as_array).map(|a| a.iter().filter(|x| !x.get("custom").and_then(Value::as_bool).unwrap_or(false)).collect()).unwrap_or_default();
+    let apps: Vec<&Value> = cat.get("apps").and_then(Value::as_array).map(|a| a.iter().filter(|x| !x.get("custom").and_then(Value::as_bool).unwrap_or(false) && !engines::catalog::is_engine(str_of(x,"id"))).collect()).unwrap_or_default();
     let (mut keep, mut out) = (vec![], vec![]);
     for e in list {
         let old = str_of(&e, "id").to_string();
         let repo = str_of(&e, "repo").to_lowercase();
+        if st.lib.lock().unwrap().installed.get(&old).is_some_and(|g| g.engine_build.is_some()) { keep.push(e); continue; }
         let Some(o) = apps.iter().find(|a| !repo.is_empty() && str_of(a, "repo").to_lowercase() == repo && str_of(a, "id") != old) else {
             keep.push(e);
             continue;
@@ -1835,6 +1871,8 @@ async fn desktop_shortcut(st: State<'_, App>, id: String, menu: Option<bool>) ->
 /// it. None when only the launcher can start it for now: a setup still to run, its copy still to
 /// pick or put in place, settings it takes from the environment, or Setup Required not done yet.
 fn direct_start(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, Vec<String>)> {
+    // Engine builds go through the pinned launch checks, including missing runtime detection.
+    if g.engine_build.is_some() { return None }
     let ui = st.lib.lock().unwrap().settings.ui.clone();
     if catalog::needs_setup_first(&st.dir, id, &ui) {
         return None;
@@ -2414,6 +2452,105 @@ impl Drop for Starting {
 static RUNS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static RUN_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+type GameCommand = (PathBuf, tokio::process::Command, Option<PathBuf>);
+
+fn dispatch_game(pinned: Option<&Path>, legacy: impl FnOnce() -> Res<GameCommand>) -> Res<GameCommand> {
+    // Prepared outputs never enter script detection, executable substitution, or lazy installers.
+    if let Some(exe) = pinned {
+        return Ok((exe.to_path_buf(), tokio::process::Command::new(exe), None));
+    }
+    legacy()
+}
+
+fn legacy_game_command(app: &AppHandle, st: &App, id: &str, exe: PathBuf, args: &mut Vec<String>) -> Res<GameCommand> {
+    // A Windows script (.cmd, .bat) on Linux: the build's own Linux start script beside it when it
+    // has one (a profile written for Windows names Launcher.cmd; the Linux build has launcher.sh).
+    let exe = if !cfg!(windows) && matches!(exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("cmd" | "bat")) { linux_twin(&exe).unwrap_or(exe) } else { exe };
+    // A Windows script that only starts the game's program (Play.bat: "Game.exe --flag"): on Linux
+    // that program goes through Proton itself, with the script's arguments. A script through
+    // Proton's own launcher doesn't always start.
+    let exe = match (!cfg!(windows)).then(|| bat_target(&exe)).flatten() {
+        Some((target, mut first)) => {
+            trail::note(format!("Play {id}: {} starts {}; that goes through Proton itself", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+            first.append(args);
+            *args = first;
+            target
+        }
+        None => exe,
+    };
+    // A Python script starts through its interpreter.
+    let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    // An AppImage in the Flatpak: unpacked once (no FUSE in the sandbox) and started from there.
+    // If it won't unpack, it unpacks itself for this start below, as before.
+    let unpacked = if cfg!(target_os = "linux") && ext == "appimage" && flatpak::sandboxed() {
+        if !flatpak::is_unpacked(&exe, id) {
+            trail::note(format!("Play {id}: unpacking its AppImage once"));
+            let _ = app.emit("note", "Unpacking the game the first time it's played. Later starts are quicker.");
+        }
+        match flatpak::unpacked_appimage(&exe, id) {
+            Ok(dir) => Some(dir),
+            Err(e) => {
+                trail::note(format!("Play {id}: the AppImage didn't unpack ({e}); it unpacks itself this time"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let cmd = match ext.as_str() {
+        _ if unpacked.is_some() => tokio::process::Command::new(unpacked.as_ref().map(|d| d.join("AppRun")).unwrap_or_default()),
+        "py" if cfg!(windows) => {
+            let mut c = tokio::process::Command::new("py");
+            c.arg("-3").arg(&exe);
+            c
+        }
+        "py" => {
+            let mut c = tokio::process::Command::new("python3");
+            c.arg(&exe);
+            c
+        }
+        // A shell script on Linux (it may have lost its run permission in the zip). Through bash:
+        // most start scripts use bash's own syntax, which plain sh (dash on many systems) can't read.
+        // The same for a start script without a "#!" line (or an extension): Linux won't run one
+        // on its own ("Exec format error").
+        "sh" if !cfg!(windows) => shell_script(&exe),
+        // A Windows script (.bat, .cmd) has no "#!" line either, but it's for Windows' own command
+        // prompt: it goes through Proton below, never the shell.
+        _ if !cfg!(windows) && !matches!(ext.as_str(), "exe" | "cmd" | "bat" | "flatpak") && headless_script(&exe) => {
+            trail::note(format!("Play {id}: a start script without a #! line, through the shell"));
+            shell_script(&exe)
+        }
+        // A Flatpak bundle: Linux can't run the file itself. Installed for this user the first
+        // time (with what it needs from Flathub), then started through Flatpak.
+        "flatpak" if !cfg!(windows) => {
+            if flatpak::host_flatpak_blocked() {
+                return Err(Error::Msg("This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.".into()));
+            }
+            if !flatpak::available() {
+                return Err(Error::Msg("This build comes as a Flatpak, and Flatpak isn't on this PC. Install Flatpak from your system's software center, or switch to another build on the game's page.".into()));
+            }
+            let app_id = flatpak::app_id(&exe).ok_or_else(|| Error::Msg("This Flatpak file doesn't say which app it holds, so it can't be installed. Switch to another build on the game's page.".into()))?;
+            if !flatpak::installed(&app_id) {
+                trail::note(format!("Play {id}: installing its Flatpak ({app_id})"));
+                let _ = app.emit("note", "Installing its Flatpak for the first time. It can take a few minutes; the game starts when it's done.");
+                if let Err(e) = flatpak::install(&exe) {
+                    trail::note(format!("Play {id}: its Flatpak didn't install: {e}"));
+                    return Err(Error::Msg(format!("Flatpak couldn't install it: {e}")));
+                }
+                trail::note(format!("Play {id}: its Flatpak is installed"));
+            }
+            flatpak::command(&app_id)
+        }
+        // A Windows program (or script) on Linux: through Proton (or Wine).
+        "exe" | "cmd" | "bat" if !cfg!(windows) => match proton::runner() {
+            Some(r) => proton::command(&r, &st.dir, &exe),
+            None => return Err(Error::Msg("This is a Windows version, and it needs Proton to play on Linux. Settings → General → GE-Proton installs it in one press, then press Play again.".into())),
+        },
+        _ => tokio::process::Command::new(&exe),
+    };
+    Ok((exe, cmd, unpacked))
+}
+
 pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
     start_game_with_steam(app, id, None)
 }
@@ -2437,12 +2574,14 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         Starting(id.to_string())
     };
     let g = st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    // Set Up By Hand: the player's own way, instead of the launcher's.
-    let mut manual = g.manual.clone();
+    if engines::pending::read(&g).map_err(Error::Msg)?.is_some() { return Err(Error::Msg("NEED_COPY|Choose your game files and finish setup first.".into())); }
+    let engine_exe = engines::executable_for_host(&g).map_err(Error::Msg)?;
+    // A prepared engine output owns its launch command, independent of catalog setup changes.
+    let mut manual = if engine_exe.is_some() { None } else { g.manual.clone() };
     // A game whose release is its installer, with a new version to build: its setup runs even when
     // it's set up by hand (that only says how it starts). A program picked by hand in what the
     // setup leaves behind while it builds (a temp folder) is let go: the setup finds the new one.
-    let installer = boot::of_build(&st.dir, id, boot::windows_build(g.proton)).map(|b| b.is_installer()).unwrap_or(false);
+    let installer = engine_exe.is_none() && boot::of_build(&st.dir, id, boot::windows_build(g.proton)).map(|b| b.is_installer()).unwrap_or(false);
     let rebuild = installer && manual.is_some() && !g.setup_done && g.setup.is_some();
     if rebuild {
         let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit(['/', ':']).next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
@@ -2521,6 +2660,11 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     let mut game_env: Vec<(String, String)> = vec![];
     note_pad();
     let planned = match &prof {
+        Some(p) if engine_exe.is_some() => {
+            p.prepare(&g.path, None).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
+            game_env = p.env_vars(&g.path, None);
+            Some((engine_exe.clone().unwrap(), p.args_for(&g.path, None, &g.picks)))
+        }
         _ if manual.is_some() => {
             let m = manual.as_ref().unwrap();
             // Set up by hand without game files of its own ("the game asks"), on a game whose
@@ -2603,6 +2747,9 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     };
     // The program picked for this one start (held Play): as it is, no settings on its command line.
     let once = ONCE_EXE.lock().unwrap().as_mut().and_then(|m| m.remove(id));
+    if engine_exe.is_some() && once.is_some() {
+        return Err(Error::Msg("This prepared game uses its recorded program. Choose another installation through Versions.".into()));
+    }
     let picked_once = once.is_some();
     let planned = match once {
         Some(rel) => Some((g.path.join(rel), vec![])),
@@ -2704,91 +2851,8 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         return Err(Error::Msg(format!("{name} is already open. Close it (or wait for it to finish closing), then press Play.")));
     }
-    // A Windows script (.cmd, .bat) on Linux: the build's own Linux start script beside it when it
-    // has one (a profile written for Windows names Launcher.cmd; the Linux build has launcher.sh).
-    let exe = if !cfg!(windows) && matches!(exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("cmd" | "bat")) { linux_twin(&exe).unwrap_or(exe) } else { exe };
-    // A Windows script that only starts the game's program (Play.bat: "Game.exe --flag"): on Linux
-    // that program goes through Proton itself, with the script's arguments. A script through
-    // Proton's own launcher doesn't always start.
-    let exe = match (!cfg!(windows)).then(|| bat_target(&exe)).flatten() {
-        Some((target, mut first)) => {
-            trail::note(format!("Play {id}: {} starts {}; that goes through Proton itself", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
-            first.append(&mut args);
-            args = first;
-            target
-        }
-        None => exe,
-    };
-    // A Python script starts through its interpreter.
-    let ext = exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    // An AppImage in the Flatpak: unpacked once (no FUSE in the sandbox) and started from there.
-    // If it won't unpack, it unpacks itself for this start below, as before.
-    let unpacked = if cfg!(target_os = "linux") && ext == "appimage" && flatpak::sandboxed() {
-        if !flatpak::is_unpacked(&exe, id) {
-            trail::note(format!("Play {id}: unpacking its AppImage once"));
-            let _ = app.emit("note", "Unpacking the game the first time it's played. Later starts are quicker.");
-        }
-        match flatpak::unpacked_appimage(&exe, id) {
-            Ok(dir) => Some(dir),
-            Err(e) => {
-                trail::note(format!("Play {id}: the AppImage didn't unpack ({e}); it unpacks itself this time"));
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let mut cmd = match ext.as_str() {
-        _ if unpacked.is_some() => tokio::process::Command::new(unpacked.as_ref().map(|d| d.join("AppRun")).unwrap_or_default()),
-        "py" if cfg!(windows) => {
-            let mut c = tokio::process::Command::new("py");
-            c.arg("-3").arg(&exe);
-            c
-        }
-        "py" => {
-            let mut c = tokio::process::Command::new("python3");
-            c.arg(&exe);
-            c
-        }
-        // A shell script on Linux (it may have lost its run permission in the zip). Through bash:
-        // most start scripts use bash's own syntax, which plain sh (dash on many systems) can't read.
-        // The same for a start script without a "#!" line (or an extension): Linux won't run one
-        // on its own ("Exec format error").
-        "sh" if !cfg!(windows) => shell_script(&exe),
-        // A Windows script (.bat, .cmd) has no "#!" line either, but it's for Windows' own command
-        // prompt: it goes through Proton below, never the shell.
-        _ if !cfg!(windows) && !matches!(ext.as_str(), "exe" | "cmd" | "bat" | "flatpak") && headless_script(&exe) => {
-            trail::note(format!("Play {id}: a start script without a #! line, through the shell"));
-            shell_script(&exe)
-        }
-        // A Flatpak bundle: Linux can't run the file itself. Installed for this user the first
-        // time (with what it needs from Flathub), then started through Flatpak.
-        "flatpak" if !cfg!(windows) => {
-            if flatpak::host_flatpak_blocked() {
-                return Err(Error::Msg("This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.".into()));
-            }
-            if !flatpak::available() {
-                return Err(Error::Msg("This build comes as a Flatpak, and Flatpak isn't on this PC. Install Flatpak from your system's software center, or switch to another build on the game's page.".into()));
-            }
-            let app_id = flatpak::app_id(&exe).ok_or_else(|| Error::Msg("This Flatpak file doesn't say which app it holds, so it can't be installed. Switch to another build on the game's page.".into()))?;
-            if !flatpak::installed(&app_id) {
-                trail::note(format!("Play {id}: installing its Flatpak ({app_id})"));
-                let _ = app.emit("note", "Installing its Flatpak for the first time. It can take a few minutes; the game starts when it's done.");
-                if let Err(e) = flatpak::install(&exe) {
-                    trail::note(format!("Play {id}: its Flatpak didn't install: {e}"));
-                    return Err(Error::Msg(format!("Flatpak couldn't install it: {e}")));
-                }
-                trail::note(format!("Play {id}: its Flatpak is installed"));
-            }
-            flatpak::command(&app_id)
-        }
-        // A Windows program (or script) on Linux: through Proton (or Wine).
-        "exe" | "cmd" | "bat" if !cfg!(windows) => match proton::runner() {
-            Some(r) => proton::command(&r, &st.dir, &exe),
-            None => return Err(Error::Msg("This is a Windows version, and it needs Proton to play on Linux. Settings → General → GE-Proton installs it in one press, then press Play again.".into())),
-        },
-        _ => tokio::process::Command::new(&exe),
-    };
+    let (exe, mut cmd, _unpacked) = dispatch_game(engine_exe.as_deref(), || legacy_game_command(app, &st, id, exe, &mut args))?;
+    let ext = if engine_exe.is_some() { String::new() } else { exe.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default() };
     sysenv::clean_tokio(&mut cmd);
     // Started from a Steam shortcut: Steam's overlay goes back for the game, so Steam Link and
     // Remote Play can stream its window.
@@ -2828,11 +2892,11 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     // An AppImage on a Linux without FUSE 2 (libfuse.so.2, missing on many new systems): it unpacks
     // itself and runs from there instead of failing to start.
     #[cfg(target_os = "linux")]
-    if unpacked.is_none() {
+    if _unpacked.is_none() && engine_exe.is_none() {
         appimage_env(&mut cmd, &exe);
     }
     #[cfg(target_os = "linux")]
-    if let Some(dir) = &unpacked {
+    if let Some(dir) = &_unpacked {
         // What an AppImage's own runtime would have set, for games that look for their files by it.
         cmd.env("APPIMAGE", &exe).env("APPDIR", dir).env("ARGV0", &exe);
         trail::note(format!("Play {id}: in the Flatpak, from its unpacked AppImage"));
@@ -2880,7 +2944,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     if let Err(e) = &spawned {
         if e.raw_os_error() == Some(740) {
             trail::note(format!("Play {id}: needs administrator, asking Windows"));
-            if install::looks_like_setup(&exe_rel) {
+            if g.engine_build.is_none() && install::looks_like_setup(&exe_rel) {
                 return own_setup::run(app, id, &g, &exe, None);
             }
             let line = args.iter().map(|a| if a.contains(' ') || a.is_empty() { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ");
@@ -3251,6 +3315,9 @@ struct SetupEv {
     verified: String,
     /// Whether this setup has its own step (the recomp's prepare program).
     extras: bool,
+    /// Optional measurements for the engine's current operation; not a whole-install ETA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    engine_progress: Option<engines::Progress>,
 }
 
 /// Set a game up with the player's copy: check it's the right game, read the whole thing to make
@@ -3259,6 +3326,7 @@ struct SetupEv {
 #[tauri::command(async)]
 fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> Res<()> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    engines::ensure_legacy_setup(&g).map_err(Error::Msg)?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
     let copy = PathBuf::from(&path);
@@ -3516,6 +3584,7 @@ fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_u
     let g = {
         let mut l = st.lib.lock().unwrap();
         let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        if auto_update == Some(true) { engines::ensure_legacy_setup(g).map_err(Error::Msg)?; }
         if auto_update == Some(true) && g.local {
             return Err(Error::Msg("Untracked installations don't get automatic updates. Choose a project first.".into()));
         }
@@ -3915,6 +3984,8 @@ fn remove_github(st: State<'_, App>, id: String) -> Res<()> {
 /// A recomp's games (games.rs): its developer's list (the file in its release, or the catalog's
 /// launcher profile), else the catalog entry's. Fewer than two: none.
 pub(crate) fn games_of(st: &App, id: &str, g: &Installed) -> Vec<games::Game> {
+    // Format 1 pins a single prepared game; catalog children cannot append launch arguments.
+    if g.engine_build.is_some() { return vec![] }
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let own = profile::release_profile(&g.path).and_then(|r| r.profile.games).or_else(|| entry.pointer("/launcher/games").cloned());
@@ -3996,7 +4067,7 @@ fn recomp_games(st: State<'_, App>) -> std::collections::BTreeMap<String, GameSe
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+    installation_profile(g, &entry).map(|mut p| {
         p.windows_build = Some(is_windows_build(g));
         // Optional inputs this launcher can't use (newer shared types, DLSS without an RTX card).
         inputs::prepare(&mut p, dlss::applies(&st.dir));
@@ -4005,6 +4076,14 @@ fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
         p.add_screen_choices(screen_now());
         p
     })
+}
+
+fn installation_profile(g: &Installed, entry: &Value) -> Option<profile::Profile> {
+    if g.engine_build.is_some() {
+        if let Ok(Some(p)) = engines::pending::profile(g) { return Some(p); }
+        return engines::pinned_profile(g).ok().flatten();
+    }
+    profile::find(&g.path, &g.repo, entry)
 }
 
 /// The main monitor's size in pixels, for Match My Screen: read when the launcher starts, when a
@@ -4325,6 +4404,71 @@ fn setup_key_remove(st: State<'_, App>, id: String, input: String) -> Res<()> {
     Ok(())
 }
 
+fn engine_setup(app: AppHandle, st: &App, id: String, g: Installed) -> Res<()> {
+    let mutation = InstallationMutation::acquire(st,&id)?;
+    let original = g;
+    let mut g = engines::pending::for_setup(&original).map_err(Error::Msg)?;
+    let p = engines::pending::profile(&g).map_err(Error::Msg)?.ok_or_else(|| Error::Msg("No pending game preparation.".into()))?;
+    inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
+    let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
+    {
+        let mut library = st.lib.lock().unwrap();
+        let current = library.installed.get(&id).ok_or_else(|| Error::Msg(MOVING.into()))?;
+        if !engines::pending::same_installation(&original,current) { return Err(Error::Msg(MOVING.into())); }
+        // Checkpoint migration changes build metadata only. Start from the latest record so
+        // preferences or input choices saved since the initial snapshot are never overwritten.
+        g = engines::pending::for_setup(current).map_err(Error::Msg)?;
+        if inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)? != signature { return Err(Error::Msg("Your selected files changed. Retry Setup with the current selection.".into())); }
+        if original.engine_build != g.engine_build {
+            let old = library.clone();
+            library.put(&id,g.clone());
+            if let Err(error) = library.save(&st.dir) { *library=old; return Err(error.into()); }
+        }
+    }
+    INPUT_WORKERS.lock().unwrap().push(id.clone());
+    let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
+    SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
+    let data = st.dir.clone();
+    let http = st.http.clone();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let finished = Arc::new(AtomicBool::new(false));
+    let (watch_id, watch_cancel, watch_finished) = (id.clone(), cancel.clone(), finished.clone());
+    std::thread::spawn(move || {
+        while !watch_finished.load(Ordering::Relaxed) {
+            if setup_stopped(&watch_id, run) { watch_cancel.store(true, Ordering::Relaxed); break; }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
+    std::thread::spawn(move || {
+        let _mutation = mutation;
+        let emit = |step: &str, pct: f32, text: String| { let _ = app.emit("setup", SetupEv { id:id.clone(), step:step.into(), pct, text, extras:true, ..Default::default() }); };
+        emit("read", 0.0, "Checking selected game files".into());
+        let result = engines::coordinator::prepare(&http, &data, &g, cancel.clone(), &|progress| {
+            let _ = app.emit("setup", SetupEv { id:id.clone(), step:"extras".into(), pct:progress.fraction.unwrap_or(0.0), text:progress.text.clone(), extras:true, engine_progress:Some(progress), ..Default::default() });
+        });
+        let st = app.state::<App>();
+        let result = result.and_then(|ready| {
+            let runs=SETUP_RUN.lock().unwrap();
+            if runs.as_ref().and_then(|m|m.get(&id)) != Some(&run) || cancel.load(Ordering::Relaxed) { return Err("Stopped.".into()); }
+            let mut l = st.lib.lock().unwrap();
+            let current = l.installed.get(&id).cloned().ok_or("The game was removed during preparation.")?;
+            if !engines::pending::same_installation(&g,&current) || inputs::signature(&p,&current,&data)? != signature { return Err("The installation changed during preparation. The result has been kept.".into()); }
+            let ready=engines::coordinator::activate_output(&current,&ready,&||cancel.load(Ordering::Relaxed))?;
+            let old = l.clone();
+            l.put(&id,ready);
+            if let Err(e) = l.save(&data) { *l=old; return Err(e.to_string()); }
+            Ok(())
+        });
+        finished.store(true,Ordering::Relaxed);
+        if !setup_stopped(&id,run) {
+            match result { Ok(()) => emit("done",1.0,"Your game is ready to play.".into()), Err(e) => emit("error",0.0,e) }
+        }
+        if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() { if m.get(&id)==Some(&run) { m.remove(&id); } }
+        INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
+    });
+    Ok(())
+}
+
 /// Multi-input setup deliberately does not read/hash whole discs. Projects validate content.
 #[tauri::command(async)]
 fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
@@ -4335,6 +4479,8 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     let sub = pick.as_ref().map(|p| p.game.id.clone());
     if setup_busy(&id) || setup_busy(&rid) || st.running.lock().unwrap().contains_key(&rid) { return Err(Error::Msg("Close the game or stop setup first.".into())); }
     let mut g = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    if engines::pending::read(&g).map_err(Error::Msg)?.is_some() { return engine_setup(app, &st, id, g); }
+    engines::ensure_legacy_setup(&g).map_err(Error::Msg)?;
     let mut p = profile_of(&st, &rid, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     if let Some(pk) = &pick {
         games::scope(&mut p, &pk.game, &pk.all);
@@ -4465,6 +4611,7 @@ fn copy_in(need: &profile::GameCopy, dir: &Path) -> Option<PathBuf> {
 #[tauri::command(async)]
 fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    engines::ensure_legacy_setup(&g).map_err(Error::Msg)?;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     let mut copy = PathBuf::from(&path);
     if let Some(need) = &p.game {
@@ -6008,7 +6155,7 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
     };
     let mut out = HashMap::new();
     let (mut asked, mut failed) = (0, 0);
-    for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
+    for g in games.into_iter().filter(|g| !g.repo.is_empty() && engines::release_updates_allowed(g)) {
         asked += 1;
         let listed = catalog::app(&cat, &g.id).map(|a| str_of(a, "version").to_string()).unwrap_or_default();
         let on_disk = if !force && same(&listed, &g.tag) { catalog::releases_on_disk(&st.dir, &g.repo) } else { None };
@@ -6047,7 +6194,7 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
     // A project may have been corrected while its network requests were in flight.
     {
         let l = st.lib.lock().unwrap();
-        out.retain(|id, _| l.installed.get(id).is_some_and(|g| !g.local && associations.get(id) == Some(&(g.repo.clone(), g.path.clone()))));
+        out.retain(|id, _| l.installed.get(id).is_some_and(|g| engines::release_updates_allowed(g) && associations.get(id) == Some(&(g.repo.clone(), g.path.clone()))));
     }
     // Not one answer: GitHub can't be reached from here (offline, or blocked on this network).
     if asked > 0 && failed == asked {
@@ -6061,7 +6208,7 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
 /// the installed one and has a build for this system (Windows for a game played through Proton).
 /// Without a checked release, the newest one GitHub has. Releases still being checked wait.
 fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Option<String> {
-    if g.pinned {
+    if g.pinned || !engines::release_updates_allowed(g) {
         return None;
     }
     // An update whose installer is downloaded and waiting for Set Up is the version on offer
@@ -7675,14 +7822,17 @@ fn open_url(app: AppHandle, url: String) -> Res<()> {
 /// opens on its Set Up window instead.
 pub(crate) fn setup_first(app: &AppHandle, id: &str) -> bool {
     let st = app.state::<App>();
-    let ui = st.lib.lock().unwrap().settings.ui.clone();
-    if !catalog::needs_setup_first(&st.dir, id, &ui) {
-        return false;
-    }
+    if !setup_first_needed(&st, id) { return false; }
     *SETUP_ASKED.lock().unwrap() = Some(id.to_string());
     show_main(app);
     let _ = app.emit("setup-required", id.to_string());
     true
+}
+
+fn setup_first_needed(st: &App, id: &str) -> bool {
+    let lib = st.lib.lock().unwrap();
+    if lib.installed.get(id).is_some_and(|g| g.engine_build.is_some()) { return false }
+    catalog::needs_setup_first(&st.dir, id, &lib.settings.ui)
 }
 
 /// The recomp a shortcut wanted to play while it still needed setting up, for a window that opened
@@ -7873,7 +8023,7 @@ fn play_arg(args: &[String]) -> Option<String> {
 /// The launcher's data folder, before Tauri is up (the same place as `app_data_dir`), or the
 /// portable one beside the launcher.
 fn data_dir_early() -> Option<PathBuf> {
-    portable_dir().or_else(|| dirs::data_dir().map(|d| d.join("com.recomplauncher.app")))
+    portable_dir().or_else(|| dirs::data_dir().map(|d| d.join(&app_context().config().identifier)))
 }
 
 /// The folder RecompLauncher's program is in.
@@ -8054,6 +8204,10 @@ fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder
         }
     }
     b
+}
+
+fn app_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
 }
 
 pub fn run() {
@@ -8313,7 +8467,7 @@ pub fn run() {
                 pids: Mutex::default(),
                 started: Mutex::default(),
                 download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
-                moving: Mutex::default(),
+                moving: Arc::default(),
                 overlay_open: AtomicBool::new(false),
                 looked: Mutex::new(HashSet::new()),
                 headless: AtomicBool::new(play.is_some()),
@@ -8510,7 +8664,7 @@ pub fn run() {
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
-        .build(tauri::generate_context!())
+        .build(app_context())
         .expect("RecompLauncher couldn't start")
         .run(|app, ev| {
             match ev {
@@ -8531,6 +8685,135 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pending_engine_uses_named_setup_without_catalog_override() {
+        let game = crate::engines::nxnative::catalog::games().remove(0);
+        let root = std::env::temp_dir().join(format!("rl-pending-profile-{}",std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let g = crate::engines::pending::create(&game,&root).unwrap();
+        let p = super::installation_profile(&g,&serde_json::json!({"launcher":{"format":1,"start":{"program":["wrong"]}}})).unwrap();
+        assert!(p.inputs.iter().any(|i|i.id == "base"));
+        assert!(p.start.is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+
+    fn engine_record() -> Value {
+        let package = json!({"engine": "nxnative", "target": "macos-arm64", "upstream_revision": "a".repeat(40),
+            "patch_sha256": "b".repeat(64), "toolchain_sha256": "c".repeat(64), "archive_sha256": "d".repeat(64),
+            "packaging_revision": "1", "adapter_version": 1});
+        json!({"format": 1, "game": {"console": "switch", "title_id": "0100000000000001", "version": "1", "build_id": "abc"},
+            "package": package, "runtime": package, "components": {"code": "1".repeat(64), "shaders": "2".repeat(64), "runtime": "3".repeat(64), "data": "4".repeat(64)},
+            "profile": {"format": 1, "start": {"program": ["game-bin"]}, "saves": ["{install}/pinned-saves"]}, "required_files": []})
+    }
+
+    fn engine_app(name: &str, mut entry: Value) -> (PathBuf, App) {
+        let dir = std::env::temp_dir().join(format!("rl-engine-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("cache")).unwrap();
+        entry["id"] = json!("game");
+        std::fs::write(dir.join("cache/pc-catalog.json"), serde_json::to_vec(&json!({"apps": [entry]})).unwrap()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("game".into(), Installed { id: "game".into(), path: dir.join("game"), engine_build: Some(engine_record()), ..Default::default() });
+        let app = app_in(&dir, lib);
+        (dir, app)
+    }
+
+    #[test]
+    fn engine_dispatch_never_calls_script_or_installation_handlers() {
+        for name in ["game.cmd", "game.bat", "game.sh", "game.py", "game.exe", "game.AppImage", "game.flatpak"] {
+            let (exe, command, unpacked) = dispatch_game(Some(Path::new(name)), || panic!("A native pin reached the legacy handler: {name}")).unwrap();
+            assert_eq!(exe, Path::new(name));
+            assert_eq!(command.as_std().get_program(), name);
+            assert_eq!(command.as_std().get_args().count(), 0);
+            assert!(unpacked.is_none());
+        }
+        let (exe, _, _) = dispatch_game(None, || Ok(("legacy".into(), tokio::process::Command::new("legacy"), None))).unwrap();
+        assert_eq!(exe, Path::new("legacy"));
+    }
+
+    #[test]
+    fn engine_saves_follow_the_pin_instead_of_the_catalog() {
+        let (dir, app) = engine_app("saves", json!({"launcher": {"format": 1, "saves": ["{install}/new-saves"]}, "saves": ["{install}/catalog-saves"]}));
+        let g = app.lib.lock().unwrap().installed["game"].clone();
+        let spots = cloud::spots_of(&app, "game", &g);
+        assert_eq!(spots.iter().map(|s| s.template.as_str()).collect::<Vec<_>>(), ["{install}/pinned-saves"]);
+        let mut unknown = g;
+        unknown.engine_build = Some(json!({"format": 99}));
+        assert!(cloud::spots_of(&app, "game", &unknown).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn changing_projects_keeps_engine_installations_and_their_pins() {
+        let (dir, app) = engine_app("project-pin", json!({"repo":"other/game"}));
+        let cat = json!({"apps":[{"id":"other","repo":"other/game"}]});
+        for record in [engine_record(), json!({"state":"pending"}), Value::Null] {
+            app.lib.lock().unwrap().installed.get_mut("game").unwrap().engine_build = Some(record);
+            let before = serde_json::to_value(&app.lib.lock().unwrap().installed["game"]).unwrap();
+            for project in ["other", ""] {
+                assert!(adopt::change_project(&app,"game",project,&cat).is_err());
+                assert_eq!(serde_json::to_value(&app.lib.lock().unwrap().installed["game"]).unwrap(),before);
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn associating_a_legacy_installation_cannot_create_an_unprepared_engine_route() {
+        let (dir, app) = engine_app("project-route", json!({"repo":"other/game"}));
+        app.lib.lock().unwrap().installed.get_mut("game").unwrap().engine_build = None;
+        let before = serde_json::to_value(&app.lib.lock().unwrap().installed["game"]).unwrap();
+        let mut cat = json!({"apps":[]});
+        engines::catalog::merge(&mut cat,Some(engines::Target::MacosArm64));
+        let target = cat["apps"][0]["id"].as_str().unwrap();
+        assert!(adopt::change_project(&app,"game",target,&cat).is_err());
+        assert_eq!(serde_json::to_value(&app.lib.lock().unwrap().installed["game"]).unwrap(),before);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn engine_games_cannot_gain_children_from_a_changed_catalog() {
+        let (dir, app) = engine_app("children", json!({"games": [{"id": "one", "name": "One", "args": ["--rebuild"]}, {"id": "two", "name": "Two"}]}));
+        let g = app.lib.lock().unwrap().installed["game"].clone();
+        assert!(games_of(&app, "game", &g).is_empty());
+        assert!(game_of(&app, "game--one").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn engine_shortcuts_skip_catalog_required_setup_even_with_an_unknown_pin() {
+        let (dir, app) = engine_app("shortcut", json!({"setup_required": true}));
+        assert!(!setup_first_needed(&app, "game"));
+        app.lib.lock().unwrap().installed.get_mut("game").unwrap().engine_build = Some(json!({"format": 99}));
+        assert!(!setup_first_needed(&app, "game"));
+        app.lib.lock().unwrap().installed.get_mut("game").unwrap().engine_build = None;
+        assert!(setup_first_needed(&app, "game"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unknown_engine_records_never_fall_back_to_catalog_profiles() {
+        let entry = json!({"launcher": {"format": 1, "start": {"program": ["new-driver"]}}});
+        let mut g = Installed { engine_build: Some(json!({"format": 99})), ..Default::default() };
+        assert!(installation_profile(&g, &entry).is_none());
+        g.engine_build = None;
+        assert_eq!(installation_profile(&g, &entry).unwrap().start.unwrap().program, ["new-driver"]);
+    }
+
+    #[test]
+    fn engine_pins_are_not_offered_ordinary_release_updates() {
+        let g = Installed {
+            tag: "v1".into(), engine_build: Some(json!({"format": 99})), ..Default::default()
+        };
+        let releases: Vec<Release> = serde_json::from_value(json!([
+            {"tag_name": "v2", "assets": [
+                {"name": "game-linux-x64.tar.gz", "browser_download_url": "https://example.com/linux", "size": 10},
+                {"name": "game-windows-x64.zip", "browser_download_url": "https://example.com/windows", "size": 10},
+                {"name": "game-macos-arm64.zip", "browser_download_url": "https://example.com/mac", "size": 10}
+            ]}
+        ])).unwrap();
+        assert_eq!(offered_update(&g, None, &releases), None);
+    }
 
     #[test]
     fn the_catalogs_xbox_360_title_id_is_used_first_and_in_capitals() {
@@ -8879,6 +9162,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    #[test]
+    fn engine_catalog_does_not_reassign_a_personal_repo_entry_to_an_arbitrary_game() {
+        let d = std::env::temp_dir().join(format!("rl-engine-merge-{}",std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        catalog::save_mine(&d,&[json!({"id":"mine-nxnative","repo":"seedds/nxnative"})]).unwrap();
+        let st = app_in(&d,Library::default());
+        let mut cat=json!({"apps":[]});
+        engines::catalog::merge(&mut cat,Some(engines::Target::MacosArm64));
+        assert!(merge_mine(&st,&cat).is_empty());
+        assert_eq!(catalog::mine(&d)[0]["id"],"mine-nxnative");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn preparation_reservation_blocks_other_installation_mutations() {
+        let st=app_in(Path::new(""),Library::default());
+        let first=InstallationMutation::acquire(&st,"game").unwrap();
+        assert!(InstallationMutation::acquire(&st,"game").is_err());
+        drop(first);
+        assert!(InstallationMutation::acquire(&st,"game").is_ok());
+    }
+
+    #[test]
+    fn engine_commit_requires_same_installation_generation_and_path() {
+        let game=engines::nxnative::catalog::games().remove(0);
+        let root=std::env::temp_dir().join(format!("rl-generation-{}",std::process::id()));
+        let _=std::fs::remove_dir_all(&root);
+        let first=engines::pending::create(&game,&root).unwrap();
+        std::fs::remove_dir(&root).unwrap();
+        let second=engines::pending::create(&game,&root).unwrap();
+        assert!(!engines::pending::same_installation(&first,&second));
+        let mut moved=first.clone();moved.path=root.join("moved");
+        assert!(!engines::pending::same_installation(&first,&moved));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     fn app_in(dir: &Path, lib: Library) -> App {
         App {
             dir: dir.to_path_buf(),
@@ -8889,7 +9208,7 @@ mod tests {
             pids: Mutex::default(),
             started: Mutex::default(),
             download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
-            moving: Mutex::default(),
+            moving: Arc::default(),
             overlay_open: AtomicBool::new(false),
             looked: Mutex::new(HashSet::new()),
             headless: AtomicBool::new(false),

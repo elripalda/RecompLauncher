@@ -104,14 +104,21 @@ fn id_ok(s: &str) -> bool {
     !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 /// Managed inputs are not save data, including a secret staged under a custom filename.
+const ENGINE_FILES: &[&str] = &[".engine-work", "Game.app", ".engine-prepared.json", ".engine-prepared.json.tmp", "preparation.log"];
 pub fn excluded(g: &Installed, path: &Path) -> bool {
+    if g.engine_build.is_some() && ENGINE_FILES.iter().map(PathBuf::from).chain(g.files.iter().cloned()).any(|s| {
+        let target = g.path.join(s);
+        path.starts_with(&target) || target.canonicalize().ok().zip(path.canonicalize().ok()).is_some_and(|(a, b)| b.starts_with(a))
+    }) { return true; }
     g.input_staged.values().filter(|s| relative(s)).any(|s| {
         let target = g.path.join(s);
         target == path || target.canonicalize().ok().zip(path.canonicalize().ok()).is_some_and(|(a, b)| a == b)
     }) || path.file_name().and_then(|s| s.to_str()).is_some_and(|s| ["prod.keys", "title.keys", "common.key"].iter().any(|n| s.eq_ignore_ascii_case(n)))
 }
 pub fn release_files(g: &Installed) -> Vec<PathBuf> {
-    g.files.iter().cloned().chain(g.input_staged.values().filter(|s| relative(s)).map(PathBuf::from)).collect()
+    let mut files: Vec<_> = g.files.iter().cloned().chain(g.input_staged.values().filter(|s| relative(s)).map(PathBuf::from)).collect();
+    if g.engine_build.is_some() { files.extend(ENGINE_FILES.iter().map(PathBuf::from)); }
+    files
 }
 pub fn relative(s: &str) -> bool {
     !s.is_empty() && !s.contains(['\\', ':', '{', '}']) && Path::new(s).components().all(|c| matches!(c, Component::Normal(_)))

@@ -92,6 +92,10 @@ pub struct Installed {
     pub setup_inputs: BTreeMap<String, PathBuf>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub inputs_ready: String,
+    /// Kept verbatim so a newer engine record cannot erase an installed game on older launchers.
+    /// Every use validates the record; its presence always prevents ordinary release updates.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "engine_record")]
+    pub engine_build: Option<Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input_staged: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -202,6 +206,11 @@ pub struct Installed {
 
 fn half() -> u8 {
     50
+}
+
+fn engine_record<'de, D: serde::Deserializer<'de>>(reader: D) -> Result<Option<Value>, D::Error> {
+    // An absent field is legacy. A present null is a damaged pin, not permission to replace it.
+    Value::deserialize(reader).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
