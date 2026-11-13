@@ -797,7 +797,22 @@ pub async fn releases_all(http: &reqwest::Client, dir: &Path, repo: &str) -> Res
     if site_only(repo) || all.len() < 30 {
         return Ok(all);
     }
+    all.extend(older_releases(http, repo).await);
+    Ok(dedupe_by_tag(all))
+}
+
+/// The older pages of a GitHub project's releases, kept in memory for six hours: a sweep happens
+/// whenever a game is added or updates are checked, and GitHub gives only sixty answers an hour to
+/// a PC without a token. Only a complete read is kept; a page that failed gives what came before it.
+async fn older_releases(http: &reqwest::Client, repo: &str) -> Vec<Value> {
+    static KEPT: std::sync::Mutex<Vec<(String, std::time::Instant, Vec<Value>)>> = std::sync::Mutex::new(Vec::new());
+    let key = repo.to_lowercase();
+    let fresh = |at: &std::time::Instant| at.elapsed().as_secs() < RELEASES_FRESH;
+    if let Some((_, _, v)) = KEPT.lock().unwrap().iter().find(|(k, at, _)| *k == key && fresh(at)) {
+        return v.clone();
+    }
     let mut older: Vec<Value> = vec![];
+    let mut complete = false;
     for page in 1..=10 {
         let url = format!("https://api.github.com/repos/{repo}/releases?per_page=100&page={page}");
         let sent = crate::net::send(http.get(&url).header("Accept", "application/vnd.github+json").timeout(crate::net::QUICK), &url, false).await;
@@ -809,11 +824,16 @@ pub async fn releases_all(http: &reqwest::Client, dir: &Path, repo: &str) -> Res
         let Some(got) = v.as_array() else { break };
         older.extend(got.iter().cloned());
         if got.len() < 100 {
+            complete = true;
             break;
         }
     }
-    all.extend(older);
-    Ok(dedupe_by_tag(all))
+    if complete {
+        let mut kept = KEPT.lock().unwrap();
+        kept.retain(|(k, _, _)| *k != key);
+        kept.push((key, std::time::Instant::now(), older.clone()));
+    }
+    older
 }
 
 /// The first release for each tag, in order (the site's copy of a release comes before GitHub's).

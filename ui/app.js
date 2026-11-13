@@ -136,7 +136,9 @@ const favs = () => ((S.settings.ui && S.settings.ui.favs) || []).filter((id) => 
 // A word that means different things in different places ("Light" as a theme, not a strength):
 // its key carries the context after a bar, and English shows only the word.
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
-const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet);
+// A change to the Library's added games (every way of adding one goes through here) wakes Data Hoarder
+// Mode once it's saved, which is when its sweep can see the new game.
+const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet).then(() => { if (patch && 'saved' in patch) hoardNow(); });
 // Download speed limits the player can pick (MB a second; 0 is none), sent to the app at start and
 // whenever they change.
 const DL_LIMITS = [0, 1, 2, 5, 10, 25, 50];
@@ -202,7 +204,6 @@ async function addToLibrary(id) {
   const mine = (((S.settings.ui || {}).found_saved) || []).filter((x) => x !== id);
   const skip = (((S.settings.ui || {}).found_skip) || []).filter((x) => x !== id);
   await saveUi({ saved: Object.assign({}, saved(), { [id]: Math.floor(Date.now() / 1000) }), found_saved: mine, found_skip: skip }, true);
-  hoardNow();
   libSend(id, true);
   const a = byId(id);
   render(true);

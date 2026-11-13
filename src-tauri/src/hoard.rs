@@ -101,6 +101,12 @@ pub fn safe_name(s: &str) -> String {
     if trimmed.is_empty() || trimmed.chars().all(|c| c == '_') {
         return "unnamed".into();
     }
+    // Windows won't make a file or folder named for a device (CON, NUL, COM1...), with or without an extension.
+    let stem = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let device = ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str()) || (stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.ends_with(|c: char| c.is_ascii_digit() && c != '0'));
+    if device {
+        return format!("_{trimmed}");
+    }
     trimmed.to_string()
 }
 
@@ -221,8 +227,17 @@ pub fn kick(app: &AppHandle) {
 /// The mode was turned off: the sweep stops after the file it's on (a half-done one carries on from
 /// its `.part` file if the mode is turned on again).
 pub fn stop() {
+    // A plain cancel throws the half-downloaded file away. Pausing it first keeps the `.part` file,
+    // so a sweep after the mode comes back on carries on from where this one got to.
+    let id = CURRENT.lock().unwrap().clone();
+    if !id.is_empty() {
+        install::pause(&id);
+    }
     stop_flag().store(true, Ordering::SeqCst);
 }
+
+/// The download id of the file being saved right now, empty between files (see `stop`).
+static CURRENT: Mutex<String> = Mutex::new(String::new());
 
 /// The launcher's clock for it: a first look shortly after start, then every few hours.
 pub fn start(app: AppHandle) {
@@ -346,7 +361,12 @@ async fn hoard_release(app: &AppHandle, settings: &Settings, t: &Target, rel: &R
         // One download at a time, shared with installs: a player's own install waits for at most
         // the file being saved now.
         let Ok(permit) = st.download_slot.clone().acquire_owned().await else { return Ok(()) };
+        // The mode may have been turned off while this waited for its turn.
+        if !enabled(app) {
+            return Ok(());
+        }
         let id = format!("hoard:{}", t.id);
+        *CURRENT.lock().unwrap() = id.clone();
         let report = |p: Progress| {
             let (done, total) = (p.done, p.total);
             update(app, |s| {
@@ -356,9 +376,14 @@ async fn hoard_release(app: &AppHandle, settings: &Settings, t: &Target, rel: &R
         };
         let got = install::download(&st.http, &asset, &dir, &id, stop_flag(), &report).await;
         drop(permit);
+        CURRENT.lock().unwrap().clear();
+        // Paused by `stop`: its part file stays, and nothing is left registered under this id.
+        install::unpause(&id);
+        install::resumed(&id);
         match got {
             Ok(_) => update(app, |s| s.saved += 1),
             Err(Error::Cancelled) => return Ok(()),
+            Err(Error::Msg(m)) if m == "PAUSED" => return Ok(()),
             Err(e) => {
                 let msg = e.to_string();
                 trail::note(format!("Data Hoarder: {} {} {}: {msg}", t.name, rel.tag_name, asset.name));
@@ -392,6 +417,15 @@ mod tests {
         assert!(!safe_name("a/b\\c").contains(['/', '\\']));
         assert_eq!(safe_name(".."), "unnamed");
         assert_eq!(safe_name("   "), "unnamed");
+    }
+
+    #[test]
+    fn windows_device_names_are_not_used_as_they_are() {
+        assert_eq!(safe_name("con"), "_con");
+        assert_eq!(safe_name("NUL.txt"), "_NUL.txt");
+        assert_eq!(safe_name("COM3"), "_COM3");
+        assert_eq!(safe_name("Console"), "Console");
+        assert_eq!(safe_name("COM0"), "COM0");
     }
 
     #[test]
