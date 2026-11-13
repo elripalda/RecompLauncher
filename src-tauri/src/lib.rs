@@ -6145,8 +6145,14 @@ fn update_strike(dir: &Path, version: &str, url: &str, sha: &str, fails: u64) ->
 /// A Windows installer names its own version in its version resource (UTF-16). An installer for
 /// RecompLauncher `version` that doesn't is another build, published by mistake.
 fn installer_is_version(bytes: &[u8], version: &str) -> bool {
-    let want: Vec<u8> = version.trim_start_matches('v').encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
-    !want.is_empty() && bytes.windows(want.len()).any(|w| w == want.as_slice())
+    let version = version.trim_start_matches('v');
+    if version.is_empty() {
+        return false;
+    }
+    // NSIS surrounds each version value with UTF-16 nulls (the key's terminator/padding, then
+    // the value's terminator). Match the whole value so beta.410 cannot pass for beta.41.
+    let want: Vec<u8> = format!("\0{version}\0").encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    bytes.windows(want.len()).any(|w| w == want.as_slice())
 }
 
 /// The window asks as it opens (an answer from the last hour is reused, so opening it again and
@@ -8410,9 +8416,27 @@ mod tests {
     }
 
     #[test]
+    fn installer_versions_must_match_the_whole_resource_value() {
+        for version in ["0.90.0-beta.410", "0.90.0-beta.41.1", "0.90.0-beta.41-extra", "10.90.0-beta.41"] {
+            let resource: Vec<u8> = format!("ProductVersion\0{version}\0").encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+            assert!(!installer_is_version(&resource, "0.90.0-beta.41"), "accepted {version} as beta.41");
+        }
+    }
+
+    #[test]
+    fn a_complete_installer_version_accepts_resource_padding() {
+        for padding in ["", "\0"] {
+            let resource: Vec<u8> = format!("ProductVersion\0{padding}0.90.0-beta.41\0").encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+            assert!(installer_is_version(&resource, "0.90.0-beta.41"));
+            assert!(installer_is_version(&resource, "v0.90.0-beta.41"));
+            assert!(!installer_is_version(&resource, ""));
+        }
+    }
+
+    #[test]
     fn a_wrong_update_file_is_refused_and_not_offered_again() {
         // An installer names its version in UTF-16; another version's installer doesn't match.
-        let inst: Vec<u8> = b"MZ..".iter().copied().chain("ProductVersion\00.90.0-beta.32".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        let inst: Vec<u8> = b"MZ..".iter().copied().chain("ProductVersion\00.90.0-beta.32\0".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
         assert!(installer_is_version(&inst, "0.90.0-beta.32"));
         assert!(installer_is_version(&inst, "v0.90.0-beta.32"));
         assert!(!installer_is_version(&inst, "0.90.0-beta.33"));
