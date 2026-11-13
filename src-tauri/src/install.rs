@@ -314,6 +314,12 @@ pub async fn download(
     download_with_api(http, asset, dir, id, cancel, report, api).await
 }
 
+/// The name a downloaded file is kept under: letters, digits and `-_.+`, anything else an underscore.
+/// Data Hoarder Mode (hoard.rs) uses it to tell whether an asset is already saved.
+pub fn file_name_for(asset_name: &str) -> String {
+    asset_name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.+".contains(c) { c } else { '_' }).collect()
+}
+
 async fn download_with_api(
     http: &reqwest::Client,
     asset: &Asset,
@@ -324,7 +330,7 @@ async fn download_with_api(
     api: Option<&str>,
 ) -> Result<Downloaded, Error> {
     fs::create_dir_all(dir)?;
-    let safe: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.+".contains(c) { c } else { '_' }).collect();
+    let safe = file_name_for(&asset.name);
     let file = dir.join(&safe);
     // The part file is named for this exact file (its size and download address), so a stopped
     // download of another release with the same file name is never carried on from.
