@@ -1,2 +1,4 @@
 # Flatpak/Flathub validators reject CRLF.
 packaging/** text eol=lf
+# Shell scripts the launcher embeds and runs on a Mac (include_str!): a CR would break them.
+src-tauri/src/*.sh text eol=lf

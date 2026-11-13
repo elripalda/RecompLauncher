@@ -71,7 +71,10 @@ release; games should keep player data outside their signed bundle.
 The launcher updates itself on Mac from the release's DMG: Update Now downloads it, checks its
 `sha256`, mounts it read-only, checks that the app inside is the version on offer and that its
 ad hoc signature verifies (an app that fails either check is refused), swaps it in for the running
-RecompLauncher.app and opens it again. When the running app's folder can't be written (it runs
+RecompLauncher.app and opens it again. The previous app is kept aside until the new one has run
+for 20 seconds; if the new one crashes or macOS stops it before then, the previous one is put
+back and opens, and it tells the player the update didn't start. Twice from the same file and
+that update isn't offered again. When the running app's folder can't be written (it runs
 from the DMG itself, from a folder macOS moved it to, or from one only an administrator can
 change), or the feed's file isn't a `.dmg`, the DMG link opens instead for a manual install.
 A Windows/Linux-only version feed must not offer an update on Mac. To advertise a Mac release,

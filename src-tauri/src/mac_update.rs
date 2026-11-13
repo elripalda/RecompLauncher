@@ -62,14 +62,19 @@ fn signed(app: &Path) -> bool {
     run("/usr/bin/codesign", &["--verify", "--deep", "--strict"], app)
 }
 
-/// Copies the new app next to `bundle`, checks it and swaps it in. The running copy keeps working
-/// until it quits: its files stay open after they're gone from the folder.
+/// The previous version, kept next to the new one until the new one has started.
+fn old_of(bundle: &Path) -> PathBuf {
+    bundle.with_file_name(".RecompLauncher-old.app")
+}
+
+/// Copies the new app next to `bundle`, checks it and swaps it in, keeping the previous version
+/// aside (see `start_and_watch` and `forget_old`). The running copy keeps working until it quits:
+/// its files stay open after they're gone from the folder.
 #[cfg(target_os = "macos")]
 pub fn install(dmg: &Path, bundle: &Path, version: &str) -> Result<(), Failed> {
-    let parent = bundle.parent().ok_or_else(|| Failed::Msg("Couldn't find the folder RecompLauncher is in.".into()))?;
     // Next to the app, so the swap is a rename on the same disk and can't be left half done.
-    let work = parent.join(".RecompLauncher-update");
-    let old = parent.join(".RecompLauncher-old.app");
+    let work = bundle.with_file_name(".RecompLauncher-update");
+    let old = old_of(bundle);
     let _ = std::fs::remove_dir_all(&work);
     let _ = std::fs::remove_dir_all(&old);
     let put = swap_in(dmg, bundle, version, &work, &old);
@@ -94,12 +99,14 @@ fn swap_in(dmg: &Path, bundle: &Path, version: &str, work: &Path, old: &Path) ->
     if !signed(&new_app) {
         return Err(Failed::Msg("The new version's signature doesn't check out, so it wasn't put in place. Download it from recomplauncher.com instead.".into()));
     }
+    if crate::macos::bundle_executable(&new_app, crate::assets::arch_now()).is_none() {
+        return Err(Failed::Msg("The new version has no program for this Mac in it, so it wasn't put in place.".into()));
+    }
     std::fs::rename(bundle, old).map_err(|e| Failed::Msg(format!("Couldn't move this version aside for the new one: {e}")))?;
     if let Err(e) = std::fs::rename(&new_app, bundle) {
         let _ = std::fs::rename(old, bundle);
         return Err(Failed::Msg(format!("Couldn't put the new version in place: {e}")));
     }
-    let _ = std::fs::remove_dir_all(old);
     Ok(())
 }
 
@@ -108,12 +115,24 @@ pub fn install(_dmg: &Path, _bundle: &Path, _version: &str) -> Result<(), Failed
     Err(Failed::Msg("Only a Mac updates from a disk image.".into()))
 }
 
-/// Opens the app again once this process has quit. Opening it sooner would only bring this copy's
-/// window forward: macOS sees the same app already running.
-pub fn open_after_exit(bundle: &Path) -> std::io::Result<()> {
+/// The previous version isn't needed: the new one won't be started now (the player had closed the
+/// window), so there's nothing to watch.
+pub fn forget_old(bundle: &Path) {
+    let _ = std::fs::remove_dir_all(old_of(bundle));
+}
+
+/// Waits for this process to quit, starts the new version and watches it for a while (see
+/// mac_update.sh). If it crashes or macOS stops it, the previous version goes back and opens; the
+/// next start then tells the player (update-pending.json, see update_check_last).
+const WATCH: &str = include_str!("mac_update.sh");
+
+pub fn start_and_watch(bundle: &Path) -> std::io::Result<()> {
+    let program = crate::macos::bundle_executable(bundle, crate::assets::arch_now()).ok_or_else(|| std::io::Error::other("the new version has no program for this Mac"))?;
+    let failed = bundle.with_file_name(".RecompLauncher-failed.app");
     let mut c = std::process::Command::new("/bin/sh");
-    c.arg("-c").arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec /usr/bin/open "$2""#);
-    c.arg("sh").arg(std::process::id().to_string()).arg(bundle);
+    c.arg("-c").arg(WATCH).arg("sh");
+    c.arg(std::process::id().to_string()).arg(bundle).arg(old_of(bundle)).arg(failed).arg(program).arg("/usr/bin/open");
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     crate::sysenv::clean_std(&mut c);
     c.spawn().map(|_| ())
 }
@@ -144,5 +163,48 @@ mod tests {
     #[test]
     fn can_replace_is_false_when_the_folder_is_missing() {
         assert!(!can_replace(Path::new("/no/such/folder/RecompLauncher.app")));
+    }
+
+    /// Runs mac_update.sh with a stand-in new version that exits with `code` straight away, next
+    /// to an "app" and an "old" folder each holding a file saying which version it is. Returns the
+    /// folder they're in.
+    #[cfg(unix)]
+    fn watch_with_exit(code: i32, name: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rl-mac-watch-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (app, old) = (dir.join("RecompLauncher.app"), dir.join(".RecompLauncher-old.app"));
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(app.join("which"), "new").unwrap();
+        std::fs::write(old.join("which"), "old").unwrap();
+        let program = dir.join("program");
+        std::fs::write(&program, format!("#!/bin/sh\nexit {code}\n")).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // A process that has already quit stands in for the version being replaced.
+        let mut gone = std::process::Command::new("true").spawn().unwrap();
+        gone.wait().unwrap();
+        let status = std::process::Command::new("/bin/sh").arg("-c").arg(WATCH).arg("sh").arg(gone.id().to_string()).arg(&app).arg(&old).arg(dir.join(".RecompLauncher-failed.app")).arg(&program).arg("true").status().unwrap();
+        assert!(status.success());
+        dir
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_version_that_crashes_is_replaced_by_the_old_one() {
+        let dir = watch_with_exit(3, "crash");
+        assert_eq!(std::fs::read_to_string(dir.join("RecompLauncher.app/which")).unwrap(), "old");
+        assert!(!dir.join(".RecompLauncher-old.app").exists());
+        assert!(!dir.join(".RecompLauncher-failed.app").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_version_the_player_closes_soon_is_kept() {
+        let dir = watch_with_exit(0, "closed");
+        assert_eq!(std::fs::read_to_string(dir.join("RecompLauncher.app/which")).unwrap(), "new");
+        assert!(!dir.join(".RecompLauncher-old.app").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

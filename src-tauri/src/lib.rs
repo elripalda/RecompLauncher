@@ -6975,8 +6975,18 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
             Err(mac_update::Failed::Msg(m)) => return Err(Error::Msg(m)),
         }
         trail::note(format!("Updated to {to_ver} in place"));
-        if reopen_after_update(&app) {
-            mac_update::open_after_exit(&bundle).map_err(|e| Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")))?;
+        if !reopen_after_update(&app) {
+            mac_update::forget_old(&bundle);
+            app.exit(0);
+            return Ok(());
+        }
+        // Noted, so that if the new version fails to start and this one is put back, its next
+        // start tells the player (see update_check_last). No installer to run again on a Mac.
+        let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": to_ver, "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": "", "url": file_url, "sha256": want}).to_string());
+        if let Err(e) = mac_update::start_and_watch(&bundle) {
+            mac_update::forget_old(&bundle);
+            let _ = std::fs::remove_file(st.dir.join("update-pending.json"));
+            return Err(Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")));
         }
         app.exit(0);
         return Ok(());
