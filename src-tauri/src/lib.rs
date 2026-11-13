@@ -8,6 +8,8 @@ pub mod ach;
 pub mod adopt;
 pub mod xex;
 mod appimage;
+#[cfg(target_os = "linux")]
+mod appimage_update;
 pub mod art;
 pub mod assets;
 pub mod boot;
@@ -6165,12 +6167,15 @@ fn linux_entry(v: &Value) -> Option<Value> {
         return None;
     }
     let mut out = v.clone();
-    for k in ["version", "url", "sha256", "notes"] {
+    // A Linux download must never inherit the Windows checksum or required minimum.
+    for k in ["linux", "macos", "url", "sha256", "min", "size"] {
+        out.as_object_mut()?.remove(k);
+    }
+    for k in ["version", "url", "sha256", "notes", "min", "size"] {
         if let Some(x) = l.get(k) {
             out[k] = x.clone();
         }
     }
-    out.as_object_mut()?.remove("linux");
     Some(out)
 }
 
@@ -6883,22 +6888,35 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
 /// Download the newer launcher, check it, and start it: the installer on Windows, the AppImage in
 /// place of this one on Linux. Anything else opens the download page.
 #[tauri::command]
-async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
+async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option<bool>) -> Res<()> {
+    let result = update_launcher_inner(&app, &st, big_picture).await;
+    if result.is_err() {
+        let _ = app.emit("self-update", json!({"failed": true}));
+    }
+    result
+}
+
+async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<bool>) -> Res<()> {
     if flatpak::sandboxed() {
         return Err(Error::Msg("RecompLauncher updates through Flatpak. Update it from your software center, or run: flatpak update".into()));
     }
     let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
     let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.
-    let appimage = if cfg!(target_os = "linux") { std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()) } else { None };
     let v = launcher_platform_entry(&v, assets::os_now(), assets::arch_now()).unwrap_or(Value::Null);
+    #[cfg(target_os = "linux")]
+    if let Some(target) = std::env::var_os("APPIMAGE") {
+        // An AppImage reports missing/invalid metadata in the launcher and can be retried there.
+        // A missing image on disk is an error too, not a reason to open a browser.
+        return appimage_update::update(app, st, Path::new(&target), &v, _big_picture.unwrap_or_else(|| BIG_PICTURE.load(Ordering::Relaxed))).await;
+    }
     let file_url = str_of(&v, "url").to_string();
     let ok_host = file_url.starts_with("https://github.com/") || file_url.starts_with(&format!("{}/", net::SITE)) || file_url.starts_with(&format!("{}/", catalog::base().trim_end_matches('/')));
     if cfg!(target_os = "macos") {
         // Mac builds are downloaded and installed by the player; no in-place updater yet.
         return open_thing(&app, if ok_host { &file_url } else { &page }, true);
     }
-    if !(cfg!(windows) || appimage.is_some()) || file_url.is_empty() || !ok_host {
+    if !cfg!(windows) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
     let mut r = update_download::response(&st.http, &file_url).await?;
@@ -6931,27 +6949,6 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>) -> Res<()> {
         update_strike(&st.dir, &to_ver, &file_url, &want, 2);
         trail::note(format!("The update file for {to_ver} is another version; not offered again"));
         return Err(Error::Msg(format!("The update file for RecompLauncher {to_ver} looks wrong: it's a different version inside. It won't be offered again until it's fixed, and nothing on your PC needs changing.")));
-    }
-    if let Some(me) = appimage {
-        // The new AppImage goes next to this one and takes its place, then starts.
-        let new = me.with_extension("new");
-        std::fs::write(&new, &bytes).map_err(|e| Error::Msg(format!("Couldn't save the new version next to this one: {e}")))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))?;
-        }
-        std::fs::rename(&new, &me).map_err(|e| {
-            let _ = std::fs::remove_file(&new);
-            Error::Msg(format!("Couldn't replace RecompLauncher with the new version: {e}"))
-        })?;
-        if reopen_after_update(&app) {
-            let mut c = std::process::Command::new(&me);
-            sysenv::clean_std(&mut c);
-            c.spawn().map_err(|e| Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")))?;
-        }
-        app.exit(0);
-        return Ok(());
     }
     let file = std::env::temp_dir().join(format!("RecompLauncher-{}-setup.exe", str_of(&v, "version").trim_start_matches('v')));
     std::fs::write(&file, &bytes)?;
@@ -7015,6 +7012,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "pictures": ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string()),
         "deck": shortcuts::is_steam_deck(),
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
+        "desktopArg": std::env::args().any(|a| a == "--desktop"),
         "missing": missing,
         // Where the web view can't play a sound (an AppImage, run as one or unpacked, or a PC
         // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
@@ -7022,6 +7020,7 @@ fn get_state(st: State<'_, App>) -> Value {
         // Where the web view draws on the processor, the page leaves out what keeps moving.
         "cpuDraw": cpu_draw(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
+        "updateError": APPIMAGE_UPDATE_ERROR.lock().unwrap().clone(),
     })
 }
 
@@ -7045,9 +7044,19 @@ fn cpu_draw() -> bool {
 /// started from): { to, installer }. The window offers to run that installer the usual way, where
 /// the player sees what stops it.
 static UPDATE_FAILED: Mutex<Option<Value>> = Mutex::new(None);
+static APPIMAGE_UPDATE_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// At start: did the last update from inside the launcher go in?
 fn update_check_last(dir: &Path) {
+    #[cfg(target_os = "linux")]
+    {
+        let error = dir.join("appimage-update-error.txt");
+        if let Ok(message) = std::fs::read_to_string(&error) {
+            trail::note(format!("AppImage update: {}", message.trim()));
+            *APPIMAGE_UPDATE_ERROR.lock().unwrap() = Some(message);
+            let _ = std::fs::remove_file(error);
+        }
+    }
     let f = dir.join("update-pending.json");
     let Some(v) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
     let (to, from, at) = (str_of(&v, "to").to_string(), str_of(&v, "from").to_string(), v.get("at").and_then(Value::as_u64).unwrap_or(0));
@@ -8116,7 +8125,7 @@ pub fn run() {
                 let _ = lib.save(&dir);
             }
             // Big Picture at start only once setup is done: the first-run setup is always in a window.
-            let tv = (lib.settings.start_in_tv || std::env::args().any(|a| a == "--bigpicture")) && lib.settings.setup_done;
+            let tv = !std::env::args().any(|a| a == "--desktop") && (lib.settings.start_in_tv || std::env::args().any(|a| a == "--bigpicture")) && lib.settings.setup_done;
             // ReShade left in a game's folder by a start that didn't finish (the launcher closed
             // while the game ran): taken away now.
             {
@@ -8954,6 +8963,20 @@ mod tests {
         assert!(launcher_platform_entry(&feed, "macos", "arm64").is_none());
         assert_eq!(launcher_platform_entry(&feed, "windows", "x64").unwrap()["url"], "https://example.com/windows.exe");
         assert_eq!(launcher_platform_entry(&feed, "linux", "x64").unwrap()["url"], "https://example.com/linux.AppImage");
+    }
+
+    #[test]
+    fn linux_launcher_update_uses_its_own_checksum_and_minimum() {
+        let feed = json!({"version":"999.0", "sha256":"windows-sha", "min":"999.0", "size":12,
+            "linux":{"url":"https://github.com/owner/repo/Launcher.AppImage"}});
+        let linux = linux_entry(&feed).unwrap();
+        assert_eq!(linux["version"], "999.0");
+        for key in ["sha256", "min", "size", "linux"] { assert!(linux.get(key).is_none(), "{key}"); }
+        let mut own = feed;
+        own["linux"]["sha256"] = json!("linux-sha");
+        own["linux"]["min"] = json!("1.0");
+        assert_eq!(linux_entry(&own).unwrap()["sha256"], "linux-sha");
+        assert_eq!(linux_entry(&own).unwrap()["min"], "1.0");
     }
 
     #[test]

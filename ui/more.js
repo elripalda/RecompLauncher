@@ -16,8 +16,10 @@ T.event.listen('push', ({ payload: p }) => {
 // The download, then the install (no window of its own); RecompLauncher opens again after.
 let updBox = null;
 T.event.listen('self-update', ({ payload: p }) => {
+  if (p.failed) { if (updBox) updBox.remove(); updBox = null; return; }
   if (!updBox || !updBox.isConnected) {
     updBox = modal(`<div class="upd"><h2>${esc(t('Updating RecompLauncher'))}</h2><div class="prog"><div class="track"><i style="width:0%"></i></div></div><p class="muted" data-st>${esc(t('Downloading…'))}</p></div>`, () => {}, t('Updating RecompLauncher'));
+    if (S.os === 'linux') updBox.dataset.busy = 'true';
   }
   const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
   const bar = $('.track i', updBox), st = $('[data-st]', updBox);

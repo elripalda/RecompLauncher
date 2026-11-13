@@ -4057,13 +4057,14 @@ function paintProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
+  if (st.updateError && !S.updateErrorShown) { S.updateErrorShown = true; setTimeout(() => fail(st.updateError), 1500); }
   S.missing = new Set(st.missing || []);
   // The games of recomps that carry several: asked again when what's installed changes.
   const gk = Object.values(S.library).map((g) => g.id + '@' + g.tag).sort().join('|');
@@ -5307,8 +5308,14 @@ function updateFailedModal(f) {
   }, t('The Update Didn\'t Install'));
 }
 async function selfUpdate() {
+  if (S.selfUpdating) return;
+  S.selfUpdating = true;
   toast(t('Downloading the new RecompLauncher…'));
-  try { await invoke('update_launcher'); } catch (e) { if (!blocked('', e)) fail(e); lookForLauncher(); }
+  try {
+    if (S.os === 'linux') await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
+    else await invoke('update_launcher');
+  } catch (e) { if (!blocked('', e)) fail(e); lookForLauncher(); }
+  finally { S.selfUpdating = false; }
 }
 
 function libChoices(libs, sel) {
@@ -5595,12 +5602,15 @@ async function lookForLauncher(atStart) {
   renderSide();
 }
 
+// An update restart returns to the mode that was on screen.
+function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+
 // The update screen at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
 // version the player put off with Later, unless that version is required.
 function startUpdateDue(v) {
   if (!v || !v.version || !S.settings.setup_done) return false;
-  if (document.body.classList.contains('tv-on') || S.bigArg || S.settings.start_in_tv) return false;
+  if (document.body.classList.contains('tv-on') || startsInTV()) return false;
   if ((S.running && S.running.size) || $('.scrim') || $('.upd-start')) return false;
   return !!v.required || (S.settings.ui || {}).upd_later !== v.version;
 }
@@ -7764,7 +7774,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
-  else if (window.startTV && (S.settings.start_in_tv || S.bigArg)) window.startTV();
+  else if (window.startTV && startsInTV()) window.startTV();
   else setTimeout(askData, 800);
   // The window opens only now, with the first real screen already drawn (two frames: the draw, then its paint).
   // A hidden window may not get frames at all, so a short timer opens it too, whichever comes first;
@@ -7774,7 +7784,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   requestAnimationFrame(() => requestAnimationFrame(ready));
   setTimeout(ready, 150);
   // Started by a game link from the website: that game's page.
-  invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
+  invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
   // A shortcut asked to play a recomp that still needs setting up: its Set Up window.
-  invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && (S.settings.start_in_tv || S.bigArg) ? 1600 : 0); }).catch(() => {});
+  invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
 })();

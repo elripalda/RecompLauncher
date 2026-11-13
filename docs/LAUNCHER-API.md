@@ -103,6 +103,26 @@ start (reusing an answer from the last hour) and about every 6 hours, downloads 
 (quiet, then opens again). `notes` (Markdown) shows once as What's new. The admin page's Updates
 tab uploads an installer to `/launcher/` and publishes version.json.
 
+For Linux, publish a `linux` object with an HTTPS AppImage `url`, its own 64-digit `sha256`,
+and optional `version`, `notes`, `min` and `size`. Only `version` and `notes` fall back to the
+shared fields; Windows checksums and minimum versions never apply to Linux. The AppImage
+updater requires a newer version and a valid checksum, bounds the download to 512 MiB, and
+checks the type-2 AppImage container and native runtime architecture before staging it.
+Missing or invalid AppImage metadata produces an error inside the launcher, allowing retry.
+
+The updater stages in a private directory beside the running AppImage. Its folder must be
+writable. A system-shell helper waits for the old process to exit, atomically replaces the
+same filename, and starts it in the current desktop or Big Picture mode if the window is
+still open. Quitting during preparation cancels the update; closing to the tray leaves it
+closed after replacement. Symlinks and shortcuts keep their original paths. The previous
+image is restored if the new runtime exits
+with an error in the first two seconds. This checks immediate launch failure; it does not
+verify that the new UI rendered or recover from later crashes. Preparation failures leave the
+installed image untouched. Update errors close the progress dialog so the player can retry.
+
+The `.deb` and plain Linux executable keep the download-page fallback. Flatpak updates remain
+managed by Flatpak. macOS and Windows update installation behavior is unchanged.
+
 ## How often the launcher asks
 
 Everything the launcher asks this server goes to one address, `API_BASE` in `src-tauri/src/net.rs`.
