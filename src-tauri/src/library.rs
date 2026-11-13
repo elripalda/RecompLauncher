@@ -306,6 +306,10 @@ pub struct Settings {
     /// RecompLauncher collection, and leaves it when uninstalled (steam_sync.rs).
     #[serde(default)]
     pub steam_sync: bool,
+    /// Settings → Auto-Install: once an Easy Setup game or a game that only comes as an installer
+    /// finishes downloading (an update too), its setup opens straight away. Off: it waits for Set Up.
+    #[serde(default = "yes")]
+    pub auto_install: bool,
 }
 
 fn yes() -> bool {
@@ -359,6 +363,7 @@ impl Default for Settings {
             lighter: None,
             linux_graphics: String::new(),
             steam_sync: false,
+            auto_install: true,
         }
     }
 }
@@ -612,6 +617,22 @@ pub fn folder_name(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn auto_install_is_on_by_default_and_for_settings_saved_before_it() {
+        // On keeps what every launcher before the switch did.
+        assert!(super::Settings::default().auto_install);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(settings.auto_install);
+    }
+
+    #[test]
+    fn auto_install_turned_off_stays_off() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","auto_install":false}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(!restored.auto_install);
+    }
+
     #[test]
     fn run_in_background_is_off_by_default() {
         assert!(!super::Settings::default().close_to_tray);
