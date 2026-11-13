@@ -2758,6 +2758,8 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   const el = e.target;
+  if (el.matches('[data-act="hoard-keep"]')) { saveSettings({ hoard_keep: el.value }); return; }
+  if (el.id === 'hoard-count') { const n = Math.max(1, Math.min(999, Math.floor(Number(el.value)) || 5)); saveSettings({ hoard_count: n }); return; }
   if (el.matches('[data-act="dl-limit"]')) { saveUi({ dl_limit: Number(el.value) || 0 }).then(sendLimits); return; }
   if (el.matches('[data-act="proxy-mode"]')) { if (el.value === 'custom') { S.proxyMode = 'custom'; setSection('updates', false); } else saveProxy(el.value); return; }
   if (el.matches('[data-lk-amount]')) {
@@ -5490,8 +5492,12 @@ function hoarderGroup(group, row, sw, st) {
   const where = row(t('Hoard folder'), `<span class="path">${esc(hoardRoot())}</span> · ${esc(t('Releases/Game/Release/, with each release\'s notes as RELEASE-NOTES.md.'))}`,
     `<span class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(hoardRoot())}">${esc(t('Open'))}</button><button type="button" class="btn sm" data-act="hoard-dir">${esc(t('Change'))}</button>${st.hoard_dir ? `<button type="button" class="btn sm" data-act="hoard-dir-reset">${esc(t('Reset'))}</button>` : ''}</span>`);
   const mine = row(t('Only builds for this PC'), t('Off: every platform\'s files are kept. On: only the ones that run on this PC, which takes far less room.'), sw('hoard_this_pc_only', !!st.hoard_this_pc_only, t('Only builds for this PC')));
+  const keep = st.hoard_keep || 'all';
+  const keepSel = `<select class="sel" data-act="hoard-keep" aria-label="${esc(t('Releases to keep'))}">${[['all', t('All releases')], ['latest', t('Latest release only')], ['count', t('Latest releases, a number')]].map(([k, n]) => `<option value="${k}"${keep === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+  const countBox = keep === 'count' ? `<input class="field sm" id="hoard-count" type="number" min="1" max="999" value="${Number(st.hoard_count) || 5}" aria-label="${esc(t('How many releases'))}" style="width:5em">` : '';
+  const which = row(t('Releases to keep'), t('All keeps every release, old ones too. Latest keeps only the newest. A number keeps that many of the newest. Releases already saved are never deleted.'), `<span class="acts">${keepSel}${countBox}</span>`);
   const now = row(t('Save Now'), `<span id="hoard-line">${esc(hoardLine())}</span>`, `<button type="button" class="btn sm" data-act="hoard-now">${esc(t('Save Now'))}</button>`);
-  return group(t('Data Hoarder'), main + where + mine + now);
+  return group(t('Data Hoarder'), main + where + which + mine + now);
 }
 T.event.listen('hoard', ({ payload }) => { S.hoard = payload; paintHoard(); });
 

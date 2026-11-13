@@ -7145,7 +7145,7 @@ fn save_settings(app: AppHandle, st: State<'_, App>, settings: Settings) -> Res<
     let mut l = st.lib.lock().unwrap();
     let hoarding = l.settings.hoarder;
     let hoard_root = l.settings.hoard_root();
-    let hoard_pc_only_before = l.settings.hoard_this_pc_only;
+    let hoard_before = (l.settings.hoard_this_pc_only, l.settings.hoard_keep.clone(), l.settings.hoard_count);
     let told = l.settings.tray_told;
     // The saves folder changes only through its own button (the copies move with it).
     let save_dir = l.settings.save_dir.clone();
@@ -7157,14 +7157,15 @@ fn save_settings(app: AppHandle, st: State<'_, App>, settings: Settings) -> Res<
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
     l.save(&st.dir)?;
-    // Data Hoarder Mode: turning it on (or pointing it at another folder, or at every platform
-    // instead of this PC's) starts a sweep; turning it off stops the one running.
-    let (on, root, pc_only) = (l.settings.hoarder, l.settings.hoard_root(), l.settings.hoard_this_pc_only);
+    // Data Hoarder Mode: turning it on (or pointing it at another folder, or changing which
+    // platforms or how many releases it keeps) starts a sweep; turning it off stops the one running.
+    let (on, root) = (l.settings.hoarder, l.settings.hoard_root());
+    let hoard_after = (l.settings.hoard_this_pc_only, l.settings.hoard_keep.clone(), l.settings.hoard_count);
     drop(l);
     if hoarding && !on {
         hoard::stop();
     }
-    if on && (!hoarding || root != hoard_root || pc_only != hoard_pc_only_before) {
+    if on && (!hoarding || root != hoard_root || hoard_after != hoard_before) {
         hoard::stop();
         hoard::kick(&app);
     }

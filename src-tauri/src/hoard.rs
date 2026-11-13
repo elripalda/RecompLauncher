@@ -293,17 +293,20 @@ async fn hoard_game(app: &AppHandle, settings: &Settings, t: &Target) -> Result<
             return if stops_sweep(&e.to_string()) { Err(e.to_string()) } else { Ok(()) };
         }
     };
-    for value in raw {
+    for (rel, value) in newest_kept(raw, settings.hoard_limit()) {
         if !enabled(app) {
             return Ok(());
-        }
-        let Ok(rel) = serde_json::from_value::<Release>(value.clone()) else { continue };
-        if rel.draft {
-            continue;
         }
         hoard_release(app, settings, t, &rel, &value).await?;
     }
     Ok(())
+}
+
+/// The releases to keep, newest first: drafts never count, and `limit` (None for all) cuts the list
+/// to the newest few. The list comes newest first, so no sorting is needed.
+pub fn newest_kept(raw: Vec<Value>, limit: Option<usize>) -> Vec<(Release, Value)> {
+    let parsed = raw.into_iter().filter_map(|v| serde_json::from_value::<Release>(v.clone()).ok().map(|r| (r, v)));
+    parsed.filter(|(r, _)| !r.draft).take(limit.unwrap_or(usize::MAX)).collect()
 }
 
 async fn hoard_release(app: &AppHandle, settings: &Settings, t: &Target, rel: &Release, raw: &Value) -> Result<(), String> {
@@ -515,6 +518,52 @@ mod tests {
         assert_eq!(s.hoard_root(), Path::new("/games/Releases"));
         s.hoard_dir = Some(PathBuf::from("/vault"));
         assert_eq!(s.hoard_root(), Path::new("/vault"));
+    }
+
+    fn list(tags: &[&str]) -> Vec<Value> {
+        tags.iter().map(|t| json!({ "tag_name": t, "draft": *t == "draft", "assets": [] })).collect()
+    }
+
+    fn tags(kept: &[(Release, Value)]) -> Vec<&str> {
+        kept.iter().map(|(r, _)| r.tag_name.as_str()).collect()
+    }
+
+    #[test]
+    fn all_keeps_every_release_but_drafts() {
+        let kept = newest_kept(list(&["v3", "draft", "v2", "v1"]), None);
+        assert_eq!(tags(&kept), ["v3", "v2", "v1"]);
+    }
+
+    #[test]
+    fn latest_keeps_only_the_newest() {
+        let kept = newest_kept(list(&["draft", "v3", "v2"]), Some(1));
+        assert_eq!(tags(&kept), ["v3"]);
+    }
+
+    #[test]
+    fn a_number_keeps_that_many_newest() {
+        let kept = newest_kept(list(&["v4", "v3", "v2", "v1"]), Some(2));
+        assert_eq!(tags(&kept), ["v4", "v3"]);
+    }
+
+    #[test]
+    fn a_number_larger_than_the_list_keeps_all() {
+        assert_eq!(newest_kept(list(&["v2", "v1"]), Some(50)).len(), 2);
+    }
+
+    #[test]
+    fn the_keep_setting_becomes_a_limit() {
+        let mut s = Settings::default();
+        assert_eq!(s.hoard_limit(), None);
+        s.hoard_keep = "latest".into();
+        assert_eq!(s.hoard_limit(), Some(1));
+        s.hoard_keep = "count".into();
+        s.hoard_count = 7;
+        assert_eq!(s.hoard_limit(), Some(7));
+        s.hoard_count = 0;
+        assert_eq!(s.hoard_limit(), Some(1));
+        s.hoard_keep = "nonsense".into();
+        assert_eq!(s.hoard_limit(), None);
     }
 
     #[test]

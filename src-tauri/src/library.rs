@@ -317,12 +317,35 @@ pub struct Settings {
     /// Hoard only the builds that run on this PC, not every platform's.
     #[serde(default)]
     pub hoard_this_pc_only: bool,
+    /// Which releases to keep: "all" (the default), "latest" (only the newest) or "count" (the
+    /// newest `hoard_count`). Releases already saved are never deleted when this is narrowed.
+    #[serde(default = "keep_all")]
+    pub hoard_keep: String,
+    #[serde(default = "five")]
+    pub hoard_count: u32,
+}
+
+fn keep_all() -> String {
+    "all".into()
+}
+
+fn five() -> u32 {
+    5
 }
 
 impl Settings {
     /// The folder Data Hoarder Mode keeps releases in: Releases/<game>/<release>/.
     pub fn hoard_root(&self) -> PathBuf {
         self.hoard_dir.clone().unwrap_or_else(|| self.library_dir.join("Releases"))
+    }
+
+    /// How many of a game's newest releases Data Hoarder Mode keeps; None for all of them.
+    pub fn hoard_limit(&self) -> Option<usize> {
+        match self.hoard_keep.as_str() {
+            "latest" => Some(1),
+            "count" => Some(self.hoard_count.max(1) as usize),
+            _ => None,
+        }
     }
 }
 
@@ -380,6 +403,8 @@ impl Default for Settings {
             hoarder: false,
             hoard_dir: None,
             hoard_this_pc_only: false,
+            hoard_keep: keep_all(),
+            hoard_count: five(),
         }
     }
 }
