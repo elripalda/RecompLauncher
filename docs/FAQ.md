@@ -50,6 +50,10 @@ Yes. Windows shows that for newer apps it hasn't seen many times yet. The instal
 
 If it's the game itself, its developer. Every game page links to the developer's GitHub. If it's the launcher (installing, updating, saves, settings), tell me through **Settings > Beta** or [open an issue](https://github.com/elripalda/RecompLauncher/issues/new/choose).
 
+## Can it keep copies of every release, in case a project is taken down?
+
+Yes: turn on **Data Hoarder Mode** in Settings > Updates. It downloads every release of every game in your Library, old ones too, with each release's notes. See [DATA-HOARDER.md](DATA-HOARDER.md).
+
 ## I make recomps. How do I get mine listed?
 
 Submit it on [recomplauncher.com](https://recomplauncher.com). To get one-click setup, your settings inside the launcher and Big Picture mode support, add a `recomplauncher.json` to your release. The guide is in [DEVELOPERS.md](DEVELOPERS.md).
