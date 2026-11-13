@@ -1309,6 +1309,8 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .vc-list{display:flex;flex-direction:column;gap:2px;padding:0 8px 8px;border-top:1px solid var(--line);padding-top:8px}
 .vc-note{margin:0;padding:10px 18px 14px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px}
 .vcard.shut .vc-h{padding-bottom:16px}
+.proton-hidden{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.vc-solo{margin:0 0 14px;color:var(--dim);font-size:12.5px}
 @media (max-width:900px){.v-os{display:none}}
 .side.sliding{transition:width .3s cubic-bezier(.22,.8,.25,1)}
 .side.sliding .lbl,.side.sliding #brand .wm,.side.sliding .nav .n{transition:opacity .18s ease}

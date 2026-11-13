@@ -646,6 +646,15 @@ const forOS = (a) => (a.systems || []).includes(S.os) || !!(a.assets && a.assets
 const viaProton = (a) => S.os === 'linux' && !!S.settings.proton && ((a.systems || []).includes('windows') || !!(a.assets && a.assets.windows));
 // A Windows build to fall back on (through Proton on Linux).
 const hasWindowsBuild = (a) => (a.systems || []).includes('windows') || !!(a.assets && a.assets.windows);
+// The other versions of this game that Linux leaves out of every list only because Proton is off.
+// Without a word about them, a game looks like it has fewer versions here than on another PC.
+function protonHidden(a) {
+  if (S.os !== 'linux' || S.settings.proton) return [];
+  const g = a && a.title ? index().titles.get(a.title) : null;
+  if (!g) return [];
+  const left = (v) => !v.soon && !forOS(v) && hasWindowsBuild(v) && !S.library[v.id] && !isHidden(v.id) && !(S.settings.hide_ai && isAI(v));
+  return g.every.filter(left);
+}
 // Linux, Proton off (or none on this PC): turned on, with GE-Proton first when nothing can run
 // Windows programs yet. Then the recomp can be added and installed like any other.
 async function useProton(id) {
@@ -1756,15 +1765,23 @@ function verPill(a) {
   return `<button type="button" class="ver-pill" data-act="ver-menu" data-id="${esc(a.id)}" aria-haspopup="listbox" aria-expanded="false">${LAYERS}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${n > 1 ? `<em>${esc(tn(n, '1 installed', '{n} installed'))}</em>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
 // On Overview: every version, like the website's list.
+// Under the versions list: Windows-only versions this Linux PC leaves out until Proton is on.
+function protonHiddenNote(a, cls) {
+  const n = protonHidden(a).length;
+  if (!n) return '';
+  const say = tn(n, '{n} more version is Windows-only and hidden because Proton is off.', '{n} more versions are Windows-only and hidden because Proton is off.');
+  return `<p class="${cls} proton-hidden">${esc(say)} <button type="button" class="btn sm" data-act="use-proton" data-id="${esc(a.id)}">${esc(t('Play With Proton'))}</button></p>`;
+}
 function versionsCard(a) {
   const g = verGroup(a);
-  if (!g) return '';
+  if (!g) return protonHiddenNote(a, 'vc-solo');
   const hide = !!(S.settings.ui || {}).verHide;
   return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
       <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
       <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
     ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
-    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>`}</div>`;
+    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>
+    ${protonHiddenNote(a, 'vc-note')}`}</div>`;
 }
 function verMenu(el) {
   const a = byId(el.dataset.id), g = verGroup(a);
@@ -3380,7 +3397,7 @@ function pageSettings() {
           + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
           + row(t('Show the AI-assisted tag'), t('The tag on game pages. What the developer used AI for is always in the game\'s Overview.'), sw('show_ai_tag', ui.show_ai_tag, t('Show the AI-assisted tag'), 'ui-toggle'))
           + row(t('Hidden games'), (ui.hidden || []).length ? t('Games you hid from Discover and Home. Right-click a game to hide it.') : t('Right-click a game in Discover and pick Hide from Discover to keep it out of the way.'), `<button type="button" class="btn" data-act="hidden-list"${(ui.hidden || []).length ? '' : ' disabled'}>${esc(t('Show Hidden Games'))}</button>`))
-        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
+        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.') + ' ' + t('With this off, those recomps are left out of Discover, search and game pages.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
         + group(t('Notifications and sharing'), row(t('Notifications'), S.os === 'windows' ? t('A Windows notification when a new recomp comes out for a game you own.') : t('A notification when a new recomp comes out for a game you own.'), sw('notify', st.notify, t('Notifications')))
           + row(t('Discord status'), t('Shows the game you\'re playing on your Discord profile, with its cover and play time.'), sw('discord', st.discord !== false, t('Discord status')))
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
