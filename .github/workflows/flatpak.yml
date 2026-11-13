@@ -47,6 +47,16 @@ jobs:
           yaml.safe_dump(m, open("ci-manifest.yml", "w"), sort_keys=False)
           PY
 
+      # The image's runtimes sit in a read-only layer of the container's overlay filesystem, and
+      # flatpak can't update them there once Flathub has a newer one ("Invalid cross-device
+      # link"). A copy on the runner's own disk updates fine.
+      - name: Move the Flatpak installation onto the runner's disk
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/flatpak-system"
+          cp -a /var/lib/flatpak "$dir"
+          echo "FLATPAK_SYSTEM_DIR=$dir" >> "$GITHUB_ENV"
+
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: RecompLauncher.flatpak
