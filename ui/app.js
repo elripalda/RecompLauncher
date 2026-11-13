@@ -1725,6 +1725,8 @@ async function selfToSteam(restart) {
     if (v === 'yes') return selfToSteam(true);
     return;
   }
+  // Remove from Steam's count changes with it.
+  S.steamSyncState = undefined;
   await saveUi({ in_steam: true }, true);
   toast(t('RecompLauncher is in your Steam library. It opens in Big Picture mode from there.'));
   if (S.view === 'settings') render(true);
@@ -5423,6 +5425,7 @@ async function addToSteam(id, restart) {
       if (v === 'yes') { toast(t('Adding it to Steam…')); return addToSteam(id, true); }
       return;
     }
+    S.steamSyncState = undefined;
     toast(tf('{name} is in your Steam library.', { name: S.library[id].name }));
   } catch (e) { fail(e); }
 }
@@ -5461,10 +5464,84 @@ function steamSyncLine() {
 
 function steamSyncGroup(group, row, sw) {
   const on = !!S.settings.steam_sync;
-  if (!on) S.steamSyncState = undefined;
   const main = row(t('Keep Steam in Sync'), t('Every game that\'s installed and set up goes in your Steam library with its art, in a RecompLauncher collection, and leaves it when you uninstall it. Games you added to Steam yourself stay. Turning it off leaves Steam as it is.'), sw('steam_sync', on, t('Keep Steam in Sync')));
   const now = on ? row(t('Sync Now'), steamSyncLine(), `<button type="button" class="btn sm" data-act="steam-sync">${esc(t('Sync Now'))}</button>`) : '';
-  return group(t('Steam'), main + now);
+  return group(t('Steam'), main + now + steamRemoveRow(row));
+}
+
+// Settings → Steam → Remove All: shown whenever Steam is found, sync on or off, since turning
+// sync off is when a player most wants them gone. Its count comes from steam_sync_state.
+function steamRemoveRow(row) {
+  if (S.steamSyncState === undefined) steamSyncLine();
+  const st = S.steamSyncState || {};
+  const n = st.ours || 0;
+  const none = S.steamSyncState && !n && !st.launcher;
+  const line = none ? t('Steam has no games from RecompLauncher.')
+    : n ? tn(n, 'Takes out the 1 game RecompLauncher put in Steam, and its collection. Games you added to Steam yourself stay.', 'Takes out the {n} games RecompLauncher put in Steam, and its collection. Games you added to Steam yourself stay.')
+      : t('Takes out the games RecompLauncher put in Steam, and its collection. Games you added to Steam yourself stay.');
+  const off = S.settings.steam_sync ? ' ' + t('Keep Steam in Sync turns off too, or they\'d come back.') : '';
+  return row(t('Remove from Steam'), line + off, `<button type="button" class="btn sm danger" data-act="steam-remove"${none ? ' disabled' : ''}>${esc(t('Remove All'))}</button>`);
+}
+
+// Asks first: on the desktop with a box for the launcher's own entry; in Big Picture, which has no
+// boxes in its dialogs, as a third button. null: cancelled, else whether the launcher goes too.
+async function askSteamRemove(n, launcherIn) {
+  const title = n ? tn(n, 'Remove 1 game from Steam?', 'Remove {n} games from Steam?') : t('Remove RecompLauncher from Steam?');
+  const what = t('The games RecompLauncher added leave your Steam library, with their art and the RecompLauncher collection. Your games, saves and play time here aren\'t touched.');
+  const notes = [S.settings.steam_sync ? t('Keep Steam in Sync turns off too, or they\'d come back.') : '', t('Games you added to Steam yourself stay.')].filter(Boolean);
+  const body = `<p>${esc(what)}</p><ul class="muted">${notes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  const go = n ? tn(n, 'Remove 1 Game', 'Remove {n} Games') : t('Remove It');
+  const tv = document.body.classList.contains('tv-on');
+  if (tv || !n || !launcherIn) {
+    // Big Picture's dialog shows only its buttons, so the notes go under them.
+    const sub = notes.join(' ');
+    const both = n && launcherIn ? [{ label: t('Remove Them and RecompLauncher'), sub, v: 'both', last: true }] : [];
+    const v = await (window.ask || ask)(title, body, [{ label: t('Cancel'), v: null, focus: true }, { label: go, sub, v: n ? 'games' : 'both', main: true }, ...both]);
+    return v == null ? null : v === 'both';
+  }
+  return new Promise((res) => {
+    let picked = null;
+    const box = modal(`<h2>${esc(title)}</h2>${body}<label><input type="checkbox" id="sr-self"> ${esc(t('Also remove RecompLauncher itself from Steam'))}</label>
+      <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn danger" data-x="yes">${esc(go)}</button></div>`, (x, close) => {
+      if (x.dataset.x !== 'yes') return;
+      picked = !!($('#sr-self', box) || {}).checked;
+      close();
+    }, title);
+    $('[data-x="no"]', box).focus();
+    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
+  });
+}
+
+window.steamRemoveAll = steamRemoveAll;
+async function steamRemoveAll(launcher, restart) {
+  if (launcher == null) {
+    // Big Picture never shows the desktop line, so the count may not be looked up yet.
+    const st = S.steamSyncState || (await invoke('steam_sync_state').catch(() => null)) || {};
+    if (!st.ours && !st.launcher) return toast(t('Steam has no games from RecompLauncher.'));
+    launcher = await askSteamRemove(st.ours || 0, !!st.launcher);
+    if (launcher == null) return;
+  }
+  let r;
+  try { r = await invoke('steam_remove_all', { restart: !!restart, launcher }); } catch (e) { return fail(e); }
+  if (r === 'steam_running') {
+    const v = await (window.ask || ask)(t('Restart Steam?'), `<p>${esc(t('Steam only reads its games when it starts, so the launcher closes Steam, takes them out, and opens Steam again.'))}</p>`,
+      [{ label: t('Not now'), v: null }, { label: t('Restart Steam'), v: 'yes', main: true }]);
+    if (v === 'yes') { toast(t('Taking them out of Steam…')); return steamRemoveAll(launcher, true); }
+    return;
+  }
+  S.steamSyncState = undefined;
+  if (r === 'none') toast(t('Steam has no games from RecompLauncher.'));
+  else if (r === 'busy') toast(t('Steam is being synced right now. Try again in a moment.'));
+  else if (String(r).startsWith('removed:')) {
+    const [, n, self] = String(r).split(':');
+    const games = Number(n) || 0;
+    // The launcher turned sync off itself, so it doesn't put them back.
+    S.settings.steam_sync = false;
+    if (self === '1') await saveUi({ in_steam: false }, true);
+    if (games) toast(tn(games, '1 game removed from Steam.', '{n} games removed from Steam.'));
+    else toast(t('RecompLauncher is out of your Steam library.'));
+  }
+  if (S.view === 'settings') render(true);
 }
 
 // ---------- screenshots ----------
@@ -6990,6 +7067,7 @@ async function act(el, e) {
     }
     case 'self-steam': return selfToSteam(false);
     case 'steam-sync': return steamSync(false);
+    case 'steam-remove': return steamRemoveAll();
     case 'ge-proton': return geInstall();
     case 'use-proton': return useProton(id);
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
