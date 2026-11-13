@@ -5489,14 +5489,16 @@ function hoarderGroup(group, row, sw, st) {
   const on = !!st.hoarder;
   const main = row(t('Data Hoarder Mode'), t('Projects get taken down. With this on, every release of every game in your Library, installed or not, is downloaded and kept, including old ones, with its notes. Games you add to the Library are saved right away. Nothing is installed: installed games update only the usual way.'), sw('hoarder', on, t('Data Hoarder Mode')));
   if (!on) return group(t('Data Hoarder'), main);
-  const where = row(t('Hoard folder'), `<span class="path">${esc(hoardRoot())}</span> · ${esc(t('Releases/Game/Release/, with each release\'s notes as RELEASE-NOTES.md.'))}`,
+  // row() escapes its description, so rows that need markup in it are written out here.
+  const markup = (b, s, ctl) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${s}</span></div>${ctl}</div>`;
+  const where = markup(t('Hoard folder'), `<b class="path">${esc(hoardRoot())}</b> · ${esc(t('Releases/Game/Release/, with each release\'s notes as RELEASE-NOTES.md.'))}`,
     `<span class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(hoardRoot())}">${esc(t('Open'))}</button><button type="button" class="btn sm" data-act="hoard-dir">${esc(t('Change'))}</button>${st.hoard_dir ? `<button type="button" class="btn sm" data-act="hoard-dir-reset">${esc(t('Reset'))}</button>` : ''}</span>`);
   const mine = row(t('Only builds for this PC'), t('Off: every platform\'s files are kept. On: only the ones that run on this PC, which takes far less room.'), sw('hoard_this_pc_only', !!st.hoard_this_pc_only, t('Only builds for this PC')));
   const keep = st.hoard_keep || 'all';
   const keepSel = `<select class="sel" data-act="hoard-keep" aria-label="${esc(t('Releases to keep'))}">${[['all', t('All releases')], ['latest', t('Latest release only')], ['count', t('Latest releases, a number')]].map(([k, n]) => `<option value="${k}"${keep === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   const countBox = keep === 'count' ? `<input class="field sm" id="hoard-count" type="number" min="1" max="999" value="${Number(st.hoard_count) || 5}" aria-label="${esc(t('How many releases'))}" style="width:5em">` : '';
   const which = row(t('Releases to keep'), t('All keeps every release, old ones too. Latest keeps only the newest. A number keeps that many of the newest. Releases already saved are never deleted.'), `<span class="acts">${keepSel}${countBox}</span>`);
-  const now = row(t('Save Now'), `<span id="hoard-line">${esc(hoardLine())}</span>`, `<button type="button" class="btn sm" data-act="hoard-now">${esc(t('Save Now'))}</button>`);
+  const now = markup(t('Save Now'), `<span id="hoard-line">${esc(hoardLine())}</span>`, `<button type="button" class="btn sm" data-act="hoard-now">${esc(t('Save Now'))}</button>`);
   return group(t('Data Hoarder'), main + where + which + mine + now);
 }
 T.event.listen('hoard', ({ payload }) => { S.hoard = payload; paintHoard(); });
