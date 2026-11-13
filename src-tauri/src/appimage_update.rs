@@ -123,6 +123,23 @@ async fn download(
     Ok(bytes)
 }
 
+/// The AppImage runtime keeps its mount open through descriptor 1023 in every program it starts.
+/// The helper, and the new launcher it starts, would hold the old image's mount that way, so the
+/// old runtime stayed running beside the new launcher until it closed. Neither needs the old mount.
+fn forget_old_mount(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    extern "C" {
+        fn close(fd: i32) -> i32;
+    }
+    // close() is async-signal-safe, as pre_exec requires; a descriptor that isn't open is fine.
+    unsafe {
+        command.pre_exec(|| {
+            close(1023);
+            Ok(())
+        });
+    }
+}
+
 struct Staged {
     work: PathBuf,
     target: PathBuf,
@@ -203,6 +220,7 @@ impl Staged {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        forget_old_mount(&mut command);
         command
     }
 
