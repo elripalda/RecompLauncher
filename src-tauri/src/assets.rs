@@ -245,6 +245,12 @@ pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
     if v.iter().any(|(_, a)| !server(a)) {
         v.retain(|(_, a)| !server(a));
     }
+    // A save editor shipped beside the game is not another game build. Keep it available when
+    // the catalog deliberately names only the editor, or it is the only matching program.
+    let save_editor = |a: &Asset| words(&a.name).windows(2).any(|w| w[0] == "save" && w[1] == "editor");
+    if v.iter().any(|(_, a)| !save_editor(a)) {
+        v.retain(|(_, a)| !save_editor(a));
+    }
     // A Windows Installer package only when there's nothing else for this PC: not one more form
     // of build to ask about.
     let msi = |a: &Asset| a.name.to_lowercase().ends_with(".msi");
@@ -415,6 +421,26 @@ mod tests {
         assert_eq!(all_for(&r, "windows", "x64", None).len(), 2);
         // An editor alone is still picked.
         assert_eq!(pick(&r[..1], "windows", "x64", None).unwrap().name, "fm-editor-v0.3.1-preview.1-windows.zip");
+    }
+
+    #[test]
+    fn parasite_eve_build_choices_do_not_include_its_save_editor() {
+        let rel = [a("Parasite-Eve-0.12-linux-x86_64.tar.gz"), a("Parasite-Eve-Save-Editor-0.12-linux-x86_64.tar.gz")];
+        let builds = all_for(&rel, "linux", "x64", Some("Parasite-Eve-*-linux-x86_64.tar.gz"));
+        assert_eq!(builds.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Parasite-Eve-0.12-linux-x86_64.tar.gz"]);
+    }
+
+    #[test]
+    fn an_explicit_save_editor_pattern_still_selects_the_editor() {
+        let rel = [a("Parasite-Eve-0.12-linux-x86_64.tar.gz"), a("Parasite-Eve-Save-Editor-0.12-linux-x86_64.tar.gz")];
+        let builds = all_for(&rel, "linux", "x64", Some("Parasite-Eve-Save-Editor-*-linux-x86_64.tar.gz"));
+        assert_eq!(builds.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Parasite-Eve-Save-Editor-0.12-linux-x86_64.tar.gz"]);
+    }
+
+    #[test]
+    fn a_save_editor_without_a_game_build_is_still_available() {
+        let rel = [a("Game-Save-Editor-v1.0-windows.zip")];
+        assert_eq!(all_for(&rel, "windows", "x64", None), vec![&rel[0]]);
     }
 
     #[test]
