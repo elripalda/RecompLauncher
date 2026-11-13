@@ -2628,6 +2628,13 @@
     return draw(true);
   }
 
+  // The notes scroll inside the dialog; a dialog without them scrolls as a whole.
+  function dialogScroll(dlg, dir) {
+    const box = $('.md', dlg) || $('.modal', dlg);
+    if (!box) return;
+    box.scrollBy({ top: dir * 200, behavior: 'smooth' });
+  }
+
   function press(name) {
     if (!TV.on) return false;
     // While the camera is flying into or out of a game, it finishes first.
@@ -2635,6 +2642,8 @@
     // A dialog on top (Restart Steam, Switch games): A picks its main button, B closes it.
     const dlg = $('.scrim');
     if (dlg) {
+      // Up and down scroll a dialog's long text (What's New), which a controller can't reach otherwise.
+      if (name === 'up' || name === 'down') { dialogScroll(dlg, name === 'down' ? 1 : -1); return true; }
       if (name === 'b') dlg.remove();
       else if (name === 'a') { const b = $('[data-x="yes"], .btn.main', dlg) || $('[data-x]', dlg); if (b) b.click(); }
       return true;

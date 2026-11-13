@@ -252,6 +252,13 @@ body.tv-on #app{visibility:hidden}
 body.tv-on .toasts{top:28px;bottom:auto;right:50%;transform:translateX(50%);align-items:center}
 body.tv-on .toast{max-width:760px;font-size:19px;padding:16px 24px;border-radius:16px;text-align:center}
 body.tv-on .modal{font-size:18px}
+/* What's New in TV mode: the desktop card is 480px wide, which on a TV wraps the notes into a tall
+   narrow column and cuts most of them off. Here it's a window for the screen, the title its header
+   and the notes scrolling below it (up and down on the controller scroll them, tv.js). */
+body.tv-on .modal:has(.whatsnew){width:min(1040px,88vw)}
+body.tv-on .whatsnew{max-width:none}
+body.tv-on .whatsnew h2{margin:0;font-size:28px}
+body.tv-on .whatsnew .md{max-height:62vh;margin:14px 0 20px;padding:2px 12px 2px 0;font-size:19px}
 /* a game's own settings */
 .tv-item.off{opacity:.45}
 .tv-cycle{display:flex;align-items:center;gap:10px;flex:none;padding:6px 8px;border-radius:999px;background:rgba(var(--tvrgb),.5);color:var(--tvmuted,#a7b3c4)}
