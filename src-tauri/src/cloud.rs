@@ -603,6 +603,20 @@ async fn pending_copy(dir: &Path, id: &str, library: &Mutex<crate::library::Libr
     (guard, pending)
 }
 
+fn pending_ids(st: &App) -> Vec<String> {
+    let installed: Vec<Installed> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).cloned().collect();
+    let mut ids = Vec::new();
+    for g in installed {
+        ids.push(g.id.clone());
+        // Games with their own save folders queue copies under their full id, just as Play does.
+        let games = crate::games_of(st, &g.id, &g);
+        ids.extend(games.iter().filter(|game| !game.saves.is_empty()).map(|game| crate::games::full(&g.id, &game.id)));
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 /// Copies that didn't get up before (offline, or not signed in yet), one after another. Any that
 /// still don't make it are tried again once the site can be asked again (see net.rs).
 pub async fn upload_pending(app: &AppHandle) {
@@ -611,7 +625,7 @@ pub async fn upload_pending(app: &AppHandle) {
     if !signed_in(&st.dir) || (!forced && (crate::net::resting(&save_url("save-put"), false) || full_now())) || paused() {
         return;
     }
-    let ids: Vec<String> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).map(|g| g.id.clone()).collect();
+    let ids = pending_ids(&st);
     let mut no_answer = false;
     for id in ids {
         let (_busy, pending) = pending_copy(&st.dir, &id, &st.lib).await;
@@ -1450,6 +1464,117 @@ mod account_tests {
         });
         assert_eq!(missing.load(Ordering::Relaxed), 0, "an account read observed an incomplete refresh");
         assert_eq!(token(&dir.0).as_deref(), Some("test-token"), "the next launch must still be signed in");
+    }
+}
+
+#[cfg(test)]
+mod child_retry_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    struct Fixture(App);
+
+    impl Fixture {
+        fn new(games: Value) -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let dir = std::env::temp_dir().join(format!("rl-child-retry-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            std::fs::create_dir_all(dir.join("cache")).unwrap();
+            let cat = json!({ "apps": [{ "id": "series", "games": games }] });
+            std::fs::write(dir.join("cache/pc-catalog.json"), serde_json::to_vec(&cat).unwrap()).unwrap();
+            let mut lib = crate::library::Library::default();
+            lib.installed.insert("series".into(), Installed { id: "series".into(), path: dir.join("install"), cloud: Some(true), ..Default::default() });
+            Self(App {
+                dir, http: reqwest::Client::new(), lib: Mutex::new(lib), jobs: Mutex::default(),
+                running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
+                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(),
+                overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
+            })
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0.dir);
+        }
+    }
+
+    fn games() -> Value {
+        json!([
+            { "id": "first", "name": "First", "saves": ["{install}/first.sav"] },
+            { "id": "second", "name": "Second", "saves": ["{install}/second.sav"] }
+        ])
+    }
+
+    #[tokio::test]
+    async fn retries_find_each_games_queued_save_under_its_full_id() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        saves::set_state(&st.dir, "series", &saves::State { pending: Some("100.zip".into()), ..Default::default() });
+        saves::set_state(&st.dir, "series--first", &saves::State { pending: Some("101.zip".into()), ..Default::default() });
+        saves::set_state(&st.dir, "series--second", &saves::State { pending: Some("102.zip".into()), ..Default::default() });
+        let mut queued = Vec::new();
+        for id in pending_ids(st) {
+            let (_busy, copy) = pending_copy(&st.dir, &id, &st.lib).await;
+            if let Some(copy) = copy { queued.push((id, copy)); }
+        }
+        assert_eq!(queued, [("series".into(), "100.zip".into()), ("series--first".into(), "101.zip".into()), ("series--second".into(), "102.zip".into())]);
+    }
+
+    #[test]
+    fn shared_saves_do_not_get_a_separate_child_retry() {
+        let fixture = Fixture::new(json!([
+            { "id": "first", "name": "First", "saves": ["{install}/first.sav"] },
+            { "id": "shared", "name": "Shared" }
+        ]));
+        assert_eq!(pending_ids(&fixture.0), ["series", "series--first"]);
+        assert!(game(&fixture.0, "series--shared").is_err());
+    }
+
+    #[test]
+    fn invalid_child_declarations_never_become_retry_ids() {
+        let mut list = games();
+        list.as_array_mut().unwrap().push(json!({ "id": "../bad", "name": "Bad", "saves": ["{install}/bad.sav"] }));
+        list.as_array_mut().unwrap().push(json!({ "id": "nameless", "saves": ["{install}/bad.sav"] }));
+        let fixture = Fixture::new(list);
+        assert_eq!(pending_ids(&fixture.0), ["series", "series--first", "series--second"]);
+        assert!(game(&fixture.0, "series--../bad").is_err());
+        assert!(game(&fixture.0, "series--nameless").is_err());
+    }
+
+    #[test]
+    fn ordinary_installs_keep_their_existing_retry_id() {
+        let fixture = Fixture::new(json!([]));
+        assert_eq!(pending_ids(&fixture.0), ["series"]);
+    }
+
+    #[test]
+    fn disabled_installs_do_not_select_parent_or_child_retries() {
+        let fixture = Fixture::new(games());
+        fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(false);
+        assert!(pending_ids(&fixture.0).is_empty());
+        assert_eq!(game(&fixture.0, "series--first").unwrap().cloud, Some(false));
+    }
+
+    #[tokio::test]
+    async fn a_waiting_child_retry_inherits_its_installs_cloud_setting() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        assert_eq!(game(st, "series--first").unwrap().cloud, Some(true));
+        saves::set_state(&st.dir, "series--first", &saves::State { pending: Some("101.zip".into()), ..Default::default() });
+        let busy = BUSY.lock().await;
+        let retry = pending_copy(&st.dir, "series--first", &st.lib);
+        tokio::pin!(retry);
+        assert!(futures_util::poll!(&mut retry).is_pending());
+        st.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(false);
+        drop(busy);
+        let (busy, pending) = retry.await;
+        assert!(pending.is_none());
+        assert_eq!(saves::state(&st.dir, "series--first").pending.as_deref(), Some("101.zip"));
+        drop(busy);
+        st.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(true);
+        let (_busy, pending) = pending_copy(&st.dir, "series--first", &st.lib).await;
+        assert_eq!(pending.as_deref(), Some("101.zip"));
     }
 }
 
