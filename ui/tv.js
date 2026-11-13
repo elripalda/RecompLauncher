@@ -2699,7 +2699,7 @@
     // A dialog on top (Restart Steam, Switch games): A picks its main button, B closes it.
     const dlg = $('.scrim');
     if (dlg) {
-      if (name === 'b') dlg.remove();
+      if (name === 'b') { if (!dlg.dataset.busy) dlg.remove(); }
       else if (name === 'a') { const b = $('[data-x="yes"], .btn.main', dlg) || $('[data-x]', dlg); if (b) b.click(); }
       return true;
     }
