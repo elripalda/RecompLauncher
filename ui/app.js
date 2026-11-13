@@ -5298,6 +5298,17 @@ function updateFailedModal(f) {
     <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('OK'))}</button></div>`, () => {}, t('This Update Looks Wrong'));
     return;
   }
+  // On a Mac there's no installer: the new app was put in place, didn't start, and this one was
+  // put back. Downloading it again is the only thing to offer.
+  if (S.os === 'macos') {
+    modal(`<h2>${esc(t('The Update Didn\'t Start'))}</h2><p>${esc(tf('RecompLauncher {to} was put in place but didn\'t start, so {now} was put back. You can try the update again, or download it from recomplauncher.com.', { to: verName(f.to), now: verName(S.version) }))}</p>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="go">${esc(t('Try Again'))}</button></div>`, (x, close) => {
+      if (x.dataset.x !== 'go') return;
+      close();
+      selfUpdate();
+    }, t('The Update Didn\'t Start'));
+    return;
+  }
   // On Linux there's no installer: a helper swaps the AppImage once the launcher closes. This is
   // still the old version, so the swap didn't happen or the new one didn't start and was put back.
   if (S.os === 'linux') {

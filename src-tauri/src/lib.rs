@@ -31,6 +31,7 @@ pub mod ingame;
 pub mod install;
 pub mod library;
 pub mod looks;
+pub mod mac_update;
 pub mod manage;
 pub mod macos;
 pub mod media;
@@ -6902,7 +6903,8 @@ pub(crate) fn trusted_update_url(raw: &str, base: &str) -> bool {
 }
 
 /// Download the newer launcher, check it, and start it: the installer on Windows, the AppImage in
-/// place of this one on Linux. Anything else opens the download page.
+/// place of this one on Linux, the .app from the disk image in place of this one on a Mac. Anything
+/// else opens the download page.
 #[tauri::command]
 async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option<bool>) -> Res<()> {
     let result = update_launcher_inner(&app, &st, big_picture).await;
@@ -6928,11 +6930,15 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     }
     let file_url = str_of(&v, "url").to_string();
     let ok_host = trusted_update_url(&file_url, &catalog::base());
-    if cfg!(target_os = "macos") {
-        // Mac builds are downloaded and installed by the player; no in-place updater yet.
+    // On a Mac the app replaces itself from the release's disk image, when this account can change
+    // the folder it's in. Otherwise (run from the disk image, or from a folder only an administrator
+    // can change) the player gets the disk image to drag in themselves.
+    let mac_app = if cfg!(target_os = "macos") { mac_update::running_bundle().filter(|b| mac_update::can_replace(b)) } else { None };
+    let mac_dmg = file_url.to_ascii_lowercase().ends_with(".dmg");
+    if cfg!(target_os = "macos") && (mac_app.is_none() || !mac_dmg) {
         return open_thing(&app, if ok_host { &file_url } else { &page }, true);
     }
-    if !cfg!(windows) || file_url.is_empty() || !ok_host {
+    if !(cfg!(windows) || mac_app.is_some()) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
     let mut r = update_download::response(&st.http, &file_url).await?;
@@ -6965,6 +6971,38 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
         update_strike(&st.dir, &to_ver, &file_url, &want, 2);
         trail::note(format!("The update file for {to_ver} is another version; not offered again"));
         return Err(Error::Msg(format!("The update file for RecompLauncher {to_ver} looks wrong: it's a different version inside. It won't be offered again until it's fixed, and nothing on your PC needs changing.")));
+    }
+    if let Some(bundle) = mac_app {
+        let dmg = std::env::temp_dir().join(format!("RecompLauncher-{to_ver}.dmg"));
+        std::fs::write(&dmg, &bytes).map_err(|e| Error::Msg(format!("Couldn't save the new version: {e}")))?;
+        let (dmg2, bundle2, ver2) = (dmg.clone(), bundle.clone(), to_ver.clone());
+        let put = tokio::task::spawn_blocking(move || mac_update::install(&dmg2, &bundle2, &ver2)).await.map_err(|e| Error::Msg(e.to_string()))?;
+        let _ = std::fs::remove_file(&dmg);
+        match put {
+            Ok(()) => {}
+            Err(mac_update::Failed::OtherVersion(found)) => {
+                update_strike(&st.dir, &to_ver, &file_url, &want, 2);
+                trail::note(format!("The update file for {to_ver} holds {found}; not offered again"));
+                return Err(Error::Msg(format!("The update file for RecompLauncher {to_ver} looks wrong: it's a different version inside. It won't be offered again until it's fixed, and nothing on your Mac needs changing.")));
+            }
+            Err(mac_update::Failed::Msg(m)) => return Err(Error::Msg(m)),
+        }
+        trail::note(format!("Updated to {to_ver} in place"));
+        if !reopen_after_update(&app) {
+            mac_update::forget_old(&bundle);
+            app.exit(0);
+            return Ok(());
+        }
+        // Noted, so that if the new version fails to start and this one is put back, its next
+        // start tells the player (see update_check_last). No installer to run again on a Mac.
+        let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": to_ver, "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": "", "url": file_url, "sha256": want}).to_string());
+        if let Err(e) = mac_update::start_and_watch(&bundle) {
+            mac_update::forget_old(&bundle);
+            let _ = std::fs::remove_file(st.dir.join("update-pending.json"));
+            return Err(Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")));
+        }
+        app.exit(0);
+        return Ok(());
     }
     let file = std::env::temp_dir().join(format!("RecompLauncher-{}-setup.exe", str_of(&v, "version").trim_start_matches('v')));
     std::fs::write(&file, &bytes)?;
