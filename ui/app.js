@@ -1279,15 +1279,15 @@ function pageHome() {
   const fav = favs().map((id) => libApp(S.library[id]));
   return `<div class="page home">${offlineNote()}
     ${feats.length ? slider(feats) : ''}
-    ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: 'library', sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
-    ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true }) : ''}
-    ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { note: t('The launcher sets these up for you. No extra steps.') }) : ''}
-    ${shelf('updated', t('Recently updated'), recentlyUpdated(pool), { sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
-    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(pool.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
+    ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
+    ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
+    ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
+    ${shelf('updated', t('Recently updated'), recentlyUpdated(pool), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
+    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(pool.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
     ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
-    ${shelf('popular', t('Popular right now'), oneEach(pool.filter(notPC).sort(byDl)), { see: 'popular', turnkey: true })}
-    ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: 'new', turnkey: true })}
-    ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
+    ${shelf('popular', t('Popular right now'), oneEach(pool.filter(notPC).sort(byDl)), { see: true, turnkey: true })}
+    ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: true, turnkey: true })}
+    ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
     ${newsSection()}
   </div>`;
 }
@@ -1306,7 +1306,7 @@ function foundSection(found) {
   // would otherwise read as everything the player owns.
   const notYet = t('None of them are in your Library yet.');
   const intro = found.length === 1 ? one : many + ' ' + notYet;
-  return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('Found in your folders'))}</h2><p>${esc(intro)}${more ? ' ' + esc(tn(more, '1 more in Discover.', '{n} more in Discover.')) : ''}</p></div></div>
+  return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('Found in your folders'))}</h2><p>${esc(intro)}${more ? ' ' + esc(tn(more, '1 more in Discover.', '{n} more in Discover.')) : ''}</p></div><div class="pager">${seeAllBtn('found')}</div></div>
     <div class="news-grid${list.length === 1 ? ' one' : ''}">${list.map((a) => `<div class="news found-card"><button type="button" class="fc-open" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${a.cover ? pic(thumbOf(a.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}
       <span class="in"><span class="kick">${esc(t('You have it'))}</span><b>${esc(a.name)}</b><small class="based">${DISC_S}${esc(baseName(S.owned[a.id].path))}</small><span class="p">${esc([a.game, originName(a.origin)].filter(Boolean).join(' · '))}</span></span></button>
       <div class="acts">${S.jobs[a.id] ? progress(a.id) : `<button type="button" class="btn main" data-act="install" data-id="${esc(a.id)}">${DOWN}${esc(t('Install'))}</button>`}</div></div>`).join('')}</div></section>`;
@@ -1372,10 +1372,44 @@ setInterval(() => {
   if (document.body.classList.contains('lighter') || S.running.size) return;
   showSlide((S.slide || 0) + 1);
 }, 8000);
+// Where each Home shelf's See all leads: your games to the Library, the rest to Discover, sorted
+// and filtered so the list starts with what the shelf showed.
+const SEE_ALL = {
+  played: { lib: { filter: 'inst', sort: 'played' } },
+  favs: { lib: { filter: 'fav', sort: 'played' } },
+  ready: { find: { sort: 'new', easy: true } },
+  updated: { find: { sort: 'updated' } },
+  follow: { find: { sort: 'new', show: 'follow' } },
+  found: { find: { sort: 'popular', show: 'owned' } },
+  popular: { find: { sort: 'popular' } },
+  new: { find: { sort: 'new' } },
+  easy: { find: { sort: 'popular', easy: true } },
+};
+// Discover with nothing narrowing it. Hide Ended, Runs On and Hide AI-assisted are the player's
+// own standing choices, so they stay.
+const FIND_CLEAR = { genre: '', origin: '', tag: '', show: '', easy: false, mp: false, great: false, deckgreat: false, picked: false };
+function seeAll(key) {
+  const to = SEE_ALL[key];
+  if (!to) return;
+  // The Library's sort is the player's saved choice: this sets it for this visit only.
+  if (to.lib) {
+    S.lib = Object.assign({}, S.lib, { origin: '' }, to.lib);
+    S.lq = '';
+    return go('library');
+  }
+  S.find = Object.assign({}, S.find, FIND_CLEAR, to.find);
+  S.q = '';
+  return go('discover');
+}
+const seeAllBtn = (key) => `<button type="button" class="see" data-act="see-all" data-see="${key}">${esc(t('See all'))}</button>`;
+// The header ends in See all, then ‹ 1 of 3 ›, on every shelf, even one that fits on a page
+// (1 of 1): the arrows stay put from shelf to shelf. A shelf with nowhere to see more keeps
+// See all's room, empty.
 function shelf(key, title, list, o = {}) {
   if (!list.length) return '';
+  const see = o.see ? seeAllBtn(key) : `<span class="see gap" aria-hidden="true">${esc(t('See all'))}</span>`;
   return `<section class="shelf" data-shelf="${key}" data-n="${Math.min(24, list.length)}"><div class="shelf-h"><div><h2>${esc(title)}</h2>${o.note ? `<p>${esc(o.note)}</p>` : ''}</div>
-    <div class="pager"><small></small>${o.see ? `<button type="button" class="see" ${o.see === 'library' ? 'data-go="library"' : `data-act="see-all" data-sort="${o.see}"`}>${esc(t('See all'))}</button>` : ''}<button type="button" class="ar" data-act="shelf" data-d="-1" aria-label="${esc(t('Back'))}">${CHEV_L}</button><button type="button" class="ar" data-act="shelf" data-d="1" aria-label="${esc(t('More'))}">${CHEV_R}</button></div></div>
+    <div class="pager">${see}<button type="button" class="ar" data-act="shelf" data-d="-1" aria-label="${esc(t('Back'))}">${CHEV_L}</button><small></small><button type="button" class="ar" data-act="shelf" data-d="1" aria-label="${esc(t('More'))}">${CHEV_R}</button></div></div>
     <div class="viewport"><div class="track">${(o.turnkey ? turnkeyFirst(list.slice(0, 24)) : list.slice(0, 24)).map((a) => tile(a, { mine: o.mine, quick: o.quick, sub: o.sub ? o.sub(a) : undefined })).join('')}</div></div></section>`;
 }
 // Each shelf shows as many games as fit, and pages through the rest.
@@ -1400,8 +1434,7 @@ function layoutShelves(scope = document) {
     tr.style.transform = `translateX(${-p * (w + gap)}px)`;
     const [prev, next] = $$('.ar', sh);
     prev.disabled = p === 0; next.disabled = p >= pages - 1;
-    prev.hidden = next.hidden = pages < 2;
-    $('.pager small', sh).textContent = pages > 1 ? tf('{page} of {pages}', { page: p + 1, pages }) : '';
+    $('.pager small', sh).textContent = tf('{page} of {pages}', { page: p + 1, pages });
     $$('.tile', tr).forEach((el, i) => { const vis = i >= p * per && i < (p + 1) * per; el.inert = !vis; });
   }
 }
@@ -6982,7 +7015,7 @@ async function act(el, e) {
     }
     case 'side-reset': return saveUi({ side_order: [], side_hide: [] });
     case 'genre': e.preventDefault(); S.find.genre = el.dataset.g; if (S.view === 'discover') { S.anim = 'enter-soft'; render(true); } else go('discover'); return;
-    case 'see-all': S.find.sort = el.dataset.sort; S.find.picked = false; S.find.genre = ''; S.q = ''; return go('discover');
+    case 'see-all': return seeAll(el.dataset.see);
     case 'mine': S.find.mine = !S.find.mine; return updateDiscover();
     case 'libf': S.lib.filter = el.dataset.f; return updateLibrary();
     case 'ver-menu': return verMenu(el);
