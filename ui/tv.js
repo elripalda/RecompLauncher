@@ -1101,7 +1101,11 @@
       const a = libAppOf(h.id);
       return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" data-tvact="scan" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))} · ${esc(info.text)}</small></span><span class="tv-pill">${esc(info.scanner === 'clamav' || !info.sha ? t('How It Was Checked') : t('Open the Report'))}</span></button>`;
     }).filter(Boolean);
-    const items = act.map((id) => item(id, '', 'd:' + id, progress(id))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    // The launcher's own update is counted in the Downloads badge, so it needs a row here too, or the
+    // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
+    const lu = S.launcherUpd;
+    const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
@@ -2488,6 +2492,7 @@
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
       case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
       case 'dl-resume': sfx('select'); return resumeDl(id);
+      case 'selfupdate': sfx('select'); return selfUpdate();
       case 'install': sfx('select'); return startInstall(id, S.settings.library_dir).then(() => draw(true));
       case 'page': return go('game', id);
       case 'back': return back();
