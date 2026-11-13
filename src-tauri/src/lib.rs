@@ -608,6 +608,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         id: id.into(),
         name: str_of(&entry, "name").into(),
         game: prev.as_ref().map(|p| p.game.clone()).unwrap_or_default(),
+        files_in_place: prev.as_ref().map(|p| p.files_in_place).unwrap_or(false),
         repo,
         tag: tag_got.clone(),
         version: str_of(&entry, "version").into(),
@@ -678,7 +679,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
     );
     let mut p = Progress::new(id, "done", 1, 1);
-    let gh = !catalog::is_gitlab(str_of(&entry, "repo")) && !catalog::is_sourceforge(str_of(&entry, "repo"));
+    let gh = !catalog::site_only(str_of(&entry, "repo"));
     p.msg = Some(match (got.verified, gh) {
         (true, true) => "Checked against GitHub's checksum".into(),
         (true, false) => "Checked against its release's checksum".into(),
@@ -2076,6 +2077,11 @@ async fn launcher_to_steam(st: State<'_, App>, restart: bool) -> Res<String> {
 /// when GitHub can't be reached. None when the repo has none.
 #[tauri::command]
 async fn repo_readme(st: State<'_, App>, repo: String) -> Res<Option<String>> {
+    // Only GitHub's README is read: a GitLab, SourceForge or Forgejo project shows the catalog's
+    // description instead.
+    if catalog::site_only(&repo) {
+        return Ok(None);
+    }
     let ok = repo.split('/').count() == 2 && !repo.contains("..") && repo.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c));
     if !ok {
         return Ok(None);
@@ -2833,7 +2839,11 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         if let Some(p) = g.path.parent() {
             roots.push(p.join("Game Copies").join(library::folder_name(id)));
         }
-        let title = entry.and_then(|e| e.get("title_id").and_then(Value::as_str).or_else(|| e.pointer("/achievements/title_id").and_then(Value::as_str))).map(str::to_string);
+        // The list keeps it as title_id, under achievements, or (for Easy Setup) as the id its
+        // disc files must have.
+        let title = entry
+            .and_then(|e| e.get("title_id").and_then(Value::as_str).or_else(|| e.pointer("/achievements/title_id").and_then(Value::as_str)).or_else(|| e.pointer("/boot/files/id").and_then(Value::as_str)))
+            .map(str::to_string);
         // One game of several: its own list (by its full id), and only its own unlock file.
         match &pick {
             Some(pk) => {
@@ -5894,7 +5904,9 @@ fn merged_mine(app: &AppHandle, st: &App, data: &mut Value) {
 async fn get_releases(app: AppHandle, st: State<'_, App>, repo: String, force: bool) -> Res<catalog::Fetched> {
     if !force {
         if let Some(f) = catalog::releases_on_disk(&st.dir, &repo) {
-            if f.age >= catalog::RELEASES_FRESH && !net::resting(&format!("{}/api/gh.php", catalog::base()), false) {
+            // A Forgejo project's list comes from its own server, which rests on its own.
+            let from = if catalog::is_forgejo(&repo) { catalog::releases_url(&repo) } else { format!("{}/api/gh.php", catalog::base()) };
+            if f.age >= catalog::RELEASES_FRESH && !net::resting(&from, false) {
                 let (app, repo) = (app.clone(), repo.clone());
                 tauri::async_runtime::spawn(async move {
                     let st = app.state::<App>();
@@ -5950,6 +5962,13 @@ async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<S
                 g.tag = tag;
             }
         }
+        // The waiting installer ran outside the launcher (the player built the new version
+        // themselves): its version is the one they have now.
+        if !g.installer_tag.is_empty() && installer::built_since_staged(&g) {
+            if let Some(done) = installer::finished_outside(&st, &g.id) {
+                g = done;
+            }
+        }
         if let Some(tag) = offered_update(&g, catalog::app(&cat, &g.id), &rels) {
             out.insert(g.id.clone(), tag);
         }
@@ -5974,6 +5993,15 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
     if g.pinned {
         return None;
     }
+    // An update whose installer is downloaded and waiting for Set Up is the version on offer
+    // already: the button is Set Up, not the same update again.
+    let waiting;
+    let g = if g.installer_tag.is_empty() {
+        g
+    } else {
+        waiting = Installed { tag: g.installer_tag.clone(), ..g.clone() };
+        &waiting
+    };
     let os_g = if g.proton { "windows" } else { assets::os_now() };
     let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
     let builds = |r: &Release| assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some();
