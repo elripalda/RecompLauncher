@@ -2027,7 +2027,8 @@ async fn add_to_steam(st: State<'_, App>, id: String, restart: bool) -> Res<Stri
         shortcuts::close_steam(&steam).await.inspect_err(|e| trail::note(format!("Add to Steam: {e}")))?;
     }
     let name = shown_name(&st, &id, &g).await;
-    let n = shortcuts::write_to_steam(&steam, &name, &id, &icon, &art, &st.dir).inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
+    let want = steam_sync::want_for(&st.dir, &id, &name);
+    let n = steam_sync::add_game(&steam, &st.dir, &want, art, icon).await.inspect_err(|e| trail::note(format!("Add to Steam ({id}): {e}")))?;
     trail::note(format!("Add to Steam ({id}): written for {n} account(s) in {}{}", dirs::home_dir().and_then(|h| steam.strip_prefix(h).ok().map(|r| format!("~/{}", r.display()))).unwrap_or_else(|| steam.display().to_string()), if was_running { "" } else { " (Steam was closed)" }));
     if was_running {
         shortcuts::start_steam(&steam);
