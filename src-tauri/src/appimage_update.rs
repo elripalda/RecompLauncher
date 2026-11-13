@@ -15,29 +15,20 @@ use tauri::{AppHandle, Emitter};
 
 const HELPER: &str = include_str!("appimage_update.sh");
 const LIMIT: u64 = 512 * 1024 * 1024;
+const STAGING: &str = ".recomplauncher-update-";
 static UPDATING: AtomicBool = AtomicBool::new(false);
 
-fn metadata(entry: &Value, base: &str) -> Res<(String, String)> {
+/// The Linux build on offer, once its metadata checks out.
+struct Offer {
+    url: String,
+    sha256: String,
+    version: String,
+}
+
+fn metadata(entry: &Value, base: &str) -> Res<Offer> {
     let raw = crate::str_of(entry, "url");
-    let url = reqwest::Url::parse(raw).ok();
-    let allowed = url.as_ref().is_some_and(|url| {
-        url.scheme() == "https"
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.fragment().is_none()
-            && url.path().to_ascii_lowercase().ends_with(".appimage")
-            && ["https://github.com", crate::net::SITE, base]
-                .iter()
-                .any(|origin| {
-                    reqwest::Url::parse(origin).ok().is_some_and(|origin| {
-                        url.origin() == origin.origin()
-                            && url
-                                .path()
-                                .starts_with(&format!("{}/", origin.path().trim_end_matches('/')))
-                    })
-                })
-    });
-    if !allowed {
+    let is_appimage = reqwest::Url::parse(raw).is_ok_and(|url| url.path().to_ascii_lowercase().ends_with(".appimage"));
+    if !is_appimage || !crate::trusted_update_url(raw, base) {
         return Err(Error::Msg(
             "This Linux update has no trusted HTTPS AppImage download. Try again later.".into(),
         ));
@@ -54,7 +45,41 @@ fn metadata(entry: &Value, base: &str) -> Res<(String, String)> {
             "This Linux update hasn't published a valid checksum yet. Try again later.".into(),
         ));
     }
-    Ok((raw.into(), checksum))
+    Ok(Offer {
+        url: raw.into(),
+        sha256: checksum,
+        version: version.trim_start_matches('v').into(),
+    })
+}
+
+/// Whether this account can put the update beside the AppImage and swap it in. A folder it can't
+/// change (one only root owns, a read-only drive) can't take an in-place update at all.
+fn can_replace(folder: &Path) -> bool {
+    let probe = folder.join(format!("{STAGING}probe-{}", std::process::id()));
+    if fs::create_dir(&probe).is_err() {
+        return false;
+    }
+    let _ = fs::remove_dir(&probe);
+    true
+}
+
+/// Staging folders an interrupted update left beside the AppImage (a logout or shutdown while the
+/// helper waited). Only ones an hour old: a helper still at work finishes within about a minute.
+pub fn clean_stale(image: &Path) {
+    let Ok(target) = fs::canonicalize(image) else { return };
+    let Some(folder) = target.parent() else { return };
+    let Ok(entries) = fs::read_dir(folder) else { return };
+    for entry in entries.flatten() {
+        let ours = entry.file_name().to_string_lossy().starts_with(STAGING);
+        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+        if !ours || !is_dir {
+            continue;
+        }
+        let age = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+        if age.is_some_and(|age| age.as_secs() > 3600) {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 async fn download(
@@ -124,7 +149,7 @@ impl Staged {
         }
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let work = target.parent().unwrap().join(format!(
-            ".recomplauncher-update-{}-{}-{}",
+            "{STAGING}{}-{}-{}",
             std::process::id(),
             crate::now(),
             NEXT.fetch_add(1, Ordering::Relaxed)
@@ -165,7 +190,9 @@ impl Staged {
             .arg(std::process::id().to_string())
             .arg(&self.target)
             .arg(&self.work)
-            .arg(data.join("appimage-update-error.txt"))
+            // The helper outlives the launcher, so it notes what went wrong in the launcher's own
+            // trail; the next start finds out from update-pending.json (see update_check_last).
+            .arg(data.join("launcher-trail.log"))
             .arg(if reopen { "1" } else { "0" })
             .arg(if big_picture {
                 "--bigpicture"
@@ -207,13 +234,20 @@ pub async fn update(
         }
     }
     let mut guard = Guard(false);
-    let (url, checksum) = metadata(entry, &crate::catalog::base())?;
-    let bytes = download(&state.http, &url, &checksum, LIMIT, |done, total| {
+    let offer = metadata(entry, &crate::catalog::base())?;
+    // Checked before the download: a folder this account can't change can never take the update,
+    // so the window says so and offers the download instead (see cantReplace in app.js).
+    let image = fs::canonicalize(target)
+        .map_err(|e| Error::Msg(format!("Couldn't find the running AppImage: {e}")))?;
+    let folder = image.parent().unwrap_or(Path::new("/"));
+    if !can_replace(folder) {
+        return Err(Error::Msg(format!("CANT_REPLACE|{}", folder.display())));
+    }
+    let bytes = download(&state.http, &offer.url, &offer.sha256, LIMIT, |done, total| {
         let _ = app.emit("self-update", json!({"done": done, "total": total}));
     })
     .await?;
-    let target = target.to_path_buf();
-    let staged = tauri::async_runtime::spawn_blocking(move || Staged::prepare(&target, &bytes))
+    let staged = tauri::async_runtime::spawn_blocking(move || Staged::prepare(&image, &bytes))
         .await
         .map_err(|e| Error::Msg(format!("Couldn't prepare the AppImage update: {e}")))??;
     let _ = app.emit("self-update", json!({"installing": true}));
@@ -222,7 +256,16 @@ pub async fn update(
     if crate::update_launch::quitting() {
         return Ok(());
     }
-    staged.launch(&state.dir, big_picture, crate::reopen_after_update(app))?;
+    // Noted as on Windows and Mac: if this version is the one that starts next (the swap failed,
+    // or the new one didn't start and this one was put back), that start tells the player, and
+    // the second failure from the same file stops it being offered.
+    let pending = state.dir.join("update-pending.json");
+    let note = json!({"to": offer.version, "from": env!("CARGO_PKG_VERSION"), "at": crate::now(), "installer": "", "url": offer.url, "sha256": offer.sha256});
+    let _ = fs::write(&pending, note.to_string());
+    if let Err(e) = staged.launch(&state.dir, big_picture, crate::reopen_after_update(app)) {
+        let _ = fs::remove_file(&pending);
+        return Err(e);
+    }
     guard.0 = true;
     app.exit(0);
     Ok(())
@@ -247,10 +290,9 @@ mod tests {
     #[test]
     fn metadata_requires_linux_artifact_new_version_and_own_checksum() {
         let good = json!({"version":"999.0.0", "url":"https://github.com/owner/repo/releases/download/v999/Launcher.AppImage", "sha256":"A".repeat(64)});
-        assert_eq!(
-            metadata(&good, "https://updates.example/api").unwrap().1,
-            "a".repeat(64)
-        );
+        let offer = metadata(&good, "https://updates.example/api").unwrap();
+        assert_eq!(offer.sha256, "a".repeat(64));
+        assert_eq!(offer.version, "999.0.0");
         for url in [
             "http://github.com/file.AppImage",
             "https://github.com.evil/file.AppImage",
@@ -314,6 +356,41 @@ mod tests {
         assert!(!work.exists());
         assert!(link.is_symlink());
         assert_eq!(fs::read(&link).unwrap(), b"old image");
+    }
+
+    #[test]
+    fn can_replace_in_a_folder_this_account_writes() {
+        let dir = TempDir::new();
+        assert!(can_replace(&dir.0));
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn can_replace_is_false_for_a_folder_that_is_not_there() {
+        let dir = TempDir::new();
+        assert!(!can_replace(&dir.0.join("missing")));
+    }
+
+    #[test]
+    fn clean_stale_removes_only_old_staging_folders() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Launcher.AppImage");
+        fs::write(&image, b"image").unwrap();
+        let old = dir.0.join(format!("{STAGING}1-1-0"));
+        let fresh = dir.0.join(format!("{STAGING}2-2-0"));
+        let other = dir.0.join(".other-folder");
+        for folder in [&old, &fresh, &other] {
+            fs::create_dir(folder).unwrap();
+        }
+        let two_hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        for folder in [&old, &other] {
+            fs::File::open(folder).unwrap().set_modified(two_hours_ago).unwrap();
+        }
+        clean_stale(&image);
+        assert!(!old.exists());
+        assert!(fresh.exists());
+        assert!(other.exists());
+        assert!(image.exists());
     }
 
     #[test]

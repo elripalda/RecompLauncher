@@ -4064,7 +4064,6 @@ async function refreshState() {
   S.running = new Set(st.running || []);
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
-  if (st.updateError && !S.updateErrorShown) { S.updateErrorShown = true; setTimeout(() => fail(st.updateError), 1500); }
   S.missing = new Set(st.missing || []);
   // The games of recomps that carry several: asked again when what's installed changes.
   const gk = Object.values(S.library).map((g) => g.id + '@' + g.tag).sort().join('|');
@@ -5299,6 +5298,17 @@ function updateFailedModal(f) {
     <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('OK'))}</button></div>`, () => {}, t('This Update Looks Wrong'));
     return;
   }
+  // On Linux there's no installer: a helper swaps the AppImage once the launcher closes. This is
+  // still the old version, so the swap didn't happen or the new one didn't start and was put back.
+  if (S.os === 'linux') {
+    modal(`<h2>${esc(t('The Update Didn\'t Start'))}</h2><p>${esc(tf('RecompLauncher {to} didn\'t go in or didn\'t start, so this is still {now}. You can try the update again, or download it from recomplauncher.com.', { to: verName(f.to), now: verName(S.version) }))}</p>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="go">${esc(t('Try Again'))}</button></div>`, (x, close) => {
+      if (x.dataset.x !== 'go') return;
+      close();
+      selfUpdate();
+    }, t('The Update Didn\'t Start'));
+    return;
+  }
   modal(`<h2>${esc(t('The Update Didn\'t Install'))}</h2><p>${esc(tf('RecompLauncher {to} was downloaded, but it didn\'t install, so this is still {now}. Run its installer the usual way to see what\'s stopping it, like an antivirus or a folder Windows protects.', { to: verName(f.to), now: verName(S.version) }))}</p>
     <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="go">${esc(f.there ? t('Run the Installer') : t('Download It Again'))}</button></div>`, async (x, close) => {
     if (x.dataset.x !== 'go') return;
@@ -5314,8 +5324,23 @@ async function selfUpdate() {
   try {
     if (S.os === 'linux') await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
     else await invoke('update_launcher');
-  } catch (e) { if (!blocked('', e)) fail(e); lookForLauncher(); }
+  } catch (e) { if (!blocked('', e) && !cantReplace(e)) fail(e); lookForLauncher(); }
   finally { S.selfUpdating = false; }
+}
+// The AppImage sits in a folder this account can't change, so it can't update itself in place.
+// Say where and why, and offer the new AppImage to download instead of a bare error.
+function cantReplace(err) {
+  const m = String(err && err.message ? err.message : err).match(/^CANT_REPLACE\|([^]*)$/);
+  if (!m) return false;
+  const url = (S.launcherUpd && S.launcherUpd.url) || `${S.site}/download`;
+  const title = t('RecompLauncher Can\'t Update Itself Here');
+  modal(`<h2>${esc(title)}</h2><p>${esc(tf('It can\'t replace itself in {folder}, because this account can\'t change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.', { folder: m[1] }))}</p>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="go">${esc(t('Download It'))}</button></div>`, (x, close) => {
+    if (x.dataset.x !== 'go') return;
+    close();
+    invoke('open_url', { url }).catch(fail);
+  }, title);
+  return true;
 }
 
 function libChoices(libs, sel) {

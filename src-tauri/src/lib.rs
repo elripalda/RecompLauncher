@@ -6885,6 +6885,22 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     }
 }
 
+/// A launcher download the updater may fetch: HTTPS from GitHub or recomplauncher.com, or from the
+/// update server itself (`base`, which RL_API can point at a local http copy of the site for
+/// testing). Matched by origin and path, so github.com.evil.example or a sibling path doesn't pass.
+pub(crate) fn trusted_update_url(raw: &str, base: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(raw) else { return false };
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return false;
+    }
+    let under = |origin: &str| {
+        let Ok(origin) = reqwest::Url::parse(origin) else { return false };
+        let prefix = format!("{}/", origin.path().trim_end_matches('/'));
+        url.origin() == origin.origin() && url.path().starts_with(&prefix)
+    };
+    ["https://github.com", net::SITE, base].into_iter().any(under)
+}
+
 /// Download the newer launcher, check it, and start it: the installer on Windows, the AppImage in
 /// place of this one on Linux. Anything else opens the download page.
 #[tauri::command]
@@ -6911,7 +6927,7 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
         return appimage_update::update(app, st, Path::new(&target), &v, _big_picture.unwrap_or_else(|| BIG_PICTURE.load(Ordering::Relaxed))).await;
     }
     let file_url = str_of(&v, "url").to_string();
-    let ok_host = file_url.starts_with("https://github.com/") || file_url.starts_with(&format!("{}/", net::SITE)) || file_url.starts_with(&format!("{}/", catalog::base().trim_end_matches('/')));
+    let ok_host = trusted_update_url(&file_url, &catalog::base());
     if cfg!(target_os = "macos") {
         // Mac builds are downloaded and installed by the player; no in-place updater yet.
         return open_thing(&app, if ok_host { &file_url } else { &page }, true);
@@ -7020,7 +7036,6 @@ fn get_state(st: State<'_, App>) -> Value {
         // Where the web view draws on the processor, the page leaves out what keeps moving.
         "cpuDraw": cpu_draw(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
-        "updateError": APPIMAGE_UPDATE_ERROR.lock().unwrap().clone(),
     })
 }
 
@@ -7044,19 +7059,9 @@ fn cpu_draw() -> bool {
 /// started from): { to, installer }. The window offers to run that installer the usual way, where
 /// the player sees what stops it.
 static UPDATE_FAILED: Mutex<Option<Value>> = Mutex::new(None);
-static APPIMAGE_UPDATE_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// At start: did the last update from inside the launcher go in?
 fn update_check_last(dir: &Path) {
-    #[cfg(target_os = "linux")]
-    {
-        let error = dir.join("appimage-update-error.txt");
-        if let Ok(message) = std::fs::read_to_string(&error) {
-            trail::note(format!("AppImage update: {}", message.trim()));
-            *APPIMAGE_UPDATE_ERROR.lock().unwrap() = Some(message);
-            let _ = std::fs::remove_file(error);
-        }
-    }
     let f = dir.join("update-pending.json");
     let Some(v) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
     let (to, from, at) = (str_of(&v, "to").to_string(), str_of(&v, "from").to_string(), v.get("at").and_then(Value::as_u64).unwrap_or(0));
@@ -8021,6 +8026,10 @@ pub fn run() {
             }
             trail::start(&dir);
             update_check_last(&dir);
+            #[cfg(target_os = "linux")]
+            if let Some(image) = std::env::var_os("APPIMAGE") {
+                appimage_update::clean_stale(Path::new(&image));
+            }
             // Downloads slow down while a game is running (if the player wants that).
             {
                 let h = app.handle().clone();
@@ -8963,6 +8972,17 @@ mod tests {
         assert!(launcher_platform_entry(&feed, "macos", "arm64").is_none());
         assert_eq!(launcher_platform_entry(&feed, "windows", "x64").unwrap()["url"], "https://example.com/windows.exe");
         assert_eq!(launcher_platform_entry(&feed, "linux", "x64").unwrap()["url"], "https://example.com/linux.AppImage");
+    }
+
+    #[test]
+    fn launcher_update_downloads_only_from_trusted_places() {
+        let base = "http://127.0.0.1:8787/api";
+        for ok in ["https://github.com/o/r/releases/download/v1/a.exe", "https://recomplauncher.com/launcher/a.exe", "http://127.0.0.1:8787/api/launcher/a.exe"] {
+            assert!(trusted_update_url(ok, base), "{ok}");
+        }
+        for bad in ["http://github.com/a.exe", "https://github.com.evil.example/a.exe", "https://name@github.com/a.exe", "https://github.com/a.exe#x", "http://127.0.0.1:8787/api-evil/a.exe", "not a url"] {
+            assert!(!trusted_update_url(bad, base), "{bad}");
+        }
     }
 
     #[test]

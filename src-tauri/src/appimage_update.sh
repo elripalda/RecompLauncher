@@ -2,11 +2,13 @@
 parent=$1
 target=$2
 work=$3
-error=$4
+trail=$4
 reopen=$5
 shift 5
 
-report() { printf '%s\n' "$1" > "$error"; }
+# The launcher's own trail (launcher-trail.log), in its format, so a problem report shows it.
+# The player hears about a failed update from update-pending.json on the next start instead.
+note() { printf '%s UTC  AppImage update: %s\n' "$(date -u +%H:%M:%S)" "$1" >> "$trail"; }
 cleanup() { rm -rf -- "$work"; }
 
 # Starting while the old launcher owns its D-Bus name would hand the new window back to it.
@@ -14,7 +16,7 @@ tries=0
 while kill -0 "$parent" 2>/dev/null; do
     tries=$((tries + 1))
     if [ "$tries" -ge 60 ]; then
-        report "RecompLauncher didn't close, so its AppImage update was left unapplied. Try Update again."
+        note "RecompLauncher didn't close within a minute, so the update was left unapplied"
         cleanup
         exit 1
     fi
@@ -22,8 +24,12 @@ while kill -0 "$parent" 2>/dev/null; do
 done
 
 if ! mv -f -- "$work/next.AppImage" "$target"; then
-    report "Couldn't replace the AppImage. The installed launcher hasn't changed. Check that its folder is writable, then try Update again."
+    note "Couldn't replace $target (is its folder writable?); the installed launcher hasn't changed"
     cleanup
+    # The player still gets a window back: the unchanged launcher, which says the update didn't go in.
+    if [ "$reopen" = 1 ]; then
+        "$target" "$@" &
+    fi
     exit 1
 fi
 
@@ -40,10 +46,10 @@ sleep 2
 if ! kill -0 "$child" 2>/dev/null; then
     if ! wait "$child"; then
         if mv -f -- "$work/previous.AppImage" "$target"; then
-            report "The new AppImage couldn't start. The previous version has been restored. Try Update again later."
+            note "The new AppImage couldn't start; the previous version was restored"
             "$target" "$@" &
         else
-            report "The new AppImage couldn't start. Restore previous.AppImage from $work to $target."
+            note "The new AppImage couldn't start, and restoring failed: copy previous.AppImage from $work to $target"
             exit 1
         fi
     fi
