@@ -122,7 +122,7 @@ async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: boo
         return Ok(None);
     }
     if !r.status().is_success() {
-        return Err(Error::Net(format!("recomplauncher.com answered {}", r.status().as_u16())));
+        return Err(Error::Net(format!("{} answered {}", host_of(url), r.status().as_u16())));
     }
     let headers = r.headers().clone();
     match r.json::<Value>().await {
@@ -132,6 +132,11 @@ async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: boo
             Err(e.into())
         }
     }
+}
+
+/// Who a request went to, for what the player reads: the site, or a Forgejo project's own server.
+fn host_of(url: &str) -> String {
+    reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_else(|| "recomplauncher.com".into())
 }
 
 fn save_tag_from(file: &Path, h: &reqwest::header::HeaderMap) {
@@ -165,7 +170,7 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
             touch(&file);
             match have {
                 Some(h) => Ok(Fetched { offline: false, age: 0, ..h }),
-                None => Err(Error::Net("recomplauncher.com sent something unexpected".into())),
+                None => Err(Error::Net(format!("{} sent something unexpected", host_of(url)))),
             }
         }
         Ok(Some((v, headers))) if check(&v) => {
@@ -175,7 +180,7 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
         }
         Ok(Some(_)) => {
             crate::net::bad_answer(url);
-            have.map(|h| Fetched { offline: true, ..h }).ok_or_else(|| Error::Net("recomplauncher.com sent something unexpected".into()))
+            have.map(|h| Fetched { offline: true, ..h }).ok_or_else(|| Error::Net(format!("{} sent something unexpected", host_of(url))))
         }
         Err(e) => match have {
             Some(h) => Ok(Fetched { offline: true, ..h }),
@@ -439,14 +444,54 @@ pub fn is_sourceforge(repo: &str) -> bool {
     sourceforge_name(repo).is_some()
 }
 
-/// Read only through the site (GitLab and SourceForge): GitHub's API is never asked about it.
-pub fn site_only(repo: &str) -> bool {
-    is_gitlab(repo) || is_sourceforge(repo)
+/// A project on a Forgejo server, as the launcher keeps it: `forgejo:<server>/<owner>/<name>`
+/// (the catalog sends "host": "forgejo" with "repo": "<server>/<owner>/<name>"). Its server,
+/// owner and name.
+pub fn forgejo_parts(repo: &str) -> Option<(&str, &str, &str)> {
+    let rest = repo.strip_prefix("forgejo:")?;
+    let mut it = rest.split('/');
+    let server = it.next()?;
+    let owner = it.next()?;
+    let name = it.next()?;
+    if it.next().is_some() {
+        return None;
+    }
+    Some((server, owner, name))
 }
 
-/// The project's own path: GitLab's group/project, SourceForge's name, GitHub's owner/repo.
+pub fn is_forgejo(repo: &str) -> bool {
+    forgejo_parts(repo).is_some()
+}
+
+/// Not on GitHub (GitLab, SourceForge, a Forgejo server): GitHub's API is never asked about it.
+pub fn site_only(repo: &str) -> bool {
+    is_gitlab(repo) || is_sourceforge(repo) || is_forgejo(repo)
+}
+
+/// The project's own path: GitLab's group/project, SourceForge's name, a Forgejo project's
+/// owner/name, GitHub's owner/repo.
 pub fn host_path(repo: &str) -> &str {
+    if let Some((server, _, _)) = forgejo_parts(repo) {
+        return &repo["forgejo:".len() + server.len() + 1..];
+    }
     gitlab_path(repo).or_else(|| sourceforge_name(repo)).unwrap_or(repo)
+}
+
+/// A Forgejo server's name: a public host name with a dot in it, in lowercase, with no port, user
+/// or path. Never an IP address, so a catalog entry can't point the launcher at a machine on the
+/// player's own network.
+fn server_ok(s: &str) -> bool {
+    if !(4..=253).contains(&s.len()) || !s.contains('.') {
+        return false;
+    }
+    let labels: Vec<&str> = s.split('.').collect();
+    let label_ok = |l: &&str| (1..=63).contains(&l.len()) && !l.starts_with('-') && !l.ends_with('-') && l.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !labels.iter().all(label_ok) {
+        return false;
+    }
+    // A top-level domain is never all digits: that's an IP address.
+    let last = labels.last().copied().unwrap_or("");
+    !last.chars().all(|c| c.is_ascii_digit())
 }
 
 /// A SourceForge project name: lowercase letters, digits and dashes, 2 to 63 of them.
@@ -462,6 +507,12 @@ pub(crate) fn repo_ok(repo: &str) -> bool {
     if let Some(n) = sourceforge_name(repo) {
         return sf_name_ok(n);
     }
+    if let Some((server, owner, name)) = forgejo_parts(repo) {
+        return server_ok(server) && part_ok(owner) && part_ok(name);
+    }
+    if repo.starts_with("forgejo:") {
+        return false;
+    }
     if let Some(p) = gitlab_path(repo) {
         let parts: Vec<&str> = p.split('/').collect();
         return (2..=20).contains(&parts.len()) && parts.iter().all(|s| part_ok(s));
@@ -476,15 +527,24 @@ fn releases_file(dir: &Path, repo: &str) -> PathBuf {
 }
 
 /// Where a project's releases are read: GitHub's through gh.php, GitLab's through gl.php, which
-/// gives them in the same shape.
-fn releases_url(repo: &str) -> String {
+/// gives them in the same shape. A Forgejo project's straight from its own server, whose release
+/// list is already in GitHub's shape.
+pub(crate) fn releases_url(repo: &str) -> String {
     if let Some(n) = sourceforge_name(repo) {
         return format!("{}/api/sf.php?repo={}", base(), n);
+    }
+    if let Some((server, owner, name)) = forgejo_parts(repo) {
+        return forgejo_releases_url(&format!("https://{server}"), owner, name);
     }
     match gitlab_path(repo) {
         Some(p) => format!("{}/api/gl.php?repo={}", base(), p.replace('/', "%2F")),
         None => format!("{}/api/gh.php?repo={}", base(), repo),
     }
+}
+
+/// A Forgejo server's release list for one project (its newest 30, drafts and pre-releases too).
+fn forgejo_releases_url(origin: &str, owner: &str, name: &str) -> String {
+    format!("{origin}/api/v1/repos/{owner}/{name}/releases?limit=30")
 }
 
 /// Many GitLab projects put their downloads in the release notes (files uploaded to the project,
@@ -607,10 +667,27 @@ async fn project_id(http: &reqwest::Client, dir: &Path, path: &str) -> Option<u6
     Some(id)
 }
 
+/// A Forgejo release list as the launcher uses it: each file's download link only. GitHub's lists
+/// carry a second, API address for a file, which the downloader falls back to; a file on a Forgejo
+/// server is only ever downloaded from that server.
+pub fn forgejo_assets(repo: &str, data: &mut Value) {
+    if !is_forgejo(repo) {
+        return;
+    }
+    for r in data.as_array_mut().into_iter().flatten() {
+        for a in r.get_mut("assets").and_then(Value::as_array_mut).into_iter().flatten() {
+            if let Some(o) = a.as_object_mut() {
+                o.remove("url");
+            }
+        }
+    }
+}
+
 /// A GitLab release list made ready to use: its project's number where the site left it out
 /// (asked of GitLab once when `http` is given, else only from disk), and the files its notes link to.
 async fn with_gitlab(http: Option<&reqwest::Client>, dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
     f.archived = f.archived.or_else(|| github_archived_on_disk(dir, repo));
+    forgejo_assets(repo, &mut f.data);
     let Some(path) = gitlab_path(repo) else { return f };
     if needs_project_id(&f.data) {
         let id = match http {
@@ -627,6 +704,7 @@ async fn with_gitlab(http: Option<&reqwest::Client>, dir: &Path, repo: &str, mut
 
 fn with_gitlab_assets(dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
     f.archived = f.archived.or_else(|| github_archived_on_disk(dir, repo));
+    forgejo_assets(repo, &mut f.data);
     if let Some(id) = gitlab_path(repo).filter(|_| needs_project_id(&f.data)).and_then(|p| project_id_on_disk(dir, p)) {
         put_project_id(&mut f.data, id);
     }
@@ -638,6 +716,16 @@ fn with_gitlab_assets(dir: &Path, repo: &str, mut f: Fetched) -> Fetched {
 /// links, package files, job artifacts), or under its number (files uploaded to it, which GitLab
 /// serves at /-/project/<number>/uploads/). GitHub's are as before.
 pub fn own_download(repo: &str, url: &str, project_id: Option<u64>) -> bool {
+    // A Forgejo project's files: over https from the server the project is on, and nowhere else
+    // (where that server then sends the download is its own choice, as with SourceForge's mirrors).
+    if let Some((server, owner, name)) = forgejo_parts(repo) {
+        let Ok(u) = reqwest::Url::parse(url) else { return false };
+        let raw_ok = !url.contains("/../") && !url.contains("/./") && !url.to_ascii_lowercase().contains("%2f");
+        let path = u.path().to_ascii_lowercase();
+        let project = format!("/{}/{}/", owner.to_ascii_lowercase(), name.to_ascii_lowercase());
+        let mine = path.starts_with(&project) || path.starts_with("/attachments/");
+        return raw_ok && u.scheme() == "https" && u.host_str() == Some(server) && u.port().is_none() && u.username().is_empty() && u.password().is_none() && mine;
+    }
     // A SourceForge project's files: https://sourceforge.net/projects/<name>/files/... only (the
     // mirror it redirects to after that is SourceForge's choice).
     if let Some(n) = sourceforge_name(repo) {
@@ -695,6 +783,15 @@ pub fn mark_hosts(cat: &mut Value) {
             // The project's short name, or a link to it (any page of the project).
             let repo = repo_from_link(&r).filter(|x| is_sourceforge(x)).unwrap_or_else(|| format!("sourceforge:{}", r.trim().trim_end_matches('/').to_ascii_lowercase()));
             a["repo"] = Value::String(repo);
+            continue;
+        }
+        if host == "forgejo" && !is_forgejo(&r) {
+            // "<server>/<owner>/<name>", or a link to the project. The server's name in lowercase,
+            // as it's compared with every download's host.
+            let r = r.trim().trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/');
+            let r = r.strip_suffix(".git").unwrap_or(r);
+            let (server, rest) = r.split_once('/').unwrap_or((r, ""));
+            a["repo"] = Value::String(format!("forgejo:{}/{rest}", server.to_ascii_lowercase()));
             continue;
         }
         if lab && !is_gitlab(&r) {
@@ -988,6 +1085,159 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_forgejo_entry_gets_its_repo_the_launchers_way() {
+        let mut cat = serde_json::json!({"apps": [
+            {"id": "a", "host": "forgejo", "repo": "Git.Example.dev/Studio/Hopper"},
+            {"id": "b", "host": "Forgejo", "repo": "https://git.example.dev/Studio/Hopper.git/"},
+            {"id": "c", "host": "forgejo", "repo": "forgejo:git.example.dev/Studio/Hopper"},
+        ]});
+        mark_hosts(&mut cat);
+        for i in 0..3 {
+            assert_eq!(cat["apps"][i]["repo"], "forgejo:git.example.dev/Studio/Hopper");
+        }
+    }
+
+    #[test]
+    fn a_forgejo_repo_names_one_project_on_a_public_server() {
+        assert!(repo_ok("forgejo:git.example.dev/Studio/Hopper"));
+        assert!(repo_ok("forgejo:code.my-site.org/a-b/c.d_e"));
+        assert!(!repo_ok("forgejo:192.168.1.20/Studio/Hopper"));
+        assert!(!repo_ok("forgejo:localhost/Studio/Hopper"));
+        assert!(!repo_ok("forgejo:git.example.dev:3000/Studio/Hopper"));
+        assert!(!repo_ok("forgejo:Git.Example.dev/Studio/Hopper"));
+        assert!(!repo_ok("forgejo:git.example.dev/Studio"));
+        assert!(!repo_ok("forgejo:git.example.dev/Studio/Hopper/extra"));
+        assert!(!repo_ok("forgejo:git.example.dev/../Hopper"));
+        assert!(!repo_ok("forgejo:user@git.example.dev/Studio/Hopper"));
+        assert!(!repo_ok("forgejo:-git.example.dev/Studio/Hopper"));
+    }
+
+    #[test]
+    fn a_forgejo_projects_releases_come_from_its_own_server() {
+        let repo = "forgejo:git.example.dev/Studio/Hopper";
+        assert_eq!(releases_url(repo), "https://git.example.dev/api/v1/repos/Studio/Hopper/releases?limit=30");
+        assert_eq!(forgejo_parts(repo), Some(("git.example.dev", "Studio", "Hopper")));
+        assert_eq!(host_path(repo), "Studio/Hopper");
+        assert!(site_only(repo) && is_forgejo(repo) && !is_gitlab(repo) && !is_sourceforge(repo));
+        assert!(releases_file(Path::new("d"), repo).ends_with("forgejo_git.example.dev__Studio__Hopper.json"));
+        // GitHub's, GitLab's and SourceForge's stay as they were.
+        assert!(releases_url("owner/game").ends_with("/api/gh.php?repo=owner/game"));
+        assert!(releases_url("gitlab:group/game").ends_with("/api/gl.php?repo=group%2Fgame"));
+        assert!(!site_only("owner/game") && !is_forgejo("owner/game") && !is_forgejo("gitlab:group/game"));
+    }
+
+    #[test]
+    fn a_forgejo_projects_files_come_only_from_its_server() {
+        let repo = "forgejo:git.example.dev/Studio/Hopper";
+        let ok = |u: &str| own_download(repo, u, None);
+        assert!(ok("https://git.example.dev/Studio/Hopper/releases/download/nightly-2/Hopper-x86_64.AppImage"));
+        assert!(ok("https://git.example.dev/studio/hopper/releases/download/nightly-2/Hopper-x86_64.AppImage"));
+        assert!(ok("https://git.example.dev/attachments/0b5c2c3e-1d2f-4a51-9d7e-2d6b1c1f0a11"));
+        assert!(!ok("https://github.com/Studio/Hopper/releases/download/nightly-2/Hopper-x86_64.AppImage"));
+        assert!(!ok("https://other.example.dev/Studio/Hopper/releases/download/nightly-2/x.zip"));
+        assert!(!ok("https://git.example.dev.evil.example/Studio/Hopper/releases/download/nightly-2/x.zip"));
+        assert!(!ok("http://git.example.dev/Studio/Hopper/releases/download/nightly-2/x.zip"));
+        assert!(!ok("https://git.example.dev:8443/Studio/Hopper/releases/download/nightly-2/x.zip"));
+        assert!(!ok("https://user@git.example.dev/Studio/Hopper/releases/download/nightly-2/x.zip"));
+        assert!(!ok("https://git.example.dev/Other/Project/releases/download/v1/x.zip"));
+        assert!(!ok("https://git.example.dev/Studio/Hopper/../../Other/Project/x.zip"));
+    }
+
+    /// Two nightlies and a release candidate, as a Forgejo server lists them.
+    const FORGEJO_RELEASES: &str = r#"[
+        {"id": 3, "tag_name": "nightly-2-bbb", "name": "Hopper nightly-2-bbb", "body": "Nightly build", "draft": false, "prerelease": true,
+         "published_at": "2026-11-13T17:13:35Z", "html_url": "https://git.example.dev/Studio/Hopper/releases/tag/nightly-2-bbb",
+         "url": "https://git.example.dev/api/v1/repos/Studio/Hopper/releases/3",
+         "assets": [
+            {"id": 31, "name": "Hopper-nightly-2-bbb-x86_64.AppImage", "size": 98662904, "download_count": 426, "uuid": "u31", "type": "attachment",
+             "browser_download_url": "https://git.example.dev/Studio/Hopper/releases/download/nightly-2-bbb/Hopper-nightly-2-bbb-x86_64.AppImage"},
+            {"id": 32, "name": "HopperBuilder-nightly-2-bbb-windows-x64.zip", "size": 42018777, "download_count": 1217, "uuid": "u32", "type": "attachment",
+             "browser_download_url": "https://git.example.dev/Studio/Hopper/releases/download/nightly-2-bbb/HopperBuilder-nightly-2-bbb-windows-x64.zip",
+             "url": "https://api.github.com/repos/Studio/Hopper/releases/assets/32"},
+            {"id": 33, "name": "SHA256SUMS", "size": 300, "download_count": 4, "uuid": "u33", "type": "attachment",
+             "browser_download_url": "https://git.example.dev/Studio/Hopper/releases/download/nightly-2-bbb/SHA256SUMS"}
+         ]},
+        {"id": 2, "tag_name": "nightly-1-aaa", "name": "Hopper nightly-1-aaa", "body": "", "draft": false, "prerelease": true,
+         "published_at": "2026-11-12T10:00:00Z",
+         "assets": [
+            {"id": 21, "name": "HopperBuilder-nightly-1-aaa-windows-x64.zip", "size": 42000000, "download_count": 9, "uuid": "u21", "type": "attachment",
+             "browser_download_url": "https://git.example.dev/Studio/Hopper/releases/download/nightly-1-aaa/HopperBuilder-nightly-1-aaa-windows-x64.zip"}
+         ]},
+        {"id": 1, "tag_name": "v3.0.0-rc.1", "name": "Hopper v3.0.0-rc.1", "body": "", "draft": false, "prerelease": true,
+         "published_at": "2026-11-01T10:00:00Z", "assets": []}
+    ]"#;
+
+    #[test]
+    fn a_forgejo_release_list_reads_like_githubs() {
+        let repo = "forgejo:git.example.dev/Studio/Hopper";
+        let mut v: Value = serde_json::from_str(FORGEJO_RELEASES).unwrap();
+        forgejo_assets(repo, &mut v);
+        let rels: Vec<Release> = serde_json::from_value(v).unwrap();
+        assert_eq!(rels.len(), 3);
+        assert_eq!(rels[0].assets.len(), 3);
+        assert_eq!(rels[0].assets[1].size, 42018777);
+        // Only pre-releases: the newest of them, as for a GitHub project with no full release.
+        assert_eq!(latest(&rels).unwrap().tag_name, "nightly-2-bbb");
+        assert_eq!(latest_for(&rels, "nightly-1-aaa").unwrap().tag_name, "nightly-2-bbb");
+        let win = crate::assets::pick(&rels[0].assets, "windows", "x64", Some("HopperBuilder-*-windows-x64.zip")).unwrap();
+        assert_eq!(win.name, "HopperBuilder-nightly-2-bbb-windows-x64.zip");
+        let linux = crate::assets::pick(&rels[0].assets, "linux", "x64", Some("Hopper-*-x86_64.AppImage")).unwrap();
+        assert_eq!(linux.name, "Hopper-nightly-2-bbb-x86_64.AppImage");
+        assert!(crate::assets::pick(&rels[0].assets, "macos", "arm64", None).is_none());
+        assert!(own_download(repo, &win.browser_download_url, None) && own_download(repo, &linux.browser_download_url, None));
+    }
+
+    #[test]
+    fn a_forgejo_file_has_no_second_address_to_download_from() {
+        let mut v: Value = serde_json::from_str(FORGEJO_RELEASES).unwrap();
+        forgejo_assets("forgejo:git.example.dev/Studio/Hopper", &mut v);
+        let rels: Vec<Release> = serde_json::from_value(v).unwrap();
+        assert!(rels.iter().flat_map(|r| &r.assets).all(|a| a.url.is_none()));
+        // A GitHub list keeps its API addresses (the downloader's second way in).
+        let mut gh: Value = serde_json::from_str(FORGEJO_RELEASES).unwrap();
+        forgejo_assets("owner/game", &mut gh);
+        assert!(gh[0]["assets"][1]["url"].is_string());
+    }
+
+    #[test]
+    fn a_forgejo_entry_waits_for_the_launcher_version_the_catalog_names() {
+        let entry = serde_json::json!({"id": "hopper", "host": "forgejo", "repo": "git.example.dev/Studio/Hopper"});
+        let mut cat = serde_json::json!({"apps": [], "apps_min": [{"min": "99.0.0", "apps": [entry]}]});
+        take_newer(&mut cat, "0.90.0-beta.43");
+        assert!(cat["apps"].as_array().unwrap().is_empty());
+        let mut lowered = serde_json::json!({"apps": [], "apps_min": [{"min": "0.90.0-beta.43", "apps": [entry]}]});
+        take_newer(&mut lowered, "0.90.0-beta.43");
+        mark_hosts(&mut lowered);
+        assert_eq!(lowered["apps"][0]["repo"], "forgejo:git.example.dev/Studio/Hopper");
+    }
+
+    #[test]
+    fn a_forgejo_release_list_is_asked_for_with_no_token() {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", l.local_addr().unwrap());
+        let seen = std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = c.read(&mut buf).unwrap_or(0);
+            let body = FORGEJO_RELEASES;
+            let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let _ = c.write_all(resp.as_bytes());
+            String::from_utf8_lossy(&buf[..n]).to_lowercase()
+        });
+        let dir = std::env::temp_dir().join(format!("rl-forgejo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let url = forgejo_releases_url(&origin, "Studio", "Hopper");
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let f = rt.block_on(cached(&reqwest::Client::new(), &url, dir.join("r.json"), 0, Duration::from_secs(5), true, Value::is_array)).unwrap();
+        let req = seen.join().unwrap();
+        assert!(req.starts_with("get /api/v1/repos/studio/hopper/releases?limit=30 http/1.1"), "{req}");
+        assert!(!req.contains("authorization") && !req.contains("token") && !req.contains("cookie"), "{req}");
+        assert_eq!(f.data[0]["tag_name"], "nightly-2-bbb");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn repos() {

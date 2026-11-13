@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.43" date="2026-11-13">
+      <description>
+        <p>Recomps from Forgejo servers, a Library that keeps every game, prod.keys accepted, self-updates on Linux, and fixes for covers, search and setup.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.42" date="2026-11-13">
       <description>
         <p>Bring Your Games for moving over from another launcher, self-updates on a Mac, and Big Picture fixes.</p>

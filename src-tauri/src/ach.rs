@@ -1424,6 +1424,15 @@ fn rex_candidates(w: &RexWatch) -> Vec<PathBuf> {
     // Every ReXGlue game names its file after its own title id, and players have several: without
     // the title, the newest file is as likely to be another game's. Nothing until it's known.
     let Some(title) = w.title.clone() else { return vec![] };
+    let mut out = unlock_files_near(w);
+    out.retain(|p| is_title_file(p, &title));
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Every ReXGlue unlock file where a game may keep its user data, whichever game's it is.
+fn unlock_files_near(w: &RexWatch) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = vec![];
     if let Some(f) = w.catalog_folder.as_deref().map(|f| expand(f, &w.install)) {
         out.extend(unlock_files_in(&f));
@@ -1461,10 +1470,23 @@ fn rex_candidates(w: &RexWatch) -> Vec<PathBuf> {
             }
         }
     }
-    out.retain(|p| is_title_file(p, &title));
+    // One file reached two ways (the game's folder inside AppData, or a short 8.3 name on Windows
+    // beside the long one) is one file: the first path found for it is kept.
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|p| seen.insert(std::fs::canonicalize(p).unwrap_or_else(|_| p.clone())));
     out.sort();
-    out.dedup();
     out
+}
+
+/// The game's title id isn't known (no disc found, nothing in the list): the one unlock file made
+/// or changed since it started is its own, since only a running game writes unlocks. Two or more
+/// changed at once can't be told apart, so none is taken.
+fn unlock_file_since(w: &RexWatch) -> Option<PathBuf> {
+    let since = |p: &PathBuf| {
+        std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() + 5 >= w.started).unwrap_or(false)
+    };
+    let fresh: Vec<PathBuf> = unlock_files_near(w).into_iter().filter(since).collect();
+    if fresh.len() == 1 { fresh.into_iter().next() } else { None }
 }
 
 /// A folder from the catalog: {game} is the game's folder; %APPDATA%, %LOCALAPPDATA%,
@@ -1596,7 +1618,7 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
     }
     let mut remembered = with_store(&dir, |d| (d.found.get(&w.game).cloned(), false));
     if w.title.is_none() {
-        log_line(&w.game, "*", "the game's title id isn't known yet: its unlock file is looked for once its disc is found");
+        log_line(&w.game, "*", "the game's title id isn't known yet: its unlock file is looked for once its disc is found, or once the game writes one");
     }
     REX.lock().unwrap().insert(w.game.clone(), false);
     // What's there when the session starts: earlier unlocks.
@@ -1644,6 +1666,18 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
                         let old = at != 0 && at + 60 < w.started;
                         record(&app, &w.game, id, "native", None, old, if burst { Some("save_loaded") } else { None });
                     }
+                }
+            }
+        } else if w.title.is_none() && begun.elapsed().as_secs() >= 20 && since_look.elapsed().as_secs() >= 20 {
+            // No disc and no title: the unlock file the game writes names it.
+            since_look = Instant::now();
+            let w2 = RexWatch { game: w.game.clone(), install: w.install.clone(), started: w.started, catalog_folder: w.catalog_folder.clone(), title: None, roots: vec![] };
+            if let Some(f) = tokio::task::spawn_blocking(move || unlock_file_since(&w2)).await.ok().flatten() {
+                if let Some(t) = title_of_unlock_file(&f) {
+                    log_line(&w.game, "*", &format!("the game wrote {}, so its title id is {t}", unexpand(&f, &w.install)));
+                    crate::trail::note(format!("Achievements {}: title {t}, from the unlock file the game wrote", w.game));
+                    w.title = Some(t);
+                    file = Some(f);
                 }
             }
         } else if w.title.is_some() && (look_now || since_look.elapsed().as_secs() >= if begun.elapsed().as_secs() < 120 { 10 } else { 30 }) {
@@ -2499,6 +2533,32 @@ pub mod rule {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn without_a_title_the_one_unlock_file_written_since_the_start_is_the_games() {
+        let d = std::env::temp_dir().join(format!("rl-ach-since-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("achievements")).unwrap();
+        // Another game's, from before.
+        let old = d.join("achievements").join("454108D2.toml");
+        std::fs::write(&old, "[unlocked.7]\nfiletime = 1\n").unwrap();
+        let mut w = watch(&d, None);
+        w.started = now() + 30;
+        assert!(unlock_file_since(&w).is_none());
+        w.started = now().saturating_sub(2);
+        let mine = d.join("achievements").join("4D5307E6.toml");
+        std::fs::write(&mine, "[unlocked.1]\nfiletime = 1\n").unwrap();
+        // Both look fresh to a session that started earlier than either: not told apart.
+        let mut early = watch(&d, None);
+        early.started = 0;
+        assert!(unlock_file_since(&early).is_none());
+        // Started after the old one was last written: only the game's own is fresh.
+        let t_old = std::fs::metadata(&old).unwrap().modified().unwrap();
+        let _ = std::fs::File::options().write(true).open(&old).and_then(|f| f.set_modified(t_old - std::time::Duration::from_secs(600)));
+        assert_eq!(unlock_file_since(&w).as_deref(), Some(mine.as_path()));
+        assert_eq!(title_of_unlock_file(&mine).as_deref(), Some("4D5307E6"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn watch(install: &Path, title: Option<&str>) -> RexWatch {
         RexWatch { game: "g".into(), install: install.to_path_buf(), started: 0, catalog_folder: None, title: title.map(str::to_string), roots: vec![] }

@@ -281,18 +281,48 @@ fn check_key(shared: &str, bytes: &[u8]) -> Result<(), String> {
     if shared == "wiiu.common-key" {
         return if text.trim().len() == 32 && text.trim().bytes().all(|b| b.is_ascii_hexdigit()) { Ok(()) } else { Err("The common key must be 16 bytes or 32 hexadecimal digits.".into()) };
     }
-    let mut count = 0;
-    for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(['#', ';'])) {
-        let Some((name, value)) = line.split_once('=') else { return Err("That isn't a supported keys file.".into()); };
-        let (name, value) = (name.trim(), value.trim());
-        let valid_name = if shared == "switch.title-keys" { name.len() == 32 && name.bytes().all(|b| b.is_ascii_hexdigit()) }
-            else { !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') };
-        if !valid_name || ![32, 64].contains(&value.len()) || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("That isn't a supported keys file.".into());
-        }
-        count += 1;
+    let lines: Vec<(&str, &str)> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with(['#', ';']))
+        .map(|l| l.split_once('=').map(|(n, v)| (n.trim(), v.trim())).unwrap_or(("", l)))
+        .collect();
+    if lines.is_empty() {
+        return Err("That keys file is empty.".into());
     }
-    if count == 0 { Err("That keys file is empty.".into()) } else { Ok(()) }
+    let hex = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit());
+    // title.keys: a title ID (32 hex digits) = its key (32). prod.keys: named keys, whose values
+    // can be much longer (eticket_rsa_keypair is 1056 digits, the kek sources 34), with header_key
+    // among them, which is what a recomp's setup needs. Each one picked for the other is said so.
+    let titles = lines.iter().all(|(n, v)| n.len() == 32 && hex(n) && v.len() == 32 && hex(v));
+    let has_header = lines.iter().any(|(n, v)| n.eq_ignore_ascii_case("header_key") && v.len() == 64 && hex(v));
+    match shared {
+        "switch.title-keys" => {
+            if titles {
+                Ok(())
+            } else if has_header {
+                Err("That's prod.keys. Pick title.keys here.".into())
+            } else {
+                Err("That isn't a supported keys file.".into())
+            }
+        }
+        "switch.prod-keys" => {
+            let named = lines.iter().all(|(n, v)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') && hex(v) && v.len() % 2 == 0 && v.len() <= 8192);
+            if named && has_header {
+                Ok(())
+            } else if titles {
+                Err("That's title.keys. Pick prod.keys, the file with header_key in it.".into())
+            } else if named {
+                Err("That keys file has no header_key. Dump prod.keys from your console again.".into())
+            } else {
+                Err("That isn't a supported keys file.".into())
+            }
+        }
+        _ => {
+            let ok = lines.iter().all(|(n, v)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') && [32, 64].contains(&v.len()) && hex(v));
+            if ok { Ok(()) } else { Err("That isn't a supported keys file.".into()) }
+        }
+    }
 }
 pub fn import_key(dir: &Path, shared: &str, source: &Path) -> Result<(), String> {
     let target = key_path(dir, shared).ok_or("Unsupported shared key type.")?;
@@ -507,6 +537,21 @@ mod tests {
         assert!(check_key("switch.prod-keys", b"not keys").is_err());
         assert!(check_key("wiiu.common-key", &[0;16]).is_ok());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_real_prod_keys_file_is_taken_and_title_keys_in_its_place_is_named() {
+        let h64 = "a".repeat(64);
+        let prod = format!("aes_kek_generation_source = {}\nheader_key = {h64}\nmaster_kek_source_12 = {}\neticket_rsa_keypair = {}\nssl_rsa_key = {}\n", "b".repeat(32), "c".repeat(34), "d".repeat(1056), "e".repeat(512));
+        assert!(check_key("switch.prod-keys", prod.as_bytes()).is_ok());
+        let title = format!("{} = {}\n{} = {}\n", "0".repeat(32), "1".repeat(32), "2".repeat(32), "3".repeat(32));
+        assert!(check_key("switch.title-keys", title.as_bytes()).is_ok());
+        assert_eq!(check_key("switch.prod-keys", title.as_bytes()).unwrap_err(), "That's title.keys. Pick prod.keys, the file with header_key in it.");
+        assert_eq!(check_key("switch.title-keys", prod.as_bytes()).unwrap_err(), "That's prod.keys. Pick title.keys here.");
+        let no_header = format!("aes_kek_generation_source = {}\n", "b".repeat(32));
+        assert_eq!(check_key("switch.prod-keys", no_header.as_bytes()).unwrap_err(), "That keys file has no header_key. Dump prod.keys from your console again.");
+        // An odd number of digits isn't a key.
+        assert!(check_key("switch.prod-keys", format!("header_key = {h64}\nbad = {}\n", "f".repeat(33)).as_bytes()).is_err());
     }
     #[test]
     fn four_discs_three_dlc_and_optional_arguments() {

@@ -283,6 +283,40 @@ pub async fn installer_done(st: State<'_, App>, id: String, path: String, exe: S
     finish(&st, &id, root, exe)
 }
 
+/// Its program was made after the waiting update's installer was downloaded: the player ran that
+/// installer (or built the new version) outside the launcher.
+pub fn built_since_staged(g: &Installed) -> bool {
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let Some(exe) = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }) else { return false };
+    match (modified(&exe), modified(Path::new(&g.installer_setup))) {
+        (Some(built), Some(staged)) => built > staged,
+        _ => false,
+    }
+}
+
+/// The waiting update counts as installed: its version is the one the game is on, and its
+/// downloaded installer goes. The record as it is now, or None when nothing was waiting.
+pub fn finished_outside(st: &App, id: &str) -> Option<Installed> {
+    let g = {
+        let mut l = st.lib.lock().unwrap();
+        let g = l.installed.get_mut(id)?;
+        if g.installer_tag.is_empty() {
+            return None;
+        }
+        if g.tag != g.installer_tag {
+            g.prev_tag = std::mem::take(&mut g.tag);
+        }
+        g.tag = std::mem::take(&mut g.installer_tag);
+        g.installer_setup = String::new();
+        g.updated_at = crate::library::now();
+        g.clone()
+    };
+    st.save();
+    let _ = std::fs::remove_dir_all(staging(&st.dir, id));
+    crate::trail::note(format!("Installer {id}: built outside the launcher, now at {}", g.tag));
+    Some(g)
+}
+
 fn finish(st: &App, id: &str, root: PathBuf, exe: PathBuf) -> Res<Installed> {
     let g = {
         let mut l = st.lib.lock().unwrap();
@@ -382,6 +416,28 @@ pub fn run_uninstaller(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_game_built_after_its_update_was_downloaded_counts_as_updated() {
+        let d = std::env::temp_dir().join(format!("rl-outside-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        let setup = d.join("Setup.exe");
+        std::fs::write(&setup, b"setup").unwrap();
+        let mut g = crate::library::Installed { path: d.join("game"), exe: Some("game.exe".into()), installer_tag: "v2".into(), installer_setup: setup.to_string_lossy().to_string(), ..Default::default() };
+        // No program yet: nothing was built.
+        assert!(!built_since_staged(&g));
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(d.join("game/game.exe"), b"built").unwrap();
+        assert!(built_since_staged(&g));
+        // The installer is newer than the program: the update hasn't been built.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(&setup, b"newer setup").unwrap();
+        assert!(!built_since_staged(&g));
+        g.exe = None;
+        assert!(!built_since_staged(&g));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     use super::*;
 
     #[test]

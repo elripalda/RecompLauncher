@@ -16,6 +16,16 @@ const GENRES = { action: N_('Action'), adventure: N_('Adventure'), platformer: N
 const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux' };
 // Text for searching: lower case and without accents, so "pokemon" finds Pokémon.
 const fold = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// Search: accents folded and punctuation as spaces, so "sky racer", "skyracer" and "Sky-Racer!!"
+// all find the same game.
+const sfold = (x) => fold(x).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const sMatch = (hay, q) => {
+  const n = sfold(q);
+  if (!n) return true;
+  const h = sfold(hay);
+  return h.includes(n) || h.replace(/ /g, '').includes(n.replace(/ /g, ''));
+};
+window.sMatch = sMatch;
 window.fold = fold;
 // Looks run on ReShade on Windows and on vkBasalt on Linux.
 window.looksHere = () => S.os === 'windows' || S.os === 'linux';
@@ -220,14 +230,28 @@ async function removeFromLibrary(id) {
   render(true);
 }
 // The saved ("Not installed") list goes with the account when signed in, the same list as the
-// website's library: merged with this PC's on sign-in, each save and unsave sent as it happens
-// (kept for later while the website can't be reached), and read again when the launcher opens and
-// every 10 minutes. Signed out, it's this PC's own list. Installed games always stay per PC.
+// website's library: merged with this PC's on sign-in, each save and unsave sent as it happens, and
+// read again when the launcher opens and every 10 minutes. Signed out, it's this PC's own list.
+// Installed games always stay per PC. Each change waits in a queue, kept with the settings, until
+// the website's list shows it: a launcher closed before the website answered, or an answer that
+// didn't take, never loses a game the player added (the next read would have left it out).
 const accountId = () => (S.account && S.account.signedIn && S.account.user ? String(S.account.user.uid || S.account.user.username || '') : '');
 async function libSend(id, on) {
   if (!accountId()) return;
-  try { await invoke('library_push', { games: [id], on }); } catch (e) { libQueue([{ id, on }]); }
+  await libQueue([{ id, on }]);
+  invoke('library_push', { games: [id], on }).catch(() => {});
 }
+// The website's list with the changes it doesn't show yet laid over it.
+const libMerge = (remote, queue, local) => {
+  const next = Object.assign({}, remote);
+  for (const x of queue) {
+    if (x.on) next[x.id] = local[x.id] || next[x.id] || Math.floor(Date.now() / 1000);
+    else delete next[x.id];
+  }
+  return next;
+};
+// The queued changes the website's list doesn't show yet.
+const libPending = (remote, queue) => queue.filter((x) => (x.on ? !remote[x.id] : !!remote[x.id]));
 async function libQueue(items) {
   const ui = (S.settings && S.settings.ui) || {};
   const q = (ui.lib_queue || []).filter((x) => !items.some((y) => y.id === x.id)).concat(items);
@@ -242,47 +266,62 @@ async function libSync() {
   S.libSyncing = true;
   try {
     const ui = (S.settings && S.settings.ui) || {};
-    // What waited while the website couldn't be reached goes first.
-    const q = Array.isArray(ui.lib_queue) ? ui.lib_queue : [];
+    const queue = () => { const q = ((S.settings && S.settings.ui) || {}).lib_queue; return Array.isArray(q) ? q : []; };
+    // Changes the website's list doesn't show yet go (again) first.
+    const q = queue();
     if (q.length) {
       await libPushAll(q.filter((x) => x.on).map((x) => x.id), true);
       await libPushAll(q.filter((x) => !x.on).map((x) => x.id), false);
-      await saveUi({ lib_queue: [] }, true);
     }
     const r = await invoke('library_pull');
     const now = Math.floor(Date.now() / 1000);
     const remote = Object.fromEntries(((r && r.saved) || []).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, Number(x.at) || now]));
-    let next = remote;
+    let base = remote;
     if (ui.lib_synced !== uid) {
       // The first time on this account: both lists together, and this PC's own go up.
       const local = saved();
       const up = Object.keys(local).filter((id) => !remote[id]);
       if (up.length) await libPushAll(up, true);
-      next = Object.assign({}, remote, local);
+      base = Object.assign({}, remote, local);
     }
+    // Read again just before writing: a game added while the website answered is in the queue.
+    const pending = libPending(remote, queue());
+    const next = libMerge(base, pending, saved());
     const before = Object.keys(saved()).sort().join('|');
-    await saveUi({ saved: next, lib_synced: uid }, true);
+    await saveUi({ saved: next, lib_synced: uid, lib_queue: pending }, true);
     if (Object.keys(next).sort().join('|') !== before && ['library', 'home'].includes(S.view)) render(true);
   } catch (e) { /* the website can't be reached: this PC's list stays, and it's tried again later */ } finally { S.libSyncing = false; }
 }
 setInterval(() => { if (!document.hidden) libSync(); }, 10 * 60 * 1000);
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
-// Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, or SourceForge
-// for sourceforge:<name>.
+// Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
+// for sourceforge:<name>, or a Forgejo server for forgejo:<server>/<owner>/<name>.
 const isLab = (repo) => /^gitlab:/i.test(String(repo || ''));
+// A release's version as shown: "v1.2" for a number, a build name ("nightly-80-…") as it is.
+const verText = (v) => { const s = String(v || '').replace(/^v(?=\d)/i, ''); return /^\d/.test(s) ? 'v' + s : s; };
+window.verText = verText;
 const isSF = (repo) => /^sourceforge:/i.test(String(repo || ''));
+const isFJ = (repo) => /^forgejo:[^/]+\/[^/]+\/[^/]+$/i.test(String(repo || ''));
 const sfName = (repo) => String(repo).slice(12);
-const hostName = (repo) => (isSF(repo) ? 'SourceForge' : isLab(repo) ? 'GitLab' : 'GitHub');
-const repoHome = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/` : isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : `https://github.com/${repo}`;
-const repoIssues = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/support` : isLab(repo) ? `${repoHome(repo)}/-/issues/new` : `https://github.com/${repo}/issues`;
-const repoReadme = (repo) => isSF(repo) || isLab(repo) ? repoHome(repo) : `https://github.com/${repo}#readme`;
-const repoFiles = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/files/` : isLab(repo) ? `${repoHome(repo)}/-/releases` : `https://github.com/${repo}/releases`;
+// A Forgejo project's server/owner/name, and its server alone (what its links are labelled with).
+const fjPath = (repo) => String(repo).slice(8);
+const fjServer = (repo) => fjPath(repo).split('/')[0];
+const hostName = (repo) => (isSF(repo) ? 'SourceForge' : isLab(repo) ? 'GitLab' : isFJ(repo) ? fjServer(repo) : 'GitHub');
+const repoHome = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/` : isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : isFJ(repo) ? `https://${fjPath(repo)}` : `https://github.com/${repo}`;
+const repoIssues = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/support` : isLab(repo) ? `${repoHome(repo)}/-/issues/new` : isFJ(repo) ? `${repoHome(repo)}/issues` : `https://github.com/${repo}/issues`;
+const repoReadme = (repo) => isSF(repo) || isLab(repo) || isFJ(repo) ? repoHome(repo) : `https://github.com/${repo}#readme`;
+const repoFiles = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/files/` : isLab(repo) ? `${repoHome(repo)}/-/releases` : isFJ(repo) ? `${repoHome(repo)}/releases` : `https://github.com/${repo}/releases`;
+// "View on GitHub", or on whichever site the project is on (a Forgejo project's server by name).
+const viewOn = (repo) => (isSF(repo) ? t('View on SourceForge') : isFJ(repo) ? tf('View on {host}', { host: fjServer(repo) }) : hostName(repo));
 // Where Report a problem goes: the catalog's own link when it gives one (https), else the project's.
 const reportUrl = (a) => (a && /^https:\/\//i.test(String(a.report_url || '')) ? String(a.report_url) : repoIssues(a.repo));
 window.isSF = isSF;
 // A SourceForge project's two links: its page and its files (its releases).
 const sfMenu = (repo) => [{ act: 'url', url: repoHome(repo), label: t('View on SourceForge'), icon: 'web' }, { act: 'url', url: repoFiles(repo), label: t('Releases'), icon: 'page' }];
+// A Forgejo project's three links: its page, its releases and its issues.
+const fjMenu = (repo) => [{ act: 'url', url: repoHome(repo), label: viewOn(repo), icon: 'web' }, { act: 'url', url: repoFiles(repo), label: t('Releases'), icon: 'page' }, { act: 'url', url: repoIssues(repo), label: t('Issues'), icon: 'page' }];
+window.isFJ = isFJ;
 window.repoFiles = repoFiles;
 // A Coming soon game announced before it has a project: the post to follow it on (https only), and
 // the button's name for it.
@@ -987,7 +1026,7 @@ function askSupportUrl(a) {
   const body = 'Hi! Could you add a recomplauncher.json to this recomp, so RecompLauncher can set it up and show its settings for players?\n\nThe guide: https://recomplauncher.com/sdk-files/guide.md';
   if (isSF(a.repo)) return repoIssues(a.repo);
   if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
-  return `https://github.com/${a.repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  return `${repoIssues(a.repo)}/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
 // What RecompLauncher can do for this recomp, and who made each part work: the catalog's
 // "support", the recomp's own recomplauncher.json in its folder, or (offline) its boot profile.
@@ -1049,7 +1088,7 @@ function quickActs(a) {
     out.push(b('url', followLabel(f), onX(f) ? X_S : BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(f)}"`));
   }
   if (a.repo) {
-    out.push(b('url', isSF(a.repo) ? t('View on SourceForge') : hostName(a.repo), isLab(a.repo) || isSF(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
+    out.push(b('url', viewOn(a.repo), isLab(a.repo) || isSF(a.repo) || isFJ(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
     out.push(b('url', t('Report a problem'), QI_REPORT, `data-url="${esc(reportUrl(a))}"`));
   }
   if (!a.soon) out.push(b('support', t('Launcher Support'), SUPPORT_I));
@@ -1393,9 +1432,9 @@ function layoutShelves(scope = document) {
 
 // With `ended`, the ended ones the filters would otherwise show (what "Hide ended" took out).
 function discoverList(ended = false) {
-  const f = S.find, q = fold(S.q.trim());
+  const f = S.find, q = S.q.trim();
   let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
-    && (!q || fold([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' ')).includes(q)));
+    && (!q || sMatch([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
   if (!ended) S.findCount = recompCount(list);
@@ -1407,7 +1446,7 @@ function discoverList(ended = false) {
     const kids = [];
     for (const a of visible()) {
       if (!forOS(a) || !keepEnded(a, f)) continue;
-      for (const g of gamesOf(a.id, a)) { const c = byId(a.id + '--' + g.id); if (c && !isHidden(c.id) && fold(c.name).includes(q)) kids.push(c); }
+      for (const g of gamesOf(a.id, a)) { const c = byId(a.id + '--' + g.id); if (c && !isHidden(c.id) && sMatch(c.name, q)) kids.push(c); }
     }
     out = out.concat(kids);
   }
@@ -1603,7 +1642,7 @@ function savedItems() {
 }
 function libList() {
   libFilterOk();
-  const q = fold(S.lq.trim());
+  const q = S.lq.trim();
   let list = libRecs().map((g) => ({ g, a: libApp(g) })).concat(savedItems());
   if (S.lib.filter === 'saved') list = list.filter((x) => x.saved);
   if (S.lib.filter === 'inst') list = list.filter((x) => !x.saved);
@@ -1612,7 +1651,7 @@ function libList() {
   if (S.lib.filter === 'setup') list = list.filter((x) => !x.saved && needsCopySetup(x.g));
   if (S.lib.filter === 'fav') list = list.filter((x) => favs().includes(x.g.id));
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
-  if (q) list = list.filter((x) => fold([x.a.name, x.a.game].join(' ')).includes(q));
+  if (q) list = list.filter((x) => sMatch([x.a.name, x.a.game].join(' '), q));
   if (S.lib.sort === 'az') list.sort((x, y) => x.a.name.localeCompare(y.a.name));
   else if (S.lib.sort === 'time') list.sort((x, y) => (y.g.played_secs || 0) - (x.g.played_secs || 0));
   else list.sort((x, y) => (y.g.last_played || 0) - (x.g.last_played || 0) || (y.g.updated_at || y.g.installed_at || 0) - (x.g.updated_at || x.g.installed_at || 0));
@@ -1756,14 +1795,21 @@ function verPill(a) {
   return `<button type="button" class="ver-pill" data-act="ver-menu" data-id="${esc(a.id)}" aria-haspopup="listbox" aria-expanded="false">${LAYERS}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${n > 1 ? `<em>${esc(tn(n, '1 installed', '{n} installed'))}</em>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
 // On Overview: every version, like the website's list.
+// On Linux with Proton off, the versions of a game that only have a Windows build: left out of
+// the list, but named, so they don't just vanish (Proton is only turned on by itself when it's
+// found at the launcher's first start; one added later leaves it off).
+const protonHidden = (g) => (g && S.os === 'linux' && !S.settings.proton ? g.every.filter((v) => !g.list.includes(v) && hasWindowsBuild(v)) : []);
 function versionsCard(a) {
-  const g = verGroup(a);
+  const title = a && a.title ? index().titles.get(a.title) : null;
+  const g = verGroup(a) || (protonHidden(title).length ? title : null);
   if (!g) return '';
+  const hidden = protonHidden(g);
   const hide = !!(S.settings.ui || {}).verHide;
+  const px = hidden.length ? `<div class="vc-px"><span>${esc(tn(hidden.length, '1 more version only has a Windows build. Turn on Proton to see it.', '{n} more versions only have a Windows build. Turn on Proton to see them.'))}</span><button type="button" class="btn sm" data-act="use-proton" data-id="${esc(a.id)}">${esc(t('Turn On Proton'))}</button></div>` : '';
   return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
-      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
+      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length + hidden.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
       <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
-    ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
+    ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>${px}
     <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>`}</div>`;
 }
 function verMenu(el) {
@@ -1983,8 +2029,8 @@ function playersText(a) {
 }
 function gameRail(a) {
   const facts = [
-    [t('Latest version'), a.version ? 'v' + String(a.version).replace(/^v/i, '') : ''], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [isLab(a.repo) ? t('Stars on GitLab') : t('Stars on GitHub'), a.stars && !isSF(a.repo) ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
+    [t('Latest version'), verText(a.version)], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [isLab(a.repo) ? t('Stars on GitLab') : isFJ(a.repo) ? tf('Stars on {host}', { host: fjServer(a.repo) }) : t('Stars on GitHub'), a.stars && !isSF(a.repo) ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   return `<div class="stack">${quickActs(a)}${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
@@ -1995,7 +2041,8 @@ function gameRail(a) {
 // as the page opens (the launcher keeps a copy for a day), so it opens at once.
 S.readme = {};
 function readmeCard(a) {
-  if (!a.repo || a.local) return '';
+  // A Forgejo project's README isn't read: the catalog's description (From the developer) stands in.
+  if (!a.repo || a.local || isFJ(a.repo)) return '';
   const r = S.readme[a.repo];
   if (r === undefined) {
     S.readme[a.repo] = 'loading';
@@ -2134,6 +2181,7 @@ function refreshGame() {
   body.classList.add('still');
   morph(body, gameBody(a));
   main.scrollTop = top;
+  reviveSoon($('.gp') || main);
   moveTabPill();
   paintLooks();
   fitTitles(body);
@@ -2218,6 +2266,8 @@ async function pickCopy(id, folder) {
 function needsCopySetup(g) {
   // One game of several whose own inputs aren't set up yet (the others still play).
   if (g._sub && g.ready === false) return true;
+  // Brought in from a folder where it already plays, or played a while already: its files are there.
+  if (g.files_in_place || (g.sessions || []).some((x) => Array.isArray(x) && x[1] >= 120)) return false;
   const su = S.setup[g.id];
   const named = su && su !== 'loading' && su.inputs?.length ? !su.inputs_ready : Object.keys(g.setup_inputs || {}).length > 0 && !g.inputs_ready;
   return S.easy.has(g.id) && (!g.game_copy || named);
@@ -2824,8 +2874,8 @@ function modsTab(a) {
 function tsCard(a, m, btn) {
   const id = a.id, ml = S.modList[id];
   if (!ml) loadModList(id);
-  const q = fold(S.modQ.trim());
-  const list = ml && ml.list ? ml.list.filter((p) => !q || fold([p.name, p.owner, p.desc, ...(p.categories || [])].join(' ')).includes(q)).slice(0, 60) : [];
+  const q = S.modQ.trim();
+  const list = ml && ml.list ? ml.list.filter((p) => !q || sMatch([p.name, p.owner, p.desc, ...(p.categories || [])].join(' '), q)).slice(0, 60) : [];
   return `<div class="card"><div class="sec-h" style="margin-bottom:10px"><h3>${esc(t('From Thunderstore'))}</h3><input class="field" type="search" placeholder="${esc(t('Search mods'))}" value="${esc(S.modQ)}" data-modq aria-label="${esc(t('Search mods'))}"></div>
       ${!ml || ml.loading ? `<p class="muted" style="margin:0">${esc(t('Loading the mods…'))}</p>` : ml.error ? `<p class="err" style="margin:0">${esc(t(ml.error))}</p>`
         : list.length ? `<div class="mods">${list.map((p) => `<div class="mod">${p.icon ? `<img src="${esc(media(p.icon))}" alt="" loading="lazy">` : '<span class="ph"></span>'}<div class="mid"><b>${esc(p.name)}</b><small>${esc(tf('By {who} · {n} downloads · v{v}', { who: p.owner, n: fmtN(p.downloads), v: p.version }))}</small><span>${esc(p.desc)}</span></div><div class="acts"><button type="button" class="btn sm icon" data-act="url" data-url="${esc(p.page)}" title="${esc(t('Its page'))}" aria-label="${esc(t('Its page'))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI.web}</svg></button>${btn(p)}</div></div>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(t('Nothing matches.'))}</p>`}
@@ -3551,6 +3601,9 @@ function morphNode(o, n) {
     if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue;
     return;
   }
+  // A picture that's already showing stays shown when its markup comes back without the mark
+  // (its load event won't fire again for the same file): the blank covers after a redraw.
+  const shown = o.tagName === 'IMG' && o.classList.contains('ld') && o.getAttribute('src') === n.getAttribute('src');
   for (const a of Array.from(o.attributes)) {
     // Inline styles the layout code sets after a draw (grid columns, title sizes) stay until it sets them again.
     if (!n.hasAttribute(a.name) && a.name !== 'style') o.removeAttribute(a.name);
@@ -3559,6 +3612,7 @@ function morphNode(o, n) {
   const lit = o.classList.contains('pad-focus');
   for (const a of Array.from(n.attributes)) if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value);
   if (lit && !o.classList.contains('pad-focus')) o.classList.add('pad-focus');
+  if (shown && !o.classList.contains('ld')) o.classList.add('ld');
   const tag = o.tagName;
   if (tag === 'INPUT') {
     if (o.type === 'checkbox' || o.type === 'radio') o.checked = n.hasAttribute('checked');
@@ -3641,6 +3695,7 @@ function render(keepScroll) {
   moveTabPill();
   stickCheck();
   watchMore();
+  reviveSoon(main);
   if (v === 'game') paintLooks();
   if (typing) { const f = $('#' + typing.id); if (f) { f.focus({ preventScroll: true }); try { f.setSelectionRange(typing.a, typing.b); } catch (e) { /* fine */ } } }
 }
@@ -4780,12 +4835,12 @@ function gameMenu(id) {
         { act: 'backups', id, label: t('Backups of your saves…'), icon: 'save' },
         { act: 'move', id, label: t('Move to another drive…'), icon: 'move' },
       ] },
-      ...(x && x.repo ? [isSF(x.repo) ? { label: t('On SourceForge'), icon: 'web', sub: sfMenu(x.repo) } : { label: isLab(x.repo) ? t('On GitLab') : t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] }] : []),
+      ...(x && x.repo ? [isSF(x.repo) ? { label: t('On SourceForge'), icon: 'web', sub: sfMenu(x.repo) } : isFJ(x.repo) ? { label: tf('On {host}', { host: fjServer(x.repo) }), icon: 'web', sub: fjMenu(x.repo) } : { label: isLab(x.repo) ? t('On GitLab') : t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] }] : []),
       ...(window.pluginMenu ? window.pluginMenu(id) : []),
       '-',
       { act: 'troubleshoot', id, label: t('Troubleshoot…'), icon: 'info' },
       { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
-    ] : x && x.repo ? (isSF(x.repo) ? ['-', ...sfMenu(x.repo)] : ['-', { act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }]) : []),
+    ] : x && x.repo ? (isSF(x.repo) ? ['-', ...sfMenu(x.repo)] : isFJ(x.repo) ? ['-', ...fjMenu(x.repo)] : ['-', { act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }]) : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }

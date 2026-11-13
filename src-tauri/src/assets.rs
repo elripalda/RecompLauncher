@@ -300,10 +300,23 @@ pub fn most_like<'a>(list: &[&'a Asset], before: &str) -> Option<&'a Asset> {
 /// "Folklore-20261107-1109.zip" finds "Folklore-20261108-1524.zip", but not "..._eu.zip".
 fn matching<'a>(assets: &'a [Asset], p: &str) -> Vec<&'a Asset> {
     let exact: Vec<&Asset> = assets.iter().filter(|a| wild(p, &a.name)).collect();
-    if !exact.is_empty() || p.contains(['*', '?']) || !p.chars().any(|c| c.is_ascii_digit()) {
+    if !exact.is_empty() {
         return exact;
     }
+    // GitHub turns a space in an uploaded file's name into a dot, and developers switch between
+    // dots, dashes and underscores from one release to the next (Sky.Racer-Setup-1.14.2 after
+    // Sky-Racer-Setup-1.13.0): those count as the same, so a list written for one release still
+    // finds the next one's file.
+    let loose: Vec<&Asset> = assets.iter().filter(|a| wild(&seps(p), &seps(&a.name))).collect();
+    if !loose.is_empty() || p.contains(['*', '?']) || !p.chars().any(|c| c.is_ascii_digit()) {
+        return loose;
+    }
     assets.iter().filter(|a| same_shape(p, &a.name)).collect()
+}
+
+/// A name with its separators made one: dots, dashes, underscores and spaces are all "-".
+fn seps(s: &str) -> String {
+    s.chars().map(|c| if matches!(c, '.' | '_' | ' ') { '-' } else { c }).collect()
 }
 
 /// Two names alike but for their numbers: each run of digits in one is a run of digits in the other.
@@ -354,6 +367,19 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_pattern_finds_the_file_when_dots_and_dashes_trade_places() {
+        let a = |n: &str| Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new(), url: None };
+        let rel = [a("Game-Setup-1.13.0-x86_64.AppImage"), a("Game-Setup-1.13.0-windows.zip")];
+        let got = pick(&rel, "windows", "x64", Some("Game.Setup-*-windows.zip")).map(|x| x.name.clone());
+        assert_eq!(got.as_deref(), Some("Game-Setup-1.13.0-windows.zip"));
+        let rel = [a("My.Game_v2-win64.zip")];
+        assert!(pick(&rel, "windows", "x64", Some("My Game-v*-win64.zip")).is_some());
+        // Still nothing for this system when no name is alike.
+        let rel = [a("Other-1.0-linux.AppImage")];
+        assert!(pick(&rel, "windows", "x64", Some("Game.Setup-*-windows.zip")).is_none());
+    }
 
     #[test]
     fn a_lone_setup_or_disk_image_is_still_the_build() {
