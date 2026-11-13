@@ -89,10 +89,9 @@ fn swap_in(dmg: &Path, bundle: &Path, version: &str, work: &Path, old: &Path) ->
     // Files this app downloads aren't quarantined, but a copy made by hand could be: macOS would
     // then ask about it, or refuse it, on the next start.
     run("/usr/bin/xattr", &["-dr", "com.apple.quarantine"], &new_app);
-    // The release is signed ad hoc. If that signature didn't come through the copy, it's signed
-    // ad hoc again here, so macOS still opens it on Apple Silicon.
-    let resigned = || run("/usr/bin/codesign", &["--force", "--deep", "-s", "-"], &new_app) && signed(&new_app);
-    if !signed(&new_app) && !resigned() {
+    // The release is signed ad hoc and the copy keeps that signature. One that doesn't verify was
+    // changed after it was built, so it's refused, not signed again (that would let anything in).
+    if !signed(&new_app) {
         return Err(Failed::Msg("The new version's signature doesn't check out, so it wasn't put in place. Download it from recomplauncher.com instead.".into()));
     }
     std::fs::rename(bundle, old).map_err(|e| Failed::Msg(format!("Couldn't move this version aside for the new one: {e}")))?;
