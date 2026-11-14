@@ -29,7 +29,7 @@ function library(dpr = 1) {
     verGroup: () => null, greatOnDeck: () => false, projectState: () => null,
     render: () => { html = vm.runInContext('libraryGrid()', c); draws.push(html); }
   });
-  for (const name of ['esc', 'webUrl', 'THUMB_RE', 'thumbOf', 'tileThumb', 'media', 'pic', 'libTile', 'libWide', 'saveUi']) {
+  for (const name of ['esc', 'webUrl', 'THUMB_RE', 'THUMB_W', 'thumbW', 'thumbOf', 'tileThumb', 'media', 'pic', 'libTile', 'libWide', 'saveUi']) {
     vm.runInContext(app.match(new RegExp(`^const ${name} = .*`, 'm'))[0], c);
   }
   vm.runInContext(fn('poster') + fn('libraryGrid') + 'let settingsSaving = Promise.resolve();' + fn('saveSettings'), c);

@@ -2453,3 +2453,34 @@ button.scan-pill:hover{filter:brightness(1.15)}
 
 .mig-welcome{margin:4px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
 .mig-welcome li{padding:10px 14px 10px 16px;border-radius:12px;background:var(--fill);border:1px solid var(--line);border-left:3px solid var(--cyan);font-size:13.5px}
+
+/* ---------- Trending This Week ---------- */
+.badge.rank{top:9px;left:9px;height:26px;padding:0 9px;color:#06101d;background:var(--grad);font:800 13px Archivo,Figtree,sans-serif;letter-spacing:.02em;border:0;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.badge.tl.low{top:41px}.badge.tl.state.lower{top:71px}
+.badge.easy.ico{padding:0 7px}
+.tile .s .tchip{flex:none;display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:6px;font:800 10.5px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;background:var(--fill3);color:var(--muted)}
+.tile .s .tchip.up{color:#5fe39a;background:rgba(95,227,154,.12)}
+.tile .s .tchip.down{color:var(--bad);background:rgba(255,122,122,.12)}
+.tile .s .tchip.new,.tile .s .tchip.re{color:var(--cyan);background:rgba(52,242,232,.12)}
+.bydev{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bydev .vtick{flex:none;color:var(--cyan);margin:0}
+.trend-wait .viewport{overflow:hidden}
+.tile.ghost{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));pointer-events:none}
+.tile.ghost .poster{background:var(--fill2);animation:ghostPulse 1.4s ease-in-out infinite}
+.tile.ghost .t{display:block;width:70%;height:12px;margin-top:10px;border-radius:6px;background:var(--fill2)}
+@keyframes ghostPulse{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.tile.ghost .poster{animation:none}}
+.dev-line.plain{cursor:default}
+
+/* ---------- where to buy the original game ---------- */
+.ig-slot:empty{display:none}
+.ig-card{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.ig-top{display:flex;align-items:center;gap:10px;min-width:0}
+.ig-logo{flex:none;width:22px;height:22px;border-radius:6px}
+.ig-what{display:flex;flex-direction:column;min-width:0}
+.ig-what b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ig-what small,.ig-aff{font-size:11.5px;color:var(--dim)}
+.ig-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ig-price{display:flex;align-items:baseline;gap:7px;font-size:15px}
+.ig-price s{color:var(--dim);font-size:12.5px}
+.ig-pct{color:#06101d;background:#5fe39a;border-radius:6px;padding:1px 6px;font-size:12px}

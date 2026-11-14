@@ -1001,3 +1001,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv .btn:focus,.ni-tv .btn.f{outline:3px solid var(--cyan);outline-offset:3px}
 .ni-tv .ni-optional-toggle{font-size:21px;min-height:60px;padding:12px}
 .ni-tv .ni-optional-toggle.f{outline:3px solid var(--cyan);outline-offset:2px}
+.tv-rank{position:absolute;top:12px;left:12px;z-index:3;padding:4px 12px;border-radius:999px;font:800 17px Archivo,Figtree,sans-serif;color:#06121a;background:linear-gradient(180deg,#34F2E8,#377BB6);box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.tv-badge.left.low{top:52px}

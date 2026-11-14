@@ -1326,6 +1326,12 @@ pub fn path_value(format: &str, p: &Path) -> String {
 }
 
 impl Profile {
+    /// Easy Setup, the same rule as the website's: it starts a program and takes the player's copy
+    /// of the game, or it asks for the game or its disc as a required input.
+    pub fn easy_setup(&self) -> bool {
+        (self.start.is_some() && self.game.is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
+    }
+
     pub fn config_file(&self, id: &str, install: &Path) -> Option<File> {
         let c = self.config.iter().find(|c| c.id == id)?;
         let path = place(&c.file, install)?;
@@ -2348,6 +2354,18 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn easy_setup_follows_the_websites_rule() {
+        let p = |v: serde_json::Value| serde_json::from_value::<super::Profile>(v).unwrap().easy_setup();
+        assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "game": {} })));
+        assert!(!p(serde_json::json!({ "game": {} })));
+        assert!(!p(serde_json::json!({ "start": { "program": ["Game.exe"] } })));
+        assert!(p(serde_json::json!({ "inputs": [{ "id": "d", "label": "Disc", "role": "disc", "formats": [{ "type": "file" }] }] })));
+        assert!(p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
+        assert!(!p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "optional": true, "formats": [{ "type": "file" }] }] })));
+        assert!(!p(serde_json::json!({ "inputs": [{ "id": "k", "label": "K", "role": "key", "shared": "switch.prod-keys" }] })));
+    }
 
     #[test]
     fn setup_step_options_show_where_they_apply_and_add_their_args_when_ticked() {

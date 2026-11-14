@@ -158,7 +158,12 @@ test('See all on the followed and found shelves picks their Show choice', () => 
 test('every Home shelf has a See all, and each one has somewhere to go', () => {
   const home = fn(app, 'pageHome');
   const keys = [...home.matchAll(/shelf\('(\w+)'[^\n]*?see: true/g)].map((m) => m[1]);
-  assert.deepEqual(keys.sort(), ['easy', 'favs', 'follow', 'new', 'played', 'popular', 'ready', 'updated']);
+  assert.deepEqual(keys.sort(), ['easy', 'favs', 'follow', 'new', 'played', 'ready', 'updated']);
+  // Trending This Week (and Popular right now, its stand-in when the chart can't come) see all popular.
+  const trend = fn(app, 'trendShelf');
+  assert.match(trend, /shelf\('popular', [^\n]*see: true/);
+  assert.match(trend, /see: true, seeKey: 'popular'/);
+  keys.push('popular');
   const block = app.match(/^const SEE_ALL = [\s\S]*?^};/m)[0];
   for (const k of [...keys, 'found']) assert.match(block, new RegExp(`^  ${k}: \{`, 'm'), k);
   assert.match(fn(app, 'foundSection'), /\$\{seeAllBtn\('found'\)\}/);

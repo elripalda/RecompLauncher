@@ -263,7 +263,7 @@
   }
 
   // ---------- pieces ----------
-  const heroOf = (a) => (a ? media(a.hero || a.cover) : '');
+  const heroOf = (a) => (a ? media(thumbOf(a.hero || a.cover, 960)) : '');
   // ---------- colour from the cover ----------
   // Each game's cover gives the page its colours: a light accent (buttons, the line over the
   // title, the glow) and a deep shade that tints the backdrop. Worked out once per cover from a
@@ -309,7 +309,7 @@
         } catch (e) { res(null); }
       };
       img.onerror = () => res(null);
-      img.src = media(a.cover);
+      img.src = media(thumbOf(a.cover, 400));
     });
     return TONES[a.id];
   }
@@ -349,15 +349,17 @@
   }
 
   // A cover, with its name under it.
-  function poster(a, key, sub) {
+  function poster(a, key, sub, rank) {
     const st = status(a), j = S.jobs[a.id];
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : sreqBadge(a) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left">${esc(t('Installed'))}</span>` : '');
     const vers = TV.view !== 'library' && !j && verGroup(a);
+    // One label: with a versions count on the poster, Setup Required stays on the game's page.
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
+    const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     const deckb = greatOnDeck(a) && !j ? `<span class="tv-deckb${vers ? ' up' : ''}" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(16)}${esc(t('Deck'))}</span>` : '';
     const ps = projectState(a), left = /tv-badge left|tv-badge sreq/.test(badge);
-    const stb = ps && ps.kind !== 'quiet' ? `<span class="tv-badge left state ${ps.kind}${left ? ' low' : ''}">${esc(t(STATE_NAME[ps.kind]))}</span>` : '';
-    return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(a.cover))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
-      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(a.cover))}" alt="" loading="lazy">` : ''}${badge}${stb}${deckb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
+    const stb = ps && ps.kind !== 'quiet' ? `<span class="tv-badge left state ${ps.kind}${left || rank ? ' low' : ''}">${esc(t(STATE_NAME[ps.kind]))}</span>` : '';
+    return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(thumbOf(a.cover, 400)))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
+      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${rk}${badge}${stb}${deckb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
   }
 
@@ -506,7 +508,10 @@
     const upd = recentlyUpdated(pool()).slice(0, 14);
     if (upd.length) rows.push(row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')));
     rows.push(row('new', t('Just added'), turnkeyFirst(oneEach(pool().sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
-    if (d.kind !== 'top') rows.push(row('top', t('Most played'), turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 14)).map((a) => poster(a, 't:' + a.id)).join('')));
+    // This week's chart when it's in (each version on its own, with the chart's ranks), else the most played.
+    const trend = trendList(pool());
+    if (trend.length) rows.push(row('trend', t('Trending This Week'), trend.slice(0, 14).map(({ a, e }) => poster(a, 'tr:' + a.id, trendLine(e, a), Number(e.rank))).join('')));
+    else if (d.kind !== 'top') rows.push(row('top', t('Most played'), turnkeyFirst(oneEach(pool().filter(notPC).sort(byDl)).slice(0, 14)).map((a) => poster(a, 't:' + a.id)).join('')));
     // Covers: every game in the dock fits across, smaller when there are more of them. Wide
     // pictures: as many as fit, and the row slides.
     const wide = (S.settings.ui || {}).tv_dock === 'wide';
@@ -516,7 +521,7 @@
     const dock = list.map((a) => {
       const st = status(a), j = S.jobs[a.id];
       const badge = st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : '';
-      const pic = wide ? (a.hero || a.cover ? heroOf(a) : '') : a.cover ? media(a.cover) : '';
+      const pic = wide ? (a.hero || a.cover ? heroOf(a) : '') : a.cover ? media(thumbOf(a.cover, 400)) : '';
       return `<button type="button" class="tv-dk${wide ? ' wide' : ''}${TV.sort && TV.sort.id === a.id ? ' moving' : ''}" data-f data-key="c:${esc(a.id)}" data-hero="${esc(a.id)}" data-dock="${esc(a.id)}" aria-label="${esc(a.name)}"><span class="ph">${esc(a.name)}</span>${pic ? `<img src="${esc(pic)}" alt="" decoding="async">` : ''}${wide ? `<span class="cap">${esc(a.name)}</span>` : ''}${badge}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}${TV.sort && TV.sort.id === a.id ? `<span class="tv-mv">${svg('chevL', 26)}${svg('chevR', 26)}</span>` : ''}</button>`;
     }).join('');
     const label = d.kind === 'pinned' ? t('Pinned') : d.kind === 'mine' ? t('Continue playing') : d.kind === 'banner' ? t('Featured') : t('Most played recomps');
@@ -612,7 +617,7 @@
       const at = Math.max(0, list.findIndex((a) => a.id === TV.flowId));
       FLOW.row = null;
       const box = (a, k) => {
-        const g = flowGeom(k - at), pic = a.cover ? esc(media(a.cover)) : '';
+        const g = flowGeom(k - at), pic = a.cover ? esc(media(thumbOf(a.cover, 400))) : '';
         const badge = S.running.has(a.id) ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : S.updates[a.id] ? `<span class="tv-badge">${esc(t('Update'))}</span>` : sreqBadge(a);
         const sl = '<span class="wl l"></span><span class="wl r"></span><span class="wl t"></span><span class="wl b"></span><span class="wl k"></span>';
         // A div, not a button: a button's own inner box flattens everything in it, and the block needs real depth.
@@ -1118,7 +1123,7 @@
 
   function pageDownloads() {
     const act = Object.keys(S.jobs), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
-    const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
+    const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
     const ups = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]);
     // Recently installed, with how the store checked each one: A opens VirusTotal's report in the
     // browser (or says how ClamAV checked it).
@@ -1127,7 +1132,7 @@
       const info = scanInfo(h);
       if (!info) return '';
       const a = libAppOf(h.id);
-      return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" data-tvact="scan" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))} · ${esc(info.text)}</small></span><span class="tv-pill">${esc(info.scanner === 'clamav' || !info.sha ? t('How It Was Checked') : t('Open the Report'))}</span></button>`;
+      return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" data-tvact="scan" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))} · ${esc(info.text)}</small></span><span class="tv-pill">${esc(info.scanner === 'clamav' || !info.sha ? t('How It Was Checked') : t('Open the Report'))}</span></button>`;
     }).filter(Boolean);
     // The launcher's own update is counted in the Downloads badge, so it needs a row here too, or the
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
@@ -1243,7 +1248,7 @@
     const games = o ? (o.games || []).map((x) => ({ ...x, g: S.library[x.id] || {}, a: byId(x.id) })).filter((x) => x.g.name || x.a) : [];
     const withSaves = games.filter((x) => x.copies).sort((p, q) => ((q.newest || {}).when || 0) - ((p.newest || {}).when || 0));
     const none = games.length - withSaves.length;
-    const items = withSaves.map((x) => { const a = x.a || { id: x.id, name: x.g.name }; return `<button type="button" class="tv-item tv-stor" data-f data-key="sv:${esc(x.id)}" data-tvact="gsaves" data-id="${esc(x.id)}">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${esc(tf('Last saved {when}', { when: ago(x.newest.when) }))}${x.cloudOn === true ? ' · ' + esc(t('In the cloud')) : ''}</small></span><span class="tv-stor-r"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button>`; }).join('');
+    const items = withSaves.map((x) => { const a = x.a || { id: x.id, name: x.g.name }; return `<button type="button" class="tv-item tv-stor" data-f data-key="sv:${esc(x.id)}" data-tvact="gsaves" data-id="${esc(x.id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${esc(tf('Last saved {when}', { when: ago(x.newest.when) }))}${x.cloudOn === true ? ' · ' + esc(t('In the cloud')) : ''}</small></span><span class="tv-stor-r"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button>`; }).join('');
     return `${backdrop(null)}${gameBar()}
       ${region(`${pageHead(t('Saves'), t('After every session the launcher keeps a copy of each game\'s saves. Pick a game to put an older one back.'))}
         ${o && o.error ? `<p class="tv-empty">${esc(t(o.error))}</p>` : ''}
@@ -1701,7 +1706,7 @@
       ] : []),
     ];
     const st = S.running.has(id) ? t('Playing now') : g ? timeLine(g) : a.game ? tf('Based on {game}', { game: a.game }) : '';
-    const head = `<div class="tv-sh-head">${a.cover ? `<img src="${esc(media(a.cover))}" alt="">` : ''}<div><b>${esc(a.name)}</b>${st ? `<span>${esc(st)}</span>` : ''}</div></div>`;
+    const head = `<div class="tv-sh-head">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : ''}<div><b>${esc(a.name)}</b>${st ? `<span>${esc(st)}</span>` : ''}</div></div>`;
     sheet(a.name, items, 'tv-gsheet', head);
     TV.sheet.game = id;
   }
@@ -1997,7 +2002,7 @@
     const prevKey = (focused() || {}).dataset?.key;
     if (!el) { el = document.createElement('div'); el.className = 'tv-sheet tv-setup'; st.append(el); }
     const namedScroll = $('.ni-scroll', el)?.scrollTop || 0;
-    const cov = a.cover ? media(a.cover) : '';
+    const cov = a.cover ? media(thumbOf(a.cover, 400)) : '';
     const label = `<div class="lab">${cov ? `<img src="${esc(cov)}" alt="">` : ''}</div><div class="sheen"></div><div class="hub"></div><div class="hole"></div>`;
     let items = [], body = '';
     const it = (label, sub, run, cls = '') => { items.push({ run }); const i = items.length - 1; return `<button type="button" class="tv-item ${cls}" data-f data-key="ts:${i}" data-sheet="${i}"><span class="k">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`; };

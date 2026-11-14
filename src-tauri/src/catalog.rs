@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// The server everything is read from (see net.rs, where its address lives).
 pub fn base() -> String {
@@ -453,6 +453,71 @@ pub fn deck_scores(scores: &Value) -> Value {
         }
     }
     Value::Object(out)
+}
+
+/// Today's date in Phoenix (the site's weekly chart turns over at midnight there), as YYYY-MM-DD.
+pub fn phoenix_today(now_secs: u64) -> String {
+    let days = (now_secs.saturating_sub(7 * 3600) / 86_400) as i64;
+    // Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn trend_ok(v: &Value) -> bool {
+    v.get("ok").and_then(Value::as_bool).unwrap_or(false) && v.get("entries").is_some_and(Value::is_array)
+}
+
+/// How long the chart on disk stays right: until the day the next one comes out (the site dates
+/// it), and never more than a day, so a chart that's late is asked for again.
+pub fn trend_fresh(chart: Option<&Value>, today: &str) -> u64 {
+    match chart.and_then(|c| c.get("next")).and_then(Value::as_str) {
+        Some(next) if today < next => 86_400,
+        _ => 0,
+    }
+}
+
+/// This week's chart of the most played recomps (the site's trending.json), kept on disk.
+pub async fn trending(http: &reqwest::Client, dir: &Path) -> Result<Fetched, Error> {
+    let file = dir.join("cache/trending.json");
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let fresh = trend_fresh(load(&file).filter(trend_ok).as_ref(), &phoenix_today(now));
+    cached(http, &format!("{}/trending.json", base()), file, fresh, crate::net::QUICK, false, trend_ok).await
+}
+
+/// The partner card's data for this launch (prices are for the player's country, so it isn't kept
+/// on disk). None when the site can't be reached.
+static IG: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+pub async fn ig_info(http: &reqwest::Client) -> Option<Value> {
+    if let Some(v) = IG.lock().ok().and_then(|g| g.clone()) {
+        return Some(v);
+    }
+    let url = format!("{}/api/ig.php", base());
+    let r = crate::net::send(http.get(&url).timeout(crate::net::QUICK), &url, false).await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    if !v.is_object() {
+        return None;
+    }
+    if let Ok(mut g) = IG.lock() {
+        *g = Some(v.clone());
+    }
+    Some(v)
+}
+
+/// The card was seen: one view, sent and forgotten.
+pub async fn ig_view(http: &reqwest::Client, id: &str, variant: &str, round: u64) {
+    let url = format!("{}/api/ig.php?e=view&id={id}&v={variant}&r={round}", base());
+    let _ = crate::net::send(http.post(&url).timeout(crate::net::QUICK), &url, false).await;
 }
 
 /// The RecompStore team's notes for the top of Discover: each with its id, text, a link (https
@@ -1145,6 +1210,21 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_weekly_chart_is_kept_until_the_next_one_comes_out() {
+        // 2026-11-14 07:00 UTC is midnight in Phoenix; a minute before is still the 13th there.
+        assert_eq!(super::phoenix_today(1_794_639_600), "2026-11-14");
+        assert_eq!(super::phoenix_today(1_794_639_540), "2026-11-13");
+        assert_eq!(super::phoenix_today(0), "1970-01-01");
+        let chart = serde_json::json!({ "ok": true, "entries": [], "next": "2026-11-20" });
+        assert_eq!(super::trend_fresh(Some(&chart), "2026-11-14"), 86_400);
+        assert_eq!(super::trend_fresh(Some(&chart), "2026-11-20"), 0);
+        assert_eq!(super::trend_fresh(Some(&chart), "2026-11-21"), 0);
+        assert_eq!(super::trend_fresh(None, "2026-11-14"), 0);
+        assert!(super::trend_ok(&chart));
+        assert!(!super::trend_ok(&serde_json::json!({ "ok": false, "entries": [] })));
+    }
+
     #[test]
     fn gitlab_projects() {
         assert_eq!(super::repo_from_link("https://gitlab.com/a/b").as_deref(), Some("gitlab:a/b"));
