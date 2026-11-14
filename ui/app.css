@@ -2487,3 +2487,6 @@ button.scan-pill:hover{filter:brightness(1.15)}
 .ig-price s{color:var(--dim);font-size:12.5px}
 .ig-pct{color:#06101d;background:#5fe39a;border-radius:6px;padding:1px 6px;font-size:12px}
 .bk-note{margin:10px 2px 0;font-size:12px;color:var(--dim)}
+.enjoy-pick .btn.enjoy{height:auto;padding:18px 12px;flex-direction:column;gap:8px;font-weight:700}
+.enjoy-pick .btn.enjoy svg{color:var(--cyan)}
+.enjoy-pick .btn.enjoy:last-child svg{color:var(--muted)}

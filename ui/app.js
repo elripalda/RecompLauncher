@@ -8271,6 +8271,8 @@ T.event.listen('game', ({ payload: p }) => {
     if (p.game) S.running.delete(p.game);
     // 0xC000013A: its console window was closed, which is how some games are quit.
     if (p.code != null && p.code !== 0 && p.code !== -1073741510 && p.code !== 3221225786) crashModal(p);
+    // A game that closed normally: a good moment to ask, once, how the launcher's going.
+    else setTimeout(() => enjoyAsk('played'), 2500);
     delete S.shots[p.id];
     // ReShade may have been downloaded for it, and there may be new screenshots to preview on.
     forgetLooks(p.id);
@@ -8279,6 +8281,54 @@ T.event.listen('game', ({ payload: p }) => {
   }
   refreshState().then(() => render(true));
 });
+
+// ---------- how are you enjoying it (asked once) ----------
+// Only after clearly playing for a while: two hours of play over at least three sessions, the
+// launcher used on two different days. Any answer, or closing it, and it's never asked again.
+const ENJOY = { at: Date.now(), asked: false };
+function enjoyDue() {
+  const ui = S.settings.ui || {};
+  if (ENJOY.asked || ui.enjoy_done || !S.settings.setup_done || S.running.size || document.body.classList.contains('tv-on') || document.querySelector('.scrim')) return false;
+  const games = Object.values(S.library || {});
+  const secs = games.reduce((n, g) => n + (Number(g.played_secs) || 0), 0);
+  const sessions = games.reduce((n, g) => n + ((g.sessions || []).length || (g.last_played ? 1 : 0)), 0);
+  const days = (ui.enjoy_days || []).length;
+  return secs >= 7200 && sessions >= 3 && days >= 2;
+}
+// Each day the launcher opens, for "used on two different days" (the last few are kept).
+function enjoyDay() {
+  const d = new Date().toISOString().slice(0, 10), list = ((S.settings.ui || {}).enjoy_days || []).filter((x) => typeof x === 'string');
+  if (!list.includes(d)) saveUi({ enjoy_days: [...list, d].slice(-5) }, true).catch(() => {});
+}
+async function enjoyAsk(why) {
+  if (!enjoyDue()) return;
+  ENJOY.asked = true;
+  await saveUi({ enjoy_done: why }, true).catch(() => {});
+  const UP = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v11H4V10zM7 10l4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.3 8A2 2 0 0 1 18.2 21H7"/></svg>';
+  const DOWN = UP.replace('<svg ', '<svg style="transform:rotate(180deg)" ');
+  const first = `<h2>${esc(t('How Are You Enjoying RecompLauncher?'))}</h2><p>${esc(t('You\'ve been playing for a while. One tap tells us how it\'s going.'))}</p>
+    <div class="acts grid2 enjoy-pick"><button type="button" class="btn enjoy" data-x="up" aria-label="${esc(t('I Like It'))}">${UP}<span>${esc(t('I Like It'))}</span></button><button type="button" class="btn enjoy" data-x="down" aria-label="${esc(t('Not Really'))}">${DOWN}<span>${esc(t('Not Really'))}</span></button></div>`;
+  const m = modal(first, async (x, close) => {
+    const k = x.dataset.x, box = $('.modal', m);
+    if (k === 'up') {
+      saveUi({ enjoy_done: 'up' }, true).catch(() => {});
+      box.innerHTML = `<h2>${esc(t('Thank You for Supporting the Project'))}</h2><p>${esc(t('A star on GitHub helps more players find RecompLauncher.'))}</p>
+        <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Maybe Later'))}</button><button type="button" class="btn main" data-x="star">${esc(t('Star on GitHub'))}</button></div>`;
+      return;
+    }
+    if (k === 'down') {
+      saveUi({ enjoy_done: 'down' }, true).catch(() => {});
+      box.innerHTML = `<h2>${esc(t('Sorry It\'s Not There Yet'))}</h2><p>${esc(t('Tell us what would make it better. Every note is read.'))}</p>
+        <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Close'))}</button><button type="button" class="btn main" data-x="tell">${esc(t('Tell Us'))}</button></div>`;
+      return;
+    }
+    if (k === 'star') { invoke('open_url', { url: 'https://github.com/elripalda/RecompLauncher' }).catch(fail); return close(); }
+    if (k === 'tell') { close(); S.setTab = 'beta'; return go('settings'); }
+    return close();
+  });
+}
+// The launcher open a good while without a game ending: asked then instead (still only once).
+setInterval(() => { if (Date.now() - ENJOY.at > 25 * 60e3 && document.hasFocus()) enjoyAsk('open'); }, 60e3);
 
 // A recomp's own installer or first-time setup, opened by its first Play.
 // Its own setup finished, but the game it made wasn't found: the player points at it.
@@ -8420,6 +8470,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
   loadIg();
+  enjoyDay();
   // Both read the list on disk: side by side.
   await Promise.all([loadOwned(), loadEasy(true)]);
   // No connection and nothing saved from before: the Library still works.
