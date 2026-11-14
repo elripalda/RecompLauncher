@@ -16,6 +16,7 @@ pub mod boot;
 pub mod catalog;
 pub mod cloud;
 pub mod devtools;
+pub mod display;
 pub mod dllcheck;
 pub mod discord;
 pub mod dlss;
@@ -7257,6 +7258,21 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     Ok(())
 }
 
+#[tauri::command]
+fn list_monitors(app: AppHandle) -> Res<Vec<display::MonitorInfo>> {
+    Ok(display::enumerate_monitors(&app))
+}
+
+#[tauri::command]
+fn prepare_tv_mode(app: AppHandle, monitor_id: Option<String>) -> Res<display::MonitorInfo> {
+    display::prepare_tv_mode(&app, monitor_id).map_err(Error::Msg)
+}
+
+#[tauri::command]
+fn leave_tv_mode(app: AppHandle) -> Res<()> {
+    display::leave_tv_mode(&app).map_err(Error::Msg)
+}
+
 /// Settings → Network: the proxy every request goes through. `pass` None keeps the saved one; the
 /// password is sealed like the other secrets and never comes back to the window.
 #[tauri::command(async)]
@@ -8433,11 +8449,15 @@ pub fn run() {
                     if let Some(w) = app.get_webview_window("main") {
                         restore_window_place(&w, &app.state::<App>().dir);
                     }
+                    let monitor_id = app.state::<App>().lib.lock().unwrap().settings.tv_monitor.clone();
                     tauri::async_runtime::spawn(async move {
                         wait_for_ui().await;
                         let Some(w) = handle.get_webview_window("main") else { return };
                         if tv {
-                            let _ = w.set_fullscreen(true);
+                            match display::prepare_tv_mode(&handle, Some(monitor_id)) {
+                                Ok(_) => {}
+                                Err(e) => trail::note(format!("Big Picture startup aborted: {e}")),
+                            }
                         }
                         let _ = w.show();
                     });
@@ -8481,7 +8501,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
-            save_settings, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
+            save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,

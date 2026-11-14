@@ -3590,7 +3590,11 @@ function pageSettings() {
       body = window.pluginSettings ? window.pluginSettings(group, row, sw) : '';
       break;
     case 'bigpicture':
+      if (!S.monitors) invoke('list_monitors').then((m) => { S.monitors = m || []; if (S.view === 'settings') render(true); }).catch(() => { S.monitors = null; });
+      const monitors = S.monitors || [];
+      const selectedMonitor = st.tv_monitor || '';
       body = group(t('Big Picture mode'), row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('start_in_tv', st.start_in_tv, t('Start in Big Picture mode')))
+          + `<div class="set-row"><div class="k"><b>${esc(t('Target Monitor'))}</b><span>${esc(t('The display Big Picture mode opens on.'))}</span></div><select class="field" data-act="tvmonitor" aria-label="${esc(t('Target Monitor'))}"><option value="" ${selectedMonitor ? '' : 'selected'}>${esc(t('Automatic (Primary Display)'))}</option>${monitors.map((m) => `<option value="${esc(m.id)}" ${selectedMonitor === m.id || m.id.startsWith(`${selectedMonitor}|`) ? 'selected' : ''}>${esc(m.name)} · ${m.width} × ${m.height}${m.is_primary ? ` · ${esc(t('Windows Primary Display'))}` : ''}</option>`).join('')}</select></div>`
           + `<div class="set-row"><div class="k"><b>${esc(t('Size'))}</b><span>${esc(t('Smaller fits more on a big screen; larger is easier to read from the couch or on a handheld.'))}</span></div>
             <div class="seg" role="radiogroup" aria-label="${esc(t('Big Picture mode size'))}">${[['', t('Auto')], ['small', t('Smaller')], ['medium', t('Medium')], ['large', t('Larger')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.tv_size || '') === k}" data-act="tvsize" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
           + row(t('Sounds'), t('The start-up sound and a soft click as you move around.'), sw('sounds', st.sounds, t('Sounds in Big Picture mode')))
@@ -7271,6 +7275,7 @@ async function act(el, e) {
       return render(true);
     }
     case 'tvsize': return saveSettings({ tv_size: el.dataset.k });
+    case 'tvmonitor': return saveSettings({ tv_monitor: el.value });
     case 'gfx-mode': if ((S.settings.linux_graphics || '') === el.dataset.k) return; await saveSettings({ linux_graphics: el.dataset.k }); return toast(t('Graphics Mode changes the next time the launcher opens.'));
     case 'shots-folder': return invoke('open_shots', { id }).catch(fail);
     case 'shot-g': return viewShot(Number(el.dataset.i), (S.shots[id] || []).map((p) => ({ path: p, game: (S.library[id] || {}).name })));
@@ -7394,6 +7399,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const s = e.target.closest('select[data-act]');
   if (!s) return;
+  if (s.dataset.act === 'tvmonitor') return saveSettings({ tv_monitor: s.value });
   if (s.dataset.act === 'gsel') return setGameSetting(s.dataset.id, s.dataset.k, s.value);
   if (s.dataset.act === 'lang') return setLanguage(s.value);
   if (s.dataset.act === 'clock') return saveUi({ clock: s.value });

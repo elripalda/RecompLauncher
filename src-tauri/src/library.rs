@@ -252,6 +252,9 @@ pub struct Settings {
     /// TV mode's size: "small", "medium" or "large" (empty: picked from the screen).
     #[serde(default)]
     pub tv_size: String,
+    /// Monitor selected for Big Picture mode (empty or "auto": uses Windows primary display).
+    #[serde(default)]
+    pub tv_monitor: String,
     /// TV mode's sounds.
     #[serde(default = "yes")]
     pub sounds: bool,
@@ -355,6 +358,7 @@ impl Default for Settings {
             backup_before_update: true,
             save_dir: None,
             tv_size: String::new(),
+            tv_monitor: String::new(),
             sounds: true,
             menu_tips: 0,
             discord: true,

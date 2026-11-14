@@ -199,7 +199,18 @@
     root.classList.add('tv-cover');
     await wait(still() ? 0 : 240);
     document.body.classList.add('tv-on');
-    try { await W.setFullscreen(true); } catch (e) { /* the window can stay as it is */ }
+    try {
+      await invoke('prepare_tv_mode', { monitorId: (S.settings && S.settings.tv_monitor) || '' });
+    } catch (e) {
+      console.warn('prepare_tv_mode failed:', e);
+      TV.on = false;
+      TV.booting = false;
+      document.body.classList.remove('tv-on');
+      root.hidden = true;
+      root.classList.remove('tv-cover', 'out');
+      render(true);
+      return;
+    }
     await wait(160);
     root.classList.remove('tv-cover');
     boot();
@@ -211,6 +222,13 @@
     root.innerHTML = '';
     document.body.classList.remove('tv-on');
     try { await W.setFullscreen(false); } catch (e) { /* fine */ }
+    try {
+      await invoke('leave_tv_mode');
+    } catch (e) {
+      console.warn('leave_tv_mode failed:', e);
+      await wait(250);
+      try { await invoke('leave_tv_mode'); } catch (retryError) { console.warn('leave_tv_mode retry failed:', retryError); }
+    }
     render(true);
     // Pictures left black by the switch out of full screen: shown or loaded again, now and once the
     // window has settled at its size.
@@ -1167,6 +1185,13 @@
             ? `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account" data-val="${esc(S.account.user.username)}"><span class="k">${esc(tf('Signed in as {name}', { name: S.account.user.username }))}<small>${esc(t('Cloud saves keep each game\'s saves on your account'))}</small></span><span class="tv-pill on">${esc(t('Account'))}</span></button>`
             : `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account"><span class="k">${esc(t('Sign in'))}<small>${esc(t('Back your saves up to a RecompStore account, and play on with them on any PC'))}</small></span><span class="tv-pill on">${esc(t('Sign in'))}</span></button>`}
           ${head(t('Display'))}
+          ${(() => {
+            const cur = (S.settings && S.settings.tv_monitor) || '';
+            const list = S.monitors || [];
+            const mon = list.find((m) => m.id === cur || (cur && m.id.startsWith(`${cur}|`)) || m.name === cur);
+            const curName = !cur ? t('Automatic (Primary Display)') : (mon ? mon.name + (mon.is_primary ? ` (${t('Primary')})` : '') : t('Automatic (Primary Display)'));
+            return `<button type="button" class="tv-item" data-f data-key="s:monitor" data-tvact="monitor" data-val="${esc(curName)}"><span class="k">${esc(t('Target Monitor'))}<small>${esc(curName)}</small></span><span class="tv-pill on">${esc(t('Change'))}</span></button>`;
+          })()}
           <button type="button" class="tv-item" data-f data-key="s:size" data-tvact="size" data-seg="1" data-val="${esc(t(size))}"><span class="k">${esc(t('Size'))}<small>${esc(t('How big everything is in Big Picture mode'))}</small></span><span class="tv-seg">${[N_('Auto'), N_('Smaller'), N_('Medium'), N_('Larger')].map((n) => `<span class="${n === size ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>
           ${(() => { const v = { flow: 'Cover Flow' }[(S.settings.ui || {}).tv_view] || 'Grid'; return `<button type="button" class="tv-item" data-f data-key="s:view" data-tvact="libview" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Library View'))}<small>${esc(t('How your games are laid out in the Library'))}</small></span><span class="tv-seg">${[N_('Grid'), N_('Cover Flow')].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           ${(() => { const ui = S.settings.ui || {}; const v = ui.theme === 'light' ? 'Light' : ui.oled ? 'OLED' : 'Dark'; return `<button type="button" class="tv-item" data-f data-key="s:theme" data-tvact="theme" data-seg="1" data-val="${esc(v === 'Light' ? tc('Light|theme') : t(v))}"><span class="k">${esc(t('Theme'))}<small>${esc(t('Dark, black for OLED screens, or light.'))}</small></span><span class="tv-seg">${[N_('Dark'), N_('OLED'), N_('Light|theme')].map((n) => `<span class="${n.split('|')[0] === v ? 'on' : ''}">${esc(tc(n))}</span>`).join('')}</span></button>`; })()}
@@ -1288,6 +1313,60 @@
     const cur = (S.settings.ui || {}).lang || 'auto';
     const items = [['auto', S.os === 'windows' ? t('Same as Windows') : t('Same as your computer')]].concat(LANGS).map(([c, n]) => ({ label: (c === cur ? '✓ ' : '') + n, run: () => window.setLanguage && window.setLanguage(c) }));
     sheet(t('Language'), items);
+    const at = items.findIndex((x) => x.label.startsWith('✓'));
+    if (at > 0) focus($(`[data-sheet="${at}"]`, root), true);
+  }
+  async function tvMonitorSheet() {
+    let list = S.monitors || [];
+    try {
+      list = await invoke('list_monitors');
+      S.monitors = list || [];
+    } catch (e) {
+      console.warn('list_monitors failed:', e);
+    }
+    const cur = (S.settings && S.settings.tv_monitor) || '';
+    const items = [
+      {
+        label: (!cur ? '✓ ' : '') + t('Automatic (Primary Display)'),
+        sub: t('Follows the Windows primary display'),
+        run: async () => {
+          await saveSettings({ tv_monitor: '' });
+          if (TV.on) {
+            try {
+              await W.setFullscreen(false);
+              await invoke('prepare_tv_mode', { monitorId: '' });
+            } catch (e) {
+              console.warn(e);
+              try { await W.setFullscreen(true); } catch (_) { /* keep the current Big Picture view */ }
+            }
+          }
+          if (TV.on && TV.view === 'settings') draw(true);
+        }
+      }
+    ];
+    for (const m of list) {
+      const isSelected = cur === m.id || (cur && m.id.startsWith(`${cur}|`)) || cur === m.name;
+      const label = (isSelected ? '✓ ' : '') + `${m.name} · ${m.width} × ${m.height}`;
+      const sub = m.is_primary ? t('Windows Primary Display') : '';
+      items.push({
+        label,
+        sub,
+        run: async () => {
+          await saveSettings({ tv_monitor: m.id });
+          if (TV.on) {
+            try {
+              await W.setFullscreen(false);
+              await invoke('prepare_tv_mode', { monitorId: m.id });
+            } catch (e) {
+              console.warn(e);
+              try { await W.setFullscreen(true); } catch (_) { /* keep the current Big Picture view */ }
+            }
+          }
+          if (TV.on && TV.view === 'settings') draw(true);
+        }
+      });
+    }
+    sheet(t('Target Monitor'), items);
     const at = items.findIndex((x) => x.label.startsWith('✓'));
     if (at > 0) focus($(`[data-sheet="${at}"]`, root), true);
   }
@@ -2271,6 +2350,15 @@
       html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc(su.copy ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || su.needs || '')}</p>`;
     } else if (el.dataset.key === 's:buttons' && window.buttonGuide) {
       html = `<span class="k">${esc(t('Controller'))}</span><div class="tv-padguide">${window.buttonGuide(glyph).map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b></span></div>`).join('')}</div>`;
+    } else if (el.dataset.key === 's:monitor') {
+      const cur = (S.settings && S.settings.tv_monitor) || '';
+      const list = S.monitors || [];
+      const mon = list.find((m) => m.id === cur || (cur && m.id.startsWith(`${cur}|`)) || m.name === cur);
+      const prim = list.find((m) => m.is_primary);
+      const active = mon || prim;
+      const title = !cur ? t('Automatic (Primary Display)') : (mon ? mon.name : t('Automatic (Primary Display)'));
+      const details = active ? `${active.width}×${active.height}${active.is_primary ? ' · ' + t('Windows Primary Display') : ''}` : '';
+      html = `<span class="k">${esc(t('Target Monitor'))}</span><h3>${esc(title)}</h3>${details ? `<div class="val solo"><b>${esc(details)}</b></div>` : ''}<p>${esc(t('Which display Big Picture mode opens on. The launcher moves there before fullscreen.'))}</p>`;
     } else if (TV.view === 'settings') {
       // Launcher settings: what it is, its value, and what it does.
       const kEl = $('.k', el), on = el.dataset.sw;
@@ -2570,6 +2658,7 @@
       case 'page': return go('game', id);
       case 'back': return back();
       case 'leave': return leave();
+      case 'monitor': sfx('open'); return tvMonitorSheet();
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');
