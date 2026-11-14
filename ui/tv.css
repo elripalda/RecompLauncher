@@ -166,6 +166,9 @@ body.tv-on #app{visibility:hidden}
 .tv-seg span.on{background:var(--tvink,#F4F8FC);color:var(--tvbg)}
 .tv-pill{flex:none;padding:8px 18px;border-radius:999px;font-size:17px;font-weight:700;color:var(--tvbg);background:linear-gradient(180deg,#34F2E8,#377BB6)}
 .tv-pill.on{color:var(--tvink,#F4F8FC);background:rgba(var(--tvinkrgb,244,248,252),.12)}
+/* The desktop's scan pill (app.css), sized for the TV. */
+.tv-stage .scan-pill{height:36px;gap:10px;padding:0 16px 0 7px;font-size:17px!important}
+.tv-stage .scan-pill i{width:24px;height:24px;font-size:13px}
 
 /* the sheet: a short list from the side */
 .tv-sheet{position:absolute;inset:0;z-index:20;background:rgba(2,4,8,.55);display:flex;justify-content:flex-end;animation:tv-fade .2s ease both}
