@@ -229,12 +229,12 @@ async function removeFromLibrary(id) {
   if (a && a.custom && !S.library[id]) { await invoke('remove_github', { id }).catch(() => {}); if (S.arts) delete S.arts[id]; await loadCatalog(false); }
   render(true);
 }
-// The saved ("Not installed") list goes with the account when signed in, the same list as the
+// The player's saved ("Not installed") choices go with the account when signed in, the same list as the
 // website's library: merged with this PC's on sign-in, each save and unsave sent as it happens, and
 // read again when the launcher opens and every 10 minutes. Signed out, it's this PC's own list.
-// Installed games always stay per PC. Each change waits in a queue, kept with the settings, until
-// the website's list shows it: a launcher closed before the website answered, or an answer that
-// didn't take, never loses a game the player added (the next read would have left it out).
+// Games a scan of the player's folders found, and installed games, stay per PC. Each change waits
+// in a queue, kept with the settings, until the website's list shows it: a launcher closed before
+// the website answered, or an answer that didn't take, never loses a game the player added.
 const accountId = () => (S.account && S.account.signedIn && S.account.user ? String(S.account.user.uid || S.account.user.username || '') : '');
 async function libSend(id, on) {
   if (!accountId()) return;
@@ -278,8 +278,9 @@ async function libSync() {
     const remote = Object.fromEntries(((r && r.saved) || []).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, Number(x.at) || now]));
     let base = remote;
     if (ui.lib_synced !== uid) {
-      // The first time on this account: both lists together, and this PC's own go up.
-      const local = saved();
+      // Only explicit choices go up. Automatic discoveries follow this PC's scans.
+      const found = new Set(((S.settings.ui || {}).found_saved) || []);
+      const local = Object.fromEntries(Object.entries(saved()).filter(([id]) => !found.has(id)));
       const up = Object.keys(local).filter((id) => !remote[id]);
       if (up.length) await libPushAll(up, true);
       base = Object.assign({}, remote, local);
@@ -287,8 +288,13 @@ async function libSync() {
     // Read again just before writing: a game added while the website answered is in the queue.
     const pending = libPending(remote, queue());
     const next = libMerge(base, pending, saved());
-    const before = Object.keys(saved()).sort().join('|');
-    await saveUi({ saved: next, lib_synced: uid, lib_queue: pending }, true);
+    // A scan may have finished while the request waited: what it added stays on this PC. A game
+    // also saved on the account is the player's own choice from now on, and scans leave it alone.
+    const current = saved();
+    const foundNow = (((S.settings.ui || {}).found_saved) || []).filter((id) => !remote[id]);
+    for (const id of foundNow) { if (current[id]) next[id] = current[id]; }
+    const before = Object.keys(current).sort().join('|');
+    await saveUi({ saved: next, found_saved: foundNow, lib_synced: uid, lib_queue: pending }, true);
     if (Object.keys(next).sort().join('|') !== before && ['library', 'home'].includes(S.view)) render(true);
   } catch (e) { /* the website can't be reached: this PC's list stays, and it's tried again later */ } finally { S.libSyncing = false; }
 }
