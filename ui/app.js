@@ -294,7 +294,11 @@ async function libSync() {
       const found = new Set(((S.settings.ui || {}).found_saved) || []);
       const local = Object.fromEntries(Object.entries(saved()).filter(([id]) => !found.has(id)));
       const up = Object.keys(local).filter((id) => !remote[id]);
-      if (up.length) await libPushAll(up, true);
+      if (up.length) {
+        // Keep first-sign-in additions until the website lists them, just like later additions.
+        await libQueue(up.map((id) => ({ id, on: true })));
+        await libPushAll(up, true);
+      }
       base = Object.assign({}, remote, local);
     }
     // Read again just before writing: a game added while the website answered is in the queue.
