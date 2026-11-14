@@ -61,6 +61,8 @@ mod update_download;
 mod update_launch;
 #[cfg(all(test, unix))]
 mod update_rollback_tests;
+#[cfg(test)]
+mod update_check_tests;
 pub mod usage;
 pub mod win;
 mod installer;
@@ -6248,11 +6250,15 @@ async fn get_releases(app: AppHandle, st: State<'_, App>, repo: String, force: b
 /// for games whose info is older (one at a time). `force`: the player pressed Check for Updates.
 #[tauri::command]
 async fn check_updates(st: State<'_, App>, force: Option<bool>) -> Res<HashMap<String, String>> {
-    let force = force.unwrap_or(false);
+    check_updates_for(&st, force.unwrap_or(false)).await
+}
+
+async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>> {
     let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
     let associations: HashMap<String, (String, PathBuf)> = games.iter().map(|g| (g.id.clone(), (g.repo.clone(), g.path.clone()))).collect();
-    // The list says which version is newest: a game already on it needs no question to the site.
-    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
+    // Manual checks refresh the approved release too; a cached tag can otherwise hide a newly
+    // approved update even when its release info was just fetched.
+    let cat = catalog::catalog(&st.http, &st.dir, force).await.map(|f| f.data).unwrap_or(Value::Null);
     let same = |a: &str, b: &str| {
         let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).to_ascii_lowercase();
         !a.trim().is_empty() && n(a) == n(b)
