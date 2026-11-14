@@ -175,7 +175,7 @@ async function loadSaves(id) {
 }
 const FROM = { player: N_('You picked this folder'), developer: N_('Its developer says it saves here'), catalog: N_('RecompLauncher knows it saves here'), found: N_('Found while you played'), game: N_('In the game\'s folder') };
 const SHARE_SAVES = N_('Share saves between versions');
-const SHARE_SAVES_HELP = N_('Ask before copying a newer save from another installed version. Requires a single save file in a known location.');
+const SHARE_SAVES_HELP = N_('Ask before copying a newer save from another installed version.');
 const saveShareTitle = (id) => !subOf(id) && verGroup(byId(id))?.id;
 const saveShareOn = (title) => ((S.settings.ui || {}).save_share_titles || []).includes(title);
 async function toggleSaveShare(title) {
