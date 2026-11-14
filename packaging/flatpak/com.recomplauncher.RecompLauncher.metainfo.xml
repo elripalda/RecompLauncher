@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.46" date="2026-11-13">
+      <description>
+        <p>Bring your games over from another launcher in one go, browse Discover by game, switch to a better version in one step, setup options such as DLSS and FSR 4, plain copies of compressed game images, and fixes for builds, Python games and saves.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.45" date="2026-11-13">
       <description>
         <p>Pick the monitor Big Picture opens on, a 12- or 24-hour clock, one Steam collection for every game the launcher adds, See All on every shelf, and fixes for controllers, saves and installs.</p>
