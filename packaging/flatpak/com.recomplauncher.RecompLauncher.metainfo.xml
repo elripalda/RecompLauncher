@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.45" date="2026-11-13">
+      <description>
+        <p>Pick the monitor Big Picture opens on, a 12- or 24-hour clock, one Steam collection for every game the launcher adds, See All on every shelf, and fixes for controllers, saves and installs.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.44" date="2026-11-13">
       <description>
         <p>Add a Recomp and Request a Recomp take a link to any project, including Forgejo and Gitea servers, whose recomps show their README and get Easy Setup from their own setup file.</p>
