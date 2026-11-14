@@ -12,3 +12,7 @@ packaging/flatpak/flatpak-cargo-generator.py
 packaging/flatpak/ci-manifest.yml
 packaging/flatpak/build/
 packaging/flatpak/.flatpak-builder/
+
+# nix build output links
+/result
+/result-*

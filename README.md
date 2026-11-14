@@ -61,6 +61,9 @@ Mac test builds support native Mac games packaged as ZIP, DMG, RAR or 7z and are
 Arch Linux x86_64 has a native `.pkg.tar.zst` build: see the
 [Arch package instructions](packaging/arch/README.md) for building and installing it with pacman.
 
+NixOS and Nix (x86_64): `nix run github:elripalda/RecompLauncher`, or see the
+[Nix instructions](packaging/nix/README.md) to install it with your system.
+
 Download the setup file from [Releases](https://github.com/elripalda/RecompLauncher/releases/latest)
 and run it. While the beta is new, Windows may say "Windows protected your PC". Click
 **More info**, then **Run anyway**. Each release lists its file's SHA-256 so you can check you

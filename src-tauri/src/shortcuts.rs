@@ -601,8 +601,12 @@ fn icon_in(info: &str, id: &str) -> Option<String> {
 }
 
 /// The program Steam should start: the AppImage itself on Linux when it's one, else this program.
+/// A package that wraps the launcher (the Nix one runs it inside Steam's runtime environment)
+/// sets RL_START_PATH to its wrapper. Started directly, this program would run outside the
+/// wrapper, from a store path that is gone after the next update.
 fn start_path() -> PathBuf {
-    std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()).unwrap_or_else(launcher_exe)
+    let set = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file());
+    set("APPIMAGE").or_else(|| set("RL_START_PATH")).unwrap_or_else(launcher_exe)
 }
 
 /// Is this a Steam Deck? Its firmware says so (Jupiter is the LCD model, Galileo the OLED).
