@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.48" date="2026-11-14">
+      <description>
+        <p>Setups that keep going in the background and stop cleanly when cancelled, game file scans for Xbox 360 updates and DLC and PS3 packages, a quit option and Scan pill in Big Picture mode, and fixes for small windows, update checks, picked programs, Easy Setup and covers on Linux.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.47" date="2026-11-14">
       <description>
         <p>A weekly Trending row on Discover, developer names on game pages, a start window with the logo, scroll bars in Big Picture mode, an Auto-Install setting, Arch Linux packages, and fixes for updates, picked programs and handheld animations.</p>
