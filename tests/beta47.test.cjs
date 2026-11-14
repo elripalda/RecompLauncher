@@ -38,7 +38,7 @@ test("the Trending row keeps the chart's ranks and skips games this player can't
   assert.deepEqual(list.map((x) => [x.a.id, x.e.rank]), [['b', 2], ['a', 4]]);
   assert.match(c.trendChip(list[0].e), /class="tchip up"[^>]*>▲ 3</);
   assert.match(c.trendChip(list[1].e), /class="tchip down"[^>]*>▼ 2</);
-  assert.match(c.trendChip({ move: 'new', rank: 1 }), /tchip new">New</);
+  assert.match(c.trendChip({ move: 'new', rank: 1 }), /tchip new">New Entry</);
   assert.match(c.trendChip({ move: 're', rank: 1 }), /tchip re">Re-entry</);
   assert.match(c.trendChip({ move: 'same', rank: 1, last: 1 }), /tchip same/);
   // The very first chart has no movement to show.

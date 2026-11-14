@@ -1473,7 +1473,7 @@ function trendChip(e) {
   const last = Number(e.last) || 0, rank = Number(e.rank) || 0;
   if (e.move === 'up' && last > rank) return `<span class="tchip up" title="${esc(tf('Up {n} from last week', { n: last - rank }))}">▲ ${fmtNum(last - rank)}</span>`;
   if (e.move === 'down' && rank > last && last) return `<span class="tchip down" title="${esc(tf('Down {n} from last week', { n: rank - last }))}">▼ ${fmtNum(rank - last)}</span>`;
-  if (e.move === 'new') return `<span class="tchip new">${esc(t('New'))}</span>`;
+  if (e.move === 'new') return `<span class="tchip new">${esc(t('New Entry'))}</span>`;
   if (e.move === 're') return `<span class="tchip re">${esc(t('Re-entry'))}</span>`;
   return `<span class="tchip same" title="${esc(t('Same as last week'))}">–</span>`;
 }
@@ -1487,7 +1487,7 @@ function byDev(a, tick = true) {
 function trendLine(e, a) {
   const d = devOf(a), name = (d && d.name) || a.author || '';
   const last = Number(e.last) || 0, rank = Number(e.rank) || 0, first = S.trend && S.trend.first;
-  const mv = first ? '' : e.move === 'up' && last > rank ? `▲ ${fmtNum(last - rank)}` : e.move === 'down' && last && rank > last ? `▼ ${fmtNum(rank - last)}` : e.move === 'new' ? t('New') : e.move === 're' ? t('Re-entry') : '–';
+  const mv = first ? '' : e.move === 'up' && last > rank ? `▲ ${fmtNum(last - rank)}` : e.move === 'down' && last && rank > last ? `▼ ${fmtNum(rank - last)}` : e.move === 'new' ? t('New Entry') : e.move === 're' ? t('Re-entry') : '–';
   return [mv, name ? tf('By {who}', { who: name }) : ''].filter(Boolean).join(' · ');
 }
 function trendShelf(pool) {
@@ -7244,6 +7244,10 @@ const TS_TEXT = [
   N_('Windows can block or slow down a program with that mark. Unblock takes it off this game\'s files.'),
   N_('Windows marked it as downloaded from the internet'),
   N_('Your copy of the game checks out'),
+  N_('Your copy of the game is there'),
+  N_('The launcher can\'t check what\'s in it for this game. If the game says files are missing, pick the folder or file that holds the whole game.'),
+  N_('It starts {name}, which isn\'t the game'),
+  N_('That\'s a program from Windows or another app ({folder}), not this game\'s. Choose the game\'s own program.'),
   N_('Your copy of the game isn\'t set yet'),
   N_('Your copy of the game isn\'t the one it reads'),
   N_('Your copy of the game isn\'t there anymore'),
