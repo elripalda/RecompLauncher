@@ -33,7 +33,7 @@ const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N
 
 const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
-  library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
+  library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
@@ -847,7 +847,7 @@ function status(a) {
   // One game of several: its install, downloads and updates are the recomp's.
   const id = a.id, rid = parentId(id), job = S.jobs[rid], inst = S.library[id];
   if (S.running.has(id)) return 'running';
-  if (S.settingUp.has(id) || S.settingUp.has(rid)) return 'settingup';
+  if (S.settingUp.has(id) || S.settingUp.has(rid) || (S.setupJobs && (S.setupJobs[id] || S.setupJobs[rid]))) return 'settingup';
   if (job) return 'busy';
   if ((S.paused || {})[rid]) return 'paused';
   if (inst && inst.installer_setup) return 'installed';
@@ -1134,7 +1134,15 @@ function actions(a, size = 'big') {
   const b = (cls, act, label, icon = '') => `<button type="button" class="btn ${size} ${cls}" data-act="${act}" data-id="${id}">${icon}${label}</button>`;
   switch (st) {
     case 'running': return b('main', 'resume', esc(t('Back to the game')), PLAY) + b('', 'stop', esc(t('Close game'))) + more;
-    case 'settingup': return `<button type="button" class="btn ${size}" disabled>${esc(t('Its setup is open'))}</button>` + more;
+    case 'settingup': {
+      const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
+      if (sj) {
+        const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
+        const stageName = sj.step === 'read' ? t('Reading') : sj.step === 'verify' ? t('Checking') : sj.step === 'extras' ? t('Extras') : sj.step === 'setup' ? t('Setting up') : t('Setting up');
+        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Click to open setup'))}"><div class="track busy"><i style="width:${p}%"></i></div><div class="lbl"><span>${esc(stageName)}</span><span>${p}%</span></div></button>` + more;
+      }
+      return `<button type="button" class="btn ${size}" disabled>${esc(t('Its setup is open'))}</button>` + more;
+    }
     case 'busy': return progress(a.id) + (canPause(a.id) ? `<button type="button" class="${sq}" data-act="dl-pause" data-id="${id}" aria-label="${esc(t('Pause'))}" title="${esc(t('Pause'))}">${PAUSE}</button>` : '') + `<button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>`;
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
@@ -2608,7 +2616,45 @@ const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: 
 const suDrive = createSetupDriveLight();
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
+  if (SU.el && SU.id === id) {
+    const f = $('.pick, .found .btn, .su-x', SU.el);
+    if (f) f.focus();
+    return;
+  }
   if (SU.el && SU.stage === 'run' && SU.id !== id) return toast(t('Finish the setup that\'s running first.'));
+  const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
+  if (activeJob) {
+    closeSetup(true);
+    Object.assign(SU, {
+      id,
+      stage: 'run',
+      step: activeJob.step || 'read',
+      steps: { [activeJob.step || 'read']: Object.assign({}, activeJob) },
+      ev: activeJob,
+      q: [],
+      at: Date.now(),
+      path: activeJob.text || '',
+      extras: !!activeJob.extras,
+      result: null,
+      err: '',
+      note: '',
+    });
+    const s = document.createElement('div');
+    s.className = 'scrim';
+    s.innerHTML = `<div class="modal su" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}"></div>`;
+    document.body.append(s);
+    SU.el = s;
+    s.addEventListener('click', (e) => {
+      if (e.target === s && SU.stage !== 'run') return closeSetup();
+      const b = e.target.closest('[data-su]');
+      if (b) suAct(b);
+    });
+    s.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeSetup(); }
+    });
+    suDraw();
+    return;
+  }
   if (S.setup[id] === undefined || S.setup[id] === 'loading') { try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; } }
   const su = S.setup[id];
   if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
@@ -2626,18 +2672,53 @@ async function setupModal(id) {
     const b = e.target.closest('[data-su]');
     if (b) suAct(b);
   });
+  s.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); closeSetup(); }
+  });
   suDraw();
   const f = $('.pick, .found .btn', s);
   if (f) f.focus();
 }
-function closeSetup(quiet) {
+async function closeSetup(quiet) {
   suDrive.stop();
   if (!SU.el) return;
-  if (SU.stage === 'run' && SU.id) invoke('setup_cancel', { id: SU.id }).catch(() => {});
+  if (SU.stage === 'run' && SU.id && !quiet) {
+    const id = SU.id;
+    const a = byId(id) || { name: (S.library[id] || {}).name || id };
+    const pick = await ask(
+      tf('Setup is still running for {name}', { name: a.name }),
+      `<p>${esc(t('Setting up this game takes a few moments. You can let it finish in the background while you use the launcher, or cancel it.'))}</p>`,
+      [
+        { label: t('Run in Background'), v: 'bg', main: true, focus: true },
+        { label: t('Cancel Setup'), v: 'cancel' },
+        { label: t('Keep Watching'), v: 'watch' }
+      ]
+    );
+    if (pick === 'watch' || pick == null) return;
+    if (pick === 'cancel') {
+      invoke('setup_cancel', { id }).catch(() => {});
+      if (S.setupJobs) delete S.setupJobs[id];
+      if (SU.el) { SU.el.remove(); SU.el = null; }
+      delete S.setup[id];
+      loadSetup(id);
+      render(true);
+      if (S.view === 'game') refreshGame();
+      toast(tf('Setup for {name} was cancelled.', { name: a.name }));
+      return;
+    }
+    // pick === 'bg':
+    if (SU.el) { SU.el.remove(); SU.el = null; }
+    render(true);
+    if (S.view === 'game') refreshGame();
+    toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
+    return;
+  }
   if (SU.stage === 'convert') invoke('convert_cancel').catch(() => {});
+  const closingId = SU.id;
+  const closingStage = SU.stage;
   SU.el.remove();
   SU.el = null;
-  if (!quiet && SU.stage !== 'pick') { delete S.setup[SU.id]; loadSetup(SU.id); }
+  if (!quiet && closingStage !== 'pick' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
 async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
@@ -2732,6 +2813,28 @@ async function suBegin(path, anyway) {
   try { await invoke('setup_copy', { id: SU.id, path }); } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
 }
 const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
+async function onSetupFinished(id) {
+  try { S.setup[id] = await invoke('game_setup', { id }); } catch (_) {}
+  const curSaved = saved();
+  const curOk = (S.settings.ui || {}).setup_ok || {};
+  const patch = {};
+  if (!curSaved[id]) {
+    patch.saved = Object.assign({}, curSaved, { [id]: Math.floor(Date.now() / 1000) });
+    libSend(id, true);
+  }
+  if (!curOk[id]) {
+    patch.setup_ok = Object.assign({}, curOk, { [id]: true });
+  }
+  if (Object.keys(patch).length > 0) {
+    await saveUi(patch, true);
+  }
+  await refreshState();
+  render(true);
+  if (S.view === 'game') refreshGame();
+  if (window.tvRefresh) window.tvRefresh();
+  const a = byId(id) || { name: (S.library[id] || {}).name || id };
+  toast(tf('{name} is ready to play!', { name: a.name }));
+}
 // The copy's in: the game's update next, when it needs one, then ready.
 async function suAfterCopy() {
   const id = SU.id;
@@ -2761,7 +2864,27 @@ function suPump() {
   }
   suDraw();
 }
-T.event.listen('setup', ({ payload: p }) => { if (SU.el && p.id === SU.id && SU.stage === 'run') { SU.q.push(p); suPump(); } });
+T.event.listen('setup', ({ payload: p }) => {
+  if (!S.setupJobs) S.setupJobs = {};
+  if (p.step === 'done') {
+    delete S.setupJobs[p.id];
+    onSetupFinished(p.id);
+  } else if (p.step === 'error') {
+    delete S.setupJobs[p.id];
+    if (!SU.el || SU.id !== p.id) {
+      toast(p.text || t("Setup didn't finish."), true);
+      render(true);
+      if (S.view === 'game') refreshGame();
+    }
+  } else {
+    S.setupJobs[p.id] = p;
+    paintSetupProgress(p.id);
+  }
+  if (SU.el && p.id === SU.id && SU.stage === 'run') {
+    SU.q.push(p);
+    suPump();
+  }
+});
 function suDraw() {
   if (!SU.el) return;
   if (SU.stage !== 'run') suDrive.stop();
@@ -4531,6 +4654,21 @@ function paintProgress(id) {
   }
   for (const el of $$(`[data-prog-bar="${CSS.escape(id)}"]`)) el.style.width = pct(j) + '%';
 }
+function paintSetupProgress(id) {
+  const ev = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
+  if (!ev) return;
+  const p = Math.min(100, Math.max(0, Math.round((ev.pct || 0) * 100)));
+  const stageName = ev.step === 'read' ? t('Reading') : ev.step === 'verify' ? t('Checking') : ev.step === 'extras' ? t('Extras') : ev.step === 'setup' ? t('Setting up') : t('Setting up');
+  for (const el of $$(`[data-su-prog="${CSS.escape(id)}"]`)) {
+    const tr = $('.track', el);
+    if (tr) $('i', tr).style.width = p + '%';
+    const s = $$('.lbl span', el);
+    if (s && s.length >= 2) {
+      s[0].textContent = stageName;
+      s[1].textContent = p + '%';
+    }
+  }
+}
 
 // ---------- talking to the core ----------
 async function refreshState() {
@@ -4553,6 +4691,10 @@ async function refreshState() {
   const live = new Set(st.jobs || []), now = Date.now();
   for (const id of Object.keys(S.jobs)) if (!live.has(id) && now - (S.jobs[id].at || 0) > 5000) delete S.jobs[id];
   for (const id of live) if (!S.jobs[id] && !(now - (ENDED[id] || 0) < 5000)) S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: now };
+  try {
+    const sj = await invoke('setup_status');
+    S.setupJobs = sj || {};
+  } catch (_) {}
 }
 const ENDED = {};
 
@@ -7507,6 +7649,7 @@ async function act(el, e) {
     case 'gh-add': return githubModal();
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
+    case 'reopen-setup': return setupModal(id);
     case 'setupdate': {
       const su = S.setup[id] || {};
       const why = await pickUpdate(id, !!su.update_folder && !su.update_file);

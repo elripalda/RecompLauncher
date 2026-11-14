@@ -429,7 +429,14 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
-      case 'settingup': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
+      case 'settingup': {
+        const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
+        if (sj) {
+          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
+          return btn(key, 'setup-reopen', esc(tf('Setting up {pct}%', { pct: p })), { cls: 'main', id, g: 'a' });
+        }
+        return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
+      }
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
@@ -547,7 +554,15 @@
         if (S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
         return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', run: () => playGame(id) };
       }
-      case 'soon': case 'nobuild': case 'settingup': return null;
+      case 'settingup': {
+        const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
+        if (sj) {
+          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
+          return { label: t('Setting up'), sub: `${p}%`, icon: 'disc', run: () => tvSetup(id) };
+        }
+        return null;
+      }
+      case 'soon': case 'nobuild': return null;
       default: return isSaved(id) ? { label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) } : { label: t('Add to Library'), sub: t('Install it whenever you like'), icon: 'plus', run: () => addToLibrary(id).then(() => draw(true)) };
     }
   }
@@ -557,7 +572,14 @@
     if (st === 'busy') return progLabel(S.jobs[a.id])[0];
     if (st === 'soon') return t('Coming soon');
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
-    if (st === 'settingup') return t('Its setup is open');
+    if (st === 'settingup') {
+      const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
+      if (sj) {
+        const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
+        return tf('Setting up {pct}%', { pct: p });
+      }
+      return t('Its setup is open');
+    }
     const m = mainItem(a);
     return m ? m.label : t('Game page');
   }
@@ -1988,6 +2010,25 @@
   const TS = { id: null, stage: 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
   async function tvSetup(id) {
     if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
+    const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
+    if (activeJob) {
+      if (TV.sheet) closeSheet();
+      Object.assign(TS, {
+        id,
+        stage: 'run',
+        step: activeJob.step || 'read',
+        steps: { [activeJob.step || 'read']: Object.assign({}, activeJob) },
+        q: [],
+        at: Date.now(),
+        path: activeJob.text || '',
+        extras: !!activeJob.extras,
+        result: null,
+        err: '',
+      });
+      tsDraw();
+      sfx('open');
+      return;
+    }
     if (S.setup[id] === undefined || S.setup[id] === 'loading') { try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; } }
     const su = S.setup[id];
     if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
@@ -2033,7 +2074,21 @@
       }
       el.dataset.step = TS.step + order.length;
       body = `<div class="bigdisc ${cur <= 0 ? 'in' : 'spin'}">${label}</div><div class="tt"><div class="pct">${esc(tf('{pct}%', { pct: Math.floor((have / tot) * 100) }))}</div><p>${esc(tf('Setting up {name}', { name: a.name }))}</p></div>
-        <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>`;
+        <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
+        <div class="two" style="margin-top:20px"><button type="button" class="tv-btn" data-f data-key="ts:0" data-sheet="0"><span>${esc(t('Run in Background'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Cancel Setup'))}</span></button></div>`;
+      items = [
+        { run: () => {
+          TS.stage = 'bg';
+          closeSheet();
+          toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
+        } },
+        { run: () => {
+          invoke('setup_cancel', { id }).catch(() => {});
+          if (S.setupJobs) delete S.setupJobs[id];
+          closeSheet();
+          toast(tf('Setup for {name} was cancelled.', { name: a.name }));
+        } }
+      ];
     } else if (TS.stage === 'update') {
       const pickU = async (folder) => {
         const p = await pickFile(folder ? { title: t('The update\'s folder'), directory: true } : { title: t('The game\'s update'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] }).catch(fail);
@@ -2078,8 +2133,19 @@
         } });
       });
     }
-    // B leaves: it stops a setup that's running.
-    TV.sheet = { items, keep: TS.stage !== 'ready', prev: TV.sheet ? TV.sheet.prev : prevKey, onClose: () => { if (TS.stage === 'run') invoke('setup_cancel', { id }).catch(() => {}); if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); } TS.id = null; } };
+    // B leaves: it keeps setup running in background.
+    TV.sheet = {
+      items,
+      keep: TS.stage !== 'ready',
+      prev: TV.sheet ? TV.sheet.prev : prevKey,
+      onClose: () => {
+        if (TS.stage === 'run') {
+          toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
+        }
+        if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); }
+        TS.id = null;
+      }
+    };
     const f = $('[data-sheet]', el);
     if (f) focus(f, true);
   }
@@ -2671,7 +2737,7 @@
       case 'notex': sfx('back'); return closeNote(el.dataset.n).then(() => draw(true));
       case 'noteurl': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
       case 'haveit': sfx('select'); return window.haveIt(id);
-      case 'pick-copy': case 'setup': sfx('select'); return tvSetup(id);
+      case 'pick-copy': case 'setup': case 'setup-reopen': sfx('select'); return tvSetup(id);
       case 'setupreq': return (isInstallerApp(byId(id)) || installerDue(id)) ? installerModal(id) : tvSetupReq(id);
       case 'addlib': sfx('select'); await addToLibrary(id); TV.focusKey = 'g-main'; return draw(true);
       case 'dsearch': return tvSearch();

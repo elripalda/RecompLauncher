@@ -109,7 +109,7 @@ test('coming from another launcher gets one window that brings the games over', 
   const adopt = read('adopt.js');
   assert.match(adopt, /if \(!ui\.mig_asked\) \{/);
   assert.match(adopt, /function migWelcome\(g\)/);
-  assert.match(adopt, /await migAddReady\(\);\n    await migAway\(\);/);
+  assert.match(adopt, /await migAddReady\(\);\r?\n    await migAway\(\);/);
 });
 
 test('a compressed copy can be made plain right in the setup window', () => {
