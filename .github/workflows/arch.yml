@@ -1,0 +1,61 @@
+name: Arch Linux package
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      artifact-name:
+        type: string
+        default: installers-arch-x86_64
+      upload:
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build Arch Linux (x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git rust cmake pkgconf webkit2gtk-4.1 libappindicator librsvg desktop-file-utils namcap
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Build as an unprivileged user
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash tools/build-arch-package.sh --noconfirm
+
+      - name: Inspect the package
+        run: |
+          namcap dist/arch/PKGBUILD dist/arch/*.pkg.tar.zst
+          pacman -Qip dist/arch/*.pkg.tar.zst
+          pacman -Qlp dist/arch/*.pkg.tar.zst
+
+      - name: Verify installation in the container
+        run: |
+          pacman -U --noconfirm dist/arch/*.pkg.tar.zst
+          ldd /usr/bin/recomplauncher > /tmp/recomplauncher-libraries.txt
+          cat /tmp/recomplauncher-libraries.txt
+          if grep -q 'not found' /tmp/recomplauncher-libraries.txt; then exit 1; fi
+
+      - name: Upload package
+        if: inputs.upload || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.artifact-name || 'installers-arch-x86_64' }}
+          path: dist/arch/*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 3

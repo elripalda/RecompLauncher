@@ -3,6 +3,7 @@ src-tauri/target/
 src-tauri/gen/
 *.log
 .DS_Store
+dist/arch/
 
 # Flatpak build files made by the Flatpak workflow / local builds
 packaging/flatpak/shared-modules/

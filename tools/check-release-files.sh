@@ -14,6 +14,14 @@ echo "$list"
 
 while read -r name digest; do
   [ -n "$name" ] || continue
+  # makepkg forbids hyphens in pkgver: 0.90.0-beta.42 becomes 0.90.0beta.42.
+  if [[ "$name" =~ ^recomplauncher-(.+)-[0-9]+-x86_64\.pkg\.tar\.zst$ ]]; then
+    if [ "${BASH_REMATCH[1]}" != "${ver/-/}" ]; then
+      echo "::error::$name isn't the Arch package for $ver."
+      fail=1
+    fi
+    continue
+  fi
   for found in $(echo "$name" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z]+\.[0-9]+)?' || true); do
     if [ "$found" != "$ver" ]; then
       echo "::error::$name is version $found, but this release is $ver."

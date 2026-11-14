@@ -1,0 +1,45 @@
+# Rendered by tools/build-arch-package.sh from the checked-out source.
+pkgname=recomplauncher
+pkgver=@PKGVER@
+pkgrel=1
+pkgdesc='Recompiled and decompiled PC games'
+arch=('x86_64')
+url='https://recomplauncher.com'
+license=('GPL-3.0-or-later')
+# The tray library and libudev are loaded at runtime, so ELF dependency scans do not see them.
+depends=('glibc' 'libgcc' 'libstdc++' 'bzip2' 'cairo' 'dbus' 'gdk-pixbuf2' 'glib2'
+         'gtk3' 'libsoup3' 'webkit2gtk-4.1' 'libappindicator' 'systemd-libs'
+         'hicolor-icon-theme')
+makedepends=('cargo' 'cmake' 'pkgconf')
+checkdepends=('desktop-file-utils')
+options=('!lto' '!debug')
+source=('recomplauncher-source.tar.gz')
+sha256sums=('@SHA256@')
+
+build() {
+  cd "$srcdir/recomplauncher"
+  # The static web UI needs the same production protocol feature as the Flatpak build.
+  cargo build --frozen --release --features tauri/custom-protocol \
+    --manifest-path src-tauri/Cargo.toml --target-dir "$srcdir/target"
+}
+
+prepare() {
+  cd "$srcdir/recomplauncher"
+  cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+}
+
+check() {
+  cd "$srcdir/recomplauncher"
+  desktop-file-validate src-tauri/linux/recomplauncher.desktop
+}
+
+package() {
+  cd "$srcdir/recomplauncher"
+  install -Dm755 "$srcdir/target/release/recomplauncher" "$pkgdir/usr/bin/recomplauncher"
+  install -Dm644 src-tauri/linux/recomplauncher.desktop "$pkgdir/usr/share/applications/recomplauncher.desktop"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/recomplauncher.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/recomplauncher.png"
+  install -Dm644 src-tauri/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/recomplauncher.png"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/recomplauncher.png"
+  install -Dm644 src-tauri/icons/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/recomplauncher.svg"
+}
