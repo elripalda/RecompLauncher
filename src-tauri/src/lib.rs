@@ -8,6 +8,7 @@ pub mod ach;
 pub mod adopt;
 pub mod xex;
 mod appimage;
+mod convert;
 #[cfg(target_os = "linux")]
 mod appimage_update;
 pub mod art;
@@ -3482,6 +3483,57 @@ fn prepare_options_here(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<Str
         .into_iter()
         .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked) }))
         .collect()
+}
+
+// ---------- plain copies of compressed images ----------
+
+static CONVERT_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[derive(Clone, Serialize)]
+struct ConvertEv {
+    done: u64,
+    total: u64,
+}
+
+/// Where the plain copy of a compressed image would go, and how big it gets.
+#[tauri::command(async)]
+fn convert_plan(path: String) -> Res<Value> {
+    let (dest, size) = convert::plan(Path::new(&path)).map_err(Error::Msg)?;
+    let free = manage::free_space(dest.parent().unwrap_or(Path::new("."))).unwrap_or(u64::MAX);
+    Ok(json!({ "dest": dest, "size": size, "free": free, "exists": dest.exists() }))
+}
+
+/// Make a plain copy of a compressed image beside it (convert.rs), with `convert` events as it
+/// goes. Returns the file to pick.
+#[tauri::command(async)]
+async fn convert_copy(app: AppHandle, path: String) -> Res<String> {
+    CONVERT_STOP.store(false, Ordering::Relaxed);
+    trail::note(format!("Convert: {path}"));
+    let a = app.clone();
+    let out = tokio::task::spawn_blocking(move || {
+        let last = std::sync::Mutex::new(Instant::now() - std::time::Duration::from_secs(1));
+        convert::convert(
+            Path::new(&path),
+            &|done, total| {
+                let mut l = last.lock().unwrap();
+                if done >= total || l.elapsed().as_millis() >= 150 {
+                    *l = Instant::now();
+                    let _ = a.emit("convert", ConvertEv { done, total });
+                }
+            },
+            &|| CONVERT_STOP.load(Ordering::Relaxed),
+        )
+    })
+    .await
+    .map_err(|e| Error::Msg(e.to_string()))?
+    .map_err(Error::Msg)?;
+    trail::note(format!("Convert: done, {}", out.display()));
+    Ok(out.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn convert_cancel() {
+    CONVERT_STOP.store(true, Ordering::Relaxed);
 }
 
 /// The ticks the player set for a game's setup step options, kept for its next setup or rebuild.
@@ -8607,7 +8659,10 @@ pub fn run() {
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
-            set_prepare_opts, looks_info, set_look, look_picture, ui_data,
+            set_prepare_opts,
+            convert_plan,
+            convert_copy,
+            convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install

@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "adler"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -387,6 +393,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base16ct"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -475,6 +487,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitreader"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "886559b1e163d56c765bc3a985febb4eee8009f625244511d8ee3c432e08c066"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "bitstream-io"
 version = "4.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -500,6 +521,15 @@ name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
+name = "block-padding"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93"
 dependencies = [
  "generic-array",
 ]
@@ -611,6 +641,16 @@ dependencies = [
 
 [[package]]
 name = "bzip2"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdb116a6ef3f6c3698828873ad02c3014b3c85cadb88496095628e3ef1e347f8"
+dependencies = [
+ "bzip2-sys",
+ "libc",
+]
+
+[[package]]
+name = "bzip2"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49ecfb22d906f800d4fe833b6282cf4dc1c298f5057ca0b5445e5c209735ca47"
@@ -697,6 +737,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbc"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26b52a9543ae338f279b96b0b9fed9c8093744685043739079ce85cd58f289a6"
+dependencies = [
+ "cipher",
+]
+
+[[package]]
 name = "cc"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -778,6 +827,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "chd"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a607e05d7a8756524296ba664e9c06f1c4c6759ac03e0250c40e07fdcb182593"
+dependencies = [
+ "arrayvec",
+ "bitreader",
+ "byteorder",
+ "claxon",
+ "crc",
+ "flate2",
+ "lzma-rust2",
+ "num-derive",
+ "num-traits",
+ "text_io",
+ "zerocopy",
+ "zrip",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,6 +878,12 @@ dependencies = [
  "libc",
  "libloading 0.8.9",
 ]
+
+[[package]]
+name = "claxon"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bfbf56724aa9eca8afa4fcfadeb479e722935bb2a0900c2d37e0cc477af0688"
 
 [[package]]
 name = "clipboard-win"
@@ -945,6 +1020,12 @@ dependencies = [
  "core-foundation",
  "libc",
 ]
+
+[[package]]
+name = "core_detect"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f8f80099a98041a3d1622845c271458a2d73e688351bf3cb999266764b81d48"
 
 [[package]]
 name = "cpufeatures"
@@ -1514,6 +1595,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
+name = "encoding_rs"
+version = "0.8.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89253175e704ab869b04f9db224d38630e0211a53841a79181deae0889e169f5"
+dependencies = [
+ "cfg-if",
+ "core_detect",
+ "multiversion_no_op",
+ "rustversion",
+ "scopeguard",
+ "simdutf8",
+]
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1650,6 +1745,12 @@ checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
 ]
+
+[[package]]
+name = "fearless_simd"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "629c9d6b6f30b5604089e0980f4d924a013aacb1654a6cdf5d3d852224f68651"
 
 [[package]]
 name = "field-offset"
@@ -2614,6 +2715,7 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
+ "block-padding",
  "generic-array",
 ]
 
@@ -3086,6 +3188,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-rust2"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7277c9742229dc25243236d578b6471a798c554512c6f6a04365ec2e87c2a3bb"
+
+[[package]]
 name = "lzma-sys"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3236,6 +3344,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "multiversion_no_op"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
+
+[[package]]
 name = "ndk"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3287,6 +3401,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "418abd1b6d34fbf6cae440dc874771b0525a604428704c76e48b29a5e67b8003"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "nod"
+version = "1.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fbe592a5e74ed882c6d7373b4cc6beca6e84cf6b7f9fe5cba5d600255d965b5"
+dependencies = [
+ "adler",
+ "aes",
+ "base16ct",
+ "bzip2 0.4.4",
+ "cbc",
+ "digest",
+ "dyn-clone",
+ "encoding_rs",
+ "itertools 0.13.0",
+ "log",
+ "miniz_oxide 0.8.9",
+ "rayon",
+ "sha1",
+ "thiserror 1.0.69",
+ "zerocopy",
+ "zstd",
 ]
 
 [[package]]
@@ -4443,6 +4581,7 @@ dependencies = [
  "backhand",
  "base64 0.22.1",
  "cc",
+ "chd",
  "chrono",
  "crc32fast",
  "dirs 5.0.1",
@@ -4452,7 +4591,9 @@ dependencies = [
  "futures-util",
  "hex",
  "image",
+ "lz4_flex",
  "lzxd",
+ "nod",
  "plist",
  "qrcode",
  "regex-lite",
@@ -5099,6 +5240,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5145,6 +5297,12 @@ checksum = "95890f873bec569a0362c235787f3aca6e1e887302ba4840839bcc6459c42da6"
 dependencies = [
  "quote",
 ]
+
+[[package]]
+name = "simdutf8"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "siphasher"
@@ -5844,6 +6002,12 @@ checksum = "5fed54709c5b3a53d09bb1c113ea4f5ceafd1e772ddcb0030a82e1d56c087b08"
 dependencies = [
  "new_debug_unreachable",
 ]
+
+[[package]]
+name = "text_io"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d8d3ca3b06292094e03841d8995e910712d2a10b5869c8f9725385b29761115"
 
 [[package]]
 name = "thiserror"
@@ -7578,7 +7742,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744"
 dependencies = [
  "arbitrary",
- "bzip2",
+ "bzip2 0.5.2",
  "crc32fast",
  "crossbeam-utils",
  "flate2",
@@ -7611,6 +7775,43 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zrip"
+version = "0.8.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "415dbf772f67454d879e807d0b60a6eee55df91dd8ba66132317e764aa03569e"
+dependencies = [
+ "zrip-core",
+ "zrip-decode",
+ "zrip-encode",
+]
+
+[[package]]
+name = "zrip-core"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80f6de2d9ed313cfb14a113e6da994e6ddd7891c3c6af2eed5ccb887e40178ec"
+
+[[package]]
+name = "zrip-decode"
+version = "0.8.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94ebe0e933f1ae28cd83f7ba83bcff5060663928fcfa9aeb13562bcb8bfb8ff7"
+dependencies = [
+ "fearless_simd",
+ "zrip-core",
+]
+
+[[package]]
+name = "zrip-encode"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdff0f7a354653eb02a84564a373db124c14e73c86ebba8ad601290a17d25f23"
+dependencies = [
+ "fearless_simd",
+ "zrip-core",
 ]
 
 [[package]]

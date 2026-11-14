@@ -111,3 +111,10 @@ test('coming from another launcher gets one window that brings the games over', 
   assert.match(adopt, /function migWelcome\(g\)/);
   assert.match(adopt, /await migAddReady\(\);\n    await migAway\(\);/);
 });
+
+test('a compressed copy can be made plain right in the setup window', () => {
+  assert.match(app, /else if \(\/\^CONVERT\\\|\/\.test\(SU\.err \|\| ''\)\)/);
+  assert.match(app, /data-su="convert">\$\{esc\(t\('Make a Plain Copy'\)\)\}/);
+  assert.match(app, /const out = await invoke\('convert_copy', \{ path: src \}\);/);
+  assert.match(app, /T\.event\.listen\('convert',/);
+});

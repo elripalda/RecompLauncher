@@ -33,6 +33,10 @@ hex = "0.4"
 base64 = "0.22"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 sevenz-rust = "0.6"
+# Plain copies of compressed game images (convert.rs): GameCube and Wii formats, CHD, CSO and ZSO.
+nod = { version = "1.4", default-features = false, features = ["compress-bzip2", "compress-zlib", "compress-zstd"] }
+chd = "0.4"
+lz4_flex = { version = "0.11", default-features = false, features = ["std", "safe-decode"] }
 unrar = "0.5"
 flate2 = "1"
 zstd = "0.13"

@@ -2514,6 +2514,7 @@ function closeSetup(quiet) {
   suDrive.stop();
   if (!SU.el) return;
   if (SU.stage === 'run' && SU.id) invoke('setup_cancel', { id: SU.id }).catch(() => {});
+  if (SU.stage === 'convert') invoke('convert_cancel').catch(() => {});
   SU.el.remove();
   SU.el = null;
   if (!quiet && SU.stage !== 'pick') { delete S.setup[SU.id]; loadSetup(SU.id); }
@@ -2532,6 +2533,8 @@ async function suAct(b) {
     }
     case 'again': if (S.setup[id]?.inputs?.length) return namedSetup(id); SU.stage = 'pick'; SU.err = ''; return suDraw();
     case 'anyway': return suBegin(SU.path, true);
+    case 'convert': return suConvert();
+    case 'convert-stop': invoke('convert_cancel').catch(() => {}); return;
     case 'manual': { const gid = SU.id; closeSetup(true); return manualModal(gid); }
     case 'ufile': case 'ufolder': {
       const why = await pickUpdate(id, b.dataset.su === 'ufolder');
@@ -2565,6 +2568,36 @@ document.addEventListener('change', (e) => {
   for (const x of $$('input[data-popt]', box.closest('.su-opts') || document)) opts[x.dataset.popt] = x.checked;
   if (su && su.prepare_options) for (const o of su.prepare_options) if (o.id in opts) o.on = opts[o.id];
   invoke('set_prepare_opts', { id, opts }).catch(fail);
+});
+// A compressed image (RVZ, CHD, CSO…) for a recomp that reads plain files: the launcher makes the
+// plain copy beside it, then sets the game up with that. The player's own file stays as it is.
+async function suConvert() {
+  const src = SU.path, id = SU.id;
+  if (!src) return;
+  let plan = null;
+  try { plan = await invoke('convert_plan', { path: src }); } catch (e) { SU.err = String(e && e.message ? e.message : e); return suDraw(); }
+  if (plan.exists) return suBegin(plan.dest);
+  Object.assign(SU, { stage: 'convert', conv: { done: 0, total: plan.size || 0, dest: plan.dest } });
+  suDraw();
+  try {
+    const out = await invoke('convert_copy', { path: src });
+    if (SU.id !== id || !SU.el) return;
+    toast(t('The plain copy is ready. Setting the game up with it.'));
+    return suBegin(out);
+  } catch (e) {
+    if (SU.id !== id || !SU.el) return;
+    const msg = String(e && e.message ? e.message : e);
+    if (/^Stopped\.?$/.test(msg)) { SU.stage = 'pick'; SU.err = ''; return suDraw(); }
+    SU.stage = 'error'; SU.err = msg; suDraw();
+  }
+}
+T.event.listen('convert', ({ payload: p }) => {
+  if (!SU.el || SU.stage !== 'convert' || !SU.conv) return;
+  SU.conv.done = p.done; SU.conv.total = p.total || SU.conv.total;
+  const bar = $('.su-bar i', SU.el), txt = $('.su-conv-n', SU.el);
+  const pc = SU.conv.total ? Math.min(100, Math.round((SU.conv.done / SU.conv.total) * 100)) : 0;
+  if (bar) bar.style.width = pc + '%';
+  if (txt) txt.textContent = tf('{done} of {total}', { done: fmtB(SU.conv.done), total: fmtB(SU.conv.total) });
 });
 async function suBegin(path, anyway) {
   // The catalog lists the discs or cartridges it's made for, and this one reads as another.
@@ -2616,7 +2649,7 @@ function suDraw() {
   const box = $('.modal', SU.el);
   const game = a.game || a.name;
   const cov = a.cover ? media(a.cover) : '';
-  const discCls = SU.stage === 'pick' ? 'sdisc ghost' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'sdisc in' : 'sdisc spin') : SU.stage === 'ready' || SU.stage === 'update' ? 'sdisc done' : 'sdisc';
+  const discCls = SU.stage === 'pick' ? 'sdisc ghost' : SU.stage === 'convert' ? 'sdisc spin' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'sdisc in' : 'sdisc spin') : SU.stage === 'ready' || SU.stage === 'update' ? 'sdisc done' : 'sdisc';
   const label = `<div class="lab">${cov ? pic(thumbOf(a.cover, 160)) : ''}</div><div class="sheen"></div><div class="hub"></div><div class="hole"></div>`;
   let right = '';
   if (SU.stage === 'pick') {
@@ -2669,6 +2702,17 @@ function suDraw() {
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('This Looks Like Another Copy'))}</h2><p class="su-err">${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))}</p>
       <p>${esc(t('Another region or version of the game may not work with it.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="anyway">${esc(t('Use It Anyway'))}</button></div>`;
+  } else if (SU.stage === 'convert') {
+    const c = SU.conv || {}, pc = c.total ? Math.min(100, Math.round((c.done / c.total) * 100)) : 0;
+    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Making a Plain Copy'))}</h2><p style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.dest || '')}</p>
+      <p class="muted su-conv-n">${esc(tf('{done} of {total}', { done: fmtB(c.done || 0), total: fmtB(c.total || 0) }))}</p>
+      <div class="su-bar"><i style="width:${pc}%"></i></div>
+      <p class="muted">${esc(t('Your own file stays as it is. Setup goes on with the plain copy when it\'s done.'))}</p>
+      <div class="picks" style="margin-top:auto"><button type="button" class="btn big" data-su="convert-stop">${esc(t('Stop'))}</button></div>`;
+  } else if (/^CONVERT\|/.test(SU.err || '')) {
+    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Make a Plain Copy?'))}</h2><p>${esc(t(SU.err.replace(/^CONVERT\|/, '')))}</p>
+      <p class="muted">${esc(t('The launcher can make a plain copy beside it and set the game up with that. Your own file stays as it is.'))}</p>
+      <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="convert">${esc(t('Make a Plain Copy'))}</button><button type="button" class="btn big" data-su="again">${esc(t('Try another copy'))}</button></div>`;
   } else {
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>
@@ -5276,6 +5320,8 @@ async function startInstall(id, dir, tag, anyway) {
           const msg = String(e && e.message ? e.message : e);
           // Can't be checked before it's installed: nothing is kept, setup asks after the download.
           if (/only be checked once it's installed/i.test(msg)) return '';
+          // Compressed: kept, and made plain during setup.
+          if (/^CONVERT\|/.test(msg)) { toast(t('It\'s compressed. Setup makes a plain copy of it after the download.')); return path; }
           const v = await ask(t('That Copy Won\'t Work'), `<p>${esc(t(msg))}</p>`, [{ label: t('Pick Another'), icon: 'disc', v: 'again', main: true }, { label: t('Download Anyway'), icon: 'down', v: 'go' }, { label: t('Cancel'), icon: 'chevL', v: null }]);
           if (v === 'go') return '';
           if (v !== 'again') return null;

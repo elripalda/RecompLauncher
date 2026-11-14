@@ -2181,12 +2181,8 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         return Err("That's a program, not your copy of the game. Pick the game file itself.".into());
     }
     if ["rvz", "wia", "gcz", "wbfs", "chd", "cso", "zso", "nkit"].contains(&ext.as_str()) && !g.label.to_lowercase().contains(&format!(".{ext}")) && !g.label.to_lowercase().contains(&format!("{ext} ")) {
-        let dolphin = ["rvz", "wia", "gcz", "wbfs", "nkit"].contains(&ext.as_str());
-        return Err(if dolphin {
-            format!("That's a compressed .{ext} image, and this recomp reads plain .iso files. Convert it first: in Dolphin, right-click the game, Convert File, and pick ISO.")
-        } else {
-            format!("That's a compressed .{ext} image, and this recomp reads plain .iso files. Convert it to .iso first.")
-        });
+        // The launcher can make the plain copy itself (convert.rs): the setup offers to.
+        return Err(format!("CONVERT|That's a compressed .{ext} image, and this recomp reads plain .iso files."));
     }
     if !g.check.iso9660.is_empty() && !iso9660_has(p, &g.check.iso9660) {
         return Err("That disc image isn't the release this recomp reads.".into());
