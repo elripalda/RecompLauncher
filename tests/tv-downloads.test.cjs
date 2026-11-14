@@ -19,7 +19,7 @@ function downloadsContext(launcherUpd) {
     sfx: () => {}, calls: [],
   });
   c.selfUpdate = () => c.calls.push('selfUpdate');
-  vm.runInContext(fn(tv, 'pageDownloads'), c);
+  vm.runInContext(fn(tv, 'scanTag') + fn(tv, 'pageDownloads'), c);
   vm.runInContext(fn(tv, 'activate'), c);
   return c;
 }
@@ -41,4 +41,38 @@ test('pressing A on the launcher row starts the same selfUpdate as the desktop',
   const c = downloadsContext({ version: '0.90.0-beta.40' });
   await c.activate({ dataset: { tvact: 'selfupdate', key: 'u:@launcher' }, closest: () => null });
   assert.deepEqual(c.calls, ['selfUpdate']);
+});
+
+function checkedRow(info) {
+  const c = downloadsContext(null);
+  c.S.dlHist = [{ id: 'prime', tag: 'v0.0.11' }];
+  c.scanInfo = () => info;
+  c.thumbOf = String;
+  return c.pageDownloads();
+}
+
+test('a ClamAV-checked download shows the desktop scan pill and opens the game', () => {
+  const html = checkedRow({ cls: 'ok', ic: '✓', text: 'Clean · ClamAV', scanner: 'clamav', sha: '' });
+  assert.match(html, /<span class="scan-pill ok"><i>✓<\/i>Clean · ClamAV<\/span><\/button>/);
+  assert.match(html, /<small>Installed v0\.0\.11<\/small>/);
+  assert.match(html, /data-go-game="prime"/);
+  assert.doesNotMatch(html, /How It Was Checked/);
+});
+
+test('a VirusTotal-checked download opens its report from the row', () => {
+  const html = checkedRow({ cls: 'warn', ic: '!', text: '3 of 70 engines flagged', scanner: 'virustotal', sha: 'abc' });
+  assert.match(html, /data-tvact="scan" data-sha="abc"/);
+  assert.match(html, /<span class="scan-pill warn">/);
+  assert.doesNotMatch(html, /Open the Report/);
+});
+
+test('an update-ready row shows how the new version was checked', () => {
+  const c = downloadsContext(null);
+  c.S.library = { prime: { tag: 'v0.0.10' } };
+  c.S.updates = { prime: 'v0.0.11' };
+  const asked = [];
+  c.scanInfo = (h) => { asked.push(h.tag); return { cls: 'ok', ic: '✓', text: 'Clean · ClamAV', scanner: 'clamav', sha: '' }; };
+  const html = c.pageDownloads();
+  assert.deepEqual(asked, ['v0.0.11']);
+  assert.match(html, /Update ready: v0\.0\.10 → v0\.0\.11<\/small><\/span><span class="scan-pill ok">/);
 });

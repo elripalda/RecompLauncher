@@ -2386,7 +2386,9 @@ function gameBody(a) {
     const stats = inst
       ? [[t('Played'), playedFor(inst)], [t('Last played'), inst.last_played ? ago(inst.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
       : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—'], [t('Size'), a.size || '—']];
-    body = `<div class="stack"><div class="stats">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
+    // Under the installed version: how the store checked that release (a player's own game has none).
+    const verScan = inst && inst.tag && !inst.local ? scanPill({ id, tag: inst.tag }) : '';
+    body = `<div class="stack"><div class="stats">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}</div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
@@ -3561,7 +3563,8 @@ function pageDownloads() {
   const queue = act.filter((id) => id !== lead).map((id) => { const a = appOf(id);
     return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b>${progress(id)}</div><span class="tag cy">${esc(kindTag(id))}</span><span class="acts">${jobBtns(id, true)}</span></div>`; }).join('');
   const upRows = ups.map((id) => { const a = appOf(id);
-    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
+    // The pill is the new version's check, so the player sees it before they download it.
+    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span>${scanPill({ id, tag: S.updates[id] })}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
   const failRows = fails.map((r) => { const a = appOf(r.id);
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   const ui = S.settings.ui || {};
