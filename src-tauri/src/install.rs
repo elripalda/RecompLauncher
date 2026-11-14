@@ -798,6 +798,47 @@ pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed
     removed
 }
 
+/// Keep the selected program through an update, following release renames and moves.
+pub fn updated_exe(id: &str, target: &Path, mut exe: Option<PathBuf>, files: &[PathBuf], kept: bool) -> Option<PathBuf> {
+    let old = exe.as_ref()?;
+    // A player's program outside the install belongs to them. Neither a release's AppImage nor
+    // a file with the same name replaces it, including paths through parent folders or links.
+    if !old.components().all(|c| matches!(c, Component::Normal(_))) {
+        return exe;
+    }
+    let Ok(root) = fs::canonicalize(target) else { return exe };
+    let Ok(path) = fs::canonicalize(target.join(old)) else { return exe };
+    if !path.starts_with(root) {
+        return exe;
+    }
+    if let Some(old) = exe.clone() {
+        let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
+        let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+        if let (true, Some(n)) = (is_appimage, new_appimage) {
+            if *n != old {
+                let _ = std::fs::remove_file(target.join(&old));
+                exe = Some(n.clone());
+            }
+        }
+    }
+    // The program the player picked isn't one of the new release's files (it was moved inside the
+    // release, say): the new release's file of the same name, so Play starts the update.
+    let exe = match exe {
+        Some(e) if kept && !files.iter().any(|f| *f == e) => {
+            let name = e.file_name().map(|n| n.to_ascii_lowercase());
+            match files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) {
+                Some(f) => {
+                    crate::trail::note(format!("Install {id}: the program you picked is at {} in this release now", f.display()));
+                    Some(f.clone())
+                }
+                None => Some(e),
+            }
+        }
+        e => e,
+    };
+    exe
+}
+
 /// The folders above a removed file that it leaves empty, up to (not including) `top`.
 fn remove_empty_parents(top: &Path, file: &Path) {
     let mut dir = file.parent();
@@ -1536,6 +1577,102 @@ mod tests {
 
     fn paths(names: &[&str]) -> Vec<PathBuf> {
         names.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn updating_keeps_an_external_appimage() {
+        let d = tmp("update-external-appimage");
+        let target = d.join("managed");
+        fs::create_dir_all(&target).unwrap();
+        let old = d.join("My Game.AppImage");
+        fs::write(&old, b"player's separate program").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+
+        assert_eq!(fs::read(&old).unwrap(), b"player's separate program");
+        assert_eq!(got, Some(old));
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn updating_keeps_an_external_exe_with_the_same_name() {
+        let d = tmp("update-external-exe");
+        let target = d.join("managed");
+        fs::create_dir_all(target.join("bin")).unwrap();
+        let old = d.join("Game.exe");
+        fs::write(&old, b"player's separate program").unwrap();
+        fs::write(target.join("bin/Game.exe"), b"new release").unwrap();
+
+        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["bin/Game.exe"]), true);
+
+        assert_eq!(got, Some(old.clone()));
+        assert_eq!(fs::read(old).unwrap(), b"player's separate program");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn updating_keeps_an_appimage_reached_through_parent_components() {
+        let d = tmp("update-parent-appimage");
+        let target = d.join("managed");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(d.join("My Game.AppImage"), b"player's separate program").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+        let old = PathBuf::from("../My Game.AppImage");
+
+        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+
+        assert_eq!(fs::read(d.join("My Game.AppImage")).unwrap(), b"player's separate program");
+        assert_eq!(got, Some(old));
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn updating_keeps_an_appimage_in_an_external_linked_folder() {
+        let d = tmp("update-linked-appimage");
+        let target = d.join("managed");
+        let external = d.join("external");
+        fs::create_dir_all(&target).unwrap();
+        fs::create_dir_all(&external).unwrap();
+        fs::write(external.join("Game.AppImage"), b"player's separate program").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+        std::os::unix::fs::symlink(&external, target.join("linked")).unwrap();
+        let old = PathBuf::from("linked/Game.AppImage");
+
+        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+
+        assert_eq!(fs::read(external.join("Game.AppImage")).unwrap(), b"player's separate program");
+        assert_eq!(got, Some(old));
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn updating_replaces_a_managed_appimage() {
+        let target = tmp("update-managed-appimage");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let got = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["Game-v2.AppImage"]), true);
+
+        assert_eq!(got, Some("Game-v2.AppImage".into()));
+        assert!(!target.join("Game-v1.AppImage").exists());
+        assert_eq!(fs::read(target.join("Game-v2.AppImage")).unwrap(), b"new release");
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
+    fn updating_follows_a_managed_program_into_its_new_folder() {
+        let target = tmp("update-managed-exe");
+        fs::create_dir_all(target.join("bin")).unwrap();
+        fs::write(target.join("Game.exe"), b"old release").unwrap();
+        fs::write(target.join("bin/Game.exe"), b"new release").unwrap();
+
+        let got = updated_exe("game", &target, Some("Game.exe".into()), &paths(&["bin/Game.exe"]), true);
+
+        assert_eq!(got, Some("bin/Game.exe".into()));
+        assert_eq!(fs::read(target.join("bin/Game.exe")).unwrap(), b"new release");
+        fs::remove_dir_all(target).unwrap();
     }
 
     #[test]
