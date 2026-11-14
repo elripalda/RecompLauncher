@@ -163,11 +163,17 @@ pub async fn installer_run(st: State<'_, App>, id: String) -> Res<Value> {
             }
         }
     }
-    if let [(root, exe)] = found.as_slice() {
+    // An update whose installer closed at once and left the game as it was (one that hands over to
+    // another window, or asks for permission first): not counted as installed until the player says.
+    let early = started.elapsed().map(|d| d.as_secs() < 10).unwrap_or(false) && found.iter().all(|(root, exe)| !touched_since(&root.join(exe), started)) && !g.tag.is_empty();
+    if early {
+        crate::trail::note(format!("Installer {id}: closed right away and the game's program wasn't changed, so the update isn't counted yet"));
+    }
+    if let ([(root, exe)], false) = (found.as_slice(), early) {
         let g = finish(&st, &id, root.clone(), exe.clone())?;
         return Ok(json!({ "done": true, "game": g }));
     }
-    Ok(json!({ "done": false, "code": code, "found": found.iter().map(|(p, e)| json!({"path": p, "exe": e})).collect::<Vec<_>>() }))
+    Ok(json!({ "done": false, "early": early, "code": code, "found": found.iter().map(|(p, e)| json!({"path": p, "exe": e})).collect::<Vec<_>>() }))
 }
 
 #[cfg(windows)]
@@ -281,6 +287,11 @@ pub async fn installer_done(st: State<'_, App>, id: String, path: String, exe: S
         return Err(Error::Msg("Pick the game's program in that folder.".into()));
     }
     finish(&st, &id, root, exe)
+}
+
+/// The file was written after `since` (an installer that really ran replaced it).
+pub fn touched_since(p: &Path, since: std::time::SystemTime) -> bool {
+    std::fs::metadata(p).and_then(|m| m.modified()).map(|m| m >= since).unwrap_or(false)
 }
 
 /// Its program was made after the waiting update's installer was downloaded: the player ran that

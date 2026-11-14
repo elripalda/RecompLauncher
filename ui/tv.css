@@ -237,7 +237,7 @@ body.tv-on #app{visibility:hidden}
 .tv-boot .load i:nth-child(2){animation-delay:.15s}.tv-boot .load i:nth-child(3){animation-delay:.3s}
 .tv-boot .bar{width:280px;height:4px;border-radius:4px;background:rgba(var(--tvinkrgb,244,248,252),.1);overflow:hidden}
 .tv-boot .bar i{display:block;width:100%;height:100%;margin:0;background:linear-gradient(90deg,#34F2E8,#377BB6);transform-origin:0 50%;animation:rl-bar 1.1s cubic-bezier(.65,0,.35,1) 1.6s both!important;border-radius:0}
-@media (prefers-reduced-motion:reduce){.tv-boot *{animation-duration:.01s!important;animation-delay:0s!important}}
+body.still .tv-boot *{animation-duration:.01s!important;animation-delay:0s!important}
 .tv-boot .aurora{position:absolute;inset:0;overflow:hidden;opacity:0;animation:rl-fade 1.6s ease .1s forwards}
 .tv-boot .aurora i{position:absolute;width:62%;height:70%;border-radius:50%;filter:blur(90px);opacity:.55;mix-blend-mode:screen}
 .tv-boot .aurora i:nth-child(1){left:-6%;bottom:-38%;background:radial-gradient(closest-side,#34F2E8,transparent);animation:rl-rise1 7s ease-in-out infinite alternate}
@@ -248,7 +248,7 @@ body.tv-on #app{visibility:hidden}
 @keyframes rl-rise3{from{transform:translate(0,40%) scale(.85)}to{transform:translate(-4%,10%) scale(1)}}
 .tv-boot.out{animation:rl-bootout .5s cubic-bezier(.4,0,.2,1) forwards}
 @keyframes rl-bootout{to{opacity:0;transform:scale(1.04);filter:blur(6px)}}
-@media (prefers-reduced-motion:reduce){.tv-stage *,.tv-stage,.tv-zoom{animation-duration:.01s!important;animation-delay:0s!important;transition:none!important}}
+body.still .tv-stage *,body.still .tv-stage,body.still .tv-zoom{animation-duration:.01s!important;animation-delay:0s!important;transition:none!important}
 /* messages in TV mode: bigger. The island that holds them is already centred on the screen
    (app.css); shifting .toasts as well pushed them right by half their own width. */
 body.tv-on .toast{max-width:760px;font-size:19px;padding:16px 24px;border-radius:16px;text-align:center}
@@ -775,7 +775,7 @@ body.light .tv-sheet .tv-item.warn svg{color:#9a7200}
 .tv-ended.fresh .tv-cell:nth-child(2){animation-delay:.045s}.tv-ended.fresh .tv-cell:nth-child(3){animation-delay:.09s}.tv-ended.fresh .tv-cell:nth-child(4){animation-delay:.135s}.tv-ended.fresh .tv-cell:nth-child(5){animation-delay:.18s}.tv-ended.fresh .tv-cell:nth-child(6){animation-delay:.225s}.tv-ended.fresh .tv-cell:nth-child(7){animation-delay:.27s}.tv-ended.fresh .tv-cell:nth-child(n+8){animation-delay:.315s}
 .tv-ended.out .tv-ended-body{animation:tv-ended-out .2s cubic-bezier(.2,.8,.2,1) both}
 @keyframes tv-ended-out{to{opacity:0;transform:translateY(10px)}}
-@media (prefers-reduced-motion:reduce){.tv-ended.fresh .tv-ended-body,.tv-ended.fresh .tv-ended-body .tv-cell{animation:none}.tv-ended-head::after{transition:none}}
+body.still .tv-ended.fresh .tv-ended-body,body.still .tv-ended.fresh .tv-ended-body .tv-cell{animation:none}body.still .tv-ended-head::after{transition:none}
 .tv-chip.act{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--acc) 70%,transparent)}
 .tv-chip-n{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--acc);color:var(--accink);font-size:15px;font-weight:800;margin-left:4px}
 /* The on-screen keyboard for searching: six keys to a row, the wide ones two to a row. */

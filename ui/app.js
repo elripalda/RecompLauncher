@@ -1969,7 +1969,7 @@ function flipGrid(box, change) {
   const before = new Map(items.map((el) => [el, el.getBoundingClientRect()]));
   items.forEach((el) => el.getAnimations().forEach((x) => x.cancel()));
   change();
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (document.body.classList.contains('still')) return;
   for (const el of items) {
     const a = before.get(el), b = el.getBoundingClientRect();
     if (!a || !b.width) continue;
@@ -3563,7 +3563,7 @@ function pageDownloads() {
   const upRows = ups.map((id) => { const a = appOf(id);
     return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
   const failRows = fails.map((r) => { const a = appOf(r.id);
-    return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div><button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
+    return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   const ui = S.settings.ui || {};
   const shown = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
   const histRows = shown.slice(0, 40).map((h) => { const a = appOf(h.id); const inst = S.library[h.id];
@@ -4311,7 +4311,7 @@ function movePill() { moveTabPill(); }
 // ---------- smooth changes ----------
 // Only transform and opacity move, so it stays smooth on any screen, 60 Hz or 240 Hz.
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
-const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const calm = () => document.body.classList.contains('still');
 const onScreen = (r) => r.bottom > -60 && r.top < innerHeight + 60 && r.width > 0;
 // Where each element is now, so glideFrom can move it from there to where it ends up.
 const spots = (els, rel) => { const o = rel ? rel.getBoundingClientRect() : { left: 0, top: 0 }; const m = new Map(); for (const el of els) { const r = el.getBoundingClientRect(); if (onScreen(r)) m.set(el, { x: r.left - o.left, y: r.top - o.top, w: r.width }); } return m; };
@@ -4639,7 +4639,9 @@ async function checkUpdates(loud) {
   try {
     const updates = await invoke('check_updates', { force: !!loud });
     if (revision !== updateCheckRevision) return false;
-    S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local));
+    // A version the player chose to skip (its download kept failing) stays out until a newer one.
+    const skip = (S.settings.ui || {}).skip_ver || {};
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => S.library[id] && !S.library[id].local && skip[id] !== tag));
     S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }
   renderSide();
@@ -4792,6 +4794,12 @@ function fbCrumbs(path) {
 function applyLighter() {
   const st = S.settings || {};
   document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld : !!st.lighter);
+  // Nothing animates: Lighter Launcher turned on by the player, or the system asking for less
+  // motion. Not on Linux, where game-mode sessions on handhelds ask for that by default and the
+  // menus would stop moving; Lighter Launcher still turns it off there. A handheld that's lighter
+  // only by default keeps its animations (the blur and moving pictures stay off).
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches && S.os !== 'linux';
+  document.body.classList.toggle('still', st.lighter === true || reduce);
 }
 // Linux: some PCs draw the window slowly (the web view's safer way of drawing, mostly). Frames
 // are timed only while something moves (a scroll, a key, a click, the controller), and once
@@ -5588,7 +5596,7 @@ function installerModal(id) {
     else if (st.stage === 'find') {
       const c = st.check;
       const exes = c && c.exes && c.exes.length ? c.exes : (c && c.exe ? [c.exe] : []);
-      html = `${head(2, t('Find the Game'))}<p>${esc(t('Where did it install? Pick the folder with the game in it.'))}</p>
+      html = `${head(2, t('Find the Game'))}${st.early ? `<p class="set-note">${esc(t('The installer closed right away and the game wasn\'t changed. If it\'s still open in another window, finish it there first, then pick the game here.'))}</p>` : ''}<p>${esc(t('Where did it install? Pick the folder with the game in it.'))}</p>
         ${(st.found || []).map((f, i) => `<button type="button" class="btn inst-found" data-x="found" data-i="${i}"><b>${esc(f.exe)}</b><span class="muted">${esc(f.path)}</span></button>`).join('')}
         ${c ? `<p class="muted mono">${esc(c.path)}</p>${exes.length ? `<label class="inst-exe"><span>${esc(t('The game\'s program'))}</span><select class="sel" id="inst-exe">${exes.map((e) => `<option value="${esc(e)}"${e === c.exe ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select></label>` : `<p class="err">${esc(t('No program found in that folder.'))}</p>`}` : ''}
         <div class="acts grid2"><button type="button" class="btn" data-x="pick">${esc(t('Pick a Folder'))}</button><button type="button" class="btn main" data-x="use"${c && exes.length ? '' : ' disabled'}>${esc(t('Use This Folder'))}</button></div>`;
@@ -5613,7 +5621,7 @@ function installerModal(id) {
       delete m.s.dataset.busy;
       if (r.stopped) { st = { stage: 'run' }; paint(); return; }
       if (r.done) return finished(r.game);
-      st = { stage: 'find', found: r.found || [] }; paint(); return;
+      st = { stage: 'find', found: r.found || [], early: !!r.early }; paint(); return;
     }
     if (k === 'stop') return invoke('installer_cancel', { id });
     if (k === 'found') { const f = (st.found || [])[Number(x.dataset.i)]; if (!f) return; try { return finished(await invoke('installer_done', { id, path: f.path, exe: f.exe })); } catch (e) { return fail(e); } }
@@ -5692,6 +5700,14 @@ async function playGame2(id, program) {
           [{ label: t('Get Python'), icon: 'down', v: 'get', main: true }, { label: t('Close'), icon: 'chevL', v: null }]);
         if (v === 'get') invoke('open_url', { url: 'https://www.python.org/downloads/' }).catch(fail);
         return;
+      }
+      // Set up by hand on a game that's built from the copy: back to the launcher's way, then Play.
+      if (/^NEED_WAY\|/.test(String(err && err.message ? err.message : err))) {
+        const v = await ask(t('Use the Launcher\'s Way?'), `<p>${esc(t('This game is built from your copy before it starts, and only the launcher\'s way does that. Your hand setup is skipped, and the game is built and started the usual way.'))}</p>`,
+          [{ label: t('Use the Launcher\'s Way'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
+        if (v !== 'yes') return;
+        try { S.library[id] = await invoke('set_manual', { id, manual: null }); } catch (e) { return fail(e); }
+        return playGame(id);
       }
       // It couldn't tell which program is the game (every one looks like a tool): the player says.
       if (/^PICK_EXE\|/.test(String(err && err.message ? err.message : err))) return askProgram(id);
@@ -6732,6 +6748,7 @@ async function crashModal(p) {
     ${fixSaid ? `<div class="known-fix" role="note"><b>${esc(t('Players Fixed This'))}</b><span dir="auto">${esc(fixSaid)}</span></div>` : ''}
     ${p.said && p.said !== fixSaid ? `<div class="known-fix" role="note"><b>${esc(t('What This Code Means'))}</b><span dir="auto">${esc(p.said)}</span></div>` : ''}
     ${fatalLine ? `<p class="fatal-line"><b>${esc(t('The game\'s last error'))}</b><code>${esc(fatalLine)}</code></p>` : ''}
+    ${a && bootNote(a) && p.secs < 60 ? `<div class="known-fix" role="note"><b>${esc(t('What It Needs From You'))}</b><span dir="auto">${esc(bootNote(a))}</span></div>` : ''}
     ${goBack ? `<p class="go-back-note">${esc(bad ? tf('{version} is crashing for a lot of players. {old} works for most.', { version: g.tag, old: goBack }) : tf('It worked before its last update. {old}, the version you had, is one press away.', { old: goBack }))}</p>` : ''}
     <p>${modName ? esc(tf('It crashed inside a mod ({mod}), not the game itself. Turn that mod off or update it, then play again.', { mod: modName })) : sac ? esc(t('Windows blocked it. Smart App Control (or an app policy on this PC) stops programs that aren\'t signed yet, and this recomp isn\'t. You can turn Smart App Control off in Windows Security, under App & browser control. Windows may not let you turn it back on later, so it\'s your call; the other choice is to wait for the developer to sign their releases.')) : badOpts ? esc(tf('It didn\'t understand its Launch options ({options}). Clear them and play again.', { options: String(g.args).trim() })) : rootFlag && gone ? esc(tf('It\'s looking for your game files in {folder}, which isn\'t there anymore. Pick the folder with your copy of the game and it starts from there next time.', { folder: gone[1].trim() })) : rootFlag && miss ? esc(tf('It couldn\'t find {file} in the folder it was given. Pick the folder with your copy of the game and the launcher finds it inside.', { file: miss[1] })) : rootFlag ? esc(t('It needs to know where your game files are. Pick the folder with your copy of the game and it starts from there next time.')) : noFiles ? esc(copySetup ? t('It started without your game files. Set up your copy of the game once, and it finds them from then on.') : t('It started without your game files: they aren\'t where it reads them. Its developer\'s instructions say where they go.')) : eboot ? esc(t('It needs the decrypted EBOOT.elf from the game\'s update, in the update\'s USRDIR folder. A decrypted one starts with the letters ELF; the normal EBOOT.BIN renamed won\'t work. It\'s made from your own update, for example with RPCS3.')) : needTU ? esc(t('It needs the game\'s title update (the last patch for the game) along with your disc. Its developer\'s instructions say which one and where it goes.')) : dotnet ? esc(t('It needs Microsoft .NET, and the version it needs isn\'t on this PC. Install it, then play again.')) : noWrite ? esc(t('It can\'t write to its own folder, which is somewhere Windows protects (like Program Files). Move it to your Recomp Library in its Manage tab, then play again.')) : blocked ? esc(t('It couldn\'t make a folder inside its own folder. Windows Security may be blocking it: in Virus & threat protection, Ransomware protection, turn off Controlled folder access or allow this game through it, then play again.')) : noRom ? esc(t('It asks for your ROM in its own window the first time it starts, and none was picked. Play again and choose your ROM when it asks.')) : gpuReset ? esc(t('Your graphics driver stopped responding while the game was drawing. Update your graphics driver from NVIDIA, AMD or Intel; if it keeps happening, try another graphics option in its Game settings.')) : lookOn && p.secs < 30 ? esc(t('It closed soon after starting with a shader on. Some games don\'t get along with ReShade: try it without the shader.')) : inPage ? esc(t('Windows couldn\'t read part of the game from its drive while it ran. That happens when a network folder or a USB drive drops out for a moment. Move it to a drive inside this PC (Move to another drive, in its menu), then play again.')) : gl ? esc(glSetting ? tf('Your graphics driver couldn\'t start OpenGL for it. Switch {setting} in its Game settings, or update your graphics driver, then play again.', { setting: glSetting.label }) : t('Your graphics driver couldn\'t start OpenGL for it. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : vram ? esc(t('Your graphics card ran out of memory for it. Close other games and apps using it, lower its resolution in Game settings, then play again.')) : armProton ? esc(pfxGone ? t('The Proton it ran through is missing the files it sets up a game with, so it can\'t start anything. Press Install GE-Proton to get a complete one, then play again.') : t('The Proton it ran through is built for a different kind of processor, so it can\'t run here. Press Install GE-Proton in Settings → General to get the right one, then play again.')) : umuRt ? esc(t('umu-launcher\'s Steam Linux Runtime didn\'t finish downloading, so it can\'t start games. Delete the steamrt folders in ~/.local/share/umu and play again, or update umu-launcher.')) : glibc ? esc(t('This Linux build was made for a newer Linux than yours (it needs a newer glibc). Its Windows version usually runs fine through Proton: switch to it on the game\'s page, or update your system.')) : protonGap ? esc(t('The Proton it ran through is missing a part of Windows this game needs. Press Install GE-Proton in Settings → General and play again: the launcher uses the newest Proton it finds.')) : noLib ? esc(tf('It needs {file}, which isn\'t on this PC. Install it with your system\'s package manager, then play again.', { file: noLib[1] })) : oom ? esc(t('Your PC ran out of memory for it. Close other games and apps, check that Windows\' page file is on (it\'s under Advanced system settings → Performance → Virtual memory), then play again.')) : python ? esc(t('It needs Python 3, which isn\'t on this PC. Install it from python.org (tick Add python.exe to PATH in its installer), then play again.')) : noCmd ? esc(t('It runs a command that isn\'t installed on this PC. Its developer\'s instructions say what to install first.')) : vkLoader && !twoGpu ? esc(t('Vulkan couldn\'t use your graphics card. Update your graphics driver from NVIDIA, AMD or Intel, and close overlays and recorders (like RivaTuner, OBS or Overwolf), then play again.')) : (gpu || vkLoader) && twoGpu ? esc(t('This PC has two graphics cards, and it may have started on the slower one. Use the Faster Graphics Card and Windows starts it on the faster one; if it still won\'t start, update your graphics drivers.')) : gpu ? esc(t('Your graphics card or its driver can\'t run it: it needs DirectX 12 or Vulkan. Update your graphics driver from NVIDIA, AMD or Intel, then play again.')) : oldCopies ? esc(tf('It came with older copies of {files} than Windows has, and uses those instead. Move them aside and it uses Windows\' newer ones.', { files: oldCopies.join(', ') })) : oldVulkan ? esc(tf('Your graphics driver is out of date (its Vulkan is {version}; recomps need 1.3 or newer). Update it from NVIDIA, AMD or Intel, then play again.', { version: dllf.vulkan_old })) : madeOnly ? esc(tf('It needs {files}, which it makes itself from your copy of the game. Set up your game copy (or run its setup), then play again.', { files: made.join(', ') })) : dllVC ? esc(t('Windows couldn\'t load a file it needs: a DLL that\'s missing or too old. Install the latest Microsoft Visual C++ Redistributable (x64), keep Windows up to date, then play again.')) : dllDX ? esc(tf('It needs the older DirectX runtime (June 2010), which Windows doesn\'t come with. Missing: {files}', { files: lacking.join(', ') })) : dllOwn ? esc(tf('It needs files that aren\'t on this PC: {files}. They should come with the game. Reinstall it; if they\'re still missing, its developer needs to know.', { files: lacking.join(', ') })) : setupExe ? esc(t('It needs its setup run first, to unpack the game from your copy.')) : toolRan ? esc(t('It printed how it\'s used and stopped. That\'s usually one of the game\'s tools, not the game. Choose the program that starts the game.')) : usage ? esc(t('It needs to be started with your game files. Its developer\'s instructions say what to add; put that in its Launch options.')) : wrongDisc ? esc(t('The disc image it was given isn\'t this game\'s, or it\'s missing the game\'s files. Pick your own disc image of the game this recomp is made for.')) : otherBuild ? esc(t('This recomp comes with a program for each version of the game, and the one it started isn\'t for your copy. Choose the program that matches your copy and play again.')) : wrongCopy ? esc(t('Your copy of the game isn\'t the version this recomp is made for. Its developer\'s instructions say which one to use (region and revision).')) : p.said ? esc(p.said) : miss ? esc(tf('It couldn\'t find {file}, part of your copy of the game. Put your game files where its developer\'s instructions say, then play again.', { file: miss[1] })) : esc(p.secs < 5 ? tf('It stopped with code {code} right after it started. That usually means it couldn\'t find your game files or something it needs on this PC.', { code: codeShown }) : tf('It stopped with code {code}.', { code: codeShown }))}</p>
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
@@ -7519,6 +7536,16 @@ async function act(el, e) {
     case 'unhide': toast(t('It shows in Discover again.')); return unhideGame(id);
     case 'hidden-list': return hiddenModal();
     case 'ig-go': return igGo(el.dataset.id);
+    case 'skip-ver': {
+      const id = el.dataset.id, tag = S.updates[id];
+      if (!tag) return;
+      await saveUi({ skip_ver: Object.assign({}, (S.settings.ui || {}).skip_ver, { [id]: tag }) }, true);
+      delete S.updates[id];
+      S.recent = S.recent.filter((r) => r.id !== id);
+      toast(tf('{name} stays on the version it has. You\'ll hear about the next one.', { name: (S.library[id] || {}).name || id }));
+      renderSide();
+      return render(true);
+    }
     case 'ui-toggle': return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }

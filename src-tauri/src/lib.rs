@@ -635,6 +635,21 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             }
         }
     }
+    // The program the player picked isn't one of the new release's files (it was moved inside the
+    // release, say): the new release's file of the same name, so Play starts the update.
+    let exe = match exe {
+        Some(e) if kept && !files.iter().any(|f| *f == e) => {
+            let name = e.file_name().map(|n| n.to_ascii_lowercase());
+            match files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) {
+                Some(f) => {
+                    trail::note(format!("Install {id}: the program you picked is at {} in this release now", f.display()));
+                    Some(f.clone())
+                }
+                None => Some(e),
+            }
+        }
+        e => e,
+    };
     let exe = exe.or_else(|| install::find_game_exe(&target, os, &names));
     // The catalog's boot profile says which program starts it, unless the player picked one.
     let boot = boot::Boot::from_entry(&entry).map(|b| b.for_build(os == "windows"));
@@ -2527,6 +2542,12 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             st.save();
             manual = None;
         }
+    }
+    // Set up by hand on a game that's built from the player's copy: the hand setup skips the build,
+    // so there's nothing finished to start. The player is asked to go back to the launcher's way.
+    if manual.is_some() && profile_of(&st, id, &g).map(|p| p.prepare.is_some() && p.start.is_some()).unwrap_or(false) {
+        trail::note(format!("Play {id}: set up by hand, but it's built from the copy first; asking to use the launcher's way"));
+        return Err(Error::Msg("NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".into()));
     }
     // "Program it starts" picked by the player, and not the program the game's setup file starts
     // (the game they moved somewhere else, or a build of their own): theirs starts, as it is. The
@@ -5317,7 +5338,9 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
     // starts is probably not the finished game.
     let rel = exe.strip_prefix(&g.path).map(Path::to_path_buf).unwrap_or_else(|_| PathBuf::from(&name));
     let names: Vec<&str> = [g.name.as_str(), g.repo.rsplit(['/', ':']).next().unwrap_or("")].into_iter().filter(|n| !n.is_empty()).collect();
-    if install::looks_like_tool(&rel, &names) {
+    if install::system_program(&exe) {
+        out.push(check("bad", "It starts {name}, which isn't the game", "That's a program from Windows or another app ({folder}), not this game's. Choose the game's own program.", "setexe").with("name", &name).with("folder", exe.parent().map(|d| d.display().to_string()).unwrap_or_default()));
+    } else if install::looks_like_tool(&rel, &names) {
         out.push(check("warn", "It starts {name}, which looks like one of the game's tools", "It sits in a folder for tools or a setup's leftovers ({folder}). Choose the game's own program, where its setup installed it.", "setexe").with("name", &name).with("folder", rel.parent().map(|d| d.display().to_string()).unwrap_or_default()));
     } else {
         out.push(check("ok", "It starts {name}", "", "").with("name", &name));
@@ -5406,7 +5429,9 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
             Some(c) if !c.exists() => out.push(check("bad", "Your copy of the game isn't there anymore", c.display().to_string(), "copy")),
             Some(c) => match copy_ok(need, c, &g.path, false) {
                 Ok(()) if profile::odd_snes_size(c) => out.push(check("warn", "Your copy of the game may be incomplete", "Its size isn't one a full dump of the cartridge has. If the game won't start, try another copy of your own cartridge.", "copy")),
-                Ok(()) => out.push(check("ok", "Your copy of the game checks out", c.display().to_string(), "")),
+                Ok(()) if need.checks_anything() => out.push(check("ok", "Your copy of the game checks out", c.display().to_string(), "")),
+                // Nothing in it is checked: it's there, and that's all the launcher can say.
+                Ok(()) => out.push(check("info", "Your copy of the game is there", "The launcher can't check what's in it for this game. If the game says files are missing, pick the folder or file that holds the whole game.", "copy")),
                 Err(why) => out.push(check("bad", "Your copy of the game isn't the one it reads", why, "copy")),
             },
             None if prof.as_ref().map(|p| p.already_in_place(&g.path).is_some()).unwrap_or(false) => out.push(check("ok", "The game's files are in its folder", "", "")),
@@ -6032,6 +6057,9 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     }))?;
     if let Some(why) = not_a_program(&p) {
         return Err(Error::Msg(why.into()));
+    }
+    if !p.starts_with(&g.path) && install::system_program(&p) {
+        return Err(Error::Msg("That's a program from Windows or another app, not this game's. Choose the game's own program.".into()));
     }
     let outside = !p.starts_with(&g.path);
     // The release's own file when that file is its installer (one Setup.exe and nothing else): it

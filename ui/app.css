@@ -1579,8 +1579,10 @@ body.sliding .island{transition:none}
 .dl-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:-10px 0 -6px}
 .dl-bar .tabs{margin:0}
 
-/* Lighter Launcher (Settings, While Playing): nothing animates or blurs. */
-body.lighter *, body.lighter *::before, body.lighter *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; }
+/* Lighter Launcher (Settings, While Playing): nothing blurs; with .still (turned on by the player,
+   or the system asking for less motion), nothing animates either. */
+body.lighter *, body.lighter *::before, body.lighter *::after { backdrop-filter: none !important; }
+body.still *, body.still *::before, body.still *::after { animation: none !important; transition: none !important; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--cyan); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .link-btn:hover { opacity: .85; }
 .home-search{display:block;margin:0 auto 22px}.home-search input{height:46px}

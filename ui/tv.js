@@ -757,8 +757,9 @@
   // in from just behind the screen. Going back runs the other way, out to the cover you came from.
   // Only transforms and opacity move, so it stays smooth on handhelds too.
   const FLY = { D: 280, IN: 'cubic-bezier(.45,0,.6,.4)', OUT: 'cubic-bezier(.2,.75,.15,1)' };
-  const still = () => lighter() || matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Nothing animates (Lighter Launcher turned on, or the system asking for less motion; see applyLighter).
+  const still = () => document.body.classList.contains('still');
+  const calm = still;
   // The cover's own rectangle on screen (a Cover Flow box: its front).
   const faceOf = (el) => (el.querySelector('.front') || el).getBoundingClientRect();
   // A point on screen, in the page's own units (it's drawn at 1920 wide and scaled to the screen).

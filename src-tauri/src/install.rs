@@ -1161,6 +1161,16 @@ fn downloaded_copy(stem: &str) -> bool {
     s.ends_with(')') && s.rfind(" (").map(|i| { let n = &s[i + 2..s.len() - 1]; (1..=2).contains(&n.len()) && n.chars().all(|c| c.is_ascii_digit()) }).unwrap_or(false)
 }
 
+/// A program that belongs to Windows or to another app (Visual Studio's installer, a runtime's
+/// setup, an uninstaller), never a game.
+pub fn system_program(p: &Path) -> bool {
+    let full = p.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+    let name = full.rsplit('/').next().unwrap_or_default().to_string();
+    let places = ["/windows/system32/", "/windows/syswow64/", "/microsoft visual studio/", "/common files/", "/windowsapps/", "/microsoft/edge", "/dotnet/", "/nvidia corporation/", "/steam/steamapps/common/steamworks shared/"];
+    let names = ["vs_", "vc_redist", "vcredist", "unins", "dxsetup", "dotnet", "msiexec", "explorer.exe", "cmd.exe", "powershell"];
+    places.iter().any(|d| full.contains(d)) || names.iter().any(|n| name.starts_with(n))
+}
+
 pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     let low = rel.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     if RUNTIME_INSTALLERS.iter().any(|r| low.starts_with(r)) || downloaded_copy(&low) {
@@ -1456,6 +1466,16 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn programs_from_windows_or_other_apps_are_told_apart() {
+        assert!(super::system_program(std::path::Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_layout.exe")));
+        assert!(super::system_program(std::path::Path::new(r"C:\Windows\System32\notepad.exe")));
+        assert!(super::system_program(std::path::Path::new(r"D:\Games\X\unins000.exe")));
+        assert!(super::system_program(std::path::Path::new(r"D:\Games\X\vc_redist.x64.exe")));
+        assert!(!super::system_program(std::path::Path::new(r"C:\Recomp Library\hopper\Hopper.exe")));
+        assert!(!super::system_program(std::path::Path::new("/home/me/Games/SkyRacer/SkyRacer.AppImage")));
+    }
+
     #[test]
     fn a_settings_program_beside_the_game_is_never_the_game() {
         let d = std::env::temp_dir().join(format!("rl-settings-exe-{}", std::process::id()));

@@ -398,6 +398,15 @@ pub struct Check {
     pub ids: Vec<String>,
 }
 
+impl GameCopy {
+    /// Whether anything about the copy is actually checked (a file in it, an id, a known dump), so
+    /// "it checks out" means something; otherwise the copy only has to be there.
+    pub fn checks_anything(&self) -> bool {
+        let c = &self.check;
+        !c.file.is_empty() || !c.xdvdfs.is_empty() || !c.iso9660.is_empty() || !c.nup_build_id.is_empty() || !c.n64_region.is_empty() || !c.n64_id.is_empty() || c.n64_rev.is_some() || !c.ids.is_empty() || !self.dumps.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Start {
     /// The program to start, first one that exists (relative to the game's folder).
