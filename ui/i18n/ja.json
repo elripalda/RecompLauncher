@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "Steam から {n} 本のゲームを削除しました。",
  "RecompLauncher is out of your Steam library.": "RecompLauncher は Steam ライブラリから削除されました。",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "RecompLauncher が Steam に追加したゲームを削除します。「Steam を同期し続ける」もオフになります。",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "RecompLauncher が Steam に追加したゲームを削除します。自分で追加したゲームは残ります。"
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "RecompLauncher が Steam に追加したゲームを削除します。自分で追加したゲームは残ります。",
+ "Clock": "時計",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "ランチャー、Big Picture モード、クイックメニューでの時刻の表示方法。",
+ "Same as the language ({time})": "言語と同じ（{time}）",
+ "12-hour ({time})": "12時間制（{time}）",
+ "24-hour ({time})": "24時間制（{time}）",
+ "Auto follows the language": "「自動」は言語に合わせます"
 }

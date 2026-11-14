@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "{n} games uit Steam verwijderd.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher staat niet meer in je Steam-bibliotheek.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "Haalt de games die RecompLauncher in Steam heeft gezet eruit. Steam gesynchroniseerd houden gaat ook uit.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Haalt de games die RecompLauncher in Steam heeft gezet eruit. Games die je zelf hebt toegevoegd, blijven staan."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Haalt de games die RecompLauncher in Steam heeft gezet eruit. Games die je zelf hebt toegevoegd, blijven staan.",
+ "Clock": "Klok",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Hoe tijden worden getoond in de launcher, de Big Picture-modus en het snelmenu.",
+ "Same as the language ({time})": "Zelfde als de taal ({time})",
+ "12-hour ({time})": "12-uursnotatie ({time})",
+ "24-hour ({time})": "24-uursnotatie ({time})",
+ "Auto follows the language": "Auto volgt de taal"
 }

@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "已从 Steam 移除 {n} 款游戏。",
  "RecompLauncher is out of your Steam library.": "RecompLauncher 已不在你的 Steam 库中。",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "移除 RecompLauncher 放进 Steam 的游戏。“保持 Steam 同步”也会关闭。",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "移除 RecompLauncher 放进 Steam 的游戏。你自己添加的游戏会保留。"
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "移除 RecompLauncher 放进 Steam 的游戏。你自己添加的游戏会保留。",
+ "Clock": "时钟",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "启动器、大屏幕模式和快捷菜单中时间的显示方式。",
+ "Same as the language ({time})": "与语言相同（{time}）",
+ "12-hour ({time})": "12 小时制（{time}）",
+ "24-hour ({time})": "24 小时制（{time}）",
+ "Auto follows the language": "“自动”跟随语言"
 }

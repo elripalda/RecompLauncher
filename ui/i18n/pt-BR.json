@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "{n} jogos removidos do Steam.",
  "RecompLauncher is out of your Steam library.": "O RecompLauncher não está mais na sua biblioteca do Steam.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "Tira os jogos que o RecompLauncher colocou no Steam. Manter o Steam sincronizado também é desativado.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Tira os jogos que o RecompLauncher colocou no Steam. Os que você mesmo adicionou continuam lá."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Tira os jogos que o RecompLauncher colocou no Steam. Os que você mesmo adicionou continuam lá.",
+ "Clock": "Relógio",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Como as horas aparecem no launcher, no modo Big Picture e no menu rápido.",
+ "Same as the language ({time})": "Igual ao idioma ({time})",
+ "12-hour ({time})": "12 horas ({time})",
+ "24-hour ({time})": "24 horas ({time})",
+ "Auto follows the language": "Auto segue o idioma"
 }

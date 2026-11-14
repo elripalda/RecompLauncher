@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "{n} гру прибрано зі Steam.|{n} гри прибрано зі Steam.|{n} ігор прибрано зі Steam.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher більше немає у твоїй бібліотеці Steam.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "Прибирає ігри, які RecompLauncher додав у Steam. «Синхронізація зі Steam» теж вимкнеться.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Прибирає ігри, які RecompLauncher додав у Steam. Ігри, які ти додав сам, лишаються."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Прибирає ігри, які RecompLauncher додав у Steam. Ігри, які ти додав сам, лишаються.",
+ "Clock": "Годинник",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Як показується час у лаунчері, режимі Big Picture і швидкому меню.",
+ "Same as the language ({time})": "Як прийнято в мові ({time})",
+ "12-hour ({time})": "12-годинний ({time})",
+ "24-hour ({time})": "24-годинний ({time})",
+ "Auto follows the language": "«Авто» — як прийнято в мові"
 }

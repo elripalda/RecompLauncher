@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "{n} oyun Steam'den kaldırıldı.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher artık Steam kitaplığınızda değil.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "RecompLauncher'ın Steam'e eklediği oyunları kaldırır. Steam'i eşitlenmiş tut da kapanır.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "RecompLauncher'ın Steam'e eklediği oyunları kaldırır. Kendi eklediğiniz oyunlar kalır."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "RecompLauncher'ın Steam'e eklediği oyunları kaldırır. Kendi eklediğiniz oyunlar kalır.",
+ "Clock": "Saat",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Saatlerin başlatıcıda, Big Picture modunda ve hızlı menüde nasıl görüneceği.",
+ "Same as the language ({time})": "Dille aynı ({time})",
+ "12-hour ({time})": "12 saat ({time})",
+ "24-hour ({time})": "24 saat ({time})",
+ "Auto follows the language": "Otomatik, dile göre ayarlanır"
 }

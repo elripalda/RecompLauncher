@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "Đã gỡ {n} trò chơi khỏi Steam.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher không còn trong thư viện Steam của bạn.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "Gỡ các trò chơi RecompLauncher đã đưa vào Steam. Giữ Steam đồng bộ cũng sẽ tắt.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Gỡ các trò chơi RecompLauncher đã đưa vào Steam. Trò chơi bạn tự thêm vẫn giữ nguyên."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Gỡ các trò chơi RecompLauncher đã đưa vào Steam. Trò chơi bạn tự thêm vẫn giữ nguyên.",
+ "Clock": "Đồng hồ",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Cách hiển thị giờ trong trình khởi chạy, Chế độ Big Picture và menu nhanh.",
+ "Same as the language ({time})": "Giống ngôn ngữ ({time})",
+ "12-hour ({time})": "12 giờ ({time})",
+ "24-hour ({time})": "24 giờ ({time})",
+ "Auto follows the language": "Tự động theo ngôn ngữ"
 }

@@ -427,7 +427,7 @@
 
   const updatesReady = () => Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]).length + (S.launcherUpd ? 1 : 0);
   const tabOf = () => (['about', 'saves', 'storage'].includes(TV.view) ? 'settings' : GAMEVIEWS.includes(TV.view) ? TV.from || 'home' : TV.view);
-  const clock = () => new Date().toLocaleTimeString(curLocale(), { hour: 'numeric', minute: '2-digit' });
+  const clock = () => new Date().toLocaleTimeString(curLocale(), timeOpts({ hour: 'numeric', minute: '2-digit' }));
   const bar = () => `<header class="tv-bar"><div class="tv-brand">${MARK}<img class="tv-wm" src="img/${document.body.classList.contains('light') ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher"></div>
     <nav class="tv-nav" aria-label="${esc(t('Sections'))}">${glyph('lb', 'tv-bumpg')}<span class="tv-tab-pill" aria-hidden="true"></span>${tvTabs().map(([k, n]) => `<button type="button" class="tv-tab${tabOf() === k ? ' on' : ''}" data-f data-key="tab:${k}" data-tab="${k}">${esc(t(n))}${k === 'downloads' && updatesReady() ? `<b class="tv-tab-n">${updatesReady()}</b>` : ''}</button>`).join('')}${glyph('rb', 'tv-bumpg')}</nav>
     <div class="tv-status"><span class="tv-clock" id="tv-clock">${clock()}</span></div></header>`;
@@ -1174,6 +1174,7 @@
           ${(() => { const v = { grid: 'Grid', drift: 'Drift', art: 'Game Art' }[bgMode()] || 'Aurora'; return `<button type="button" class="tv-item" data-f data-key="s:bg" data-tvact="bgmode" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Backdrop'))}<small>${esc(t('Behind Home and the Library: a moving backdrop in the launcher\'s colors, or the art of the game you\'re on'))}</small></span><span class="tv-seg">${[N_('Aurora'), N_('Grid'), N_('Drift'), N_('Game Art')].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           ${(() => { const v = (S.settings.ui || {}).tv_dock === 'wide' ? 'Wide' : 'Covers'; return `<button type="button" class="tv-item" data-f data-key="s:dock" data-tvact="dockview" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Home Row'))}<small>${esc(t('Your games on Home as covers, or as wide pictures'))}</small></span><span class="tv-seg">${[N_('Covers'), N_('Wide')].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:lang" data-tvact="lang" data-val="${esc(langName())}"><span class="k">${esc(t('Language'))}<small>${esc(langName())}</small></span><span class="tv-pill on">${esc(t('Change'))}</span></button>
+          ${clockRow()}
           ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
           ${head(t('Starting up'))}
@@ -1274,6 +1275,15 @@
     const l = (S.settings.ui || {}).lang, name = (c) => (LANGS.find((x) => x[0] === c) || [c, c])[1];
     return !l || l === 'auto' ? tf('Same as your computer ({lang})', { lang: name(systemLang()) }) : name(l);
   };
+  // The clock: the language's own, or 12- or 24-hour, each shown as 3:30 in the afternoon.
+  function clockRow() {
+    const saved = (S.settings.ui || {}).clock;
+    const cur = saved === '12' || saved === '24' ? saved : '';
+    const choices = [['', t('Auto')], ['12', clockSample('12')], ['24', clockSample('24')]];
+    const segs = choices.map(([c, n]) => `<span class="${c === cur ? 'on' : ''}">${esc(n)}</span>`).join('');
+    const val = choices.find(([c]) => c === cur)[1];
+    return `<button type="button" class="tv-item" data-f data-key="s:clock" data-tvact="clock" data-seg="1" data-val="${esc(val)}"><span class="k">${esc(t('Clock'))}<small>${esc(t('Auto follows the language'))}</small></span><span class="tv-seg">${segs}</span></button>`;
+  }
   function pickLang() {
     const cur = (S.settings.ui || {}).lang || 'auto';
     const items = [['auto', S.os === 'windows' ? t('Same as Windows') : t('Same as your computer')]].concat(LANGS).map(([c, n]) => ({ label: (c === cur ? '✓ ' : '') + n, run: () => window.setLanguage && window.setLanguage(c) }));
@@ -2685,6 +2695,7 @@
     else if (act === 'homeview') await saveUi({ tv_home: roll(['', 'pinned'], ui.tv_home || '') });
     else if (act === 'dockview') await saveUi({ tv_dock: roll(['', 'wide'], ui.tv_dock || '') });
     else if (act === 'bgmode') await saveUi({ tv_bg: roll(['', 'grid', 'drift', 'art'], ui.tv_bg || '') });
+    else if (act === 'clock') await saveUi({ clock: roll(['', '12', '24'], ui.clock || '') });
     else if (act === 'glyphs') await saveUi({ tv_glyphs: roll(['', 'xbox', 'ps', 'nintendo', 'steam'], ui.tv_glyphs || '') });
     else if (act === 'theme') {
       const now = ui.theme === 'light' ? 2 : ui.oled ? 1 : 0, next = (now + dir + 3) % 3;

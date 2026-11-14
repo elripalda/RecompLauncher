@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "{n} game dihapus dari Steam.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher sudah tidak ada di pustaka Steam-mu.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "Mengeluarkan game yang dimasukkan RecompLauncher ke Steam. Jaga Steam tetap sinkron juga ikut mati.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Mengeluarkan game yang dimasukkan RecompLauncher ke Steam. Game yang kamu tambahkan sendiri tetap ada."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Mengeluarkan game yang dimasukkan RecompLauncher ke Steam. Game yang kamu tambahkan sendiri tetap ada.",
+ "Clock": "Jam",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "Cara waktu ditampilkan di launcher, Mode Big Picture, dan menu cepat.",
+ "Same as the language ({time})": "Sama dengan bahasa ({time})",
+ "12-hour ({time})": "12 jam ({time})",
+ "24-hour ({time})": "24 jam ({time})",
+ "Auto follows the language": "Otomatis mengikuti bahasa"
 }

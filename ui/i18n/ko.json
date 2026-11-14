@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "Steam에서 게임 {n}개를 제거했습니다.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher가 더 이상 Steam 라이브러리에 없습니다.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "RecompLauncher가 Steam에 넣은 게임을 뺍니다. Steam 계속 동기화도 꺼집니다.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "RecompLauncher가 Steam에 넣은 게임을 뺍니다. 직접 추가한 게임은 남습니다."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "RecompLauncher가 Steam에 넣은 게임을 뺍니다. 직접 추가한 게임은 남습니다.",
+ "Clock": "시계",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "런처, Big Picture 모드, 빠른 메뉴에서 시간을 표시하는 방식.",
+ "Same as the language ({time})": "언어와 같게({time})",
+ "12-hour ({time})": "12시간제({time})",
+ "24-hour ({time})": "24시간제({time})",
+ "Auto follows the language": "자동은 언어를 따릅니다"
 }

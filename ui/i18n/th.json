@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "นำเกม {n} เกมออกจาก Steam แล้ว",
  "RecompLauncher is out of your Steam library.": "RecompLauncher ไม่อยู่ในคลัง Steam ของคุณแล้ว",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "นำเกมที่ RecompLauncher ใส่ไว้ใน Steam ออก ซิงค์กับ Steam เสมอ จะปิดด้วย",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "นำเกมที่ RecompLauncher ใส่ไว้ใน Steam ออก เกมที่คุณเพิ่มเองจะยังอยู่"
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "นำเกมที่ RecompLauncher ใส่ไว้ใน Steam ออก เกมที่คุณเพิ่มเองจะยังอยู่",
+ "Clock": "นาฬิกา",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "รูปแบบเวลาที่แสดงในตัวเปิดเกม โหมด Big Picture และเมนูด่วน",
+ "Same as the language ({time})": "เหมือนกับภาษา ({time})",
+ "12-hour ({time})": "12 ชั่วโมง ({time})",
+ "24-hour ({time})": "24 ชั่วโมง ({time})",
+ "Auto follows the language": "อัตโนมัติจะเป็นไปตามภาษา"
 }

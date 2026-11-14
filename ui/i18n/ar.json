@@ -3082,5 +3082,11 @@
  "{n} games removed from Steam.": "أُزيلت لعبتان من Steam.|أُزيلت {n} ألعاب من Steam.|أُزيلت {n} لعبة من Steam.|أُزيلت {n} لعبة من Steam.",
  "RecompLauncher is out of your Steam library.": "لم يعد RecompLauncher في مكتبة Steam.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "يزيل الألعاب التي أضافها RecompLauncher إلى Steam. سيتوقف «إبقاء Steam متزامنًا» أيضًا.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "يزيل الألعاب التي أضافها RecompLauncher إلى Steam. الألعاب التي أضفتها بنفسك تبقى."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "يزيل الألعاب التي أضافها RecompLauncher إلى Steam. الألعاب التي أضفتها بنفسك تبقى.",
+ "Clock": "الساعة",
+ "How times show in the launcher, Big Picture mode and the quick menu.": "طريقة عرض الأوقات في المشغل ووضع Big Picture والقائمة السريعة.",
+ "Same as the language ({time})": "مثل اللغة ({time})",
+ "12-hour ({time})": "12 ساعة ({time})",
+ "24-hour ({time})": "24 ساعة ({time})",
+ "Auto follows the language": "«تلقائي» يتبع اللغة"
 }
