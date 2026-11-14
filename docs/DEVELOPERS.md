@@ -153,7 +153,9 @@ What the player sees:
 - `check`: how to tell it's the right game. Use whichever fits:
   - `file`: a file that should be in the folder, like `"default.xex"`.
   - `xdvdfs`: a file on an Xbox 360 disc image.
-  - `iso9660`: a file in the top folder of a PlayStation 2 (or any ISO 9660) disc image.
+  - `iso9660`: a file in the top folder of a PlayStation 2 (or any ISO 9660) disc image. Raw CD
+    sectors (a PlayStation `.bin`) work too, and a `.cue`, `.gdi` or `.m3u` is checked through
+    its data tracks.
   - `nup_build_id`: the build ID of a Nintendo Switch or Switch 2 `.nup` package, e.g. `"e0f3ccfa"` (hex,
     at least 8 digits; a prefix of the full 64-digit ID is fine). It is read from the `exefs/main`
     of the package's newest title, from the table rows leading to it and the first 96 bytes of that
@@ -164,6 +166,19 @@ What the player sees:
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found.
+
+**CD games kept as several files.** The launcher finds a `.cue` (with its `.bin` tracks), a `.gdi`
+or an `.m3u` as one copy. If your game reads that sheet, name it in `label`, and `{game}` is the
+sheet. Otherwise `{game}` is the disc's first data track, the `.bin`, so a game that reads single
+disc images still gets one:
+
+```json
+"game": {
+  "kind": "iso",
+  "label": "Your dump of the USA release (SLUS-00797): pick the .cue file, with its .bin tracks beside it.",
+  "check": { "iso9660": "SLUS_007.97" }
+}
+```
 
 Leave `game` out if your recomp finds the game itself.
 
@@ -219,7 +234,7 @@ These fill in anywhere a path, an argument or a value is written:
 | | |
 | --- | --- |
 | `{install}` | Your game's folder |
-| `{game}` | The player's copy (the .iso or the folder) |
+| `{game}` | The player's copy (the .iso or the folder; for a .cue, its .bin unless `label` names .cue) |
 | `{documents}` | Documents |
 | `{local}` | AppData\Local, or ~/.local/share |
 | `{config}` | AppData\Roaming, or ~/.config |

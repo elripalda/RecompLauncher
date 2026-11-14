@@ -215,7 +215,7 @@
         },
         "label": {
           "type": "string",
-          "description": "What to ask for. Name the region or serial if only one works."
+          "description": "What to ask for. Name the region or serial if only one works. Name .cue, .gdi or .m3u if your game reads that sheet; otherwise a copy kept as one is given as its first data track (.bin)."
         },
         "check": {
           "type": "object",
@@ -231,7 +231,7 @@
             },
             "iso9660": {
               "type": "string",
-              "description": "A file in the top folder of a PS2 (or any ISO 9660) disc image."
+              "description": "A file in the top folder of a PS2 (or any ISO 9660) disc image, in 2048-byte or raw 2352-byte sectors. A .cue, .gdi or .m3u is checked through its data tracks."
             },
             "nup_build_id": {
               "type": "string",

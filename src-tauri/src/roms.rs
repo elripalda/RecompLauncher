@@ -656,6 +656,20 @@ fn folded(p: &Path) -> Option<Folded> {
     }
 }
 
+/// The data tracks a .cue, .gdi or .m3u names that are there, in disc order. None for any other
+/// file, so a copy check knows to look at the file itself.
+pub fn sheet_data_tracks(p: &Path) -> Option<Vec<PathBuf>> {
+    folded(p).map(|set| set.data)
+}
+
+/// The first disc an .m3u lists that's there (its .cue, .gdi or disc image).
+pub fn first_disc(p: &Path) -> Option<PathBuf> {
+    if ext_of(p) != "m3u" {
+        return None;
+    }
+    folded(p)?.files.into_iter().next()
+}
+
 /// A sheet found as one copy. Its console is read from its data tracks like an .iso's (a raw
 /// 2352-byte track works too), its size is its tracks' (only the sheet's own when they're missing,
 /// so a stray sheet doesn't look like a whole disc). It's kept even with tracks missing, so the
