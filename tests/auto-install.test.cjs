@@ -24,8 +24,10 @@ function settingsContext(settings, setTab = 'updates') {
     okMark: () => '', portableRow: () => '', geRow: () => '', networkGroup: () => '',
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s,
     homePinned: () => false, bgMode: () => '', langName: () => 'English',
-    svg: () => '', hints: () => '', HEART: '',
+    svg: () => '', hints: () => '', HEART: '', setClock: () => {},
   });
+  c.window = c;
+  c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
   vm.runInContext(autoInstallSrc, c);
   return c;
 }
