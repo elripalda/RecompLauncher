@@ -1187,6 +1187,7 @@
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
+          ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to put an older one back'))}</small></span>${svg('chevR', 30)}</button>
           ${head(t('Controller'))}
@@ -2615,6 +2616,8 @@
       case 'support': sfx('select'); return invoke('open_url', { url: 'https://ko-fi.com/recomp' }).catch(fail);
       case 'storage': sfx('open'); TV.sizes = null; return go('storage');
       case 'steamsync': sfx('select'); return window.steamSync && window.steamSync(false);
+      // Redrawn after: Keep Steam in Sync may have turned off.
+      case 'steamremove': sfx('select'); if (window.steamRemoveAll) await window.steamRemoveAll(); return draw(true);
       case 'moveto': sfx('open'); return moveListing(id, el.dataset.to).then(() => { if (TV.view === 'game' && TV.arg === id) { TV.arg = el.dataset.to; draw(true); } });
       case 'scan': sfx('open'); if (el.dataset.scanner !== 'clamav' && el.dataset.sha) { invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail); return toast(t('The report is open in your browser.')); } return toast(el.dataset.scanner === 'clamav' ? t('Checked by ClamAV on recompstore.com before it was published.') : t('Every release is scanned before it\'s published. A few flags on a new recomp are usually false positives.'));
       case 'saves': sfx('open'); TV.savesAll = null; return go('saves');
