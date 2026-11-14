@@ -1877,11 +1877,14 @@ const OS_SHORT = (a) => (a.systems || []).filter((k) => OS_NAME[k]);
 const verIcon = (v) => catalogArt(v, 'icon') || catalogArt(v, 'cover');
 function verRow(v, cur, g, cls) {
   const inst = S.library[v.id], here = v.id === cur;
-  const tags = [v.id === g.pick ? `<span class="vtag rec">${esc(t('Recommended'))}</span>` : '', inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
-  const line = [esc((devOf(v) || {}).name || v.author || '') + (devOf(v) && devOf(v).verified ? TICK(12) : ''), esc(v.adds || '')].filter(Boolean).join(' · ');
+  const rec = v.id === g.pick, dev = devOf(v);
+  const STAR = '<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
+  const tags = [rec ? `<span class="vtag rec">${STAR}${esc(t('Recommended'))}</span>` : '', inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
+  const who = (dev || {}).name || v.author || '';
+  const line = [who ? `<span class="v-dev${dev && dev.verified ? ' ver' : ''}">${esc(who)}${dev && dev.verified ? TICK(12) : ''}</span>` : '', esc(v.adds || '')].filter(Boolean).join(' · ');
   const os = OS_SHORT(v);
   const ic = verIcon(v);
-  return `<button type="button" class="${cls}${here ? ' on' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
+  return `<button type="button" class="${cls}${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
     <span class="v-ic">${ic ? pic(ic, '', 'loading="lazy"') : ''}</span>
     <span class="v-txt"><span class="v-n"><b>${esc(v.name)}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}</span>
     <span class="v-os">${os.map((k) => `<span title="${esc(OS_NAME[k])}">${osIcon(k)}</span>`).join('')}</span>
@@ -1925,7 +1928,7 @@ function verMenu(el) {
   m.dataset.for = a.id;
   m.setAttribute('role', 'listbox');
   m.setAttribute('aria-label', tf('{n} versions of {game}', { n: g.list.length, game: g.name }));
-  m.innerHTML = `<div class="vm-h">${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g, 'vm-row')).join('')}`;
+  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g, 'vm-row')).join('')}`;
   document.body.append(m);
   const r = el.getBoundingClientRect();
   const w = Math.min(560, innerWidth - 24);
