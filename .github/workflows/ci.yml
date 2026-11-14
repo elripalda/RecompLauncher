@@ -77,6 +77,10 @@ jobs:
       - name: Run Rust tests
         run: npm test -- --locked
 
+      - name: Check pinned desktop engine CLI
+        if: runner.os != 'macOS'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --test scarlet_engine pinned_desktop_package_starts_its_cli -- --ignored
+
       - name: Build installers
         shell: bash
         # Packaging downloads Tauri's tools from GitHub, which sometimes answers 504: tried again.

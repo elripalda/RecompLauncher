@@ -69,6 +69,7 @@ The NSP container's name/extension does not establish encryption state. `prod.ke
 not a universal guarantee of successful decryption. Some packages need title rights from a ticket
 or `title.keys`. The project decides what its reader needs and validates generation, rights ID,
 game version and supported package layout. The launcher checks keys-file shape, not decryption.
+The prod.keys shape check accepts bounded even-length hexadecimal records, including RSA/keyblob entries; the engine validates the specific key lengths and values it uses. Title-key values remain 16 bytes.
 A prepare failure remains a failure, preserves selected inputs, and allows changing the key file
 before retrying. No guessed firmware-version database or automatic title-key extraction is added.
 

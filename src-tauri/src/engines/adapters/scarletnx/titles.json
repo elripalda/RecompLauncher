@@ -1,0 +1,646 @@
+[
+  {
+    "title_id": "010005501E68C000",
+    "name": "Ace Attorney Investigations Collection",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010005501E68C000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_AceAttorneyInvestigationsCollection_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_AceAttorneyInvestigationsCollection_image500w.jpg"
+  },
+  {
+    "title_id": "010012101468C000",
+    "name": "Metroid Prime Remastered",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010012101468C000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_MetroidPrimeRemastered_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_MetroidPrimeRemastered_image500w.jpg"
+  },
+  {
+    "title_id": "010013C00E930000",
+    "name": "Hollow Knight: Silksong",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010013C00E930000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/hollowknightsilksong/1x1_HollowKnightSilksong_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/hollowknightsilksong/1x1_HollowKnightSilksong_image500w.jpg"
+  },
+  {
+    "title_id": "010014C011146000",
+    "name": "Subnautica: Below Zero",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010014C011146000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_SubnauticaBelowZero_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_SubnauticaBelowZero_image500w.jpg"
+  },
+  {
+    "title_id": "010014E00DB56000",
+    "name": "Digimon Story Cyber Sleuth: Complete Edition",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010014E00DB56000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_DigimonStoryCyberSleuthCompleteEdition_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_DigimonStoryCyberSleuthCompleteEdition_image500w.jpg"
+  },
+  {
+    "title_id": "010015100B514000",
+    "name": "Super Mario Bros. Wonder",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010015100B514000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_SuperMarioBrosWonder_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_SuperMarioBrosWonder_image500w.jpg"
+  },
+  {
+    "title_id": "0100152000022000",
+    "name": "Mario Kart 8 Deluxe",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100152000022000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_MarioKart8Deluxe_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_MarioKart8Deluxe_image500w.jpg"
+  },
+  {
+    "title_id": "0100199023B2E000",
+    "name": "Atelier Ryza: Ever Darkness & the Secret Hideout DX",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100199023B2E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/atelierryzaeverdarknessandthesecrethideoutdx_1/1x1_AtelierRyzaEverDarknessAndTheSecretHideoutDX_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/atelierryzaeverdarknessandthesecrethideoutdx_1/1x1_AtelierRyzaEverDarknessAndTheSecretHideoutDX_image500w.jpg"
+  },
+  {
+    "title_id": "010019A01E2F2000",
+    "name": "Metroid Prime 4: Beyond",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010019A01E2F2000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_2_games/metroid_prime_4_nintendo_switch_2_edition/1x1_NSwitch_MetroidPrime4Beyond_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_2_games/metroid_prime_4_nintendo_switch_2_edition/2x1_NSwitch_MetroidPrime4Beyond_image500w.jpg"
+  },
+  {
+    "title_id": "01001B300B9BE000",
+    "name": "Diablo III: Eternal Collection",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01001B300B9BE000/README.md",
+    "cover": "https://img-eshop.cdn.nintendo.net/i/bf924a38ce1da69413bdba496afad2ef562f73ea5273621c09cac878ab7ad0b5.jpg",
+    "hero": "https://img-eshop.cdn.nintendo.net/i/9d8f95e20b59b76eab1a74aaefdabbabe6438b6761efc4efa6306dde638987f3.jpg"
+  },
+  {
+    "title_id": "01001F5010DFA000",
+    "name": "Pokémon Legends: Arceus",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01001F5010DFA000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_PokemonLegendsArceus_EN_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_PokemonLegendsArceus_EN_image500w.jpg"
+  },
+  {
+    "title_id": "010020400E1C2000",
+    "name": "Raging Loop",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010020400E1C2000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_RagingLoop_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_RagingLoop_image500w.jpg"
+  },
+  {
+    "title_id": "0100217023F6C000",
+    "name": "Well Dweller",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100217023F6C000/README.md",
+    "cover": "https://assets.nintendo.eu/image/private/f_auto,q_auto,w_500/wk30tmoq2t6mvfhlo4ee",
+    "hero": "https://assets.nintendo.eu/image/private/f_auto,q_auto,w_500/wk30tmoq2t6mvfhlo4ee"
+  },
+  {
+    "title_id": "010028600EBDA000",
+    "name": "Super Mario 3D World + Bowser's Fury",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010028600EBDA000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_SuperMario3DWorldAndBowsersFury_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_SuperMario3DWorldAndBowsersFury_image500w.jpg"
+  },
+  {
+    "title_id": "010029B018432000",
+    "name": "Ghost Trick: Phantom Detective",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010029B018432000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_GhostTrickPhantomDetective_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_GhostTrickPhantomDetective_image500w.jpg"
+  },
+  {
+    "title_id": "01002B30028F6000",
+    "name": "Celeste",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01002B30028F6000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_Celeste_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_Celeste_image500w.jpg"
+  },
+  {
+    "title_id": "01002E7016C46000",
+    "name": "Cult of the Lamb",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01002E7016C46000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_CultOfTheLamb_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_CultOfTheLamb_image500w.jpg"
+  },
+  {
+    "title_id": "0100300012F2A000",
+    "name": "Advance Wars 1+2: Re-Boot Camp",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100300012F2A000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_AdvanceWarsRebootCamp_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_AdvanceWarsRebootCamp_image500w.jpg"
+  },
+  {
+    "title_id": "010031F019294000",
+    "name": "Super Monkey Ball Banana Rumble",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010031F019294000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_SuperMonkeyBallBananaRumble_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_SuperMonkeyBallBananaRumble_Logo_image500w.png"
+  },
+  {
+    "title_id": "0100346017304000",
+    "name": "Taiko Risshiden V DX",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100346017304000/README.md",
+    "cover": "https://img-eshop.cdn.nintendo.net/i/603c4c5232d48ef384fd87441d9ea272af7c5b26e6a9c3f42e231b3a84f622eb.jpg",
+    "hero": "https://img-eshop.cdn.nintendo.net/i/7c301b0d7d3388a3d4d2b16e312ad838336059a3e4057af352c3d398e30e1d21.jpg"
+  },
+  {
+    "title_id": "010036E00FB20000",
+    "name": "The Great Ace Attorney Chronicles",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010036E00FB20000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_TheGreatAceAttorneyChronicles_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_TheGreatAceAttorneyChronicles_image500w.jpg"
+  },
+  {
+    "title_id": "010038600B27E000",
+    "name": "Bastion",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010038600B27E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_Bastion_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_Bastion_image500w.jpg"
+  },
+  {
+    "title_id": "010038B015560000",
+    "name": "FINAL FANTASY TACTICS - The Ivalice Chronicles",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010038B015560000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/finalfantasytacticstheivalicechronicles/1x1_FinalFantasyTacticsTheIvaliceChronicles_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/finalfantasytacticstheivalicechronicles/2x1_FinalFantasyTacticsTheIvaliceChronicles_image500w.jpg"
+  },
+  {
+    "title_id": "01003FC01670C000",
+    "name": "13 Sentinels: Aegis Rim",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01003FC01670C000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_13SentinelsAegisRim_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_13SentinelsAegisRim_image500w.jpg"
+  },
+  {
+    "title_id": "010040801A4C8000",
+    "name": "Blasphemous 2",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010040801A4C8000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_Blasphemous2_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_Blasphemous2_image500w.jpg"
+  },
+  {
+    "title_id": "010042000A986000",
+    "name": "DRAGON QUEST BUILDERS 2",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010042000A986000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_DragonQuestBuilders2_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_DragonQuestBuilders2_image500w.jpg"
+  },
+  {
+    "title_id": "0100429011144000",
+    "name": "Subnautica",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100429011144000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_Subnautica_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_Subnautica_image500w.jpg"
+  },
+  {
+    "title_id": "010049900F546000",
+    "name": "Super Mario 3D All-Stars",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010049900F546000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_SuperMario3DAllstars_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_SuperMario3DAllstars_image500w.jpg"
+  },
+  {
+    "title_id": "01004A4010FEA000",
+    "name": "Bayonetta 3",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01004A4010FEA000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_Bayonetta3_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_Bayonetta3_image500w.jpg"
+  },
+  {
+    "title_id": "01004AB00A260000",
+    "name": "DARK SOULS: REMASTERED",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01004AB00A260000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_DarkSoulsRemastered_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_DarkSoulsRemastered_image500w.jpg"
+  },
+  {
+    "title_id": "01004D300C5AE000",
+    "name": "Kirby and the Forgotten Land",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01004D300C5AE000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_KirbyAndTheForgottenLand_onlylogo_enGB_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_KirbyAndTheForgottenLand_onlylogo_enGB_image500w.jpg"
+  },
+  {
+    "title_id": "010051701FB46000",
+    "name": "Monster Train 2",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010051701FB46000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/monstertrain2/1x1_MonsterTrain2_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/monstertrain2/2x1_MonsterTrain2_image500w.jpg"
+  },
+  {
+    "title_id": "010055D009F78000",
+    "name": "Fire Emblem: Three Houses",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010055D009F78000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_FireEmblemThreeHouses_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_FireEmblemThreeHouses_image500w.jpg"
+  },
+  {
+    "title_id": "01006000040C2000",
+    "name": "Yoshi's Crafted World",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01006000040C2000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_YoshisCraftedWorld_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_YoshisCraftedWorld_image500w.jpg"
+  },
+  {
+    "title_id": "010061D00DB74000",
+    "name": "Ori and the Blind Forest: Definitive Edition",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010061D00DB74000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_OriAndTheBlindForestDefinitiveEdition_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_OriAndTheBlindForestDefinitiveEdition_image500w.jpg"
+  },
+  {
+    "title_id": "0100620012D6E000",
+    "name": "Big Brain Academy: Brain vs. Brain",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100620012D6E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_BigBrainAcademyBrainVsBrain_enGB_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_BigBrainAcademyBrainVsBrain_enGB_image500w.jpg"
+  },
+  {
+    "title_id": "0100633007D48000",
+    "name": "Hollow Knight",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100633007D48000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/wii_u_download_software_3/SQ_WiiUDS_HollowKnight_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/wiiu_download_software_5/H2x1_WiiUDS_HollowKnight_image500w.jpg"
+  },
+  {
+    "title_id": "010063301BD50000",
+    "name": "SUPER ROBOT WARS Y",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010063301BD50000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/superrobotwarsy/1x1_SuperRobotWarsY_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/superrobotwarsy/2x1_SuperRobotWarsY_image500w.jpg"
+  },
+  {
+    "title_id": "0100646009FBE000",
+    "name": "Dead Cells",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100646009FBE000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_DeadCells_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_DeadCells_image500w.jpg"
+  },
+  {
+    "title_id": "010069401ADB8000",
+    "name": "Unicorn Overlord",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010069401ADB8000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_UnicornOverlord_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_UnicornOverlord_image500w.jpg"
+  },
+  {
+    "title_id": "0100698009C6E000",
+    "name": "Blasphemous",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100698009C6E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_Blasphemous_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_Blasphemous_image500w.jpg"
+  },
+  {
+    "title_id": "01006A800016E000",
+    "name": "Super Smash Bros. Ultimate",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01006A800016E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_SuperSmashBrosUltimate_02_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_SuperSmashBrosUltimate_02_image500w.jpg"
+  },
+  {
+    "title_id": "01006BB00C6F0000",
+    "name": "The Legend of Zelda: Link's Awakening",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01006BB00C6F0000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_TheLegendOfZeldaLinksAwakening_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_TheLegendOfZeldaLinksAwakening_image500w.jpg"
+  },
+  {
+    "title_id": "01006F8002326000",
+    "name": "Animal Crossing: New Horizons",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01006F8002326000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_AnimalCrossingNewHorizons_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_AnimalCrossingNewHorizons_image500w.jpg"
+  },
+  {
+    "title_id": "01006FE013472000",
+    "name": "Mario Party Superstars",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01006FE013472000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_MarioPartySuperStars_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_MarioPartySuperStars_image500w.jpg"
+  },
+  {
+    "title_id": "0100713016CCC000",
+    "name": "AI: THE SOMNIUM FILES - nirvanA Initiative",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100713016CCC000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_AITheSomniumFilesnirvanaInitiative_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_AITheSomniumFilesnirvanaInitiative_image500w.jpg"
+  },
+  {
+    "title_id": "0100726014352000",
+    "name": "Diablo II: Resurrected",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100726014352000/README.md",
+    "cover": "https://img-eshop.cdn.nintendo.net/i/3555961fefd935624036664963fdcc3b4409d223802a52eb30040b3a84d256bc.jpg",
+    "hero": "https://img-eshop.cdn.nintendo.net/i/353b407a48c000cc6fce107d5e0295917a97adc1c79f16dbb58a1740f2648a01.jpg"
+  },
+  {
+    "title_id": "010076F0049A2000",
+    "name": "Bayonetta",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010076F0049A2000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_Bayonetta1_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_Bayonetta1_image500w.jpg"
+  },
+  {
+    "title_id": "01007960049A0000",
+    "name": "Bayonetta 2",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01007960049A0000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_Bayonetta2_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_Bayonetta2_image500w.jpg"
+  },
+  {
+    "title_id": "01007A2027548000",
+    "name": "Trails in the Sky 2nd Chapter",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01007A2027548000/README.md",
+    "cover": "https://img-eshop.cdn.nintendo.net/i/05682664a6cb771a5ba9a64bda7d78e9bb5d4bf83cf48a55945c7602f6d2d240.jpg",
+    "hero": "https://img-eshop.cdn.nintendo.net/i/423a8fdf91cceb4f2c094fd26bdf43b66df648accf7506d857b5b05fdd4f5d33.jpg"
+  },
+  {
+    "title_id": "01007E3006DDA000",
+    "name": "Kirby Star Allies",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01007E3006DDA000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_KirbyStarAllies_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_KirbyStarAllies_image500w.jpg"
+  },
+  {
+    "title_id": "01007EF00011E000",
+    "name": "The Legend of Zelda: Breath of the Wild",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01007EF00011E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/wii_u_20/SQ_WiiU_TheLegendOfZeldaBreathOfTheWild_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/wiiu_14/SI_WiiU_TheLegendOfZeldaBreathOfTheWild_image500w.jpg"
+  },
+  {
+    "title_id": "010086A022444000",
+    "name": "BALL x PIT",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010086A022444000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/ballxpit/1x1_BallXPit_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/ballxpit/1x1_BallXPit_image500w.jpg"
+  },
+  {
+    "title_id": "010089B00D09C000",
+    "name": "AI: THE SOMNIUM FILES",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010089B00D09C000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_AiTheSomniumFiles_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_AiTheSomniumFiles_image500w.jpg"
+  },
+  {
+    "title_id": "01008BC024FDE000",
+    "name": "STEINS;GATE RE:BOOT",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01008BC024FDE000/README.md",
+    "cover": "https://img-eshop.cdn.nintendo.net/i/6b2ecfa06b500dabf6f3e88ece0b443bc4865a6935828bf1418627e5b7879372.jpg",
+    "hero": "https://img-eshop.cdn.nintendo.net/i/113f98d19861d9e71000f64e6069e783f177253fdb3e66853fc4ed4d2ffba462.jpg"
+  },
+  {
+    "title_id": "01008C0016544000",
+    "name": "Sea of Stars",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01008C0016544000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_SeaOfStars_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_SeaOfStars_image500w.jpg"
+  },
+  {
+    "title_id": "01008D9022462000",
+    "name": "The Rogue Prince of Persia",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01008D9022462000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/therogueprinceofpersia_1/1x1_TheRoguePrinceOfPersia_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/therogueprinceofpersia_1/1x1_TheRoguePrinceOfPersia_image500w.jpg"
+  },
+  {
+    "title_id": "01008DB008C2C000",
+    "name": "Pokémon Shield",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01008DB008C2C000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_PokemonShield_enGB_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_PokemonShield_enGB_image500w.jpg"
+  },
+  {
+    "title_id": "01008DD013200000",
+    "name": "Ori and the Will of the Wisps",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01008DD013200000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_OriAndTheWillOfTheWisps_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_OriAndTheWillOfTheWisps_image500w.jpg"
+  },
+  {
+    "title_id": "010093801237C000",
+    "name": "Metroid Dread",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010093801237C000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_MetroidDread_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_MetroidDread_image500w.jpg"
+  },
+  {
+    "title_id": "0100965017338000",
+    "name": "Super Mario Party Jamboree",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100965017338000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_SuperMarioPartyJamboree_BASE_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_SuperMarioPartyJamboree_image500w.jpg"
+  },
+  {
+    "title_id": "010097F018538000",
+    "name": "DAVE THE DIVER",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010097F018538000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_DaveTheDiver_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_DaveTheDiver_image500w.jpg"
+  },
+  {
+    "title_id": "010099C022B96000",
+    "name": "Super Mario Galaxy",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/010099C022B96000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/supermariogalaxy/1x1_NSwitch_SuperMarioGalaxy_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/supermariogalaxy/1x1_NSwitch_SuperMarioGalaxy_image500w.jpg"
+  },
+  {
+    "title_id": "01009BF0072D4000",
+    "name": "Captain Toad: Treasure Tracker",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01009BF0072D4000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_CaptainToadTreasureTracker_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_CaptainToadTreasureTracker_image500w.png"
+  },
+  {
+    "title_id": "01009D901BC56000",
+    "name": "Donkey Kong Country Returns HD",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/01009D901BC56000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_DonkeyKongCountryReturnsHD_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_DonkeyKongCountryReturnsHD_image500w.jpg"
+  },
+  {
+    "title_id": "0100A3900C3E2000",
+    "name": "Paper Mario: The Origami King",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100A3900C3E2000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_PaperMarioTheOrigamiKing_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_PaperMarioTheOrigamiKing_image500w.jpg"
+  },
+  {
+    "title_id": "0100A5C00D162000",
+    "name": "Cuphead",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100A5C00D162000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_Cuphead_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_Cuphead_image500w.jpg"
+  },
+  {
+    "title_id": "0100A6301214E000",
+    "name": "Fire Emblem Engage",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100A6301214E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_FireEmblemEngage_EU_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_FireEmblemEngage_EU_image500w.jpg"
+  },
+  {
+    "title_id": "0100A7C01B792000",
+    "name": "Minecraft Dungeons II",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100A7C01B792000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/minecraftdungeonsii/1x1_MinecraftDungeonsII_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/minecraftdungeonsii/1x1_MinecraftDungeonsII_image500w.jpg"
+  },
+  {
+    "title_id": "0100A83022A22000",
+    "name": "Absolum",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100A83022A22000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/absolum/1x1_Absolum_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/absolum/1x1_Absolum_image500w.jpg"
+  },
+  {
+    "title_id": "0100ABF008968000",
+    "name": "Pokémon Sword",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100ABF008968000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_PokemonSword_enGB_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_PokemonSword_enGB_image500w.jpg"
+  },
+  {
+    "title_id": "0100ACD0163D0000",
+    "name": "Batman: Arkham Knight",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100ACD0163D0000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/batmanarkhamknight/1x1_BatmanArkhamKnight_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/batmanarkhamknight/2x1_BatmanArkhamKnight_image500w.jpg"
+  },
+  {
+    "title_id": "0100B04011742000",
+    "name": "Monster Hunter Rise",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100B04011742000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_MonsterHunterRise_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_MonsterHunterRise_image500w.jpg"
+  },
+  {
+    "title_id": "0100B99019412000",
+    "name": "Mario vs. Donkey Kong",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100B99019412000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_MarioVsDonkeyKong_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_MarioVsDonkeyKong_image500w.jpg"
+  },
+  {
+    "title_id": "0100BA4026E94000",
+    "name": "Castlevania: Belmont's Curse",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100BA4026E94000/README.md",
+    "cover": "https://assets.nintendo.eu/image/private/f_auto,q_auto,w_500/wgfvbnhxegimaihxuhsq",
+    "hero": "https://assets.nintendo.eu/image/private/f_auto,q_auto,w_500/wgfvbnhxegimaihxuhsq"
+  },
+  {
+    "title_id": "0100BC0018138000",
+    "name": "Super Mario RPG",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100BC0018138000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_SuperMarioRPG_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_SuperMarioRPG_image500w.jpg"
+  },
+  {
+    "title_id": "0100BF00112C0000",
+    "name": "Catherine: Full Body",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100BF00112C0000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_CatherineFullBody_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_CatherineFullBody_image500w.jpg"
+  },
+  {
+    "title_id": "0100C1F0051B6000",
+    "name": "Donkey Kong Country: Tropical Freeze",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100C1F0051B6000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_DonkeyKongCountryTropicalFreeze_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_DonkeyKongCountryTropicalFreeze_image500w.jpg"
+  },
+  {
+    "title_id": "0100C2A01A730000",
+    "name": "ROMANCE OF THE THREE KINGDOMS 8 REMAKE",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100C2A01A730000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/romanceofthethreekingdoms8remake/1x1_RomanceOfTheThreeKingdoms8Remake_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/romanceofthethreekingdoms8remake/2x1_RomanceOfTheThreeKingdoms8Remake_image500w.jpg"
+  },
+  {
+    "title_id": "0100CD801CE5E000",
+    "name": "Balatro",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100CD801CE5E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_Balatro_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_Balatro_image500w.jpg"
+  },
+  {
+    "title_id": "0100CE4010AAC000",
+    "name": "FINAL FANTASY CRYSTAL CHRONICLES Remastered Edition",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100CE4010AAC000/README.md",
+    "cover": "https://img-eshop.cdn.nintendo.net/i/5233c8afe8498751025cb9571f6edca34751d00187a339a8e6945ff80a8290a9.jpg",
+    "hero": "https://img-eshop.cdn.nintendo.net/i/a138045cd1ef99d67758093e43de4a697591ef26a898e564d4dc2df08a8260b2.jpg"
+  },
+  {
+    "title_id": "0100D9F01D474000",
+    "name": "Rhythm Heaven Groove",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100D9F01D474000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/rhythmparadisegroove/1x1_NSwitch_RythmParadiseGroove_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/rhythmparadisegroove/1x1_NSwitch_RythmParadiseGroove_image500w.jpg"
+  },
+  {
+    "title_id": "0100DA801624E000",
+    "name": "TUNIC",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100DA801624E000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_Tunic_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_Tunic_image500w.jpg"
+  },
+  {
+    "title_id": "0100DCA0064A6000",
+    "name": "Luigi's Mansion 3",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100DCA0064A6000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/SQ_NSwitch_LuigisMansion3_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/H2x1_NSwitch_LuigisMansion3_image500w.jpg"
+  },
+  {
+    "title_id": "0100E44016C22000",
+    "name": "Patrick's Parabox",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100E44016C22000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_PatricksParabox_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_PatricksParabox_image500w.jpg"
+  },
+  {
+    "title_id": "0100E65002BB8000",
+    "name": "Stardew Valley",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100E65002BB8000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_StardewValley_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_StardewValley_enGB_image500w.jpg"
+  },
+  {
+    "title_id": "0100ECD018EBE000",
+    "name": "Paper Mario: The Thousand-Year Door",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100ECD018EBE000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_PaperMarioTheThousandYearDoor_GB_en_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_PaperMarioTheThousandYearDoor_GB_en_image500w.jpg"
+  },
+  {
+    "title_id": "0100ED7012DB2000",
+    "name": "ROMANCE OF THE THREE KINGDOMS XIV: Diplomacy and Strategy Expansion Pack",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100ED7012DB2000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/SQ_NSwitchDS_RomanceOfTheThreeKingdomsXIVDiplomacyAndStrategyExpansionPackBundle_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/H2x1_NSwitchDS_RomanceOfTheThreeKingdomsXIVDiplomacyAndStrategyExpansionPackBundle_image500w.jpg"
+  },
+  {
+    "title_id": "0100F2C0115B6000",
+    "name": "The Legend of Zelda: Tears of the Kingdom",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100F2C0115B6000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_5/1x1_NSwitch_TloZTearsOfTheKingdom_BASE_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_4/2x1_NSwitch_TloZTearsOfTheKingdom_Gamepage_image500w.jpg"
+  },
+  {
+    "title_id": "0100F43008C44000",
+    "name": "Pokémon Legends: Z-A",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100F43008C44000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/pokemonlegendsza/1x1_NSwitch2_PokemonLegendsZA_KV_GB_en_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/pokemonlegendsza/2x1_NSwitch2_PokemonLegendsZA_KV_GB_en_image500w.jpg"
+  },
+  {
+    "title_id": "0100F5D01DA3A000",
+    "name": "Brain Memory Training Academy",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100F5D01DA3A000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/11_square_images/games_18/nintendo_switch_download_software/1x1_NSwitchDS_BrainMemoryTrainingAcademy_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/10_share_images/games_15/nintendo_switch_download_software_1/2x1_NSwitchDS_BrainMemoryTrainingAcademy_image500w.jpg"
+  },
+  {
+    "title_id": "0100FD8022DAA000",
+    "name": "Super Mario Galaxy 2",
+    "source": "https://github.com/seedds/nxnative/blob/9ccbd6b1a152bc8449b092ab60999be13c2971aa/dm/games/0100FD8022DAA000/README.md",
+    "cover": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/supermariogalaxy2/1x1_NSwitch_SuperMarioGalaxy2_image500w.jpg",
+    "hero": "https://www.nintendo.com/eu/media/images/assets/nintendo_switch_games/supermariogalaxy2/1x1_NSwitch_SuperMarioGalaxy2_image500w.jpg"
+  }
+]

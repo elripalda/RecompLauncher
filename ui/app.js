@@ -172,11 +172,11 @@ function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<s
 // A recomp that needs things on the PC first (Python, build tools, a long build): it says so, and
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
-const needsSetup = (a) => !!(a && a.setup_required);
+const needsSetup = (a) => !!(a && a.setup_required && !(S.library[a.id] && 'engine_build' in S.library[a.id]));
 // A recomp that only comes as a Windows installer (the catalog's "installer"), and one whose
 // downloaded installer is waiting for Set Up (a new game, or an update).
 const isInstallerApp = (a) => !!(a && a.installer) && S.os === 'windows';
-const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
+const installerDue = (id) => !!(S.library[id] && !('engine_build' in S.library[id]) && S.library[id].installer_setup);
 // The yellow Set Up: the developer's steps not done yet, or an installer waiting to run.
 const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installerDue(a.id));
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
@@ -2148,6 +2148,14 @@ function readmeCard(a) {
   const open = !!S.readmeOpen;
   return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(isLab(a.repo) ? t('From its GitLab') : isFJ(a.repo) ? tf('From {host}', { host: fjServer(a.repo) }) : t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
 }
+function installedVersion(g) {
+  return g.engine_build?.game?.version || g.tag || t('Not known');
+}
+function engineVersionCard(a) {
+  const pin = S.library[a.id]?.engine_build?.package;
+  const version = pin ? (pin.upstream_revision || '').slice(0, 12) : a.engine_version || '';
+  return `<div class="stack"><div class="card"><h3>${esc(t('Versions'))}</h3><p>${esc(pin?.engine || a.engine || '')} · ${esc(version)}</p>${pin ? `<details><summary>${esc(t('Build details'))}</summary><p>${esc(pin.packaging_revision || '')}</p></details>` : ''}<p>${esc(t('This game keeps its prepared version. Component downloads and catalog refreshes never rebuild it.'))}</p><p class="muted">${esc(t('Applying game fixes is not available in this test build.'))}</p></div></div>`;
+}
 function gameBody(a) {
   const id = a.id, inst = S.library[id];
   gameTabs(a);
@@ -2157,7 +2165,7 @@ function gameBody(a) {
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const stats = inst
-      ? [[t('Played'), playedFor(inst)], [t('Last played'), inst.last_played ? ago(inst.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
+      ? [[t('Played'), playedFor(inst)], [t('Last played'), inst.last_played ? ago(inst.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), installedVersion(inst) + (S.updates[id] ? ' · ' + t('update ready') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
       : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—'], [t('Size'), a.size || '—']];
     body = `<div class="stack"><div class="stats">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
@@ -2176,6 +2184,8 @@ function gameBody(a) {
       ${a.credits ? `<div class="card"><h3 style="margin-bottom:8px">${esc(t('Credits'))}</h3><div class="md">${md(a.credits)}</div></div>` : ''}
       ${shelf('like', t('More like this'), moreLike(a), { quick: true })}
     </div>`;
+  } else if (S.tab === 'updates' && (a.engine || inst?.engine_build)) {
+    body = engineVersionCard(a);
   } else if (S.tab === 'updates') {
     const r = S.rels[a.repo];
     if (!r) { loadRels(a.repo); body = `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading the releases…'))}</p></div></div>`; }
@@ -2201,11 +2211,11 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>
       <div class="set-row"><div class="k"><b>${esc(t('Shortcuts'))}</b><span>${esc(S.steam ? t('Start it from your desktop or from Steam, with its art. Play time still counts here.') : t('Start it from your desktop. Play time still counts here.'))}</span></div><div class="acts"><button type="button" class="btn" data-act="desktop" data-id="${esc(id)}">${esc(t('Add to desktop'))}</button>${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(id)}">${esc(t('Add to Steam'))}</button>` : ''}</div></div>
       <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
+      ${inst.local || 'engine_build' in inst ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
+      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.engine_build ? esc(installedVersion(inst)) : inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
     </div>
     <div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
@@ -2359,6 +2369,7 @@ async function pickCopy(id, folder) {
 }
 // The game's update, when it needs one beside the copy and it isn't in yet.
 function needsCopySetup(g) {
+  if (g.engine_build) return g.engine_build.state === 'pending';
   // One game of several whose own inputs aren't set up yet (the others still play).
   if (g._sub && g.ready === false) return true;
   // Brought in from a folder where it already plays, or played a while already: its files are there.
@@ -2481,6 +2492,25 @@ function suPump() {
   suDraw();
 }
 T.event.listen('setup', ({ payload: p }) => { if (SU.el && p.id === SU.id && SU.stage === 'run') { SU.q.push(p); suPump(); } });
+// Shared by desktop and Big Picture. These measurements describe the current step;
+// nxnative's elapsed stage time and step ETA cannot predict the whole installation.
+function engineSetupProgress(p = {}) {
+  const valid = (v) => Number.isFinite(v) && v >= 0;
+  const measured = valid(p.fraction) && p.fraction <= 1;
+  const pct = measured ? Math.floor(p.fraction * 100) : null;
+  const duration = (seconds) => {
+    const s = Math.ceil(seconds), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    if (h) return tf('{h} h {m} min', { h, m });
+    if (m) return tf('{m} min {s} s', { m, s: s % 60 });
+    return tf('{s} s', { s });
+  };
+  const stage = p.stage > 0 && p.stages >= p.stage ? tf('Stage {stage} of {stages}', { stage: p.stage, stages: p.stages }) : '';
+  const amount = (n) => p.unit === 'B' ? (n ? fmtB(n) : tf('{n} B', { n: 0 })) : fmtNum(n);
+  const count = valid(p.done) && p.total > 0 ? tf('{done} of {total}', { done: amount(p.done), total: (p.estimated ? '~' : '') + amount(p.total) }) + (p.unit && p.unit !== 'B' ? ' ' + p.unit : '') : '';
+  const elapsed = valid(p.elapsed_seconds) ? tf('Stage elapsed: {time}', { time: duration(p.elapsed_seconds) }) : '';
+  const eta = valid(p.eta_seconds) && p.eta_seconds > 0 ? tf('About {time} remaining for this step', { time: duration(p.eta_seconds) }) : '';
+  return `<div class="engine-progress">${stage ? `<p class="muted">${esc(stage)}</p>` : ''}<h3>${esc(p.text || t('Preparing game'))}</h3><p>${esc([count, measured ? (p.estimated ? '~' : '') + pct + '%' : ''].filter(Boolean).join(' · '))}</p><progress max="100"${measured ? ` value="${pct}"` : ''} aria-label="${esc(t('Current step progress'))}"></progress><p class="muted">${esc([elapsed, eta].filter(Boolean).join(' · '))}</p></div>`;
+}
 function suDraw() {
   if (!SU.el) return;
   if (SU.stage !== 'run') suDrive.stop();
@@ -2500,6 +2530,10 @@ function suDraw() {
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>` : ''}
       <div class="picks${picks.length === 1 ? ' one' : ''}">${picks.join('')}</div>`;
   } else if (SU.stage === 'run') {
+    if (S.library[id]?.engine_build) {
+      const event = SU.steps[SU.step] || {};
+      right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2>${engineSetupProgress(event.engine_progress || { text: event.text })}`;
+    } else {
     const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
     const sub = {
@@ -2523,6 +2557,7 @@ function suDraw() {
     right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2><p style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(SU.path)}</p>
       <div class="steps">${order.map((k) => { const i = order.indexOf(k), cur = order.indexOf(SU.step); const done = i < cur, now = i === cur; return `<div class="step${!done && !now ? ' wait' : ''}">${done ? `<span class="ok">${CHECK}</span>` : now ? '<span class="spinr"></span>' : '<span class="todo"></span>'}<div class="k"><b>${esc(names[k])}</b><span>${esc(sub[k])}</span></div></div>`; }).join('')}</div>
       <div class="su-bar"><i style="width:${barW}%"></i></div>`;
+    }
   } else if (SU.stage === 'update') {
     const picks = [su.update_file ? `<button type="button" class="pick" data-su="ufile"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5z"/><path d="M14 3v4.5h4.5"/></svg><b>${esc(t('Update File'))}</b><span>${esc(t('The file, as it came'))}</span></button>` : '', su.update_folder ? `<button type="button" class="pick" data-su="ufolder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Update Folder'))}</b><span>${esc(t('A folder with its files'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')} ${esc(t('It goes in with your copy, once.'))}</p>
@@ -4328,7 +4363,7 @@ async function checkUpdates(loud) {
   try {
     const updates = await invoke('check_updates', { force: !!loud });
     if (revision !== updateCheckRevision) return false;
-    S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local));
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id]) => S.library[id] && !S.library[id].local && !('engine_build' in S.library[id])));
     S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }
   renderSide();
@@ -4913,7 +4948,7 @@ function gameMenu(id) {
     ...(g ? ['-',
       { label: t('Manage'), icon: 'gear', sub: [
         { act: 'project-association', id, label: t('Project association…'), icon: 'layers' },
-        ...(!g.local ? [{ act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update }] : []),
+        ...(!g.local && !('engine_build' in g) ? [{ act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update }] : []),
         { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
@@ -5122,7 +5157,7 @@ async function startInstall(id, dir, tag, anyway) {
   if (S.running.has(id)) return toast(t('Close the game first.'), true);
   // Easy Install with no copy found in the player's folders: pick it first, and it's checked against
   // what the game needs before anything downloads. Once it's in, setup goes straight on with it.
-  if (!S.library[id] && !tag && !anyway && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
+  if (!S.library[id] && !byId(id)?.engine && !tag && !anyway && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
     const pickIt = async () => {
       for (;;) {
         const f = await pickFile(copyPickOpts(id)).catch(() => null);

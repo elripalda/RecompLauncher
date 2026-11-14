@@ -646,7 +646,7 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
                 }
                 continue;
             };
-            if l.installed.get(&it.id).map(|g| !g.local).unwrap_or(false) || !it.path.is_dir() || crate::library::shared_folder(&it.path, &libs) {
+            if l.installed.get(&it.id).map(|g| !g.local || g.engine_build.is_some()).unwrap_or(false) || !it.path.is_dir() || crate::library::shared_folder(&it.path, &libs) {
                 continue;
             }
             let s = |k: &str| entry.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -777,6 +777,11 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
     let g = l.installed.get(old).cloned().ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
     if (entry.is_some() && old == project && !g.local) || (entry.is_none() && g.local && g.tag == "own") {
         return Ok(g);
+    }
+    // Changing a listing must not rename a pending build or discard its frozen ownership record.
+    crate::engines::ensure_legacy_install(Some(&g)).map_err(Error::Msg)?;
+    if crate::engines::catalog::is_engine(project) {
+        return Err(Error::Msg("Install this engine version through Easy Install so it can prepare and pin your game.".into()));
     }
     let new = if entry.is_some() {
         project.to_string()

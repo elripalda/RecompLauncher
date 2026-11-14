@@ -1,0 +1,174 @@
+{
+  "format": 1,
+  "upstream_revision": "9ccbd6b1a152bc8449b092ab60999be13c2971aa",
+  "source": {
+    "name": "nxnative-9ccbd6b1a152bc8449b092ab60999be13c2971aa.tar.gz",
+    "url": "https://codeload.github.com/seedds/nxnative/tar.gz/9ccbd6b1a152bc8449b092ab60999be13c2971aa",
+    "digest": "79f0fe01886add94403e4a352abab40e57f62010a52abd224831bc8e6c07eef5",
+    "size": 150054069,
+    "root": "nxnative-9ccbd6b1a152bc8449b092ab60999be13c2971aa"
+  },
+  "python": {
+    "name": "cpython-3.14.10+20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.14.10%2B20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "digest": "f15ec3d15460dd66c2eb88639b152cd9040e7d1ece11e38bf89e8f53f0171e02",
+    "size": 26970375,
+    "root": "python"
+  },
+  "dotnet": {
+    "name": "dotnet-sdk-10.0.404-osx-arm64.tar.gz",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.404/dotnet-sdk-10.0.404-osx-arm64.tar.gz",
+    "digest": "1c9a13f625d0c08f08ef5a53597bababe3d2473527e98db2199210940c69dd5fc599a39a4d7c30ebf297ca2334a81b2f64b9bf05ff99585de9af4a5d85215e96",
+    "size": 0,
+    "root": ""
+  },
+  "bottles": [
+    {
+      "name": "glslang-16.6.0.tar.gz",
+      "url": "https://ghcr.io/v2/homebrew/core/glslang/blobs/sha256:8e5095c5d55b0500675deefbf8589c6e56cc777ba6f66f63e24a2c09b42710ea",
+      "digest": "8e5095c5d55b0500675deefbf8589c6e56cc777ba6f66f63e24a2c09b42710ea",
+      "root": "glslang/16.6.0",
+      "size": 910594,
+      "registry": "homebrew/core/glslang"
+    },
+    {
+      "name": "spirv-tools-1.4.363.0.tar.gz",
+      "url": "https://ghcr.io/v2/homebrew/core/spirv-tools/blobs/sha256:f1b075c2a107e314872144082b0ae49c18c15d7002e818fb60fe62f2d1c72e5a",
+      "digest": "f1b075c2a107e314872144082b0ae49c18c15d7002e818fb60fe62f2d1c72e5a",
+      "root": "spirv-tools/1.4.363.0",
+      "size": 2475280,
+      "registry": "homebrew/core/spirv-tools"
+    },
+    {
+      "name": "zstd-1.5.7.tar.gz",
+      "url": "https://ghcr.io/v2/homebrew/core/zstd/blobs/sha256:628a4ef53428d0078e3d76d297171ce8d0294f5ec1de3f20305e08c4dd333565",
+      "digest": "628a4ef53428d0078e3d76d297171ce8d0294f5ec1de3f20305e08c4dd333565",
+      "root": "zstd/1.5.7_1",
+      "size": 793560,
+      "registry": "homebrew/core/zstd"
+    },
+    {
+      "name": "lz4-1.11.1.tar.gz",
+      "url": "https://ghcr.io/v2/homebrew/core/lz4/blobs/sha256:9ab0175d769ca830f573defafb22b020f3e9b4e0862ee6ee9f47e0b46a29468d",
+      "digest": "9ab0175d769ca830f573defafb22b020f3e9b4e0862ee6ee9f47e0b46a29468d",
+      "root": "lz4/1.11.1",
+      "size": 307749,
+      "registry": "homebrew/core/lz4"
+    },
+    {
+      "name": "xz-5.8.4.tar.gz",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:d291ad2277682238329b0e4d249e5e2c948c4b10cd64dba1963d897330ad88dd",
+      "digest": "d291ad2277682238329b0e4d249e5e2c948c4b10cd64dba1963d897330ad88dd",
+      "root": "xz/5.8.4",
+      "size": 788803,
+      "registry": "homebrew/core/xz"
+    }
+  ],
+  "wheels": [
+    {
+      "name": "blessed-1.52.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/29/1f/88e64e3b4a8299fcc47dd0db35276ca21c18fadad4e8eb25afad546404c6/blessed-1.52.0-py3-none-any.whl",
+      "digest": "1936f421f3feb130035a4629e6477d1432e33b2674ab2b9841292c74d479eac2",
+      "size": 142946,
+      "root": ""
+    },
+    {
+      "name": "capstone-5.0.9-py3-none-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/42/9a/4eecfbc94961cda70301fd13de69042be1943bee456e37bc1369840601b1/capstone-5.0.9-py3-none-macosx_11_0_arm64.whl",
+      "digest": "fc269c5082e17d7f9f265cd6980e2fdc6ab572df913951d76db0357e06b8001d",
+      "size": 1202361,
+      "root": ""
+    },
+    {
+      "name": "enlighten-1.14.1-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/73/1e/244bb2fc5713ad21ae9f9012067f6432c682593816c6a45372c24f5a7d61/enlighten-1.14.1-py2.py3-none-any.whl",
+      "digest": "5fbd0c959ca1644034c41bb0ace5db19c9852cf9d721b6103f5f130663c57be8",
+      "size": 42281,
+      "root": ""
+    },
+    {
+      "name": "fonttools-4.68.0-cp314-cp314-macosx_10_15_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/1a/70/ee6655887166a111d0c4d7ca61f03c90b141cdc6f70c85138fd0b8bfa2e3/fonttools-4.68.0-cp314-cp314-macosx_10_15_universal2.whl",
+      "digest": "b2ee7b9c1a5e1d637073c39b0978956febad7e862a1269719f527934c65535a4",
+      "size": 3145377,
+      "root": ""
+    },
+    {
+      "name": "jinxed-2.1.0-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/f1/1d/0a6be99b69bb448448403a45a241aff0dca751832ae54f027ed940d2eb52/jinxed-2.1.0-py2.py3-none-any.whl",
+      "digest": "43b802d18b70e405d410fb66eb2837d1101e7e5ea922e666507bb43f34d11d09",
+      "size": 104999,
+      "root": ""
+    },
+    {
+      "name": "lz4-4.4.5-cp314-cp314-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/b6/cb/bfead8f437741ce51e14b3c7d404e3a1f6b409c440bad9b8f3945d4c40a7/lz4-4.4.5-cp314-cp314-macosx_11_0_arm64.whl",
+      "digest": "c8e71b14938082ebaf78144f3b3917ac715f72d14c076f384a4c062df96f9df6",
+      "size": 207161,
+      "root": ""
+    },
+    {
+      "name": "nsz-5.0.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/85/7f/e11c738d92ffa58116184b443636b27c4cdefc0a7d73e5eacff1c9e3b6dd/nsz-5.0.0-py3-none-any.whl",
+      "digest": "b3698cab8d7720aed056a0290017ff60a989d8343b7bb9c3c161ab137ec03965",
+      "size": 1113071,
+      "root": ""
+    },
+    {
+      "name": "numpy-2.5.4-cp314-cp314-macosx_14_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/d5/b2/c6ce165acffceb15a82c07b9cc77d391f86b3f379ba62911908ae5d34b91/numpy-2.5.4-cp314-cp314-macosx_14_0_arm64.whl",
+      "digest": "956555e0603a4d38019ae6925711cb9dc43195c076a928accf7ea5d50bddfe53",
+      "size": 5455617,
+      "root": ""
+    },
+    {
+      "name": "pillow-13.0.0-cp314-cp314-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/b5/f4/0bf6f1ac9ba7ee2ffe9914aeb410a1035a0c1a3c42f122388d7fc950bc4b/pillow-13.0.0-cp314-cp314-macosx_11_0_arm64.whl",
+      "digest": "d9b0a2bee3f3e03e9f29057aedb807dbf1e1d96ee1b9d0f422d9db6c8583271d",
+      "size": 4852269,
+      "root": ""
+    },
+    {
+      "name": "prefixed-0.9.0-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/c3/61/d9957a0ed189ac8a89075c59c97588fb1c77e51d8d44a26f5cdf001d260c/prefixed-0.9.0-py2.py3-none-any.whl",
+      "digest": "3cdb74bfc4cf0aba28f3574662b13afdcac27c463dcbef320fe5d03f4c5fbca8",
+      "size": 13509,
+      "root": ""
+    },
+    {
+      "name": "pycryptodome-4.4.0-cp39-abi3-macosx_10_9_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/cb/34/5165cc1660fccae5341c3f4d60c4fa1cc28b1a599e88145085a690d4a88b/pycryptodome-4.4.0-cp39-abi3-macosx_10_9_universal2.whl",
+      "digest": "99494a2ab8137a9a6967db30e21f54f6dfa70327d8e72863638dece6d6a16374",
+      "size": 1790964,
+      "root": ""
+    },
+    {
+      "name": "texture2ddecoder-1.0.6-cp311-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/af/39/e95286fdff39227eef8741c3138dfec22bbbaf4bea966ae081df1e664ba5/texture2ddecoder-1.0.6-cp311-abi3-macosx_11_0_arm64.whl",
+      "digest": "ebb12555f8774a2e497c92803102224546abe4d9bb8d10c77c2f300f07ce6ed9",
+      "size": 89260,
+      "root": ""
+    },
+    {
+      "name": "wcwidth-0.9.4-cp310-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/04/e9/dfdca30ca36c472de3e260406dee29fc108499ec590c63b3fe279887ee9d/wcwidth-0.9.4-cp310-abi3-macosx_11_0_arm64.whl",
+      "digest": "f279f32c8e206a9092fa350e53ca0c2bd8072e45b1c9fd31bb6d476b59b591c4",
+      "size": 618904,
+      "root": ""
+    },
+    {
+      "name": "zbic-1.0.1.post1-cp314-cp314-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/7d/0e/16419890fde662047ff22e79ef01379d549f56a6875c77285687ab35ec77/zbic-1.0.1.post1-cp314-cp314-macosx_11_0_arm64.whl",
+      "digest": "fb508131293c71a242b1fc50e9179da2a73a4ec42dfcf3652963672bbe144e12",
+      "size": 273838,
+      "root": ""
+    },
+    {
+      "name": "zstandard-0.25.0-cp314-cp314-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/8d/09/d0a2a14fc3439c5f874042dca72a79c70a532090b7ba0003be73fee37ae2/zstandard-0.25.0-cp314-cp314-macosx_11_0_arm64.whl",
+      "digest": "05df5136bc5a011f33cd25bc9f506e7426c0c9b3f9954f056831ce68f3b6689f",
+      "size": 640658,
+      "root": ""
+    }
+  ]
+}

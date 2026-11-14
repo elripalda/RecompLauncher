@@ -427,6 +427,14 @@ fn own_saves(st: &App, id: &str) -> Option<crate::GamePick> {
 
 /// Where this game's saves are, best first.
 pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
+    if g.engine_build.is_some() {
+        let Ok(Some(profile)) = crate::engines::pinned_profile(g) else { return vec![] };
+        let mut scoped = g.clone();
+        scoped.found_saves.clear();
+        // The adapter's saved locations (or the player's explicit choice), never generated data
+        // guessed from the whole folder or a different engine's current catalog entry.
+        return saves::spots(&profile.saves, &[], &scoped).into_iter().filter(|s| s.from != "game").collect();
+    }
     if let Some(p) = own_saves(st, id) {
         // Only the game's own: the recomp's other places are the other games'.
         let mut g = g.clone();
@@ -1519,7 +1527,7 @@ mod child_retry_tests {
             Self(App {
                 dir, http: reqwest::Client::new(), lib: Mutex::new(lib), jobs: Mutex::default(),
                 running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
-                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(),
+                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Arc::default(),
                 overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
             })
         }

@@ -258,7 +258,7 @@ pub struct Entry {
 /// Every save file under a folder. Gives up (false) on a folder far too big to be a save place:
 /// more than WALK_MAX entries, or longer than WALK_SECS to look through (a slow or network drive).
 /// Links aren't followed, so a folder that links back into itself can't loop forever.
-fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<String>, budget: u64, secs: u64) -> bool {
+fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<String>, budget: u64, secs: u64, g: &Installed) -> bool {
     let start = std::time::Instant::now();
     let mut seen = 0usize;
     let mut total = 0u64;
@@ -276,6 +276,7 @@ fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<St
                 continue;
             }
             let p = e.path();
+            if crate::inputs::excluded(g, &p) { continue; }
             let Ok(m) = e.metadata() else { continue };
             let name = e.file_name().to_string_lossy().to_string();
             if m.is_dir() {
@@ -335,7 +336,7 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
             let guess = s.from == "game" || s.from == "found";
             let (budget, secs) = if guess { (GAME_FOLDER_MAX, 6) } else { (SPOT_MAX, WALK_SECS) };
             let skip = if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none };
-            if !walk(&p, &mut found, skip, budget, secs) {
+            if !walk(&p, &mut found, skip, budget, secs, g) {
                 too_big.push(i);
                 found.clear();
             }
