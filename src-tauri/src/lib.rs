@@ -624,32 +624,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let names = [str_of(&entry, "name"), repo.rsplit(['/', ':']).next().unwrap_or(""), str_of(&entry, "game")];
     // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
     let kept = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
-    let mut exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && (kept || !install::looks_like_tool(e, &names)));
-    if let Some(old) = exe.clone() {
-        let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-        let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
-        if let (true, Some(n)) = (is_appimage, new_appimage) {
-            if *n != old {
-                let _ = std::fs::remove_file(target.join(&old));
-                exe = Some(n.clone());
-            }
-        }
-    }
-    // The program the player picked isn't one of the new release's files (it was moved inside the
-    // release, say): the new release's file of the same name, so Play starts the update.
-    let exe = match exe {
-        Some(e) if kept && !files.iter().any(|f| *f == e) => {
-            let name = e.file_name().map(|n| n.to_ascii_lowercase());
-            match files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) {
-                Some(f) => {
-                    trail::note(format!("Install {id}: the program you picked is at {} in this release now", f.display()));
-                    Some(f.clone())
-                }
-                None => Some(e),
-            }
-        }
-        e => e,
-    };
+    let exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && (kept || !install::looks_like_tool(e, &names)));
+    let exe = install::updated_exe(id, &target, exe, &files, kept);
     let exe = exe.or_else(|| install::find_game_exe(&target, os, &names));
     // The catalog's boot profile says which program starts it, unless the player picked one.
     let boot = boot::Boot::from_entry(&entry).map(|b| b.for_build(os == "windows"));
