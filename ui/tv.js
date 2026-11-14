@@ -2829,7 +2829,7 @@
       // that sits pushed all the way doesn't scroll on its own).
       const rk = gp.index + ':' + gp.id;
       if (Math.abs(ax) < 0.3 && Math.abs(ay) < 0.3) rested[rk] = true;
-      if (rested[rk]) { if (ax < -0.6) now.left = 1; if (ax > 0.6) now.right = 1; if (ay < -0.6) now.up = 1; if (ay > 0.6) now.down = 1; }
+      if (S.settings.pad_stick !== false && rested[rk]) { if (ax < -0.6) now.left = 1; if (ax > 0.6) now.right = 1; if (ay < -0.6) now.up = 1; if (ay > 0.6) now.down = 1; }
       const k = gp.index;
       held[k] = held[k] || {};
       for (const b of Object.keys(now)) if (!held[k][b]) { pad(b, kind); if (['up', 'down', 'left', 'right'].includes(b)) rep = { b, t: performance.now(), n: 0 }; if (b === 'menu') menuAt[k] = performance.now(); }
