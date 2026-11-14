@@ -6415,8 +6415,9 @@ async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
 /// A newer RecompLauncher, if there is one. Read from the copy on disk when it's younger than
 /// `max_age` seconds.
 pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
-    // A Flatpak is updated by Flatpak (from wherever it was installed), never by the launcher itself.
-    if flatpak::sandboxed() {
+    // A Flatpak is updated by Flatpak (from wherever it was installed), and a Nix install by Nix,
+    // never by the launcher itself.
+    if flatpak::sandboxed() || nix_managed() {
         return None;
     }
     let v = version_json(st, max_age, player).await?;
@@ -7273,6 +7274,9 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option
 async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<bool>) -> Res<()> {
     if flatpak::sandboxed() {
         return Err(Error::Msg("RecompLauncher updates through Flatpak. Update it from your software center, or run: flatpak update".into()));
+    }
+    if nix_managed() {
+        return Err(Error::Msg("RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.".into()));
     }
     let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
     let page = format!("{}/download", net::SITE);
@@ -8165,6 +8169,12 @@ fn data_dir_early() -> Option<PathBuf> {
 /// The folder RecompLauncher's program is in.
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+}
+
+/// Installed from the Nix store (the repo's flake, or nixpkgs): the store is read-only and Nix
+/// updates it, so the launcher never offers or runs an update itself, like a Flatpak.
+pub(crate) fn nix_managed() -> bool {
+    cfg!(target_os = "linux") && exe_dir().is_some_and(|d| d.starts_with("/nix/store"))
 }
 
 /// Portable mode: a file named `portable` (or `portable.txt`) beside RecompLauncher.exe keeps
