@@ -1464,7 +1464,7 @@ async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, drop
             .filter(|r| !dropped.iter().any(|d| r.path.to_string_lossy() == d.as_str()))
             .map(|r| {
                 let name = r.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let part = roms::part_of(&name);
+                let part = roms::part_of_file(&r.path);
                 let path = r.path.to_string_lossy().to_string();
                 CopyFile {
                     folder: r.path.parent().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
@@ -1666,8 +1666,10 @@ async fn fs_list(st: State<'_, App>, path: String) -> Res<FolderView> {
 /// looking inside each disc image or game folder for the files that game has.
 fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathBuf>) -> HashMap<String, roms::RomFile> {
     // A game the launcher installed isn't anyone's copy of itself (its own programs are refused by
-    // the copy's checks).
-    let found: Vec<roms::RomFile> = found.iter().filter(|r| !dirs.values().any(|d| !d.as_os_str().is_empty() && &r.path == d)).cloned().collect();
+    // the copy's checks). An Xbox 360 update or DLC carries its game's title ID, so it would pass a
+    // check by ID, but it's never the game.
+    let installed = |r: &roms::RomFile| dirs.values().any(|d| !d.as_os_str().is_empty() && &r.path == d);
+    let found: Vec<roms::RomFile> = found.iter().filter(|r| !installed(r) && !roms::is_extra_package(r)).cloned().collect();
     let found = &found[..];
     let mut out = roms::match_catalog(cat, found);
     let none = PathBuf::new();

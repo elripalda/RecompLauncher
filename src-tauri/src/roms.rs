@@ -231,6 +231,13 @@ pub fn copy_id(p: &Path) -> Option<String> {
     let mut f = fs::File::open(p).ok()?;
     let mut head = [0u8; 0x60];
     read_at(&mut f, 0, &mut head).ok()?;
+    // An Xbox 360 update or DLC package: the title ID of the game it's for.
+    if let Some(h) = stfs_header(&mut f) {
+        return stfs_title_id(&h);
+    }
+    if let Some(id) = ps3_pkg_content_id(&head) {
+        return Some(ps3_pkg_title_id(id));
+    }
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if N64.contains(&ext.as_str()) || matches!([head[0], head[1], head[2], head[3]], [0x80, 0x37, 0x12, 0x40] | [0x37, 0x80, 0x40, 0x12] | [0x40, 0x12, 0x37, 0x80]) {
         let mut h = [0u8; 0x40];
@@ -317,6 +324,89 @@ fn x360_default_xex(f: &mut fs::File) -> Option<u64> {
         return None;
     }
     None
+}
+
+/// How much of an Xbox 360 content package (STFS: CON, LIVE or PIRS) is read: its plain header up
+/// to the end of the title's name. The header is signed but never encrypted, so no keys are needed.
+const STFS_HEADER: usize = 0x1711;
+
+/// An Xbox 360 package's header, when the file starts with one of the three package magics.
+fn stfs_header(f: &mut fs::File) -> Option<Vec<u8>> {
+    let mut magic = [0u8; 4];
+    read_at(f, 0, &mut magic).ok()?;
+    if !matches!(&magic, b"CON " | b"LIVE" | b"PIRS") {
+        return None;
+    }
+    let mut h = vec![0u8; STFS_HEADER];
+    read_at(f, 0, &mut h).ok()?;
+    Some(h)
+}
+
+/// The title ID ("4D5307E6") of the game an Xbox 360 package belongs to.
+fn stfs_title_id(h: &[u8]) -> Option<String> {
+    let id = u32::from_be_bytes([h[0x360], h[0x361], h[0x362], h[0x363]]);
+    (id != 0).then(|| format!("{id:08X}"))
+}
+
+/// A name in a package header: UTF-16 big-endian, ended by a zero or the field's end.
+fn stfs_name(field: &[u8]) -> String {
+    let units: Vec<u16> = field.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).take_while(|&u| u != 0).collect();
+    String::from_utf16_lossy(&units).trim().to_string()
+}
+
+/// An Xbox 360 title update or downloadable content package, as its header says.
+struct Package {
+    /// "update" or "dlc".
+    kind: &'static str,
+    /// The game's name, which is what it's matched to its game by.
+    title: String,
+    /// The package's own name (the DLC's, often empty in a title update).
+    display: String,
+}
+
+/// Title updates and DLC are kept as files named only by a content ID, with no file type, so their
+/// header says what they are. Its content type tells an update from DLC; other packages (Arcade
+/// games, saves, profiles, demos) aren't extra content for a game and are left out.
+fn x360_package(p: &Path) -> Option<Package> {
+    let h = stfs_header(&mut fs::File::open(p).ok()?)?;
+    let content_type = u32::from_be_bytes([h[0x344], h[0x345], h[0x346], h[0x347]]);
+    let kind = match content_type {
+        0x000B_0000 => "update",
+        0x0000_0002 => "dlc",
+        _ => return None,
+    };
+    // The first of each name table is the English one.
+    let display = stfs_name(&h[0x411..0x411 + 0x80]);
+    let title = stfs_name(&h[0x1691..0x1691 + 0x80]);
+    Some(Package { kind, title, display })
+}
+
+/// An Xbox 360 update or DLC package: named for its game, but never a copy of the game itself.
+pub fn is_extra_package(r: &RomFile) -> bool {
+    r.system == "x360" && r.path.is_file() && x360_package(&r.path).is_some()
+}
+
+/// The start of a PS3 package, up to the end of its content ID. It's plain, so no keys are needed.
+fn ps3_pkg_header(p: &Path) -> Option<[u8; 0x54]> {
+    let mut h = [0u8; 0x54];
+    read_at(&mut fs::File::open(p).ok()?, 0, &mut h).ok()?;
+    Some(h)
+}
+
+/// A PS3 package's content ID ("UP0082-BLUS31197_00-DOD3PATCH0000101"), when the header is one: a
+/// PS4 package also ends in .pkg but starts with 0x7F CNT instead, and isn't read.
+fn ps3_pkg_content_id(h: &[u8]) -> Option<&str> {
+    if h.len() < 0x54 || !h.starts_with(b"\x7FPKG") {
+        return None;
+    }
+    let id = std::str::from_utf8(&h[0x30..0x54]).ok()?.trim_end_matches('\0');
+    let title_id = id.get(7..16)?;
+    valid_playstation_id(title_id).then_some(id)
+}
+
+/// The game's title ID inside a content ID that `ps3_pkg_content_id` accepted.
+fn ps3_pkg_title_id(content_id: &str) -> String {
+    content_id[7..16].to_string()
 }
 
 /// Letters and digits only, or None.
@@ -434,13 +524,23 @@ fn fits(rom: &RomFile, origin: &str) -> bool {
     }
 }
 
-/// One file: a ROM, a disc image, or an Xbox 360 game's default.xex (which stands for its folder).
+/// One file: a ROM, a disc image, an Xbox 360 game's default.xex (which stands for its folder), or
+/// an Xbox 360 title update or DLC package.
 pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
     identify_with_size(p, || Some(size))
 }
 
 fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
-    let ext = p.extension()?.to_str()?.to_ascii_lowercase();
+    let Some(ext) = p.extension() else { return identify_package(p, size) };
+    let ext = ext.to_str()?.to_ascii_lowercase();
+    // Title updates are also kept under names like TU_16L61VP_0000004000000.00000000000G1, where
+    // what looks like a file type is part of the content ID. No file type this scans for is that long.
+    if ext.len() > 4 {
+        return identify_package(p, size);
+    }
+    if ext == "pkg" {
+        return identify_ps3_pkg(p, size);
+    }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
     let is_cart = CART.contains(&ext.as_str());
@@ -470,6 +570,29 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
     } else {
         None
     }
+}
+
+/// An Xbox 360 title update or DLC package, matched to its game by the game's name in its header.
+/// Only a file big enough to hold the header is opened, and only its first four bytes are read
+/// unless they're a package's.
+fn identify_package(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let size = size()?;
+    if size < STFS_HEADER as u64 {
+        return None;
+    }
+    let pkg = x360_package(p)?;
+    let file_name = p.file_name()?.to_str()?.to_string();
+    let title = [pkg.title, pkg.display].into_iter().find(|t| !t.is_empty()).unwrap_or(file_name);
+    Some(RomFile { path: p.to_path_buf(), system: "x360".into(), title, region: String::new(), size })
+}
+
+/// A PS3 package: a PSN game or an update for one. Its title is only in the encrypted part, so
+/// it's matched to its game by its file name, like a disc image.
+fn identify_ps3_pkg(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let size = size()?;
+    ps3_pkg_content_id(&ps3_pkg_header(p)?)?;
+    let title = p.file_stem()?.to_str()?.to_string();
+    Some(RomFile { path: p.to_path_buf(), system: "ps3".into(), title, region: String::new(), size })
 }
 
 /// Read the title and title ID from the little-endian PSF index and string tables.
@@ -591,6 +714,11 @@ fn identify_playstation(folder: &Path) -> Option<RomFile> {
             (id.starts_with("BC") || id.starts_with("BL")) && valid_playstation_id(id)
         });
     }
+    // A PSN game, installed or extracted (RPCS3 keeps them in dev_hdd0/game/NPUB30467). Only NP
+    // titles count: a disc game's update installed there has the same layout under its BL/BC ID.
+    if has_file("PARAM.SFO") && has_file("USRDIR/EBOOT.BIN") {
+        return identify_sfo(folder, &game_path(folder, "PARAM.SFO")?, "ps3", |id| id.starts_with("NP") && valid_playstation_id(id));
+    }
     None
 }
 
@@ -645,7 +773,7 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
         let marked = entries.iter().any(|e| {
             let n = e.file_name();
             let n = n.to_string_lossy();
-            ["eboot.bin", "ps3_disc.sfb", "base", "exefs"].iter().any(|m| n.eq_ignore_ascii_case(m))
+            ["eboot.bin", "ps3_disc.sfb", "param.sfo", "base", "exefs"].iter().any(|m| n.eq_ignore_ascii_case(m))
         });
         if marked {
             if let Some(game) = identify_playstation(&dir).or_else(|| identify_switch(&dir)) {
@@ -776,6 +904,24 @@ pub fn part_of(name: &str) -> Part {
     Part { kind, disc, of }
 }
 
+/// What a found file is to its game. An Xbox 360 package's header says (its name is only a content
+/// ID); any other file's name does.
+pub fn part_of_file(p: &Path) -> Part {
+    if let Some(pkg) = x360_package(p) {
+        return Part { kind: pkg.kind, disc: None, of: None };
+    }
+    // A PS3 update package's content ID usually says so ("UP0082-BLUS31197_00-DOD3PATCH0000101"),
+    // even when its file is only named by that ID.
+    let is_pkg = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pkg"));
+    let pkg = if is_pkg { ps3_pkg_header(p) } else { None };
+    let pkg_patch = pkg.as_ref().and_then(|h| ps3_pkg_content_id(h)).is_some_and(|id| id.to_ascii_uppercase().contains("PATCH"));
+    if pkg_patch {
+        return Part { kind: "update", disc: None, of: None };
+    }
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    part_of(&name)
+}
+
 /// Every found file that belongs to this catalog entry's game: its discs, updates and extra
 /// content, by the same name match as `match_catalog`.
 pub fn files_of(app: &Value, roms: &[RomFile]) -> Vec<RomFile> {
@@ -796,6 +942,8 @@ pub fn known_dump(app: &Value, p: &Path) -> bool {
 pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> {
     let mut out = HashMap::new();
     let Some(apps) = cat.get("apps").and_then(Value::as_array) else { return out };
+    // Looked at once, not once per game: an update or DLC is named for its game but can't be played.
+    let copies: Vec<&RomFile> = roms.iter().filter(|r| !is_extra_package(r)).collect();
     for a in apps {
         let id = a.get("id").and_then(Value::as_str).unwrap_or("");
         let game = a.get("game").and_then(Value::as_str).unwrap_or("");
@@ -803,8 +951,9 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
         if id.is_empty() || game.is_empty() {
             continue;
         }
-        let pick = roms
+        let pick = copies
             .iter()
+            .copied()
             .filter(|r| fits(r, origin))
             .filter(|r| matches(game, r))
             // Its catalog entry lists the discs or cartridges it's made for: one with another ID isn't it.
@@ -871,6 +1020,92 @@ mod tests {
         std::fs::write(d.join("nfs.iso"), &img).unwrap();
         assert_eq!(copy_id(&d.join("nfs.iso")).as_deref(), Some("454107EC"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A tiny Xbox 360 package header: its magic, content type, game's title ID and names.
+    fn stfs(content_type: u32, title: &str, display: &str) -> Vec<u8> {
+        let mut b = vec![0u8; STFS_HEADER + 0x100];
+        b[..4].copy_from_slice(b"LIVE");
+        b[0x344..0x348].copy_from_slice(&content_type.to_be_bytes());
+        b[0x360..0x364].copy_from_slice(&0x4D53_07E6u32.to_be_bytes());
+        let utf16 = |s: &str| s.encode_utf16().flat_map(u16::to_be_bytes).collect::<Vec<u8>>();
+        let (d, t) = (utf16(display), utf16(title));
+        b[0x411..0x411 + d.len()].copy_from_slice(&d);
+        b[0x1691..0x1691 + t.len()].copy_from_slice(&t);
+        b
+    }
+
+    #[test]
+    fn scans_xbox_360_title_updates() {
+        let d = tmp("x360-tu");
+        let p = d.join("4D5307E6/000B0000/7C1C4E5D5C6E2B6F3A8D6E14F2D9A1B3C4E5F60718");
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(&p, stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("x360", "Halo 3"));
+        assert_eq!(part_of_file(&p).kind, "update");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn scans_xbox_360_dlc() {
+        let d = tmp("x360-dlc");
+        let p = d.join("4D5307E6/00000002/58410A9F0C1D2E3F");
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(&p, stfs(0x0000_0002, "Halo 3", "Legendary Map Pack")).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "Halo 3");
+        assert_eq!(part_of_file(&p).kind, "dlc");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn reads_title_update_names_with_a_long_content_id_suffix() {
+        let d = tmp("x360-tu-name");
+        let p = d.join("TU_16L61VP_0000004000000.00000000000G1");
+        fs::write(&p, stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        assert_eq!(scan(&[d.clone()]).len(), 1);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn ignores_files_without_a_package_magic() {
+        let d = tmp("x360-none");
+        let mut other = stfs(0x000B_0000, "Halo 3", "");
+        other[..4].copy_from_slice(b"ABCD");
+        fs::write(d.join("0123456789ABCDEF"), other).unwrap();
+        assert!(scan(&[d.clone()]).is_empty());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn ignores_other_xbox_360_packages() {
+        let d = tmp("x360-save");
+        fs::write(d.join("0123456789ABCDEF"), stfs(0x0000_0001, "Halo 3", "")).unwrap();
+        assert!(scan(&[d.clone()]).is_empty());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn packages_say_their_games_title_id() {
+        let d = tmp("x360-id");
+        let p = d.join("0123456789ABCDEF");
+        fs::write(&p, stfs(0x0000_0002, "Halo 3", "")).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("4D5307E6"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_update_package_is_not_picked_as_the_game() {
+        let d = tmp("x360-pick");
+        fs::write(d.join("0123456789ABCDEF"), stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        let found = scan(&[d.clone()]);
+        let cat = serde_json::json!({ "apps": [{ "id": "halo3", "game": "Halo 3", "origin": "x360" }] });
+        assert!(match_catalog(&cat, &found).is_empty());
+        assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
+        let _ = fs::remove_dir_all(&d);
     }
 
     fn tmp(n: &str) -> PathBuf {
@@ -1265,6 +1500,110 @@ mod tests {
         assert_eq!(found[0].path, ps3);
         assert_eq!(found[0].system, "ps3");
         let _ = fs::remove_dir_all(root);
+    }
+
+    /// A PARAM.SFO with just a title and a title ID.
+    fn sfo(title: &str, id: &str) -> Vec<u8> {
+        let keys = b"TITLE\0TITLE_ID\0";
+        let title = format!("{title}\0").into_bytes();
+        let id = format!("{id}\0").into_bytes();
+        let mut sfo = b"\0PSF".to_vec();
+        for field in [0x101u32, 52, 52 + keys.len() as u32, 2] {
+            sfo.extend(field.to_le_bytes());
+        }
+        for (key, length, offset) in [(0u16, title.len(), 0), (6, id.len(), title.len())] {
+            sfo.extend(key.to_le_bytes());
+            sfo.extend(0x0204u16.to_le_bytes());
+            for field in [length, length, offset] {
+                sfo.extend((field as u32).to_le_bytes());
+            }
+        }
+        sfo.extend(keys);
+        sfo.extend(title);
+        sfo.extend(id);
+        sfo
+    }
+
+    /// A PS3 game folder laid out the way PSN games are installed: PARAM.SFO and USRDIR/EBOOT.BIN.
+    fn psn_folder(at: &Path, title: &str, id: &str) {
+        fs::create_dir_all(at.join("USRDIR")).unwrap();
+        fs::write(at.join("USRDIR/EBOOT.BIN"), b"").unwrap();
+        fs::write(at.join("PARAM.SFO"), sfo(title, id)).unwrap();
+    }
+
+    #[test]
+    fn scans_psn_game_folders_as_one_ps3_game() {
+        let root = tmp("psn");
+        let game = root.join("dev_hdd0/game/NPUB30467");
+        psn_folder(&game, "Resident Evil Code: Veronica X", "NPUB30467");
+        // Something inside that would be found on its own if the folder were looked through.
+        fs::write(game.join("USRDIR/0123456789ABCDEF"), stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps3", "Resident Evil Code: Veronica X"));
+        assert_eq!(found[0].path, game);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_disc_games_update_installed_like_a_psn_game_is_not_a_game() {
+        let root = tmp("psn-update");
+        psn_folder(&root.join("BLUS31197"), "Drakengard 3", "BLUS31197");
+        assert!(scan(&[root.clone()]).is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ps3_disc_folders_are_still_found() {
+        let root = tmp("ps3-disc");
+        let disc = root.join("Demons Souls");
+        fs::create_dir_all(disc.join("PS3_GAME/USRDIR")).unwrap();
+        fs::write(disc.join("PS3_DISC.SFB"), b"").unwrap();
+        fs::write(disc.join("PS3_GAME/USRDIR/EBOOT.BIN"), b"").unwrap();
+        fs::write(disc.join("PS3_GAME/PARAM.SFO"), sfo("Demon's Souls", "BLES00932")).unwrap();
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].path.as_path()), ("ps3", disc.as_path()));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// A tiny PS3 package header with this content ID.
+    fn ps3_pkg(content_id: &str) -> Vec<u8> {
+        let mut b = vec![0u8; 0x100];
+        b[..4].copy_from_slice(b"\x7FPKG");
+        b[0x30..0x30 + content_id.len()].copy_from_slice(content_id.as_bytes());
+        b
+    }
+
+    #[test]
+    fn scans_ps3_packages_with_their_title_id() {
+        let d = tmp("ps3-pkg");
+        let p = d.join("Drakengard 3.pkg");
+        fs::write(&p, ps3_pkg("EP0082-BLES01953_00-DOD3000000000001")).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps3", "Drakengard 3"));
+        assert_eq!(copy_id(&p).as_deref(), Some("BLES01953"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ps3_patch_package_is_an_update() {
+        let d = tmp("ps3-patch");
+        let p = d.join("UP0082-BLUS31197_00-DOD3PATCH0000101.pkg");
+        fs::write(&p, ps3_pkg("UP0082-BLUS31197_00-DOD3PATCH0000101")).unwrap();
+        assert_eq!(part_of_file(&p).kind, "update");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn ignores_pkg_files_without_the_ps3_magic() {
+        let d = tmp("ps4-pkg");
+        let mut ps4 = ps3_pkg("UP0082-CUSA01234_00-SOMEGAME00000001");
+        ps4[..4].copy_from_slice(b"\x7FCNT");
+        fs::write(d.join("Some Game.pkg"), ps4).unwrap();
+        assert!(scan(&[d.clone()]).is_empty());
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
