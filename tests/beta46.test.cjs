@@ -104,3 +104,10 @@ test("a setup step's options show as ticks, a license one off until the player t
   assert.match(app, /case 'same': return suBegin\(su\.copy\);/);
   assert.match(read('setup-inputs.js'), /prepOptsHtml\(su\)/);
 });
+
+test('coming from another launcher gets one window that brings the games over', () => {
+  const adopt = read('adopt.js');
+  assert.match(adopt, /if \(!ui\.mig_asked\) \{/);
+  assert.match(adopt, /function migWelcome\(g\)/);
+  assert.match(adopt, /await migAddReady\(\);\n    await migAway\(\);/);
+});

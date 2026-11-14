@@ -183,10 +183,23 @@ async function adoptAdd(close) {
 
 window.adoptAct = (act) => (act === 'adopt' ? adoptOpen() : null);
 
-// Once, a few seconds after start: if Steam or another launcher has recomps that aren't in the
-// Library yet, say so.
+// Once, a few seconds after start: another launcher's games that aren't here yet get a window that
+// says how many and brings them over in one go; recomps found only in Steam or a folder, a note.
 setTimeout(async () => {
-  if ((S.settings.ui || {}).adopt_asked || !S.settings.setup_done || document.body.classList.contains('tv-on')) return;
+  if (!S.settings.setup_done || document.body.classList.contains('tv-on') || document.querySelector('.scrim')) return;
+  const ui = S.settings.ui || {};
+  if (!ui.mig_asked) {
+    let all = [];
+    try { all = await invoke('migrate_scan'); } catch (e) { all = []; }
+    await saveUi({ mig_asked: true });
+    const theirs = all.filter((f) => f.from === 'launcher');
+    if (theirs.length) {
+      MIG.list = null; migMerge(all);
+      const g = migGroups();
+      if (g.ready.length + g.look.length + g.away.length) return migWelcome(g);
+    }
+  }
+  if (ui.adopt_asked) return;
   let found = [];
   try { found = await invoke('adopt_scan'); } catch (e) { return; }
   const fresh = found.filter((f) => f.id && !f.have);
@@ -195,6 +208,24 @@ setTimeout(async () => {
   toast(tn(fresh.length, 'Found 1 recomp you already have.', 'Found {n} recomps you already have.'), false,
     `${esc(tn(fresh.length, 'Found 1 recomp you already have.', 'Found {n} recomps you already have.'))} <a href="#" data-act="adopt">${esc(t('Add to Library'))}</a>`, 20000);
 }, 9000);
+// Coming from another launcher: what was found, and one button that adds the ones it's sure about
+// and the ones not on this PC (saved to the Library), then shows the rest to go through.
+function migWelcome(g) {
+  const line = (n, one, many) => (n ? `<li>${esc(tn(n, one, many))}</li>` : '');
+  const m = modal(`<h2>${esc(t('Coming From Another Launcher?'))}</h2>
+    <p>${esc(t('Your games from your other launcher can come over in one go. Their folders stay where they are, and from now on they update from here.'))}</p>
+    <ul class="mig-welcome">${line(g.ready.length, '1 game ready to add', '{n} games ready to add')}${line(g.away.length, '1 game in its list but not on this PC (it goes in your Library to install later)', '{n} games in its list but not on this PC (they go in your Library to install later)')}${line(g.look.length, '1 game to check which recomp it is', '{n} games to check which recomp each is')}</ul>
+    <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn" data-x="see">${esc(t('See Them First'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Bring Them Over'))}</button></div>`, async (x, close) => {
+    if (x.dataset.x === 'no') return close();
+    close();
+    if (x.dataset.x === 'see') { S.setTab = 'bring'; return go('settings'); }
+    S.setTab = 'bring'; go('settings');
+    await migAddReady();
+    await migAway();
+    if (migGroups().look.length) migLook();
+  }, t('Coming From Another Launcher?'));
+  $('.modal', m).classList.add('mig-hello');
+}
 
 // ---------- Settings → Bring Your Games ----------
 // Everything from another launcher, Steam or a folder, in one place. Games it's sure about (their
