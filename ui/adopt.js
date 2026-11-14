@@ -211,10 +211,10 @@ setTimeout(async () => {
 // Coming from another launcher: what was found, and one button that adds the ones it's sure about
 // and the ones not on this PC (saved to the Library), then shows the rest to go through.
 function migWelcome(g) {
-  const line = (n, one, many) => (n ? `<li>${esc(tn(n, one, many))}</li>` : '');
+  const line = (n, text) => (n ? `<li>${esc(text)}</li>` : '');
   const m = modal(`<h2>${esc(t('Coming From Another Launcher?'))}</h2>
     <p>${esc(t('Your games from your other launcher can come over in one go. Their folders stay where they are, and from now on they update from here.'))}</p>
-    <ul class="mig-welcome">${line(g.ready.length, '1 game ready to add', '{n} games ready to add')}${line(g.away.length, '1 game in its list but not on this PC (it goes in your Library to install later)', '{n} games in its list but not on this PC (they go in your Library to install later)')}${line(g.look.length, '1 game to check which recomp it is', '{n} games to check which recomp each is')}</ul>
+    <ul class="mig-welcome">${line(g.ready.length, tn(g.ready.length, '1 game ready to add', '{n} games ready to add'))}${line(g.away.length, tn(g.away.length, '1 game in its list but not on this PC (it goes in your Library to install later)', '{n} games in its list but not on this PC (they go in your Library to install later)'))}${line(g.look.length, tn(g.look.length, '1 game to check which recomp it is', '{n} games to check which recomp each is'))}</ul>
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn" data-x="see">${esc(t('See Them First'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Bring Them Over'))}</button></div>`, async (x, close) => {
     if (x.dataset.x === 'no') return close();
     close();
