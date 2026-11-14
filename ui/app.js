@@ -5373,7 +5373,10 @@ async function playGame2(id, program) {
       const m = String(err && err.message ? err.message : err).match(/^NEED_COPY\|([^|]*)(?:\|(.*))?$/);
       // The copy picked before didn't have what the game reads: the setup says which files.
       if (m && m[2]) S.setupNote = { id, text: tf('The copy you picked doesn\'t have {files}. Pick the folder that holds them.', { files: m[2] }) };
-      if (m || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
+      // Built from the copy into a folder that's gone now: picked again, and built again.
+      const gone = String(err && err.message ? err.message : err).match(/^NEED_BUILD\|(.*)$/);
+      if (gone) S.setupNote = { id, text: tf('The game built from your copy isn\'t in {folder} anymore. Pick your copy and it\'s built again.', { folder: gone[1] }) };
+      if (m || gone || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
       // It couldn't tell which program is the game (every one looks like a tool): the player says.
       if (/^PICK_EXE\|/.test(String(err && err.message ? err.message : err))) return askProgram(id);
       if (!blocked(id, err)) fail(err);
@@ -6733,6 +6736,7 @@ const TS_FIX = {
   move: [N_('Move…'), (id) => moveModal(id)],
   files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
   manual: [N_('Set Up By Hand…'), (id) => manualModal(id)],
+  byhandoff: [N_('Use the Launcher\'s Way'), async (id) => { S.library[id] = await invoke('set_manual', { id, manual: null }); toast(t('It uses the launcher\'s own setup again.')); render(true); }],
   dxruntime: [N_('Get It'), () => invoke('open_url', { url: 'https://www.microsoft.com/en-us/download/details.aspx?id=35' })],
   lookroute: [N_('Try Both Ways'), async (id) => { await invoke('look_reset_route', { id }); toast(t('Done. Press Play to try the Look again.')); }],
   clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
@@ -6744,6 +6748,11 @@ const TS_TEXT = [
   N_('You can set it up by hand'),
   N_('Point the launcher at its program and your game files yourself.'),
   N_('It\'s set up by hand'),
+  N_('Set up by hand, it never gets built'),
+  N_('This game is built from your copy before it starts, and only the launcher\'s way does that. Go back to it and press Play.'),
+  N_('It hasn\'t been built from your copy yet'),
+  N_('Press Play and pick your copy. The launcher builds the game from it before it starts.'),
+  N_('The game built from your copy isn\'t there anymore'),
   N_('It starts the way you set it up, not the launcher\'s way.'),
   N_('Your game files aren\'t where you pointed it anymore.'),
   N_('It needs files that aren\'t on this PC'),

@@ -2456,6 +2456,15 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             manual = None;
         }
     }
+    // "Program it starts" picked by the player, and not the program the game's setup file starts
+    // (the game they moved somewhere else, or a build of their own): theirs starts, as it is. The
+    // setup file's command line is for its own program, and its own folder may be gone.
+    if manual.is_none() {
+        if let Some(mine) = player_program(&st, id, &g) {
+            trail::note(format!("Play {id}: the program the player picked ({}), not its setup file's", mine.display()));
+            manual = Some(library::ManualSetup { exe: Some(mine), how: "none".into(), ..Default::default() });
+        }
+    }
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
     let whole = if manual.is_some() { None } else { profile_of(&st, id, &g) };
@@ -2581,6 +2590,16 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
                     None if up.optional || up.in_place(&g.path).is_some() => {}
                     None => return Err(Error::Msg(format!("NEED_UPDATE|{}", up.label))),
                 }
+            }
+            // Built from the copy into a folder of its own, and that folder is gone (moved or
+            // deleted): built again, through Easy Setup, rather than starting into nothing.
+            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
+                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
             }
             game_env = p.env_vars(&g.path, copy.as_deref());
             // Its program under another name than the profile's (a Linux build): the one the game
@@ -5121,8 +5140,14 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         return Ok(out);
     };
     if let Some(m) = &g.manual {
-        let ok = m.copy.as_ref().map(|c| c.exists()).unwrap_or(true);
-        out.push(check(if ok { "info" } else { "bad" }, "It's set up by hand", if ok { "It starts the way you set it up, not the launcher's way." } else { "Your game files aren't where you pointed it anymore." }, "manual"));
+        // A game its setup builds from the copy: set up by hand skips the build, so there's
+        // nothing to start. The launcher's way builds it.
+        if profile_of(&st, &id, &g).map(|p| p.prepare.is_some() && p.start.is_some()).unwrap_or(false) {
+            out.push(check("bad", "Set up by hand, it never gets built", "This game is built from your copy before it starts, and only the launcher's way does that. Go back to it and press Play.", "byhandoff"));
+        } else {
+            let ok = m.copy.as_ref().map(|c| c.exists()).unwrap_or(true);
+            out.push(check(if ok { "info" } else { "bad" }, "It's set up by hand", if ok { "It starts the way you set it up, not the launcher's way." } else { "Your game files aren't where you pointed it anymore." }, "manual"));
+        }
     }
     let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     // A program in a setup's working folder (temp\…\build) or one of the game's tools: what it
@@ -5222,11 +5247,18 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
                 Err(why) => out.push(check("bad", "Your copy of the game isn't the one it reads", why, "copy")),
             },
             None if prof.as_ref().map(|p| p.already_in_place(&g.path).is_some()).unwrap_or(false) => out.push(check("ok", "The game's files are in its folder", "", "")),
+            // A game its setup builds from the copy: nothing to start until that's done.
+            None if prof.as_ref().map(|p| p.prepare.is_some()).unwrap_or(false) => out.push(check("bad", "It hasn't been built from your copy yet", "Press Play and pick your copy. The launcher builds the game from it before it starts.", "copy")),
             None => out.push(check("bad", "Your copy of the game isn't set yet", need.label.clone(), "copy")),
         }
     }
-    // Its own first-time setup.
-    if g.setup.is_some() && !g.setup_done {
+    // Built, but not where it starts from anymore.
+    if let (Some(gone), Some(_)) = (prof.as_ref().and_then(|p| p.built_folder_missing(&g.path)), g.game_copy.as_ref()) {
+        out.push(check("bad", "The game built from your copy isn't there anymore", gone.display().to_string(), "copy"));
+    }
+    // Its own first-time setup (not when the developer's setup file sets the game up instead).
+    let dev_start = prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false);
+    if g.setup.is_some() && !g.setup_done && !dev_start {
         out.push(check("warn", "Its first-time setup hasn't finished", "Press Play and go through the setup window to the end.", ""));
     }
     // Already open.
@@ -5305,7 +5337,9 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         }
     }
     // Something's wrong and it isn't set up by hand yet: that's the way out when nothing else works.
-    if g.manual.is_none() && out.iter().any(|c| c.level == "bad") && !out.iter().any(|c| c.fix == "manual") {
+    // Not for a game its setup builds: by hand, nothing builds it.
+    let builds = prof.as_ref().map(|p| p.prepare.is_some()).unwrap_or(false);
+    if g.manual.is_none() && !builds && out.iter().any(|c| c.level == "bad") && !out.iter().any(|c| c.fix == "manual") {
         out.push(check("info", "You can set it up by hand", "Point the launcher at its program and your game files yourself.", "manual"));
     }
     Ok(out)
@@ -5386,6 +5420,17 @@ fn missing_libraries(exe: &Path, game_dir: &Path) -> Vec<String> {
             .filter(|n| !n.is_empty() && !inside.contains(n))
             .collect()
     }
+}
+
+/// The program the player picked in the game's settings, when the game's setup file starts another
+/// one: a moved game, or a program of their own. None when they didn't pick, or picked the same.
+fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    if g.exe_rules != u8::MAX {
+        return None;
+    }
+    let exe = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }).filter(|e| e.is_file())?;
+    let p = profile_of(st, id, g)?;
+    (p.start.is_some() && !p.starts_program(&exe)).then_some(exe)
 }
 
 /// Set Up By Hand: the program and its command line, with the player's game files put where they

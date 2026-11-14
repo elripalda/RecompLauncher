@@ -1417,6 +1417,34 @@ impl Profile {
     /// through Proton), so the profile's Windows program comes first. With a native build, a program
     /// with the same name comes first: an old `.exe` left beside it (a switch from the Windows build)
     /// must not hide the native one.
+    /// A game its setup step builds (`prepare`) and then starts from a folder outside the game's own
+    /// ("--play {home}/Games/Game"): that folder, when it isn't there. Built somewhere the player
+    /// then moved or deleted, it can't start, and building it again puts it back.
+    pub fn built_folder_missing(&self, install: &Path) -> Option<PathBuf> {
+        self.prepare.as_ref()?;
+        let s = self.start.as_ref()?;
+        s.args.iter().filter(|a| ["{home}/", "{documents}/", "{local}/", "{config}/", "{appdata}/"].iter().any(|r| a.starts_with(r))).find_map(|a| {
+            let p = PathBuf::from(fill(a, install, None));
+            (!p.exists()).then_some(p)
+        })
+    }
+
+    /// Whether `exe` is the program its start names (in any of its forms: the Windows one, or the
+    /// native build by that name on Linux and Mac).
+    pub fn starts_program(&self, exe: &Path) -> bool {
+        let Some(s) = self.start.as_ref() else { return false };
+        let low = |p: &Path, ext: bool| (if ext { p.extension() } else { p.file_name() }).map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = low(exe, false);
+        s.program.iter().any(|p| {
+            let want = Path::new(p);
+            let want_name = low(want, false);
+            // Game.AppImage for Game-nightly-4-x86_64.AppImage, as Play finds it.
+            let base = want_name.split('.').next().unwrap_or_default();
+            let twin = matches!(low(want, true).as_str(), "appimage" | "");
+            want_name == name || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
+        })
+    }
+
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
         let exe = self.program_for(install, windows_build)?;
         let through_proton = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
@@ -2253,6 +2281,34 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_program_the_player_picked_is_told_apart_from_the_one_it_starts() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Hopper.AppImage","HopperBuilder.exe"],"args":["--play","{home}/Games/Hopper"]},
+            "prepare":{"program":["HopperBuilder.exe"],"args":["--prepare","--game","{game}"]}}"#).unwrap();
+        use std::path::Path;
+        assert!(p.starts_program(Path::new("C:/Games/Hopper/HopperBuilder.exe")));
+        assert!(p.starts_program(Path::new("/opt/Hopper-nightly-80-x86_64.AppImage")));
+        // The game the builder made, or anything else: the player's own pick.
+        assert!(!p.starts_program(Path::new("C:/Games/Hopper/bin/hopper.exe")));
+        assert!(!p.starts_program(Path::new("/opt/HopperEditor.exe")));
+    }
+
+    #[test]
+    fn a_built_game_that_was_moved_away_is_noticed() {
+        let home = dirs::home_dir().unwrap();
+        let name = format!("rl-built-{}", std::process::id());
+        let p: super::Profile = serde_json::from_str(&format!(r#"{{"format":1,"start":{{"program":["HopperBuilder.exe"],"args":["--play","{{home}}/{name}"]}},
+            "prepare":{{"program":["HopperBuilder.exe"],"args":["--prepare"]}}}}"#)).unwrap();
+        let install = std::env::temp_dir();
+        assert_eq!(p.built_folder_missing(&install), Some(home.join(&name)));
+        std::fs::create_dir_all(home.join(&name)).unwrap();
+        assert_eq!(p.built_folder_missing(&install), None);
+        let _ = std::fs::remove_dir_all(home.join(&name));
+        // Without a build step, a folder named on the command line is the game's business.
+        let plain: super::Profile = serde_json::from_str(&format!(r#"{{"format":1,"start":{{"program":["Hopper.exe"],"args":["--data","{{home}}/{name}"]}}}}"#)).unwrap();
+        assert_eq!(plain.built_folder_missing(&install), None);
+    }
 
     #[test]
     fn appimage_embedded_profile_wins_and_binds_renamed_container() {
