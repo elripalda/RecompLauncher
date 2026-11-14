@@ -13,6 +13,7 @@ Thanks to everyone who has sent code, translations, bug reports and logs. You ca
 - [Tauri](https://tauri.app), the app framework
 - [SDL 3](https://www.libsdl.org) for controllers
 - [Rust](https://www.rust-lang.org) crates including tokio, reqwest, serde, zip, sevenz-rust, unrar, backhand and image. The full list is in [src-tauri/Cargo.toml](src-tauri/Cargo.toml).
+- [nod](https://github.com/encounter/nod-rs) (MIT or Apache 2.0) and [chd-rs](https://github.com/SnowflakePowered/chd-rs) (BSD 3-Clause) for making plain copies of compressed game images
 - [Archivo](https://fonts.google.com/specimen/Archivo) and [Figtree](https://fonts.google.com/specimen/Figtree), under the SIL Open Font License
 
 ## Tools it works with
