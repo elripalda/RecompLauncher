@@ -87,3 +87,20 @@ test('a better version of a game is suggested only when the catalog says so, and
   // Switching never uninstalls by itself: the old one is offered once the new one is in.
   assert.match(app, /if \(S\.library\[from\] && S\.library\[to\] && !S\.running\.has\(from\)\) confirmUninstall\(from\);/);
 });
+
+test("a setup step's options show as ticks, a license one off until the player ticks it", () => {
+  const start = app.indexOf('function prepOptsHtml(su)');
+  const src = app.slice(start, app.indexOf('document.addEventListener(\'change\'', start));
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const htmlFill = (s, v) => esc(s).replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m));
+  const prepOptsHtml = new Function('esc', 't', 'htmlFill', `${src} return prepOptsHtml;`)(esc, (s) => s, htmlFill);
+  assert.equal(prepOptsHtml({ prepare_options: [] }), '');
+  const out = prepOptsHtml({ prepare_options: [{ id: 'dlss', label: 'Upscaler A', note: 'Sharper.', license: { name: 'A license', url: 'https://example.com/a' }, on: false }, { id: 'hd', label: 'HD', on: true }] });
+  assert.match(out, /<h3>Options<\/h3>/);
+  assert.match(out, /data-popt="dlss"><span><b>Upscaler A<\/b> <em>\(I accept the <a href="#" data-url="https:\/\/example\.com\/a">A license<\/a>\)<\/em><small>Sharper\.<\/small>/);
+  assert.match(out, /data-popt="hd" checked>/);
+  // The ticks are kept for the game, and a rebuild can use the copy it was set up with.
+  assert.match(app, /invoke\('set_prepare_opts', \{ id, opts \}\)/);
+  assert.match(app, /case 'same': return suBegin\(su\.copy\);/);
+  assert.match(read('setup-inputs.js'), /prepOptsHtml\(su\)/);
+});

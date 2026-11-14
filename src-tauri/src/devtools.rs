@@ -466,8 +466,55 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
             }
             None => items.push(err("None of \"prepare.program\" is in this folder", pr.program.join(", "))),
         }
+        items.extend(option_items(&pr.options));
     }
     level
+}
+
+/// What's wrong with a setup step's options (prepare.options), in plain words, or what's fine.
+fn option_items(opts: &[profile::PrepareOption]) -> Vec<Item> {
+    let mut items = vec![];
+    let mut seen = BTreeSet::new();
+    for (i, o) in opts.iter().enumerate() {
+        let name = if o.label.trim().is_empty() { format!("Option {}", i + 1) } else { o.label.clone() };
+        let id_ok = !o.id.is_empty() && o.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+        let mut bad = vec![];
+        if o.id.is_empty() {
+            bad.push("it has no \"id\"".to_string());
+        } else if !id_ok {
+            bad.push(format!("its id \"{}\" can only have a-z, 0-9 and _", o.id));
+        } else if !seen.insert(o.id.clone()) {
+            bad.push(format!("another option already has the id \"{}\"", o.id));
+        }
+        if o.label.trim().is_empty() {
+            bad.push("it has no \"label\" to show the player".into());
+        }
+        if o.args.is_empty() {
+            bad.push("it has no \"args\", so ticking it changes nothing".into());
+        }
+        for os in o.os.iter().filter(|x| !["windows", "linux", "macos"].contains(&x.to_ascii_lowercase().as_str())) {
+            bad.push(format!("\"os\" has \"{os}\": it takes windows, linux and macos"));
+        }
+        if !o.gpu.is_empty() && !["nvidia", "amd"].contains(&o.gpu.to_ascii_lowercase().as_str()) {
+            bad.push(format!("\"gpu\" is \"{}\": it takes nvidia or amd", o.gpu));
+        }
+        if let Some(l) = &o.license {
+            if l.url.trim().is_empty() || !l.url.starts_with("https://") {
+                bad.push("its license has no https \"url\" for the player to read it at".into());
+            }
+            if l.name.trim().is_empty() {
+                bad.push("its license has no \"name\"".into());
+            }
+        }
+        if bad.is_empty() {
+            let when = [(!o.os.is_empty()).then(|| o.os.join(", ")), (!o.gpu.is_empty()).then(|| format!("{} cards", o.gpu))].into_iter().flatten().collect::<Vec<_>>().join(", ");
+            let lic = if o.license.is_some() { ", starts off: the player accepts its license" } else { ", starts on" };
+            items.push(ok(format!("Setup option: {name}{}{lic}", if when.is_empty() { String::new() } else { format!(" (only on {when})") })));
+        } else {
+            items.push(err(format!("Setup option \"{name}\": {}", bad.join("; ")), "See prepare.options in the developer guide."));
+        }
+    }
+    items
 }
 
 /// Write a starter recomplauncher.json into a build's folder (only when it has none).
@@ -503,6 +550,22 @@ pub fn is_local(st: &App, id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn setup_options_are_checked_in_plain_words() {
+        let p: crate::profile::Prepare = serde_json::from_str(r#"{"program":["Builder.exe"],"options":[
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"gpu":"nvidia","license":{"name":"A license","url":"https://example.com/a"}},
+            {"id":"Bad Id","label":"","args":[],"os":["dos"],"gpu":"intel","license":{"name":"","url":"ftp://x"}},
+            {"id":"dlss","label":"Twice","args":["--b"],"extra":"ignored"}]}"#).unwrap();
+        let items = super::option_items(&p.options);
+        assert_eq!(items.len(), 3);
+        assert!(items[0].text.contains("Upscaler A") && items[0].text.contains("starts off"), "{}", items[0].text);
+        let bad = &items[1].text;
+        for w in ["a-z, 0-9", "no \"label\"", "no \"args\"", "\"dos\"", "\"intel\"", "https \"url\"", "no \"name\""] {
+            assert!(bad.contains(w), "{w}: {bad}");
+        }
+        assert!(items[2].text.contains("already has the id"));
+    }
+
     use super::*;
 
     fn schema() -> Value {

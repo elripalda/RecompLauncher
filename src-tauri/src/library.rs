@@ -117,6 +117,9 @@ pub struct Installed {
     /// game in Easy Setup, by input id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub runtime_off: std::collections::BTreeSet<String>,
+    /// The ticks the player set for its setup step's options (prepare.options), by option id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prepare_opts: BTreeMap<String, bool>,
     /// A recomp that carries several games: each one's play time and setup (games.rs), by game id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub games: BTreeMap<String, crate::games::Played>,

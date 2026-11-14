@@ -90,6 +90,67 @@ pub struct Prepare {
     /// Seconds before it's given up on.
     #[serde(default = "five_min")]
     pub timeout: u64,
+    /// Ticks on the setup screen before the step runs, each adding its arguments when it's on
+    /// (a library the builder downloads under a company's license, say).
+    #[serde(default)]
+    pub options: Vec<PrepareOption>,
+}
+
+/// One tick for the setup step.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct PrepareOption {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub note: String,
+    /// Added after the step's own arguments when the tick is on.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Shown only on these systems ("windows", "linux", "macos"); every one when empty.
+    #[serde(default)]
+    pub os: Vec<String>,
+    /// Shown only with this brand of graphics card: "nvidia" (an RTX card, as DLSS needs) or "amd".
+    #[serde(default)]
+    pub gpu: String,
+    /// What the player accepts by ticking it. With one, the tick starts off.
+    #[serde(default)]
+    pub license: Option<OptionLicense>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct OptionLicense {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub url: String,
+}
+
+impl PrepareOption {
+    /// Whether it's offered on this PC: its system, and its brand of graphics card.
+    pub fn applies(&self, os: &str, nvidia_rtx: bool, amd: bool) -> bool {
+        (self.os.is_empty() || self.os.iter().any(|o| o.eq_ignore_ascii_case(os)))
+            && match self.gpu.to_ascii_lowercase().as_str() {
+                "" => true,
+                "nvidia" => nvidia_rtx,
+                "amd" => amd,
+                _ => false,
+            }
+    }
+    /// On unless the player said otherwise; one with a license starts off.
+    pub fn on(&self, picked: &BTreeMap<String, bool>) -> bool {
+        picked.get(&self.id).copied().unwrap_or(self.license.is_none())
+    }
+}
+
+impl Prepare {
+    /// The options this PC is offered.
+    pub fn options_here(&self, os: &str, nvidia_rtx: bool, amd: bool) -> Vec<&PrepareOption> {
+        self.options.iter().filter(|o| !o.id.is_empty() && !o.label.is_empty() && o.applies(os, nvidia_rtx, amd)).collect()
+    }
+    /// The arguments the ticked options add, in their order.
+    pub fn option_args(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<String> {
+        self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.on(picked)).flat_map(|o| o.args.iter().cloned()).collect()
+    }
 }
 
 impl Prepare {
@@ -2281,6 +2342,30 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn setup_step_options_show_where_they_apply_and_add_their_args_when_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"args":["--prepare"],"options":[
+            {"id":"dlss","label":"Upscaler A","args":["--fetch-a","--accept-a"],"gpu":"nvidia","license":{"name":"A","url":"https://example.com/a"}},
+            {"id":"fsr4","label":"Upscaler B","args":["--b"],"gpu":"amd","os":["windows"],"license":{"name":"B","url":"https://example.com/b"}},
+            {"id":"hd","label":"HD textures","args":["--hd"],"unknown":"ignored"}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let ids = |os: &str, rtx: bool, amd: bool| pr.options_here(os, rtx, amd).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids("windows", true, false), ["dlss", "hd"]);
+        assert_eq!(ids("windows", false, true), ["fsr4", "hd"]);
+        assert_eq!(ids("linux", true, false), ["dlss", "hd"]);
+        // A Steam Deck: an AMD chip on Linux.
+        assert_eq!(ids("linux", false, true), ["hd"]);
+        assert_eq!(ids("macos", false, false), ["hd"]);
+        // A license starts off; the others start on. The player's ticks win.
+        let mut picked = std::collections::BTreeMap::new();
+        assert_eq!(pr.option_args("windows", true, false, &picked), ["--hd"]);
+        picked.insert("dlss".to_string(), true);
+        picked.insert("hd".to_string(), false);
+        assert_eq!(pr.option_args("windows", true, false, &picked), ["--fetch-a", "--accept-a"]);
+        // Not on this PC: never added, whatever was ticked.
+        assert!(pr.option_args("windows", false, true, &picked).is_empty());
+    }
 
     #[test]
     fn a_program_the_player_picked_is_told_apart_from_the_one_it_starts() {

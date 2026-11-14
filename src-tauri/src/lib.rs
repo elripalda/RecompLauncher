@@ -67,7 +67,7 @@ use install::Progress;
 use library::{folder_name, now, Installed, Library, Settings};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -641,6 +641,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         // Each of its games' own time and setup (a recomp that carries several) stays through updates.
         games: prev.as_ref().map(|p| p.games.clone()).unwrap_or_default(),
         runtime_off: prev.as_ref().map(|p| p.runtime_off.clone()).unwrap_or_default(),
+        prepare_opts: prev.as_ref().map(|p| p.prepare_opts.clone()).unwrap_or_default(),
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
@@ -3404,7 +3405,8 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         // 4. The recomp's own setup step.
         if let Some(pr) = &p.prepare {
             emit(SetupEv { step: "extras".into(), text: pr.label.clone(), ..Default::default() });
-            if let Err(e) = run_prepare(pr, &g.path, &copy, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
+            let extra = prepare_extra(&app.state::<App>().dir, pr, &g.prepare_opts);
+            if let Err(e) = run_prepare(pr, &g.path, &copy, &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
                 return fail(e);
             }
         }
@@ -3463,10 +3465,42 @@ fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
 }
 
 /// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
-fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
+/// The arguments a game's setup step gets from the options ticked for it (prepare.options), as the
+/// player last set them for that game.
+fn prepare_extra(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<String, bool>) -> Vec<String> {
+    if pr.options.is_empty() {
+        return vec![];
+    }
+    let (rtx, amd) = dlss::gpu_brands(dir);
+    pr.option_args(assets::os_now(), rtx, amd, picked)
+}
+
+/// The options a game's setup step offers on this PC, with how each is set for it now.
+fn prepare_options_here(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<String, bool>) -> Vec<Value> {
+    let (rtx, amd) = dlss::gpu_brands(dir);
+    pr.options_here(assets::os_now(), rtx, amd)
+        .into_iter()
+        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked) }))
+        .collect()
+}
+
+/// The ticks the player set for a game's setup step options, kept for its next setup or rebuild.
+#[tauri::command(async)]
+fn set_prepare_opts(st: State<'_, App>, id: String, opts: BTreeMap<String, bool>) -> Res<()> {
+    let ok = |k: &str| !k.is_empty() && k.len() <= 40 && k.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.prepare_opts = opts.into_iter().filter(|(k, _)| ok(k)).collect();
+    drop(l);
+    st.save();
+    Ok(())
+}
+
+fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
-    let args: Vec<String> = pr.args.iter().map(|a| profile::fill(a, install, Some(copy))).collect();
+    // Its own arguments, then those of the options the player ticked.
+    let args: Vec<String> = pr.args.iter().chain(extra.iter()).map(|a| profile::fill(a, install, Some(copy))).collect();
     let mut c = std::process::Command::new(&exe);
     sysenv::clean_std(&mut c);
     // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
@@ -4201,6 +4235,8 @@ struct Setup {
     update_optional: bool,
     update_folder: bool,
     update_file: bool,
+    /// Ticks for its setup step that apply on this PC (prepare.options), each with how it's set.
+    prepare_options: Vec<Value>,
 }
 
 /// What the launcher can set up for a game: its copy and its settings. None for games it can't.
@@ -4267,6 +4303,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         update_optional: up.map(|u| u.optional).unwrap_or(false),
         update_folder: up.map(|u| u.wants_folder()).unwrap_or(false),
         update_file: up.map(|u| u.wants_file()).unwrap_or(false),
+        prepare_options: p.prepare.as_ref().map(|pr| prepare_options_here(&st.dir, pr, &g.prepare_opts)).unwrap_or_default(),
     })
 }
 
@@ -4388,7 +4425,8 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                 // the same argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
                 pr.args = inputs::arguments(&pr.args, &p.input_paths, false);
                 let copy = g.game_copy.as_deref().unwrap_or(&g.path);
-                run_prepare(&pr, &g.path, copy, &|pct, text| emit("extras", pct, text), &stopped)?;
+                let extra = prepare_extra(&dir, &pr, &g.prepare_opts);
+                run_prepare(&pr, &g.path, copy, &extra, &|pct, text| emit("extras", pct, text), &stopped)?;
             }
             if stopped() { return Err("Stopped.".into()); }
             let current = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or("The game was removed during setup.")?;
@@ -8568,7 +8606,8 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options, looks_info, set_look, look_picture, ui_data,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
+            set_prepare_opts, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install

@@ -63,19 +63,38 @@ pub fn rtx_card(name: &str) -> bool {
 
 /// Whether DLSS applies on this PC: Windows or Linux with an NVIDIA RTX card. Asked once.
 pub fn applies(dir: &Path) -> bool {
+    if cfg!(target_os = "macos") {
+        return false;
+    }
+    gpu_names(dir).iter().any(|n| rtx_card(n))
+}
+
+/// The graphics cards' names, asked once.
+pub fn gpu_names(dir: &Path) -> Vec<String> {
     use std::sync::OnceLock;
-    static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            return false;
-        }
-        #[cfg(windows)]
-        let names: Vec<String> = crate::win::gpus().into_iter().map(|(n, _)| n).collect();
-        #[cfg(not(windows))]
-        let names: Vec<String> = vec![crate::usage::pc_info(dir).gpu];
-        let _ = dir;
-        names.iter().any(|n| rtx_card(n))
-    })
+    static NAMES: OnceLock<Vec<String>> = OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            #[cfg(windows)]
+            let names: Vec<String> = crate::win::gpus().into_iter().map(|(n, _)| n).collect();
+            #[cfg(not(windows))]
+            let names: Vec<String> = vec![crate::usage::pc_info(dir).gpu];
+            let _ = dir;
+            names
+        })
+        .clone()
+}
+
+/// Any AMD graphics card (Radeon, or an AMD chip's own graphics).
+pub fn amd_card(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("radeon") || n.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == "amd")
+}
+
+/// This PC for a setup step's options: (an NVIDIA RTX card, an AMD card).
+pub fn gpu_brands(dir: &Path) -> (bool, bool) {
+    let names = gpu_names(dir);
+    (!cfg!(target_os = "macos") && names.iter().any(|n| rtx_card(n)), names.iter().any(|n| amd_card(n)))
 }
 
 fn root(dir: &Path) -> PathBuf {
@@ -314,6 +333,16 @@ mod tests {
         b[dir + 4..dir + 8].copy_from_slice(&(cert.len() as u32).to_le_bytes());
         assert!(has_signature(&b, "NVIDIA Corporation"));
         assert!(!has_signature(&b, "Someone Else"));
+    }
+
+    #[test]
+    fn amd_cards_are_told_apart() {
+        for yes in ["AMD Radeon RX 9070 XT", "AMD Radeon(TM) Graphics", "AMD Custom GPU 0405", "Radeon RX 580"] {
+            assert!(amd_card(yes), "{yes}");
+        }
+        for no in ["NVIDIA GeForce RTX 3070", "Intel(R) Arc(TM) A770 Graphics", ""] {
+            assert!(!amd_card(no), "{no}");
+        }
     }
 
     #[test]
