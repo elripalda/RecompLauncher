@@ -676,6 +676,11 @@ fn identify_playstation(folder: &Path) -> Option<RomFile> {
             (id.starts_with("BC") || id.starts_with("BL")) && valid_playstation_id(id)
         });
     }
+    // A PSN game, installed or extracted (RPCS3 keeps them in dev_hdd0/game/NPUB30467). Only NP
+    // titles count: a disc game's update installed there has the same layout under its BL/BC ID.
+    if has_file("PARAM.SFO") && has_file("USRDIR/EBOOT.BIN") {
+        return identify_sfo(folder, &game_path(folder, "PARAM.SFO")?, "ps3", |id| id.starts_with("NP") && valid_playstation_id(id));
+    }
     None
 }
 
@@ -730,7 +735,7 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
         let marked = entries.iter().any(|e| {
             let n = e.file_name();
             let n = n.to_string_lossy();
-            ["eboot.bin", "ps3_disc.sfb", "base", "exefs"].iter().any(|m| n.eq_ignore_ascii_case(m))
+            ["eboot.bin", "ps3_disc.sfb", "param.sfo", "base", "exefs"].iter().any(|m| n.eq_ignore_ascii_case(m))
         });
         if marked {
             if let Some(game) = identify_playstation(&dir).or_else(|| identify_switch(&dir)) {
@@ -1448,6 +1453,71 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].path, ps3);
         assert_eq!(found[0].system, "ps3");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// A PARAM.SFO with just a title and a title ID.
+    fn sfo(title: &str, id: &str) -> Vec<u8> {
+        let keys = b"TITLE\0TITLE_ID\0";
+        let title = format!("{title}\0").into_bytes();
+        let id = format!("{id}\0").into_bytes();
+        let mut sfo = b"\0PSF".to_vec();
+        for field in [0x101u32, 52, 52 + keys.len() as u32, 2] {
+            sfo.extend(field.to_le_bytes());
+        }
+        for (key, length, offset) in [(0u16, title.len(), 0), (6, id.len(), title.len())] {
+            sfo.extend(key.to_le_bytes());
+            sfo.extend(0x0204u16.to_le_bytes());
+            for field in [length, length, offset] {
+                sfo.extend((field as u32).to_le_bytes());
+            }
+        }
+        sfo.extend(keys);
+        sfo.extend(title);
+        sfo.extend(id);
+        sfo
+    }
+
+    /// A PS3 game folder laid out the way PSN games are installed: PARAM.SFO and USRDIR/EBOOT.BIN.
+    fn psn_folder(at: &Path, title: &str, id: &str) {
+        fs::create_dir_all(at.join("USRDIR")).unwrap();
+        fs::write(at.join("USRDIR/EBOOT.BIN"), b"").unwrap();
+        fs::write(at.join("PARAM.SFO"), sfo(title, id)).unwrap();
+    }
+
+    #[test]
+    fn scans_psn_game_folders_as_one_ps3_game() {
+        let root = tmp("psn");
+        let game = root.join("dev_hdd0/game/NPUB30467");
+        psn_folder(&game, "Resident Evil Code: Veronica X", "NPUB30467");
+        // Something inside that would be found on its own if the folder were looked through.
+        fs::write(game.join("USRDIR/0123456789ABCDEF"), stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps3", "Resident Evil Code: Veronica X"));
+        assert_eq!(found[0].path, game);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_disc_games_update_installed_like_a_psn_game_is_not_a_game() {
+        let root = tmp("psn-update");
+        psn_folder(&root.join("BLUS31197"), "Drakengard 3", "BLUS31197");
+        assert!(scan(&[root.clone()]).is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ps3_disc_folders_are_still_found() {
+        let root = tmp("ps3-disc");
+        let disc = root.join("Demons Souls");
+        fs::create_dir_all(disc.join("PS3_GAME/USRDIR")).unwrap();
+        fs::write(disc.join("PS3_DISC.SFB"), b"").unwrap();
+        fs::write(disc.join("PS3_GAME/USRDIR/EBOOT.BIN"), b"").unwrap();
+        fs::write(disc.join("PS3_GAME/PARAM.SFO"), sfo("Demon's Souls", "BLES00932")).unwrap();
+        let found = scan(&[root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].path.as_path()), ("ps3", disc.as_path()));
         let _ = fs::remove_dir_all(root);
     }
 
