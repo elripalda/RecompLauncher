@@ -2588,6 +2588,7 @@
       // Back on Home: offer the way out, like Steam (B or Esc, then A).
       return sheet(t('Leave Big Picture mode'), [
         { label: t('Leave Big Picture mode'), sub: t('Back to the desktop view, for mouse and keyboard'), icon: 'chevL', run: () => leave() },
+        { label: t('Quit RecompLauncher'), icon: 'close', run: () => invoke('quit_launcher').catch(fail) },
         { label: t('Cancel'), icon: 'check', run: () => {} },
       ]);
     }
