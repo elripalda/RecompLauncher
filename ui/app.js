@@ -604,7 +604,7 @@ function index() {
       every.sort((x, y) => (y.id === pick) - (x.id === pick) || (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || byDl(x, y));
       // Only the versions this computer can run (or that are already installed) are offered.
       const list = every.filter((a) => forOS(a) || S.library[a.id]);
-      titles.set(ti.id, { id: ti.id, name: ti.name || every[0].game || every[0].name, pick: (list.find((a) => a.id === pick) || list[0] || every[0]).id, list, every });
+      titles.set(ti.id, { id: ti.id, name: ti.name || every[0].game || every[0].name, pick: (list.find((a) => a.id === pick) || list[0] || every[0]).id, list, every, suggest: !!ti.suggest, saves: ['same', 'maybe', 'no'].includes(ti.saves) ? ti.saves : 'maybe', why: String(ti.why || '') });
     }
     const devs = new Map(((S.cat && S.cat.developers) || []).filter((d) => d && d.slug).map((d) => [d.slug, d]));
     IDX = { key, cat: S.cat, ids, titles, devs };
@@ -909,6 +909,47 @@ function replacedNote(a) {
   const to = replacedBy(a.id);
   if (!to) return '';
   return `<div class="gp-note moved" role="note"><b>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</b><span dir="auto">${esc(t('Move to it to keep getting updates. Your saves, play time and game files come along.'))}</span><button type="button" class="btn sm main" data-act="move-listing" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></div>`;
+}
+// A better version of a game the player has (the catalog says so for that game: titles[].suggest):
+// its recommended version, when they have another one and not that one. "Not Now" hides it until
+// the recommendation changes.
+function betterOf(a) {
+  const g = verGroup(a), g0 = S.library[a.id];
+  if (!g || !g.suggest || !g0 || g0.local || g0._sub || a.id === g.pick || S.library[g.pick]) return null;
+  const to = byId(g.pick);
+  if (!to || to.soon || !forOS(to)) return null;
+  const off = ((S.settings.ui || {}).better_off || {})[a.id];
+  return off === g.pick ? null : to;
+}
+function betterNote(a) {
+  const to = betterOf(a);
+  if (!to) return '';
+  const g = verGroup(a);
+  return `<div class="gp-note better" role="note"><b>${esc(t('A Better Version Is Out'))}</b><span dir="auto">${esc(g.why || tf('{name} is the version of {game} most players should use now.', { name: to.name, game: g.name }))}</span>
+    <div class="note-acts"><button type="button" class="btn sm main" data-act="better-go" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(tf('Switch to {name}', { name: to.name }))}</button><button type="button" class="btn sm" data-act="better-off" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Not Now'))}</button></div></div>`;
+}
+// Switching: the new version installs beside the old one; once it's in, the launcher offers to
+// uninstall the old one (the player says yes). What happens to saves is said before anything starts.
+async function betterGo(from, to) {
+  const a = byId(from), b = byId(to), g = verGroup(a);
+  if (!a || !b || !g) return;
+  const saves = g.saves === 'same' ? t('Your saves work in it. With Share Saves Between Versions on, the launcher copies them over.')
+    : g.saves === 'no' ? tf('Saves from {old} don\'t work in {name}. They stay where they are, so keep {old} if you need them.', { old: a.name, name: b.name })
+      : tf('Saves from {old} may not work in {name}. They stay where they are either way.', { old: a.name, name: b.name });
+  const v = await ask(tf('Switch to {name}?', { name: b.name }), `<p>${esc(tf('{name} installs next to {old}. When it\'s in, the launcher asks whether to uninstall {old}.', { name: b.name, old: a.name }))}</p><p class="muted">${esc(saves)}</p>`,
+    [{ label: tf('Install {name}', { name: b.name }), icon: 'down', v: 'go', main: true }, { label: t('Cancel'), icon: 'chevL', v: null }]);
+  if (v !== 'go') return;
+  await saveUi({ switch_from: Object.assign({}, (S.settings.ui || {}).switch_from || {}, { [to]: from }) }, true);
+  return startInstall(to);
+}
+// The new version is in: offered to take out the old one.
+async function betterDone(to) {
+  const from = (((S.settings.ui || {}).switch_from) || {})[to];
+  if (!from) return;
+  const rest = Object.assign({}, (S.settings.ui || {}).switch_from || {});
+  delete rest[to];
+  await saveUi({ switch_from: rest }, true);
+  if (S.library[from] && S.library[to] && !S.running.has(from)) confirmUninstall(from);
 }
 async function moveListing(from, to) {
   if (S.running.has(from) || S.jobs[from]) return toast(t('Close the game and wait for its downloads first.'), true);
@@ -1904,7 +1945,7 @@ function pageGame(id) {
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
       <div class="gp-title">${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
-      <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
+      <div class="gp-side"><div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
@@ -7217,6 +7258,8 @@ async function act(el, e) {
     case 'slide-step': return showSlide((S.slide || 0) + Number(el.dataset.d));
     case 'shelf': { const sh = el.closest('.shelf'); S.shelf[sh.dataset.shelf] = (S.shelf[sh.dataset.shelf] || 0) + Number(el.dataset.d); return layoutShelves(sh.parentElement); }
     case 'sort': S.find.sort = el.dataset.k; S.find.picked = true; return updateDiscover();
+    case 'better-go': return betterGo(id, el.dataset.to);
+    case 'better-off': { await saveUi({ better_off: Object.assign({}, (S.settings.ui || {}).better_off || {}, { [id]: el.dataset.to }) }, true); return refreshGame(); }
     case 'disc-by': {
       const k = el.dataset.k || '';
       for (const b of $$('[data-act="disc-by"]')) b.setAttribute('aria-checked', String((b.dataset.k || '') === k));
@@ -7971,6 +8014,8 @@ T.event.listen('install', ({ payload: p }) => {
     const name = byId(id)?.name || id;
     if (p.phase === 'done') {
       delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; loadNews();
+      // Switched to a better version: once it's in, the old one is offered for uninstall.
+      if ((((S.settings.ui || {}).switch_from) || {})[id]) refreshState().then(() => betterDone(id));
       // A game the launcher sets up: straight on to its copy, unless it already has one.
       const busy = SU.el || (window.tvSetupBusy && window.tvSetupBusy());
       // A copy picked (and checked) before the download: its setup starts with it at once.

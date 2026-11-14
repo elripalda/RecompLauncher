@@ -2434,3 +2434,8 @@ button.scan-pill:hover{filter:brightness(1.15)}
 .scan-pop{position:fixed;z-index:80;max-width:288px;padding:10px 14px;border-radius:12px;background:var(--panel2,#1b2333);color:var(--ink,#eef3f8);font-size:13px;line-height:1.45;box-shadow:0 14px 40px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08)}
 /* A listing the catalog replaced: Move to It. */
 .gp-note.moved{border-color:rgba(53,232,232,.42);background:rgba(53,232,232,.08)}.gp-note.moved b{color:var(--cyan)}.gp-note.moved .btn{align-self:flex-start;margin-top:6px}
+
+/* A better version of the game is out: cyan, with its two buttons on a row. */
+.gp-note.better{border-color:rgba(52,242,232,.35);background:linear-gradient(135deg,rgba(52,242,232,.1),rgba(55,123,182,.06))}
+.gp-note.better b{color:var(--cyan)}
+.gp-note .note-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}

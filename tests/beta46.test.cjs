@@ -67,3 +67,23 @@ test("Discover's lists show each console's dot and each system's icon", () => {
   assert.match(read('drops.js'), /o\.dataset\.ico/);
   assert.match(read('app.css'), /@media \(min-width:1500px\)\{\.dctl\.rows\{flex-direction:row/);
 });
+
+test('a better version of a game is suggested only when the catalog says so, and the player decides', () => {
+  const start = app.indexOf('function betterOf(a)');
+  const src = app.slice(start, app.indexOf('function betterNote', start));
+  const S = { library: { old: { id: 'old' } }, settings: { ui: {} } };
+  const g = { suggest: true, pick: 'new', list: [] };
+  const ids = { old: { id: 'old' }, new: { id: 'new', name: 'New' } };
+  const betterOf = new Function('S', 'verGroup', 'byId', 'forOS', `${src} return betterOf;`)(S, () => g, (id) => ids[id], () => true);
+  assert.equal(betterOf(ids.old).id, 'new');
+  g.suggest = false;
+  assert.equal(betterOf(ids.old), null);
+  g.suggest = true;
+  S.settings.ui.better_off = { old: 'new' };
+  assert.equal(betterOf(ids.old), null);
+  S.settings.ui.better_off = {};
+  S.library.new = { id: 'new' };
+  assert.equal(betterOf(ids.old), null);
+  // Switching never uninstalls by itself: the old one is offered once the new one is in.
+  assert.match(app, /if \(S\.library\[from\] && S\.library\[to\] && !S\.running\.has\(from\)\) confirmUninstall\(from\);/);
+});
