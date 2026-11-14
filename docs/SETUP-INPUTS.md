@@ -135,9 +135,16 @@ recomp asks for it once; the player provides nothing:
 ## Persistence, replacement and privacy
 
 Named game inputs live in the installed entry's `setup_inputs`. A preparation fingerprint covers
-the declarations, prepare command and selected paths/metadata, **not disc contents**. Changing an
-input, a shared key's metadata, a declaration or an installed version requires running setup
-again. Keep source files available after setup if a project reads them at runtime.
+the declarations, prepare command and selected paths/metadata, **not disc contents** and not the
+installed version. Changing an input, a shared key's metadata or a declaration requires running
+setup again, because the fingerprint no longer matches.
+
+An update does not change the fingerprint. It installs the new release as a fresh record with the
+setup marked not done, and keeps the player's selected files (`setup_inputs`). The next Play asks
+the player to finish Easy Setup, with every row already filled in; one click runs `prepare` again
+with the same files. Nothing runs on its own, so the selected source files must still be where the
+player left them, or the player picks them again. Keep source files available after setup if a
+project reads them at runtime.
 
 Imported keys live under the launcher's private `shared-keys/<shared-type>/` directory. These are
 not account credentials and do not use the RecompLauncher account token slot. Replacing keys is
