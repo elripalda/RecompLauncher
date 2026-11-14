@@ -79,13 +79,14 @@ async function fixture(t, { next, parent = '2147483647', source = helper, reopen
   const target = path.join(dir, "Launcher α ' ; $unused.AppImage");
   const work = path.join(dir, 'private staging');
   const trail = path.join(dir, 'launcher-trail.log');
+  const pending = path.join(dir, 'update-pending.json');
   const marker = path.join(dir, 'started.txt');
   fs.mkdirSync(work, { mode: 0o700 });
   const old = '#!/bin/sh\nprintf "old:%s" "$1" > "$RL_TEST_MARKER"\n';
   fs.writeFileSync(target, old, { mode: 0o755 });
   fs.linkSync(target, path.join(work, 'previous.AppImage'));
   if (next !== null) fs.writeFileSync(path.join(work, 'next.AppImage'), next || '#!/bin/sh\nprintf "new:%s" "$1" > "$RL_TEST_MARKER"\n', { mode: 0o755 });
-  const child = spawn('/bin/sh', ['-c', source, 'update-test', parent, target, work, trail, reopen ? '1' : '0', '--bigpicture'], {
+  const child = spawn('/bin/sh', ['-c', source, 'update-test', parent, target, work, trail, reopen ? '1' : '0', pending, '--bigpicture'], {
     env: { ...process.env, RL_TEST_MARKER: marker }, stdio: 'ignore',
   });
   t.after(() => { if (child.exitCode === null) child.kill(); });

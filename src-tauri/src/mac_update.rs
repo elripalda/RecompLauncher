@@ -126,12 +126,12 @@ pub fn forget_old(bundle: &Path) {
 /// next start then tells the player (update-pending.json, see update_check_last).
 const WATCH: &str = include_str!("mac_update.sh");
 
-pub fn start_and_watch(bundle: &Path) -> std::io::Result<()> {
+pub fn start_and_watch(bundle: &Path, data: &Path) -> std::io::Result<()> {
     let program = crate::macos::bundle_executable(bundle, crate::assets::arch_now()).ok_or_else(|| std::io::Error::other("the new version has no program for this Mac"))?;
     let failed = bundle.with_file_name(".RecompLauncher-failed.app");
     let mut c = std::process::Command::new("/bin/sh");
     c.arg("-c").arg(WATCH).arg("sh");
-    c.arg(std::process::id().to_string()).arg(bundle).arg(old_of(bundle)).arg(failed).arg(program).arg("/usr/bin/open");
+    c.arg(std::process::id().to_string()).arg(bundle).arg(old_of(bundle)).arg(failed).arg(program).arg("/usr/bin/open").arg(data.join("update-pending.json"));
     c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     crate::sysenv::clean_std(&mut c);
     c.spawn().map(|_| ())
@@ -184,7 +184,7 @@ mod tests {
         // A process that has already quit stands in for the version being replaced.
         let mut gone = std::process::Command::new("true").spawn().unwrap();
         gone.wait().unwrap();
-        let status = std::process::Command::new("/bin/sh").arg("-c").arg(WATCH).arg("sh").arg(gone.id().to_string()).arg(&app).arg(&old).arg(dir.join(".RecompLauncher-failed.app")).arg(&program).arg("true").status().unwrap();
+        let status = std::process::Command::new("/bin/sh").arg("-c").arg(WATCH).arg("sh").arg(gone.id().to_string()).arg(&app).arg(&old).arg(dir.join(".RecompLauncher-failed.app")).arg(&program).arg("true").arg(dir.join("update-pending.json")).status().unwrap();
         assert!(status.success());
         dir
     }

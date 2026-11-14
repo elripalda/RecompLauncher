@@ -59,6 +59,8 @@ pub mod trail;
 pub mod tray;
 mod update_download;
 mod update_launch;
+#[cfg(all(test, unix))]
+mod update_rollback_tests;
 pub mod usage;
 pub mod win;
 mod installer;
@@ -7254,7 +7256,7 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
         // Noted, so that if the new version fails to start and this one is put back, its next
         // start tells the player (see update_check_last). No installer to run again on a Mac.
         let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": to_ver, "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": "", "url": file_url, "sha256": want}).to_string());
-        if let Err(e) = mac_update::start_and_watch(&bundle) {
+        if let Err(e) = mac_update::start_and_watch(&bundle, &st.dir) {
             mac_update::forget_old(&bundle);
             let _ = std::fs::remove_file(st.dir.join("update-pending.json"));
             return Err(Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")));

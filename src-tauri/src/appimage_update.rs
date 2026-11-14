@@ -217,6 +217,7 @@ impl Staged {
             // trail; the next start finds out from update-pending.json (see update_check_last).
             .arg(data.join("launcher-trail.log"))
             .arg(if reopen { "1" } else { "0" })
+            .arg(data.join("update-pending.json"))
             .arg(if big_picture {
                 "--bigpicture"
             } else {
