@@ -248,6 +248,12 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
         std::process::Command::new(p)
     };
     crate::sysenv::clean_std(&mut c);
+    // A setup that comes as an AppImage, on a PC without FUSE 2 (NixOS, a container): it unpacks
+    // itself to run, as a game's AppImage does at Play.
+    #[cfg(target_os = "linux")]
+    if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")) && !crate::sysenv::has_fuse2() {
+        c.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+    }
     if let Some(x) = copy {
         c.arg(x);
     }
