@@ -1420,9 +1420,10 @@ impl Profile {
         }
         std::fs::create_dir_all(&dir)?;
         let mut items: Vec<PathBuf> = if copy.is_dir() { std::fs::read_dir(copy)?.flatten().map(|e| e.path()).collect() } else { vec![copy.to_path_buf()] };
-        // A .cue sheet is only the table of contents: the .bin tracks it names come along too.
+        // A .cue or .gdi is only the table of contents: the tracks it names come along too (and an
+        // .m3u's discs with theirs).
         if !copy.is_dir() {
-            let tracks = cue_tracks(copy);
+            let tracks = sheet_tracks(copy);
             // The game wants the disc's one .bin under its own name (ctr-u.bin), and the player
             // picked the sheet: the track it names goes there, not the sheet renamed.
             if tracks.len() == 1 && g.name.trim().to_ascii_lowercase().ends_with(".bin") {
@@ -2367,29 +2368,13 @@ pub fn n64_to_z64(b: &mut [u8], order: u8) {
     }
 }
 
-/// The track files a .cue sheet names (`FILE "Game (Track 1).bin" BINARY`), when they're next to it.
-pub fn cue_tracks(cue: &Path) -> Vec<PathBuf> {
-    if !cue.extension().map(|e| e.eq_ignore_ascii_case("cue")).unwrap_or(false) {
-        return vec![];
-    }
-    let Some(dir) = cue.parent() else { return vec![] };
-    let text = std::fs::read(cue).map(|b| String::from_utf8_lossy(&b[..b.len().min(64 * 1024)]).to_string()).unwrap_or_default();
-    text.lines()
-        .filter_map(|l| {
-            let l = l.trim();
-            if !l.to_ascii_uppercase().starts_with("FILE ") {
-                return None;
-            }
-            let rest = l[5..].trim();
-            let name = if let Some(r) = rest.strip_prefix('"') { r.split('"').next()? } else { rest.split_whitespace().next()? };
-            let p = Path::new(name);
-            // Only a plain file name next to the sheet, never a path out of its folder.
-            if p.components().count() != 1 || name.contains("..") {
-                return None;
-            }
-            Some(dir.join(p)).filter(|f| f.is_file())
-        })
-        .collect()
+/// The files a .cue, .gdi or .m3u names that sit right beside it, read by the scanner's own sheet
+/// reader (crate::roms). They're put in the game's folder under their own names, so a file in
+/// another folder, or one reached through "..", is never brought along.
+pub fn sheet_tracks(sheet: &Path) -> Vec<PathBuf> {
+    let Some(dir) = sheet.parent() else { return vec![] };
+    let files = crate::roms::sheet_files(sheet).unwrap_or_default();
+    files.into_iter().filter(|f| f.parent() == Some(dir)).collect()
 }
 
 /// An N64 ROM's first 64 bytes (its header), in .z64 order whatever order the file is in.
@@ -3291,6 +3276,28 @@ mod tests {
         std::fs::create_dir_all(&install).unwrap();
         p.place(&install, Some(&d.join("TS (USA).cue"))).unwrap();
         assert!(install.join("TS (USA).cue").is_file() && install.join("TS (USA).bin").is_file());
+    }
+
+    #[test]
+    fn gdi_brings_its_tracks() {
+        let d = tmp("gdi-place");
+        std::fs::write(d.join("game.gdi"), "2\n1 0 4 2352 track01.bin 0\n2 600 0 2352 track02.raw 0\n").unwrap();
+        std::fs::write(d.join("track01.bin"), b"data").unwrap();
+        std::fs::write(d.join("track02.raw"), b"music").unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"g.exe","files":{"how":"folder","folder":".","accepts":"iso"}}"#).unwrap();
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        from_boot(&b).unwrap().place(&install, Some(&d.join("game.gdi"))).unwrap();
+        assert!(install.join("track01.bin").is_file() && install.join("track02.raw").is_file());
+    }
+
+    #[test]
+    fn a_track_in_another_folder_is_not_brought_along() {
+        let d = tmp("cue-subfolder");
+        std::fs::create_dir_all(d.join("tracks")).unwrap();
+        std::fs::write(d.join("tracks/game.bin"), b"disc").unwrap();
+        std::fs::write(d.join("game.cue"), "FILE \"tracks/game.bin\" BINARY\n  TRACK 01 MODE2/2352\n").unwrap();
+        assert!(sheet_tracks(&d.join("game.cue")).is_empty());
     }
 
     #[test]

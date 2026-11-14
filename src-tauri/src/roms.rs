@@ -662,6 +662,12 @@ pub fn sheet_data_tracks(p: &Path) -> Option<Vec<PathBuf>> {
     folded(p).map(|set| set.data)
 }
 
+/// Every file a .cue, .gdi or .m3u names that's there: its tracks (and an .m3u's discs with theirs).
+/// None for any other file.
+pub fn sheet_files(p: &Path) -> Option<Vec<PathBuf>> {
+    folded(p).map(|set| set.files)
+}
+
 /// The first disc an .m3u lists that's there (its .cue, .gdi or disc image).
 pub fn first_disc(p: &Path) -> Option<PathBuf> {
     if ext_of(p) != "m3u" {
