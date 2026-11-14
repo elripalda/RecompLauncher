@@ -92,8 +92,15 @@ pub struct Prepare {
     pub timeout: u64,
     /// Ticks on the setup screen before the step runs, each adding its arguments when it's on
     /// (a library the builder downloads under a company's license, say).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "options_lenient")]
     pub options: Vec<PrepareOption>,
+}
+
+/// prepare.options as written, each one that can be read: one with a value of the wrong type is
+/// left out (the developer check names it), never the whole file, so the game still sets up.
+fn options_lenient<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<PrepareOption>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_array().map(|l| l.iter().filter_map(|o| serde_json::from_value::<PrepareOption>(o.clone()).ok()).collect()).unwrap_or_default())
 }
 
 /// One tick for the setup step.
@@ -115,6 +122,9 @@ pub struct PrepareOption {
     /// What the player accepts by ticking it. With one, the tick starts off.
     #[serde(default)]
     pub license: Option<OptionLicense>,
+    /// Whether it starts ticked (on when not given). Ignored with a license.
+    #[serde(default, rename = "default")]
+    pub start_on: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -136,9 +146,9 @@ impl PrepareOption {
                 _ => false,
             }
     }
-    /// On unless the player said otherwise; one with a license starts off.
+    /// As the player set it; else on (or as its "default" says), and off with a license.
     pub fn on(&self, picked: &BTreeMap<String, bool>) -> bool {
-        picked.get(&self.id).copied().unwrap_or(self.license.is_none())
+        picked.get(&self.id).copied().unwrap_or(self.license.is_none() && self.start_on.unwrap_or(true))
     }
 }
 
@@ -2348,14 +2358,16 @@ mod tests {
         let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"args":["--prepare"],"options":[
             {"id":"dlss","label":"Upscaler A","args":["--fetch-a","--accept-a"],"gpu":"nvidia","license":{"name":"A","url":"https://example.com/a"}},
             {"id":"fsr4","label":"Upscaler B","args":["--b"],"gpu":"amd","os":["windows"],"license":{"name":"B","url":"https://example.com/b"}},
-            {"id":"hd","label":"HD textures","args":["--hd"],"unknown":"ignored"}]}}"#).unwrap();
+            {"id":"hd","label":"HD textures","args":["--hd"],"unknown":"ignored"},
+            {"id":"extra","label":"Extra","args":["--x"],"default":false,"os":["linux"]},
+            {"id":"broken","label":"Broken","args":"--not-a-list"}]}}"#).unwrap();
         let pr = p.prepare.unwrap();
         let ids = |os: &str, rtx: bool, amd: bool| pr.options_here(os, rtx, amd).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
         assert_eq!(ids("windows", true, false), ["dlss", "hd"]);
         assert_eq!(ids("windows", false, true), ["fsr4", "hd"]);
-        assert_eq!(ids("linux", true, false), ["dlss", "hd"]);
+        assert_eq!(ids("linux", true, false), ["dlss", "hd", "extra"]);
         // A Steam Deck: an AMD chip on Linux.
-        assert_eq!(ids("linux", false, true), ["hd"]);
+        assert_eq!(ids("linux", false, true), ["hd", "extra"]);
         assert_eq!(ids("macos", false, false), ["hd"]);
         // A license starts off; the others start on. The player's ticks win.
         let mut picked = std::collections::BTreeMap::new();
@@ -2363,6 +2375,8 @@ mod tests {
         picked.insert("dlss".to_string(), true);
         picked.insert("hd".to_string(), false);
         assert_eq!(pr.option_args("windows", true, false, &picked), ["--fetch-a", "--accept-a"]);
+        // "default": false starts off.
+        assert_eq!(pr.option_args("linux", false, false, &std::collections::BTreeMap::new()), ["--hd"]);
         // Not on this PC: never added, whatever was ticked.
         assert!(pr.option_args("windows", false, true, &picked).is_empty());
     }
