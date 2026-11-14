@@ -397,8 +397,10 @@ async function checkLauncher(btn) {
 const fail = (e) => toast(t(String(e && e.message ? e.message : e).replace(/^[A-Z_]+\|/, '')), true);
 
 // Markdown from README sections and release notes, made safe: HTML tags dropped, everything escaped,
-// links opened in the browser.
-function md(src, githubMentions = false) {
+// links opened in the browser. Tables come out as tables, and GitHub's note boxes ("> [!NOTE]") as
+// boxes. foldTables: a table longer than a few rows starts folded (release notes' file lists).
+const MD_ALERT = { note: N_('Note'), tip: N_('Tip'), important: N_('Important'), warning: N_('Warning'), caution: N_('Caution') };
+function md(src, githubMentions = false, opts = {}) {
   const inline = (s) => s
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -413,13 +415,29 @@ function md(src, githubMentions = false) {
   const lines = esc(String(src || '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\r/g, '')).split('\n');
   const out = []; let para = [], list = null, code = null;
   const flush = () => { if (para.length) out.push('<p>' + inline(para.join(' ')) + '</p>'); para = []; if (list) { out.push(`</${list}>`); list = null; } };
-  for (const raw of lines) {
+  // GitHub's tables: rows of cells split by |, the outer pipes optional, a line of dashes under the first.
+  const isRow = (l) => l.includes('|');
+  const isRule = (l) => l.includes('|') && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+  const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => inline(c.trim()));
+  for (let n = 0; n < lines.length; n++) {
+    const raw = lines[n];
     if (code !== null) { if (/^\s*```/.test(raw)) { out.push('<pre><code>' + code.join('\n') + '</code></pre>'); code = null; } else code.push(raw); continue; }
     if (/^\s*```/.test(raw)) { flush(); code = []; continue; }
     const l = raw.trimEnd();
     let m;
     if (!l.trim()) { flush(); continue; }
-    if ((m = l.match(/^\s{0,3}(#{1,6})\s+(.*)$/))) { flush(); const n = Math.min(4, m[1].length + 1); out.push(`<h${n}>${inline(m[2].replace(/#+$/, ''))}</h${n}>`); continue; }
+    // A table: a row of cells, the line of dashes under it, then rows until the pipes stop.
+    if (isRow(l) && n + 1 < lines.length && isRule(lines[n + 1])) {
+      flush();
+      const head = cells(l), rows = [];
+      n += 2;
+      while (n < lines.length && /\|/.test(lines[n]) && lines[n].trim()) { rows.push(cells(lines[n])); n++; }
+      n--;
+      const table = `<div class="md-table"><table><thead><tr>${head.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${head.map((_, k) => `<td>${r[k] || ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      out.push(opts.foldTables && rows.length > 3 ? `<details class="md-fold"><summary>${esc(tn(rows.length, 'A table of 1 row', 'A table of {n} rows'))}</summary>${table}</details>` : table);
+      continue;
+    }
+    if ((m = l.match(/^\s{0,3}(#{1,6})\s+(.*)$/))) { flush(); const h = Math.min(4, m[1].length + 1); out.push(`<h${h}>${inline(m[2].replace(/#+$/, ''))}</h${h}>`); continue; }
     if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { flush(); continue; }
     if ((m = l.match(/^\s*(?:[-*+]|(\d+)[.)])\s+(.*)$/))) {
       if (para.length) { out.push('<p>' + inline(para.join(' ')) + '</p>'); para = []; }
@@ -428,7 +446,17 @@ function md(src, githubMentions = false) {
       out.push('<li>' + inline(m[2].replace(/^\[[ xX]\]\s*/, '')) + '</li>');
       continue;
     }
-    if ((m = l.match(/^\s*&gt;\s?(.*)$/))) { flush(); out.push('<blockquote>' + inline(m[1]) + '</blockquote>'); continue; }
+    // A quote, all its lines together; GitHub's "> [!NOTE]" on its first line makes it a note box.
+    if (/^\s*&gt;/.test(l)) {
+      flush();
+      const body = [];
+      while (n < lines.length && /^\s*&gt;/.test(lines[n])) { body.push(lines[n].replace(/^\s*&gt;\s?/, '').trimEnd()); n++; }
+      n--;
+      const kind = (body[0] || '').match(/^\[!(note|tip|important|warning|caution)\]\s*$/i);
+      const text = (kind ? body.slice(1) : body).reduce((acc, x) => { if (!x.trim()) acc.push([]); else acc[acc.length - 1].push(x.trim()); return acc; }, [[]]).filter((x) => x.length).map((x) => '<p>' + inline(x.join(' ')) + '</p>').join('');
+      out.push(kind ? `<div class="md-alert ${kind[1].toLowerCase()}"><b>${esc(t(MD_ALERT[kind[1].toLowerCase()]))}</b>${text}</div>` : `<blockquote>${text}</blockquote>`);
+      continue;
+    }
     if (list && /^\s{2,}/.test(raw)) { out[out.length - 1] = out[out.length - 1].replace(/<\/li>$/, ' ' + inline(l.trim()) + '</li>'); continue; }
     if (list) { out.push(`</${list}>`); list = null; }
     para.push(l.trim());
@@ -3324,7 +3352,7 @@ function updNotes(u) {
   if (u.self) {
     const n = S.selfNotes;
     if (n === undefined) { loadSelfNotes(); return `<p class="muted">${esc(t('Loading the notes…'))}</p>`; }
-    return n && relKey(n.version) === relKey(u.tag) && n.notes ? `<div class="md">${md(n.notes, true)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
+    return n && relKey(n.version) === relKey(u.tag) && n.notes ? updClamp(`<div class="md">${md(n.notes, true, { foldTables: true })}</div>`, u) : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
   }
   if (!u.repo) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
   const r = S.rels[u.repo];
@@ -3333,7 +3361,21 @@ function updNotes(u) {
   if (r.error) return `<p class="muted">${esc(t(r.error))}</p>`;
   const got = relsBetween(r.list, u.from, u.tag);
   if (!got.length) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
-  return got.map((x) => `<div class="upd-rel">${got.length > 1 ? `<div class="upd-rel-h"><b>${esc(x.name || x.tag_name)}</b><span>${esc(date(x.published_at))}</span></div>` : ''}<div class="md">${x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('');
+  const notes = got.map((x) => `<div class="upd-rel">${got.length > 1 ? `<div class="upd-rel-h"><b>${esc(x.name || x.tag_name)}</b><span>${esc(date(x.published_at))}</span></div>` : ''}<div class="md">${x.body ? md(x.body, false, { foldTables: true }) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('');
+  return updClamp(notes, u);
+}
+// Long notes start as a preview with Show All; Open in Updates goes to the game's own Updates tab.
+function updClamp(html, u) {
+  const open = byId(u.id) && !u.self ? `<button type="button" class="btn sm" data-act="upd-game" data-id="${esc(u.id)}">${esc(t('Open in Updates'))}</button>` : '';
+  return `<div class="upd-notes"><div class="upd-clip">${html}</div><div class="upd-acts"><button type="button" class="btn sm upd-all" data-act="upd-all" hidden>${esc(t('Show All'))}</button>${open}</div></div>`;
+}
+// After the notes are in: the preview's button shows only when there's more than fits.
+function updMeasure(box) {
+  const clip = box && box.querySelector('.upd-clip'), all = box && box.querySelector('.upd-all');
+  if (!clip || !all) return;
+  const long = clip.scrollHeight > 380;
+  all.hidden = !long;
+  clip.classList.toggle('cut', long);
 }
 async function loadSelfNotes() {
   if (S.selfNotes === null && loadSelfNotes.busy) return;
@@ -3346,7 +3388,7 @@ async function loadSelfNotes() {
 function fillUpd(el) {
   const u = (S.updLog || []).find((x) => x.key === el.dataset.key);
   const box = el.querySelector('.upd-in');
-  if (u && box) box.innerHTML = updNotes(u);
+  if (u && box) { box.innerHTML = updNotes(u); requestAnimationFrame(() => updMeasure(box)); }
 }
 function updatesTab(log) {
   S.updLog = log;
@@ -7301,6 +7343,8 @@ async function act(el, e) {
     case 'dl-clear': return saveUi({ [el.dataset.k]: Math.floor(Date.now() / 1000) });
     case 'dl-tab': if (S.dlTab === el.dataset.tab) return; S.dlTab = el.dataset.tab; S.anim = 'enter-soft'; return render();
     case 'upd': return toggleUpd(el);
+    case 'upd-all': { const clip = el.closest('.upd-notes') && el.closest('.upd-notes').querySelector('.upd-clip'); if (clip) { const on = !clip.classList.contains('all'); clip.classList.toggle('all', on); el.textContent = on ? t('Show Less') : t('Show All'); } return; }
+    case 'upd-game': S.nextTab = 'updates'; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
     case 'dev-add': return devAdd();
     case 'dev-open': S.nextTab = 'dev'; return go('game', id);
