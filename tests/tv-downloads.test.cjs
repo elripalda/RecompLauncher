@@ -42,3 +42,26 @@ test('pressing A on the launcher row starts the same selfUpdate as the desktop',
   await c.activate({ dataset: { tvact: 'selfupdate', key: 'u:@launcher' }, closest: () => null });
   assert.deepEqual(c.calls, ['selfUpdate']);
 });
+
+function checkedRow(info) {
+  const c = downloadsContext(null);
+  c.S.dlHist = [{ id: 'prime', tag: 'v0.0.11' }];
+  c.scanInfo = () => info;
+  c.thumbOf = String;
+  return c.pageDownloads();
+}
+
+test('a ClamAV-checked download shows the desktop scan pill and opens the game', () => {
+  const html = checkedRow({ cls: 'ok', ic: '✓', text: 'Clean · ClamAV', scanner: 'clamav', sha: '' });
+  assert.match(html, /<span class="scan-pill ok"><i>✓<\/i>Clean · ClamAV<\/span><\/button>/);
+  assert.match(html, /<small>Installed v0\.0\.11<\/small>/);
+  assert.match(html, /data-go-game="prime"/);
+  assert.doesNotMatch(html, /How It Was Checked/);
+});
+
+test('a VirusTotal-checked download opens its report from the row', () => {
+  const html = checkedRow({ cls: 'warn', ic: '!', text: '3 of 70 engines flagged', scanner: 'virustotal', sha: 'abc' });
+  assert.match(html, /data-tvact="scan" data-sha="abc"/);
+  assert.match(html, /<span class="scan-pill warn">/);
+  assert.doesNotMatch(html, /Open the Report/);
+});

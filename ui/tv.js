@@ -1126,14 +1126,17 @@
     const act = Object.keys(S.jobs), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
     const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
     const ups = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]);
-    // Recently installed, with how the store checked each one: A opens VirusTotal's report in the
-    // browser (or says how ClamAV checked it).
+    // Recently installed, with how the store checked each one in the same pill as the desktop.
+    // A opens VirusTotal's report when there is one; ClamAV has no report, so A opens the game.
     if (!S.dlHist && typeof loadDlHist === 'function') loadDlHist();
     const done = (S.dlHist || []).filter((h) => h.tag).slice(0, 6).map((h) => {
       const info = scanInfo(h);
       if (!info) return '';
       const a = libAppOf(h.id);
-      return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" data-tvact="scan" data-scanner="${esc(info.scanner)}" data-sha="${esc(info.sha)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))} · ${esc(info.text)}</small></span><span class="tv-pill">${esc(info.scanner === 'clamav' || !info.sha ? t('How It Was Checked') : t('Open the Report'))}</span></button>`;
+      const report = info.scanner !== 'clamav' && info.sha;
+      const press = report ? `data-tvact="scan" data-sha="${esc(info.sha)}"` : `data-go-game="${esc(h.id)}"`;
+      const pill = `<span class="scan-pill ${info.cls}"><i>${info.ic}</i>${esc(info.text)}</span>`;
+      return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" ${press}>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))}</small></span>${pill}</button>`;
     }).filter(Boolean);
     // The launcher's own update is counted in the Downloads badge, so it needs a row here too, or the
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
@@ -2712,7 +2715,7 @@
       // Redrawn after: Keep Steam in Sync may have turned off.
       case 'steamremove': sfx('select'); if (window.steamRemoveAll) await window.steamRemoveAll(); return draw(true);
       case 'moveto': sfx('open'); return moveListing(id, el.dataset.to).then(() => { if (TV.view === 'game' && TV.arg === id) { TV.arg = el.dataset.to; draw(true); } });
-      case 'scan': sfx('open'); if (el.dataset.scanner !== 'clamav' && el.dataset.sha) { invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail); return toast(t('The report is open in your browser.')); } return toast(el.dataset.scanner === 'clamav' ? t('Checked by ClamAV on recompstore.com before it was published.') : t('Every release is scanned before it\'s published. A few flags on a new recomp are usually false positives.'));
+      case 'scan': sfx('open'); invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail); return toast(t('The report is open in your browser.'));
       case 'saves': sfx('open'); TV.savesAll = null; return go('saves');
       case 'gsaves': return go('gsaves', id);
       case 'stor': {
