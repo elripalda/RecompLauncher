@@ -1003,3 +1003,8 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv .ni-optional-toggle.f{outline:3px solid var(--cyan);outline-offset:2px}
 .tv-rank{position:absolute;top:12px;left:12px;z-index:3;padding:4px 12px;border-radius:999px;font:800 17px Archivo,Figtree,sans-serif;color:#06121a;background:linear-gradient(180deg,#34F2E8,#377BB6);box-shadow:0 6px 18px rgba(0,0,0,.4)}
 .tv-badge.left.low{top:52px}
+/* Where you are in a long page or list: a slim rail at the right edge. */
+.tv-rail{position:absolute;right:18px;top:30px;bottom:30px;width:6px;border-radius:6px;background:rgba(var(--tvinkrgb,244,248,252),.08);z-index:6;pointer-events:none}
+.tv-rail.box{right:auto;bottom:auto}
+.tv-rail i{position:absolute;left:0;top:0;width:100%;border-radius:6px;background:var(--acc,#34F2E8);opacity:.75;transition:transform .35s cubic-bezier(.2,.8,.2,1),height .2s}
+.tv-rail[hidden]{display:none}

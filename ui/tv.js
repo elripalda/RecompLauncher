@@ -1953,6 +1953,7 @@
       },
     };
     if (keep) { const [a, b] = [$('.tb-side', el), $('.tb-list', el)]; if (a) a.scrollTop = keep[0]; if (b) b.scrollTop = keep[1]; }
+    requestAnimationFrame(() => { railFor($('.tb-list', el)); railFor($('.tb-side', el)); });
     const f = (M && $('.tb-menu .tv-item', el)) || (focusKey && $(`[data-key="${CSS.escape(focusKey)}"]`, el)) || $('.tb-list .tv-item', el) || $('.tb-main .tv-item', el) || $('.tb-side .tv-item', el);
     if (f) focus(f, true);
   }
@@ -2189,6 +2190,7 @@
     fitAll();
     TV.swap = false;
     if (keep) setScroll(prevScroll, true);
+    requestAnimationFrame(() => window.tvRails && window.tvRails());
     movePill();
     moveTabPill(!keep);
     if (!keep || TV.view !== 'home') setTone(GAMEVIEWS.includes(v) ? TV.arg : v === 'home' ? TV.hero : v === 'library' && (S.settings.ui || {}).tv_view === 'flow' ? TV.flowId : null);
@@ -2355,6 +2357,35 @@
   }
 
   // The region scrolls up and down; rows slide sideways.
+  // A slim rail at the page's right edge: where you are in a long page (a controller can't drag
+  // it, so it only shows the place). Not on Home, which moves row by row, nor on a page that fits.
+  function rail(y) {
+    const sc = $('.tv-stage:not(.leaving) #tv-scroll', root) || $('#tv-scroll', root);
+    if (!sc) return;
+    const reg = sc.parentElement, H = reg.clientHeight, total = sc.scrollHeight + 40;
+    let r = $(':scope > .tv-rail', reg);
+    if (TV.view === 'home' || total <= H + 4) { if (r) r.hidden = true; return; }
+    if (!r) { r = document.createElement('div'); r.className = 'tv-rail'; r.setAttribute('aria-hidden', 'true'); r.innerHTML = '<i></i>'; reg.append(r); }
+    r.hidden = false;
+    const track = r.clientHeight || H - 40, th = Math.max(48, Math.round(track * (H / total))), max = Math.max(1, total - H);
+    r.firstChild.style.height = th + 'px';
+    r.firstChild.style.transform = `translateY(${Math.round((track - th) * Math.min(1, Math.max(0, y) / max))}px)`;
+  }
+  // The same for a list that scrolls by itself (the folder browser, a sheet's list).
+  function railFor(box) {
+    if (!box) return;
+    const host = box.parentElement;
+    let r = host && $(':scope > .tv-rail.box', host);
+    if (box.scrollHeight <= box.clientHeight + 4) { if (r) r.hidden = true; return; }
+    if (!r) { r = document.createElement('div'); r.className = 'tv-rail box'; r.setAttribute('aria-hidden', 'true'); r.innerHTML = '<i></i>'; if (getComputedStyle(host).position === 'static') host.style.position = 'relative'; host.append(r); }
+    r.hidden = false;
+    r.style.top = box.offsetTop + 'px'; r.style.height = box.clientHeight + 'px'; r.style.left = (box.offsetLeft + box.offsetWidth - 8) + 'px';
+    const track = box.clientHeight, th = Math.max(40, Math.round(track * (box.clientHeight / box.scrollHeight)));
+    r.firstChild.style.height = th + 'px';
+    r.firstChild.style.transform = `translateY(${Math.round((track - th) * (box.scrollTop / Math.max(1, box.scrollHeight - box.clientHeight)))}px)`;
+  }
+  document.addEventListener('scroll', (e) => { const b = e.target; if (b && b.classList && (b.classList.contains('tb-list') || b.classList.contains('tb-side') || b.classList.contains('tv-sheet-in'))) railFor(b); }, true);
+  window.tvRails = () => { rail(TV.scrollY || 0); for (const b of $$('.tb-list, .tb-side, .tv-sheet-in', root)) railFor(b); };
   function setScroll(y, instant) {
     const sc = $('#tv-scroll', root);
     if (!sc) return;
@@ -2364,6 +2395,7 @@
     TV.scrollY = y;
     if (instant) sc.style.transition = 'none';
     sc.style.transform = `translateY(${-y}px)`;
+    rail(y);
     // The settings panel beside a long list stays in view as the list moves.
     const sp = $('#tv-setpanel', sc);
     if (sp) {

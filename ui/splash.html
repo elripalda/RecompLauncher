@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RecompLauncher</title>
+<style>
+  /* The small window that shows while the launcher opens: the logo builds itself, then the bar fills. */
+  html,body{margin:0;height:100%;overflow:hidden;background:#0B1220;cursor:default;user-select:none}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;
+    background:radial-gradient(120% 95% at 50% 115%,#0e2a3d 0%,#0B1220 58%)}
+  .mark{width:112px;height:112px;filter:drop-shadow(0 10px 30px rgba(52,242,232,.25))}
+  .mark path{opacity:0;animation:piece .8s cubic-bezier(.2,.8,.2,1) forwards}
+  .mark path:nth-child(1){animation-delay:.05s}.mark path:nth-child(2){animation-delay:.25s}.mark path:nth-child(3){animation-delay:.45s}
+  .word{height:22px;width:auto;opacity:0;animation:fade .7s ease .6s forwards}
+  .bar{width:180px;height:3px;border-radius:3px;background:rgba(244,248,252,.1);overflow:hidden;opacity:0;animation:fade .4s ease .8s forwards}
+  .bar i{display:block;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,#34F2E8,#377BB6);animation:run 1.15s cubic-bezier(.65,0,.35,1) .8s infinite}
+  @keyframes piece{0%{opacity:0;filter:blur(8px);transform:translateY(12px)}100%{opacity:1;filter:blur(0);transform:none}}
+  @keyframes fade{to{opacity:1}}
+  @keyframes run{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01s!important;animation-delay:0s!important;animation-iteration-count:1!important}}
+</style>
+</head>
+<body>
+  <svg class="mark" viewBox="0 0 256 256" aria-label="RecompLauncher" role="img"><defs><linearGradient id="m" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#m)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>
+  <img class="word" src="img/wordmark.svg" alt="">
+  <div class="bar" aria-hidden="true"><i></i></div>
+</body>
+</html>

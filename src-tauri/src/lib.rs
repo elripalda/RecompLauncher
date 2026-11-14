@@ -7468,6 +7468,7 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     }
     let mut l = st.lib.lock().unwrap();
     let told = l.settings.tray_told;
+    let discord_was = l.settings.discord;
     // The saves folder changes only through its own button (the copies move with it).
     let save_dir = l.settings.save_dir.clone();
     // The proxy changes only through its own command (its password is sealed there).
@@ -7477,8 +7478,23 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     l.settings.save_dir = save_dir;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
+    let discord_now = l.settings.discord;
     l.save(&st.dir)?;
+    drop(l);
+    // The Discord status turned on or off: "RecompLauncher" shows or goes with it.
+    if discord_now != discord_was {
+        discord_idle(&st, discord_now);
+    }
     Ok(())
+}
+
+/// Since when the launcher has been open, for the Discord status.
+static OPEN_SINCE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+
+/// "RecompLauncher" in the Discord status while no game runs (or nothing, when it's off).
+fn discord_idle(st: &App, on: bool) {
+    let app_id = discord_info(st, "").0;
+    discord::send(discord::Msg::Idle(on.then(|| (app_id, *OPEN_SINCE.get_or_init(now)))));
 }
 
 #[tauri::command]
@@ -7713,6 +7729,25 @@ static AWAY: AtomicBool = AtomicBool::new(false);
 /// Set by the page once its first real screen is drawn. The window stays hidden until then, so the
 /// player never sees the empty first draw being replaced by the real one.
 static UI_READY: AtomicBool = AtomicBool::new(false);
+
+/// The start window shows at least this long once it's up, so its logo has time to build.
+const SPLASH_MIN: std::time::Duration = std::time::Duration::from_millis(900);
+
+/// The small start window: the logo in the middle of the screen while the launcher gets ready.
+fn open_splash(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    tauri::WebviewWindowBuilder::new(app, "splash", tauri::WebviewUrl::App("splash.html".into()))
+        .title("RecompLauncher")
+        .inner_size(420.0, 280.0)
+        .resizable(false)
+        .decorations(false)
+        .center()
+        .skip_taskbar(true)
+        .focused(false)
+        .background_color(tauri::window::Color(11, 18, 32, 255))
+        .build()
+        .inspect_err(|e| trail::note(format!("Start window: {e}")))
+        .ok()
+}
 
 /// How long to wait for the page before showing the window anyway (a slow or broken start must
 /// still open a window).
@@ -8635,6 +8670,10 @@ pub fn run() {
             }
             // A new build or a recomp's release, pushed by the website the moment it's out.
             push::start(app.handle().clone());
+            // Discord: "RecompLauncher" while the launcher is open and no game runs.
+            if g_discord(&app.state::<App>()) {
+                discord_idle(&app.state::<App>(), true);
+            }
             // Save copies that didn't reach the cloud last time.
             {
                 let h = app.handle().clone();
@@ -8673,16 +8712,33 @@ pub fn run() {
                         restore_window_place(&w, &app.state::<App>().dir);
                     }
                     let monitor_id = app.state::<App>().lib.lock().unwrap().settings.tv_monitor.clone();
+                    // While the window gets ready: a small one in the middle of the screen with the
+                    // logo. Big Picture mode has its own start animation, so not there.
+                    let splash = if tv { None } else { open_splash(app.handle()) };
+                    let opened = Instant::now();
                     tauri::async_runtime::spawn(async move {
                         wait_for_ui().await;
-                        let Some(w) = handle.get_webview_window("main") else { return };
+                        let Some(w) = handle.get_webview_window("main") else {
+                            if let Some(s) = &splash {
+                                let _ = s.close();
+                            }
+                            return;
+                        };
                         if tv {
                             match display::prepare_tv_mode(&handle, Some(monitor_id)) {
                                 Ok(_) => {}
                                 Err(e) => trail::note(format!("Big Picture startup aborted: {e}")),
                             }
                         }
+                        // Long enough for the logo to read, never longer than the window takes.
+                        if let Some(rest) = splash.as_ref().and_then(|_| SPLASH_MIN.checked_sub(opened.elapsed())) {
+                            tokio::time::sleep(rest).await;
+                        }
                         let _ = w.show();
+                        if let Some(s) = splash {
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            let _ = s.close();
+                        }
                     });
                 }
             }
