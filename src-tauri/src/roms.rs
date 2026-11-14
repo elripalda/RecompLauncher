@@ -450,7 +450,8 @@ pub fn copy_ids(app: &Value) -> Vec<String> {
 /// The console a folder the file sits in is named for ("PS2", "Sony - PlayStation 2", "xbox"): the
 /// nearest such folder. "" when none is.
 pub fn folder_kind(p: &Path) -> &'static str {
-    const WORDS: [(&str, &str); 25] = [
+    const WORDS: [(&str, &str); 30] = [
+        ("arcade", "arcade"), ("mame", "arcade"), ("fbneo", "arcade"), ("fba", "arcade"), ("finalburn", "arcade"),
         ("xbox 360", "x360"), ("xbox360", "x360"), ("x360", "x360"), ("original xbox", "xbox"), ("ogxbox", "xbox"), ("xbox", "xbox"),
         ("playstation 2", "ps2"), ("playstation2", "ps2"), ("ps2", "ps2"), ("playstation portable", "psp"), ("psp", "psp"),
         ("playstation 3", "ps3"), ("ps3", "ps3"), ("playstation 1", "ps1"), ("psx", "ps1"), ("ps1", "ps1"), ("psone", "ps1"), ("playstation", "playstation"),
@@ -541,6 +542,9 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
     if ext == "pkg" {
         return identify_ps3_pkg(p, size);
     }
+    if ext == "zip" || ext == "7z" {
+        return identify_archive(p, &ext, size);
+    }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
     let is_cart = CART.contains(&ext.as_str());
@@ -593,6 +597,61 @@ fn identify_ps3_pkg(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     ps3_pkg_content_id(&ps3_pkg_header(p)?)?;
     let title = p.file_stem()?.to_str()?.to_string();
     Some(RomFile { path: p.to_path_buf(), system: "ps3".into(), title, region: String::new(), size })
+}
+
+/// The names of the files in a zip or 7z, read from its index only: nothing is unpacked. None when
+/// it can't be opened as one (damaged, or a 7z whose index is behind a password).
+fn archive_names(p: &Path, ext: &str) -> Option<Vec<String>> {
+    if ext == "7z" {
+        let archive = sevenz_rust::Archive::open(p).ok()?;
+        return Some(archive.files.iter().filter(|f| !f.is_directory()).map(|f| f.name().to_string()).collect());
+    }
+    let zip = zip::ZipArchive::new(fs::File::open(p).ok()?).ok()?;
+    Some(zip.file_names().filter(|n| !n.ends_with('/')).map(str::to_string).collect())
+}
+
+/// The file type of a name inside an archive, when it's a cartridge ROM's.
+fn rom_ext(name: &str) -> Option<String> {
+    let ext = Path::new(name).extension()?.to_str()?.to_ascii_lowercase();
+    let is_rom = N64.contains(&ext.as_str()) || CART.contains(&ext.as_str());
+    is_rom.then_some(ext)
+}
+
+/// A MAME-style set name ("tmnt", "sf2ce", "mslug_x"): short, with no spaces or brackets. A zip
+/// named like a game ("Some Game (USA).zip") with no ROM inside is something else.
+fn is_set_name(stem: &str) -> bool {
+    let ok_chars = stem.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    !stem.is_empty() && stem.len() <= 20 && ok_chars
+}
+
+/// A zipped game. Most zips aren't games, so one counts only when it holds exactly one cartridge
+/// ROM (its console from that ROM's type), or when it's an arcade set: MAME sets are zips of chip
+/// dumps with no ROM file type, so they're told only by being kept in an arcade folder under the
+/// set's short name.
+fn identify_archive(p: &Path, ext: &str, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let names = archive_names(p, ext)?;
+    let roms: Vec<String> = names.iter().filter_map(|n| rom_ext(n)).collect();
+    let stem = p.file_stem()?.to_str()?.to_string();
+    if let [inner] = roms.as_slice() {
+        let system = system_for(inner);
+        return Some(RomFile { path: p.to_path_buf(), system: system.into(), title: stem, region: String::new(), size: size()? });
+    }
+    let arcade_set = roms.is_empty() && !names.is_empty() && folder_kind(p) == "arcade" && is_set_name(&stem);
+    if !arcade_set {
+        return None;
+    }
+    Some(RomFile { path: p.to_path_buf(), system: "arcade".into(), title: stem, region: String::new(), size: size()? })
+}
+
+/// An arcade set is named for its MAME short name ("tmnt"), not the game, so it's matched when the
+/// catalog lists that name in the game's copy_ids. The whole name has to be listed: a listed
+/// "tmnt" isn't the "tmnt2" set.
+fn listed_set(app: &Value, rom: &RomFile) -> bool {
+    if rom.system != "arcade" {
+        return false;
+    }
+    let Some(stem) = rom.path.file_stem().and_then(|s| s.to_str()) else { return false };
+    copy_ids(app).contains(&id_key(stem))
 }
 
 /// Read the title and title ID from the little-endian PSF index and string tables.
@@ -930,7 +989,7 @@ pub fn files_of(app: &Value, roms: &[RomFile]) -> Vec<RomFile> {
     if game.is_empty() {
         return vec![];
     }
-    roms.iter().filter(|r| fits(r, origin) && matches(game, r) && fits_copy_ids(app, &r.path).is_ok()).cloned().collect()
+    roms.iter().filter(|r| fits(r, origin) && (matches(game, r) || listed_set(app, r)) && fits_copy_ids(app, &r.path).is_ok()).cloned().collect()
 }
 
 /// A file whose disc ID is one of the catalog's known dumps for this game.
@@ -955,7 +1014,7 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
             .iter()
             .copied()
             .filter(|r| fits(r, origin))
-            .filter(|r| matches(game, r))
+            .filter(|r| matches(game, r) || listed_set(a, r))
             // Its catalog entry lists the discs or cartridges it's made for: one with another ID isn't it.
             .filter(|r| fits_copy_ids(a, &r.path).is_ok())
             // A US dump first: most recomps are built against it.
@@ -1604,6 +1663,90 @@ mod tests {
         fs::write(d.join("Some Game.pkg"), ps4).unwrap();
         assert!(scan(&[d.clone()]).is_empty());
         let _ = fs::remove_dir_all(&d);
+    }
+
+    fn write_zip(p: &Path, names: &[&str]) {
+        use std::io::Write;
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut z = zip::ZipWriter::new(fs::File::create(p).unwrap());
+        for name in names {
+            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(&[0u8; 64]).unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[test]
+    fn a_zip_with_one_snes_rom_is_a_snes_copy() {
+        let d = tmp("zip-snes");
+        let p = d.join("SNES/ActRaiser (USA).zip");
+        write_zip(&p, &["ActRaiser (USA).sfc", "readme.txt"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("snes", "ActRaiser (USA)"));
+    }
+
+    #[test]
+    fn a_zip_with_no_rom_inside_is_ignored() {
+        let d = tmp("zip-none");
+        write_zip(&d.join("Some Game (USA).zip"), &["manual.pdf", "notes.txt"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn a_zip_with_two_roms_is_ignored() {
+        let d = tmp("zip-two");
+        write_zip(&d.join("Pack.zip"), &["One.sfc", "Two.sfc"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn a_7z_with_one_rom_is_a_copy() {
+        let d = tmp("7z-gba");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("Game.gba"), [0u8; 64]).unwrap();
+        let p = d.join("Game.7z");
+        sevenz_rust::compress_to_path(&src, &p).unwrap();
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("gba".to_string()));
+    }
+
+    #[test]
+    fn an_arcade_set_in_an_arcade_folder_is_found() {
+        let d = tmp("zip-arcade");
+        let p = d.join("ARCADE/tmnt.zip");
+        write_zip(&p, &["963-a23.k8", "963-a24.k10", "963-x22.h22"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("arcade", "tmnt"));
+    }
+
+    #[test]
+    fn an_arcade_set_outside_an_arcade_folder_is_ignored() {
+        // Not named for arcade itself: the temporary folder is one of the folders looked at.
+        let d = tmp("zip-set-elsewhere");
+        write_zip(&d.join("Downloads/tmnt.zip"), &["963-a23.k8", "963-a24.k10"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn an_arcade_set_is_matched_by_its_listed_set_name() {
+        let set = |name: &str| RomFile { path: PathBuf::from(format!("D:/ROMS/ARCADE/{name}.zip")), system: "arcade".into(), title: name.into(), region: String::new(), size: 1 };
+        let found = vec![set("tmnt2"), set("tmnt")];
+        let cat = serde_json::json!({ "apps": [{ "id": "tmnt-port", "game": "Teenage Mutant Ninja Turtles", "origin": "arcade", "copy_ids": ["tmnt"] }] });
+        let picked = match_catalog(&cat, &found);
+        assert_eq!(picked["tmnt-port"].title, "tmnt");
+        assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
     }
 
     #[test]

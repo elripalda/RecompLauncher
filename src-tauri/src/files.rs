@@ -123,6 +123,8 @@ fn kind_of(p: &Path, dir: bool) -> &'static str {
     match ext.as_str() {
         "iso" | "xiso" | "gcm" | "rvz" | "wbfs" | "ciso" | "chd" | "img" | "bin" | "cue" => "disc",
         "z64" | "n64" | "v64" => "rom",
+        // Most zips aren't games: only one holding a ROM, or an arcade set, is shown as one.
+        "zip" | "7z" if crate::roms::identify(p, 0).is_some() => "rom",
         "exe" | "appimage" | "app" | "sh" => "program",
         _ => "file",
     }
