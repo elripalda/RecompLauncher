@@ -20,9 +20,22 @@ If you need the files yourself, they're in the launcher's data folder:
 
 Windows shows this for newer apps. Click **More info**, then **Run anyway**. Each release lists the installer's SHA-256 if you want to check the file.
 
+## macOS cannot verify the developer
+
+Mac builds are ad-hoc signed, without an Apple Developer ID certificate or notarization. macOS may block the first launch because it cannot verify the developer or check the app for malicious software.
+
+If you downloaded RecompLauncher from the project's [Releases](https://github.com/elripalda/RecompLauncher/releases) and trust that copy:
+
+1. Open the DMG and drag **RecompLauncher.app** into **Applications**.
+2. Try opening the app from **Applications** once, then dismiss the warning.
+3. Open **System Settings > Privacy & Security**, scroll down to **Security**, and click **Open Anyway** for RecompLauncher.
+4. Confirm with **Open** when prompted. macOS remembers this exception for the app.
+
+These steps follow [Apple's instructions for opening an app from an unidentified developer](https://support.apple.com/en-us/102445). They apply to the developer/notarization warning; if macOS says the app is damaged or will damage your computer, stop and check the download instead. Leave Gatekeeper enabled.
+
 ## Your antivirus blocks the launcher or a game
 
-The launcher is code-signed, and every download comes from the developer's own GitHub. Some antivirus apps flag new or unsigned programs by mistake, especially recomps, which load game code in ways scanners find unusual.
+The Windows launcher is code-signed, and every download comes from the developer's own GitHub. Some antivirus apps flag new or unsigned programs by mistake, especially recomps, which load game code in ways scanners find unusual.
 
 - Make sure you downloaded it from [Releases](https://github.com/elripalda/RecompLauncher/releases) or recomplauncher.com.
 - Tell me on Discord which antivirus it was and what it said. A screenshot helps. I report false positives to the antivirus company.
