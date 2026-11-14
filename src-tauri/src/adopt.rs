@@ -209,9 +209,16 @@ pub fn library_roots() -> Vec<PathBuf> {
     out
 }
 
+/// A file from another launcher's folder as JSON. Some write UTF-8 with a byte-order mark in front:
+/// that's part of the encoding, not the data, so it's skipped (otherwise a custom games folder in
+/// its settings is lost and the games in it look missing).
+fn lib_json(file: &Path) -> Option<Value> {
+    let b = std::fs::read(file).ok()?;
+    serde_json::from_slice(b.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&b)).ok()
+}
+
 pub fn is_library(dir: &Path) -> bool {
-    let Ok(b) = std::fs::read(dir.join("apps.json")) else { return false };
-    serde_json::from_slice::<Value>(&b).ok().and_then(|v| v.get("apps").map(Value::is_array)).unwrap_or(false)
+    lib_json(&dir.join("apps.json")).and_then(|v| v.get("apps").map(Value::is_array)).unwrap_or(false)
         && (dir.join("settings.json").is_file() || dir.join("Apps").is_dir())
 }
 
@@ -242,6 +249,7 @@ fn mark_key(s: &str) -> String {
 fn hidden_marks(root: &Path) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     let Ok(text) = std::fs::read_to_string(root.join("apps.json.lock")) else { return out };
+    let text = text.trim_start_matches('\u{feff}');
     fn walk(v: &Value, out: &mut std::collections::HashSet<String>) {
         match v {
             Value::String(s) => {
@@ -267,7 +275,7 @@ fn hidden_marks(root: &Path) -> std::collections::HashSet<String> {
 
 /// Everything in another launcher's list (apps.json beside Apps), on this PC or not.
 pub fn library_entries(root: &Path) -> Vec<LibEntry> {
-    let read = |f: &str| std::fs::read(root.join(f)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null);
+    let read = |f: &str| lib_json(&root.join(f)).unwrap_or(Value::Null);
     let apps = read("apps.json");
     let settings = read("settings.json");
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
@@ -979,6 +987,31 @@ mod tests {
         assert!(all.iter().all(|e| !e.hidden));
         // The older reader still gives just the installed ones.
         assert_eq!(installed_entries(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn settings_written_with_a_byte_order_mark_keep_their_games_folder() {
+        let d = other_library("bom-settings");
+        // The games live in a folder of the player's own, named in settings written with a BOM.
+        let custom = d.join("Custom Games");
+        std::fs::create_dir_all(custom.join("MyRacer")).unwrap();
+        std::fs::remove_dir_all(d.join("Apps")).unwrap();
+        let settings = serde_json::json!({ "AppsPath": custom });
+        std::fs::write(d.join("settings.json"), format!("\u{feff}{settings}")).unwrap();
+        let all = library_entries(&d);
+        assert!(all[0].installed, "a custom games folder must not fall back to Apps");
+        assert_eq!(all[0].path, custom.join("MyRacer"));
+        // The same mark in front of the list and the hidden list.
+        let list = std::fs::read_to_string(d.join("apps.json")).unwrap();
+        std::fs::write(d.join("apps.json"), format!("\u{feff}{list}")).unwrap();
+        std::fs::write(d.join("apps.json.lock"), "\u{feff}someone/some-port\n").unwrap();
+        assert!(is_library(&d));
+        let all = library_entries(&d);
+        assert_eq!(all.len(), 3);
+        assert!(all[1].hidden);
+        std::fs::write(d.join("apps.json"), b"\xef\xbb\xbfnot JSON").unwrap();
+        assert!(!is_library(&d));
         let _ = std::fs::remove_dir_all(&d);
     }
 
