@@ -624,4 +624,21 @@ mod tests {
         assert_eq!(fs::read(&source).unwrap(), b"DLC");
         fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn stage_cancellable_cleans_up_temp_file_when_stopped() {
+        let (mut p, mut g, dir) = fixture();
+        p.inputs[2].destination = "dlc.bin".into();
+        g.setup_inputs.insert("disc1".into(), dir.clone());
+        let source = dir.join("original-dlc.bin");
+        fs::write(&source, vec![42u8; 2 * 1024 * 1024]).unwrap();
+        g.setup_inputs.insert("dlc".into(), source.clone());
+        let res = stage_cancellable(&p, &mut g, &dir, &|| true);
+        assert!(res.is_err());
+        assert!(!dir.join("dlc.bin").exists());
+        let has_temp = fs::read_dir(&dir).unwrap().flatten().any(|e| {
+            e.file_name().to_string_lossy().starts_with(".recomplauncher-input-")
+        });
+        assert!(!has_temp, "Temporary .recomplauncher-input file was not cleaned up!");
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

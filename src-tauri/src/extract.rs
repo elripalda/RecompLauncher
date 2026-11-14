@@ -196,6 +196,8 @@ pub fn unpack(image: &Path, kind: &str, dest: &Path, progress: &dyn Fn(u64, u64)
         let mut left = e.size;
         while left > 0 {
             if stop() {
+                drop(out);
+                let _ = std::fs::remove_file(&to);
                 return Err(io::Error::other("Stopped."));
             }
             let n = (left as usize).min(buf.len());
@@ -306,6 +308,13 @@ mod tests {
         unpack(&iso, "iso9660", &out, &|_, _| {}, &|| false).unwrap();
         assert_eq!(std::fs::read(out.join("SYSTEM.CNF")).unwrap(), b"BOOT");
         assert_eq!(std::fs::read(out.join("DATA/X.BIN")).unwrap(), b"ok");
+
+        // When stopped midway, the in-flight file being written is removed.
+        let out2 = d.join("out2");
+        let res = unpack(&iso, "iso9660", &out2, &|_, _| {}, &|| true);
+        assert!(res.is_err());
+        assert!(!out2.join("SYSTEM.CNF").exists());
+
         let _ = std::fs::remove_dir_all(&d);
     }
 }
