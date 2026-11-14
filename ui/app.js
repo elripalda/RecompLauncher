@@ -1139,7 +1139,8 @@ function actions(a, size = 'big') {
       if (sj) {
         const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
         const stageName = sj.step === 'read' ? t('Reading') : sj.step === 'verify' ? t('Checking') : sj.step === 'extras' ? t('Extras') : sj.step === 'setup' ? t('Setting up') : t('Setting up');
-        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Click to open setup'))}"><div class="track busy"><i style="width:${p}%"></i></div><div class="lbl"><span>${esc(stageName)}</span><span>${p}%</span></div></button>` + more;
+        const canCancel = `<button type="button" class="${sq}" data-act="setup-cancel" data-id="${id}" aria-label="${esc(t('Cancel Setup'))}" title="${esc(t('Cancel Setup'))}">${XS}</button>`;
+        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Click to open setup'))}"><div class="track busy"><i style="width:${p}%"></i></div><div class="lbl"><span>${esc(stageName)}</span><span>${p}%</span></div></button>` + canCancel + more;
       }
       return `<button type="button" class="btn ${size}" disabled>${esc(t('Its setup is open'))}</button>` + more;
     }
@@ -5357,6 +5358,7 @@ function menu(at, items) {
 function gameMenu(id) {
   const g = S.library[id], x = byId(id), st = x ? status(x) : g ? 'installed' : 'get';
   const first = st === 'running' ? { act: 'stop', id, label: t('Close game'), icon: 'stop' }
+    : st === 'settingup' ? { act: 'setup-cancel', id, label: t('Cancel Setup'), icon: 'stop' }
     : g ? { act: 'play', id, label: t('Play'), icon: 'play' }
       : st === 'get' ? (isSaved(id) ? { act: 'install', id, label: x && turnkey(x) ? t('Easy Install') : t('Install'), icon: x && turnkey(x) ? 'disc' : 'down' } : { act: 'addlib', id, label: t('Add to Library'), icon: 'plus' }) : null;
   const pinned = pins().includes(id);
@@ -7650,6 +7652,18 @@ async function act(el, e) {
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
     case 'reopen-setup': return setupModal(id);
+    case 'setup-cancel': {
+      invoke('setup_cancel', { id }).catch(() => {});
+      if (S.setupJobs) delete S.setupJobs[id];
+      if (SU.el && SU.id === id) { SU.el.remove(); SU.el = null; }
+      delete S.setup[id];
+      loadSetup(id);
+      render(true);
+      if (S.view === 'game') refreshGame();
+      const a = byId(id) || { name: (S.library[id] || {}).name || id };
+      toast(tf('Setup for {name} was cancelled.', { name: a.name }));
+      return;
+    }
     case 'setupdate': {
       const su = S.setup[id] || {};
       const why = await pickUpdate(id, !!su.update_folder && !su.update_file);

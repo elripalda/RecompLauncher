@@ -20,13 +20,14 @@ test('status returns settingup when setupJobs has an active setup', () => {
   assert.equal(c.status({ id: 'other-game' }), 'get');
 });
 
-test('actions renders clickable reopen-setup button with stage and percentage', () => {
+test('actions renders clickable reopen-setup button with stage and percentage and direct cancel button', () => {
   const c = vm.createContext({
     S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.65 } }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     t: (s) => s,
     esc: String,
     MORE: '',
+    XS: '<svg></svg>',
     canPause: () => false,
     forOS: () => true,
   });
@@ -37,6 +38,7 @@ test('actions renders clickable reopen-setup button with stage and percentage', 
 
   const html = c.actions({ id: 'test-game' });
   assert.match(html, /data-act="reopen-setup"/);
+  assert.match(html, /data-act="setup-cancel"/);
   assert.match(html, /class="prog su-prog"/);
   assert.match(html, /width:65%/);
   assert.match(html, /65%/);
