@@ -235,8 +235,33 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if catalog::is_forgejo(&repo) {
         catalog::repo_profile(&st.http, &st.dir, &repo, false).await;
     }
-    trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
-    let rels: Vec<Release> = serde_json::from_value(getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?;
+    // Its project is down and the list says so: the release from the RecompLauncher backup (each
+    // file checked against its SHA-256). When the backup can't help, its own releases as usual.
+    let backup_ok = catalog::backup_on(&entry);
+    let mut from_backup = false;
+    let from_bk = if backup_ok && tag.is_none() {
+        match getting_ready(catalog::backup_release(&st.http, id, os_for(st, &entry, id)), &cancel).await {
+            Ok(r) => Some(r),
+            Err(Error::Cancelled) => return Err(Error::Cancelled),
+            Err(e) => {
+                trail::note(format!("Install {id}: the backup couldn't help ({e}), so its own releases"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let rels: Vec<Release> = match from_bk {
+        Some(r) => {
+            trail::note(format!("Install {id}: {} from the RecompLauncher backup", r.tag_name));
+            from_backup = true;
+            vec![r]
+        }
+        None => {
+            trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
+            serde_json::from_value(getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?
+        }
+    };
     trail::note(format!("Install {id}: {} releases", rels.len()));
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
@@ -255,7 +280,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let mut fell_back = false;
     // The release the store checked and let out (the list's "tag"): that one, unless the player
     // picked a version. When it's gone from GitHub or has nothing for this system, the usual rules.
-    let listed = catalog_tag(&entry).and_then(|t| rels.iter().find(|r| !r.draft && same_tag(&r.tag_name, &t))).filter(|r| has_build(r));
+    let listed = catalog_tag(&entry).filter(|_| !from_backup).and_then(|t| rels.iter().find(|r| !r.draft && same_tag(&r.tag_name, &t))).filter(|r| has_build(r));
     if let (None, Some(r)) = (&tag, listed) {
         if r.tag_name != newest.tag_name {
             trail::note(format!("Install {id}: {} is the version the store let out", r.tag_name));
@@ -385,7 +410,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
     // A GitLab project's files come only from that project on gitlab.com; a SourceForge one's
     // only from its project on sourceforge.net.
-    if !catalog::own_download(&repo, &asset.browser_download_url, rel.project_id) {
+    if !from_backup && !catalog::own_download(&repo, &asset.browser_download_url, rel.project_id) {
         trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
         return Err(Error::Msg("That file isn't in this recomp's own releases, so it wasn't downloaded.".into()));
     }
@@ -468,8 +493,25 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
                 }
             }
         }
-        r => r?,
+        Ok(g) => g,
+        Err(Error::Cancelled) => return Err(Error::Cancelled),
+        // Its own download failed, and the list says the RecompLauncher backup has it: from there.
+        Err(e) if backup_ok && !from_backup && !install::paused(id) => {
+            trail::note(format!("Install {id}: {} didn't download ({e}), trying the RecompLauncher backup", asset.name));
+            let bk = catalog::backup_release(&st.http, id, os).await.map_err(|_| e)?;
+            let all = assets::all_for(&bk.assets, os, arch, pattern);
+            let a = all.iter().copied().find(|a| a.name == asset.name).or_else(|| assets::most_like(&all, &asset.name)).or_else(|| assets::pick(&bk.assets, os, arch, pattern)).or_else(|| assets::pick(&bk.assets, os, arch, None)).cloned()
+                .ok_or_else(|| Error::Msg("The RecompLauncher backup has no file for this PC.".into()))?;
+            asset = a;
+            tag_got = bk.tag_name.clone();
+            from_backup = true;
+            install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await?
+        }
+        Err(e) => return Err(e),
     };
+    if from_backup {
+        trail::note(format!("Install {id}: {} came from the RecompLauncher backup", asset.name));
+    }
     drop(permit);
     // A pause that came just as the download finished: there's nothing left to pause, so the
     // install carries on.
@@ -503,6 +545,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
                     g.installer_setup = setup.to_string_lossy().to_string();
                     g.installer_tag = tag_got.clone();
                     g.asset = asset.name.clone();
+                    g.from_backup = from_backup;
                 }
                 None => {
                     let rec = Installed {
@@ -521,6 +564,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
                         installer: true,
                         installer_setup: setup.to_string_lossy().to_string(),
                         installer_tag: tag_got.clone(),
+                        from_backup,
                         ..Default::default()
                     };
                     l.put(id, rec);
@@ -645,6 +689,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         games: prev.as_ref().map(|p| p.games.clone()).unwrap_or_default(),
         runtime_off: prev.as_ref().map(|p| p.runtime_off.clone()).unwrap_or_default(),
         prepare_opts: prev.as_ref().map(|p| p.prepare_opts.clone()).unwrap_or_default(),
+        from_backup,
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),

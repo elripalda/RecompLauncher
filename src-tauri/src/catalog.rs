@@ -455,6 +455,47 @@ pub fn deck_scores(scores: &Value) -> Value {
     Value::Object(out)
 }
 
+/// The list says this recomp's releases come from the RecompLauncher backup (its project is down).
+pub fn backup_on(entry: &Value) -> bool {
+    entry.get("backup").and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// The backup's answer as a release: its version and the files for this system (each with the
+/// SHA-256 it must match, so a file without a proper one is left out).
+pub fn backup_release_from(v: &Value, os: &str) -> Option<Release> {
+    let version = v.get("version").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())?.to_string();
+    let files = v.get("files").and_then(Value::as_array)?;
+    let mut assets = Vec::new();
+    for f in files {
+        let s = |k: &str| f.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let (name, url, sha, fos) = (s("name"), s("url"), s("sha256").to_ascii_lowercase(), s("os"));
+        let sha_ok = sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit());
+        if name.is_empty() || name.contains('/') || name.contains('\\') || !url.starts_with("https://") || !sha_ok {
+            continue;
+        }
+        // A file named for another system is left out; one that doesn't say goes by its name.
+        if !fos.is_empty() && fos != os {
+            continue;
+        }
+        assets.push(Asset { name, size: f.get("size").and_then(Value::as_u64).unwrap_or(0), digest: Some(format!("sha256:{sha}")), browser_download_url: url, url: None });
+    }
+    (!assets.is_empty()).then(|| Release { tag_name: version, name: None, published_at: None, prerelease: false, draft: false, body: None, html_url: None, assets, project_id: None })
+}
+
+/// The recomp's release from the RecompLauncher backup.
+pub async fn backup_release(http: &reqwest::Client, id: &str, os: &str) -> Result<Release, Error> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        return Err(Error::Msg("That recomp isn't in the backup.".into()));
+    }
+    let url = format!("{}/api/backup.php?id={id}", base());
+    let r = crate::net::send(http.get(&url).timeout(crate::net::QUICK), &url, true).await?;
+    if !r.status().is_success() {
+        return Err(Error::Net(format!("The RecompLauncher backup answered {}", r.status().as_u16())));
+    }
+    let v: Value = r.json().await?;
+    backup_release_from(&v, os).ok_or_else(|| Error::Msg("The RecompLauncher backup has no checked file for this PC.".into()))
+}
+
 /// Today's date in Phoenix (the site's weekly chart turns over at midnight there), as YYYY-MM-DD.
 pub fn phoenix_today(now_secs: u64) -> String {
     let days = (now_secs.saturating_sub(7 * 3600) / 86_400) as i64;
@@ -1210,6 +1251,25 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_backup_release_keeps_only_checked_files_for_this_pc() {
+        let sha = "a".repeat(64);
+        let v = serde_json::json!({ "version": "v1.2", "files": [
+            { "name": "Game-Windows.zip", "os": "windows", "size": 10, "sha256": sha, "url": "https://recomplauncher.com/api/backup.php?id=x&f=1" },
+            { "name": "Game-Linux.tar.gz", "os": "linux", "size": 11, "sha256": sha, "url": "https://recomplauncher.com/api/backup.php?id=x&f=2" },
+            { "name": "NoHash.zip", "os": "windows", "size": 1, "sha256": "", "url": "https://recomplauncher.com/x" },
+            { "name": "Plain.zip", "os": "windows", "size": 1, "sha256": sha, "url": "http://recomplauncher.com/x" },
+            { "name": "Game-Any.zip", "size": 12, "sha256": sha, "url": "https://recomplauncher.com/api/backup.php?id=x&f=3" }
+        ] });
+        let r = super::backup_release_from(&v, "windows").unwrap();
+        assert_eq!(r.tag_name, "v1.2");
+        assert_eq!(r.assets.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Game-Windows.zip", "Game-Any.zip"]);
+        assert_eq!(r.assets[0].digest.as_deref(), Some(format!("sha256:{sha}").as_str()));
+        assert!(super::backup_release_from(&serde_json::json!({ "version": "v1", "files": [] }), "windows").is_none());
+        assert!(super::backup_on(&serde_json::json!({ "backup": true })));
+        assert!(!super::backup_on(&serde_json::json!({})));
+    }
+
     #[test]
     fn the_weekly_chart_is_kept_until_the_next_one_comes_out() {
         // 2026-11-14 07:00 UTC is midnight in Phoenix; a minute before is still the 13th there.

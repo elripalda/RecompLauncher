@@ -120,6 +120,9 @@ pub struct Installed {
     /// The ticks the player set for its setup step's options (prepare.options), by option id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub prepare_opts: BTreeMap<String, bool>,
+    /// Its last download came from the RecompLauncher backup (its project was down).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_backup: bool,
     /// A recomp that carries several games: each one's play time and setup (games.rs), by game id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub games: BTreeMap<String, crate::games::Played>,

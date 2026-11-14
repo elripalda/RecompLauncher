@@ -2484,3 +2484,4 @@ button.scan-pill:hover{filter:brightness(1.15)}
 .ig-price{display:flex;align-items:baseline;gap:7px;font-size:15px}
 .ig-price s{color:var(--dim);font-size:12.5px}
 .ig-pct{color:#06101d;background:#5fe39a;border-radius:6px;padding:1px 6px;font-size:12px}
+.bk-note{margin:10px 2px 0;font-size:12px;color:var(--dim)}
