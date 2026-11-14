@@ -301,6 +301,12 @@ const isLab = (repo) => /^gitlab:/i.test(String(repo || ''));
 // A release's version as shown: "v1.2" for a number, a build name ("nightly-80-…") as it is.
 const verText = (v) => { const s = String(v || '').replace(/^v(?=\d)/i, ''); return /^\d/.test(s) ? 'v' + s : s; };
 window.verText = verText;
+// Big Picture's monitor: the saved choice among those connected (one saved by its name alone still
+// counts), else none (the main display), and how each one is named here.
+const monitorPicked = (list, cur) => (cur ? (list || []).find((m) => m.id === cur || m.id.startsWith(`${cur}|`) || m.name === cur) : null) || null;
+const monitorName = (m) => `${tf('Monitor {n}', { n: m.number || 1 })} · ${m.width} × ${m.height}${m.is_primary ? ' · ' + t('Main') : ''}`;
+window.monitorPicked = monitorPicked;
+window.monitorName = monitorName;
 const isSF = (repo) => /^sourceforge:/i.test(String(repo || ''));
 const isFJ = (repo) => /^forgejo:[^/]+\/[^/]+\/[^/]+$/i.test(String(repo || ''));
 const sfName = (repo) => String(repo).slice(12);
@@ -3589,12 +3595,13 @@ function pageSettings() {
     case 'plugins':
       body = window.pluginSettings ? window.pluginSettings(group, row, sw) : '';
       break;
-    case 'bigpicture':
-      if (!S.monitors) invoke('list_monitors').then((m) => { S.monitors = m || []; if (S.view === 'settings') render(true); }).catch(() => { S.monitors = null; });
-      const monitors = S.monitors || [];
-      const selectedMonitor = st.tv_monitor || '';
+    case 'bigpicture': {
+      // The monitors, asked once: Big Picture's own list asks again when it opens.
+      if (!S.monitors) { S.monitors = []; invoke('list_monitors').then((m) => { S.monitors = m || []; if (S.view === 'settings') render(true); }).catch(() => {}); }
+      const picked = monitorPicked(S.monitors, st.tv_monitor);
+      const screens = `<select class="sel" data-act="tvmonitor" aria-label="${esc(t('Monitor'))}"><option value=""${picked ? '' : ' selected'}>${esc(t('Main Display'))}</option>${S.monitors.map((m) => `<option value="${esc(m.id)}"${picked === m ? ' selected' : ''}>${esc(monitorName(m))}</option>`).join('')}</select>`;
       body = group(t('Big Picture mode'), row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('start_in_tv', st.start_in_tv, t('Start in Big Picture mode')))
-          + `<div class="set-row"><div class="k"><b>${esc(t('Target Monitor'))}</b><span>${esc(t('The display Big Picture mode opens on.'))}</span></div><select class="field" data-act="tvmonitor" aria-label="${esc(t('Target Monitor'))}"><option value="" ${selectedMonitor ? '' : 'selected'}>${esc(t('Automatic (Primary Display)'))}</option>${monitors.map((m) => `<option value="${esc(m.id)}" ${selectedMonitor === m.id || m.id.startsWith(`${selectedMonitor}|`) ? 'selected' : ''}>${esc(m.name)} · ${m.width} × ${m.height}${m.is_primary ? ` · ${esc(t('Windows Primary Display'))}` : ''}</option>`).join('')}</select></div>`
+          + row(t('Monitor'), t('The screen Big Picture mode opens on.'), screens)
           + `<div class="set-row"><div class="k"><b>${esc(t('Size'))}</b><span>${esc(t('Smaller fits more on a big screen; larger is easier to read from the couch or on a handheld.'))}</span></div>
             <div class="seg" role="radiogroup" aria-label="${esc(t('Big Picture mode size'))}">${[['', t('Auto')], ['small', t('Smaller')], ['medium', t('Medium')], ['large', t('Larger')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.tv_size || '') === k}" data-act="tvsize" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
           + row(t('Sounds'), t('The start-up sound and a soft click as you move around.'), sw('sounds', st.sounds, t('Sounds in Big Picture mode')))
@@ -3602,6 +3609,7 @@ function pageSettings() {
         `<button type="button" class="btn sm main" data-act="tv">${esc(t('Open Big Picture mode'))}</button>`)
         + `<p class="set-tip">${esc(t('Hold Menu on your controller to switch to Big Picture mode.'))}</p>`;
       break;
+    }
     case 'pads':
       body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
         + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick'))))
@@ -7275,7 +7283,6 @@ async function act(el, e) {
       return render(true);
     }
     case 'tvsize': return saveSettings({ tv_size: el.dataset.k });
-    case 'tvmonitor': return saveSettings({ tv_monitor: el.value });
     case 'gfx-mode': if ((S.settings.linux_graphics || '') === el.dataset.k) return; await saveSettings({ linux_graphics: el.dataset.k }); return toast(t('Graphics Mode changes the next time the launcher opens.'));
     case 'shots-folder': return invoke('open_shots', { id }).catch(fail);
     case 'shot-g': return viewShot(Number(el.dataset.i), (S.shots[id] || []).map((p) => ({ path: p, game: (S.library[id] || {}).name })));

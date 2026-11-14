@@ -252,7 +252,7 @@ pub struct Settings {
     /// TV mode's size: "small", "medium" or "large" (empty: picked from the screen).
     #[serde(default)]
     pub tv_size: String,
-    /// Monitor selected for Big Picture mode (empty or "auto": uses Windows primary display).
+    /// The monitor Big Picture mode opens on (empty or "auto": the main display).
     #[serde(default)]
     pub tv_monitor: String,
     /// TV mode's sounds.

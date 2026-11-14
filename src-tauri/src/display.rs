@@ -9,6 +9,9 @@ use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 pub struct MonitorInfo {
     pub id: String,
     pub name: String,
+    /// Its place in the list, from 1: the window names it "Monitor {n}" in the player's language.
+    #[serde(default)]
+    pub number: usize,
     pub is_primary: bool,
     pub width: u32,
     pub height: u32,
@@ -66,6 +69,7 @@ pub fn enumerate_monitors(app: &AppHandle) -> Vec<MonitorInfo> {
             MonitorInfo {
                 id,
                 name: format!("Monitor {}", index + 1),
+                number: index + 1,
                 is_primary,
                 width: size.width,
                 height: size.height,
@@ -304,6 +308,7 @@ mod tests {
             MonitorInfo {
                 id: "Desk Display|0,0".into(),
                 name: "Desk Display".into(),
+                number: 1,
                 is_primary: true,
                 width: 1920,
                 height: 1080,
@@ -313,6 +318,7 @@ mod tests {
             MonitorInfo {
                 id: "Second Display|1920,0".into(),
                 name: "Second Display".into(),
+                number: 2,
                 is_primary: false,
                 width: 2560,
                 height: 1440,
