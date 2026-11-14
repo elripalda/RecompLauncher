@@ -102,6 +102,8 @@ async function namedInputsAction(id, act, input, ns) {
 
 // Desktop and Big Picture share the same rows, requirements and backend actions.
 function namedSetup(id) {
+  const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
+  if (activeJob) return setupModal(id);
   closeSetup(true);
   Object.assign(SU, { id, stage: 'inputs', step: '', steps: {}, q: [], result: null, err: '', named: {} });
   const scrim = document.createElement('div'); scrim.className = 'scrim';

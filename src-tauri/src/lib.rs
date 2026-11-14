@@ -3342,6 +3342,7 @@ static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 // A cancelled named-input worker may still be finishing a file copy. Keep its mutation lock
 // until it actually exits, rather than allowing an immediate retry to race its staging journal.
 static INPUT_WORKERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static SETUP_STATUS: Mutex<Option<HashMap<String, SetupEv>>> = Mutex::new(None);
 
 fn setup_busy(id: &str) -> bool {
     SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id)) || INPUT_WORKERS.lock().unwrap().iter().any(|x| x == id)
@@ -3349,6 +3350,34 @@ fn setup_busy(id: &str) -> bool {
 
 fn setup_stopped(id: &str, run: u64) -> bool {
     SETUP_RUN.lock().unwrap().as_ref().and_then(|m| m.get(id).copied()) != Some(run)
+}
+
+fn setup_track(ev: &SetupEv) {
+    if ev.step == "done" || ev.step == "error" {
+        if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() {
+            m.remove(&ev.id);
+        }
+    } else {
+        SETUP_STATUS.lock().unwrap().get_or_insert_with(HashMap::new).insert(ev.id.clone(), ev.clone());
+    }
+}
+
+/// Kills an entire process tree, terminating any compiler or script descendants.
+fn kill_process_tree(child: &mut std::process::Child) {
+    let pid = child.id();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("taskkill");
+        cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+        cmd.creation_flags(0x0800_0000);
+        let _ = cmd.output();
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill").args(["-9", &format!("-{}", pid)]).output();
+    }
+    let _ = child.kill();
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -3385,11 +3414,17 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         let unpack = p.game.as_ref().map(|x| x.extract.clone()).filter(|x| !x.is_empty() && copy.is_file());
         let extras = p.prepare.is_some() || unpack.is_some();
         let emit = |ev: SetupEv| {
-            let _ = app.emit("setup", SetupEv { id: id.clone(), extras, ..ev });
+            let ev = SetupEv { id: id.clone(), extras, ..ev };
+            setup_track(&ev);
+            let _ = app.emit("setup", ev);
         };
         let fail = |text: String| {
             if !stopped() {
                 emit(SetupEv { step: "error".into(), text, ..Default::default() })
+            } else {
+                if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() {
+                    m.remove(&id);
+                }
             }
             if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
                 if m.get(&id) == Some(&run) {
@@ -3534,6 +3569,15 @@ fn setup_cancel(id: String) {
     if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
         m.remove(&id);
     }
+    if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() {
+        m.remove(&id);
+    }
+    INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
+}
+
+#[tauri::command]
+fn setup_status() -> HashMap<String, SetupEv> {
+    SETUP_STATUS.lock().unwrap().as_ref().cloned().unwrap_or_default()
 }
 
 fn human_size(b: u64) -> String {
@@ -3681,7 +3725,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[Stri
             return if s.success() { Ok(()) } else { Err(format!("Its setup step stopped with code {}.", s.code().unwrap_or(-1))) };
         }
         if stopped() || start.elapsed().as_secs() > pr.timeout {
-            let _ = child.kill();
+            kill_process_tree(&mut child);
             return Err(if stopped() { "Stopped.".into() } else { "Its setup step took too long.".into() });
         }
         std::thread::sleep(std::time::Duration::from_millis(60));
@@ -4551,7 +4595,11 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     let dir = st.dir.clone();
     std::thread::spawn(move || {
         let stopped = || setup_stopped(&id, run);
-        let emit = |step: &str, pct: f32, text: String| { let _ = app.emit("setup", SetupEv { id: id.clone(), step: step.into(), pct, text, extras: p.prepare.is_some(), ..Default::default() }); };
+        let emit = |step: &str, pct: f32, text: String| {
+            let ev = SetupEv { id: id.clone(), step: step.into(), pct, text, extras: p.prepare.is_some(), ..Default::default() };
+            setup_track(&ev);
+            let _ = app.emit("setup", ev);
+        };
         let result = (|| -> Result<(), String> {
             emit("read", 0.0, "Checking the selected files".into());
             if stopped() { return Err("Stopped.".into()); }
@@ -4589,6 +4637,9 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
             match result { Ok(()) => emit("done", 1.0, "Your files are set up.".into()), Err(why) => emit("error", 0.0, why) }
         }
         if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() { if m.get(&id) == Some(&run) { m.remove(&id); } }
+        if stopped() {
+            if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() { m.remove(&id); }
+        }
         INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
     });
     Ok(())
@@ -8404,6 +8455,23 @@ pub fn run() {
                     if background && app.tray_by_id("main").is_some() && w.hide().is_ok() {
                         away(w, true);
                         tray::hid(app);
+                        if let Some(m) = SETUP_STATUS.lock().unwrap().as_ref() {
+                            if !m.is_empty() {
+                                let count = m.len();
+                                let msg = if count == 1 {
+                                    let (id, ev) = m.iter().next().unwrap();
+                                    let pct = (ev.pct * 100.0).round() as u32;
+                                    format!("Setup is continuing in the background for {id} ({pct}%). RecompLauncher will stay in the tray.")
+                                } else {
+                                    format!("{count} setups are continuing in the background. RecompLauncher will stay in the tray.")
+                                };
+                                let _ = tauri_plugin_notification::NotificationExt::notification(app)
+                                    .builder()
+                                    .title("RecompLauncher")
+                                    .body(msg)
+                                    .show();
+                            }
+                        }
                     } else {
                         // Closing for real: the whole launcher goes. The hidden quick-menu window
                         // would otherwise keep it running with no window, and opening it again
@@ -8812,7 +8880,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,
@@ -8873,13 +8941,13 @@ mod tests {
         assert_eq!(offered_update(&on2, Some(&entry), &rels), None);
         // Played through Proton (Linux): the Windows build counts.
         let proton = Installed { proton: true, ..g.clone() };
-        let win_only = vec![rel("v2", &["game-windows-x64.zip"]), rel("v1", &["game-windows-x64.zip"])];
+        let _win_only = vec![rel("v2", &["game-windows-x64.zip"]), rel("v1", &["game-windows-x64.zip"])];
         #[cfg(target_os = "linux")]
-        assert_eq!(offered_update(&proton, Some(&entry), &win_only).as_deref(), Some("v2"));
+        assert_eq!(offered_update(&proton, Some(&entry), &_win_only).as_deref(), Some("v2"));
         let _ = &proton;
         // A release with no build for this system isn't offered (on Linux the Windows-only one).
         #[cfg(target_os = "linux")]
-        assert_eq!(offered_update(&g, Some(&entry), &win_only), None);
+        assert_eq!(offered_update(&g, Some(&entry), &_win_only), None);
         // Picked by the player: never.
         let pinned = Installed { pinned: true, ..g.clone() };
         assert_eq!(offered_update(&pinned, Some(&entry), &rels), None);
@@ -9545,6 +9613,59 @@ mod tests {
         let found = vec![roms::RomFile { path: iso.clone(), system: "ps2".into(), title: "backup-07".into(), region: String::new(), size: img.len() as u64 }];
         let got = copies_for(&cat, &found, &HashMap::new());
         assert_eq!(got.get("streetball").map(|r| r.path.clone()), Some(iso));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_prepare_cancellation_kills_process_and_preserves_external_files() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-cancel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        #[cfg(windows)]
+        let (prog_name, script_content) = ("builder.bat", "@echo off\r\necho generated > generated.txt\r\nping 127.0.0.1 -n 30 >nul\r\n");
+        #[cfg(not(windows))]
+        let (prog_name, script_content) = ("builder.sh", "#!/bin/sh\necho generated > generated.txt\nsleep 30\n");
+
+        let prog_path = dir.join(prog_name);
+        std::fs::write(&prog_path, script_content).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&prog_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let pr = profile::Prepare {
+            program: vec![prog_name.into()],
+            args: vec![],
+            label: "Test Builder".into(),
+            timeout: 60,
+            options: vec![],
+        };
+
+        let generated_file = dir.join("generated.txt");
+        let stopped = std::sync::atomic::AtomicBool::new(false);
+
+        let res = run_prepare(
+            &pr,
+            &dir,
+            &dir,
+            &[],
+            &|_, _| {},
+            &|| {
+                if generated_file.exists() {
+                    stopped.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                stopped.load(std::sync::atomic::Ordering::Relaxed)
+            },
+        );
+
+        assert_eq!(res.unwrap_err(), "Stopped.");
+        // The process was stopped immediately, but the external file it wrote remains:
+        assert!(generated_file.exists(), "File generated by external tool before cancellation was preserved");
+        let content = std::fs::read_to_string(&generated_file).unwrap();
+        assert!(content.contains("generated"));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
