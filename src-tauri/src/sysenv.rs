@@ -91,6 +91,12 @@ pub fn clean_tokio(c: &mut tokio::process::Command) {
     }
 }
 
+/// A Wayland session on wlroots' headless backend, with XWayland there and no GDK backend chosen.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn headless_wayland(wayland: bool, wlr_backends: &str, x_display: bool, gdk_chosen: bool) -> bool {
+    wayland && x_display && !gdk_chosen && wlr_backends.split(',').any(|b| b.trim().eq_ignore_ascii_case("headless"))
+}
+
 /// The launcher's own start on Linux, before any window: when Steam starts it (a Steam shortcut,
 /// Gaming Mode on a Steam Deck), Steam hands it Steam's own libraries and overlay, which the
 /// launcher's web view can crash on, so it starts itself again without them; and under Gaming
@@ -109,6 +115,11 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     let mode = data.map(|d| graphics_mode(&d)).unwrap_or_default();
     let wayland = (std::env::var_os("WAYLAND_DISPLAY").is_some() || var("XDG_SESSION_TYPE").eq_ignore_ascii_case("wayland")) && !var("GDK_BACKEND").starts_with("x11");
     let graphics = graphics_workarounds(&mode, gamescope, from_steam, nvidia, wayland, appimage, has_hardware_rendering());
+    // A headless wlroots session (a game-streaming host's virtual screen): WebKit draws the
+    // window's frame there but leaves the page blank. Through XWayland it draws everything.
+    if headless_wayland(wayland, &var("WLR_BACKENDS"), std::env::var_os("DISPLAY").is_some(), std::env::var_os("GDK_BACKEND").is_some()) {
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
     if graphics.explicit_sync_off && std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none() {
         std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
         std::env::set_var(OWN_NV_SYNC, "1");
@@ -385,6 +396,16 @@ pub fn steam_free(list: &str, sep: char, drop: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_headless_wayland_session_goes_through_xwayland() {
+        assert!(super::headless_wayland(true, "headless", true, false));
+        assert!(super::headless_wayland(true, "headless,libinput", true, false));
+        assert!(!super::headless_wayland(true, "drm,libinput", true, false));
+        assert!(!super::headless_wayland(true, "headless", false, false));
+        assert!(!super::headless_wayland(true, "headless", true, true));
+        assert!(!super::headless_wayland(false, "headless", true, false));
+    }
+
     #[test]
     fn steam_shortcut_handoff_carries_its_launch_environment() {
         let env = HashMap::from([

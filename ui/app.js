@@ -5377,6 +5377,14 @@ async function playGame2(id, program) {
       const gone = String(err && err.message ? err.message : err).match(/^NEED_BUILD\|(.*)$/);
       if (gone) S.setupNote = { id, text: tf('The game built from your copy isn\'t in {folder} anymore. Pick your copy and it\'s built again.', { folder: gone[1] }) };
       if (m || gone || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
+      // A Python game on a PC without Python: what to install, and where.
+      const py = String(err && err.message ? err.message : err).match(/^NEED_PYTHON\|(.*)$/);
+      if (py) {
+        const v = await ask(t('This Game Needs Python'), `<p>${esc(tf('{name} starts with a Python program, and Python 3 isn\'t on this PC. Install it from python.org, then press Play again.', { name: (S.library[id] || {}).name || py[1] }))}</p>${S.os === 'windows' ? `<p class="muted">${esc(t('In its installer, tick "Add python.exe to PATH".'))}</p>` : ''}`,
+          [{ label: t('Get Python'), icon: 'down', v: 'get', main: true }, { label: t('Close'), icon: 'chevL', v: null }]);
+        if (v === 'get') invoke('open_url', { url: 'https://www.python.org/downloads/' }).catch(fail);
+        return;
+      }
       // It couldn't tell which program is the game (every one looks like a tool): the player says.
       if (/^PICK_EXE\|/.test(String(err && err.message ? err.message : err))) return askProgram(id);
       if (!blocked(id, err)) fail(err);

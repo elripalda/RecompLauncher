@@ -2666,6 +2666,12 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     }
     let cwd = exe.parent().map(Path::to_path_buf).unwrap_or(g.path.clone());
     let shown = exe_rel.display().to_string();
+    // A Python game: Python has to be here before anything is put in place for this start.
+    let python = if exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("py")) {
+        Some(python_here().ok_or_else(|| Error::Msg(format!("NEED_PYTHON|{shown}")))?)
+    } else {
+        None
+    };
     // The player's look: ReShade where the game will load it, for this start only.
     let mut look_route: Option<&'static str> = None;
     let look_run = match if clean { Ok(None) } else { look_plan(&st, id, &g, prof.as_ref(), &exe) } {
@@ -2759,14 +2765,11 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     };
     let mut cmd = match ext.as_str() {
         _ if unpacked.is_some() => tokio::process::Command::new(unpacked.as_ref().map(|d| d.join("AppRun")).unwrap_or_default()),
-        "py" if cfg!(windows) => {
-            let mut c = tokio::process::Command::new("py");
-            c.arg("-3").arg(&exe);
-            c
-        }
-        "py" => {
-            let mut c = tokio::process::Command::new("python3");
-            c.arg(&exe);
+        // Windows' py launcher, else a python found on the PATH (found above).
+        "py" if python.is_some() => {
+            let (py, args) = python.clone().unwrap_or_default();
+            let mut c = tokio::process::Command::new(py);
+            c.args(args).arg(&exe);
             c
         }
         // A shell script on Linux (it may have lost its run permission in the zip). Through bash:
@@ -5420,6 +5423,21 @@ fn missing_libraries(exe: &Path, game_dir: &Path) -> Vec<String> {
             .filter(|n| !n.is_empty() && !inside.contains(n))
             .collect()
     }
+}
+
+/// How a Python game starts here: Windows' py launcher (asked for Python 3), or python3 / python
+/// from the PATH. On Windows the copies in WindowsApps are left out: without a Python installed
+/// from the Store they only open the Store.
+fn python_here() -> Option<(PathBuf, Vec<&'static str>)> {
+    let path = std::env::var_os("PATH")?;
+    let find = |name: &str| std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file() && !p.to_string_lossy().to_lowercase().contains("windowsapps"));
+    if cfg!(windows) {
+        if let Some(py) = find("py.exe") {
+            return Some((py, vec!["-3"]));
+        }
+        return find("python3.exe").or_else(|| find("python.exe")).map(|p| (p, vec![]));
+    }
+    find("python3").or_else(|| find("python")).map(|p| (p, vec![]))
 }
 
 /// The program the player picked in the game's settings, when the game's setup file starts another
