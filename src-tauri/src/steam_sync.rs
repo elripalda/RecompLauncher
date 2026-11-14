@@ -342,12 +342,17 @@ struct Account {
 }
 
 fn account(user: &Path, data: &Path, wants: &[Want], keep: &BTreeSet<String>) -> Option<Account> {
+    account_with(user, data, &|mine| plan(mine, wants, keep))
+}
+
+/// One account, with `make_plan` saying what changes given the launcher's entries already there.
+fn account_with(user: &Path, data: &Path, make_plan: &dyn Fn(&[Owned]) -> Plan) -> Option<Account> {
     let cfg = user.join("config");
     let old = fs::read(cfg.join("shortcuts.vdf")).ok();
     // Something in it the launcher can't read: the player's shortcuts are left alone.
     let list = entries(old.as_deref())?;
     let mine = owned(&list, &|exe| shortcuts::script_game(data, exe));
-    let plan = plan(&mine, wants, keep);
+    let plan = make_plan(&mine);
     let gone: BTreeSet<u32> = plan.remove.iter().map(|o| o.app_id).collect();
     let mut apps: Vec<u32> = mine.iter().map(|o| o.app_id).filter(|a| !gone.contains(a)).collect();
     apps.extend(plan.add.iter().map(Want::app_id));
@@ -446,8 +451,7 @@ async fn wants(st: &App) -> (Vec<Want>, BTreeSet<String>) {
             }
             let name = crate::shown_name(st, &tile, &g).await;
             let start = shortcuts::game_start(&st.dir, &tile);
-            wants.push(Want { id: tile, name, exe: start.exe.to_string_lossy().to_string(), launch: start.launch });
-        }
+            wants.push(Want { id: tile, name, exe: start.exe.to_string_lossy().to_string(), launch: start.launch });        }
     }
     // An old id kept for shortcuts after a project match was corrected plays the game it now
     // points to: kept while that game is.
@@ -638,6 +642,54 @@ async fn sync(st: &App, restart: bool) -> Res<String> {
     Ok(format!("synced:{added}:{removed}"))
 }
 
+// ---------- Add to Steam ----------
+
+/// Add to Steam for one game puts in the same entry the sync would, and replaces any other entry
+/// of the launcher's for that game (an older way of starting it, an older name).
+pub fn plan_one(owned: &[Owned], want: &Want) -> Plan {
+    let remove = owned.iter().filter(|o| o.id == want.id).cloned().collect();
+    Plan { add: vec![want.clone()], remove }
+}
+
+/// The entry Add to Steam and the sync both write for a game. On Linux from the AppImage its
+/// launch script is (re)written here too.
+pub fn want_for(data: &Path, id: &str, name: &str) -> Want {
+    let start = shortcuts::game_start(data, id);
+    if let Some(appimage) = &start.appimage {
+        let _ = shortcuts::write_steam_script(data, name, id, appimage);
+    }
+    Want { id: id.to_string(), name: name.to_string(), exe: start.exe.to_string_lossy().to_string(), launch: start.launch }
+}
+
+/// Add to Steam (Steam already closed): written through the sync's own steps, so the game lands in
+/// the RecompLauncher collection, turning Keep Steam in Sync on later finds it already there (no
+/// second entry), and the sync takes it out again once it's uninstalled. The accounts written for.
+pub async fn add_game(steam: &Path, data: &Path, want: &Want, art: Vec<(&'static str, Vec<u8>, &'static str)>, icon: String) -> Result<usize, Error> {
+    let users = shortcuts::steam_users(steam);
+    if users.is_empty() {
+        return Err(Error::Msg("Sign in to Steam once on this PC first.".into()));
+    }
+    // The sync's timer may be writing right now: wait for it rather than write over each other.
+    let mut busy = Busy::take();
+    for _ in 0..60 {
+        if busy.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        busy = Busy::take();
+    }
+    let Some(_busy) = busy else { return Err(Error::Msg("Steam is being synced right now. Try again in a minute.".into())) };
+    let accts: Vec<Account> = users.iter().filter_map(|u| account_with(u, data, &|mine| plan_one(mine, want))).collect();
+    if accts.is_empty() {
+        return Err(Error::Msg("Steam's list of non-Steam games has something in it the launcher can't read, so it left it as it is. Add the game from Steam instead: Add a Game, then Add a Non-Steam Game.".into()));
+    }
+    let arts = Arts::from([(want.id.clone(), (art, icon))]);
+    for a in &accts {
+        apply(a, &arts)?;
+    }
+    Ok(accts.len())
+}
+
 /// Settings → Keep Steam in Sync → Sync Now (and turning it on).
 #[tauri::command]
 pub async fn steam_sync_now(st: State<'_, App>, restart: bool) -> Res<String> {
@@ -756,6 +808,26 @@ mod tests {
         let p = plan(&owned_in(&bytes), &[want("banjo", "Banjo-Kazooie")], &BTreeSet::new());
         assert_eq!(p.add[0].name, "Banjo-Kazooie");
         assert_eq!(p.remove[0].name, "Banjo");
+    }
+
+    #[test]
+    fn add_to_steam_replaces_the_games_older_entry() {
+        let bytes = file_with(&[want("banjo", "Banjo"), want("zelda", "Zelda")]);
+        let p = plan_one(&owned_in(&bytes), &want("banjo", "Banjo-Kazooie"));
+        assert_eq!(p.add[0].name, "Banjo-Kazooie");
+        assert_eq!(p.remove.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), vec!["Banjo"]);
+    }
+
+    #[test]
+    fn a_game_added_to_steam_by_hand_is_not_added_again_by_the_sync() {
+        let w = want("banjo", "Banjo");
+        let bytes = file_with(&[w.clone()]);
+        let mine = owned_in(&bytes);
+        let p = plan_one(&mine, &w);
+        let keys: BTreeSet<String> = p.remove.iter().map(|o| o.key.clone()).collect();
+        let (after, _) = shortcuts::add_shortcut(Some(&without(&bytes, &keys).unwrap()), &w.name, &w.exe, r"C:\RL", &w.launch, "");
+        assert_eq!(owned_in(&after).len(), 1);
+        assert!(plan(&owned_in(&after), &[w], &BTreeSet::new()).is_empty());
     }
 
     #[test]

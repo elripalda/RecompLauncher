@@ -480,29 +480,13 @@ pub fn start_steam(steam: &Path) {
     }
 }
 
-/// Write the game into every Steam account's shortcuts and art folder. `art` is (suffix, bytes,
-/// extension): "p" the poster, "_hero" the wide banner, "" the small wide header, "_logo".
-pub fn write_to_steam(steam: &Path, name: &str, id: &str, icon: &str, art: &[(&str, Vec<u8>, &str)], data: &Path) -> Result<usize, Error> {
-    // On Linux from the AppImage, Steam starts a small script for the game instead (see
-    // steam_script): the AppImage would drop what Steam's overlay and capture need.
-    if let Some(script) = steam_script(data, name, id) {
-        return write_entry_with(steam, name, (script.clone(), vec![]), "", icon, art);
-    }
-    write_entry(steam, name, &format!("--play {id}"), icon, art)
-}
-
+/// The AppImage a game's launch script starts, when Steam starts games through one.
 /// Linux, AppImage: the AppImage runtime drops LD_PRELOAD and Vulkan's layer variables on its way
 /// in, so Steam's overlay never reaches the game, and Steam Link and Remote Play find no window to
-/// stream (a black screen). The shortcut runs this script, which keeps Steam's overlay aside in
-/// RL_STEAM_OVERLAY (the launcher hands it to the game) and then asks the launcher to play it.
-/// None elsewhere (Windows, a Flatpak, a .deb run): the shortcut starts the launcher as before.
-pub fn steam_script(data: &Path, name: &str, id: &str) -> Option<PathBuf> {
-    let appimage = steam_appimage()?;
-    write_steam_script(data, name, id, &appimage).ok()
-}
-
-/// The AppImage a game's launch script starts, when Steam starts games through one (see
-/// steam_script).
+/// stream (a black screen). The shortcut runs a script instead (write_steam_script), which keeps
+/// Steam's overlay aside in RL_STEAM_OVERLAY (the launcher hands it to the game) and then asks the
+/// launcher to play it. None elsewhere (Windows, a Flatpak, a .deb run): the shortcut starts the
+/// launcher itself.
 fn steam_appimage() -> Option<PathBuf> {
     if !cfg!(target_os = "linux") || crate::flatpak::sandboxed() {
         return None;
@@ -531,7 +515,7 @@ fn script_body_game(body: &str) -> Option<String> {
     (!id.is_empty()).then(|| id.to_string())
 }
 
-/// How Steam starts one game, as write_to_steam adds it: the program, its launch options, and on
+/// How Steam starts one game, as Add to Steam and the sync add it: the program, its launch options, and on
 /// Linux the AppImage its launch script starts.
 pub struct GameStart {
     pub exe: PathBuf,
