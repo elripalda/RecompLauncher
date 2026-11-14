@@ -1,6 +1,6 @@
 //! Discord status: "Playing <game>" with the game's cover and the time played, while a game
-//! runs, and "Playing RecompLauncher" while the launcher is open without one. Talks to the
-//! Discord app on this PC; nothing happens when it isn't open.
+//! runs, and "Playing RecompLauncher" while the launcher's window is open without one (not while
+//! it waits in the tray). Talks to the Discord app on this PC; nothing happens when it isn't open.
 //!
 //! It needs RecompLauncher's Discord application id: the catalog's top-level `"discord"`, or
 //! the one built in.
@@ -23,6 +23,9 @@ pub enum Msg {
     /// The launcher is open (app id, since when): "RecompLauncher" shows while no game is running.
     /// None when the Discord status is turned off.
     Idle(Option<(String, u64)>),
+    /// The launcher's window came into sight (true) or went to the tray (false). Hidden, the
+    /// launcher's line goes; a game's status stays either way.
+    Shown(bool),
 }
 
 static TX: OnceLock<Mutex<Sender<Msg>>> = OnceLock::new();
@@ -95,6 +98,9 @@ fn tx() -> &'static Mutex<Sender<Msg>> {
             let mut state_line = String::new();
             // The launcher open with the status on: what shows when no game runs.
             let mut idle: Option<(String, u64)> = None;
+            // The window starts hidden (it shows once its page is drawn, or never when a shortcut
+            // only starts a game), so the launcher's line waits for it.
+            let mut shown = false;
             for m in rx {
                 match m {
                     Msg::State(text) => {
@@ -115,27 +121,20 @@ fn tx() -> &'static Mutex<Sender<Msg>> {
                     Msg::Clear => {
                         last = None;
                         state_line.clear();
-                        match &idle {
-                            Some((app_id, start)) => put(&mut client, app_id, Show::Launcher { start: *start }),
-                            None => {
-                                if let Some((_, c)) = client.as_mut() {
-                                    let _ = c.clear_activity();
-                                }
-                            }
-                        }
+                        show_idle(&mut client, idle_status(false, idle.as_ref(), shown));
                     }
                     Msg::Idle(on) => {
                         idle = on;
-                        if last.is_none() {
-                            match &idle {
-                                Some((app_id, start)) => put(&mut client, app_id, Show::Launcher { start: *start }),
-                                None => {
-                                    if let Some((_, c)) = client.as_mut() {
-                                        let _ = c.clear_activity();
-                                    }
-                                }
-                            }
+                        show_idle(&mut client, idle_status(last.is_some(), idle.as_ref(), shown));
+                    }
+                    Msg::Shown(now) => {
+                        // Focusing the window says "shown" again and again; Discord only takes a
+                        // few updates a minute, so only a real change goes out.
+                        if now == shown {
+                            continue;
                         }
+                        shown = now;
+                        show_idle(&mut client, idle_status(last.is_some(), idle.as_ref(), shown));
                     }
                 }
             }
@@ -144,6 +143,74 @@ fn tx() -> &'static Mutex<Sender<Msg>> {
     })
 }
 
+/// What the status shows after the launcher's own line changed (turned on or off, the window
+/// hidden or shown, a game closed).
+#[derive(Debug, PartialEq)]
+enum Idle<'a> {
+    /// A game is showing: it stays as it is.
+    Game,
+    /// "In the launcher" (app id, since when).
+    Launcher(&'a str, u64),
+    /// Nothing at all.
+    Nothing,
+}
+
+/// "In the launcher" only while the player can see it: closed to the tray, the launcher is just
+/// waiting by the clock, and saying they're in it would be wrong.
+fn idle_status(playing: bool, idle: Option<&(String, u64)>, shown: bool) -> Idle<'_> {
+    if playing {
+        return Idle::Game;
+    }
+    let Some((app_id, start)) = idle else {
+        return Idle::Nothing;
+    };
+    if !shown {
+        return Idle::Nothing;
+    }
+    Idle::Launcher(app_id, *start)
+}
+
+fn show_idle(client: &mut Option<(String, DiscordIpcClient)>, what: Idle) {
+    match what {
+        Idle::Game => {}
+        Idle::Launcher(app_id, start) => put(client, app_id, Show::Launcher { start }),
+        Idle::Nothing => {
+            if let Some((_, c)) = client.as_mut() {
+                let _ = c.clear_activity();
+            }
+        }
+    }
+}
+
 pub fn send(m: Msg) {
     let _ = tx().lock().unwrap().send(m);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on() -> Option<(String, u64)> {
+        Some(("123".to_string(), 1000))
+    }
+
+    #[test]
+    fn launcher_shows_while_its_window_is_in_sight() {
+        assert_eq!(idle_status(false, on().as_ref(), true), Idle::Launcher("123", 1000));
+    }
+
+    #[test]
+    fn launcher_goes_while_its_window_is_in_the_tray() {
+        assert_eq!(idle_status(false, on().as_ref(), false), Idle::Nothing);
+    }
+
+    #[test]
+    fn a_game_stays_when_the_window_goes_to_the_tray() {
+        assert_eq!(idle_status(true, on().as_ref(), false), Idle::Game);
+    }
+
+    #[test]
+    fn nothing_shows_with_the_status_off() {
+        assert_eq!(idle_status(false, None, true), Idle::Nothing);
+    }
 }

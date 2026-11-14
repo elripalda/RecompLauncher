@@ -8103,6 +8103,7 @@ fn show_main(app: &AppHandle) {
         }
         let _ = w.show();
         let _ = w.set_focus();
+        discord::send(discord::Msg::Shown(true));
         if AWAY.swap(false, Ordering::Relaxed) {
             rest(&w, false);
             let _ = w.emit("away", false);
@@ -8448,6 +8449,7 @@ pub fn run() {
                     api.prevent_close();
                     if background && app.tray_by_id("main").is_some() && w.hide().is_ok() {
                         away(w, true);
+                        discord::send(discord::Msg::Shown(false));
                         tray::hid(app);
                         let jobs = SETUP_STATUS.lock().unwrap().clone();
                         if let Some(m) = jobs.as_ref() {
@@ -8479,6 +8481,8 @@ pub fn run() {
                     pads::FOCUSED.store(*f, Ordering::Relaxed);
                     if *f {
                         away(w, false);
+                        // However the window came back, a focused window is one the player sees.
+                        discord::send(discord::Msg::Shown(true));
                     }
                 }
                 tauri::WindowEvent::Resized(_) => {
@@ -8762,7 +8766,7 @@ pub fn run() {
             }
             // A new build or a recomp's release, pushed by the website the moment it's out.
             push::start(app.handle().clone());
-            // Discord: "RecompLauncher" while the launcher is open and no game runs.
+            // Discord: "RecompLauncher" while the launcher's window is open and no game runs.
             if g_discord(&app.state::<App>()) {
                 discord_idle(&app.state::<App>(), true);
             }
@@ -8827,6 +8831,7 @@ pub fn run() {
                             tokio::time::sleep(rest).await;
                         }
                         let _ = w.show();
+                        discord::send(discord::Msg::Shown(true));
                         if let Some(s) = splash {
                             tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                             let _ = s.close();
