@@ -1122,6 +1122,13 @@
       ${hints([['A', t('Open')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]])}`;
   }
 
+  // The desktop's scan pill for one release, as a plain label: on the TV the whole row is what A presses.
+  function scanTag(id, tag) {
+    const info = tag && scanInfo({ id, tag });
+    if (!info) return '';
+    return `<span class="scan-pill ${info.cls}"><i>${info.ic}</i>${esc(info.text)}</span>`;
+  }
+
   function pageDownloads() {
     const act = Object.keys(S.jobs), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
     const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
@@ -1135,14 +1142,14 @@
       const a = libAppOf(h.id);
       const report = info.scanner !== 'clamav' && info.sha;
       const press = report ? `data-tvact="scan" data-sha="${esc(info.sha)}"` : `data-go-game="${esc(h.id)}"`;
-      const pill = `<span class="scan-pill ${info.cls}"><i>${info.ic}</i>${esc(info.text)}</span>`;
+      const pill = scanTag(h.id, h.tag);
       return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" ${press}>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))}</small></span>${pill}</button>`;
     }).filter(Boolean);
     // The launcher's own update is counted in the Downloads badge, so it needs a row here too, or the
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
     const lu = S.launcherUpd;
     const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
-    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id])))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
@@ -1403,9 +1410,12 @@
     const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</span>`;
     const stNote = ps && ps.kind !== 'quiet' ? `<p class="tv-stnote ${ps.kind}"><b>${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</b><span dir="auto">${esc(ps.note)}</span></p>` : '';;
     const checks = readyRows(a);
+    // How the store checked the installed version; a game the player brought themselves has no release.
+    const installedScan = g && !g.local ? scanTag(id, g.tag) : '';
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
       [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
+      ...(installedScan ? [[esc(t('Safety')), installedScan]] : []),
       g ? [esc(t('Played')), esc(playedFor(g))] : [esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')],
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];

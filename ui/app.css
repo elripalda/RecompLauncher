@@ -451,6 +451,8 @@ body.light .known-fix b{color:#127a45}
 .stats>div{padding:15px 18px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
 .stats span{font-size:12px;font-weight:600;color:var(--dim)}
 .stats b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The installed version's scan pill sits under it, at its own width. */
+.stats .scan-pill{align-self:flex-start;margin-top:6px}
 .set-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;border-bottom:1px solid var(--line)}
 .set-row:first-child{padding-top:4px}.set-row:last-child{border-bottom:0;padding-bottom:0}
 .card-h+.set-row{padding-top:10px}

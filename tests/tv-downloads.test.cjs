@@ -19,7 +19,7 @@ function downloadsContext(launcherUpd) {
     sfx: () => {}, calls: [],
   });
   c.selfUpdate = () => c.calls.push('selfUpdate');
-  vm.runInContext(fn(tv, 'pageDownloads'), c);
+  vm.runInContext(fn(tv, 'scanTag') + fn(tv, 'pageDownloads'), c);
   vm.runInContext(fn(tv, 'activate'), c);
   return c;
 }
@@ -64,4 +64,15 @@ test('a VirusTotal-checked download opens its report from the row', () => {
   assert.match(html, /data-tvact="scan" data-sha="abc"/);
   assert.match(html, /<span class="scan-pill warn">/);
   assert.doesNotMatch(html, /Open the Report/);
+});
+
+test('an update-ready row shows how the new version was checked', () => {
+  const c = downloadsContext(null);
+  c.S.library = { prime: { tag: 'v0.0.10' } };
+  c.S.updates = { prime: 'v0.0.11' };
+  const asked = [];
+  c.scanInfo = (h) => { asked.push(h.tag); return { cls: 'ok', ic: '✓', text: 'Clean · ClamAV', scanner: 'clamav', sha: '' }; };
+  const html = c.pageDownloads();
+  assert.deepEqual(asked, ['v0.0.11']);
+  assert.match(html, /Update ready: v0\.0\.10 → v0\.0\.11<\/small><\/span><span class="scan-pill ok">/);
 });
