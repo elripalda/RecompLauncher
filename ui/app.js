@@ -188,6 +188,9 @@ const needsSetup = (a) => !!(a && a.setup_required);
 // A recomp that only comes as a Windows installer (the catalog's "installer"), and one whose
 // downloaded installer is waiting for Set Up (a new game, or an update).
 const isInstallerApp = (a) => !!(a && a.installer) && S.os === 'windows';
+// Settings → Auto-Install: a finished download goes straight on to its setup or installer. On
+// unless the player turned it off (settings saved before the switch existed have no value).
+const autoInstall = () => S.settings.auto_install !== false;
 const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
 // The yellow Set Up: the developer's steps not done yet, or an installer waiting to run.
 const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installerDue(a.id));
@@ -3764,7 +3767,8 @@ function pageSettings() {
     case 'updates':
       body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
-          + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates'))))
+          + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
+          + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
@@ -5314,7 +5318,8 @@ async function startInstall(id, dir, tag, anyway) {
   if (S.running.has(id)) return toast(t('Close the game first.'), true);
   // Easy Install with no copy found in the player's folders: pick it first, and it's checked against
   // what the game needs before anything downloads. Once it's in, setup goes straight on with it.
-  if (!S.library[id] && !tag && !anyway && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
+  // With Auto-Install off nothing sets up by itself after the download, so there's nothing to pick it for.
+  if (autoInstall() && !S.library[id] && !tag && !anyway && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
     const pickIt = async () => {
       for (;;) {
         const f = await pickFile(copyPickOpts(id)).catch(() => null);
@@ -7612,6 +7617,7 @@ async function act(el, e) {
       if (k === 'hide_ai' && S.view === 'discover') { saveSettings({ hide_ai: !S.settings.hide_ai }, true); return updateDiscover(); }
       // Sharing: what shows is what's sent (nothing before the player was asked).
       if (k === 'share_usage' || k === 'share_stats') return saveSettings({ [k]: !(S.settings.data_asked && S.settings[k]), data_asked: true });
+      if (k === 'auto_install') return saveSettings({ auto_install: !autoInstall() });
       if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
       return saveSettings({ [k]: !S.settings[k] });
     }
@@ -8095,9 +8101,11 @@ T.event.listen('install', ({ payload: p }) => {
       // A copy picked (and checked) before the download: its setup starts with it at once.
       const pre = (S.prePicked || {})[id];
       if (pre) delete S.prePicked[id];
+      // Auto-Install off (Settings → Updates): nothing opens by itself; Set Up on its page starts it.
+      const auto = autoInstall();
       // Only an installer: its Set Up opens to run it (an update's too).
-      if (isInstallerApp(byId(id))) { if (!busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
-      else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+      if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
+      else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
       else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
       else toast(tf('{name} is ready to play.', { name }));
     }
