@@ -99,6 +99,10 @@ async fn act(app: AppHandle, p: Push) {
     match p {
         Push::Launcher => {
             let st = app.state::<App>();
+            // Settings → RecompLauncher Updates off: a pushed build isn't offered either.
+            if !crate::launcher_looks(&st.lib.lock().unwrap().settings, false) {
+                return;
+            }
             if let Some(v) = crate::newer_launcher(&st, 0, false).await {
                 let ver = v.get("version").and_then(Value::as_str).unwrap_or("").to_string();
                 let hidden = app.get_webview_window("main").map(|w| !w.is_visible().unwrap_or(true)).unwrap_or(true);

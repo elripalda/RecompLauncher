@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
-const autoInstallSrc = app.match(/^const autoInstall = .*$/m)[0];
+const autoInstallSrc = app.match(/^const autoInstall = .*$/m)[0] + '\n' + app.match(/^const launcherUpdates = .*$/m)[0];
 // The part of the download-finished handler that decides what opens next.
 const doneHandler = app.slice(app.indexOf("T.event.listen('install'"), app.indexOf("T.event.listen('game'"));
 
@@ -69,7 +69,7 @@ test('the desktop switch turns an unset Auto-Install off, then on again', async 
 });
 
 test('Big Picture treats an unset Auto-Install as on', () => {
-  assert.match(tv, /k === 'auto_install' \? S\.settings\[k\] !== false/);
+  assert.match(tv, /k === 'auto_install' (?:\|\| k === '\w+' )*\? S\.settings\[k\] !== false/);
 });
 
 test('a finished installer download opens its installer only with Auto-Install on', () => {

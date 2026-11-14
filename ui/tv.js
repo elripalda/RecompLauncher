@@ -1262,6 +1262,7 @@
           ${sw('notify', t('Notifications'), t('When a new recomp comes out for a game you own'))}
           ${sw('backup_before_update', t('Back up saves before updates'), t('The newest five copies of each game\'s saves'))}
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
+          ${sw('launcher_updates', t('RecompLauncher Updates'), t('Look for and offer new versions of RecompLauncher'), S.settings.launcher_updates !== false)}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in Discover'))}
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
@@ -2784,7 +2785,7 @@
       setScroll(keepY, false);
       return;
     }
-    if (el.dataset.toggle) { sfx('select'); const k = el.dataset.toggle, on = k === 'sounds' || k === 'discord' || k === 'auto_install' ? S.settings[k] !== false : !!S.settings[k]; await saveSettings({ [k]: !on }); draw(true); if (k === 'steam_sync' && !on && window.steamSync) window.steamSync(false); return; }
+    if (el.dataset.toggle) { sfx('select'); const k = el.dataset.toggle, on = k === 'sounds' || k === 'discord' || k === 'auto_install' || k === 'launcher_updates' ? S.settings[k] !== false : !!S.settings[k]; await saveSettings({ [k]: !on }); draw(true); if (k === 'steam_sync' && !on && window.steamSync) window.steamSync(false); return; }
     if (el.dataset.shotI !== undefined) { sfx('select'); return shotView(Number(el.dataset.shotI)); }
     if (el.dataset.gset) return cycleSetting(el, 1);
     if (el.dataset.gbmod) return tvGbMod(TV.arg, el.dataset.gbmod);

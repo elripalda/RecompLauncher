@@ -19,7 +19,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -27,8 +27,13 @@ use tauri::{AppHandle, Emitter, Manager};
 pub const NOTES_FILE: &str = "RELEASE-NOTES.md";
 /// GitHub's own answer for the release, kept as it came (tag, dates, every asset's address).
 pub const INFO_FILE: &str = "release.json";
-/// How often the launcher sweeps by the clock while it runs.
-const SWEEP_EVERY: u64 = 6 * 3600;
+/// How often the launcher sweeps by the clock while it runs: hourly, so a new release of a game in
+/// the Library is kept within the hour it comes out.
+pub const SWEEP_EVERY: u64 = 3600;
+/// How old a game's release list may be on a sweep by the clock. Below the clock's shortest gap
+/// (it's spread by a tenth either way), so every hourly sweep asks again; the site answers an
+/// unchanged list with a 304 of a few bytes.
+pub const CLOCK_FRESH: u64 = SWEEP_EVERY * 8 / 10;
 
 /// A game to keep: where its releases come from and what its folder is called.
 #[derive(Debug, Clone, PartialEq)]
@@ -74,6 +79,27 @@ static STATUS: Mutex<Status> = Mutex::new(Status {
 static RUNNING: AtomicBool = AtomicBool::new(false);
 /// Something asked for a sweep while one was running: go round once more when it ends.
 static AGAIN: AtomicBool = AtomicBool::new(false);
+/// How old a release list the running sweep accepts (CLOCK_FRESH by the clock, otherwise the
+/// usual six hours: a sweep for a game just added needn't ask about every other game again).
+static FRESH: AtomicU64 = AtomicU64::new(catalog::RELEASES_FRESH);
+
+/// What a request for a sweep does, given whether one is running already.
+#[derive(Debug, PartialEq)]
+pub enum Ask {
+    Start,
+    /// Go round once more when the running one ends (something changed, like a game added).
+    Again,
+    /// Nothing: the clock's hourly look while a sweep is still going (it is already looking).
+    Skip,
+}
+
+pub fn ask(running: bool, by_clock: bool) -> Ask {
+    match (running, by_clock) {
+        (false, _) => Ask::Start,
+        (true, false) => Ask::Again,
+        (true, true) => Ask::Skip,
+    }
+}
 
 fn stop_flag() -> Arc<AtomicBool> {
     static STOP: OnceLock<Arc<AtomicBool>> = OnceLock::new();
@@ -202,20 +228,34 @@ fn write_if_changed(path: &Path, text: &[u8]) -> std::io::Result<()> {
 
 /// Ask for a sweep. Does nothing when the mode is off. `app` is the running launcher.
 pub fn kick(app: &AppHandle) {
+    begin(app, false);
+}
+
+/// The hourly look: a sweep that asks every game for its newest releases. Skipped while one is
+/// still running (a long first sweep, say), so they never pile up.
+fn tick(app: &AppHandle) {
+    begin(app, true);
+}
+
+fn begin(app: &AppHandle, by_clock: bool) {
     let on = app.state::<App>().lib.lock().unwrap().settings.hoarder;
     if !on {
         return;
     }
-    if RUNNING.swap(true, Ordering::SeqCst) {
-        AGAIN.store(true, Ordering::SeqCst);
-        return;
+    let running = RUNNING.swap(true, Ordering::SeqCst);
+    match ask(running, by_clock) {
+        Ask::Start => {}
+        Ask::Again => return AGAIN.store(true, Ordering::SeqCst),
+        Ask::Skip => return trail::note("Data Hoarder: hourly look skipped, a sweep is still running"),
     }
+    FRESH.store(if by_clock { CLOCK_FRESH } else { catalog::RELEASES_FRESH }, Ordering::SeqCst);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
             AGAIN.store(false, Ordering::SeqCst);
             stop_flag().store(false, Ordering::SeqCst);
-            sweep(&app).await;
+            let fresh = FRESH.swap(catalog::RELEASES_FRESH, Ordering::SeqCst);
+            sweep(&app, fresh).await;
             if !AGAIN.load(Ordering::SeqCst) || !app.state::<App>().lib.lock().unwrap().settings.hoarder {
                 break;
             }
@@ -239,12 +279,12 @@ pub fn stop() {
 /// The download id of the file being saved right now, empty between files (see `stop`).
 static CURRENT: Mutex<String> = Mutex::new(String::new());
 
-/// The launcher's clock for it: a first look shortly after start, then every few hours.
+/// The launcher's clock for it: a first look shortly after start, then every hour.
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(45)).await;
         loop {
-            kick(&app);
+            tick(&app);
             tokio::time::sleep(net::spread(SWEEP_EVERY, 0.1)).await;
         }
     });
@@ -254,7 +294,7 @@ fn enabled(app: &AppHandle) -> bool {
     app.state::<App>().lib.lock().unwrap().settings.hoarder && !stop_flag().load(Ordering::SeqCst)
 }
 
-async fn sweep(app: &AppHandle) {
+async fn sweep(app: &AppHandle, fresh: u64) {
     update(app, |s| *s = Status { running: true, last_done: s.last_done, ..Status::default() });
     let st = app.state::<App>();
     let finish = |app: &AppHandle, why: &str| {
@@ -280,7 +320,7 @@ async fn sweep(app: &AppHandle) {
         if !enabled(app) {
             return finish(app, "");
         }
-        if let Err(why) = hoard_game(app, &settings, &t).await {
+        if let Err(why) = hoard_game(app, &settings, &t, fresh).await {
             trail::note(format!("Data Hoarder: stopped at {}: {why}", t.name));
             return finish(app, &why);
         }
@@ -297,9 +337,9 @@ fn stops_sweep(msg: &str) -> bool {
 }
 
 /// All of one game's releases. Returns Err(why) only when the whole sweep should stop.
-async fn hoard_game(app: &AppHandle, settings: &Settings, t: &Target) -> Result<(), String> {
+async fn hoard_game(app: &AppHandle, settings: &Settings, t: &Target, fresh: u64) -> Result<(), String> {
     let st = app.state::<App>();
-    let raw = match catalog::releases_all(&st.http, &st.dir, &t.repo).await {
+    let raw = match catalog::releases_all(&st.http, &st.dir, &t.repo, fresh).await {
         Ok(r) => r,
         Err(e) => {
             // This game's list couldn't be read: the next game may well be fine.
@@ -598,6 +638,26 @@ mod tests {
         assert_eq!(s.hoard_limit(), Some(1));
         s.hoard_keep = "nonsense".into();
         assert_eq!(s.hoard_limit(), None);
+    }
+
+    #[test]
+    fn the_clock_sweeps_hourly_and_asks_again_each_time() {
+        assert_eq!(SWEEP_EVERY, 3600);
+        // The clock is spread by a tenth either way: even its shortest gap finds the lists stale.
+        assert!(CLOCK_FRESH < SWEEP_EVERY * 9 / 10);
+        assert!(CLOCK_FRESH < catalog::RELEASES_FRESH);
+    }
+
+    #[test]
+    fn the_hourly_look_never_piles_up_on_a_running_sweep() {
+        assert_eq!(ask(false, true), Ask::Start);
+        assert_eq!(ask(true, true), Ask::Skip);
+    }
+
+    #[test]
+    fn a_change_while_sweeping_goes_round_once_more() {
+        assert_eq!(ask(false, false), Ask::Start);
+        assert_eq!(ask(true, false), Ask::Again);
     }
 
     #[test]

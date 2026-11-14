@@ -1115,8 +1115,10 @@ async fn from_github_at(http: &reqwest::Client, dir: &Path, repo: &str, api: &st
 /// page, at most ten pages), so old releases can be saved before they disappear. If GitHub won't
 /// answer (its hourly limit, say) the list the site gave is all there is this time. GitLab and
 /// SourceForge projects only come through the site, so they're whatever it lists.
-pub async fn releases_all(http: &reqwest::Client, dir: &Path, repo: &str) -> Result<Vec<Value>, Error> {
-    let first = releases(http, dir, repo, false).await?;
+/// `fresh`: how old (seconds) a copy on disk of the newest page may be and still be used. The
+/// site answers an unchanged list with a few-byte 304, so asking it often costs little.
+pub async fn releases_all(http: &reqwest::Client, dir: &Path, repo: &str, fresh: u64) -> Result<Vec<Value>, Error> {
+    let first = releases_aged(http, dir, repo, fresh, false).await?;
     let mut all: Vec<Value> = first.data.as_array().cloned().unwrap_or_default();
     if site_only(repo) || all.len() < 30 {
         return Ok(all);
@@ -1184,10 +1186,15 @@ async fn or_github(http: &reqwest::Client, dir: &Path, repo: &str, got: Result<F
 /// A recomp's releases. Used from disk while younger than six hours. `force`: the player asked
 /// for it now (installing, updating, adding a repo).
 pub async fn releases(http: &reqwest::Client, dir: &Path, repo: &str, force: bool) -> Result<Fetched, Error> {
+    releases_aged(http, dir, repo, if force { 0 } else { RELEASES_FRESH }, force).await
+}
+
+/// `releases`, with a copy on disk younger than `fresh` seconds used as it is.
+async fn releases_aged(http: &reqwest::Client, dir: &Path, repo: &str, fresh: u64, force: bool) -> Result<Fetched, Error> {
     if !repo_ok(repo) {
         return Err(Error::Msg("That isn't a GitHub repo".into()));
     }
-    let got = cached(http, &releases_url(repo), releases_file(dir, repo), if force { 0 } else { RELEASES_FRESH }, crate::net::QUICK, force, Value::is_array).await;
+    let got = cached(http, &releases_url(repo), releases_file(dir, repo), fresh, crate::net::QUICK, force, Value::is_array).await;
     let f = or_github(http, dir, repo, got, force).await?;
     Ok(with_gitlab(Some(http), dir, repo, f).await)
 }

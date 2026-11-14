@@ -7377,9 +7377,20 @@ fn installer_is_version(bytes: &[u8], version: &str) -> bool {
 /// The window asks as it opens (an answer from the last hour is reused, so opening it again and
 /// again doesn't ask again), and with `force` when the player presses Check for Updates.
 #[tauri::command]
-async fn launcher_update(st: State<'_, App>, force: Option<bool>) -> Res<Option<Value>> {
+async fn launcher_update(st: State<'_, App>, force: Option<bool>, manual: Option<bool>) -> Res<Option<Value>> {
     let force = force.unwrap_or(false);
+    // Settings → RecompLauncher Updates off: nothing is looked for or offered unless the player
+    // asked (Check for Updates).
+    if !launcher_looks(&st.lib.lock().unwrap().settings, force || manual.unwrap_or(false)) {
+        return Ok(None);
+    }
     Ok(newer_launcher(&st, if force { 0 } else { 3600 }, force).await)
+}
+
+/// Whether to look for a new RecompLauncher: always when the player asks, otherwise only with
+/// Settings → RecompLauncher Updates on.
+pub(crate) fn launcher_looks(settings: &Settings, asked: bool) -> bool {
+    asked || settings.launcher_updates
 }
 
 /// version.json's Linux build as an entry of its own: its version (or the shared one), url and sha256.
@@ -9750,6 +9761,9 @@ pub fn run() {
                     loop {
                         tokio::time::sleep(net::spread(LAUNCHER_CHECK_EVERY, 0.1)).await;
                         let st = h.state::<App>();
+                        if !launcher_looks(&st.lib.lock().unwrap().settings, false) {
+                            continue;
+                        }
                         if let Some(v) = newer_launcher(&st, 0, false).await {
                             let ver = str_of(&v, "version").to_string();
                             if ver != told {
@@ -10637,6 +10651,15 @@ mod tests {
         assert_eq!(named_for(&rel, "linux").iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-linux-x86_64.tar.gz"]);
         assert_eq!(named_for(&rel, "macos").iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-macOS.zip"]);
         assert_eq!(named_for(&rel, "windows").iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), vec!["Game-windows-x64.zip"]);
+    }
+
+    #[test]
+    fn launcher_updates_off_looks_only_when_the_player_asks() {
+        let mut settings = Settings::default();
+        assert!(launcher_looks(&settings, false));
+        settings.launcher_updates = false;
+        assert!(!launcher_looks(&settings, false));
+        assert!(launcher_looks(&settings, true));
     }
 
     #[test]
