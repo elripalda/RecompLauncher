@@ -7703,7 +7703,8 @@ document.addEventListener('input', (e) => {
     // Kept at once (a redraw while dragging keeps it), saved once it settles.
     S.settings.ui = Object.assign({}, S.settings.ui, { tile: v });
     clearTimeout(tileTimer);
-    tileTimer = setTimeout(() => saveUi({ tile: v }, true), 400);
+    // Redraw once dragging settles so enlarged covers request their sharper image.
+    tileTimer = setTimeout(() => saveUi({ tile: v }), 400);
     return;
   }
   // Typing in Home's search box: on to Discover's search, with what's been typed so far.
