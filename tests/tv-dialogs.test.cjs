@@ -20,3 +20,12 @@ test('What\'s New gets a TV-sized window in TV mode', () => {
 test('up and down on the controller scroll an open dialog', () => {
   assert.match(tvJs, /if \(name === 'up' \|\| name === 'down'\) \{ dialogScroll\(dlg/);
 });
+
+test('the way out on Home offers Quit RecompLauncher', () => {
+  assert.match(tvJs, /label: t\('Quit RecompLauncher'\), icon: 'close', run: \(\) => invoke\('quit_launcher'\)/);
+});
+
+test('the quit command is registered with the window', () => {
+  const lib = fs.readFileSync(path.join(__dirname, '../src-tauri/src/lib.rs'), 'utf8');
+  assert.match(lib, /tray::quit_launcher/);
+});
