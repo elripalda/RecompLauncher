@@ -2,8 +2,8 @@
 // Kept separate from the single-copy flow so existing profiles retain their setup behavior.
 function namedInputRows(su) {
   const rows = (su.inputs || []).filter((r) => r.active);
-  if (su.kind) rows.unshift({ id: 'game', label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: [] });
-  if (su.update) rows.push({ id: 'legacy-update', label: su.update, role: 'update', optional: su.update_optional, path: su.update_copy, file: su.update_file, folder: su.update_folder, extensions: [] });
+  if (su.kind) rows.unshift({ id: 'game', legacy: true, label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: [] });
+  if (su.update) rows.push({ id: 'legacy-update', legacy: true, label: su.update, role: 'update', optional: su.update_optional, path: su.update_copy, file: su.update_file, folder: su.update_folder, extensions: [] });
   return rows;
 }
 function namedDiscSummary(su) {
@@ -28,7 +28,7 @@ function namedInputsView(id, su, ns = {}, game = {}) {
     if (r.runtime) return runtimeRow(r, ns);
     const status = r.path ? r.shared ? t('Already configured') : baseName(r.path) : t('Not selected');
     const button = (act, text, extra = '') => `<button type="button" class="btn sm" data-ni="${act}" data-input="${esc(r.id)}" aria-label="${esc(t(text) + ': ' + r.label)}" ${extra} ${ns.busy ? 'disabled' : ''}>${esc(t(text))}</button>`;
-    return `<div class="ni-row${r.path ? ' selected' : ''}"><span class="ni-status" aria-label="${esc(r.path ? t('Selected') : t('Not selected'))}">${r.path ? CHECK : DISC_S}</span><div class="ni-name"><b>${esc(r.label)}</b><span title="${esc(r.shared ? t('Kept on this PC for other games that need them') : r.path || '')}">${esc(status)}</span></div><div class="ni-actions">${r.file ? button('file', r.path ? 'Change' : r.folder ? 'Choose file' : 'Choose') : ''}${r.folder ? button('folder', r.path && !r.file ? 'Change' : 'Choose folder') : ''}${r.path && r.id !== 'game' && r.id !== 'legacy-update' ? button(r.shared ? 'remove-key' : 'clear', 'Remove') : ''}</div></div>`;
+    return `<div class="ni-row${r.path ? ' selected' : ''}"><span class="ni-status" aria-label="${esc(r.path ? t('Selected') : t('Not selected'))}">${r.path ? CHECK : DISC_S}</span><div class="ni-name"><b>${esc(r.label)}</b><span title="${esc(r.shared ? t('Kept on this PC for other games that need them') : r.path || '')}">${esc(status)}</span></div><div class="ni-actions">${r.file ? button('file', r.path ? 'Change' : r.folder ? 'Choose file' : 'Choose') : ''}${r.folder ? button('folder', r.path && !r.file ? 'Change' : 'Choose folder') : ''}${r.path && !r.legacy ? button(r.shared ? 'remove-key' : 'clear', 'Remove') : ''}</div></div>`;
   }).join('')}</div></section>` : '';
   const optional = rows.filter((r) => r.optional || r.runtime), added = optional.filter((r) => r.path).length;
   const optionalLabel = optional.every((r) => r.role === 'dlc') ? t('Optional DLC') : t('Optional content');
@@ -92,7 +92,8 @@ async function namedInputsAction(id, act, input, ns) {
       const picked = await pickFile(options);
       if (!picked) return;
       const path = typeof picked === 'string' ? picked : picked.path;
-      await invoke(row.id === 'game' ? 'set_game_copy' : row.id === 'legacy-update' ? 'set_update_copy' : 'setup_input_set', { id, input, path });
+      // Only the single-copy rows go to the old commands; a profile's own input may be named "game" too.
+      await invoke(!row.legacy ? 'setup_input_set' : row.id === 'game' ? 'set_game_copy' : 'set_update_copy', { id, input, path });
     }
     S.setup[id] = await invoke('game_setup', { id });
     await refreshState();

@@ -1140,7 +1140,7 @@ function actions(a, size = 'big') {
         const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
         const stageName = sj.step === 'read' ? t('Reading') : sj.step === 'verify' ? t('Checking') : sj.step === 'extras' ? t('Extras') : sj.step === 'setup' ? t('Setting up') : t('Setting up');
         const canCancel = `<button type="button" class="${sq}" data-act="setup-cancel" data-id="${id}" aria-label="${esc(t('Cancel Setup'))}" title="${esc(t('Cancel Setup'))}">${XS}</button>`;
-        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Click to open setup'))}"><div class="track busy"><i style="width:${p}%"></i></div><div class="lbl"><span>${esc(stageName)}</span><span>${p}%</span></div></button>` + canCancel + more;
+        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Show its setup'))}"><div class="track busy"><i style="width:${p}%"></i></div><div class="lbl"><span>${esc(stageName)}</span><span>${p}%</span></div></button>` + canCancel + more;
       }
       return `<button type="button" class="btn ${size}" disabled>${esc(t('Its setup is open'))}</button>` + more;
     }
@@ -2690,7 +2690,7 @@ async function closeSetup(quiet) {
     const a = byId(id) || { name: (S.library[id] || {}).name || id };
     const pick = await ask(
       tf('Setup is still running for {name}', { name: a.name }),
-      `<p>${esc(t('Setting up this game takes a few moments. You can let it finish in the background while you use the launcher, or cancel it.'))}</p>`,
+      `<p>${esc(t('Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.'))}</p>`,
       [
         { label: t('Run in Background'), v: 'bg', main: true, focus: true },
         { label: t('Cancel Setup'), v: 'cancel' },
@@ -2816,8 +2816,17 @@ async function suBegin(path, anyway) {
   try { await invoke('setup_copy', { id: SU.id, path }); } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
 }
 const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
-async function onSetupFinished(id) {
+async function onSetupFinished(id, watching) {
   try { S.setup[id] = await invoke('game_setup', { id }); } catch (_) {}
+  const a = byId(id) || { name: (S.library[id] || {}).name || id };
+  // Its update is still to pick: it isn't ready yet, and the setup window asks for it.
+  const su = S.setup[id];
+  if (su && su.update && !su.update_copy && !su.update_optional) {
+    await refreshState(); render(true);
+    if (S.view === 'game') refreshGame();
+    if (!watching) toast(tf('{name} needs its update next.', { name: a.name }));
+    return;
+  }
   const curSaved = saved();
   const curOk = (S.settings.ui || {}).setup_ok || {};
   const patch = {};
@@ -2835,8 +2844,8 @@ async function onSetupFinished(id) {
   render(true);
   if (S.view === 'game') refreshGame();
   if (window.tvRefresh) window.tvRefresh();
-  const a = byId(id) || { name: (S.library[id] || {}).name || id };
-  toast(tf('{name} is ready to play!', { name: a.name }));
+  // The setup window says so itself when it's open.
+  if (!watching) toast(tf('{name} is ready to play!', { name: a.name }));
 }
 // The copy's in: the game's update next, when it needs one, then ready.
 async function suAfterCopy() {
@@ -2871,7 +2880,7 @@ T.event.listen('setup', ({ payload: p }) => {
   if (!S.setupJobs) S.setupJobs = {};
   if (p.step === 'done') {
     delete S.setupJobs[p.id];
-    onSetupFinished(p.id);
+    onSetupFinished(p.id, !!(SU.el && SU.id === p.id) || !!document.querySelector('.tv-setup:not(.out)'));
   } else if (p.step === 'error') {
     delete S.setupJobs[p.id];
     if (!SU.el || SU.id !== p.id) {
@@ -4695,10 +4704,8 @@ async function refreshState() {
   const live = new Set(st.jobs || []), now = Date.now();
   for (const id of Object.keys(S.jobs)) if (!live.has(id) && now - (S.jobs[id].at || 0) > 5000) delete S.jobs[id];
   for (const id of live) if (!S.jobs[id] && !(now - (ENDED[id] || 0) < 5000)) S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: now };
-  try {
-    const sj = await invoke('setup_status');
-    S.setupJobs = sj || {};
-  } catch (_) {}
+  // Setups running in the background come with the state, so this is one call, not two.
+  S.setupJobs = st.setupJobs || {};
 }
 const ENDED = {};
 

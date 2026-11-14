@@ -48,14 +48,14 @@ test('actions renders clickable reopen-setup button with stage and percentage an
 test('namedSetup delegates to setupModal when job is active in background', () => {
   let reopened = null;
   const c = vm.createContext({
-    S: { setupJobs: { 'longshot': { step: 'extras', pct: 0.8 } } },
+    S: { setupJobs: { 'hopper': { step: 'extras', pct: 0.8 } } },
     parentId: (id) => id.split('@')[0],
     setupModal: (id) => { reopened = id; },
     closeSetup: () => {},
   });
   vm.runInContext(inputsSrc, c);
-  c.namedSetup('longshot');
-  assert.equal(reopened, 'longshot');
+  c.namedSetup('hopper');
+  assert.equal(reopened, 'hopper');
 });
 
 test('onSetupFinished auto-adds to library and sets setup_ok', async () => {
@@ -76,7 +76,7 @@ test('onSetupFinished auto-adds to library and sets setup_ok', async () => {
     invoke: async (cmd, args) => ({ needs: false, copy: '/path/game.iso' }),
   });
   c.window = c;
-  const fnOnFinished = appSrc.match(/async function onSetupFinished\(id\) \{[^]*?\n\}/)[0];
+  const fnOnFinished = appSrc.match(/async function onSetupFinished\(id, watching\) \{[^]*?\n\}/)[0];
   vm.runInContext(fnOnFinished, c);
 
   await c.onSetupFinished('test-game');

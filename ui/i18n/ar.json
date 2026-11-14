@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "عندما ينتهي تنزيل لعبة بتثبيت سهل أو لعبة تأتي كبرنامج تثبيت (والتحديث أيضًا)، يُفتح إعدادها أو برنامج تثبيتها فورًا. عند الإيقاف: ينتظر حتى تضغط إعداد في صفحتها.",
  "You've been playing for a while. One tap tells us how it's going.": "أنت تلعب منذ مدة. نقرة واحدة تخبرنا كيف تسير الأمور.",
  "Your copy of the game is there": "نسختك من اللعبة موجودة",
- "{name} stays on the version it has. You'll hear about the next one.": "يبقى {name} على إصداره الحالي. وستعرف بالإصدار التالي."
+ "{name} stays on the version it has. You'll hear about the next one.": "يبقى {name} على إصداره الحالي. وستعرف بالإصدار التالي.",
+ "Cancel Setup": "إلغاء الإعداد",
+ "Checking": "جارٍ التحقق",
+ "Extras": "إضافات",
+ "Keep Watching": "متابعة المشاهدة",
+ "Reading": "جارٍ القراءة",
+ "Run in Background": "التشغيل في الخلفية",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "قد يستغرق الإعداد بعض الوقت. دعه ينتهي في الخلفية بينما تستخدم المشغّل، أو ألغِه.",
+ "Setting up {pct}%": "جارٍ الإعداد {pct}%",
+ "Setup didn't finish.": "لم يكتمل الإعداد.",
+ "Setup for {name} was cancelled.": "أُلغي إعداد {name}.",
+ "Setup for {name} will continue in the background.": "سيستمر إعداد {name} في الخلفية.",
+ "Setup is still running for {name}": "لا يزال {name} قيد الإعداد",
+ "Show its setup": "عرض الإعداد",
+ "{name} is ready to play!": "{name} جاهزة للعب!",
+ "{name} needs its update next.": "تحتاج {name} إلى تحديثها بعد ذلك."
 }

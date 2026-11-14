@@ -2098,6 +2098,7 @@
         { run: () => {
           invoke('setup_cancel', { id }).catch(() => {});
           if (S.setupJobs) delete S.setupJobs[id];
+          TS.stage = 'cancelled';
           closeSheet();
           toast(tf('Setup for {name} was cancelled.', { name: a.name }));
         } }

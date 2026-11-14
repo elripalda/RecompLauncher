@@ -3353,11 +3353,13 @@ fn kill_process_tree(child: &mut std::process::Child) {
         cmd.creation_flags(0x0800_0000);
         let _ = cmd.output();
     }
+    // Its own process group (run_prepare starts it in one), so everything it started goes too.
     #[cfg(unix)]
     {
-        let _ = std::process::Command::new("kill").args(["-9", &format!("-{}", pid)]).output();
+        let _ = std::process::Command::new("kill").args(["-9", "--", &format!("-{pid}")]).output();
     }
     let _ = child.kill();
+    let _ = child.wait();
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -3552,7 +3554,8 @@ fn setup_cancel(id: String) {
     if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() {
         m.remove(&id);
     }
-    INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
+    // INPUT_WORKERS is left alone: a cancelled worker may still be finishing a file copy, and
+    // holds its lock until it has actually stopped.
 }
 
 #[tauri::command]
@@ -3681,6 +3684,12 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[Stri
     {
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000);
+    }
+    // A group of its own: stopping setup stops the compilers and tools it started as well.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        c.process_group(0);
     }
     let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
     let out = child.stdout.take();
@@ -7453,6 +7462,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "roms": l.roms,
         "running": running,
         "jobs": jobs,
+        "setupJobs": SETUP_STATUS.lock().unwrap().clone().unwrap_or_default(),
         "steam": shortcuts::steam_dir().is_some(),
         "pictures": ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string()),
         "deck": shortcuts::is_steam_deck(),
@@ -8439,15 +8449,17 @@ pub fn run() {
                     if background && app.tray_by_id("main").is_some() && w.hide().is_ok() {
                         away(w, true);
                         tray::hid(app);
-                        if let Some(m) = SETUP_STATUS.lock().unwrap().as_ref() {
+                        let jobs = SETUP_STATUS.lock().unwrap().clone();
+                        if let Some(m) = jobs.as_ref() {
                             if !m.is_empty() {
                                 let count = m.len();
                                 let msg = if count == 1 {
                                     let (id, ev) = m.iter().next().unwrap();
                                     let pct = (ev.pct * 100.0).round() as u32;
-                                    format!("Setup is continuing in the background for {id} ({pct}%). RecompLauncher will stay in the tray.")
+                                    let name = app.state::<App>().lib.lock().unwrap().installed.get(id.as_str()).map(|g| g.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| id.clone());
+                                    format!("{name} is still setting up ({pct}%). RecompLauncher keeps going in the tray.")
                                 } else {
-                                    format!("{count} setups are continuing in the background. RecompLauncher will stay in the tray.")
+                                    format!("{count} games are still setting up. RecompLauncher keeps going in the tray.")
                                 };
                                 let _ = tauri_plugin_notification::NotificationExt::notification(app)
                                     .builder()

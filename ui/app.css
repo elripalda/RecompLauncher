@@ -1871,6 +1871,9 @@ button.choice:hover,button.choice:focus-visible{border-color:var(--cyan)}
 /* A shelf's tiles out of view aren't drawn either. The first one stays drawn: it gives the
    track its height, so the page doesn't change size as the rest come in. */
 #main .shelf .track>.tile:not(:first-child){content-visibility:auto;contain-intrinsic-size:auto 0px;overflow-clip-margin:24px}
+/* Where the clip can't be widened (Linux's web view has no overflow-clip-margin), the tile being
+   pointed at is drawn without it, so its lift and glow aren't cut off at the edges. */
+@supports not (overflow-clip-margin:24px){#main .grid>.tile:is(:hover,:focus-within,.on),#main .shelf .track>.tile:is(:hover,:focus-within,.on){content-visibility:visible}}
 /* While a game runs, nothing in the launcher moves. */
 body.playing *,body.playing *::before,body.playing *::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important}
 

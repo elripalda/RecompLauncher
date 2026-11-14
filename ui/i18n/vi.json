@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Khi một game cài đặt dễ dàng hoặc game đi kèm trình cài đặt tải xong (cả bản cập nhật), phần thiết lập hoặc trình cài đặt của nó sẽ mở ngay. Tắt: nó chờ đến khi bạn nhấn Thiết lập trên trang của nó.",
  "You've been playing for a while. One tap tells us how it's going.": "Bạn đã chơi được một lúc rồi. Một chạm cho chúng tôi biết mọi thứ thế nào.",
  "Your copy of the game is there": "Bản sao game của bạn vẫn ở đó",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} giữ nguyên phiên bản hiện có. Bạn sẽ được báo khi có bản tiếp theo."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} giữ nguyên phiên bản hiện có. Bạn sẽ được báo khi có bản tiếp theo.",
+ "Cancel Setup": "Hủy Thiết Lập",
+ "Checking": "Đang kiểm tra",
+ "Extras": "Bổ sung",
+ "Keep Watching": "Tiếp Tục Xem",
+ "Reading": "Đang đọc",
+ "Run in Background": "Chạy Nền",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "Thiết lập có thể mất một lúc. Hãy để nó chạy xong trong nền khi bạn dùng launcher, hoặc hủy nó.",
+ "Setting up {pct}%": "Đang thiết lập {pct}%",
+ "Setup didn't finish.": "Thiết lập chưa hoàn tất.",
+ "Setup for {name} was cancelled.": "Đã hủy thiết lập {name}.",
+ "Setup for {name} will continue in the background.": "Thiết lập {name} sẽ tiếp tục trong nền.",
+ "Setup is still running for {name}": "{name} vẫn đang được thiết lập",
+ "Show its setup": "Xem thiết lập",
+ "{name} is ready to play!": "{name} đã sẵn sàng để chơi!",
+ "{name} needs its update next.": "Tiếp theo {name} cần bản cập nhật của nó."
 }

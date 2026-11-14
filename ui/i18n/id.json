@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Saat game pasang mudah atau game yang datang sebagai installer selesai diunduh (pembaruan juga), penyiapan atau installer-nya langsung terbuka. Nonaktif: menunggu sampai kamu menekan Siapkan di halamannya.",
  "You've been playing for a while. One tap tells us how it's going.": "Kamu sudah bermain cukup lama. Satu ketukan memberi tahu kami bagaimana rasanya.",
  "Your copy of the game is there": "Salinan game-mu ada di sana",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} tetap di versi yang dimilikinya. Kamu akan tahu soal versi berikutnya."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} tetap di versi yang dimilikinya. Kamu akan tahu soal versi berikutnya.",
+ "Cancel Setup": "Batalkan Penyiapan",
+ "Checking": "Memeriksa",
+ "Extras": "Ekstra",
+ "Keep Watching": "Tetap Lihat",
+ "Reading": "Membaca",
+ "Run in Background": "Jalankan di Latar Belakang",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "Penyiapan bisa makan waktu. Biarkan selesai di latar belakang sambil kamu memakai launcher, atau batalkan.",
+ "Setting up {pct}%": "Menyiapkan {pct}%",
+ "Setup didn't finish.": "Penyiapan tidak selesai.",
+ "Setup for {name} was cancelled.": "Penyiapan {name} dibatalkan.",
+ "Setup for {name} will continue in the background.": "Penyiapan {name} akan berlanjut di latar belakang.",
+ "Setup is still running for {name}": "{name} masih disiapkan",
+ "Show its setup": "Lihat penyiapan",
+ "{name} is ready to play!": "{name} siap dimainkan!",
+ "{name} needs its update next.": "Selanjutnya {name} butuh pembaruannya."
 }

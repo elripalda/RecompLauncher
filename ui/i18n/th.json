@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "เมื่อเกมที่ติดตั้งง่ายหรือเกมที่มาเป็นตัวติดตั้งดาวน์โหลดเสร็จ (รวมถึงอัปเดต) การตั้งค่าหรือตัวติดตั้งจะเปิดทันที ปิด: จะรอจนกว่าคุณกด ตั้งค่า ในหน้าของเกม",
  "You've been playing for a while. One tap tells us how it's going.": "คุณเล่นมาสักพักแล้ว แตะครั้งเดียวบอกเราได้ว่าเป็นอย่างไรบ้าง",
  "Your copy of the game is there": "สำเนาเกมของคุณอยู่ครบ",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} จะอยู่ที่เวอร์ชันเดิม แล้วคุณจะได้รู้เมื่อมีเวอร์ชันถัดไป"
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} จะอยู่ที่เวอร์ชันเดิม แล้วคุณจะได้รู้เมื่อมีเวอร์ชันถัดไป",
+ "Cancel Setup": "ยกเลิกการตั้งค่า",
+ "Checking": "กำลังตรวจสอบ",
+ "Extras": "ส่วนเสริม",
+ "Keep Watching": "ดูต่อ",
+ "Reading": "กำลังอ่าน",
+ "Run in Background": "ทำงานเบื้องหลัง",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "การตั้งค่าอาจใช้เวลาสักพัก ปล่อยให้เสร็จในเบื้องหลังระหว่างที่คุณใช้ launcher หรือยกเลิกก็ได้",
+ "Setting up {pct}%": "กำลังตั้งค่า {pct}%",
+ "Setup didn't finish.": "การตั้งค่าไม่เสร็จสมบูรณ์",
+ "Setup for {name} was cancelled.": "ยกเลิกการตั้งค่า {name} แล้ว",
+ "Setup for {name} will continue in the background.": "การตั้งค่า {name} จะทำต่อในเบื้องหลัง",
+ "Setup is still running for {name}": "{name} ยังตั้งค่าอยู่",
+ "Show its setup": "ดูการตั้งค่า",
+ "{name} is ready to play!": "{name} พร้อมเล่นแล้ว!",
+ "{name} needs its update next.": "ขั้นต่อไป {name} ต้องการอัปเดตของมัน"
 }

@@ -1040,10 +1040,10 @@ mod tests {
         let d = tmp("x360-tu");
         let p = d.join("4D5307E6/000B0000/7C1C4E5D5C6E2B6F3A8D6E14F2D9A1B3C4E5F60718");
         fs::create_dir_all(p.parent().unwrap()).unwrap();
-        fs::write(&p, stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        fs::write(&p, stfs(0x000B_0000, "SkyRacer", "")).unwrap();
         let found = scan(&[d.clone()]);
         assert_eq!(found.len(), 1);
-        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("x360", "Halo 3"));
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("x360", "SkyRacer"));
         assert_eq!(part_of_file(&p).kind, "update");
         let _ = fs::remove_dir_all(&d);
     }
@@ -1053,10 +1053,10 @@ mod tests {
         let d = tmp("x360-dlc");
         let p = d.join("4D5307E6/00000002/58410A9F0C1D2E3F");
         fs::create_dir_all(p.parent().unwrap()).unwrap();
-        fs::write(&p, stfs(0x0000_0002, "Halo 3", "Legendary Map Pack")).unwrap();
+        fs::write(&p, stfs(0x0000_0002, "SkyRacer", "Bonus Track Pack")).unwrap();
         let found = scan(&[d.clone()]);
         assert_eq!(found.len(), 1);
-        assert_eq!(found[0].title, "Halo 3");
+        assert_eq!(found[0].title, "SkyRacer");
         assert_eq!(part_of_file(&p).kind, "dlc");
         let _ = fs::remove_dir_all(&d);
     }
@@ -1065,7 +1065,7 @@ mod tests {
     fn reads_title_update_names_with_a_long_content_id_suffix() {
         let d = tmp("x360-tu-name");
         let p = d.join("TU_16L61VP_0000004000000.00000000000G1");
-        fs::write(&p, stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        fs::write(&p, stfs(0x000B_0000, "SkyRacer", "")).unwrap();
         assert_eq!(scan(&[d.clone()]).len(), 1);
         let _ = fs::remove_dir_all(&d);
     }
@@ -1073,7 +1073,7 @@ mod tests {
     #[test]
     fn ignores_files_without_a_package_magic() {
         let d = tmp("x360-none");
-        let mut other = stfs(0x000B_0000, "Halo 3", "");
+        let mut other = stfs(0x000B_0000, "SkyRacer", "");
         other[..4].copy_from_slice(b"ABCD");
         fs::write(d.join("0123456789ABCDEF"), other).unwrap();
         assert!(scan(&[d.clone()]).is_empty());
@@ -1083,7 +1083,7 @@ mod tests {
     #[test]
     fn ignores_other_xbox_360_packages() {
         let d = tmp("x360-save");
-        fs::write(d.join("0123456789ABCDEF"), stfs(0x0000_0001, "Halo 3", "")).unwrap();
+        fs::write(d.join("0123456789ABCDEF"), stfs(0x0000_0001, "SkyRacer", "")).unwrap();
         assert!(scan(&[d.clone()]).is_empty());
         let _ = fs::remove_dir_all(&d);
     }
@@ -1092,7 +1092,7 @@ mod tests {
     fn packages_say_their_games_title_id() {
         let d = tmp("x360-id");
         let p = d.join("0123456789ABCDEF");
-        fs::write(&p, stfs(0x0000_0002, "Halo 3", "")).unwrap();
+        fs::write(&p, stfs(0x0000_0002, "SkyRacer", "")).unwrap();
         assert_eq!(copy_id(&p).as_deref(), Some("4D5307E6"));
         let _ = fs::remove_dir_all(&d);
     }
@@ -1100,9 +1100,9 @@ mod tests {
     #[test]
     fn an_update_package_is_not_picked_as_the_game() {
         let d = tmp("x360-pick");
-        fs::write(d.join("0123456789ABCDEF"), stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        fs::write(d.join("0123456789ABCDEF"), stfs(0x000B_0000, "SkyRacer", "")).unwrap();
         let found = scan(&[d.clone()]);
-        let cat = serde_json::json!({ "apps": [{ "id": "halo3", "game": "Halo 3", "origin": "x360" }] });
+        let cat = serde_json::json!({ "apps": [{ "id": "skyracer", "game": "SkyRacer", "origin": "x360" }] });
         assert!(match_catalog(&cat, &found).is_empty());
         assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
         let _ = fs::remove_dir_all(&d);
@@ -1537,7 +1537,7 @@ mod tests {
         let game = root.join("dev_hdd0/game/NPUB30467");
         psn_folder(&game, "Resident Evil Code: Veronica X", "NPUB30467");
         // Something inside that would be found on its own if the folder were looked through.
-        fs::write(game.join("USRDIR/0123456789ABCDEF"), stfs(0x000B_0000, "Halo 3", "")).unwrap();
+        fs::write(game.join("USRDIR/0123456789ABCDEF"), stfs(0x000B_0000, "SkyRacer", "")).unwrap();
         let found = scan(&[root.clone()]);
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps3", "Resident Evil Code: Veronica X"));

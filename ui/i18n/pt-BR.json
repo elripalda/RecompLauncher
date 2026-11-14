@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Quando um jogo de instalação fácil ou um que vem como instalador termina de baixar (uma atualização também), a configuração ou o instalador dele abre na hora. Desligado: espera até você clicar em Configurar na página dele.",
  "You've been playing for a while. One tap tells us how it's going.": "Você já está jogando há um tempo. Um toque diz para nós como está indo.",
  "Your copy of the game is there": "Sua cópia do jogo está lá",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} fica na versão que tem. Você vai saber da próxima."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} fica na versão que tem. Você vai saber da próxima.",
+ "Cancel Setup": "Cancelar Configuração",
+ "Checking": "Verificando",
+ "Extras": "Extras",
+ "Keep Watching": "Continuar Assistindo",
+ "Reading": "Lendo",
+ "Run in Background": "Continuar em Segundo Plano",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "A configuração pode demorar um pouco. Deixe ela terminar em segundo plano enquanto você usa o launcher, ou cancele.",
+ "Setting up {pct}%": "Configurando {pct}%",
+ "Setup didn't finish.": "A configuração não terminou.",
+ "Setup for {name} was cancelled.": "A configuração de {name} foi cancelada.",
+ "Setup for {name} will continue in the background.": "A configuração de {name} vai continuar em segundo plano.",
+ "Setup is still running for {name}": "{name} ainda está sendo configurado",
+ "Show its setup": "Ver a configuração",
+ "{name} is ready to play!": "{name} está pronto para jogar!",
+ "{name} needs its update next.": "Agora {name} precisa da atualização."
 }

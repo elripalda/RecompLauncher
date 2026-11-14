@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Когда игра с простой установкой или игра, которая идёт как установщик, загрузится (обновление тоже), её настройка или установщик откроется сразу. Выключено: ждёт, пока вы не нажмёте «Настроить» на её странице.",
  "You've been playing for a while. One tap tells us how it's going.": "Вы уже давно играете. Одно нажатие расскажет нам, как дела.",
  "Your copy of the game is there": "Ваша копия игры на месте",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} остаётся на текущей версии. О следующей вы узнаете."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} остаётся на текущей версии. О следующей вы узнаете.",
+ "Cancel Setup": "Отменить Настройку",
+ "Checking": "Проверка",
+ "Extras": "Дополнения",
+ "Keep Watching": "Продолжить Смотреть",
+ "Reading": "Чтение",
+ "Run in Background": "Продолжить в Фоне",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "Настройка может занять время. Пусть она завершится в фоне, пока вы пользуетесь лаунчером, или отмените её.",
+ "Setting up {pct}%": "Настройка {pct}%",
+ "Setup didn't finish.": "Настройка не завершилась.",
+ "Setup for {name} was cancelled.": "Настройка {name} отменена.",
+ "Setup for {name} will continue in the background.": "Настройка {name} продолжится в фоне.",
+ "Setup is still running for {name}": "{name} ещё настраивается",
+ "Show its setup": "Показать настройку",
+ "{name} is ready to play!": "{name} готова к игре!",
+ "{name} needs its update next.": "Теперь {name} нужно обновление."
 }

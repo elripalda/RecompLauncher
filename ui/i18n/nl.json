@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Als een game met eenvoudige installatie of een game die als installatieprogramma komt klaar is met downloaden (een update ook), opent de installatie of het installatieprogramma meteen. Uit: het wacht tot je op de pagina op Instellen drukt.",
  "You've been playing for a while. One tap tells us how it's going.": "Je speelt al een tijdje. Eén tik vertelt ons hoe het gaat.",
  "Your copy of the game is there": "Je exemplaar van de game is er",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} blijft op de versie die het heeft. Je hoort het van de volgende."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} blijft op de versie die het heeft. Je hoort het van de volgende.",
+ "Cancel Setup": "Instellen Annuleren",
+ "Checking": "Controleren",
+ "Extras": "Extra’s",
+ "Keep Watching": "Blijven Kijken",
+ "Reading": "Lezen",
+ "Run in Background": "Op de Achtergrond Doorgaan",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "Instellen kan even duren. Laat het op de achtergrond afmaken terwijl je de launcher gebruikt, of annuleer het.",
+ "Setting up {pct}%": "Instellen {pct}%",
+ "Setup didn't finish.": "Het instellen is niet afgerond.",
+ "Setup for {name} was cancelled.": "Het instellen van {name} is geannuleerd.",
+ "Setup for {name} will continue in the background.": "Het instellen van {name} gaat op de achtergrond door.",
+ "Setup is still running for {name}": "{name} wordt nog ingesteld",
+ "Show its setup": "Instellen tonen",
+ "{name} is ready to play!": "{name} is klaar om te spelen!",
+ "{name} needs its update next.": "{name} heeft nu zijn update nodig."
 }

@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Коли гра з простим встановленням або гра, що постачається як інсталятор, завантажиться (оновлення теж), її налаштування або інсталятор відкриється одразу. Вимкнено: чекає, доки ти не натиснеш «Налаштувати» на її сторінці.",
  "You've been playing for a while. One tap tells us how it's going.": "Ти вже довго граєш. Одне натискання скаже нам, як справи.",
  "Your copy of the game is there": "Твоя копія гри на місці",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} лишається на поточній версії. Про наступну ти дізнаєшся."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} лишається на поточній версії. Про наступну ти дізнаєшся.",
+ "Cancel Setup": "Скасувати Налаштування",
+ "Checking": "Перевірка",
+ "Extras": "Додатки",
+ "Keep Watching": "Дивитися Далі",
+ "Reading": "Читання",
+ "Run in Background": "Продовжити у Фоні",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "Налаштування може тривати якийсь час. Дайте йому завершитися у фоні, поки ви користуєтеся лаунчером, або скасуйте його.",
+ "Setting up {pct}%": "Налаштування {pct}%",
+ "Setup didn't finish.": "Налаштування не завершилося.",
+ "Setup for {name} was cancelled.": "Налаштування {name} скасовано.",
+ "Setup for {name} will continue in the background.": "Налаштування {name} продовжиться у фоні.",
+ "Setup is still running for {name}": "{name} ще налаштовується",
+ "Show its setup": "Показати налаштування",
+ "{name} is ready to play!": "{name} готова до гри!",
+ "{name} needs its update next.": "Тепер {name} потрібне оновлення."
 }

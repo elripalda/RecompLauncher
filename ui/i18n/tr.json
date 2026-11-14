@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "Kolay yüklenen bir oyun veya yükleyici olarak gelen bir oyun indirildiğinde (güncelleme de), kurulumu veya yükleyicisi hemen açılır. Kapalı: sayfasında Kur'a basana kadar bekler.",
  "You've been playing for a while. One tap tells us how it's going.": "Bir süredir oynuyorsunuz. Tek dokunuş bize nasıl gittiğini söyler.",
  "Your copy of the game is there": "Oyun kopyanız orada",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} mevcut sürümünde kalır. Bir sonrakinden haberiniz olur."
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} mevcut sürümünde kalır. Bir sonrakinden haberiniz olur.",
+ "Cancel Setup": "Kurulumu İptal Et",
+ "Checking": "Denetleniyor",
+ "Extras": "Ekstralar",
+ "Keep Watching": "İzlemeye Devam Et",
+ "Reading": "Okunuyor",
+ "Run in Background": "Arka Planda Sürdür",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "Kurulum biraz sürebilir. Launcher’ı kullanırken arka planda bitmesine izin ver ya da iptal et.",
+ "Setting up {pct}%": "Kuruluyor %{pct}",
+ "Setup didn't finish.": "Kurulum tamamlanmadı.",
+ "Setup for {name} was cancelled.": "{name} kurulumu iptal edildi.",
+ "Setup for {name} will continue in the background.": "{name} kurulumu arka planda sürecek.",
+ "Setup is still running for {name}": "{name} hâlâ kuruluyor",
+ "Show its setup": "Kurulumu göster",
+ "{name} is ready to play!": "{name} oynamaya hazır!",
+ "{name} needs its update next.": "{name} için sırada güncellemesi var."
 }

@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "輕鬆安裝的遊戲或以安裝程式形式提供的遊戲下載完成後（更新也一樣），會立即開啟它的設定或安裝程式。關閉時：會等到您在遊戲頁面按下設定。",
  "You've been playing for a while. One tap tells us how it's going.": "您已經玩了一段時間。點一下告訴我們感覺如何。",
  "Your copy of the game is there": "您的遊戲副本還在",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} 保持目前版本。下一個版本推出時會通知您。"
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} 保持目前版本。下一個版本推出時會通知您。",
+ "Cancel Setup": "取消設定",
+ "Checking": "正在檢查",
+ "Extras": "附加內容",
+ "Keep Watching": "繼續觀看",
+ "Reading": "正在讀取",
+ "Run in Background": "在背景繼續",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "設定可能需要一段時間。你可以在使用啟動器時讓它在背景完成，或者取消它。",
+ "Setting up {pct}%": "正在設定 {pct}%",
+ "Setup didn't finish.": "設定沒有完成。",
+ "Setup for {name} was cancelled.": "已取消 {name} 的設定。",
+ "Setup for {name} will continue in the background.": "{name} 的設定將在背景繼續。",
+ "Setup is still running for {name}": "{name} 仍在設定中",
+ "Show its setup": "查看設定",
+ "{name} is ready to play!": "{name} 可以玩了！",
+ "{name} needs its update next.": "接下來 {name} 需要它的更新。"
 }

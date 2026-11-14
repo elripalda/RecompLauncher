@@ -3202,5 +3202,20 @@
  "When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.": "かんたんインストールのゲームやインストーラー形式のゲームのダウンロードが終わると (アップデートも)、そのセットアップやインストーラーがすぐに開きます。オフ: ゲームのページでセットアップを押すまで待ちます。",
  "You've been playing for a while. One tap tells us how it's going.": "しばらく遊んでいただいています。ワンタップで使い心地を教えてください。",
  "Your copy of the game is there": "ゲームデータはあります",
- "{name} stays on the version it has. You'll hear about the next one.": "{name} は今のバージョンのままです。次のバージョンが出たらお知らせします。"
+ "{name} stays on the version it has. You'll hear about the next one.": "{name} は今のバージョンのままです。次のバージョンが出たらお知らせします。",
+ "Cancel Setup": "セットアップをキャンセル",
+ "Checking": "確認中",
+ "Extras": "追加データ",
+ "Keep Watching": "このまま見る",
+ "Reading": "読み込み中",
+ "Run in Background": "バックグラウンドで続ける",
+ "Setting up can take a while. Let it finish in the background while you use the launcher, or cancel it.": "セットアップには時間がかかることがあります。ランチャーを使っている間にバックグラウンドで終わらせるか、キャンセルしてください。",
+ "Setting up {pct}%": "セットアップ中 {pct}%",
+ "Setup didn't finish.": "セットアップが完了しませんでした。",
+ "Setup for {name} was cancelled.": "{name} のセットアップをキャンセルしました。",
+ "Setup for {name} will continue in the background.": "{name} のセットアップはバックグラウンドで続きます。",
+ "Setup is still running for {name}": "{name} はまだセットアップ中です",
+ "Show its setup": "セットアップを表示",
+ "{name} is ready to play!": "{name} をプレイできます！",
+ "{name} needs its update next.": "次は {name} のアップデートが必要です。"
 }
