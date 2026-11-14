@@ -8239,6 +8239,8 @@ T.event.listen('install', ({ payload: p }) => {
     S.recent = [p].concat(S.recent.filter((r) => r.id !== id)).slice(0, 20);
     if (p.phase === 'done') S.dlHist = null;
     const name = byId(id)?.name || id;
+    // The library isn't refreshed yet, so this still says whether it was here before this download.
+    const wasInstalled = !!S.library[id];
     if (p.phase === 'done') {
       delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; loadNews();
       // Switched to a better version: once it's in, the old one is offered for uninstall.
@@ -8252,6 +8254,8 @@ T.event.listen('install', ({ payload: p }) => {
       const auto = autoInstall();
       // Only an installer: its Set Up opens to run it (an update's too).
       if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
+      // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
+      else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
       else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
       else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
       else toast(tf('{name} is ready to play.', { name }));
