@@ -984,10 +984,10 @@ body.first-run #app{display:none}
 .set-wrap{display:grid;grid-template-columns:232px minmax(0,1fr);gap:32px;align-items:start}
 /* The list stays put while a section scrolls. In a short window it is taller than the space it has,
    and then it drags the page (and itself) along, mostly in short sections. So it gets its own scroll,
-   capped to fit between its sticky top (20px) and the page's bottom padding (110px), plus the room
-   kept for the download pill. */
-.set-nav{position:sticky;top:20px;display:flex;flex-direction:column;gap:2px;max-height:calc(100vh - 130px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
-body.isl-on .set-nav{max-height:calc(100vh - 214px)}
+   capped to fit between its sticky top and the page's bottom padding (110px), plus the room kept for
+   the download pill. Its top clears the window's bar (42px), which would cut off its first row. */
+.set-nav{position:sticky;top:54px;display:flex;flex-direction:column;gap:2px;max-height:calc(100vh - 164px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+body.isl-on .set-nav{max-height:calc(100vh - 248px)}
 .set-nav::-webkit-scrollbar{display:none}
 .set-tab{flex:none;display:flex;align-items:center;gap:12px;height:44px;padding:0 14px;border-radius:12px;color:var(--muted);font-weight:600;font-size:14.5px;text-align:left;transition:background .15s,color .15s}
 .set-tab svg{flex:none}
