@@ -15,6 +15,13 @@ fn word(key: &str) -> String {
     WORDS.read().unwrap().as_ref().and_then(|w| w.get(key).cloned()).unwrap_or_else(|| key.to_string())
 }
 
+/// Quit from inside the window (Big Picture's way out on Home), the same as the tray's Quit: it
+/// closes even with Run in background on.
+#[tauri::command]
+pub fn quit_launcher(app: AppHandle) {
+    app.exit(0);
+}
+
 /// The window's translations for the menu, keyed by the English.
 #[tauri::command(async)]
 pub fn tray_words(app: AppHandle, words: HashMap<String, String>) {
