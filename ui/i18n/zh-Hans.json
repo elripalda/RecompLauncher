@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "另有 {n} 个版本仅支持 Windows，因 Proton 已关闭而被隐藏。",
  "1 Windows-only recomp is hidden because Proton is off.": "1 款仅限 Windows 的重编译游戏因 Proton 已关闭而被隐藏。",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} 款仅限 Windows 的重编译游戏因 Proton 已关闭而被隐藏。",
- "With this off, those recomps are left out of Discover, search and game pages.": "关闭后，这些重制不会出现在“发现”、搜索和游戏页面中。"
+ "With this off, those recomps are left out of Discover, search and game pages.": "关闭后，这些重制不会出现在“发现”、搜索和游戏页面中。",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "两份存档副本都已更改。请在 存档 → 立即同步 中选择一份。",
+ "If your saves are somewhere else, press Change and pick their folder.": "如果你的存档在别处，请按 更改 并选择它们所在的文件夹。",
+ "Main": "主",
+ "Main Display": "主显示器",
+ "Monitor": "显示器",
+ "Monitor {num}": "显示器 {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "还没有人说明这个游戏把存档放在哪里，所以启动器以你游玩时它注意到的位置为准。",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Linux 上的着色器使用 vkBasalt。请从发行版的软件包中安装它（通常叫 vkbasalt），然后重新启动游戏。",
+ "Steam is being synced right now. Try again in a minute.": "Steam 正在同步。请一分钟后再试。",
+ "The screen Big Picture mode opens on.": "大屏幕模式打开的显示器。",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "你的云存档已满（150 MB）。请删除旧的云端副本腾出空间；你的存档仍保留在这台电脑上。"
 }

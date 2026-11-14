@@ -20,7 +20,7 @@ function settingsContext(os, on) {
     SET_SECTIONS: [['general', 'General']], SET_ICONS: {},
     okMark: () => '', portableRow: () => '', geRow: () => '',
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s,
-    homePinned: () => false, bgMode: () => '', langName: () => 'English', clockSelect: () => '', clockRow: () => '', setClock: () => {},
+    homePinned: () => false, bgMode: () => '', langName: () => 'English', clockSelect: () => '', clockRow: () => '', setClock: () => {}, window: { monitorPicked: () => null, monitorName: () => '' },
     svg: () => '', hints: () => '', HEART: '',
   });
 }

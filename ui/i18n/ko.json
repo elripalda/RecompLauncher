@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "Windows 전용 버전이 {n}개 더 있지만 Proton이 꺼져 있어 숨겨져 있습니다.",
  "1 Windows-only recomp is hidden because Proton is off.": "Windows 전용 리컴프 1개가 Proton이 꺼져 있어 숨겨져 있습니다.",
  "{n} Windows-only recomps are hidden because Proton is off.": "Windows 전용 리컴프 {n}개가 Proton이 꺼져 있어 숨겨져 있습니다.",
- "With this off, those recomps are left out of Discover, search and game pages.": "이 옵션을 끄면 해당 리컴프는 탐색, 검색, 게임 페이지에 표시되지 않습니다."
+ "With this off, those recomps are left out of Discover, search and game pages.": "이 옵션을 끄면 해당 리컴프는 탐색, 검색, 게임 페이지에 표시되지 않습니다.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "저장 데이터 사본 두 개가 모두 바뀌었습니다. 저장 데이터 → 지금 동기화에서 하나를 고르세요.",
+ "If your saves are somewhere else, press Change and pick their folder.": "저장 데이터가 다른 곳에 있다면 변경을 누르고 그 폴더를 고르세요.",
+ "Main": "기본",
+ "Main Display": "기본 디스플레이",
+ "Monitor": "모니터",
+ "Monitor {num}": "모니터 {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "아직 아무도 이 게임의 저장 위치를 알려 주지 않아서, 런처는 플레이하는 동안 발견한 위치를 따릅니다.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Linux에서는 셰이더가 vkBasalt를 사용합니다. 배포판 패키지(보통 이름은 vkbasalt)에서 설치한 다음 게임을 다시 시작하세요.",
+ "Steam is being synced right now. Try again in a minute.": "지금 Steam을 동기화하는 중입니다. 1분 뒤에 다시 시도하세요.",
+ "The screen Big Picture mode opens on.": "Big Picture 모드가 열리는 화면입니다.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "클라우드 저장 공간이 가득 찼습니다(150MB). 오래된 클라우드 사본을 지워 공간을 만드세요. 저장 데이터는 이 PC에 그대로 남습니다."
 }

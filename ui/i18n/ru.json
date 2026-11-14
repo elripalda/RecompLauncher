@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "Ещё {n} версия только для Windows скрыта, потому что Proton выключен.|Ещё {n} версии только для Windows скрыты, потому что Proton выключен.|Ещё {n} версий только для Windows скрыто, потому что Proton выключен.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 рекомпиляция только для Windows скрыта, потому что Proton выключен.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} рекомпиляция только для Windows скрыта, потому что Proton выключен.|{n} рекомпиляции только для Windows скрыты, потому что Proton выключен.|{n} рекомпиляций только для Windows скрыто, потому что Proton выключен.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Если это выключено, эти рекомпы не показываются в «Обзоре», в поиске и на страницах игр."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Если это выключено, эти рекомпы не показываются в «Обзоре», в поиске и на страницах игр.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Обе копии сохранения изменились. Выберите одну в разделе Сохранения → Синхронизировать.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Если ваши сохранения лежат в другом месте, нажмите «Изменить» и выберите их папку.",
+ "Main": "Основной",
+ "Main Display": "Основной экран",
+ "Monitor": "Экран",
+ "Monitor {num}": "Экран {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Никто пока не указал, где эта игра хранит сохранения, поэтому лаунчер ориентируется на то, что заметил во время игры.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Шейдеры в Linux работают через vkBasalt. Установите его из пакетов вашего дистрибутива (обычно он называется vkbasalt) и запустите игру снова.",
+ "Steam is being synced right now. Try again in a minute.": "Сейчас идёт синхронизация Steam. Попробуйте ещё раз через минуту.",
+ "The screen Big Picture mode opens on.": "Экран, на котором открывается режим Big Picture.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Облачные сохранения заполнены (150 МБ). Удалите старые копии в облаке, чтобы освободить место; ваши сохранения остаются на этом ПК."
 }

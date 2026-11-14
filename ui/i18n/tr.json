@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "{n} sürüm daha yalnızca Windows için ve Proton kapalı olduğu için gizli.",
  "1 Windows-only recomp is hidden because Proton is off.": "Yalnızca Windows için olan 1 recomp, Proton kapalı olduğu için gizli.",
  "{n} Windows-only recomps are hidden because Proton is off.": "Yalnızca Windows için olan {n} recomp, Proton kapalı olduğu için gizli.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Bu kapalıyken bu recomp'lar Keşfet'te, aramada ve oyun sayfalarında görünmez."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Bu kapalıyken bu recomp'lar Keşfet'te, aramada ve oyun sayfalarında görünmez.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Kayıtların iki kopyası da değişti. Kayıtlar → Şimdi eşitle bölümünden birini seçin.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Kayıtlarınız başka bir yerdeyse Değiştir'e basın ve klasörlerini seçin.",
+ "Main": "Ana",
+ "Main Display": "Ana ekran",
+ "Monitor": "Ekran",
+ "Monitor {num}": "Ekran {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Bu oyunun nereye kaydettiğini henüz kimse belirtmedi, bu yüzden başlatıcı siz oynarken fark ettiği yere göre davranıyor.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Linux'ta gölgelendiriciler vkBasalt kullanır. Dağıtımınızın paketlerinden yükleyin (genellikle adı vkbasalt), ardından oyunu yeniden başlatın.",
+ "Steam is being synced right now. Try again in a minute.": "Steam şu anda eşitleniyor. Bir dakika sonra yeniden deneyin.",
+ "The screen Big Picture mode opens on.": "Big Picture modunun açıldığı ekran.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Bulut kayıtlarınız dolu (150 MB). Yer açmak için eski bulut kopyalarını kaldırın; kayıtlarınız bu bilgisayarda kalır."
 }

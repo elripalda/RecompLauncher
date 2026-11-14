@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "{n} versi lagi hanya untuk Windows dan disembunyikan karena Proton mati.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 recomp khusus Windows disembunyikan karena Proton mati.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomp khusus Windows disembunyikan karena Proton mati.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Saat ini mati, recomp tersebut tidak muncul di Jelajahi, pencarian, dan halaman game."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Saat ini mati, recomp tersebut tidak muncul di Jelajahi, pencarian, dan halaman game.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Kedua salinan save berubah. Pilih salah satu di Save → Sinkronkan sekarang.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Kalau save-mu ada di tempat lain, tekan Ubah dan pilih foldernya.",
+ "Main": "Utama",
+ "Main Display": "Layar utama",
+ "Monitor": "Layar",
+ "Monitor {num}": "Layar {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Belum ada yang menyebutkan di mana game ini menyimpan save, jadi launcher memakai apa yang dilihatnya saat kamu bermain.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Shader di Linux memakai vkBasalt. Pasang dari paket distro-mu (biasanya bernama vkbasalt), lalu buka gamenya lagi.",
+ "Steam is being synced right now. Try again in a minute.": "Steam sedang disinkronkan. Coba lagi dalam satu menit.",
+ "The screen Big Picture mode opens on.": "Layar tempat mode Big Picture dibuka.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Save cloud-mu penuh (150 MB). Hapus salinan cloud lama untuk memberi ruang; save-mu tetap ada di PC ini."
 }

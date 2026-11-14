@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "ほかに Windows 専用のバージョンが {n} つあり、Proton がオフのため非表示です。",
  "1 Windows-only recomp is hidden because Proton is off.": "Windows 専用のリコンパイル版 1 本は、Proton がオフのため非表示です。",
  "{n} Windows-only recomps are hidden because Proton is off.": "Windows 専用のリコンパイル版 {n} 本は、Proton がオフのため非表示です。",
- "With this off, those recomps are left out of Discover, search and game pages.": "オフにすると、これらのリコンプは「見つける」、検索、ゲームページに表示されません。"
+ "With this off, those recomps are left out of Discover, search and game pages.": "オフにすると、これらのリコンプは「見つける」、検索、ゲームページに表示されません。",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "両方のセーブデータのコピーが変更されました。セーブデータ → 今すぐ同期 でどちらかを選んでください。",
+ "If your saves are somewhere else, press Change and pick their folder.": "セーブデータが別の場所にある場合は、変更 を押してそのフォルダーを選んでください。",
+ "Main": "メイン",
+ "Main Display": "メインディスプレイ",
+ "Monitor": "モニター",
+ "Monitor {num}": "モニター {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "このゲームのセーブ場所はまだ誰も指定していないため、ランチャーはプレイ中に見つけた場所を使っています。",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Linux のシェーダーは vkBasalt を使います。ディストリビューションのパッケージ（通常は vkbasalt という名前）からインストールして、ゲームをもう一度起動してください。",
+ "Steam is being synced right now. Try again in a minute.": "Steam を同期中です。1 分後にもう一度お試しください。",
+ "The screen Big Picture mode opens on.": "Big Picture モードを開くモニター。",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "クラウドセーブがいっぱいです（150 MB）。古いクラウドのコピーを削除して空きを作ってください。セーブデータはこの PC に残ります。"
 }

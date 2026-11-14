@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "{n} andere versies zijn alleen voor Windows en verborgen omdat Proton uit staat.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 recomp alleen voor Windows is verborgen omdat Proton uit staat.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomps alleen voor Windows zijn verborgen omdat Proton uit staat.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Als dit uit staat, verschijnen die recomps niet in Ontdekken, het zoeken en de spelpagina's."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Als dit uit staat, verschijnen die recomps niet in Ontdekken, het zoeken en de spelpagina's.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Beide kopieën van de opslag zijn veranderd. Kies er een via Opgeslagen games → Nu synchroniseren.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Staan je opgeslagen games ergens anders? Druk op Wijzigen en kies hun map.",
+ "Main": "Hoofd",
+ "Main Display": "Hoofdscherm",
+ "Monitor": "Scherm",
+ "Monitor {num}": "Scherm {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Niemand heeft nog gezegd waar deze game opslaat, dus de launcher gaat uit van wat hij zag terwijl je speelde.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Shaders op Linux gebruiken vkBasalt. Installeer het uit de pakketten van je distro (meestal heet het vkbasalt) en start de game opnieuw.",
+ "Steam is being synced right now. Try again in a minute.": "Steam wordt nu gesynchroniseerd. Probeer het over een minuut opnieuw.",
+ "The screen Big Picture mode opens on.": "Het scherm waarop de Big Picture-modus opent.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Je opslag in de cloud is vol (150 MB). Verwijder oude cloudkopieën om ruimte te maken; je opgeslagen games blijven op deze pc."
 }

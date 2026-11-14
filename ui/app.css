@@ -248,6 +248,7 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .sl-in p{margin:0;color:#cfd6e0;font-size:15.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sl-in .acts{margin-top:8px}
 .sl-cover{position:absolute;z-index:1;right:48px;bottom:46px;width:clamp(150px,13vw,210px);aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:var(--card2);box-shadow:0 30px 60px -20px rgba(0,0,0,.9),inset 0 0 0 1px rgba(244,248,252,.12)}
+.sl-cover{padding:0;border:0;cursor:pointer}
 .sl-cover img{width:100%;height:100%;object-fit:cover;display:block}
 .slide.on .sl-cover{animation:coverIn .8s var(--ease) both .1s}
 @keyframes coverIn{from{opacity:0;transform:translateY(24px) rotate(3deg)}}
@@ -1004,6 +1005,7 @@ body.isl-on .set-nav{max-height:calc(100vh - 248px)}
 .set-group>.card{padding:6px 22px}
 .set-group>.card>.set-row:first-child{padding-top:16px}.set-group>.card>.set-row:last-child{padding-bottom:16px}
 .set-note{margin:16px 0 4px;color:var(--muted);font-size:14px}
+.save-guess{margin:0 0 6px;padding:10px 14px;border-radius:12px;background:rgba(245,184,61,.08);border:1px solid rgba(245,184,61,.34);color:var(--ink);font-size:13.5px}
 .set-empty{margin:16px 0;color:var(--muted)}
 .set-foot{margin:4px 0 16px}
 .set-tip{margin:0;color:var(--dim);font-size:13.5px}

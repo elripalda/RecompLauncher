@@ -1280,6 +1280,7 @@
         ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
         ${on && Array.isArray(sv.cloud) ? `<h3 class="tv-lh">${esc(t('In the cloud'))}</h3>${sv.cloud.length ? sv.cloud.map((c) => copy(c, 'v', c.v, c.hash === sv.synced)).join('') : `<p class="tv-note">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`}` : ''}
         <h3 class="tv-lh">${esc(t('Where it saves'))}</h3>
+        ${window.savesGuessed && window.savesGuessed(sv) ? `<p class="tv-note">${esc(t('No one has said where this game saves yet, so the launcher is going by what it noticed while you played.'))}</p>` : ''}
         ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
       </div>`;
     }

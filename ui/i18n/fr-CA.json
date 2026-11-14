@@ -1237,5 +1237,6 @@
  "{n} games removed from Steam.": "{n} jeux retirés de Steam.",
  "RecompLauncher is out of your Steam library.": "RecompLauncher n'est plus dans votre bibliothèque Steam.",
  "Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.": "Retire les jeux que RecompLauncher a mis dans Steam. « Garder Steam synchronisé » se désactive aussi.",
- "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Retire les jeux que RecompLauncher a mis dans Steam. Ceux que vous avez ajoutés vous-même restent."
+ "Takes out the games RecompLauncher put in Steam. Games you added yourself stay.": "Retire les jeux que RecompLauncher a mis dans Steam. Ceux que vous avez ajoutés vous-même restent.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Vos sauvegardes dans le cloud sont pleines (150 Mo). Supprimez d'anciennes copies dans le cloud pour faire de la place; vos sauvegardes restent sur ce PC."
 }

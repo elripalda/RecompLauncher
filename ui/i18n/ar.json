@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "إصداران آخران لنظام Windows فقط ومخفيان لأن Proton متوقف.|{n} إصدارات أخرى لنظام Windows فقط ومخفية لأن Proton متوقف.|{n} إصدارًا آخر لنظام Windows فقط ومخفية لأن Proton متوقف.|{n} إصدار آخر لنظام Windows فقط ومخفية لأن Proton متوقف.",
  "1 Windows-only recomp is hidden because Proton is off.": "لعبة واحدة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.",
  "{n} Windows-only recomps are hidden because Proton is off.": "لعبتان معاد تجميعهما لنظام Windows فقط مخفيتان لأن Proton متوقف.|{n} ألعاب معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.|{n} لعبة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.|{n} لعبة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.",
- "With this off, those recomps are left out of Discover, search and game pages.": "عند إيقاف هذا الخيار، لا تظهر هذه الألعاب في «استكشاف» ولا في البحث ولا في صفحات الألعاب."
+ "With this off, those recomps are left out of Discover, search and game pages.": "عند إيقاف هذا الخيار، لا تظهر هذه الألعاب في «استكشاف» ولا في البحث ولا في صفحات الألعاب.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "تغيّرت نسختا الحفظ كلتاهما. اختر واحدة من ملفات الحفظ ← مزامنة الآن.",
+ "If your saves are somewhere else, press Change and pick their folder.": "إذا كانت ملفات حفظك في مكان آخر، فاضغط تغيير واختر مجلدها.",
+ "Main": "رئيسية",
+ "Main Display": "الشاشة الرئيسية",
+ "Monitor": "الشاشة",
+ "Monitor {num}": "الشاشة {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "لم يحدد أحد بعد أين تحفظ هذه اللعبة، لذا يعتمد المشغّل على ما لاحظه أثناء لعبك.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "تستخدم المؤثرات على Linux ‏vkBasalt. ثبّته من حزم توزيعتك (عادةً باسم vkbasalt)، ثم شغّل اللعبة مرة أخرى.",
+ "Steam is being synced right now. Try again in a minute.": "تجري مزامنة Steam الآن. حاول مرة أخرى بعد دقيقة.",
+ "The screen Big Picture mode opens on.": "الشاشة التي يفتح عليها وضع Big Picture.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "امتلأ الحفظ السحابي (150 ميغابايت). احذف النسخ السحابية القديمة لإفساح المجال؛ تبقى ملفات حفظك على هذا الكمبيوتر."
 }

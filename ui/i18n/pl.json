@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "Jeszcze {n} wersja jest tylko na Windows i jest ukryta, bo Proton jest wyłączony.|Jeszcze {n} wersje są tylko na Windows i są ukryte, bo Proton jest wyłączony.|Jeszcze {n} wersji jest tylko na Windows i jest ukrytych, bo Proton jest wyłączony.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 port tylko na Windows jest ukryty, bo Proton jest wyłączony.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} port tylko na Windows jest ukryty, bo Proton jest wyłączony.|{n} porty tylko na Windows są ukryte, bo Proton jest wyłączony.|{n} portów tylko na Windows jest ukrytych, bo Proton jest wyłączony.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Gdy ta opcja jest wyłączona, te recompy nie pojawiają się w Odkrywaj, w wyszukiwarce ani na stronach gier."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Gdy ta opcja jest wyłączona, te recompy nie pojawiają się w Odkrywaj, w wyszukiwarce ani na stronach gier.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Obie kopie zapisu się zmieniły. Wybierz jedną w Zapisy → Synchronizuj teraz.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Jeśli Twoje zapisy są gdzie indziej, naciśnij Zmień i wybierz ich folder.",
+ "Main": "Główny",
+ "Main Display": "Ekran główny",
+ "Monitor": "Ekran",
+ "Monitor {num}": "Ekran {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Nikt jeszcze nie podał, gdzie ta gra zapisuje, więc launcher kieruje się tym, co zauważył podczas gry.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Shadery w Linuksie działają przez vkBasalt. Zainstaluj go z pakietów swojej dystrybucji (zwykle nazywa się vkbasalt) i uruchom grę ponownie.",
+ "Steam is being synced right now. Try again in a minute.": "Steam jest właśnie synchronizowany. Spróbuj ponownie za minutę.",
+ "The screen Big Picture mode opens on.": "Ekran, na którym otwiera się tryb Big Picture.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Twoje zapisy w chmurze są pełne (150 MB). Usuń stare kopie z chmury, aby zrobić miejsce; Twoje zapisy zostają na tym komputerze."
 }

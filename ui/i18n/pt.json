@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "Mais {n} versões são só para Windows e estão ocultas porque o Proton está desativado.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 recomp só para Windows está oculto porque o Proton está desativado.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomps só para Windows estão ocultos porque o Proton está desativado.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Com isto desativado, esses recomps não aparecem em Descobrir, na pesquisa nem nas páginas dos jogos."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Com isto desativado, esses recomps não aparecem em Descobrir, na pesquisa nem nas páginas dos jogos.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "As duas cópias dos dados guardados mudaram. Escolhe uma em Dados guardados → Sincronizar agora.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Se os teus dados guardados estiverem noutro sítio, carrega em Alterar e escolhe a pasta deles.",
+ "Main": "Principal",
+ "Main Display": "Ecrã principal",
+ "Monitor": "Ecrã",
+ "Monitor {num}": "Ecrã {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Ninguém indicou ainda onde este jogo guarda os dados, por isso o launcher baseia-se no que notou enquanto jogavas.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "No Linux, os shaders usam o vkBasalt. Instala-o a partir dos pacotes da tua distribuição (normalmente chama-se vkbasalt) e volta a abrir o jogo.",
+ "Steam is being synced right now. Try again in a minute.": "O Steam está a ser sincronizado neste momento. Tenta novamente daqui a um minuto.",
+ "The screen Big Picture mode opens on.": "O ecrã em que o modo Big Picture abre.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Os teus dados guardados na nuvem estão cheios (150 MB). Remove cópias antigas da nuvem para libertar espaço; os teus dados guardados ficam neste PC."
 }

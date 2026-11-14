@@ -304,7 +304,7 @@ window.verText = verText;
 // Big Picture's monitor: the saved choice among those connected (one saved by its name alone still
 // counts), else none (the main display), and how each one is named here.
 const monitorPicked = (list, cur) => (cur ? (list || []).find((m) => m.id === cur || m.id.startsWith(`${cur}|`) || m.name === cur) : null) || null;
-const monitorName = (m) => `${tf('Monitor {n}', { n: m.number || 1 })} · ${m.width} × ${m.height}${m.is_primary ? ' · ' + t('Main') : ''}`;
+const monitorName = (m) => `${tf('Monitor {num}', { num: m.number || 1 })} · ${m.width} × ${m.height}${m.is_primary ? ' · ' + t('Main') : ''}`;
 window.monitorPicked = monitorPicked;
 window.monitorName = monitorName;
 const isSF = (repo) => /^sourceforge:/i.test(String(repo || ''));
@@ -1399,6 +1399,14 @@ window.logoFail = (img) => {
   // The page may have been redrawn while it loaded: mark the one on screen too.
   for (const el of [img, ...$$('.sl-logo img')]) if (el.getAttribute('src') === src && el.parentNode) el.parentNode.classList.add('fail');
 };
+// A banner slide's buttons: the game's own, then Details. With four of its own (Setup Required beside
+// Add to Library, say) Details is left out, so the row doesn't run under the cover; the cover opens
+// the page as well.
+function slideActs(a) {
+  const own = actions(a, 'big');
+  if ((own.match(/<button\b/g) || []).length >= 4) return own;
+  return `${own}<button type="button" class="btn big glass" data-act="open" data-id="${esc(a.id)}">${esc(t('Details'))}</button>`;
+}
 function slideTitle(a) {
   const src = a.logo ? media(a.logo) : '';
   if (!src || BAD_LOGOS.has(src)) return `<h2>${esc(a.name)}</h2>`;
@@ -1407,8 +1415,8 @@ function slideTitle(a) {
 function slider(feats) {
   return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(a.hero || a.cover, 'bg')}
       <div class="sl-in"><span class="kick">${esc(bannerInfo(a.id).tag || (a.featured ? t('Featured') : t('Popular right now')))}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span>${slideTitle(a)}${based(a)}${bannerInfo(a.id).text || a.blurb ? `<p>${esc(bannerInfo(a.id).text || a.blurb)}</p>` : ''}
-        <div class="acts">${actions(a, 'big')}<button type="button" class="btn big glass" data-act="open" data-id="${esc(a.id)}">${esc(t('Details'))}</button></div></div>
-      <div class="sl-cover">${pic(thumbOf(a.cover))}</div></div>`).join('')}
+        <div class="acts">${slideActs(a)}</div></div>
+      <button type="button" class="sl-cover" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(t('Details'))}" tabindex="-1">${pic(thumbOf(a.cover))}</button></div>`).join('')}
     ${feats.length > 1 ? `<div class="sl-ui">${feats.map((a, i) => `<button type="button" class="dot${i === S.slide ? ' on' : ''}" data-act="slide" data-i="${i}" aria-label="${esc(tf('Show {name}', { name: a.name }))}"></button>`).join('')}</div>
     <div class="sl-arrows"><button type="button" data-act="slide-step" data-d="-1" aria-label="${esc(t('Previous'))}">${CHEV_L}</button><button type="button" data-act="slide-step" data-d="1" aria-label="${esc(t('Next'))}">${CHEV_R}</button></div>` : ''}</section>`;
 }
@@ -7651,8 +7659,33 @@ function padFocus(el) {
   // unless the stick is held and the moves come quickly: then each one lands at once.
   const now = performance.now(), quick = now - (PAD.at || 0) < 160;
   PAD.at = now;
-  el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: calm() || quick ? 'auto' : 'smooth' });
+  padReveal(el, calm() || quick ? 'auto' : 'smooth');
   if (window.pokeSlow) window.pokeSlow();
+}
+// What scrollIntoView does, but only in the boxes that scroll (the page, a list, a shelf). A box that
+// only clips (the top banner's slides, the setup window) would be scrolled too, and its contents
+// left out of place: the banner's slides shifted, the setup window's top cut off.
+function padReveal(el, behavior) {
+  const cs = getComputedStyle(el);
+  const m = { t: parseFloat(cs.scrollMarginTop) || 0, b: parseFloat(cs.scrollMarginBottom) || 0, l: parseFloat(cs.scrollMarginLeft) || 0, r: parseFloat(cs.scrollMarginRight) || 0 };
+  // How far the boxes inside have already been told to move it.
+  let movedX = 0, movedY = 0;
+  for (let box = el.parentElement; box && box !== document.body; box = box.parentElement) {
+    const bs = getComputedStyle(box);
+    const scrollsY = /auto|scroll/.test(bs.overflowY) && box.scrollHeight > box.clientHeight;
+    const scrollsX = /auto|scroll/.test(bs.overflowX) && box.scrollWidth > box.clientWidth;
+    if (!scrollsY && !scrollsX) continue;
+    const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+    const top = r.top - movedY - m.t - (b.top + box.clientTop), bottom = r.bottom - movedY + m.b - (b.top + box.clientTop + box.clientHeight);
+    const left = r.left - movedX - m.l - (b.left + box.clientLeft), right = r.right - movedX + m.r - (b.left + box.clientLeft + box.clientWidth);
+    // The nearest edge: up or left when it's past the start, else down or right without passing its start.
+    const dy = !scrollsY ? 0 : top < 0 ? top : bottom > 0 ? Math.min(bottom, top) : 0;
+    const dx = !scrollsX ? 0 : left < 0 ? left : right > 0 ? Math.min(right, left) : 0;
+    if (!dx && !dy) continue;
+    box.scrollBy({ left: dx, top: dy, behavior });
+    movedX += dx;
+    movedY += dy;
+  }
 }
 function padCurrent(root, list) {
   if (PAD.el && PAD.el.isConnected && root.contains(PAD.el) && list.includes(PAD.el)) return PAD.el;

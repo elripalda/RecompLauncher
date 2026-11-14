@@ -201,8 +201,17 @@ function savesTab(a) {
   const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`;
   return `<div class="stack">${shareCard}${cloudCard}
     <div class="card"><div class="card-h"><h3>${esc(t('On this PC'))}</h3><span class="acts"><button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}" title="${esc(t('Where the game keeps its saves'))}">${esc(t('Open the Game\'s Save Folder'))}</button><button type="button" class="btn sm" data-act="saves-open-backups" data-id="${esc(id)}" title="${esc(t('Where the launcher keeps its copies of them'))}">${esc(t('Open Backups'))}</button><button type="button" class="btn sm main" data-act="saves-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Back up now'))}</button></span></div>${local}</div>
-    <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${where}</div></div>`;
+    <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${guessNote(s)}${where}</div></div>`;
 }
+// No one (its developer, RecompLauncher or the player) has said where this game saves: the folder
+// shown was only noticed while it ran, or is its own folder as a guess. Said so, so a wrong folder
+// isn't trusted for backups and cloud saves without a look.
+function guessNote(s) {
+  if (!savesGuessed(s)) return '';
+  return `<p class="save-guess">${esc(t('No one has said where this game saves yet, so the launcher is going by what it noticed while you played.'))} ${esc(t('If your saves are somewhere else, press Change and pick their folder.'))}</p>`;
+}
+const savesGuessed = (s) => !!(s && s.spots && s.spots.length && s.spots.every((p) => p.from === 'found' || p.from === 'game'));
+window.savesGuessed = savesGuessed;
 // Where this game's cloud saves stand and how to sync them now.
 function cloudStatus(id, s) {
   const newest = Array.isArray(s.cloud) && s.cloud[0];

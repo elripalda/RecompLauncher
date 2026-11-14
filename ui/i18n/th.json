@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "อีก {n} เวอร์ชันมีแค่สำหรับ Windows และถูกซ่อนไว้เพราะ Proton ปิดอยู่",
  "1 Windows-only recomp is hidden because Proton is off.": "Recomp สำหรับ Windows อย่างเดียว 1 รายการถูกซ่อนไว้เพราะ Proton ปิดอยู่",
  "{n} Windows-only recomps are hidden because Proton is off.": "Recomp สำหรับ Windows อย่างเดียว {n} รายการถูกซ่อนไว้เพราะ Proton ปิดอยู่",
- "With this off, those recomps are left out of Discover, search and game pages.": "เมื่อปิดตัวเลือกนี้ Recomp เหล่านั้นจะไม่แสดงในหน้าค้นพบ การค้นหา และหน้าเกม"
+ "With this off, those recomps are left out of Discover, search and game pages.": "เมื่อปิดตัวเลือกนี้ Recomp เหล่านั้นจะไม่แสดงในหน้าค้นพบ การค้นหา และหน้าเกม",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "สำเนาเซฟทั้งสองชุดเปลี่ยนไปแล้ว เลือกหนึ่งชุดใน เซฟ → ซิงค์ตอนนี้",
+ "If your saves are somewhere else, press Change and pick their folder.": "ถ้าเซฟของคุณอยู่ที่อื่น ให้กด เปลี่ยน แล้วเลือกโฟลเดอร์ของมัน",
+ "Main": "หลัก",
+ "Main Display": "จอหลัก",
+ "Monitor": "จอ",
+ "Monitor {num}": "จอ {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "ยังไม่มีใครระบุว่าเกมนี้เซฟไว้ที่ไหน ตัวเปิดเกมจึงใช้ตำแหน่งที่สังเกตเห็นระหว่างที่คุณเล่น",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "เชดเดอร์บน Linux ใช้ vkBasalt ติดตั้งจากแพ็กเกจของดิสโทรของคุณ (มักชื่อ vkbasalt) แล้วเปิดเกมอีกครั้ง",
+ "Steam is being synced right now. Try again in a minute.": "กำลังซิงค์ Steam อยู่ ลองใหม่อีกครั้งในอีกหนึ่งนาที",
+ "The screen Big Picture mode opens on.": "จอที่โหมด Big Picture จะเปิดขึ้น",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "เซฟบนคลาวด์ของคุณเต็มแล้ว (150 MB) ลบสำเนาเก่าบนคลาวด์เพื่อให้มีที่ว่าง เซฟของคุณยังอยู่บนพีซีเครื่องนี้"
 }

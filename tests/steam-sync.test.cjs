@@ -124,7 +124,7 @@ test('Big Picture shows the setting, and Sync Now once it is on', () => {
     t: (s) => s, N_: (s) => s, tc: (s) => s, esc: String,
     tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s,
-    homePinned: () => false, bgMode: () => '', langName: () => 'English', clockSelect: () => '', clockRow: () => '', setClock: () => {},
+    homePinned: () => false, bgMode: () => '', langName: () => 'English', clockSelect: () => '', clockRow: () => '', setClock: () => {}, window: { monitorPicked: () => null, monitorName: () => '' },
     svg: () => '', hints: () => '', HEART: '',
   });
   vm.runInContext(fn(tv, 'pageSettings', '  '), c);

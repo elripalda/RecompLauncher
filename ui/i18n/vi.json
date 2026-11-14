@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "{n} phiên bản nữa chỉ có cho Windows và đang bị ẩn vì Proton đang tắt.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 bản recomp chỉ có cho Windows đang bị ẩn vì Proton đang tắt.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} bản recomp chỉ có cho Windows đang bị ẩn vì Proton đang tắt.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Khi tắt mục này, các bản recomp đó sẽ không hiện trong Khám phá, tìm kiếm và trang game."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Khi tắt mục này, các bản recomp đó sẽ không hiện trong Khám phá, tìm kiếm và trang game.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Cả hai bản sao dữ liệu lưu đều đã thay đổi. Chọn một bản trong Dữ liệu lưu → Đồng bộ ngay.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Nếu dữ liệu lưu của bạn nằm ở chỗ khác, hãy nhấn Thay đổi và chọn thư mục của chúng.",
+ "Main": "Chính",
+ "Main Display": "Màn hình chính",
+ "Monitor": "Màn hình",
+ "Monitor {num}": "Màn hình {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Chưa ai cho biết trò chơi này lưu ở đâu, nên launcher dựa vào những gì nó nhận thấy khi bạn chơi.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Shader trên Linux dùng vkBasalt. Hãy cài nó từ các gói của bản phân phối (thường có tên vkbasalt), rồi mở lại trò chơi.",
+ "Steam is being synced right now. Try again in a minute.": "Steam đang được đồng bộ. Hãy thử lại sau một phút.",
+ "The screen Big Picture mode opens on.": "Màn hình nơi chế độ Big Picture mở ra.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Dữ liệu lưu đám mây của bạn đã đầy (150 MB). Hãy gỡ các bản sao cũ trên đám mây để có chỗ; dữ liệu lưu của bạn vẫn ở trên PC này."
 }

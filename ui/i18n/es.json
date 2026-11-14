@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "{n} versiones más son solo para Windows y están ocultas porque Proton está desactivado.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 recomp solo para Windows está oculto porque Proton está desactivado.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomps solo para Windows están ocultos porque Proton está desactivado.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Con esto desactivado, esos recomps no aparecen en Descubrir, la búsqueda ni las páginas de los juegos."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Con esto desactivado, esos recomps no aparecen en Descubrir, la búsqueda ni las páginas de los juegos.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Las dos copias de la partida han cambiado. Elige una en Partidas → Sincronizar ahora.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Si tus partidas están en otro sitio, pulsa Cambiar y elige su carpeta.",
+ "Main": "Principal",
+ "Main Display": "Pantalla principal",
+ "Monitor": "Pantalla",
+ "Monitor {num}": "Pantalla {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Nadie ha indicado todavía dónde guarda este juego, así que el launcher se guía por lo que vio mientras jugabas.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "En Linux los shaders usan vkBasalt. Instálalo desde los paquetes de tu distribución (suele llamarse vkbasalt) y vuelve a abrir el juego.",
+ "Steam is being synced right now. Try again in a minute.": "Steam se está sincronizando ahora mismo. Inténtalo de nuevo en un minuto.",
+ "The screen Big Picture mode opens on.": "La pantalla en la que se abre el modo Big Picture.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Tus partidas en la nube están llenas (150 MB). Quita copias antiguas de la nube para hacer sitio; tus partidas siguen en este PC."
 }

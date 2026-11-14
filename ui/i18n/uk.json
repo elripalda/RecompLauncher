@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "Ще {n} версія лише для Windows прихована, бо Proton вимкнено.|Ще {n} версії лише для Windows приховано, бо Proton вимкнено.|Ще {n} версій лише для Windows приховано, бо Proton вимкнено.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 рекомпіляція лише для Windows прихована, бо Proton вимкнено.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} рекомпіляція лише для Windows прихована, бо Proton вимкнено.|{n} рекомпіляції лише для Windows приховано, бо Proton вимкнено.|{n} рекомпіляцій лише для Windows приховано, бо Proton вимкнено.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Коли це вимкнено, ці рекомпи не показуються в «Огляді», пошуку та на сторінках ігор."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Коли це вимкнено, ці рекомпи не показуються в «Огляді», пошуку та на сторінках ігор.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Обидві копії збереження змінилися. Обери одну в розділі Збереження → Синхронізувати.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Якщо твої збереження лежать деінде, натисни «Змінити» й вибери їхню теку.",
+ "Main": "Основний",
+ "Main Display": "Основний екран",
+ "Monitor": "Екран",
+ "Monitor {num}": "Екран {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Ніхто ще не вказав, де ця гра зберігає дані, тож лаунчер спирається на те, що помітив під час гри.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Шейдери в Linux працюють через vkBasalt. Встанови його з пакунків свого дистрибутива (зазвичай він називається vkbasalt) і запусти гру знову.",
+ "Steam is being synced right now. Try again in a minute.": "Steam зараз синхронізується. Спробуй ще раз за хвилину.",
+ "The screen Big Picture mode opens on.": "Екран, на якому відкривається режим Big Picture.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Хмарні збереження заповнені (150 МБ). Видали старі копії в хмарі, щоб звільнити місце; твої збереження лишаються на цьому ПК."
 }

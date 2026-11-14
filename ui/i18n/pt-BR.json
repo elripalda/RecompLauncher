@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "Mais {n} versões são só para Windows e estão ocultas porque o Proton está desativado.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 recomp só para Windows está oculto porque o Proton está desativado.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomps só para Windows estão ocultos porque o Proton está desativado.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Com isso desativado, esses recomps ficam de fora de Descobrir, da busca e das páginas dos jogos."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Com isso desativado, esses recomps ficam de fora de Descobrir, da busca e das páginas dos jogos.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "As duas cópias dos dados salvos mudaram. Escolha uma em Dados salvos → Sincronizar agora.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Se os seus dados salvos estiverem em outro lugar, toque em Alterar e escolha a pasta deles.",
+ "Main": "Principal",
+ "Main Display": "Tela principal",
+ "Monitor": "Tela",
+ "Monitor {num}": "Tela {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Ninguém informou ainda onde este jogo salva, então o launcher se baseia no que notou enquanto você jogava.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "No Linux, os shaders usam o vkBasalt. Instale-o pelos pacotes da sua distribuição (geralmente chamado vkbasalt) e abra o jogo de novo.",
+ "Steam is being synced right now. Try again in a minute.": "O Steam está sendo sincronizado agora. Tente de novo em um minuto.",
+ "The screen Big Picture mode opens on.": "A tela em que o modo Big Picture abre.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Seu salvamento na nuvem está cheio (150 MB). Remova cópias antigas da nuvem para liberar espaço; seus dados salvos continuam neste PC."
 }

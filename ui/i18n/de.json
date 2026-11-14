@@ -3090,5 +3090,16 @@
  "{n} more versions are Windows-only and hidden because Proton is off.": "{n} weitere Versionen gibt es nur für Windows; sie sind ausgeblendet, weil Proton aus ist.",
  "1 Windows-only recomp is hidden because Proton is off.": "1 Recomp, den es nur für Windows gibt, ist ausgeblendet, weil Proton aus ist.",
  "{n} Windows-only recomps are hidden because Proton is off.": "{n} Recomps, die es nur für Windows gibt, sind ausgeblendet, weil Proton aus ist.",
- "With this off, those recomps are left out of Discover, search and game pages.": "Ist das aus, tauchen diese Recomps weder in Entdecken noch in der Suche oder auf den Spieleseiten auf."
+ "With this off, those recomps are left out of Discover, search and game pages.": "Ist das aus, tauchen diese Recomps weder in Entdecken noch in der Suche oder auf den Spieleseiten auf.",
+ "Both save copies changed. Choose one in Saves → Sync Now.": "Beide Spielstand-Kopien wurden geändert. Wähle eine unter Spielstände → Jetzt synchronisieren.",
+ "If your saves are somewhere else, press Change and pick their folder.": "Liegen deine Spielstände woanders, tippe auf Ändern und wähle ihren Ordner.",
+ "Main": "Haupt",
+ "Main Display": "Hauptbildschirm",
+ "Monitor": "Bildschirm",
+ "Monitor {num}": "Bildschirm {num}",
+ "No one has said where this game saves yet, so the launcher is going by what it noticed while you played.": "Noch hat niemand angegeben, wo dieses Spiel speichert, also richtet sich der Launcher danach, was ihm beim Spielen aufgefallen ist.",
+ "Shaders on Linux use vkBasalt. Install it from your distro's packages (it's usually called vkbasalt), then start the game again.": "Shader laufen unter Linux über vkBasalt. Installiere es aus den Paketen deiner Distribution (meist heißt es vkbasalt) und starte das Spiel dann neu.",
+ "Steam is being synced right now. Try again in a minute.": "Steam wird gerade synchronisiert. Versuch es in einer Minute noch einmal.",
+ "The screen Big Picture mode opens on.": "Der Bildschirm, auf dem der Big-Picture-Modus öffnet.",
+ "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.": "Deine Cloud-Speicherstände sind voll (150 MB). Entferne alte Cloud-Kopien, um Platz zu schaffen; deine Spielstände bleiben auf diesem PC."
 }
