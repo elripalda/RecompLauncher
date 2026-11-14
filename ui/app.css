@@ -47,6 +47,9 @@ input,select,textarea{font:inherit;color:var(--ink)}
 #brand:hover{background:var(--fill2)}
 #brand img{width:34px;height:34px;flex:none}
 .word{font:700 semi-expanded 20px/1 Archivo,sans-serif;letter-spacing:-.025em}.word b{font-weight:700;color:var(--cyan)}
+/* Sections and pins share a scroll area so short windows keep every destination reachable. */
+.side-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+.side-scroll::-webkit-scrollbar{width:8px}
 .navs{display:flex;flex-direction:column;gap:2px;padding:8px 12px}
 .nav{position:relative;display:flex;align-items:center;gap:14px;height:46px;padding:0 0 0 16px;border-radius:14px;color:var(--muted);font-weight:600;font-size:15px;white-space:nowrap;text-align:left;width:100%;transition:background .15s,color .15s}
 .nav svg{flex:none}
@@ -63,7 +66,7 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .side:is(.mini,.auto) .nav .n:not(:empty){opacity:1;position:absolute;top:7px;left:30px;margin:0;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--cyan);color:var(--bg);font-size:10px;line-height:16px;text-align:center}
 .pins-h{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:18px 28px 6px;white-space:nowrap}
 .side:is(.mini,.auto) .pins-h{height:0;padding:9px 0;overflow:hidden}
-.pins{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:2px;padding:0 12px}
+.pins{display:flex;flex-direction:column;gap:2px;padding:0 12px}
 .pin{display:flex;align-items:center;gap:12px;height:46px;padding:0 0 0 10px;border-radius:14px;color:var(--muted);font-weight:600;font-size:14px;white-space:nowrap;text-align:left;width:100%;transition:background .15s,color .15s}
 .pin:hover{background:var(--fill2);color:var(--ink)}
 .pin.on{background:var(--card2);color:var(--ink)}
@@ -76,7 +79,7 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .pins.sorting .pin{transition:transform .15s var(--ease),background .15s,color .15s}
 .pins.sorting .pin.moving{transition:none;position:relative;z-index:1;background:var(--card2);color:var(--ink);cursor:grabbing;box-shadow:0 8px 20px -10px rgba(0,0,0,.8)}
 .pin .run{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:var(--cyan);border:2px solid var(--side)}
-.side-foot{display:flex;flex-direction:column;gap:2px;padding:10px 12px 14px;border-top:1px solid var(--line)}
+.side-foot{flex:none;display:flex;flex-direction:column;gap:2px;padding:10px 12px 14px;border-top:1px solid var(--line)}
 #collapse .arr{transition:transform .3s var(--ease);transform-origin:14.5px 12px}
 .side:is(.mini,.auto) #collapse .arr{transform:scaleX(-1)}
 
@@ -413,8 +416,8 @@ body.light .known-fix b{color:#127a45}
 .gp-acts .btn.big{min-width:210px}
 .gp-acts .prog{min-width:300px}
 .tabs{position:relative;z-index:2;max-width:var(--gp-max);margin:30px auto 0;padding:0 40px;display:flex;gap:4px}
-.tabs-in{display:flex;gap:4px;padding:4px;border-radius:16px;background:var(--card);border:1px solid var(--line);position:relative}
-.tabs button{position:relative;z-index:1;height:40px;padding:0 18px;border-radius:12px;color:var(--muted);font-weight:700;font-size:14px;transition:color .2s}
+.tabs-in{display:flex;min-width:0;overflow-x:auto;gap:4px;padding:4px;border-radius:16px;background:var(--card);border:1px solid var(--line);position:relative}
+.tabs button{flex:none;white-space:nowrap;position:relative;z-index:1;height:40px;padding:0 18px;border-radius:12px;color:var(--muted);font-weight:700;font-size:14px;transition:color .2s}
 .tabs button:hover{color:var(--ink)}
 .tabs button.on{color:var(--bg)}
 .tab-pill{position:absolute;z-index:0;top:4px;height:40px;border-radius:12px;background:var(--ink);transition:transform .35s var(--ease),width .35s var(--ease)}
