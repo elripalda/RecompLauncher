@@ -6,6 +6,19 @@ old=$3      # the previous version, set aside
 failed=$4   # where a new version that failed goes while the previous one is put back
 program=$5  # the new version's program inside $app
 open=$6     # /usr/bin/open (the tests pass a stand-in)
+pending=$7  # the failed-update record, which the new version clears during startup
+pending_record=$(cat "$pending" 2>/dev/null)
+
+note() { printf '%s UTC  Mac update: %s\n' "$(date -u +%H:%M:%S)" "$1" >> "${pending%/*}/launcher-trail.log"; }
+restore_record() {
+    [ -n "$pending_record" ] || return
+    # Startup may have cleared this before crashing. Keep any newer record, including one
+    # created between this check and the write: noclobber never replaces an existing file.
+    [ -e "$pending" ] && return
+    if ! (set -C; printf '%s' "$pending_record" > "$pending") 2>/dev/null; then
+        note "Couldn't restore the update failure record; this failed update may be offered again"
+    fi
+}
 
 while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
 
@@ -40,4 +53,5 @@ if ! mv "$old" "$app"; then
     exit 1
 fi
 rm -rf "$failed"
+restore_record
 exec "$open" "$app"

@@ -4,12 +4,23 @@ target=$2
 work=$3
 trail=$4
 reopen=$5
-shift 5
+pending=$6
+shift 6
+pending_record=$(cat "$pending" 2>/dev/null)
 
 # The launcher's own trail (launcher-trail.log), in its format, so a problem report shows it.
 # The player hears about a failed update from update-pending.json on the next start instead.
 note() { printf '%s UTC  AppImage update: %s\n' "$(date -u +%H:%M:%S)" "$1" >> "$trail"; }
 cleanup() { rm -rf -- "$work"; }
+restore_record() {
+    [ -n "$pending_record" ] || return
+    # Startup may have cleared this before crashing. Keep any newer record, including one
+    # created between this check and the write: noclobber never replaces an existing file.
+    [ -e "$pending" ] && return
+    if ! (set -C; printf '%s' "$pending_record" > "$pending") 2>/dev/null; then
+        note "Couldn't restore the update failure record; this failed update may be offered again"
+    fi
+}
 
 # Starting while the old launcher owns its D-Bus name would hand the new window back to it.
 tries=0
@@ -47,6 +58,7 @@ if ! kill -0 "$child" 2>/dev/null; then
     if ! wait "$child"; then
         if mv -f -- "$work/previous.AppImage" "$target"; then
             note "The new AppImage couldn't start; the previous version was restored"
+            restore_record
             "$target" "$@" &
         else
             note "The new AppImage couldn't start, and restoring failed: copy previous.AppImage from $work to $target"
