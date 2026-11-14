@@ -2894,6 +2894,8 @@
  "The game isn't connected.": "Das Spiel ist nicht verbunden.",
  "The game was removed during setup.": "Das Spiel wurde während der Einrichtung entfernt.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "Der Ordner des Spiels hat eigene ReShade-Einstellungen, daher ist der Shader des Launchers aus. Nimm ReShade aus dem Ordner, um Shader zu nutzen.",
+ "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "Der Ordner des Spiels ist zu groß, um darin nach Spielständen zu suchen. Wähle unter Speicherort seinen Spielstand-Ordner und versuche es dann noch einmal.",
+ "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "Die Cloud-Speicherstände für dieses Spiel sind pausiert: Sein Spielstand-Ordner ist zu groß, um ihn zu durchsuchen. Wähle unter Speicherort seinen Spielstand-Ordner, um sie wieder einzuschalten.",
  "The installer isn't there anymore. Use Update again to download it.": "Der Installer ist nicht mehr da. Nutze erneut Update, um ihn herunterzuladen.",
  "The launcher's window isn't open.": "Das Fenster des Launchers ist nicht offen.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "Der linke Stick bewegt sich durch den Launcher wie das Steuerkreuz. Schalte ihn aus, wenn dein Stick driftet oder du ihn als Maus nutzt; das Steuerkreuz funktioniert weiterhin.",

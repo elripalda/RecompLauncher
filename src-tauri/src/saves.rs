@@ -24,8 +24,6 @@ const MAX_FILE: u64 = 64 * 1024 * 1024;
 const GAME_FOLDER_MAX: u64 = 50 * 1024 * 1024;
 /// No save place is bigger than this.
 const SPOT_MAX: u64 = 1024 * 1024 * 1024;
-/// Save places the last look left out for being too big (the backup says so).
-static OVERSIZE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 /// More files than this in a save place means it isn't one.
 const MAX_FILES: usize = 20_000;
 /// Entries and seconds a save place may take to look through before it counts as too big.
@@ -299,9 +297,17 @@ fn walk(root: &Path, out: &mut Vec<(String, PathBuf, u64)>, release: &HashSet<St
 
 /// Every file in the save places, as they are now.
 pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
+    look(spots, g).0
+}
+
+/// Every file in the save places, and the places left out for being too big to be just saves
+/// (their indices). Nothing found in a place that was left out doesn't mean it has no saves: they
+/// weren't looked at.
+pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
     let release: HashSet<String> = g.files.iter().map(|f| f.to_string_lossy().replace('\\', "/").to_lowercase()).collect();
     let none = HashSet::new();
     let mut out = vec![];
+    let mut too_big = vec![];
     for (i, s) in spots.iter().enumerate() {
         let p = resolve_for(&s.template, g);
         let last = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -328,17 +334,15 @@ pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
             // it's too big to be saves, rather than looking through gigabytes of game data.
             let guess = s.from == "game" || s.from == "found";
             let (budget, secs) = if guess { (GAME_FOLDER_MAX, 6) } else { (SPOT_MAX, WALK_SECS) };
-            if !walk(&p, &mut found, if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none }, budget, secs) {
-                if s.from != "game" {
-                    if let Ok(mut o) = OVERSIZE.lock() {
-                        o.push(s.template.clone());
-                    }
-                }
+            let skip = if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none };
+            if !walk(&p, &mut found, skip, budget, secs) {
+                too_big.push(i);
                 found.clear();
             }
             // A guess at the whole game folder that comes out big is game data (unpacked from the
             // player's disc, say), not saves: nothing is copied rather than the game.
             if s.from == "game" && found.iter().map(|f| f.2).sum::<u64>() > GAME_FOLDER_MAX {
+                too_big.push(i);
                 found.clear();
             }
         }
@@ -346,16 +350,27 @@ pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
         // cache or game data, not saves; and no save place is ever this big.
         let total: u64 = found.iter().map(|f| f.2).sum();
         if (s.from == "found" && total > GAME_FOLDER_MAX) || total > SPOT_MAX {
-            if let Ok(mut o) = OVERSIZE.lock() {
-                o.push(s.template.clone());
-            }
+            too_big.push(i);
             found.clear();
         }
         found.retain(|(_, abs, _)| !crate::inputs::excluded(g, abs));
         found.sort();
         out.extend(found.into_iter().map(|(rel, abs, size)| Entry { spot: i, rel, abs, size }));
     }
-    out
+    (out, too_big)
+}
+
+/// The game's whole folder was a guess (nothing says where it saves) and too big to look through.
+/// A fixed text, so the window can translate it, saying what to do: pick the folder in the Saves tab.
+const GAME_FOLDER_TOO_BIG: &str = "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.";
+
+/// Why nothing could be backed up when every place was too big to look through.
+pub fn too_big_error(g: &Installed, spots: &[Spot], too_big: &[usize]) -> Error {
+    if too_big.iter().any(|&i| spots.get(i).map(|s| s.from == "game").unwrap_or(false)) {
+        return Error::Msg(GAME_FOLDER_TOO_BIG.into());
+    }
+    let places: Vec<&str> = too_big.iter().filter_map(|&i| spots.get(i)).map(|s| s.template.as_str()).collect();
+    Error::Msg(format!("{}'s save folder is too big to be just saves ({}), so it wasn't backed up.", g.name, places.join(", ")))
 }
 
 fn sha_file(p: &Path) -> io::Result<String> {
@@ -402,15 +417,16 @@ pub struct Manifest {
     pub files: Vec<FileInfo>,
 }
 
-/// The saves as they are now: each file's checksum, and the set's.
-pub fn current(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<FileInfo>, String) {
-    let entries = collect(spots, g);
+/// The saves as they are now: each file's checksum, the set's, and the places that were too big to
+/// look through (see `look`).
+pub fn current(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<FileInfo>, String, Vec<usize>) {
+    let (entries, too_big) = look(spots, g);
     let infos: Vec<FileInfo> = entries
         .iter()
         .filter_map(|e| Some(FileInfo { spot: e.spot, rel: e.rel.clone(), size: e.size, sha256: sha_file(&e.abs).ok()? }))
         .collect();
     let hash = if infos.is_empty() { String::new() } else { set_hash(&infos) };
-    (entries, infos, hash)
+    (entries, infos, hash, too_big)
 }
 
 pub fn device_name() -> String {
@@ -618,18 +634,15 @@ pub fn list(app_dir: &Path, id: &str) -> Vec<Copy> {
 /// the last copy.
 pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result<Option<Copy>, Error> {
     // How big it is first: a place too big to be saves is left out before anything is read.
-    if let Ok(mut o) = OVERSIZE.lock() {
-        o.clear();
-    }
-    let pre = collect(spots, g);
-    let big: Vec<String> = OVERSIZE.lock().map(|o| o.clone()).unwrap_or_default();
-    if pre.is_empty() && !big.is_empty() {
-        return Err(Error::Msg(format!("{}'s save folder is too big to be just saves ({}), so it wasn't backed up.", g.name, big.join(", "))));
+    // Nothing read is said as such, not as "nothing changed": the saves may well have.
+    let (pre, too_big) = look(spots, g);
+    if pre.is_empty() && !too_big.is_empty() {
+        return Err(too_big_error(g, spots, &too_big));
     }
     if pre.is_empty() {
         return Ok(None);
     }
-    let (entries, infos, hash) = current(spots, g);
+    let (entries, infos, hash, _) = current(spots, g);
     if entries.is_empty() {
         return Ok(None);
     }
@@ -1214,6 +1227,63 @@ mod tests {
         assert_eq!(rels, vec!["save/slot1.sav", "settings.toml"]);
     }
 
+    /// A game folder with more than GAME_FOLDER_MAX of files the release didn't ship (a shader
+    /// cache, a build folder), next to a real save. Sparse, so it takes no room on the disk.
+    fn big_game_folder(n: &str) -> PathBuf {
+        let d = tmp(n);
+        fs::create_dir_all(d.join("save")).unwrap();
+        fs::write(d.join("save/slot1.sav"), "one").unwrap();
+        for name in ["cache-a.dat", "cache-b.dat"] {
+            fs::File::create(d.join(name)).unwrap().set_len(30 * 1024 * 1024).unwrap();
+        }
+        d
+    }
+
+    #[test]
+    fn a_game_folder_too_big_to_look_through_is_reported() {
+        let d = big_game_folder("big-look");
+        let g = game(&d);
+        let s = spots(&[], &[], &g);
+        let (entries, too_big) = look(&s, &g);
+        assert!(entries.is_empty());
+        assert_eq!(too_big, vec![0]);
+    }
+
+    #[test]
+    fn backing_up_a_game_folder_too_big_to_look_through_says_so() {
+        let d = big_game_folder("big-backup");
+        let g = game(&d);
+        let s = spots(&[], &[], &g);
+        let e = backup(&d.join("app"), "g", &s, &g).unwrap_err();
+        assert_eq!(e.to_string(), GAME_FOLDER_TOO_BIG);
+    }
+
+    #[test]
+    fn a_named_save_folder_too_big_is_named_in_the_error() {
+        let g = game(Path::new("/games/test"));
+        let s = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        let e = too_big_error(&g, &s, &[0]);
+        assert_eq!(e.to_string(), "Test Game's save folder is too big to be just saves ({install}/save), so it wasn't backed up.");
+    }
+
+    /// Cloud sync stops on any place left out, so it has to be reported even when another place
+    /// had saves in it.
+    #[test]
+    fn a_place_too_big_next_to_one_with_saves_is_still_reported() {
+        let d = tmp("big-next-to-saves");
+        fs::create_dir_all(d.join("saves")).unwrap();
+        fs::write(d.join("saves/slot1.sav"), "one").unwrap();
+        fs::create_dir_all(d.join("cache")).unwrap();
+        for name in ["cache-a.dat", "cache-b.dat"] {
+            fs::File::create(d.join("cache").join(name)).unwrap().set_len(30 * 1024 * 1024).unwrap();
+        }
+        let g = Installed { found_saves: vec!["{install}/cache".into(), "{install}/saves".into()], ..game(&d) };
+        let s = spots(&[], &[], &g);
+        let (entries, too_big) = look(&s, &g);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(too_big, vec![0]);
+    }
+
     #[test]
     fn copies_skip_unchanged_and_restore_exactly() {
         let d = tmp("copy");
@@ -1237,7 +1307,7 @@ mod tests {
         restore(&app, "g", &dir_of(&app, "g").join(&a.name), &s, &g).unwrap();
         assert_eq!(fs::read_to_string(inst.join("save/slot1.sav")).unwrap(), "one");
         assert!(!inst.join("save/slot2.sav").exists());
-        let (_, _, now) = current(&s, &g);
+        let (_, _, now, _) = current(&s, &g);
         assert_eq!(now, a.hash);
     }
 

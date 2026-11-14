@@ -2894,6 +2894,8 @@
  "The game isn't connected.": "Le jeu n'est pas connecté.",
  "The game was removed during setup.": "Le jeu a été retiré pendant la configuration.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "Le dossier du jeu a ses propres paramètres ReShade, donc le shader du lanceur est désactivé. Retirez ReShade du dossier pour utiliser les shaders.",
+ "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.": "Le dossier du jeu est trop volumineux pour y chercher des sauvegardes. Choisissez son dossier de sauvegardes dans Emplacement des sauvegardes, puis réessayez.",
+ "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "Les sauvegardes dans le cloud de ce jeu sont en pause : son dossier de sauvegardes est trop volumineux pour y chercher. Choisissez son dossier de sauvegardes dans Emplacement des sauvegardes pour les réactiver.",
  "The installer isn't there anymore. Use Update again to download it.": "Le programme d'installation n'est plus là. Utilisez Mettre à jour à nouveau pour le télécharger.",
  "The launcher's window isn't open.": "La fenêtre du lanceur n'est pas ouverte.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "Le stick gauche se déplace dans le lanceur comme la croix directionnelle. Désactivez-le si votre stick dérive ou si vous l'utilisez comme souris ; la croix directionnelle fonctionne toujours.",

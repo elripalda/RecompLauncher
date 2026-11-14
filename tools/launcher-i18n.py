@@ -76,6 +76,9 @@ def rust(text, out):
         out.add(m.group(1))
     for m in re.finditer(r'(?:Err|ok_or|map_err\(\|_\|)\(?\s*"([A-Z][^"{}\\]{6,}[.?!…])"', text):
         out.add(m.group(1))
+    # A message kept in a const, because it's shown or compared in more than one place.
+    for m in re.finditer(r'const [A-Z_]+: &str = "([A-Z][^"{}\\]{6,}[.?!…])"', text):
+        out.add(m.group(1))
 
 
 def strings():
