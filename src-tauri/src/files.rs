@@ -121,7 +121,7 @@ fn kind_of(p: &Path, dir: bool) -> &'static str {
     }
     let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
     match ext.as_str() {
-        "iso" | "xiso" | "gcm" | "rvz" | "wbfs" | "ciso" | "chd" | "img" | "bin" | "cue" => "disc",
+        "iso" | "xiso" | "gcm" | "rvz" | "wbfs" | "ciso" | "chd" | "img" | "bin" | "cue" | "gdi" | "m3u" => "disc",
         "z64" | "n64" | "v64" => "rom",
         "exe" | "appimage" | "app" | "sh" => "program",
         _ => "file",

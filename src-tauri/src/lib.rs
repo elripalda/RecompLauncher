@@ -1627,6 +1627,8 @@ async fn fs_list(st: State<'_, App>, path: String) -> Res<FolderView> {
             .take(400)
             .filter_map(|e| if e.kind == "game" { roms::identify(&e.path.join("default.xex"), 0) } else { roms::identify(&e.path, e.size) })
             .collect();
+        // A disc set's .m3u and the .cue files it lists sit side by side: the set is one game.
+        let found = roms::fold_sets(found);
         let mut games = HashMap::new();
         if !found.is_empty() {
             for (id, r) in copies_for(&cat, &found, &dirs) {
