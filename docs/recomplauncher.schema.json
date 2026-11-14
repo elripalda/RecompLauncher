@@ -367,6 +367,78 @@
           "minimum": 1,
           "default": 300,
           "description": "Seconds."
+        },
+        "options": {
+          "type": "array",
+          "description": "Ticks shown on the setup screen before the step runs. Each one adds its args when it's on. For a vendor's SDK your builder downloads, like NVIDIA's DLSS SDK: the player accepts its license by ticking it.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label",
+              "args"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$",
+                "description": "Unique among the options. a-z, 0-9 and _."
+              },
+              "label": {
+                "type": "string",
+                "description": "What the player reads next to the tick."
+              },
+              "note": {
+                "type": "string",
+                "description": "One line under the label."
+              },
+              "args": {
+                "$ref": "#/definitions/args"
+              },
+              "os": {
+                "type": "array",
+                "description": "Shown only on these systems. Every system when left out.",
+                "items": {
+                  "enum": [
+                    "windows",
+                    "linux",
+                    "macos"
+                  ]
+                }
+              },
+              "gpu": {
+                "enum": [
+                  "nvidia",
+                  "amd"
+                ],
+                "description": "Shown only with this brand of graphics card: nvidia means an RTX card, as DLSS needs."
+              },
+              "license": {
+                "type": "object",
+                "description": "What the player accepts by ticking it. With one, the tick starts off.",
+                "required": [
+                  "name",
+                  "url"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string",
+                    "pattern": "^https://",
+                    "description": "Where the player can read it."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "default": {
+                "type": "boolean",
+                "description": "Whether it starts ticked (on when left out). Ignored with a license."
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

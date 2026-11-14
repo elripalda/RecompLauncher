@@ -508,6 +508,42 @@ settings are written. It runs again whenever the player changes their copy.
 - Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
 - Write what you make to the same place your launcher would, so both stay in step.
 
+#### `prepare.options`: ticks for a vendor's SDK
+
+Some builds need a vendor's SDK at build time, like NVIDIA's DLSS SDK: it's not open source, you
+can't ship it, and the shared `nvidia.dlss` input (a file the game loads) isn't enough because the
+renderer is compiled with it. Give `prepare` an option. The setup screen shows it as a tick, and
+when it's on its `args` are added after the step's own:
+
+```json
+"prepare": {
+  "program": ["LongshotBuilder.exe"],
+  "args": ["--cli", "--prepare", "--game", "{game}"],
+  "options": [
+    {
+      "id": "dlss",
+      "label": "NVIDIA DLSS and frame generation",
+      "note": "Downloads NVIDIA's DLSS SDK during the build.",
+      "gpu": "nvidia",
+      "os": ["windows", "linux"],
+      "args": ["--fetch-ngx-sdk", "--accept-nvidia-license"],
+      "license": { "name": "NVIDIA RTX SDKs license", "url": "https://github.com/NVIDIA/DLSS/blob/main/LICENSE.txt" }
+    }
+  ]
+}
+```
+
+- `id` (a-z, 0-9, `_`), `label` and `args` are required. `note` is a line under the label.
+- `os` (`windows`, `linux`, `macos`) and `gpu` (`nvidia`, meaning an RTX card, or `amd`) decide who
+  sees it. Leave them out to show it everywhere.
+- With a `license` (a `name` and an `https` `url`) the tick starts off, and ticking it is the
+  player accepting it. Your args are what pass that on, like `--accept-nvidia-license`: never accept
+  for the player yourself. Without one it starts on, or as `default` says.
+- Your builder gets only these args. The launcher sets no environment variables for it, so keep
+  the SDK in your builder's own folder and put runtime files where the game looks.
+- Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
+  player sees "Its setup step stopped with code N", so put the reason in your own log.
+
 ### `game.dumps`: known good copies
 
 ```json
