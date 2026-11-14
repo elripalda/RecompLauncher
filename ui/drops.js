@@ -19,12 +19,16 @@
     const o = sel.options[sel.selectedIndex];
     return o ? o.textContent : '';
   }
+  // A choice's icon (a console's dot, a system's icon), when the page gives one.
+  const icon = (o) => (o && o.dataset.ico && typeof window.dropIcon === 'function' ? window.dropIcon(o.dataset.ico) : '');
   function sync(sel) {
     const btn = sel.__drop;
     if (!btn) return;
     const txt = label(sel);
     const span = btn.firstElementChild;
-    if (span.textContent !== txt) span.textContent = txt;
+    const ico = icon(sel.options[sel.selectedIndex]);
+    const html = (ico ? `<i class="drop-ico">${ico}</i>` : '') + escH(txt);
+    if (span.innerHTML !== html) span.innerHTML = html;
     btn.disabled = sel.disabled;
     const n = nameOf(sel);
     btn.setAttribute('aria-label', n ? n + ': ' + txt : txt);
@@ -102,7 +106,7 @@
     // A long list gets a search box at the top.
     const long = sel.options.length > 10;
     menu.innerHTML = (long ? `<input class="drop-q" type="search" placeholder="${escH(typeof t === 'function' ? t('Search') : 'Search')}" aria-label="${escH(typeof t === 'function' ? t('Search') : 'Search')}" spellcheck="false">` : '') + [...sel.options].map((o, i) =>
-      `<button type="button" role="option" data-i="${i}" aria-selected="${o.selected}"${o.disabled ? ' disabled' : ''}><span>${escH(o.textContent)}</span>${o.selected ? `<i class="ck">${TICK}</i>` : ''}</button>`).join('');
+      `<button type="button" role="option" data-i="${i}" aria-selected="${o.selected}"${o.disabled ? ' disabled' : ''}>${icon(o) ? `<i class="drop-ico">${icon(o)}</i>` : ''}<span>${escH(o.textContent)}</span>${o.selected ? `<i class="ck">${TICK}</i>` : ''}</button>`).join('');
     document.body.appendChild(menu);
     place(btn, menu);
     open = { sel, btn, menu };

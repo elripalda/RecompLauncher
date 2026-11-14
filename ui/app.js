@@ -82,6 +82,18 @@ const date = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleDa
 const catIcon = (k) => (GENRES[k] ? `<i class="cat-ico" style="--m:url(img/cat/${k}.png)" aria-hidden="true"></i>` : '');
 const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.svg)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
 const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id === id)?.name || id || '';
+// Each console's own colour (the website's), for its dot in lists.
+const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
+  wii: '#4fc3f7', wiiu: '#00a2c7', snes: '#b38cf2', gba: '#6c63ff', gb: '#9bbc0f', ds: '#aab4c2', dc: '#ff8a3d', saturn: '#4f7cff', psp: '#5b6b8c', switch: '#e60012', switch2: '#ff3b47',
+  nes: '#c8102e', gbc: '#f2c12e', '3ds': '#d6262d', vb: '#c4121b', ps5: '#e8edf3', genesis: '#1f6fd1', s32x: '#d4a017', gg: '#3b82c4', arcade: '#ff5fa2', cdi: '#2bb3a3', amiga: '#e5762b', other: '#a7b3c4' };
+// An icon for a list's choice (drops.js asks for it by the option's data-ico): "c:ps2" a console's
+// dot, "os:linux" a system's icon.
+window.dropIcon = (k) => {
+  const [kind, v] = String(k || '').split(':');
+  if (kind === 'c') return `<span class="c-dot" style="--c:${CONSOLE_COLORS[v] || CONSOLE_COLORS.other}"></span>`;
+  if (kind === 'os' && ['windows', 'linux', 'macos'].includes(v)) return osIcon(v);
+  return '';
+};
 const isAI = (a) => !!(a && a.ai);
 // Something the player has to do by hand before the first play, from the game's boot profile.
 // A community server, not the game itself: it starts the server, so its button says so.
@@ -1547,19 +1559,32 @@ function layoutShelves(scope = document) {
 
 // With `ended`, the ended ones the filters would otherwise show (what "Hide ended" took out).
 // With `leftOut`, the recomps those filters match that Linux hides because Proton is off.
+// Discover by game: one tile per game, named for the game, with how many versions it has, and the
+// search looks at games' names only. By recomp (the usual): each game's recomps, by name.
+const byGame = () => ((S.settings.ui || {}).disc_by || '') === 'games';
+function asGame(a) {
+  const g = verGroup(a), name = (g && g.name) || a.game || a.name;
+  return Object.assign({}, a, { name, _game: true, _versions: g ? g.list.length : 1 });
+}
 function discoverList(ended = false, leftOut = false) {
   const f = S.find, q = S.q.trim();
+  const games = byGame();
   const onThisPC = leftOut ? hiddenByProton : forOS;
   let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
-    && (!q || sMatch([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' '), q)));
+    && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name] : [a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
   if (!ended && !leftOut) S.findCount = recompCount(list);
   let out = oneEach(list.sort(soonLast), f.sort === 'new');
+  if (games) {
+    out = out.map(asGame);
+    if (f.sort === 'az') out.sort((x, y) => x.name.localeCompare(y.name));
+    if (!ended && !leftOut) S.findCount = recompCount(out);
+  }
   // Discover's own order (Popular, not picked by the player): turnkey recomps first.
   if (f.sort === 'popular' && !f.picked) out = turnkeyFirst(out);
   // A search also finds the games inside recomps that carry several, after the recomps themselves.
-  if (q && !ended && !leftOut) {
+  if (q && !ended && !leftOut && !games) {
     const kids = [];
     for (const a of visible()) {
       if (!forOS(a) || !keepEnded(a, f)) continue;
@@ -1570,11 +1595,12 @@ function discoverList(ended = false, leftOut = false) {
   return out;
 }
 
-const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class="sel" data-act="runs-sel">${runsList().map(([k, n]) => `<option value="${k}"${runsPick() === k ? ' selected' : ''}>${esc(t(n))}</option>`).join('')}</select></label>`;
+const RUNS_ICO = { windows: 'os:windows', linux: 'os:linux', macos: 'os:macos', proton: 'os:linux', winonly: 'os:windows' };
+const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class="sel" data-act="runs-sel">${runsList().map(([k, n]) => `<option value="${k}"${RUNS_ICO[k] ? ` data-ico="${RUNS_ICO[k]}"` : ''}${runsPick() === k ? ' selected' : ''}>${esc(t(n))}</option>`).join('')}</select></label>`;
 // Discover's controls: on the page, and again in the bar pinned to the top once those scroll away.
 const sortOpts = () => [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
-const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n]) => `<option value="${esc(k)}"${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
-const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name])], f.origin, cls);
+const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n, ico]) => `<option value="${esc(k)}"${ico ? ` data-ico="${esc(ico)}"` : ''}${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
+const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
 const genreSel = (f, genres, cls) => pillSel(t('Genre'), 'genre-sel', [['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])], f.genre, cls);
 const showSel = (f) => pillSel(t('Show'), 'show-sel', showsNow(f.show || '').map(([k, n]) => [k, t(n)]), f.show || '');
 const tagSel = (f) => pillSel(t('Tag'), 'tag-sel', [['', t('Any')], ...allTags().map((k) => [k, k])], f.tag || '');
@@ -1593,9 +1619,10 @@ function pageDiscover() {
   const q = S.q.trim();
   return `<div class="page">${offlineNote()}
     <div class="dhead"><h1>${esc(q ? t('Search') : f.tag ? tf('All recomps with {tag}', { tag: f.tag }) : f.genre ? t(GENRES[f.genre]) : t('Discover'))}</h1><p>${esc(t('Every recomp comes straight from its developer\'s GitHub. You bring your own copy of the game.'))}</p>
-      <label class="bigsearch"><span class="sr">${esc(t('Search recomps'))}</span>${SEARCH}<input id="dq" type="search" placeholder="${esc(t('Search games, recomps or developers'))}" value="${esc(S.q)}" autocomplete="off" spellcheck="false"><button type="button" class="clear" data-act="clear-q" aria-label="${esc(t('Clear the search'))}"${q ? '' : ' hidden'}>${XMARK}</button></label></div>
+      <label class="bigsearch"><span class="sr">${esc(t('Search recomps'))}</span>${SEARCH}<input id="dq" type="search" placeholder="${esc(byGame() ? t('Search games') : t('Search games, recomps or developers'))}" value="${esc(S.q)}" autocomplete="off" spellcheck="false"><button type="button" class="clear" data-act="clear-q" aria-label="${esc(t('Clear the search'))}"${q ? '' : ' hidden'}>${XMARK}</button></label></div>
     ${notesBars()}
     <div class="dctl rows"><div class="grp">
+      <div class="seg big by-seg" role="radiogroup" aria-label="${esc(t('Show'))}">${[['', t('Recomps')], ['games', t('Games')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(byGame() ? 'games' : '') === k}" data-act="disc-by" data-k="${k}">${esc(n)}</button>`).join('')}</div>
       <div class="seg big" role="radiogroup" aria-label="${esc(t('Sort'))}">${sortOpts().map(([k, n]) => `<button type="button" role="radio" aria-checked="${f.sort === k}" data-act="sort" data-k="${k}">${esc(n)}</button>`).join('')}</div>
     </div><div class="grp">
       ${S.os === 'linux' ? runsSel() : ''}${originSel(f)}
@@ -1701,7 +1728,7 @@ function moreDiscover() {
   const from = Math.min(S.dshow || DISCOVER_PAGE, list.length), to = Math.min(from + DISCOVER_PAGE, list.length);
   if (to <= from) return;
   S.dshow = to;
-  grid.insertAdjacentHTML('beforeend', list.slice(from, to).map((a) => tile(a, { quick: true })).join(''));
+  grid.insertAdjacentHTML('beforeend', list.slice(from, to).map(discTile).join(''));
   if (to >= list.length) { const more = $('.more', box); if (more) more.remove(); }
   fitTitles(grid);
   watchMore();
@@ -1719,13 +1746,15 @@ function discoverGrid() {
   const f = S.find, list = discoverList();
   const protonNote = discoverProtonNote();
   // Another search, filter or sort starts again from the first page.
-  const key = JSON.stringify([S.q, S.find, S.settings.hide_ai, runsPick()]);
+  const key = JSON.stringify([S.q, S.find, S.settings.hide_ai, runsPick(), byGame()]);
   if (S.dkey !== key) { S.dkey = key; S.dshow = DISCOVER_PAGE; }
   const shown = Math.min(S.dshow || DISCOVER_PAGE, list.length);
   const endedBox = f.hideEnded ? endedBoxHtml(discoverList(true)) : '';
-  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div>${protonNote}<div class="grid" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map((a) => tile(a, { quick: true })).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
+  return list.length ? `<div class="count-line">${esc(byGame() ? tn(S.findCount || list.length, '1 game', '{n} games') : tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div>${protonNote}<div class="grid${byGame() ? ' by-game' : ''}" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map(discTile).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
     : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p>${protonNote}</div>${endedBox}`;
 }
+// A Discover tile: by game, the game's name with how many versions it has under it.
+const discTile = (a) => tile(a, a._game ? { quick: true, sub: `${LAYERS}<span>${esc(a._versions > 1 ? tn(a._versions, '1 version', '{n} versions') : a.name === a.game ? originName(a.origin) : byId(a.id).name)}</span>` } : { quick: true });
 // Opening "Ended projects" scrolls the page down with it, so the first row is in view. The box is still
 // growing, so a single smooth scroll would stop at the page's old end: this follows it frame by frame
 // until it has settled, and gives up the moment the player scrolls or presses anything themselves.
@@ -1809,7 +1838,7 @@ function pageLibrary() {
   const nf = favs().length;
   // Consoles the player's games are from: a filter once there's more than one.
   const origins = [...new Set(Object.values(S.library).map((g) => (byId(g.id) || {}).origin).filter(Boolean))];
-  const consoleSel = origins.length > 1 ? `<label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="liborigin">${[['', t('Any')], ...origins.map((o) => [o, originName(o)])].map(([k, nm]) => `<option value="${esc(k)}"${(S.lib.origin || '') === k ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>` : '';
+  const consoleSel = origins.length > 1 ? `<label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="liborigin">${[['', t('Any')], ...origins.map((o) => [o, originName(o)])].map(([k, nm]) => `<option value="${esc(k)}"${k ? ` data-ico="c:${esc(k)}"` : ''}${(S.lib.origin || '') === k ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>` : '';
   return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one for versions, launch options and more.', '{n} games. Right-click one for versions, launch options and more.'))}</p></div>
       <div class="dctl"><label class="smallsearch"><span class="sr">${esc(t('Search your games'))}</span>${SEARCH.replace('width="20" height="20"', 'width="16" height="16"')}<input id="lq" type="search" placeholder="${esc(t('Search your games'))}" value="${esc(S.lq)}" autocomplete="off" spellcheck="false"></label>
       <button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button>
@@ -7188,6 +7217,13 @@ async function act(el, e) {
     case 'slide-step': return showSlide((S.slide || 0) + Number(el.dataset.d));
     case 'shelf': { const sh = el.closest('.shelf'); S.shelf[sh.dataset.shelf] = (S.shelf[sh.dataset.shelf] || 0) + Number(el.dataset.d); return layoutShelves(sh.parentElement); }
     case 'sort': S.find.sort = el.dataset.k; S.find.picked = true; return updateDiscover();
+    case 'disc-by': {
+      const k = el.dataset.k || '';
+      for (const b of $$('[data-act="disc-by"]')) b.setAttribute('aria-checked', String((b.dataset.k || '') === k));
+      await saveUi({ disc_by: k }, true);
+      for (const q of $$('#dq, #dqs')) q.placeholder = byGame() ? t('Search games') : t('Search games, recomps or developers');
+      return updateDiscover();
+    }
     case 'clear-q': { S.q = ''; const top = el.closest('#dstick'); for (const id of ['dq', 'dqs']) { const q = $('#' + id); if (q) q.value = ''; } const q = $(top ? '#dqs' : '#dq'); if (q) q.focus(); return refreshList('dq'); }
     case 'ds-more': return stickPanel();
     case 'pin': { const p = (S.settings.ui || {}).pins || []; const on = p.includes(id); await saveUi({ pins: on ? p.filter((x) => x !== id) : [...p, id] }); return toast(on ? t('Unpinned.') : t('Pinned to the sidebar.')); }

@@ -147,6 +147,11 @@ body.isl-on main::after{content:'';display:block;height:84px}
 .dropmenu button{justify-content:space-between;gap:16px}
 .dropmenu button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dropmenu button:hover,.dropmenu button.hot{background:var(--fill3)}
+.dropmenu button .drop-ico+span{flex:1;text-align:left}
+.drop-ico{flex:none;display:inline-grid;place-items:center;width:18px;color:var(--ink)}
+.drop>span .drop-ico{display:inline-grid;vertical-align:-3px;margin-right:8px}
+.drop-ico .os-ico{width:15px;height:15px}
+.c-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 22%,transparent)}
 .dropmenu button[aria-selected="true"]{color:var(--ink)}
 .dropmenu button:not([aria-selected="true"]){color:var(--dim2,var(--dim))}
 .dropmenu button:hover,.dropmenu button.hot,.dropmenu button:focus-visible{color:var(--ink)}
@@ -313,6 +318,9 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .dctl{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px}
 /* Discover: sorting and pickers on one row, the switches on the next. */
 .dctl.rows{flex-direction:column;flex-wrap:nowrap}
+/* A wide window: the groups sit side by side, filling the width, instead of stacking up. */
+@media (min-width:1500px){.dctl.rows{flex-direction:row;flex-wrap:wrap;column-gap:22px;row-gap:12px}.dctl.rows>.grp{flex:0 1 auto}}
+.by-seg{flex:none}
 .smallsearch{position:relative;width:240px}
 .smallsearch input{width:100%;height:42px;border-radius:21px;border:1px solid var(--line2);background:var(--card);padding:0 16px 0 42px;color:var(--ink);font:500 14px Figtree,sans-serif;outline:0;transition:border-color .2s}
 .smallsearch input:focus{border-color:rgba(52,242,232,.5)}

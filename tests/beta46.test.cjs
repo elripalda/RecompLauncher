@@ -53,3 +53,17 @@ test('a build that went missing opens Easy Setup with a note', () => {
   assert.match(app, /\^NEED_BUILD\\\|/);
   assert.match(app, /byhandoff: \[N_\('Use the Launcher\\'s Way'\)/);
 });
+
+test('Discover can list games instead of recomps', () => {
+  assert.match(app, /const byGame = \(\) => \(\(S\.settings\.ui \|\| \{\}\)\.disc_by \|\| ''\) === 'games';/);
+  assert.match(app, /data-act="disc-by"/);
+  // A game's tiles are drawn again when the view changes, not kept from the other view.
+  assert.match(app, /<div class="grid\$\{byGame\(\) \? ' by-game' : ''\}"/);
+});
+
+test("Discover's lists show each console's dot and each system's icon", () => {
+  assert.match(app, /window\.dropIcon = \(k\) =>/);
+  assert.match(app, /\[o\.id, o\.name, 'c:' \+ o\.id\]/);
+  assert.match(read('drops.js'), /o\.dataset\.ico/);
+  assert.match(read('app.css'), /@media \(min-width:1500px\)\{\.dctl\.rows\{flex-direction:row/);
+});
