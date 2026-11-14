@@ -228,6 +228,10 @@ pub fn copy_id(p: &Path) -> Option<String> {
     if !p.is_file() {
         return None;
     }
+    // A .cue, .gdi or .m3u: the disc's ID is on its first data track that has one.
+    if let Some(set) = folded(p) {
+        return set.data.iter().find_map(|t| copy_id(t));
+    }
     let mut f = fs::File::open(p).ok()?;
     let mut head = [0u8; 0x60];
     read_at(&mut f, 0, &mut head).ok()?;
@@ -473,10 +477,9 @@ pub fn folder_kind(p: &Path) -> &'static str {
     ""
 }
 
-/// A disc image's console: what's inside it says, and where it says one of two, the folder it's in
-/// picks (an Xbox disc in a folder named "Xbox 360").
-fn disc_system(p: &Path, ext: &str) -> &'static str {
-    let inside = if ext == "iso" { disc_kind(p) } else { "" };
+/// A disc image's console: what's inside it says (`inside`, from `disc_kind`), and where it says
+/// one of two, or nothing, the folder it's in picks (an Xbox disc in a folder named "Xbox 360").
+fn disc_system(p: &Path, inside: &'static str) -> &'static str {
     let folder = folder_kind(p);
     match inside {
         "" => folder,
@@ -484,6 +487,209 @@ fn disc_system(p: &Path, ext: &str) -> &'static str {
         "playstation" if matches!(folder, "ps1" | "ps2") => folder,
         k => k,
     }
+}
+
+/// A disc kept as several files has a small text sheet that lists them: a .cue and its .bin
+/// tracks (PlayStation, Saturn), a .gdi and its tracks (Dreamcast), or an .m3u playlist naming
+/// each disc of a set. The sheet stands for the whole disc or set, so it's found once.
+const SHEET: [&str; 3] = ["cue", "gdi", "m3u"];
+
+/// Real sheets are a few KB; a big file with one of these names isn't a sheet and isn't read.
+const MAX_SHEET: u64 = 64 * 1024;
+
+/// What a sheet stands for: every file it folds in (so none is listed again on its own), and the
+/// data tracks, in disc order, that say which console it's for.
+#[derive(Default)]
+struct Folded {
+    files: Vec<PathBuf>,
+    data: Vec<PathBuf>,
+}
+
+impl Folded {
+    /// The disc's or set's size: its tracks and disc images, not the sheets in it. A file named
+    /// twice counts once.
+    fn size(&self) -> u64 {
+        let mut counted = std::collections::HashSet::new();
+        let mut total = 0;
+        for f in &self.files {
+            if is_sheet(f) || !counted.insert(f) {
+                continue;
+            }
+            total += fs::metadata(f).map(|m| m.len()).unwrap_or(0);
+        }
+        total
+    }
+}
+
+fn ext_of(p: &Path) -> String {
+    p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
+}
+
+fn is_sheet(p: &Path) -> bool {
+    SHEET.contains(&ext_of(p).as_str())
+}
+
+fn read_sheet(p: &Path) -> Option<String> {
+    let mut b = Vec::new();
+    fs::File::open(p).ok()?.take(MAX_SHEET + 1).read_to_end(&mut b).ok()?;
+    if b.len() as u64 > MAX_SHEET {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&b).into_owned())
+}
+
+/// A file a sheet names, found next to the sheet. Sheets made on Windows use backslashes and
+/// often another case than the files have on disk, so both are allowed for. None when it's missing.
+fn sheet_file(sheet: &Path, name: &str) -> Option<PathBuf> {
+    let name = name.trim().replace('\\', "/");
+    if name.is_empty() {
+        return None;
+    }
+    let given = Path::new(&name);
+    if given.is_absolute() {
+        return given.is_file().then(|| given.to_path_buf());
+    }
+    let path = game_path(sheet.parent()?, &name)?;
+    path.is_file().then_some(path)
+}
+
+/// The name in a line's quotes (`FILE "Game (Track 1).bin" BINARY`), or else its first word.
+fn quoted_or_first(rest: &str) -> Option<&str> {
+    let rest = rest.trim();
+    if let Some(q) = rest.strip_prefix('"') {
+        return q.split('"').next();
+    }
+    rest.split_whitespace().next()
+}
+
+/// A .cue's tracks: each FILE line names a file, and the TRACK lines under it say whether it holds
+/// data ("MODE2/2352") or music ("AUDIO").
+fn cue_folded(sheet: &Path, text: &str) -> Folded {
+    let mut out = Folded::default();
+    // The file the TRACK lines that follow belong to; None while it's missing.
+    let mut current: Option<PathBuf> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        let upper = line.to_ascii_uppercase();
+        if upper.starts_with("FILE ") {
+            current = quoted_or_first(&line[5..]).and_then(|n| sheet_file(sheet, n));
+            out.files.extend(current.clone());
+            continue;
+        }
+        if !upper.starts_with("TRACK ") || upper.ends_with("AUDIO") {
+            continue;
+        }
+        let Some(file) = &current else { continue };
+        if !out.data.contains(file) {
+            out.data.push(file.clone());
+        }
+    }
+    out
+}
+
+/// A .gdi's tracks: after the count, one line each, "number start type sector-size file offset",
+/// where type 4 is data and 0 is music. The file's name may be quoted when it has spaces.
+fn gdi_folded(sheet: &Path, text: &str) -> Folded {
+    let mut out = Folded::default();
+    for line in text.lines().skip(1) {
+        let Some((kind, name)) = gdi_line(line) else { continue };
+        let Some(file) = sheet_file(sheet, name) else { continue };
+        if kind == "4" {
+            out.data.push(file.clone());
+        }
+        out.files.push(file);
+    }
+    out
+}
+
+/// A .gdi track line's type and file name.
+fn gdi_line(line: &str) -> Option<(&str, &str)> {
+    let mut fields = line.split_whitespace();
+    let kind = fields.nth(2)?;
+    // The name starts after the fourth field; it may have spaces in it, so the rest is kept whole.
+    let mut rest = line.trim_start();
+    for _ in 0..4 {
+        rest = rest.split_once(char::is_whitespace)?.1.trim_start();
+    }
+    Some((kind, quoted_or_first(rest)?))
+}
+
+/// An .m3u's discs, in the order it lists them (lines starting with # are comments). A disc that
+/// is a .cue or .gdi brings its tracks along. A playlist inside a playlist isn't followed, so one
+/// that names itself can't go round in circles.
+fn m3u_folded(sheet: &Path, text: &str) -> Folded {
+    let mut out = Folded::default();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some(disc) = sheet_file(sheet, line) else { continue };
+        let ext = ext_of(&disc);
+        if ext == "m3u" {
+            continue;
+        }
+        out.files.push(disc.clone());
+        let tracks = if ext == "cue" || ext == "gdi" { folded(&disc) } else { None };
+        match tracks {
+            Some(t) => {
+                out.files.extend(t.files);
+                out.data.extend(t.data);
+            }
+            None => out.data.push(disc),
+        }
+    }
+    out
+}
+
+/// What a .cue, .gdi or .m3u folds in. None for any other file, or a sheet too big to be one.
+fn folded(p: &Path) -> Option<Folded> {
+    let ext = ext_of(p);
+    if !SHEET.contains(&ext.as_str()) {
+        return None;
+    }
+    let text = read_sheet(p)?;
+    match ext.as_str() {
+        "cue" => Some(cue_folded(p, &text)),
+        "gdi" => Some(gdi_folded(p, &text)),
+        _ => Some(m3u_folded(p, &text)),
+    }
+}
+
+/// A sheet found as one copy. Its console is read from its data tracks like an .iso's (a raw
+/// 2352-byte track works too), its size is its tracks' (only the sheet's own when they're missing,
+/// so a stray sheet doesn't look like a whole disc). It's kept even with tracks missing, so the
+/// player sees the copy and can fix it.
+fn identify_sheet(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let own = size()?;
+    let set = folded(p)?;
+    let tracks = set.size();
+    let size = if tracks > 0 { tracks } else { own };
+    let inside = set.data.iter().map(|t| disc_kind(t)).find(|k| !k.is_empty()).unwrap_or("");
+    let mut system = disc_system(p, inside);
+    // GD-ROM dumps are the Dreamcast's (and NAOMI's, an arcade board any arcade recomp takes).
+    if system.is_empty() && ext_of(p) == "gdi" {
+        system = "dc";
+    }
+    let title = p.file_stem()?.to_str()?.to_string();
+    Some(RomFile { path: p.to_path_buf(), system: system.into(), title, region: String::new(), size })
+}
+
+/// Takes out the files a found sheet already stands for: a .cue listed in an .m3u, or a disc image
+/// a .cue names. Paths are compared as the file system resolves them, since a sheet may name a
+/// file through another case or a "..".
+pub fn fold_sets(found: Vec<RomFile>) -> Vec<RomFile> {
+    let key = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let inside: std::collections::HashSet<PathBuf> = found.iter().filter_map(|r| folded(&r.path)).flat_map(|s| s.files).map(|f| key(&f)).collect();
+    if inside.is_empty() {
+        return found;
+    }
+    // Only disc images and sheets can be in a set: other files aren't looked up.
+    let could_be_in_one = |p: &Path| {
+        let ext = ext_of(p);
+        DISC.contains(&ext.as_str()) || SHEET.contains(&ext.as_str())
+    };
+    found.into_iter().filter(|r| !could_be_in_one(&r.path) || !inside.contains(&key(&r.path))).collect()
 }
 
 /// Consoles whose games come on cartridges (or as cartridge files): a disc image is never one of theirs.
@@ -510,7 +716,7 @@ fn fits(rom: &RomFile, origin: &str) -> bool {
         rom.system.as_str()
     } else {
         match system_for(&ext) {
-            "" if DISC.contains(&ext.as_str()) => folder_kind(&rom.path),
+            "" if DISC.contains(&ext.as_str()) || SHEET.contains(&ext.as_str()) => folder_kind(&rom.path),
             s => s,
         }
     };
@@ -524,8 +730,8 @@ fn fits(rom: &RomFile, origin: &str) -> bool {
     }
 }
 
-/// One file: a ROM, a disc image, an Xbox 360 game's default.xex (which stands for its folder), or
-/// an Xbox 360 title update or DLC package.
+/// One file: a ROM, a disc image (or the .cue, .gdi or .m3u that stands for one or a set), an Xbox
+/// 360 game's default.xex (which stands for its folder), or an Xbox 360 title update or DLC package.
 pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
     identify_with_size(p, || Some(size))
 }
@@ -541,6 +747,9 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
     if ext == "pkg" {
         return identify_ps3_pkg(p, size);
     }
+    if SHEET.contains(&ext.as_str()) {
+        return identify_sheet(p, size);
+    }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
     let is_cart = CART.contains(&ext.as_str());
@@ -555,8 +764,9 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
     } else if is_disc && size > 50 * 1024 * 1024 {
         // A disc image's file type rarely says its console (an .iso is any of them): what's inside
         // it, or the folder it's kept in, does.
+        let inside = if ext == "iso" { disc_kind(p) } else { "" };
         let system = match system_for(&ext) {
-            "" => disc_system(p, &ext),
+            "" => disc_system(p, inside),
             s => s,
         };
         Some(RomFile { path: p.to_path_buf(), system: system.into(), title: stem, region: String::new(), size })
@@ -808,7 +1018,7 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
             }
         }
     }
-    out
+    fold_sets(out)
 }
 
 /// The words in a name, lower case, with the noise taken out: "Zelda - Majora's Mask (USA).z64"
@@ -1603,6 +1813,184 @@ mod tests {
         ps4[..4].copy_from_slice(b"\x7FCNT");
         fs::write(d.join("Some Game.pkg"), ps4).unwrap();
         assert!(scan(&[d.clone()]).is_empty());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// A raw (2352-byte sector) PlayStation data track: ISO 9660 saying PLAYSTATION, with a
+    /// SYSTEM.CNF whose BOOT line names SLUS_000.67.
+    fn raw_ps1_track() -> Vec<u8> {
+        let sector = |n: usize| n * 2352 + 24;
+        let mut b = vec![0u8; 24 * 2352];
+        let pvd = sector(16);
+        b[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
+        b[pvd + 8..pvd + 19].copy_from_slice(b"PLAYSTATION");
+        b[pvd + 158..pvd + 162].copy_from_slice(&20u32.to_le_bytes());
+        b[pvd + 166..pvd + 170].copy_from_slice(&2048u32.to_le_bytes());
+        let dir = sector(20);
+        b[dir] = 46;
+        b[dir + 2..dir + 6].copy_from_slice(&22u32.to_le_bytes());
+        b[dir + 32] = 12;
+        b[dir + 33..dir + 45].copy_from_slice(b"SYSTEM.CNF;1");
+        let cnf = sector(22);
+        let text = b"BOOT = cdrom:\\SLUS_000.67;1\r\n";
+        b[cnf..cnf + text.len()].copy_from_slice(text);
+        b
+    }
+
+    /// A raw track whose first sector carries a Sega header after its 16-byte sync and address.
+    fn raw_sega_track(magic: &[u8]) -> Vec<u8> {
+        let mut b = vec![0u8; 4 * 2352];
+        b[0x10..0x10 + magic.len()].copy_from_slice(magic);
+        b
+    }
+
+    /// A .cue for one data track and, when given, one music track.
+    fn cue(data: &str, audio: Option<&str>) -> String {
+        let mut s = format!("FILE \"{data}\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n");
+        if let Some(a) = audio {
+            s += &format!("FILE \"{a}\" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n");
+        }
+        s
+    }
+
+    #[test]
+    fn a_cue_with_two_bin_tracks_is_one_copy_of_their_size() {
+        let d = tmp("cue-two");
+        fs::write(d.join("Game (Track 1).bin"), raw_ps1_track()).unwrap();
+        fs::write(d.join("Game (Track 2).bin"), vec![0u8; 1000]).unwrap();
+        fs::write(d.join("Game.cue"), cue("Game (Track 1).bin", Some("Game (Track 2).bin"))).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, d.join("Game.cue"));
+        assert_eq!(found[0].size, 24 * 2352 + 1000);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cues_bin_tracks_are_not_listed() {
+        let d = tmp("cue-bins");
+        fs::write(d.join("Game (Track 1).bin"), raw_ps1_track()).unwrap();
+        fs::write(d.join("Game (Track 2).bin"), vec![0u8; 1000]).unwrap();
+        fs::write(d.join("Game.cue"), cue("Game (Track 1).bin", Some("Game (Track 2).bin"))).unwrap();
+        let found = scan(&[d.clone()]);
+        assert!(found.iter().all(|r| ext_of(&r.path) != "bin"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_disc_image_a_cue_names_is_not_listed_again() {
+        let d = tmp("cue-iso");
+        // Big enough to be found on its own as a disc image; only its length matters here.
+        fs::File::create(d.join("Game.iso")).unwrap().set_len(60 * 1024 * 1024).unwrap();
+        fs::write(d.join("Game.cue"), "FILE \"Game.iso\" BINARY\n  TRACK 01 MODE1/2048\n").unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, d.join("Game.cue"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_saturn_and_a_ps1_raw_track_are_told_apart() {
+        let d = tmp("cue-consoles");
+        fs::write(d.join("ps1.bin"), raw_ps1_track()).unwrap();
+        fs::write(d.join("saturn.bin"), raw_sega_track(b"SEGA SEGASATURN")).unwrap();
+        fs::write(d.join("PS1 Game.cue"), cue("ps1.bin", None)).unwrap();
+        fs::write(d.join("Saturn Game.cue"), cue("saturn.bin", None)).unwrap();
+        let mut found: Vec<(String, String)> = scan(&[d.clone()]).into_iter().map(|r| (r.title, r.system)).collect();
+        found.sort();
+        assert_eq!(found, vec![("PS1 Game".to_string(), "ps1".to_string()), ("Saturn Game".to_string(), "saturn".to_string())]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cue_gives_its_data_tracks_disc_id() {
+        let d = tmp("cue-id");
+        fs::write(d.join("track.bin"), raw_ps1_track()).unwrap();
+        fs::write(d.join("Game.cue"), cue("track.bin", None)).unwrap();
+        assert_eq!(copy_id(&d.join("Game.cue")).as_deref(), Some("SLUS00067"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cue_finds_its_tracks_in_another_case_and_with_backslashes() {
+        let d = tmp("cue-case");
+        fs::create_dir_all(d.join("tracks")).unwrap();
+        fs::write(d.join("tracks/game.bin"), raw_ps1_track()).unwrap();
+        fs::write(d.join("Game.cue"), cue("Tracks\\GAME.BIN", None)).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].size, 24 * 2352);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cue_with_a_missing_track_is_still_found() {
+        let d = tmp("cue-missing");
+        let sheet = cue("Game (Track 1).bin", None);
+        fs::write(d.join("Game.cue"), &sheet).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].size, sheet.len() as u64);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_gdi_set_is_one_dreamcast_copy() {
+        let d = tmp("gdi");
+        fs::write(d.join("track01.bin"), vec![0u8; 2352]).unwrap();
+        fs::write(d.join("track02.raw"), vec![0u8; 3000]).unwrap();
+        fs::write(d.join("track 03.bin"), raw_sega_track(b"SEGA SEGAKATANA")).unwrap();
+        let sheet = "3\n1 0 4 2352 track01.bin 0\n2 756 0 2352 track02.raw 0\n3 45000 4 2352 \"track 03.bin\" 0\n";
+        fs::write(d.join("Game.gdi"), sheet).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].path.clone(), found[0].system.as_str()), (d.join("Game.gdi"), "dc"));
+        assert_eq!(found[0].size, 2352 + 3000 + 4 * 2352);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// Three discs, each a .cue with one raw PlayStation track, and an .m3u listing them.
+    fn three_disc_set(d: &Path) {
+        for n in 1..=3 {
+            fs::write(d.join(format!("Game (Disc {n}).bin")), raw_ps1_track()).unwrap();
+            fs::write(d.join(format!("Game (Disc {n}).cue")), cue(&format!("Game (Disc {n}).bin"), None)).unwrap();
+        }
+        fs::write(d.join("Game.m3u"), "#EXTM3U\nGame (Disc 1).cue\nGame (Disc 2).cue\nGame (Disc 3).cue\n").unwrap();
+    }
+
+    #[test]
+    fn an_m3u_of_three_discs_is_one_copy() {
+        let d = tmp("m3u");
+        three_disc_set(&d);
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].path.clone(), found[0].system.as_str()), (d.join("Game.m3u"), "ps1"));
+        assert_eq!(found[0].size, 3 * 24 * 2352);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_m3u_keeps_its_disc_order() {
+        let d = tmp("m3u-order");
+        for name in ["a.bin", "b.bin"] {
+            fs::write(d.join(name), raw_ps1_track()).unwrap();
+        }
+        fs::write(d.join("a.cue"), cue("a.bin", None)).unwrap();
+        fs::write(d.join("b.cue"), cue("b.bin", None)).unwrap();
+        fs::write(d.join("Game.m3u"), "b.cue\na.cue\n").unwrap();
+        let set = folded(&d.join("Game.m3u")).unwrap();
+        assert_eq!(set.data, vec![d.join("b.bin"), d.join("a.bin")]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cue_is_matched_to_its_game() {
+        let d = tmp("cue-match");
+        fs::write(d.join("track.bin"), raw_ps1_track()).unwrap();
+        fs::write(d.join("Some Game (USA).cue"), cue("track.bin", None)).unwrap();
+        let cat = serde_json::json!({ "apps": [{ "id": "some", "game": "Some Game", "origin": "ps1" }] });
+        let found = scan(&[d.clone()]);
+        assert_eq!(match_catalog(&cat, &found).get("some").map(|r| r.path.clone()), Some(d.join("Some Game (USA).cue")));
         let _ = fs::remove_dir_all(&d);
     }
 
