@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "{n} gra jest już w twojej Bibliotece.|{n} gry są już w twojej Bibliotece.|{n} gier jest już w twojej Bibliotece.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} gra jest już w twojej Bibliotece. Zainstaluj ją, kiedy chcesz.|{n} gry są już w twojej Bibliotece. Zainstaluj je, kiedy chcesz.|{n} gier jest już w twojej Bibliotece. Zainstaluj je, kiedy chcesz.",
  "{n} games it found are already in your Library.": "{n} znaleziona gra jest już w twojej Bibliotece.|{n} znalezione gry są już w twojej Bibliotece.|{n} znalezionych gier jest już w twojej Bibliotece.",
- "1 more version only has a Windows build. Turn on Proton to see it.": "Jeszcze 1 wersja ma tylko kompilację na Windows. Włącz Protona, aby ją zobaczyć.",
  "Download It": "Pobierz",
  "Issues": "Zgłoszenia",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "Nie może się podmienić w {folder}, bo to konto nie może zmieniać tego folderu. Przenieś RecompLauncher do własnego folderu, np. Aplikacje w folderze domowym, albo pobierz nową wersję i używaj jej.",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "Aktualizacja RecompLauncher jest za duża. Spróbuj ponownie później.",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "Ta aktualizacja dla systemu Linux nie ma zaufanego pobierania AppImage przez HTTPS. Spróbuj ponownie później.",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Ta aktualizacja dla systemu Linux nie ma jeszcze opublikowanej poprawnej sumy kontrolnej. Spróbuj ponownie później.",
- "Turn On Proton": "Włącz Protona",
  "View on {host}": "Zobacz na {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "Jeszcze {n} wersja ma tylko kompilację na Windows. Włącz Protona, aby ją zobaczyć.|Jeszcze {n} wersje mają tylko kompilację na Windows. Włącz Protona, aby je zobaczyć.|Jeszcze {n} wersji ma tylko kompilację na Windows. Włącz Protona, aby je zobaczyć.",
  "Add a Recomp": "Dodaj recomp",
  "The recomplauncher.json in its project": "Plik recomplauncher.json w jego projekcie",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "Nie udało się odczytać tego projektu. Sprawdź link albo upewnij się, że ma wydanie z Twoimi buildami.",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "Jak w języku ({time})",
  "12-hour ({time})": "12-godzinny ({time})",
  "24-hour ({time})": "24-godzinny ({time})",
- "Auto follows the language": "Auto: zgodnie z językiem"
+ "Auto follows the language": "Auto: zgodnie z językiem",
+ "1 more version is Windows-only and hidden because Proton is off.": "Jeszcze 1 wersja jest tylko na Windows i jest ukryta, bo Proton jest wyłączony.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "Jeszcze {n} wersja jest tylko na Windows i jest ukryta, bo Proton jest wyłączony.|Jeszcze {n} wersje są tylko na Windows i są ukryte, bo Proton jest wyłączony.|Jeszcze {n} wersji jest tylko na Windows i jest ukrytych, bo Proton jest wyłączony.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 port tylko na Windows jest ukryty, bo Proton jest wyłączony.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} port tylko na Windows jest ukryty, bo Proton jest wyłączony.|{n} porty tylko na Windows są ukryte, bo Proton jest wyłączony.|{n} portów tylko na Windows jest ukrytych, bo Proton jest wyłączony.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Gdy ta opcja jest wyłączona, te recompy nie pojawiają się w Odkrywaj, w wyszukiwarce ani na stronach gier."
 }

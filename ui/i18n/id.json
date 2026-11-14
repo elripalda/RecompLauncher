@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "{n} game sekarang ada di Pustaka-mu.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} game sekarang ada di Pustaka-mu. Pasang kapan saja kamu mau.",
  "{n} games it found are already in your Library.": "{n} game yang ditemukan sudah ada di Pustaka-mu.",
- "1 more version only has a Windows build. Turn on Proton to see it.": "1 versi lagi hanya punya build Windows. Nyalakan Proton untuk melihatnya.",
  "Download It": "Unduh",
  "Issues": "Issues",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "Ia tidak bisa mengganti dirinya di {folder}, karena akun ini tidak boleh mengubah folder itu. Pindahkan RecompLauncher ke folder milikmu, seperti Aplikasi di folder home-mu, atau unduh versi baru dan pakai yang itu.",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "Pembaruan RecompLauncher terlalu besar. Coba lagi nanti.",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "Pembaruan Linux ini tidak punya unduhan AppImage HTTPS yang tepercaya. Coba lagi nanti.",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Pembaruan Linux ini belum menerbitkan checksum yang valid. Coba lagi nanti.",
- "Turn On Proton": "Nyalakan Proton",
  "View on {host}": "Lihat di {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "{n} versi lagi hanya punya build Windows. Nyalakan Proton untuk melihatnya.",
  "Add a Recomp": "Tambah Recomp",
  "The recomplauncher.json in its project": "recomplauncher.json di proyeknya",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "Kami tidak bisa membaca proyek itu. Periksa link-nya, atau pastikan proyek itu punya rilis dengan build untukmu.",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "Sama dengan bahasa ({time})",
  "12-hour ({time})": "12 jam ({time})",
  "24-hour ({time})": "24 jam ({time})",
- "Auto follows the language": "Otomatis mengikuti bahasa"
+ "Auto follows the language": "Otomatis mengikuti bahasa",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 versi lagi hanya untuk Windows dan disembunyikan karena Proton mati.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} versi lagi hanya untuk Windows dan disembunyikan karena Proton mati.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 recomp khusus Windows disembunyikan karena Proton mati.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} recomp khusus Windows disembunyikan karena Proton mati.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Saat ini mati, recomp tersebut tidak muncul di Jelajahi, pencarian, dan halaman game."
 }

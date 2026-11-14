@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "ตอนนี้มี {n} เกมอยู่ในคลังของคุณแล้ว",
  "{n} games are in your Library now. Install them whenever you like.": "ตอนนี้มี {n} เกมอยู่ในคลังของคุณแล้ว ติดตั้งเมื่อไหร่ก็ได้",
  "{n} games it found are already in your Library.": "เกมที่พบ {n} เกมอยู่ในคลังของคุณแล้ว",
- "1 more version only has a Windows build. Turn on Proton to see it.": "อีก 1 เวอร์ชันมีเฉพาะบิลด์สำหรับ Windows เปิด Proton เพื่อดู",
  "Download It": "ดาวน์โหลด",
  "Issues": "ปัญหา",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "แทนที่ตัวเองใน {folder} ไม่ได้ เพราะบัญชีนี้แก้ไขโฟลเดอร์นั้นไม่ได้ ย้าย RecompLauncher ไปไว้ในโฟลเดอร์ของคุณเอง เช่น แอปพลิเคชัน ในโฟลเดอร์หลักของคุณ หรือดาวน์โหลดเวอร์ชันใหม่แล้วใช้ตัวนั้น",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "อัปเดต RecompLauncher ใหญ่เกินไป ลองอีกครั้งในภายหลัง",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "อัปเดต Linux นี้ไม่มีลิงก์ดาวน์โหลด AppImage ผ่าน HTTPS ที่เชื่อถือได้ ลองอีกครั้งในภายหลัง",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "อัปเดต Linux นี้ยังไม่ได้เผยแพร่ checksum ที่ถูกต้อง ลองอีกครั้งในภายหลัง",
- "Turn On Proton": "เปิด Proton",
  "View on {host}": "ดูบน {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "อีก {n} เวอร์ชันมีเฉพาะบิลด์สำหรับ Windows เปิด Proton เพื่อดู",
  "Add a Recomp": "เพิ่ม Recomp",
  "The recomplauncher.json in its project": "ไฟล์ recomplauncher.json ในโปรเจกต์",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "เราอ่านโปรเจกต์นั้นไม่ได้ ตรวจสอบลิงก์ หรือดูให้แน่ใจว่ามีรุ่นที่เผยแพร่ซึ่งมีบิลด์สำหรับคุณ",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "เหมือนกับภาษา ({time})",
  "12-hour ({time})": "12 ชั่วโมง ({time})",
  "24-hour ({time})": "24 ชั่วโมง ({time})",
- "Auto follows the language": "อัตโนมัติจะเป็นไปตามภาษา"
+ "Auto follows the language": "อัตโนมัติจะเป็นไปตามภาษา",
+ "1 more version is Windows-only and hidden because Proton is off.": "อีก 1 เวอร์ชันมีแค่สำหรับ Windows และถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "อีก {n} เวอร์ชันมีแค่สำหรับ Windows และถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "1 Windows-only recomp is hidden because Proton is off.": "Recomp สำหรับ Windows อย่างเดียว 1 รายการถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Recomp สำหรับ Windows อย่างเดียว {n} รายการถูกซ่อนไว้เพราะ Proton ปิดอยู่",
+ "With this off, those recomps are left out of Discover, search and game pages.": "เมื่อปิดตัวเลือกนี้ Recomp เหล่านั้นจะไม่แสดงในหน้าค้นพบ การค้นหา และหน้าเกม"
 }

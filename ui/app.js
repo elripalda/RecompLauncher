@@ -687,6 +687,17 @@ const forOS = (a) => (a.systems || []).includes(S.os) || !!(a.assets && a.assets
 const viaProton = (a) => S.os === 'linux' && !!S.settings.proton && ((a.systems || []).includes('windows') || !!(a.assets && a.assets.windows));
 // A Windows build to fall back on (through Proton on Linux).
 const hasWindowsBuild = (a) => (a.systems || []).includes('windows') || !!(a.assets && a.assets.windows);
+// A Windows-only recomp that Linux leaves out of every list only because Proton is off.
+const hiddenByProton = (a) => S.os === 'linux' && !S.settings.proton && !forOS(a) && hasWindowsBuild(a);
+// The other versions of this game that Linux leaves out of every list only because Proton is off.
+// Without a word about them, a game looks like it has fewer versions here than on another PC.
+function protonHidden(a) {
+  if (S.os !== 'linux' || S.settings.proton) return [];
+  const g = a && a.title ? index().titles.get(a.title) : null;
+  if (!g) return [];
+  const left = (v) => !v.soon && hiddenByProton(v) && !S.library[v.id] && !isHidden(v.id) && !(S.settings.hide_ai && isAI(v));
+  return g.every.filter(left);
+}
 // Linux, Proton off (or none on this PC): turned on, with GE-Proton first when nothing can run
 // Windows programs yet. Then the recomp can be added and installed like any other.
 async function useProton(id) {
@@ -1487,18 +1498,20 @@ function layoutShelves(scope = document) {
 }
 
 // With `ended`, the ended ones the filters would otherwise show (what "Hide ended" took out).
-function discoverList(ended = false) {
+// With `leftOut`, the recomps those filters match that Linux hides because Proton is off.
+function discoverList(ended = false, leftOut = false) {
   const f = S.find, q = S.q.trim();
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && forOS(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
+  const onThisPC = leftOut ? hiddenByProton : forOS;
+  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
     && (!q || sMatch([a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)].join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
-  if (!ended) S.findCount = recompCount(list);
+  if (!ended && !leftOut) S.findCount = recompCount(list);
   let out = oneEach(list.sort(soonLast), f.sort === 'new');
   // Discover's own order (Popular, not picked by the player): turnkey recomps first.
   if (f.sort === 'popular' && !f.picked) out = turnkeyFirst(out);
   // A search also finds the games inside recomps that carry several, after the recomps themselves.
-  if (q && !ended) {
+  if (q && !ended && !leftOut) {
     const kids = [];
     for (const a of visible()) {
       if (!forOS(a) || !keepEnded(a, f)) continue;
@@ -1645,15 +1658,25 @@ function moreDiscover() {
   fitTitles(grid);
   watchMore();
 }
+// Under Discover's count: how many recomps the search and filters match that this Linux PC hides
+// until Proton is on. Without it the list looks shorter than on a PC that has Proton on.
+function discoverProtonNote() {
+  if (S.os !== 'linux' || S.settings.proton) return '';
+  const n = recompCount(discoverList(false, true));
+  if (!n) return '';
+  const say = tn(n, '1 Windows-only recomp is hidden because Proton is off.', '{n} Windows-only recomps are hidden because Proton is off.');
+  return `<p class="proton-hidden proton-find">${esc(say)} <button type="button" class="btn sm" data-act="use-proton">${esc(t('Play With Proton'))}</button></p>`;
+}
 function discoverGrid() {
   const f = S.find, list = discoverList();
+  const protonNote = discoverProtonNote();
   // Another search, filter or sort starts again from the first page.
   const key = JSON.stringify([S.q, S.find, S.settings.hide_ai, runsPick()]);
   if (S.dkey !== key) { S.dkey = key; S.dshow = DISCOVER_PAGE; }
   const shown = Math.min(S.dshow || DISCOVER_PAGE, list.length);
   const endedBox = f.hideEnded ? endedBoxHtml(discoverList(true)) : '';
-  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div><div class="grid" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map((a) => tile(a, { quick: true })).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
-    : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p></div>${endedBox}`;
+  return list.length ? `<div class="count-line">${esc(tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div>${protonNote}<div class="grid" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map((a) => tile(a, { quick: true })).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
+    : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p>${protonNote}</div>${endedBox}`;
 }
 // Opening "Ended projects" scrolls the page down with it, so the first row is in view. The box is still
 // growing, so a single smooth scroll would stop at the page's old end: this follows it frame by frame
@@ -1853,22 +1876,23 @@ function verPill(a) {
   return `<button type="button" class="ver-pill" data-act="ver-menu" data-id="${esc(a.id)}" aria-haspopup="listbox" aria-expanded="false">${LAYERS}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${n > 1 ? `<em>${esc(tn(n, '1 installed', '{n} installed'))}</em>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
 // On Overview: every version, like the website's list.
-// On Linux with Proton off, the versions of a game that only have a Windows build: left out of
-// the list, but named, so they don't just vanish (Proton is only turned on by itself when it's
-// found at the launcher's first start; one added later leaves it off).
-const protonHidden = (g) => (g && S.os === 'linux' && !S.settings.proton ? g.every.filter((v) => !g.list.includes(v) && hasWindowsBuild(v)) : []);
+// Under the versions list: Windows-only versions this Linux PC leaves out until Proton is on.
+function protonHiddenNote(a, cls) {
+  const n = protonHidden(a).length;
+  if (!n) return '';
+  const say = tn(n, '1 more version is Windows-only and hidden because Proton is off.', '{n} more versions are Windows-only and hidden because Proton is off.');
+  return `<p class="${cls} proton-hidden">${esc(say)} <button type="button" class="btn sm" data-act="use-proton" data-id="${esc(a.id)}">${esc(t('Play With Proton'))}</button></p>`;
+}
 function versionsCard(a) {
-  const title = a && a.title ? index().titles.get(a.title) : null;
-  const g = verGroup(a) || (protonHidden(title).length ? title : null);
-  if (!g) return '';
-  const hidden = protonHidden(g);
+  const g = verGroup(a);
+  if (!g) return protonHiddenNote(a, 'vc-solo');
   const hide = !!(S.settings.ui || {}).verHide;
-  const px = hidden.length ? `<div class="vc-px"><span>${esc(tn(hidden.length, '1 more version only has a Windows build. Turn on Proton to see it.', '{n} more versions only have a Windows build. Turn on Proton to see them.'))}</span><button type="button" class="btn sm" data-act="use-proton" data-id="${esc(a.id)}">${esc(t('Turn On Proton'))}</button></div>` : '';
   return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
-      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length + hidden.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
+      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
       <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
-    ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>${px}
-    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>`}</div>`;
+    ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
+    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>
+    ${protonHiddenNote(a, 'vc-note')}`}</div>`;
 }
 function verMenu(el) {
   const a = byId(el.dataset.id), g = verGroup(a);
@@ -3495,7 +3519,7 @@ function pageSettings() {
           + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
           + row(t('Show the AI-assisted tag'), t('The tag on game pages. What the developer used AI for is always in the game\'s Overview.'), sw('show_ai_tag', ui.show_ai_tag, t('Show the AI-assisted tag'), 'ui-toggle'))
           + row(t('Hidden games'), (ui.hidden || []).length ? t('Games you hid from Discover and Home. Right-click a game to hide it.') : t('Right-click a game in Discover and pick Hide from Discover to keep it out of the way.'), `<button type="button" class="btn" data-act="hidden-list"${(ui.hidden || []).length ? '' : ' disabled'}>${esc(t('Show Hidden Games'))}</button>`))
-        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
+        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.') + ' ' + t('With this off, those recomps are left out of Discover, search and game pages.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
         + group(t('Notifications and sharing'), row(t('Notifications'), S.os === 'windows' ? t('A Windows notification when a new recomp comes out for a game you own.') : t('A notification when a new recomp comes out for a game you own.'), sw('notify', st.notify, t('Notifications')))
           + row(t('Discord status'), t('Shows the game you\'re playing on your Discord profile, with its cover and play time.'), sw('discord', st.discord !== false, t('Discord status')))
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)

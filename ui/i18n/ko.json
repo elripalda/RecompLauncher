@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "게임 {n}개가 이제 라이브러리에 있습니다.",
  "{n} games are in your Library now. Install them whenever you like.": "게임 {n}개가 이제 라이브러리에 있습니다. 원할 때 설치하세요.",
  "{n} games it found are already in your Library.": "찾은 게임 {n}개는 이미 라이브러리에 있습니다.",
- "1 more version only has a Windows build. Turn on Proton to see it.": "버전 1개가 더 있지만 Windows 빌드만 있습니다. 보려면 Proton을 켜세요.",
  "Download It": "다운로드",
  "Issues": "이슈",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "이 계정은 {folder} 폴더를 바꿀 수 없어서 그곳에서 자신을 교체할 수 없습니다. RecompLauncher를 홈 폴더의 응용 프로그램처럼 내 폴더로 옮기거나, 새 버전을 다운로드해 그것을 사용하세요.",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "RecompLauncher 업데이트가 너무 큽니다. 나중에 다시 시도하세요.",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "이 Linux 업데이트에는 신뢰할 수 있는 HTTPS AppImage 다운로드가 없습니다. 나중에 다시 시도하세요.",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "이 Linux 업데이트는 아직 올바른 체크섬을 게시하지 않았습니다. 나중에 다시 시도하세요.",
- "Turn On Proton": "Proton 켜기",
  "View on {host}": "{host}에서 보기",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "버전 {n}개가 더 있지만 Windows 빌드만 있습니다. 보려면 Proton을 켜세요.",
  "Add a Recomp": "리컴프 추가",
  "The recomplauncher.json in its project": "프로젝트에 있는 recomplauncher.json",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "그 프로젝트를 읽을 수 없었습니다. 링크를 확인하거나, 내 환경용 빌드가 있는 릴리스가 있는지 확인하세요.",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "언어와 같게({time})",
  "12-hour ({time})": "12시간제({time})",
  "24-hour ({time})": "24시간제({time})",
- "Auto follows the language": "자동은 언어를 따릅니다"
+ "Auto follows the language": "자동은 언어를 따릅니다",
+ "1 more version is Windows-only and hidden because Proton is off.": "Windows 전용 버전이 1개 더 있지만 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "Windows 전용 버전이 {n}개 더 있지만 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "1 Windows-only recomp is hidden because Proton is off.": "Windows 전용 리컴프 1개가 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Windows 전용 리컴프 {n}개가 Proton이 꺼져 있어 숨겨져 있습니다.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "이 옵션을 끄면 해당 리컴프는 탐색, 검색, 게임 페이지에 표시되지 않습니다."
 }

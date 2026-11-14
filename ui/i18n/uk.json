@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "{n} гра тепер у твоїй бібліотеці.|{n} гри тепер у твоїй бібліотеці.|{n} ігор тепер у твоїй бібліотеці.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} гра тепер у твоїй бібліотеці. Встанови її, коли захочеш.|{n} гри тепер у твоїй бібліотеці. Встанови їх, коли захочеш.|{n} ігор тепер у твоїй бібліотеці. Встанови їх, коли захочеш.",
  "{n} games it found are already in your Library.": "{n} знайдена гра вже є у твоїй бібліотеці.|{n} знайдені гри вже є у твоїй бібліотеці.|{n} знайдених ігор уже є у твоїй бібліотеці.",
- "1 more version only has a Windows build. Turn on Proton to see it.": "Ще 1 версія має лише збірку для Windows. Увімкни Proton, щоб побачити її.",
  "Download It": "Завантажити",
  "Issues": "Проблеми",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "Він не може замінити себе в {folder}, бо цьому обліковому запису не можна змінювати цю папку. Перемісти RecompLauncher у власну папку, наприклад «Програми» в домашній папці, або завантаж нову версію й користуйся нею.",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "Оновлення RecompLauncher завелике. Спробуй пізніше.",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "Для цього оновлення для Linux немає надійного завантаження AppImage через HTTPS. Спробуй пізніше.",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Для цього оновлення для Linux ще не опубліковано правильну контрольну суму. Спробуй пізніше.",
- "Turn On Proton": "Увімкнути Proton",
  "View on {host}": "Відкрити на {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "Ще {n} версія має лише збірку для Windows. Увімкни Proton, щоб побачити її.|Ще {n} версії мають лише збірку для Windows. Увімкни Proton, щоб побачити їх.|Ще {n} версій мають лише збірку для Windows. Увімкни Proton, щоб побачити їх.",
  "Add a Recomp": "Додати рекомп",
  "The recomplauncher.json in its project": "recomplauncher.json у його проєкті",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "Не вдалося прочитати цей проєкт. Перевір посилання або переконайся, що в ньому є реліз зі збірками для тебе.",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "Як прийнято в мові ({time})",
  "12-hour ({time})": "12-годинний ({time})",
  "24-hour ({time})": "24-годинний ({time})",
- "Auto follows the language": "«Авто» — як прийнято в мові"
+ "Auto follows the language": "«Авто» — як прийнято в мові",
+ "1 more version is Windows-only and hidden because Proton is off.": "Ще 1 версія лише для Windows прихована, бо Proton вимкнено.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "Ще {n} версія лише для Windows прихована, бо Proton вимкнено.|Ще {n} версії лише для Windows приховано, бо Proton вимкнено.|Ще {n} версій лише для Windows приховано, бо Proton вимкнено.",
+ "1 Windows-only recomp is hidden because Proton is off.": "1 рекомпіляція лише для Windows прихована, бо Proton вимкнено.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "{n} рекомпіляція лише для Windows прихована, бо Proton вимкнено.|{n} рекомпіляції лише для Windows приховано, бо Proton вимкнено.|{n} рекомпіляцій лише для Windows приховано, бо Proton вимкнено.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Коли це вимкнено, ці рекомпи не показуються в «Огляді», пошуку та на сторінках ігор."
 }

@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "{n} 本のゲームがライブラリに入りました。",
  "{n} games are in your Library now. Install them whenever you like.": "{n} 本のゲームがライブラリに入りました。好きなときにインストールしてください。",
  "{n} games it found are already in your Library.": "見つかった {n} 本のゲームはすでにライブラリにあります。",
- "1 more version only has a Windows build. Turn on Proton to see it.": "ほかに 1 つのバージョンは Windows ビルドしかありません。表示するには Proton をオンにしてください。",
  "Download It": "ダウンロード",
  "Issues": "Issues",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "このアカウントでは {folder} を変更できないため、そこで自身を置き換えられません。RecompLauncher をホームフォルダー内の「アプリケーション」など自分のフォルダーに移動するか、新しいバージョンをダウンロードしてそちらを使ってください。",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "RecompLauncher のアップデートが大きすぎます。しばらくしてからもう一度お試しください。",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "この Linux 用アップデートには、信頼できる HTTPS の AppImage ダウンロードがありません。しばらくしてからもう一度お試しください。",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "この Linux 用アップデートは、まだ有効なチェックサムを公開していません。しばらくしてからもう一度お試しください。",
- "Turn On Proton": "Proton をオンにする",
  "View on {host}": "{host} で見る",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "ほかに {n} 個のバージョンは Windows ビルドしかありません。表示するには Proton をオンにしてください。",
  "Add a Recomp": "リコンプを追加",
  "The recomplauncher.json in its project": "プロジェクト内の recomplauncher.json",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "そのプロジェクトを読み取れませんでした。リンクを確認するか、お使いの環境向けのビルドを含むリリースがあるか確かめてください。",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "言語と同じ（{time}）",
  "12-hour ({time})": "12時間制（{time}）",
  "24-hour ({time})": "24時間制（{time}）",
- "Auto follows the language": "「自動」は言語に合わせます"
+ "Auto follows the language": "「自動」は言語に合わせます",
+ "1 more version is Windows-only and hidden because Proton is off.": "ほかに Windows 専用のバージョンが 1 つあり、Proton がオフのため非表示です。",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "ほかに Windows 専用のバージョンが {n} つあり、Proton がオフのため非表示です。",
+ "1 Windows-only recomp is hidden because Proton is off.": "Windows 専用のリコンパイル版 1 本は、Proton がオフのため非表示です。",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Windows 専用のリコンパイル版 {n} 本は、Proton がオフのため非表示です。",
+ "With this off, those recomps are left out of Discover, search and game pages.": "オフにすると、これらのリコンプは「見つける」、検索、ゲームページに表示されません。"
 }

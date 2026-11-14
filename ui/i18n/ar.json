@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "أصبحت لعبتان في مكتبتك الآن.|أصبحت {n} ألعاب في مكتبتك الآن.|أصبحت {n} لعبة في مكتبتك الآن.|أصبحت {n} لعبة في مكتبتك الآن.",
  "{n} games are in your Library now. Install them whenever you like.": "أصبحت لعبتان في مكتبتك الآن. ثبّتهما متى شئت.|أصبحت {n} ألعاب في مكتبتك الآن. ثبّتها متى شئت.|أصبحت {n} لعبة في مكتبتك الآن. ثبّتها متى شئت.|أصبحت {n} لعبة في مكتبتك الآن. ثبّتها متى شئت.",
  "{n} games it found are already in your Library.": "لعبتان عُثر عليهما موجودتان في مكتبتك بالفعل.|{n} ألعاب عُثر عليها موجودة في مكتبتك بالفعل.|{n} لعبة عُثر عليها موجودة في مكتبتك بالفعل.|{n} لعبة عُثر عليها موجودة في مكتبتك بالفعل.",
- "1 more version only has a Windows build. Turn on Proton to see it.": "إصدار واحد آخر له نسخة Windows فقط. فعّل Proton لرؤيته.",
  "Download It": "تنزيله",
  "Issues": "المشكلات",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "لا يستطيع استبدال نفسه في {folder}، لأن هذا الحساب لا يمكنه تغيير ذلك المجلد. انقل RecompLauncher إلى مجلد تملكه، مثل التطبيقات في مجلدك الرئيسي، أو نزّل الإصدار الجديد واستخدمه.",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "تحديث RecompLauncher كبير جدًا. حاول لاحقًا.",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "لا يوجد لتحديث Linux هذا تنزيل AppImage موثوق عبر HTTPS. حاول لاحقًا.",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "لم يُنشر لتحديث Linux هذا مجموع اختباري صالح بعد. حاول لاحقًا.",
- "Turn On Proton": "تفعيل Proton",
  "View on {host}": "عرض على {host}",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "إصداران آخران لهما نسخة Windows فقط. فعّل Proton لرؤيتهما.|{n} إصدارات أخرى لها نسخة Windows فقط. فعّل Proton لرؤيتها.|{n} إصدارًا آخر لها نسخة Windows فقط. فعّل Proton لرؤيتها.|{n} إصدار آخر لها نسخة Windows فقط. فعّل Proton لرؤيتها.",
  "Add a Recomp": "إضافة لعبة معاد تجميعها",
  "The recomplauncher.json in its project": "ملف recomplauncher.json في مشروعها",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "تعذّرت علينا قراءة هذا المشروع. تحقّق من الرابط، أو تأكّد أن لديه إصدارًا فيه نسخك.",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "مثل اللغة ({time})",
  "12-hour ({time})": "12 ساعة ({time})",
  "24-hour ({time})": "24 ساعة ({time})",
- "Auto follows the language": "«تلقائي» يتبع اللغة"
+ "Auto follows the language": "«تلقائي» يتبع اللغة",
+ "1 more version is Windows-only and hidden because Proton is off.": "إصدار واحد آخر لنظام Windows فقط ومخفي لأن Proton متوقف.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "إصداران آخران لنظام Windows فقط ومخفيان لأن Proton متوقف.|{n} إصدارات أخرى لنظام Windows فقط ومخفية لأن Proton متوقف.|{n} إصدارًا آخر لنظام Windows فقط ومخفية لأن Proton متوقف.|{n} إصدار آخر لنظام Windows فقط ومخفية لأن Proton متوقف.",
+ "1 Windows-only recomp is hidden because Proton is off.": "لعبة واحدة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "لعبتان معاد تجميعهما لنظام Windows فقط مخفيتان لأن Proton متوقف.|{n} ألعاب معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.|{n} لعبة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.|{n} لعبة معاد تجميعها لنظام Windows فقط مخفية لأن Proton متوقف.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "عند إيقاف هذا الخيار، لا تظهر هذه الألعاب في «استكشاف» ولا في البحث ولا في صفحات الألعاب."
 }

@@ -3032,7 +3032,6 @@
  "{n} games are in your Library now.": "{n} oyun artık Kitaplığınızda.",
  "{n} games are in your Library now. Install them whenever you like.": "{n} oyun artık Kitaplığınızda. İstediğiniz zaman yükleyin.",
  "{n} games it found are already in your Library.": "Bulduğu {n} oyun zaten Kitaplığınızda.",
- "1 more version only has a Windows build. Turn on Proton to see it.": "1 sürümün daha yalnızca Windows derlemesi var. Görmek için Proton'u açın.",
  "Download It": "İndir",
  "Issues": "Sorunlar",
  "It can't replace itself in {folder}, because this account can't change that folder. Move RecompLauncher to a folder you own, like Applications in your home folder, or download the new version and use that one.": "Kendini {folder} içinde değiştiremiyor, çünkü bu hesap o klasörü değiştiremiyor. RecompLauncher'ı ana klasörünüzdeki Uygulamalar gibi size ait bir klasöre taşıyın ya da yeni sürümü indirip onu kullanın.",
@@ -3049,9 +3048,7 @@
  "The RecompLauncher update is too large. Try again later.": "RecompLauncher güncellemesi çok büyük. Daha sonra tekrar deneyin.",
  "This Linux update has no trusted HTTPS AppImage download. Try again later.": "Bu Linux güncellemesinin güvenilir bir HTTPS AppImage indirmesi yok. Daha sonra tekrar deneyin.",
  "This Linux update hasn't published a valid checksum yet. Try again later.": "Bu Linux güncellemesi henüz geçerli bir sağlama toplamı yayımlamadı. Daha sonra tekrar deneyin.",
- "Turn On Proton": "Proton'u aç",
  "View on {host}": "{host} üzerinde görüntüle",
- "{n} more versions only have a Windows build. Turn on Proton to see them.": "{n} sürümün daha yalnızca Windows derlemesi var. Görmek için Proton'u açın.",
  "Add a Recomp": "Recomp ekle",
  "The recomplauncher.json in its project": "Projesindeki recomplauncher.json",
  "We couldn't read that project. Check the link, or make sure it has a release with your builds.": "Bu projeyi okuyamadık. Bağlantıyı kontrol edin veya projenin sizin derlemelerinizi içeren bir sürümü olduğundan emin olun.",
@@ -3088,5 +3085,10 @@
  "Same as the language ({time})": "Dille aynı ({time})",
  "12-hour ({time})": "12 saat ({time})",
  "24-hour ({time})": "24 saat ({time})",
- "Auto follows the language": "Otomatik, dile göre ayarlanır"
+ "Auto follows the language": "Otomatik, dile göre ayarlanır",
+ "1 more version is Windows-only and hidden because Proton is off.": "1 sürüm daha yalnızca Windows için ve Proton kapalı olduğu için gizli.",
+ "{n} more versions are Windows-only and hidden because Proton is off.": "{n} sürüm daha yalnızca Windows için ve Proton kapalı olduğu için gizli.",
+ "1 Windows-only recomp is hidden because Proton is off.": "Yalnızca Windows için olan 1 recomp, Proton kapalı olduğu için gizli.",
+ "{n} Windows-only recomps are hidden because Proton is off.": "Yalnızca Windows için olan {n} recomp, Proton kapalı olduğu için gizli.",
+ "With this off, those recomps are left out of Discover, search and game pages.": "Bu kapalıyken bu recomp'lar Keşfet'te, aramada ve oyun sayfalarında görünmez."
 }
