@@ -12,6 +12,7 @@
 - **A list that points at a 32-bit ARM build installs the build for your PC.** — Fixed by @KevinBonnoron ([#224](https://github.com/elripalda/RecompLauncher/pull/224)).
 - **Settings can hide the Big Picture button in the sidebar.** — Added by @Xarishark ([#226](https://github.com/elripalda/RecompLauncher/pull/226)).
 - **Settings can give this PC a name, shown next to its saves.** — Added by @Xarishark ([#225](https://github.com/elripalda/RecompLauncher/pull/225)).
+- **Set Up Again sits beside Play, and new setup options are asked about once.** — Added by @Xarishark ([#230](https://github.com/elripalda/RecompLauncher/pull/230)).
 - **Games open on the monitor picked for Big Picture, and the quick menu follows the game's monitor.** — Added by @Junkasss ([#220](https://github.com/elripalda/RecompLauncher/pull/220)).
 
 Keep the logs coming from the crash window and Settings → Beta. Every one helps.
