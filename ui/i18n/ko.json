@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} 설정이 아직 진행 중입니다",
  "Show its setup": "설정 보기",
  "{name} is ready to play!": "{name} 플레이 준비 완료!",
- "{name} needs its update next.": "다음으로 {name}에 업데이트가 필요합니다."
+ "{name} needs its update next.": "다음으로 {name}에 업데이트가 필요합니다.",
+ "Found it, with {count} unlocks so far.": "찾았습니다. 지금까지 달성 {count}개.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "그곳에서 달성을 찾지 못했습니다. 게임이 세이브를 저장하는 폴더를 선택하세요.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher가 아직 이 게임의 달성을 찾지 못합니다. 이미 달성한 것이 있다면 게임의 세이브 폴더를 알려 주세요.",
+ "Show Me the Folder": "폴더 지정",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "그 폴더에는 여러 게임의 달성이 있습니다. 그 안에서 이 게임의 폴더를 선택하세요.",
+ "The Game's Save Folder": "게임 세이브 폴더"
 }

@@ -691,7 +691,17 @@ fn search_into(name: &str) -> bool {
 const GENERIC: [&str; 18] = ["recomp", "recompiled", "decomp", "decompiled", "port", "the", "launcher", "online", "edition", "native", "windows", "game", "x64", "x86", "bit", "version", "beta", "alpha"];
 
 fn words(s: &str) -> Vec<String> {
-    install::name_tokens(s).into_iter().filter(|t| (t.len() > 2 || (t.len() == 2 && t.chars().all(|c| c.is_ascii_digit()))) && !GENERIC.contains(&t.as_str())).collect()
+    // A lone digit is part of the word before it ("Resistance 3" is resistance3, as
+    // "Resistance3Port" is), so sequels tell apart and still count as a word of the name.
+    let mut joined: Vec<String> = vec![];
+    for t in install::name_tokens(s) {
+        let digit = t.len() == 1 && t.chars().all(|c| c.is_ascii_digit());
+        match joined.last_mut() {
+            Some(prev) if digit && !prev.chars().all(|c| c.is_ascii_digit()) => prev.push_str(&t),
+            _ => joined.push(t),
+        }
+    }
+    joined.into_iter().filter(|t| (t.len() > 2 || (t.len() == 2 && t.chars().all(|c| c.is_ascii_digit()))) && !GENERIC.contains(&t.as_str())).collect()
 }
 
 /// Whether an app's or shortcut's name is this game's: every word of it is in the game's names,
@@ -965,6 +975,17 @@ mod tests {
         let want = want_of(&["SMS Launcher", "sms-launcher"]);
         assert!(is_ours(&want, "SMS Launcher"));
         assert!(!is_ours(&want, "SMS Backup"));
+    }
+
+    #[test]
+    fn a_sequels_number_counts_and_tells_the_sequels_apart() {
+        let want = want_of(&["Hopper 3 Port", "Hopper 3", "Hopper3Port"]);
+        assert!(is_ours(&want, "Hopper 3 PC Port"));
+        assert!(is_ours(&want, "Hopper 3 PC Port (Hopper3Port)"));
+        assert!(!is_ours(&want, "Hopper 2 PC Port"));
+        assert!(!is_ours(&want_of(&["Hopper 2 Port", "Hopper2Port"]), "Hopper 3 PC Port"));
+        // Two-digit numbers stay their own word, as before.
+        assert_eq!(words("Hopper NFL 08"), vec!["hopper", "nfl", "08"]);
     }
 
     #[test]

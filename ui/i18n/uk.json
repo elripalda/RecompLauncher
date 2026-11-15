@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} ще налаштовується",
  "Show its setup": "Показати налаштування",
  "{name} is ready to play!": "{name} готова до гри!",
- "{name} needs its update next.": "Тепер {name} потрібне оновлення."
+ "{name} needs its update next.": "Тепер {name} потрібне оновлення.",
+ "Found it, with {count} unlocks so far.": "Знайдено, розблокувань поки: {count}.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Розблокувань там не знайдено. Виберіть папку, де гра зберігає збереження.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher поки не знаходить розблокувань цієї гри. Якщо ви вже щось відкрили, покажіть йому папку збережень гри.",
+ "Show Me the Folder": "Показати Папку",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "У цій папці розблокування кількох ігор. Виберіть у ній папку цієї гри.",
+ "The Game's Save Folder": "Папка Збережень Гри"
 }

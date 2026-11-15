@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} wird noch eingerichtet",
  "Show its setup": "Einrichtung anzeigen",
  "{name} is ready to play!": "{name} ist spielbereit!",
- "{name} needs its update next.": "Als Nächstes braucht {name} sein Update."
+ "{name} needs its update next.": "Als Nächstes braucht {name} sein Update.",
+ "Found it, with {count} unlocks so far.": "Gefunden, mit bisher {count} Freischaltungen.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Dort wurden keine Freischaltungen gefunden. Wähle den Ordner, in dem das Spiel seine Spielstände speichert.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher findet die Freischaltungen dieses Spiels noch nicht. Wenn du schon etwas freigeschaltet hast, zeig ihm den Spielstand-Ordner des Spiels.",
+ "Show Me the Folder": "Ordner Zeigen",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "In diesem Ordner sind Freischaltungen mehrerer Spiele. Wähle den eigenen Ordner dieses Spiels darin.",
+ "The Game's Save Folder": "Spielstand-Ordner des Spiels"
 }

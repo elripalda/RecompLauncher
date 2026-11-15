@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "لا يزال {name} قيد الإعداد",
  "Show its setup": "عرض الإعداد",
  "{name} is ready to play!": "{name} جاهزة للعب!",
- "{name} needs its update next.": "تحتاج {name} إلى تحديثها بعد ذلك."
+ "{name} needs its update next.": "تحتاج {name} إلى تحديثها بعد ذلك.",
+ "Found it, with {count} unlocks so far.": "تم العثور عليه، مع {count} من الإنجازات المفتوحة حتى الآن.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "لم يُعثر على إنجازات مفتوحة هناك. اختر المجلد الذي تحفظ فيه اللعبة ملفاتها.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "لا يجد RecompLauncher الإنجازات المفتوحة لهذه اللعبة بعد. إذا فتحت شيئًا، فأرِه مجلد حفظ اللعبة.",
+ "Show Me the Folder": "إظهار المجلد",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "في هذا المجلد إنجازات لعدة ألعاب. اختر مجلد هذه اللعبة بداخله.",
+ "The Game's Save Folder": "مجلد حفظ اللعبة"
 }

@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} ещё настраивается",
  "Show its setup": "Показать настройку",
  "{name} is ready to play!": "{name} готова к игре!",
- "{name} needs its update next.": "Теперь {name} нужно обновление."
+ "{name} needs its update next.": "Теперь {name} нужно обновление.",
+ "Found it, with {count} unlocks so far.": "Найдено, разблокировок пока: {count}.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Разблокировки там не найдены. Выберите папку, где игра хранит сохранения.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher пока не находит разблокировки этой игры. Если вы уже что-то открыли, покажите ему папку сохранений игры.",
+ "Show Me the Folder": "Показать Папку",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "В этой папке разблокировки нескольких игр. Выберите в ней папку этой игры.",
+ "The Game's Save Folder": "Папка Сохранений Игры"
 }

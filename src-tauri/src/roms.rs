@@ -966,7 +966,7 @@ fn rom_ext(name: &str) -> Option<String> {
     is_rom.then_some(ext)
 }
 
-/// A MAME-style set name ("tmnt", "sf2ce", "mslug_x"): short, with no spaces or brackets. A zip
+/// A MAME-style set name ("hopr", "racr2ce", "hopr_x"): short, with no spaces or brackets. A zip
 /// named like a game ("Some Game (USA).zip") with no ROM inside is something else.
 fn is_set_name(stem: &str) -> bool {
     let ok_chars = stem.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
@@ -992,9 +992,9 @@ fn identify_archive(p: &Path, ext: &str, size: impl FnOnce() -> Option<u64>) -> 
     Some(RomFile { path: p.to_path_buf(), system: "arcade".into(), title: stem, region: String::new(), size: size()? })
 }
 
-/// An arcade set is named for its MAME short name ("tmnt"), not the game, so it's matched when the
+/// An arcade set is named for its MAME short name ("hopr"), not the game, so it's matched when the
 /// catalog lists that name in the game's copy_ids. The whole name has to be listed: a listed
-/// "tmnt" isn't the "tmnt2" set.
+/// "hopr" isn't the "hopr2" set.
 fn listed_set(app: &Value, rom: &RomFile) -> bool {
     if rom.system != "arcade" {
         return false;
@@ -1585,19 +1585,19 @@ mod tests {
     #[test]
     fn an_arcade_set_in_an_arcade_folder_is_found() {
         let d = tmp("zip-arcade");
-        let p = d.join("ARCADE/tmnt.zip");
+        let p = d.join("ARCADE/hopr.zip");
         write_zip(&p, &["963-a23.k8", "963-a24.k10", "963-x22.h22"]);
         let found = scan(&[d.clone()]);
         let _ = fs::remove_dir_all(&d);
         assert_eq!(found.len(), 1);
-        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("arcade", "tmnt"));
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("arcade", "hopr"));
     }
 
     #[test]
     fn an_arcade_set_outside_an_arcade_folder_is_ignored() {
         // Not named for arcade itself: the temporary folder is one of the folders looked at.
         let d = tmp("zip-set-elsewhere");
-        write_zip(&d.join("Downloads/tmnt.zip"), &["963-a23.k8", "963-a24.k10"]);
+        write_zip(&d.join("Downloads/hopr.zip"), &["963-a23.k8", "963-a24.k10"]);
         let found = scan(&[d.clone()]);
         let _ = fs::remove_dir_all(&d);
         assert!(found.is_empty());
@@ -1606,10 +1606,10 @@ mod tests {
     #[test]
     fn an_arcade_set_is_matched_by_its_listed_set_name() {
         let set = |name: &str| RomFile { path: PathBuf::from(format!("D:/ROMS/ARCADE/{name}.zip")), system: "arcade".into(), title: name.into(), region: String::new(), size: 1 };
-        let found = vec![set("tmnt2"), set("tmnt")];
-        let cat = serde_json::json!({ "apps": [{ "id": "tmnt-port", "game": "Teenage Mutant Ninja Turtles", "origin": "arcade", "copy_ids": ["tmnt"] }] });
+        let found = vec![set("hopr2"), set("hopr")];
+        let cat = serde_json::json!({ "apps": [{ "id": "hopper-port", "game": "Hopper Arcade", "origin": "arcade", "copy_ids": ["hopr"] }] });
         let picked = match_catalog(&cat, &found);
-        assert_eq!(picked["tmnt-port"].title, "tmnt");
+        assert_eq!(picked["hopper-port"].title, "hopr");
         assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
     }
 
@@ -1634,7 +1634,7 @@ mod tests {
     #[test]
     fn a_wua_is_a_wii_u_copy() {
         let d = tmp("wua");
-        let p = d.join("The Legend of Zelda - The Wind Waker HD (USA).wua");
+        let p = d.join("SkyRacer HD (USA).wua");
         fs::write(&p, wua(&["0005000010143500_v0", "code", "app.xml"])).unwrap();
         let found = scan(&[d.clone()]);
         let id = copy_id(&p);
@@ -1647,11 +1647,11 @@ mod tests {
     #[test]
     fn a_wua_is_matched_to_its_game_by_name() {
         let d = tmp("wua-match");
-        fs::write(d.join("The Legend of Zelda - The Wind Waker HD (USA).wua"), wua(&["0005000010143500_v0"])).unwrap();
+        fs::write(d.join("SkyRacer HD (USA).wua"), wua(&["0005000010143500_v0"])).unwrap();
         let found = scan(&[d.clone()]);
         let _ = fs::remove_dir_all(&d);
-        let cat = serde_json::json!({ "apps": [{ "id": "zeldawwhdrecomp", "game": "The Legend of Zelda: The Wind Waker HD", "origin": "wiiu" }] });
-        assert!(match_catalog(&cat, &found).contains_key("zeldawwhdrecomp"));
+        let cat = serde_json::json!({ "apps": [{ "id": "skyracerhd", "game": "SkyRacer HD", "origin": "wiiu" }] });
+        assert!(match_catalog(&cat, &found).contains_key("skyracerhd"));
     }
 
     #[test]
@@ -1667,7 +1667,7 @@ mod tests {
     #[test]
     fn a_wua_named_dlc_that_holds_the_game_is_the_game() {
         let d = tmp("wua-dlc");
-        let p = d.join("PIKMIN 3 (USA) (DLC) (v96).wua");
+        let p = d.join("HOPPER 3 (USA) (DLC) (v96).wua");
         fs::write(&p, wua(&["000500001012bd00_v16", "0005000c1012bd00_v16"])).unwrap();
         let kind = part_of_file(&p).kind;
         let _ = fs::remove_dir_all(&d);
@@ -1705,7 +1705,7 @@ mod tests {
         let mut head = vec![0u8; 0x100];
         let at = if container.is_empty() { 0 } else { 0x58 };
         head[..container.len()].copy_from_slice(container);
-        head[at..at + 6].copy_from_slice(b"RMCE01");
+        head[at..at + 6].copy_from_slice(b"RHPE01");
         head[at + magic_at..at + magic_at + 4].copy_from_slice(&magic);
         fs::write(p, head).unwrap();
         fs::OpenOptions::new().write(true).open(p).unwrap().set_len(60 * 1024 * 1024).unwrap();
@@ -1717,7 +1717,7 @@ mod tests {
     #[test]
     fn an_rvz_with_a_wii_header_is_wii() {
         let d = tmp("rvz-wii");
-        let p = d.join("Mario Kart Wii (USA).rvz");
+        let p = d.join("SkyRacer Wii (USA).rvz");
         nintendo_image(&p, b"RVZ\x01", 0x18, WII_MAGIC);
         let found = identify(&p, 60 * 1024 * 1024);
         let _ = fs::remove_dir_all(&d);
@@ -1727,7 +1727,7 @@ mod tests {
     #[test]
     fn an_rvz_with_a_gamecube_header_is_gamecube() {
         let d = tmp("rvz-gc");
-        let p = d.join("Wind Waker (USA).rvz");
+        let p = d.join("Hopper (USA).rvz");
         nintendo_image(&p, b"RVZ\x01", 0x1C, GC_MAGIC);
         let found = identify(&p, 60 * 1024 * 1024);
         let _ = fs::remove_dir_all(&d);
@@ -1737,7 +1737,7 @@ mod tests {
     #[test]
     fn a_gcm_with_a_wii_header_is_wii() {
         let d = tmp("gcm-wii");
-        let p = d.join("Mario Party 8 (USA).gcm");
+        let p = d.join("Party Hop 8 (USA).gcm");
         nintendo_image(&p, b"", 0x18, WII_MAGIC);
         let found = identify(&p, 60 * 1024 * 1024);
         let _ = fs::remove_dir_all(&d);
@@ -1747,7 +1747,7 @@ mod tests {
     #[test]
     fn an_iso_with_a_wii_header_is_wii() {
         let d = tmp("iso-wii");
-        let p = d.join("Metroid Other M (USA).iso");
+        let p = d.join("Star Hopper M (USA).iso");
         nintendo_image(&p, b"", 0x18, WII_MAGIC);
         let found = identify(&p, 60 * 1024 * 1024);
         let _ = fs::remove_dir_all(&d);

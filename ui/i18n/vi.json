@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} vẫn đang được thiết lập",
  "Show its setup": "Xem thiết lập",
  "{name} is ready to play!": "{name} đã sẵn sàng để chơi!",
- "{name} needs its update next.": "Tiếp theo {name} cần bản cập nhật của nó."
+ "{name} needs its update next.": "Tiếp theo {name} cần bản cập nhật của nó.",
+ "Found it, with {count} unlocks so far.": "Đã tìm thấy, có {count} mở khóa đến nay.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Không tìm thấy mở khóa nào ở đó. Hãy chọn thư mục nơi trò chơi lưu file save.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher chưa tìm thấy các mở khóa của trò chơi này. Nếu bạn đã mở khóa gì đó, hãy chỉ cho nó thư mục save của trò chơi.",
+ "Show Me the Folder": "Chỉ Thư Mục",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "Thư mục đó có mở khóa của nhiều trò chơi. Hãy chọn thư mục riêng của trò chơi này bên trong.",
+ "The Game's Save Folder": "Thư Mục Save của Trò Chơi"
 }

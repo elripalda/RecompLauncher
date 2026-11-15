@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} ainda está sendo configurado",
  "Show its setup": "Ver a configuração",
  "{name} is ready to play!": "{name} está pronto para jogar!",
- "{name} needs its update next.": "Agora {name} precisa da atualização."
+ "{name} needs its update next.": "Agora {name} precisa da atualização.",
+ "Found it, with {count} unlocks so far.": "Encontrado, com {count} desbloqueios até agora.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Nenhum desbloqueio foi encontrado aí. Escolha a pasta onde o jogo guarda os saves.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "O RecompLauncher ainda não encontra os desbloqueios deste jogo. Se você já desbloqueou algo, mostre a pasta de saves do jogo.",
+ "Show Me the Folder": "Mostrar a Pasta",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "Essa pasta tem desbloqueios de vários jogos. Escolha a pasta deste jogo dentro dela.",
+ "The Game's Save Folder": "Pasta de Saves do Jogo"
 }

@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} masih disiapkan",
  "Show its setup": "Lihat penyiapan",
  "{name} is ready to play!": "{name} siap dimainkan!",
- "{name} needs its update next.": "Selanjutnya {name} butuh pembaruannya."
+ "{name} needs its update next.": "Selanjutnya {name} butuh pembaruannya.",
+ "Found it, with {count} unlocks so far.": "Ketemu, dengan {count} buka kunci sejauh ini.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Tidak ada buka kunci di sana. Pilih folder tempat game menyimpan save-nya.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher belum menemukan buka kunci game ini. Jika kamu sudah membuka sesuatu, tunjukkan folder save game-nya.",
+ "Show Me the Folder": "Tunjukkan Folder",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "Folder itu berisi buka kunci beberapa game. Pilih folder milik game ini di dalamnya.",
+ "The Game's Save Folder": "Folder Save Game"
 }

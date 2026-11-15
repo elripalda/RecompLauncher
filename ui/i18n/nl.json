@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} wordt nog ingesteld",
  "Show its setup": "Instellen tonen",
  "{name} is ready to play!": "{name} is klaar om te spelen!",
- "{name} needs its update next.": "{name} heeft nu zijn update nodig."
+ "{name} needs its update next.": "{name} heeft nu zijn update nodig.",
+ "Found it, with {count} unlocks so far.": "Gevonden, met tot nu toe {count} ontgrendelingen.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Daar zijn geen ontgrendelingen gevonden. Kies de map waarin het spel zijn opslagbestanden bewaart.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher kan de ontgrendelingen van dit spel nog niet vinden. Heb je al iets ontgrendeld, laat hem dan de opslagmap van het spel zien.",
+ "Show Me the Folder": "Map Tonen",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "Die map bevat ontgrendelingen van meerdere spellen. Kies daarin de eigen map van dit spel.",
+ "The Game's Save Folder": "Opslagmap van het Spel"
 }

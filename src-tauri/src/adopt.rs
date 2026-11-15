@@ -568,7 +568,14 @@ pub fn check_folder(dir: &Path, entry: &Value, names: &[String], os: &str) -> (P
     }
     let repo = entry.get("repo").and_then(Value::as_str).unwrap_or("");
     let n: Vec<&str> = names.iter().map(String::as_str).filter(|x| !x.is_empty()).collect();
+    let name_of = |r: &str| r.trim().trim_end_matches('/').rsplit('/').next().unwrap_or("").to_ascii_lowercase();
     for root in &roots {
+        // A folder whose own recomplauncher.json names another project is another recomp's (a
+        // sibling port with a similar name), whatever its program is called.
+        let theirs = crate::profile::release_profile(root).map(|o| o.profile.repo).unwrap_or_default();
+        if !theirs.is_empty() && !repo.is_empty() && name_of(&theirs) != name_of(repo) {
+            continue;
+        }
         if let Some(start) = crate::profile::find(root, repo, entry).and_then(|p| p.start) {
             if let Some(prog) = start.program.iter().map(|p| p.trim_start_matches("{install}/").to_string()).find(|p| root.join(p).is_file()) {
                 return (root.clone(), Some(PathBuf::from(prog)), true);
@@ -908,6 +915,16 @@ mod tests {
         #[cfg(unix)]
         std::fs::set_permissions(banjo.join(bprog), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         assert!(!check_folder(&banjo, &entry, &names, os).2);
+        // A sibling port's folder (its recomplauncher.json names another repo): not it, even with
+        // a program named like this one.
+        let sib = d.join("sibling");
+        std::fs::create_dir_all(&sib).unwrap();
+        std::fs::write(sib.join("recomplauncher.json"), r#"{"format":1,"repo":"dev/Hopper2Port","start":{"program":["Hopper.exe"]}}"#).unwrap();
+        std::fs::write(sib.join("Hopper.exe"), b"MZ").unwrap();
+        let mine = json!({ "id": "hopper3port", "repo": "dev/Hopper3Port" });
+        assert!(!check_folder(&sib, &mine, &["Hopper 3 Port".to_string()], "windows").2);
+        let same = json!({ "id": "hopper2port", "repo": "fork/hopper2port" });
+        assert!(check_folder(&sib, &same, &["Hopper 2 Port".to_string()], "windows").2);
         // With a profile: its start program decides.
         let prof = d.join("prof");
         std::fs::create_dir_all(prof.join("bin")).unwrap();

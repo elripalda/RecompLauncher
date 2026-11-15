@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} はまだセットアップ中です",
  "Show its setup": "セットアップを表示",
  "{name} is ready to play!": "{name} をプレイできます！",
- "{name} needs its update next.": "次は {name} のアップデートが必要です。"
+ "{name} needs its update next.": "次は {name} のアップデートが必要です。",
+ "Found it, with {count} unlocks so far.": "見つかりました。これまでの解除数は {count} です。",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "そこに解除データは見つかりませんでした。ゲームがセーブを保存するフォルダーを選んでください。",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher はまだこのゲームの解除データを見つけられません。何か解除している場合は、ゲームのセーブフォルダーを教えてください。",
+ "Show Me the Folder": "フォルダーを指定",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "そのフォルダーには複数のゲームの解除データがあります。中にあるこのゲーム専用のフォルダーを選んでください。",
+ "The Game's Save Folder": "ゲームのセーブフォルダー"
 }

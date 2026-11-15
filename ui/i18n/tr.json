@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} hâlâ kuruluyor",
  "Show its setup": "Kurulumu göster",
  "{name} is ready to play!": "{name} oynamaya hazır!",
- "{name} needs its update next.": "{name} için sırada güncellemesi var."
+ "{name} needs its update next.": "{name} için sırada güncellemesi var.",
+ "Found it, with {count} unlocks so far.": "Bulundu, şimdiye kadar {count} kilit açma var.",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "Orada kilit açma bulunamadı. Oyunun kayıtlarını tuttuğu klasörü seç.",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher bu oyunun kilit açmalarını henüz bulamıyor. Bir şey açtıysan, ona oyunun kayıt klasörünü göster.",
+ "Show Me the Folder": "Klasörü Göster",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "Bu klasörde birkaç oyunun kilit açmaları var. İçinden bu oyunun kendi klasörünü seç.",
+ "The Game's Save Folder": "Oyunun Kayıt Klasörü"
 }

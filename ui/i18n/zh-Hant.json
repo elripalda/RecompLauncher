@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} 仍在設定中",
  "Show its setup": "查看設定",
  "{name} is ready to play!": "{name} 可以玩了！",
- "{name} needs its update next.": "接下來 {name} 需要它的更新。"
+ "{name} needs its update next.": "接下來 {name} 需要它的更新。",
+ "Found it, with {count} unlocks so far.": "找到了，目前已解鎖 {count} 項。",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "那裡沒有找到解鎖紀錄。請選擇遊戲儲存存檔的資料夾。",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher 還找不到這款遊戲的解鎖紀錄。如果你已經解鎖了什麼，請告訴它遊戲的存檔資料夾。",
+ "Show Me the Folder": "指定資料夾",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "該資料夾裡有多款遊戲的解鎖紀錄。請選擇其中這款遊戲自己的資料夾。",
+ "The Game's Save Folder": "遊戲的存檔資料夾"
 }

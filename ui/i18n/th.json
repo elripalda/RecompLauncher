@@ -3217,5 +3217,11 @@
  "Setup is still running for {name}": "{name} ยังตั้งค่าอยู่",
  "Show its setup": "ดูการตั้งค่า",
  "{name} is ready to play!": "{name} พร้อมเล่นแล้ว!",
- "{name} needs its update next.": "ขั้นต่อไป {name} ต้องการอัปเดตของมัน"
+ "{name} needs its update next.": "ขั้นต่อไป {name} ต้องการอัปเดตของมัน",
+ "Found it, with {count} unlocks so far.": "พบแล้ว มีการปลดล็อก {count} รายการจนถึงตอนนี้",
+ "No unlocks were found there. Pick the folder the game keeps its saves in.": "ไม่พบการปลดล็อกที่นั่น เลือกโฟลเดอร์ที่เกมเก็บเซฟไว้",
+ "RecompLauncher can't find this game's unlocks yet. If you've unlocked something, show it the game's save folder.": "RecompLauncher ยังหาการปลดล็อกของเกมนี้ไม่เจอ ถ้าคุณปลดล็อกอะไรไปแล้ว ให้ชี้โฟลเดอร์เซฟของเกม",
+ "Show Me the Folder": "ชี้โฟลเดอร์",
+ "That folder has several games' unlocks. Pick this game's own folder inside it.": "โฟลเดอร์นั้นมีการปลดล็อกของหลายเกม เลือกโฟลเดอร์ของเกมนี้ที่อยู่ข้างใน",
+ "The Game's Save Folder": "โฟลเดอร์เซฟของเกม"
 }
