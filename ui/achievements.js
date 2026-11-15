@@ -10,6 +10,7 @@ function achConsole(c) {
 (() => {
   const A = (S.ach = S.ach || { allowed: false, games: {}, log: {}, mem: {}, rule: {}, devOpen: false });
   A.discMsg = A.discMsg || {};
+  A.folderMsg = A.folderMsg || {};
   const STAR = (on) => `<svg class="ach-star${on ? ' on' : ''}" viewBox="0 0 64 64" width="40" height="40" aria-hidden="true"><path d="M32 5.5l7.9 16.1 17.7 2.6-12.8 12.5 3 17.6L32 46l-15.8 8.3 3-17.6L6.4 24.2l17.7-2.6z"/></svg>`;
   const onTab = (id) => S.view === 'game' && S.arg === id && S.tab === 'ach';
   const REASONS = {
@@ -207,7 +208,11 @@ function achConsole(c) {
     const disc = a.origin === 'x360' && !d.native_known && !list.length
       ? `<div class="card"><p style="margin:0"><b>${esc(t('Show This Game\'s Achievements'))}</b></p><p class="muted" style="margin:6px 0 12px">${esc(A.discMsg[id] || t('Point RecompLauncher to your game files to show this game\'s achievements.'))}</p><div class="ach-acts"><button type="button" class="btn" data-ach="disc-file" data-id="${esc(id)}">${esc(t('Choose Disc Image'))}</button><button type="button" class="btn" data-ach="disc-folder" data-id="${esc(id)}">${esc(t('Choose Game Folder'))}</button></div></div>`
       : '';
-    return `<div class="stack">${head}${disc}${body}${d.dev || (typeof devOn === 'function' && devOn()) ? devTools(id, d) : ''}</div>`;
+    // Its unlock file wasn't found in a long session: the player can show the save folder.
+    const folder = a.origin === 'x360' && d.missing_file
+      ? `<div class="card"><p style="margin:0">${esc(A.folderMsg[id] || t('RecompLauncher can\'t find this game\'s unlocks yet. If you\'ve unlocked something, show it the game\'s save folder.'))}</p><div class="ach-acts" style="margin-top:12px"><button type="button" class="btn" data-ach="unlock-folder" data-id="${esc(id)}">${esc(t('Show Me the Folder'))}</button></div></div>`
+      : '';
+    return `<div class="stack">${head}${folder}${disc}${body}${d.dev || (typeof devOn === 'function' && devOn()) ? devTools(id, d) : ''}</div>`;
   };
 
   // Report a problem with one achievement: what's wrong, and an optional note.
@@ -253,6 +258,15 @@ function achConsole(c) {
       let r = {};
       try { r = await invoke('ach_set_disc', { id, path: String(path) }); } catch (err) { r = { ok: false }; }
       A.discMsg[id] = r.ok ? tf('Found {n} achievements.', { n: r.count }) : t('No Xbox 360 game was found there. Pick the disc image (.iso), or the folder with default.xex in it.');
+      load(id, true);
+    } else if (k === 'unlock-folder') {
+      let path = null;
+      try { path = typeof pickFile === 'function' ? await pickFile({ title: t('The Game\'s Save Folder'), directory: true }) : null; } catch (err) { path = null; }
+      if (!path) return;
+      let r = {};
+      const g = (typeof S !== 'undefined' && S.library && S.library[id]) || {};
+      try { r = await invoke('ach_set_folder', { id, path: String(path), install: g.path || null }); } catch (err) { r = { ok: false }; }
+      A.folderMsg[id] = r.ok ? tf('Found it, with {count} unlocks so far.', { count: r.count }) : r.several ? t('That folder has several games\' unlocks. Pick this game\'s own folder inside it.') : t('No unlocks were found there. Pick the folder the game keeps its saves in.');
       load(id, true);
     } else if (k === 'sound') {
       const on = b.getAttribute('aria-checked') !== 'true';

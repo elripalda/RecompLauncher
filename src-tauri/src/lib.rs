@@ -207,6 +207,27 @@ async fn getting_ready<T>(f: impl std::future::Future<Output = Result<T, Error>>
 /// An Xbox 360 game's title id from the list: its "title_id", the one under "achievements", or (for
 /// Easy Setup) the id its disc files must have. The first that is one (8 hex digits) counts, so a
 /// mistyped title_id doesn't hide a good disc id. In capitals, as the unlock file is named.
+/// The listing a game the player added themselves is a copy of: the same repo name (whoever's it
+/// is, in any case), else the same title id as its disc. With what matched, for the trail.
+fn listing_for_copy(cat: &Value, repo: &str, disc: impl FnOnce() -> Option<String>) -> Option<(String, &'static str)> {
+    let name = |r: &str| r.trim().trim_end_matches('/').trim_end_matches(".git").rsplit('/').next().unwrap_or("").to_ascii_lowercase();
+    let apps = cat.get("apps").and_then(Value::as_array)?;
+    let want = name(repo);
+    if !want.is_empty() {
+        let hits: Vec<&Value> = apps.iter().filter(|a| name(str_of(a, "repo")) == want).collect();
+        if let [one] = hits.as_slice() {
+            return Some((str_of(one, "id").to_string(), "repo name"));
+        }
+    }
+    // Only worth reading the disc when some listing has a title id to match.
+    if !apps.iter().any(|a| catalog_title(a).is_some()) {
+        return None;
+    }
+    let t = disc()?.to_ascii_uppercase();
+    let hits: Vec<&Value> = apps.iter().filter(|a| catalog_title(a).as_deref() == Some(t.as_str())).collect();
+    if let [one] = hits.as_slice() { Some((str_of(one, "id").to_string(), "title id")) } else { None }
+}
+
 fn catalog_title(entry: &Value) -> Option<String> {
     let ok = |t: &&str| t.trim().len() == 8 && t.trim().chars().all(|c| c.is_ascii_hexdigit());
     ["/title_id", "/achievements/title_id", "/boot/files/id"].iter().filter_map(|k| entry.pointer(k).and_then(Value::as_str)).find(ok).map(|t| t.trim().to_ascii_uppercase())
@@ -2947,9 +2968,21 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         trail::note(format!("Play {id}: no FUSE 2 on this PC, the AppImage unpacks itself to run"));
     }
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
+    let mut ach_id = full_id.clone();
     let ach_session = {
         let cat = cached_catalog(&st);
-        let entry = catalog::app(&cat, id);
+        let mut entry = catalog::app(&cat, id);
+        // A copy the player added of a listed game (a fork, another repo of the same developer):
+        // its achievements go by the listing's id.
+        if entry.is_none() && pick.is_none() {
+            let disc = || crate::xex::table_for(&g.path, &[g.path.clone()], &[]).map(|t| t.title_id).filter(|t| !t.is_empty());
+            if let Some((lid, how)) = listing_for_copy(&cat, &g.repo, disc) {
+                trail::note(format!("Achievements {id}: a copy of the listing {lid} (the same {how}), so its achievements go by {lid}"));
+                ach::set_alias(&st.dir, id, &lid);
+                entry = catalog::app(&cat, &lid);
+                ach_id = lid;
+            }
+        }
         let origin = entry.map(|e| str_of(e, "origin").to_string()).unwrap_or_default();
         let folder = entry.and_then(|e| e.get("achievements_folder").and_then(Value::as_str).or_else(|| e.pointer("/achievements/folder").and_then(Value::as_str))).map(str::to_string);
         let mut roots = vec![g.path.clone()];
@@ -2961,9 +2994,9 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         match &pick {
             Some(pk) => {
                 let title = Some(pk.game.title_id.clone()).filter(|t| !t.is_empty());
-                ach::start(app, ach::Start { id: &full_id, name: &pk.game.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots })
+                ach::start(app, ach::Start { id: &full_id, play_id: id, name: &pk.game.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots })
             }
-            None => ach::start(app, ach::Start { id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots }),
+            None => ach::start(app, ach::Start { id: &ach_id, play_id: id, name: &g.name, version: &g.tag, install: &g.path, origin: &origin, prof: prof.as_ref(), catalog_folder: folder, title, roots }),
         }
     };
     if let Some(p) = &ach_session {
@@ -2990,7 +3023,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     }
     if spawned.is_err() {
         if ach_session.is_some() {
-            ach::abort(app, &full_id);
+            ach::abort(app, &ach_id);
         }
         if let Some(p) = look_run.as_ref().and_then(|r| r.placed.as_ref()) {
             looks::finish(&st.dir, id, p);
@@ -3034,6 +3067,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     st.started.lock().unwrap().insert(id.clone(), started);
     // Which of its games is being played (a recomp that carries several), for the window.
     let game_full = pick.as_ref().map(|_| full_id.clone());
+    let ach_game = ach_id.clone();
     let game_sub = pick.as_ref().map(|p| p.game.id.clone());
     PLAYING_GAME.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), full_id.clone());
     let placed = look_run.as_ref().and_then(|r| r.placed.clone());
@@ -3155,7 +3189,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             st.running.lock().unwrap().remove(&id);
             st.pids.lock().unwrap().remove(&id);
             st.started.lock().unwrap().remove(&id);
-            ach::end(&app2, game_full.as_deref().unwrap_or(&id));
+            ach::end(&app2, &ach_game);
             if let Some(m) = PLAYING_GAME.lock().unwrap().as_mut() {
                 m.remove(&id);
             }
@@ -8532,7 +8566,10 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::Resized(_) => {
-                    away(w, w.is_minimized().unwrap_or(false) || !w.is_visible().unwrap_or(true));
+                    let hidden = w.is_minimized().unwrap_or(false) || !w.is_visible().unwrap_or(true);
+                    away(w, hidden);
+                    // Minimized isn't being used: Discord shows the launcher only while it's open.
+                    discord::send(discord::Msg::Shown(!hidden));
                     keep_window_place(w, false);
                 }
                 tauri::WindowEvent::Moved(_) => keep_window_place(w, false),
@@ -8938,7 +8975,7 @@ pub fn run() {
             convert_plan,
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
-            reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
+            reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
             cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
@@ -9765,5 +9802,25 @@ mod fingerprint_tests {
         bumped.prepare.as_mut().unwrap().version = "2".into();
         assert!(!game_inputs_ready(&bumped, &whole, &g, &all[0], &dir));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod copy_listing_tests {
+    use super::*;
+
+    #[test]
+    fn a_copy_the_player_added_goes_by_the_listings_id() {
+        let cat = serde_json::json!({ "apps": [
+            { "id": "hopper", "repo": "dev/Hopper-Recomp", "origin": "x360" },
+            { "id": "racer", "repo": "dev/SkyRacer", "title_id": "4D5307E6" }
+        ]});
+        // A fork of the listing's repo: the same name, another owner, another case.
+        assert_eq!(listing_for_copy(&cat, "someone/hopper-recomp", || None), Some(("hopper".to_string(), "repo name")));
+        assert_eq!(listing_for_copy(&cat, "https://github.com/someone/Hopper-Recomp.git", || None).map(|x| x.0).as_deref(), Some("hopper"));
+        // Another repo of the developer's: its disc's title id.
+        assert_eq!(listing_for_copy(&cat, "dev/racer-builds", || Some("4d5307e6".into())), Some(("racer".to_string(), "title id")));
+        assert_eq!(listing_for_copy(&cat, "dev/unrelated", || Some("11111111".into())), None);
+        assert_eq!(listing_for_copy(&cat, "dev/unrelated", || None), None);
     }
 }

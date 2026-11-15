@@ -194,6 +194,10 @@ pub struct Session {
     /// The game sent its native achievements' names after session-start went: sent again with them.
     #[serde(default)]
     pub native_pending: bool,
+    /// The game's Xbox 360 title id once it's known (disc, unlock file or catalog), sent with
+    /// session-start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -233,6 +237,14 @@ struct Store {
     /// couldn't find it by itself.
     #[serde(default)]
     disc: BTreeMap<String, String>,
+    /// Xbox 360 games whose unlock file wasn't found in a session of 30 minutes or more: the tab
+    /// asks the player to show the folder.
+    #[serde(default)]
+    missing: BTreeMap<String, bool>,
+    /// A game the player added themselves -> the listing it's a copy of, whose id its
+    /// achievements go by.
+    #[serde(default)]
+    alias: BTreeMap<String, String>,
     /// Version of the one-time fixes done to this store (see `fix_store`).
     #[serde(default)]
     fixes: u32,
@@ -457,6 +469,9 @@ struct Live {
     stop: Vec<tokio::sync::oneshot::Sender<()>>,
     /// Unlocks from a save that just loaded, shown together in one toast.
     burst: Vec<Value>,
+    /// Done once the unlock file was looked at again after the game closed (x360), so the
+    /// session's last sync carries what it wrote then.
+    rex_done: Option<tokio::sync::oneshot::Receiver<()>>,
     #[cfg(unix)]
     socket: Option<PathBuf>,
 }
@@ -513,7 +528,10 @@ fn voided(prof: Option<&crate::profile::Profile>, install: &Path, keys: &[String
 }
 
 pub struct Start<'a> {
+    /// The id its achievements go by: the game's, or the listing's for a copy the player added.
     pub id: &'a str,
+    /// The game's id in the library (its running process is kept under it).
+    pub play_id: &'a str,
     pub name: &'a str,
     pub version: &'a str,
     pub install: &'a Path,
@@ -533,7 +551,7 @@ pub fn start(app: &AppHandle, s: Start) -> Option<String> {
     if !allowed() || crate::cloud::token(&st.dir).is_none() {
         return None;
     }
-    end_now(app, s.id);
+    let _ = end_now(app, s.id);
     let session = new_session_id();
     let started = now();
     let list = list_for(&st.dir, s.id);
@@ -563,7 +581,7 @@ pub fn start(app: &AppHandle, s: Start) -> Option<String> {
     live(|m| {
         m.insert(s.id.to_string(), Live {
             session: session.clone(), name: s.name.into(), version: s.version.into(), paused: None, tx: None, connected: false, hello: None, log: VecDeque::new(), peeks: HashMap::new(), list: list.clone(), voided: voided.clone(),
-            casual: None, save_loaded: None, stop: vec![stop_tx], burst: vec![],
+            casual: None, save_loaded: None, stop: vec![stop_tx], burst: vec![], rex_done: None,
             #[cfg(unix)]
             socket: Some(PathBuf::from(&name)),
         })
@@ -594,8 +612,13 @@ pub fn start(app: &AppHandle, s: Start) -> Option<String> {
         live(|m| { if let Some(l) = m.get_mut(s.id) { l.stop.push(rx_tx); } });
         // The title id: the catalog's, or the game's list's, until the disc says (the disc wins).
         let title = s.title.clone().or_else(|| list.as_ref().and_then(|l| l.get("title_id")).and_then(Value::as_str).map(str::to_string)).map(|t| t.trim().to_uppercase()).filter(|t| t.len() == 8 && t.chars().all(|c| c.is_ascii_hexdigit()));
-        let w = RexWatch { game: s.id.into(), install: s.install.to_path_buf(), started, catalog_folder: s.catalog_folder.clone(), title, roots: s.roots.clone() };
-        tauri::async_runtime::spawn(rex_watch(app.clone(), w, rx_rx));
+        if let Some(t) = &title {
+            set_title(&st.dir, &session, t);
+        }
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+        live(|m| { if let Some(l) = m.get_mut(s.id) { l.rex_done = Some(done_rx); } });
+        let w = RexWatch { game: s.id.into(), pid_key: s.play_id.into(), install: s.install.to_path_buf(), started, catalog_folder: s.catalog_folder.clone(), title, roots: s.roots.clone() };
+        tauri::async_runtime::spawn(rex_watch(app.clone(), w, rx_rx, done_tx));
     }
     // A fresh list for next time (and this time, if it arrives before the game says hello).
     let (a, game) = (app.clone(), s.id.to_string());
@@ -612,14 +635,15 @@ pub fn start(app: &AppHandle, s: Start) -> Option<String> {
 /// The game didn't start after all: its session goes without a trace on the website.
 pub fn abort(app: &AppHandle, game: &str) {
     let sid = live(|m| m.get(game).map(|l| l.session.clone()));
-    end_now(app, game);
+    let _ = end_now(app, game);
     if let Some(sid) = sid {
         with_store(&app.state::<App>().dir, |d| { d.sessions.remove(&sid); ((), true) });
     }
 }
 
-fn end_now(app: &AppHandle, game: &str) -> Option<String> {
-    let l = live(|m| m.remove(game))?;
+fn end_now(app: &AppHandle, game: &str) -> Option<(String, Option<tokio::sync::oneshot::Receiver<()>>)> {
+    let mut l = live(|m| m.remove(game))?;
+    let rex_done = l.rex_done.take();
     if TRACKER.lock().unwrap().as_ref().and_then(|t| t.get("game")).and_then(Value::as_str) == Some(game) {
         tracker(app, None);
     }
@@ -640,15 +664,19 @@ fn end_now(app: &AppHandle, game: &str) -> Option<String> {
         }
         ((), true)
     });
-    Some(l.session)
+    Some((l.session, rex_done))
 }
 
 /// The game closed: its channel goes, a last check-in, and what's left is sent.
 pub fn end(app: &AppHandle, game: &str) {
-    let Some(sid) = end_now(app, game) else { return };
+    let Some((sid, rex_done)) = end_now(app, game) else { return };
     crate::trail::note(format!("Achievements {game}: session ended"));
     let a = app.clone();
     tauri::async_runtime::spawn(async move {
+        // An Xbox 360 game may write its unlocks as it closes: the last look at its file first.
+        if let Some(rx) = rex_done {
+            let _ = tokio::time::timeout(Duration::from_secs(30), rx).await;
+        }
         checkin(&a, &sid, json!({})).await;
         sync(&a).await;
     });
@@ -973,10 +1001,33 @@ fn unlocked_ids(dir: &Path, game: &str) -> Vec<u32> {
     })
 }
 
+/// What an unlock is recorded with: the running session's.
+#[derive(Clone)]
+struct RecCtx {
+    session: String,
+    casual: Option<String>,
+    voided: Vec<String>,
+    after_load: bool,
+    list: Option<Value>,
+    name: String,
+}
+
+fn rec_ctx(game: &str) -> Option<RecCtx> {
+    live(|m| m.get(game).map(|l| RecCtx { session: l.session.clone(), casual: l.casual.clone(), voided: l.voided.clone(), after_load: l.save_loaded.map(|t| t.elapsed().as_secs() < AFTER_LOAD_SECS).unwrap_or(false), list: l.list.clone(), name: l.name.clone() }))
+}
+
 /// An unlock: kept here first, then the toast, then the website.
 fn record(app: &AppHandle, game: &str, id: u32, source: &str, frame: Option<u64>, earlier: bool, why: Option<&str>) {
+    let Some(ctx) = rec_ctx(game) else { return };
+    record_with(app, game, ctx, id, source, frame, earlier, why, None);
+}
+
+/// The same, with the session it belongs to given (after the game closed, its session is no
+/// longer running) and its own time when the game wrote one.
+#[allow(clippy::too_many_arguments)]
+fn record_with(app: &AppHandle, game: &str, ctx: RecCtx, id: u32, source: &str, frame: Option<u64>, earlier: bool, why: Option<&str>, at: Option<u64>) {
     let dir = app.state::<App>().dir.clone();
-    let Some((session, casual, voided, after_load, list, name)) = live(|m| m.get(game).map(|l| (l.session.clone(), l.casual.clone(), l.voided.clone(), l.save_loaded.map(|t| t.elapsed().as_secs() < AFTER_LOAD_SECS).unwrap_or(false), l.list.clone(), l.name.clone()))) else { return };
+    let RecCtx { session, casual, voided, after_load, list, name } = ctx;
     let list = effective(&dir, game, list.or_else(|| list_for(&dir, game)));
     let reason = if earlier {
         "earlier".to_string()
@@ -989,7 +1040,7 @@ fn record(app: &AppHandle, game: &str, id: u32, source: &str, frame: Option<u64>
     } else {
         why.unwrap_or("").to_string()
     };
-    let u = Unlock { game: game.into(), id, source: source.into(), at: now(), session, frame, casual: !reason.is_empty(), reason: reason.clone(), earlier, ..Default::default() };
+    let u = Unlock { game: game.into(), id, source: source.into(), at: at.unwrap_or_else(now), session, frame, casual: !reason.is_empty(), reason: reason.clone(), earlier, ..Default::default() };
     let (fresh, all_done) = with_store(&dir, |d| {
         if d.unlocks.iter().any(|x| x.game == game && x.id == id) {
             return ((false, false), false);
@@ -1081,6 +1132,9 @@ pub async fn sync(app: &AppHandle) {
         }
         if let Some(f) = with_store(&dir, |d| (d.found.get(&s.game).cloned(), false)) {
             body["unlock_folder"] = json!(f);
+        }
+        if let Some(t) = &s.title {
+            body["title_id"] = json!(t);
         }
         // The game's own names for its achievements, as its runtime sent them. The same "local"
         // again gets the same session back, so this is safe to send a second time.
@@ -1373,6 +1427,8 @@ fn presence(app: &AppHandle, game: &str, text: String) {
 
 struct RexWatch {
     game: String,
+    /// The game's id in the library, for its running process (game can be a listing's id).
+    pid_key: String,
     install: PathBuf,
     started: u64,
     catalog_folder: Option<String>,
@@ -1446,29 +1502,9 @@ fn unlock_files_near(w: &RexWatch) -> Vec<PathBuf> {
             stack.extend(std::fs::read_dir(&d).into_iter().flatten().flatten().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).map(|e| (e.path(), depth + 1)).take(200));
         }
     }
-    let mut roots: Vec<PathBuf> = vec![];
-    #[cfg(windows)]
-    for k in ["APPDATA", "LOCALAPPDATA"] {
-        if let Some(v) = std::env::var_os(k) {
-            roots.push(PathBuf::from(v));
-        }
-    }
-    if let Some(h) = dirs::home_dir() {
-        roots.push(h.join("Saved Games"));
-        roots.push(h.join("AppData").join("LocalLow"));
-        roots.push(h.join(".local").join("share"));
-        roots.push(h.join(".config"));
-    }
-    if let Some(d) = dirs::document_dir() {
-        roots.push(d);
-    }
-    for r in roots {
-        for e in std::fs::read_dir(&r).into_iter().flatten().flatten().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).take(800) {
-            out.extend(unlock_files_in(&e.path()));
-            for e2 in std::fs::read_dir(e.path()).into_iter().flatten().flatten().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).take(60) {
-                out.extend(unlock_files_in(&e2.path()));
-            }
-        }
+    let home = dirs::home_dir();
+    for r in search_roots() {
+        out.extend(files_under(&r, home.as_deref() == Some(r.as_path())));
     }
     // One file reached two ways (the game's folder inside AppData, or a short 8.3 name on Windows
     // beside the long one) is one file: the first path found for it is kept.
@@ -1478,15 +1514,101 @@ fn unlock_files_near(w: &RexWatch) -> Vec<PathBuf> {
     out
 }
 
+/// Documents in the languages Windows names it in. When Documents is moved to OneDrive, a game
+/// that writes to the plain one in the home folder isn't in the known folder.
+const DOCUMENTS: [&str; 7] = ["Documents", "Dokumente", "Documentos", "Documenti", "Mes documents", "Documenten", "Dokumenty"];
+
+/// Unlock files in a root's folders, two levels down. In the home folder itself, not its hidden
+/// folders or AppData, which have roots of their own.
+fn files_under(r: &Path, home: bool) -> Vec<PathBuf> {
+    let mut out = vec![];
+    let skip = |e: &std::fs::DirEntry| home && e.file_name().to_str().is_some_and(|n| n.starts_with('.') || n.eq_ignore_ascii_case("AppData"));
+    for e in std::fs::read_dir(r).into_iter().flatten().flatten().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false) && !skip(e)).take(800) {
+        out.extend(unlock_files_in(&e.path()));
+        for e2 in std::fs::read_dir(e.path()).into_iter().flatten().flatten().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).take(60) {
+            out.extend(unlock_files_in(&e2.path()));
+        }
+    }
+    out
+}
+
+/// The player's folders a game may keep its user data in, each looked in two levels down.
+fn search_roots() -> Vec<PathBuf> {
+    #[allow(unused_mut)]
+    let mut env: Vec<PathBuf> = vec![];
+    #[cfg(windows)]
+    for k in ["APPDATA", "LOCALAPPDATA"] {
+        if let Some(v) = std::env::var_os(k) {
+            env.push(PathBuf::from(v));
+        }
+    }
+    roots_for(env, dirs::home_dir(), dirs::document_dir())
+}
+
+/// The same, from the given places (pure, for tests).
+fn roots_for(env: Vec<PathBuf>, home: Option<PathBuf>, documents: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut roots = env;
+    if let Some(h) = home {
+        roots.push(h.join("Saved Games"));
+        roots.push(h.join("AppData").join("LocalLow"));
+        roots.push(h.join(".local").join("share"));
+        roots.push(h.join(".config"));
+        roots.push(h.clone());
+        let mut homes = vec![h.clone()];
+        homes.extend(std::fs::read_dir(&h).into_iter().flatten().flatten().filter(|e| e.file_name().to_str().is_some_and(|n| n.to_ascii_lowercase().starts_with("onedrive")) && e.path().is_dir()).map(|e| e.path()));
+        for base in homes {
+            if base != h {
+                roots.push(base.clone());
+            }
+            roots.extend(DOCUMENTS.iter().map(|d| base.join(d)).filter(|d| d.is_dir()));
+        }
+    }
+    if let Some(d) = documents {
+        roots.push(d);
+    }
+    let mut seen = std::collections::HashSet::new();
+    roots.retain(|r| r.is_dir() && seen.insert(std::fs::canonicalize(r).unwrap_or_else(|_| r.clone())));
+    roots
+}
+
 /// The game's title id isn't known (no disc found, nothing in the list): the one unlock file made
 /// or changed since it started is its own, since only a running game writes unlocks. Two or more
 /// changed at once can't be told apart, so none is taken.
-fn unlock_file_since(w: &RexWatch) -> Option<PathBuf> {
-    let since = |p: &PathBuf| {
-        std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() + 5 >= w.started).unwrap_or(false)
-    };
-    let fresh: Vec<PathBuf> = unlock_files_near(w).into_iter().filter(since).collect();
+fn unlock_file_since(w: &RexWatch, remembered: Option<&str>) -> Option<PathBuf> {
+    let mut all = unlock_files_near(w);
+    if let Some(f) = remembered {
+        all.extend(unlock_files_in(&expand(f, &w.install)));
+    }
+    let fresh: Vec<PathBuf> = one_each(all).into_iter().filter(|p| changed_since(p, w.started)).collect();
     if fresh.len() == 1 { fresh.into_iter().next() } else { None }
+}
+
+/// Modified since the session started (a few seconds' slack).
+fn changed_since(p: &Path, started: u64) -> bool {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() + 5 >= started).unwrap_or(false)
+}
+
+/// One path per file (the same file reached two ways counts once).
+fn one_each(mut files: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
+    files.retain(|p| seen.insert(std::fs::canonicalize(p).unwrap_or_else(|_| p.clone())));
+    files.sort();
+    files
+}
+
+/// Without a title id: the one unlock file in the folder it was found in before, or the catalog's
+/// folder. Two or more there are several games' and none is taken.
+fn lone_unlock_file(w: &RexWatch, remembered: Option<&str>) -> Option<PathBuf> {
+    let mut files = vec![];
+    if let Some(f) = remembered {
+        files.extend(unlock_files_in(&expand(f, &w.install)));
+    }
+    if let Some(f) = w.catalog_folder.as_deref().map(|f| expand(f, &w.install)) {
+        files.extend(unlock_files_in(&f));
+        files.extend(std::fs::read_dir(&f).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| title_file(p)));
+    }
+    let files = one_each(files);
+    if files.len() == 1 { files.into_iter().next() } else { None }
 }
 
 /// A folder from the catalog: {game} is the game's folder; %APPDATA%, %LOCALAPPDATA%,
@@ -1556,9 +1678,10 @@ fn is_title_file(p: &Path, title: &str) -> bool {
 }
 
 /// The game's unlock file: in the folder it was found in before, else wherever it is. Only the
-/// file named after the game's title id, so nothing while that isn't known.
+/// file named after the game's title id; while that isn't known, the only one in the remembered
+/// or catalog folder (its name then says the title).
 fn find_unlock_file(w: &RexWatch, remembered: Option<&str>) -> Option<PathBuf> {
-    let title = w.title.as_deref()?;
+    let Some(title) = w.title.as_deref() else { return lone_unlock_file(w, remembered) };
     if let Some(f) = remembered {
         let files: Vec<PathBuf> = unlock_files_in(&expand(f, &w.install)).into_iter().filter(|x| is_title_file(x, title)).collect();
         if let Some(x) = newest(files) {
@@ -1574,12 +1697,41 @@ fn title_of_unlock_file(f: &Path) -> Option<String> {
     (s.len() == 8 && s.chars().all(|c| c.is_ascii_hexdigit())).then_some(s)
 }
 
+/// The title id goes with the session's start; one learned after session-start went sends it again
+/// (the same "local" gets the same session back).
+fn set_title(dir: &Path, session: &str, title: &str) {
+    let t = title.trim().to_uppercase();
+    if t.len() != 8 || !t.chars().all(|c| c.is_ascii_hexdigit()) {
+        return;
+    }
+    with_store(dir, |d| {
+        let Some(x) = d.sessions.get_mut(session) else { return ((), false) };
+        if x.title.as_deref() == Some(t.as_str()) {
+            return ((), false);
+        }
+        x.title = Some(t);
+        if x.server.is_some() {
+            x.native_pending = true;
+        }
+        ((), true)
+    });
+}
+
+/// The game's title id is known now: kept, and on its way to the website with the session.
+fn learn_title(app: &AppHandle, w: &mut RexWatch, t: &str) {
+    w.title = Some(t.to_uppercase());
+    let dir = app.state::<App>().dir.clone();
+    if let Some(sid) = live(|x| x.get(&w.game).map(|l| l.session.clone())) {
+        set_title(&dir, &sid, t);
+    }
+}
+
 /// A table that was found: its names for the tab and the toast, the title id for the unlock file,
 /// and on to the website (which makes the game's list from it the first time).
 fn use_table(app: &AppHandle, w: &mut RexWatch, t: &crate::xex::Table) {
     let dir = app.state::<App>().dir.clone();
     if !t.title_id.is_empty() {
-        w.title = Some(t.title_id.clone());
+        learn_title(app, w, &t.title_id);
     }
     let names: Vec<Value> = t.achievements.iter().map(|a| json!({"id": a.id, "title": a.title, "description": a.description, "gamerscore": a.gamerscore})).collect();
     if names.is_empty() {
@@ -1600,17 +1752,17 @@ fn use_table(app: &AppHandle, w: &mut RexWatch, t: &crate::xex::Table) {
     tauri::async_runtime::spawn(async move { sync(&a).await; });
 }
 
-async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::oneshot::Receiver<()>) {
+async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::oneshot::Receiver<()>, done: tokio::sync::oneshot::Sender<()>) {
     let dir = app.state::<App>().dir.clone();
     let roots = std::mem::take(&mut w.roots);
     // The table, looked for now and again on TABLE_TRIES while the game runs, until found.
     let mut table_try = 1usize;
     let mut table_done = false;
     let started_at = Instant::now();
-    let pid_of = |app: &AppHandle, game: &str| app.state::<App>().pids.lock().unwrap().get(game).copied();
+    let pid_of = |app: &AppHandle, key: &str| app.state::<App>().pids.lock().unwrap().get(key).copied();
     let picked = with_store(&dir, |d| (d.disc.get(&w.game).map(PathBuf::from), false));
     {
-        let (install, roots2, pid, pk) = (w.install.clone(), roots.clone(), pid_of(&app, &w.game), picked.clone());
+        let (install, roots2, pid, pk) = (w.install.clone(), roots.clone(), pid_of(&app, &w.pid_key), picked.clone());
         if let Ok(Some(t)) = tokio::task::spawn_blocking(move || table_now(&install, &roots2, pid, pk)).await {
             use_table(&app, &mut w, &t);
             table_done = true;
@@ -1623,7 +1775,19 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
     REX.lock().unwrap().insert(w.game.clone(), false);
     // What's there when the session starts: earlier unlocks.
     let mut file = find_unlock_file(&w, remembered.as_deref());
+    // Found without the title id: the only file in the remembered or catalog folder names it.
+    if w.title.is_none() {
+        if let Some(t) = file.as_deref().and_then(title_of_unlock_file) {
+            log_line(&w.game, "*", &format!("the only unlock file in its folder is {t}.toml, so that's its title id"));
+            crate::trail::note(format!("Achievements {}: title {t}, from the only unlock file in its folder", w.game));
+            learn_title(&app, &mut w, &t);
+        }
+    }
     let mut known: BTreeMap<u32, u64> = BTreeMap::new();
+    let mut said_missing = false;
+    // What it's recorded with after the game closed, when the session is no longer running.
+    let mut ctx = rec_ctx(&w.game);
+    let mut ctx_at = Instant::now();
     let mut first_sight = true;
     let mut look_now = false;
     let mut since_look = Instant::now();
@@ -1644,7 +1808,7 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
                     }
                     // Already there: from before this session.
                     for (id, at) in &now_entries {
-                        if *at == 0 || *at + 60 < w.started || begun.elapsed().as_secs() < 3 {
+                        if from_before(*at, w.started, begun.elapsed().as_secs()) {
                             record(&app, &w.game, *id, "native", None, true, None);
                             known.insert(*id, *at);
                         }
@@ -1671,12 +1835,14 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
         } else if w.title.is_none() && begun.elapsed().as_secs() >= 20 && since_look.elapsed().as_secs() >= 20 {
             // No disc and no title: the unlock file the game writes names it.
             since_look = Instant::now();
-            let w2 = RexWatch { game: w.game.clone(), install: w.install.clone(), started: w.started, catalog_folder: w.catalog_folder.clone(), title: None, roots: vec![] };
-            if let Some(f) = tokio::task::spawn_blocking(move || unlock_file_since(&w2)).await.ok().flatten() {
+            remembered = with_store(&dir, |d| (d.found.get(&w.game).cloned(), false));
+            let w2 = w.copy();
+            let rem = remembered.clone();
+            if let Some(f) = tokio::task::spawn_blocking(move || find_unlock_file(&w2, rem.as_deref()).or_else(|| unlock_file_since(&w2, rem.as_deref()))).await.ok().flatten() {
                 if let Some(t) = title_of_unlock_file(&f) {
                     log_line(&w.game, "*", &format!("the game wrote {}, so its title id is {t}", unexpand(&f, &w.install)));
                     crate::trail::note(format!("Achievements {}: title {t}, from the unlock file the game wrote", w.game));
-                    w.title = Some(t);
+                    learn_title(&app, &mut w, &t);
                     file = Some(f);
                 }
             }
@@ -1684,14 +1850,15 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
             // Not there yet: ReXGlue makes it with the first unlock.
             look_now = false;
             since_look = Instant::now();
-            let dir2 = w.install.clone();
-            let w2 = RexWatch { game: w.game.clone(), install: dir2, started: w.started, catalog_folder: w.catalog_folder.clone(), title: w.title.clone(), roots: vec![] };
+            // The player may have shown the folder meanwhile.
+            remembered = with_store(&dir, |d| (d.found.get(&w.game).cloned(), false));
+            let w2 = w.copy();
             let rem = remembered.clone();
             file = tokio::task::spawn_blocking(move || find_unlock_file(&w2, rem.as_deref())).await.ok().flatten();
         }
         if !table_done && table_try < TABLE_TRIES.len() && started_at.elapsed().as_secs() >= TABLE_TRIES[table_try] {
             table_try += 1;
-            let (install, roots2, pid, pk) = (w.install.clone(), roots.clone(), pid_of(&app, &w.game), picked.clone());
+            let (install, roots2, pid, pk) = (w.install.clone(), roots.clone(), pid_of(&app, &w.pid_key), picked.clone());
             if let Ok(Some(t)) = tokio::task::spawn_blocking(move || table_now(&install, &roots2, pid, pk)).await {
                 // The disc wins: an unlock file named after another title id is another game's.
                 // It's dropped (and the folder it was in forgotten), and this game's is looked for.
@@ -1715,12 +1882,99 @@ async fn rex_watch(app: AppHandle, mut w: RexWatch, mut stop: tokio::sync::onesh
                 crate::trail::note(format!("Achievements {}: the game's disc wasn't found, so its achievement names aren't known", w.game));
             }
         }
+        if file.is_none() && !said_missing && begun.elapsed().as_secs() >= 600 {
+            said_missing = true;
+            let roots: Vec<String> = search_roots().iter().map(|r| unexpand(r, &w.install)).collect();
+            crate::trail::note(format!("Achievements {}: no unlock file after 10 minutes (title {}); looked in the game's folder{}{}, {}", w.game, w.title.as_deref().unwrap_or("unknown"), w.catalog_folder.as_deref().map(|f| format!(", {f}")).unwrap_or_default(), remembered.as_deref().map(|f| format!(", {f}")).unwrap_or_default(), roots.join(", ")));
+        }
+        if ctx_at.elapsed().as_secs() >= 10 {
+            ctx_at = Instant::now();
+            if let Some(c) = rec_ctx(&w.game) {
+                ctx = Some(c);
+            }
+        }
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(2)) => {}
-            _ = &mut stop => { REX.lock().unwrap().remove(&w.game); return; }
+            _ = &mut stop => {
+                REX.lock().unwrap().remove(&w.game);
+                after_close(&app, w, file, known, remembered, ctx, begun.elapsed().as_secs()).await;
+                let _ = done.send(());
+                return;
+            }
         }
     }
 }
+
+/// An entry already in the file when it's first seen came from an earlier session: no time, a
+/// time from before the session, or the file there at the very start.
+fn from_before(at: u64, started: u64, secs_in: u64) -> bool {
+    at == 0 || at + 60 < started || secs_in < 3
+}
+
+impl RexWatch {
+    /// For a look on another thread (no roots: those are only for the table).
+    fn copy(&self) -> RexWatch {
+        RexWatch { game: self.game.clone(), pid_key: self.pid_key.clone(), install: self.install.clone(), started: self.started, catalog_folder: self.catalog_folder.clone(), title: self.title.clone(), roots: vec![] }
+    }
+}
+
+/// The unlock file the game wrote by the time it closed: this game's (or, without a title id,
+/// the only one changed during the session), changed since the session started. Pure, for tests.
+fn file_after_close(w: &RexWatch, seen: Option<PathBuf>, remembered: Option<&str>) -> Option<PathBuf> {
+    match &w.title {
+        Some(_) => seen.filter(|f| f.exists()).or_else(|| find_unlock_file(w, remembered)).filter(|f| changed_since(f, w.started)),
+        None => seen.filter(|f| changed_since(f, w.started)).or_else(|| unlock_file_since(w, remembered)),
+    }
+}
+
+/// What's new in the file since the watch last read it (the entries already known stay out).
+fn new_entries(text: &str, known: &BTreeMap<u32, u64>) -> Vec<(u32, u64)> {
+    parse_unlock_file(text).into_iter().filter(|(id, _)| !known.contains_key(id)).collect()
+}
+
+/// After the game closed: some games write their unlocks as they go. A few seconds, the same
+/// search once more, and what's new is recorded for this session with its own time, before the
+/// session's last sync.
+async fn after_close(app: &AppHandle, mut w: RexWatch, seen: Option<PathBuf>, known: BTreeMap<u32, u64>, remembered: Option<String>, ctx: Option<RecCtx>, secs: u64) {
+    let dir = app.state::<App>().dir.clone();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let had = seen.is_some();
+    let w2 = w.copy();
+    let rem = remembered.clone();
+    let found = tokio::task::spawn_blocking(move || file_after_close(&w2, seen, rem.as_deref())).await.ok().flatten();
+    let mut file_known = had;
+    if let Some(f) = found {
+        file_known = true;
+        if w.title.is_none() {
+            if let Some(t) = title_of_unlock_file(&f) {
+                crate::trail::note(format!("Achievements {}: title {t}, from the unlock file the game wrote as it closed", w.game));
+                w.title = Some(t.clone());
+                if let Some(c) = &ctx {
+                    set_title(&dir, &c.session, &t);
+                }
+            }
+        }
+        let folder = f.parent().and_then(|p| p.parent()).map(|p| unexpand(p, &w.install)).unwrap_or_default();
+        with_store(&dir, |d| { let c = d.found.get(&w.game) != Some(&folder); d.found.insert(w.game.clone(), folder.clone()); (c, c) });
+        if let (Ok(text), Some(c)) = (tokio::fs::read_to_string(&f).await, ctx.clone()) {
+            let new = new_entries(&text, &known);
+            for (id, at) in &new {
+                let old = *at != 0 && *at + 60 < w.started;
+                record_with(app, &w.game, c.clone(), *id, "native", None, old, None, (*at != 0).then_some(*at));
+            }
+            crate::trail::note(format!("Achievements {}: unlock file read after the game closed ({}, {} new)", w.game, unexpand(&f, &w.install), new.len()));
+        }
+    }
+    // A long session and still no file: the tab asks the player to show the folder.
+    let missing = !file_known && secs >= 1800;
+    with_store(&dir, |d| {
+        let c = if missing { d.missing.insert(w.game.clone(), true).is_none() } else { d.missing.remove(&w.game).is_some() };
+        ((), c)
+    });
+    crate::trail::note(format!("Achievements {}: session ended, unlock file {}", w.game, if file_known { "found" } else { "not found" }));
+}
+
+
 
 /// Games being watched through their ReXGlue unlock file: game -> the file has turned up.
 static REX: Mutex<BTreeMap<String, bool>> = Mutex::new(BTreeMap::new());
@@ -1987,6 +2241,8 @@ pub async fn ach_game(app: AppHandle, id: String, fresh: Option<bool>) -> Res<Va
         return Ok(json!({"allowed": false}));
     }
     let dir = app.state::<App>().dir.clone();
+    // A copy the player added of a listed game: its achievements go by the listing's id.
+    let id = with_store(&dir, |d| (d.alias.get(&id).cloned().unwrap_or(id), false));
     if fresh.unwrap_or(false) {
         let (a, g) = (app.clone(), id.clone());
         tauri::async_runtime::spawn(async move {
@@ -2036,7 +2292,67 @@ pub async fn ach_game(app: AppHandle, id: String, fresh: Option<bool>) -> Res<Va
         // Watched through its ReXGlue unlock file (and whether the file has turned up yet), not the pipe.
         "rex": rex_state(&id),
         "native_known": with_store(&dir, |d| (d.native.contains_key(&id), false)),
+        // Its unlock file wasn't found in a long session: the tab asks to be shown the folder.
+        "missing_file": with_store(&dir, |d| (d.missing.get(&id).copied().unwrap_or(false), false)),
     }))
+}
+
+/// A game the player added themselves that's a copy of a listing: its achievements (session,
+/// list, unlocks) go by the listing's id from now on.
+pub fn set_alias(dir: &Path, custom: &str, listing: &str) {
+    with_store(dir, |d| {
+        let c = d.alias.get(custom).map(String::as_str) != Some(listing);
+        if c {
+            d.alias.insert(custom.into(), listing.into());
+        }
+        ((), c)
+    });
+}
+
+/// The unlock files in a folder the player showed: the folder itself, its achievements folder,
+/// or the folders in it (two levels). Pure, for tests.
+fn unlock_files_from(place: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = std::fs::read_dir(place).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| title_file(p)).collect();
+    out.extend(unlock_files_in(place));
+    for e in std::fs::read_dir(place).into_iter().flatten().flatten().filter(|e| e.path().is_dir()).take(200) {
+        out.extend(unlock_files_in(&e.path()));
+        for e2 in std::fs::read_dir(e.path()).into_iter().flatten().flatten().filter(|e| e.path().is_dir()).take(60) {
+            out.extend(unlock_files_in(&e2.path()));
+        }
+    }
+    one_each(out)
+}
+
+/// The player shows the launcher a game's save folder, when it couldn't find the unlock file:
+/// the file there is kept as this game's (named after its title id when that's known, else the
+/// only one), and read right away by the running session or the next.
+#[tauri::command]
+pub async fn ach_set_folder(app: AppHandle, id: String, path: String, install: Option<String>) -> Res<Value> {
+    let dir = app.state::<App>().dir.clone();
+    let id = with_store(&dir, |d| (d.alias.get(&id).cloned().unwrap_or(id), false));
+    let title = with_store(&dir, |d| (d.sessions.values().filter(|s| s.game == id).max_by_key(|s| s.started).and_then(|s| s.title.clone()), false));
+    let place = PathBuf::from(&path);
+    let files = tokio::task::spawn_blocking(move || unlock_files_from(&place)).await.map_err(|e| Error::Msg(e.to_string()))?;
+    let pick = match &title {
+        Some(t) => files.iter().find(|f| is_title_file(f, t)).cloned(),
+        None if files.len() == 1 => files.first().cloned(),
+        None => None,
+    };
+    let Some(f) = pick else {
+        return Ok(json!({"ok": false, "several": title.is_none() && files.len() > 1}));
+    };
+    let install = install.map(PathBuf::from).unwrap_or_default();
+    let folder = f.parent().and_then(|p| p.parent()).map(|p| unexpand(p, &install)).unwrap_or_default();
+    let count = tokio::fs::read_to_string(&f).await.map(|t| parse_unlock_file(&t).len()).unwrap_or(0);
+    with_store(&dir, |d| {
+        d.found.insert(id.clone(), folder.clone());
+        d.missing.remove(&id);
+        ((), true)
+    });
+    log_line(&id, "*", &format!("the player showed the unlock file: {}", unexpand(&f, &install)));
+    crate::trail::note(format!("Achievements {id}: the player showed the unlock file's folder ({folder}, {count} unlocks in it)"));
+    let _ = app.emit("ach-changed", json!({"game": id}));
+    Ok(json!({"ok": true, "count": count}))
 }
 
 /// The player points the launcher to a game's disc (a disc image, or the folder with default.xex)
@@ -2544,24 +2860,115 @@ mod tests {
         std::fs::write(&old, "[unlocked.7]\nfiletime = 1\n").unwrap();
         let mut w = watch(&d, None);
         w.started = now() + 30;
-        assert!(unlock_file_since(&w).is_none());
+        assert!(unlock_file_since(&w, None).is_none());
         w.started = now().saturating_sub(2);
         let mine = d.join("achievements").join("4D5307E6.toml");
         std::fs::write(&mine, "[unlocked.1]\nfiletime = 1\n").unwrap();
         // Both look fresh to a session that started earlier than either: not told apart.
         let mut early = watch(&d, None);
         early.started = 0;
-        assert!(unlock_file_since(&early).is_none());
+        assert!(unlock_file_since(&early, None).is_none());
         // Started after the old one was last written: only the game's own is fresh.
         let t_old = std::fs::metadata(&old).unwrap().modified().unwrap();
         let _ = std::fs::File::options().write(true).open(&old).and_then(|f| f.set_modified(t_old - std::time::Duration::from_secs(600)));
-        assert_eq!(unlock_file_since(&w).as_deref(), Some(mine.as_path()));
+        assert_eq!(unlock_file_since(&w, None).as_deref(), Some(mine.as_path()));
         assert_eq!(title_of_unlock_file(&mine).as_deref(), Some("4D5307E6"));
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-b50-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+    fn unlock(dir: &Path, title: &str, body: &str) -> PathBuf {
+        std::fs::create_dir_all(dir.join("achievements")).unwrap();
+        let f = dir.join("achievements").join(format!("{title}.toml"));
+        std::fs::write(&f, body).unwrap();
+        f
+    }
+    fn age(f: &Path, secs: u64) {
+        let t = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
+        std::fs::File::options().write(true).open(f).unwrap().set_modified(t).unwrap();
+    }
+    /// A Windows FILETIME for Unix seconds.
+    fn ft(unix: u64) -> u64 {
+        (unix + 11_644_473_600) * 10_000_000
+    }
+
+    #[test]
+    fn without_a_title_the_file_in_the_remembered_folder_is_found_and_its_unlocks_are_from_before() {
+        let (install, saves) = (tmp("rem-i"), tmp("rem-s"));
+        let f = unlock(&saves, "4D5307E6", &format!("[unlocked.3]\nfiletime = {}\n", ft(now() - 86_400)));
+        age(&f, 86_400);
+        let w = RexWatch { started: now(), ..watch(&install, None) };
+        let remembered = saves.to_string_lossy().to_string();
+        let found = find_unlock_file(&w, Some(&remembered)).unwrap();
+        assert_eq!(title_of_unlock_file(&found).as_deref(), Some("4D5307E6"));
+        // At session start, what's there is from an earlier session: recorded as earlier, not new.
+        let entries = parse_unlock_file(&std::fs::read_to_string(&found).unwrap());
+        assert!(entries.iter().all(|(_, at)| from_before(*at, w.started, 1)));
+        assert!(entries.iter().all(|(_, at)| from_before(*at, w.started, 600)));
+        // The catalog's folder works the same.
+        let w = RexWatch { catalog_folder: Some(remembered.clone()), ..watch(&install, None) };
+        assert!(find_unlock_file(&w, None).is_some());
+        let _ = (std::fs::remove_dir_all(&install), std::fs::remove_dir_all(&saves));
+    }
+
+    #[test]
+    fn without_a_title_a_file_written_as_the_game_closes_is_read_after() {
+        let (install, saves) = (tmp("close-i"), tmp("close-s"));
+        let w = RexWatch { started: now().saturating_sub(3600), ..watch(&install, None) };
+        let remembered = saves.to_string_lossy().to_string();
+        // Nothing while it ran.
+        assert!(file_after_close(&w, None, Some(&remembered)).is_none());
+        // It writes the file as it closes.
+        let at = now() - 30;
+        unlock(&saves, "4D5307E6", &format!("[unlocked.1]\nfiletime = {}\n[unlocked.2]\nfiletime = {}\n", ft(at), ft(at)));
+        let f = file_after_close(&w, None, Some(&remembered)).unwrap();
+        let new = new_entries(&std::fs::read_to_string(&f).unwrap(), &BTreeMap::new());
+        assert_eq!(new, vec![(1, at), (2, at)]);
+        assert!(new.iter().all(|(_, a)| !from_before(*a, w.started, 9999) || *a + 60 >= w.started));
+        // What the watch already had isn't new again.
+        let known: BTreeMap<u32, u64> = [(1, at)].into_iter().collect();
+        assert_eq!(new_entries(&std::fs::read_to_string(&f).unwrap(), &known), vec![(2, at)]);
+        let _ = (std::fs::remove_dir_all(&install), std::fs::remove_dir_all(&saves));
+    }
+
+    #[test]
+    fn documents_moved_to_onedrive_still_finds_the_plain_documents_folder() {
+        let home = tmp("home");
+        std::fs::create_dir_all(home.join("OneDrive").join("Documents")).unwrap();
+        std::fs::create_dir_all(home.join("OneDrive - Work").join("Dokumente").join("other")).unwrap();
+        let f = unlock(&home.join("Documents").join("hopper"), "4D5307E6", "[unlocked.1]\n");
+        let g = unlock(&home.join("OneDrive - Work").join("Dokumente").join("racer"), "454108D2", "[unlocked.2]\n");
+        let roots = roots_for(vec![], Some(home.clone()), Some(home.join("OneDrive").join("Documents")));
+        for want in [home.clone(), home.join("Documents"), home.join("OneDrive"), home.join("OneDrive").join("Documents"), home.join("OneDrive - Work").join("Dokumente")] {
+            assert!(roots.contains(&want), "{want:?} in {roots:?}");
+        }
+        let all: Vec<PathBuf> = one_each(roots.iter().flat_map(|r| files_under(r, r == &home)).collect());
+        assert!(all.contains(&f) && all.contains(&g), "{all:?}");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn two_games_files_in_the_remembered_folder_need_the_title() {
+        let (install, saves) = (tmp("two-i"), tmp("two-s"));
+        unlock(&saves, "4D5307E6", "[unlocked.1]\n");
+        unlock(&saves, "454108D2", "[unlocked.7]\n");
+        let remembered = saves.to_string_lossy().to_string();
+        assert!(find_unlock_file(&watch(&install, None), Some(&remembered)).is_none());
+        let f = find_unlock_file(&watch(&install, Some("454108D2")), Some(&remembered)).unwrap();
+        assert_eq!(title_of_unlock_file(&f).as_deref(), Some("454108D2"));
+        // A folder the player shows: only the one with the title, or the only one.
+        assert_eq!(unlock_files_from(&saves).len(), 2);
+        assert_eq!(unlock_files_from(&saves.join("achievements")).len(), 2);
+        let _ = (std::fs::remove_dir_all(&install), std::fs::remove_dir_all(&saves));
+    }
+
     fn watch(install: &Path, title: Option<&str>) -> RexWatch {
-        RexWatch { game: "g".into(), install: install.to_path_buf(), started: 0, catalog_folder: None, title: title.map(str::to_string), roots: vec![] }
+        RexWatch { game: "g".into(), pid_key: "g".into(), install: install.to_path_buf(), started: 0, catalog_folder: None, title: title.map(str::to_string), roots: vec![] }
     }
 
     #[test]
@@ -2618,9 +3025,10 @@ mod tests {
     }
 
     #[test]
-    fn a_remembered_folder_only_gives_the_titles_file() {
-        // The folder remembered from before holds another game's file only (what the old watcher
-        // picked): it isn't used, and the game's own file is found where it really is.
+    fn a_remembered_folder_gives_the_titles_file_once_its_known() {
+        // The folder remembered from before holds one file. Without a title id it's taken (it's
+        // where this game's file was found), and the disc's title id, once read, wins over it:
+        // the game's own file is found where it really is.
         let d = std::env::temp_dir().join(format!("rl-rex-rem-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let other = d.join("other");
@@ -2630,7 +3038,7 @@ mod tests {
         std::fs::create_dir_all(game.join("achievements")).unwrap();
         std::fs::write(game.join("achievements").join("4D5307E6.toml"), "[unlocked.1]\n").unwrap();
         let rem = other.to_string_lossy().to_string();
-        assert!(find_unlock_file(&watch(&game, None), Some(&rem)).is_none());
+        assert_eq!(find_unlock_file(&watch(&game, None), Some(&rem)).unwrap().file_name().unwrap(), "454108D2.toml");
         let f = find_unlock_file(&watch(&game, Some("4D5307E6")), Some(&rem)).unwrap();
         assert_eq!(f.file_name().unwrap(), "4D5307E6.toml");
         let _ = std::fs::remove_dir_all(&d);
