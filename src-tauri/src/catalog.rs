@@ -1020,11 +1020,22 @@ fn github_status_file(dir: &Path, repo: &str) -> PathBuf {
     dir.join("cache/github-repositories").join(format!("{}.json", repo.to_ascii_lowercase().replace('/', "__")))
 }
 
+/// What each project's file on disk said, read once per launch: the catalog is put together
+/// several times as the window opens, and a file per game each time added up. Written here too
+/// when a new answer is saved.
+static ARCHIVED_SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Option<bool>>>> = std::sync::LazyLock::new(Default::default);
+
 fn github_archived_on_disk(dir: &Path, repo: &str) -> Option<bool> {
     if !repo_ok(repo) || site_only(repo) {
         return None;
     }
-    load(&github_status_file(dir, repo))?.get("archived")?.as_bool()
+    let file = github_status_file(dir, repo);
+    if let Some(seen) = ARCHIVED_SEEN.lock().unwrap_or_else(|e| e.into_inner()).get(&file) {
+        return *seen;
+    }
+    let read = load(&file).and_then(|v| v.get("archived")?.as_bool());
+    ARCHIVED_SEEN.lock().unwrap_or_else(|e| e.into_inner()).insert(file, read);
+    read
 }
 
 fn with_known_project_status(dir: &Path, mut cat: Value) -> Value {
@@ -1051,7 +1062,9 @@ async fn github_archived(http: &reqwest::Client, dir: &Path, repo: &str, api: &s
             return None;
         }
         let archived = v.get("archived")?.as_bool()?;
-        save(&github_status_file(dir, repo), &serde_json::json!({"archived": archived}));
+        let file = github_status_file(dir, repo);
+        save(&file, &serde_json::json!({"archived": archived}));
+        ARCHIVED_SEEN.lock().unwrap_or_else(|e| e.into_inner()).insert(file, Some(archived));
         Some(archived)
     };
     read.await.or_else(|| github_archived_on_disk(dir, repo))

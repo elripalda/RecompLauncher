@@ -189,10 +189,40 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
             g.setup_done = false;
         }
     }
+    // The game said on its last start that its setup hasn't run ("run …Setup.exe first"): it
+    // runs now, once for what the game said.
+    if g.setup_done && asked_for_setup(st, id, &g) {
+        crate::trail::note(format!("Play {id}: the game asked for its setup last time, so it runs first"));
+        if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
+            r.setup_done = false;
+        }
+        st.save();
+        g.setup_done = false;
+    }
     if g.setup_done {
         return None;
     }
     g.setup.as_ref().map(|s| g.path.join(s)).filter(|p| p.is_file())
+}
+
+/// The game's own last words name its setup program (HopperSetup.exe), and that's news: each
+/// time the game prints it is answered once, so a setup that ran isn't asked for again by an old
+/// message.
+fn asked_for_setup(st: &App, id: &str, g: &Installed) -> bool {
+    let Some(name) = g.setup.as_ref().and_then(|s| s.file_name()).map(|n| n.to_string_lossy().to_lowercase()) else { return false };
+    let out = crate::game_output_path(&st.dir, id);
+    let Some(stamp) = std::fs::metadata(&out).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_millis().to_string()) else { return false };
+    let mark = out.with_extension("setup-asked");
+    if std::fs::read_to_string(&mark).map(|m| m == stamp).unwrap_or(false) {
+        return false;
+    }
+    let Ok(text) = std::fs::read_to_string(&out) else { return false };
+    let lines: Vec<&str> = text.lines().collect();
+    let named = lines.iter().rev().take(80).any(|l| l.to_lowercase().contains(&name));
+    if named {
+        let _ = std::fs::write(&mark, &stamp);
+    }
+    named
 }
 
 /// A setup that's running: started as usual, or with administrator rights after Windows' prompt.

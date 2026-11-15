@@ -411,6 +411,7 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .known-fix b{color:#3ee08f;font-size:13px}
 body.light .known-fix b{color:#127a45}
 .go-back-note{margin:0 0 10px;padding:10px 14px;border-radius:12px;background:rgba(245,184,61,.1);border:1px solid rgba(245,184,61,.38);font-size:14px}
+.gp-note.held .btn{align-self:flex-start;margin-top:6px}
 .gp-note.bad-ver{border-color:rgba(245,184,61,.45);background:rgba(245,184,61,.1)}.gp-note.bad-ver b{color:var(--warn)}.gp-note.bad-ver .btn{align-self:flex-start;margin-top:6px}
 .gp-note.complete{border-color:rgba(62,224,143,.42);background:rgba(62,224,143,.1)}.gp-note.complete b{color:#3ee08f;display:inline-flex;align-items:center;gap:6px}
 .gp-acts .btn.big{min-width:210px}
@@ -1614,6 +1615,8 @@ body.light .gp-note{background:rgba(255,255,255,.75)}
 
 /* Covers Only (Settings, Appearance): just the covers, no names under them. */
 body.nonames .tile .t,body.nonames .tile .s,body.nonames .tile .trow{display:none}
+/* Settings → Big Picture mode: the sidebar's own button hidden (the settings page keeps its button). */
+body.no-tv-btn .side-foot .nav[data-act="tv"]{display:none}
 
 /* A cover placeholder only shimmers while there is no picture; under a picture it would repaint for nothing. */
 .ph:has(~ img),img ~ .ph{animation:none!important}

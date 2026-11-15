@@ -142,9 +142,30 @@ fn read_main<R: Read + Seek>(r: &mut R, len: u64, size: u64, off: u64, stored: u
 /// The build ID of a folder with `exefs/main` (an extracted package).
 pub fn build_id_of_folder(dir: &Path) -> Result<String, String> {
     let main = dir.join("exefs").join("main");
-    let mut f = std::fs::File::open(&main).map_err(|_| "That folder doesn't have exefs/main.".to_string())?;
+    let mut f = std::fs::File::open(&main).map_err(|_| wrong_folder(dir))?;
     let h = at(&mut f, 0, NSO_HEAD).ok_or_else(|| "The folder's exefs/main isn't a game executable.".to_string())?;
     id_of_header(&h)
+}
+
+/// Why a folder picked for a package isn't one, and what to pick instead: the package file in it,
+/// or the folder a level or two down that has exefs.
+fn wrong_folder(dir: &Path) -> String {
+    let entries = |d: &Path| -> Vec<std::path::PathBuf> { std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()).collect() };
+    let top = entries(dir);
+    if let Some(pkg) = top.iter().find(|p| p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("nup") || x.eq_ignore_ascii_case("nsp"))) {
+        return format!("That folder has {}. Pick that file instead of the folder.", pkg.file_name().unwrap_or_default().to_string_lossy());
+    }
+    let mut level = top.iter().filter(|p| p.is_dir()).cloned().collect::<Vec<_>>();
+    for _ in 0..2 {
+        if let Some(inner) = level.iter().find(|d| d.join("exefs").join("main").is_file()) {
+            return format!("The game's files are in {}. Pick that folder.", inner.display());
+        }
+        level = level.iter().flat_map(|d| entries(d)).filter(|p| p.is_dir()).take(400).collect();
+    }
+    if top.iter().any(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe") || x.eq_ignore_ascii_case("appimage"))) {
+        return "That looks like a game's own folder, not your copy. Pick your game package (.nup), or the folder from your dump that has exefs and romfs in it.".into();
+    }
+    "That folder doesn't have exefs/main. Pick your game package (.nup), or the folder from your dump that has exefs and romfs in it.".into()
 }
 
 /// Whether a build ID (hex) is the one wanted: the wanted ID may be a prefix (8 hex digits is
@@ -301,6 +322,22 @@ pub(crate) mod tests {
         assert_eq!(build_id_of_folder(&d).unwrap(), hex::encode(ID));
         std::fs::write(d.join("exefs").join("main"), [0u8; 200]).unwrap();
         assert!(build_id_of_folder(&d).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_wrong_folder_says_what_to_pick() {
+        let d = std::env::temp_dir().join(format!("rl-nup-wrong-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("dump").join("title").join("exefs")).unwrap();
+        std::fs::write(d.join("dump").join("title").join("exefs").join("main"), nso(&ID)).unwrap();
+        assert!(build_id_of_folder(&d).unwrap_err().contains("title"), "the folder two levels down");
+        std::fs::write(d.join("Hopper.nup"), b"x").unwrap();
+        assert!(build_id_of_folder(&d).unwrap_err().contains("Hopper.nup"), "the package next to it");
+        let e = d.join("game");
+        std::fs::create_dir_all(&e).unwrap();
+        std::fs::write(e.join("hopper.exe"), b"x").unwrap();
+        assert!(build_id_of_folder(&e).unwrap_err().contains("game's own folder"));
         let _ = std::fs::remove_dir_all(&d);
     }
 }

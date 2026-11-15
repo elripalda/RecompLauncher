@@ -46,6 +46,17 @@ pub fn junction_data(target: &str) -> Vec<u8> {
     b
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MonitorBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[cfg(windows)]
+pub use crate::game_window::{forget_game_process, game_monitor, track_game_process, watch_game_window};
+
 #[cfg(windows)]
 pub use imp::*;
 

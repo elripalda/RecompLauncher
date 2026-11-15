@@ -39,6 +39,7 @@
     desk: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
     layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
     history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/><path d="M12 8v4.5l3 2"/>',
+    pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
@@ -384,9 +385,21 @@
     if (inst) items.push({ label: t('Open its folder'), icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
       { label: t('Done, Play'), icon: 'play', cls: 'warn', run: async () => { await saveUi({ setup_ok: Object.assign({}, (S.settings.ui || {}).setup_ok || {}, { [id]: true }) }, true); draw(true); playGame(id); } },
       { label: t('Not yet'), icon: 'chevL', run: () => {} });
-    else items.push({ label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) }, { label: t('Close'), icon: 'chevL', run: () => {} });
+    else items.push({ label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) }, { label: t('Close'), icon: 'chevL', run: () => {} });
     sheet(tf('Set up {name}', { name: a.name }), items.filter(Boolean), 'sreq', head);
   }
+  // Where a new game goes (app.js locationModal), as a sheet: each library, the default first.
+  window.tvLocation = (id) => {
+    if (!TV.on) return false;
+    const a = byId(id) || { name: id };
+    const libs = (S.libs && S.libs.length ? S.libs : [{ path: S.settings.library_dir, default: true }]).slice().sort((x, y) => (y.default ? 1 : 0) - (x.default ? 1 : 0));
+    const go = async (dir) => { await saveSettings({ asked_location: true }); await startInstall(id, dir || S.settings.library_dir); draw(true); };
+    const items = libs.map((l) => ({ label: l.path, sub: [l.free != null ? tf('{free} free', { free: fmtB(l.free) }) : '', l.default ? t('default') : ''].filter(Boolean).join(' · '), icon: 'folder', run: () => go(l.path) }));
+    items.push({ label: t('Cancel'), icon: 'chevL', gap: true, run: () => {} });
+    const title = tf('Where should {name} go?', { name: a.name });
+    sheet(title, items, 'where', `<h3>${esc(title)}</h3><p class="tv-sreq-p dim">${esc(t('Each game gets its own folder in your Recomp Library. Updates always go to the same place, and you can move a game to another drive later.'))}</p>`);
+    return true;
+  };
   // A game whose folder isn't there (app.js missingModal), as a sheet for the controller.
   window.tvMissing = (id) => {
     if (!TV.on) return false;
@@ -547,7 +560,7 @@
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
-      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) };
+      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
       case 'installed': {
         const su = S.setup[id];
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
@@ -563,7 +576,7 @@
         return null;
       }
       case 'soon': case 'nobuild': return null;
-      default: return isSaved(id) ? { label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id, S.settings.library_dir).then(() => draw(true)) } : { label: t('Add to Library'), sub: t('Install it whenever you like'), icon: 'plus', run: () => addToLibrary(id).then(() => draw(true)) };
+      default: return isSaved(id) ? { label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) } : { label: t('Add to Library'), sub: t('Install it whenever you like'), icon: 'plus', run: () => addToLibrary(id).then(() => draw(true)) };
     }
   }
   // The main button's words, for Home's hero (where the button is the A key, not a target).
@@ -1435,7 +1448,7 @@
     const installedScan = g && !g.local ? scanTag(id, g.tag) : '';
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
-      [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
+      [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : (S.held || {})[parentId(id)] ? t('updates paused') : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
       ...(installedScan ? [[esc(t('Safety')), installedScan]] : []),
       g ? [esc(t('Played')), esc(playedFor(g))] : [esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')],
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
@@ -1740,6 +1753,7 @@
         ...(S.steam ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
         ...(S.account && S.account.signedIn ? [{ label: g.cloud ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: g.cloud ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); toast(g.cloud ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
+        ...(!g.local && window.holdItem ? [(() => { const on = window.holdItem(id)[0]?.check; return { label: on ? t('Resume Updates') : t('Pause Updates'), sub: on ? ((S.held || {})[id] ? tf('{v} is out', { v: S.held[id] }) : t('It updates like the rest again')) : t('It stays on the version it has'), icon: 'pause', run: async () => { await window.toggleHold(id); draw(true); } }; })()] : []),
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
         ...(!S.running.has(id) && !S.jobs[id] ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
@@ -2762,7 +2776,7 @@
       case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
       case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'selfupdate': sfx('select'); return selfUpdate();
-      case 'install': sfx('select'); return startInstall(id, S.settings.library_dir).then(() => draw(true));
+      case 'install': sfx('select'); return startInstall(id).then(() => draw(true));
       case 'page': return go('game', id);
       case 'back': return back();
       case 'leave': return leave();

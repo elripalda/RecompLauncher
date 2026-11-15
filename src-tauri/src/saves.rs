@@ -461,8 +461,31 @@ pub fn current(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<FileInfo>, Str
     (entries, infos, hash, too_big)
 }
 
-pub fn device_name() -> String {
+/// The name the player gave this PC (Settings → Account), kept here so the many places that stamp a
+/// copy or link the account don't each need the settings. Empty: the system's name is used.
+static CHOSEN_DEVICE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+const DEVICE_NAME_MAX: usize = 40;
+
+/// Reads the chosen name out of the settings' `ui` (called at start and whenever settings are saved).
+pub fn use_chosen_device(ui: &serde_json::Value) {
+    let said = ui.get("device_name").and_then(|v| v.as_str()).unwrap_or("");
+    let name: String = said.trim().chars().take(DEVICE_NAME_MAX).collect();
+    *CHOSEN_DEVICE.lock().unwrap_or_else(|e| e.into_inner()) = name;
+}
+
+pub fn system_device_name() -> String {
     std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "This PC".into())
+}
+
+/// Shown next to each save copy ("from DESKTOP-ABC"), so a player can tell their PCs apart. Copies
+/// already made keep the name they were made under: it's written into each copy.
+pub fn device_name() -> String {
+    let chosen = CHOSEN_DEVICE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if chosen.is_empty() {
+        return system_device_name();
+    }
+    chosen
 }
 
 /// A copy of a game's saves, on this PC.

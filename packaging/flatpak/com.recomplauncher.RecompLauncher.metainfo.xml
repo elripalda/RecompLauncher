@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.54" date="2026-11-15">
+      <description>
+        <p>Updates can be paused for one game, a copy a game no longer needs can go to the trash, builds kept in a folder of their own can move to another drive, and Big Picture asks where new games go.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.53" date="2026-11-15">
       <description>
         <p>Easy Setup can be skipped for one game from its menu, or for every game in Settings, and games built from your copy can use a build you already have, wherever it is.</p>

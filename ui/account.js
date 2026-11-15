@@ -143,9 +143,19 @@ function accountSection(group, row) {
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
       <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Ask for Each New Game'), t('Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`))
+      + row(t('Ask for Each New Game'), t('Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)
+      + deviceNameRow())
     + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
+}
+// The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
+// computer's own name. Only copies made after a change carry the new name.
+function deviceNameRow() {
+  const name = (S.settings.ui || {}).device_name || '';
+  const label = t('This PC\'s Name');
+  const help = t('Shown next to the saves this PC makes, so you can tell your PCs apart. Leave it empty to use the computer\'s own name. Saves already made keep the name they had.');
+  const field = `<input class="field sm" id="device-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(name)}" placeholder="${esc(t('Computer name'))}" aria-label="${esc(label)}">`;
+  return `<div class="set-row"><div class="k"><b>${esc(label)}</b><span>${esc(help)}</span></div><span class="acts">${field}<button type="button" class="btn sm" data-act="acc-device-save">${esc(t('Save'))}</button></span></div>`;
 }
 // Your Reports: what you said about each game, and what its developer answered. Looking at it
 // counts as having seen the answers.
@@ -419,6 +429,11 @@ window.accountAct = async (act, el) => {
       return loadSaves(id);
     }
     case 'acc-cloud-ask': { const on = (S.settings.ui || {}).cloud_ask !== false; await saveUi({ cloud_ask: !on }); return render(true); }
+    case 'acc-device-save': {
+      const v = (($('#device-name') || {}).value || '').trim();
+      await saveUi({ device_name: v });
+      return toast(v ? t('Saved. New saves from this PC carry that name.') : t('Back to the computer\'s own name.'));
+    }
     case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
     case 'myrep-load': return loadMyReports();
     case 'myrep-send': {

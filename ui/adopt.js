@@ -172,7 +172,7 @@ async function adoptAdd(close) {
   const moving = ADOPT.move ? pick.filter((f) => f.from === 'launcher' && added.some((g) => g.id === f.id)) : [];
   for (const f of moving) {
     toast(tf('Moving {name} into your Recomp Library…', { name: adoptName(f) }));
-    try { await invoke('move_game', { id: f.id, to: S.settings.library_dir }); } catch (e) { fail(e); }
+    try { await moveGame(f.id, S.settings.library_dir); } catch (e) { fail(e); }
   }
   await refreshState();
   checkUpdates().then(() => render(true));

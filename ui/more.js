@@ -52,7 +52,8 @@ T.event.listen('inbox', async ({ payload }) => {
     else if (S.jobs[id]) result = 'installing';
     else {
       toast(tf('Installing {name}. Sent from recomplauncher.com.', { name: a.name }));
-      startInstall(id, S.settings.library_dir);
+      // Asked where it goes, like an install started here.
+      startInstall(id);
     }
     invoke('inbox_done', { id: it.id, result }).catch(() => {});
   }
@@ -139,7 +140,7 @@ window.moreAct = async (act, el) => {
       try { tag = await betaTag(b); } catch (e) { return fail(e); }
       await saveUi({ beta_tags: Object.assign({}, (S.settings.ui || {}).beta_tags || {}, { [id]: tag }) });
       toast(tf('Getting the beta of {name} ({tag}).', { name: b.name, tag }));
-      return startInstall(id, S.library[id] ? null : S.settings.library_dir, tag);
+      return startInstall(id, S.library[id] ? null : undefined, tag);
     }
     case 'beta-off': {
       const bt = Object.assign({}, (S.settings.ui || {}).beta_tags || {});
