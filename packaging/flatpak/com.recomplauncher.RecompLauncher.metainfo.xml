@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.49" date="2026-11-14">
+      <description>
+        <p>Fixes games asking to be set up again after updating the launcher, finds disc sets kept as .cue, .gdi and .m3u, and fixes setup opening after a game update and the Discord status while the launcher waits in the tray.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.48" date="2026-11-14">
       <description>
         <p>Setups that keep going in the background and stop cleanly when cancelled, game file scans for Xbox 360 updates and DLC and PS3 packages, a quit option and Scan pill in Big Picture mode, and fixes for small windows, update checks, picked programs, Easy Setup and covers on Linux.</p>
