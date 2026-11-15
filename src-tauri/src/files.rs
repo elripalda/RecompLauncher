@@ -126,6 +126,7 @@ fn kind_of(p: &Path, dir: bool) -> &'static str {
         // Most zips aren't games: only one holding a ROM, or an arcade set, is shown as one.
         "zip" | "7z" if crate::roms::identify(p, 0).is_some() => "rom",
         "wua" | "wux" | "wud" => "disc",
+        "wia" => "disc",
         "exe" | "appimage" | "app" | "sh" => "program",
         _ => "file",
     }

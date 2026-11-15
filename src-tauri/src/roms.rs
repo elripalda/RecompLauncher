@@ -26,7 +26,7 @@ pub struct RomFile {
 }
 
 const N64: [&str; 3] = ["z64", "n64", "v64"];
-const DISC: [&str; 6] = ["iso", "gcm", "rvz", "wbfs", "ciso", "chd"];
+const DISC: [&str; 7] = ["iso", "gcm", "rvz", "wia", "wbfs", "ciso", "chd"];
 /// Cartridge ROMs and game files of the other consoles recomps come from (NES, Game Boy, DS, 3DS,
 /// Switch, Virtual Boy, Genesis, 32X, Game Gear, Master System, SNES, Amiga). Matched to a recomp by
 /// name; which console is left open, as their ids in the catalog vary.
@@ -254,16 +254,7 @@ pub fn copy_id(p: &Path) -> Option<String> {
         }
         return game_code(&h[0x3B..0x3F]);
     }
-    // GameCube and Wii: the disc's header, at the start of a plain image, or where WBFS, CISO and
-    // WIA/RVZ images keep a copy of it.
-    let at = match &head[..4] {
-        b"WBFS" => 0x200,
-        b"CISO" => 0x8000,
-        b"WIA\x01" | b"RVZ\x01" => 0x58,
-        _ => 0,
-    };
-    let mut disc = [0u8; 0x20];
-    if read_at(&mut f, at, &mut disc).is_ok() && (disc[0x18..0x1C] == [0x5D, 0x1C, 0x9E, 0xA3] || disc[0x1C..0x20] == [0xC2, 0x33, 0x9F, 0x3D]) {
+    if let Some((disc, _)) = nintendo_disc(&mut f) {
         return game_code(&disc[..6]);
     }
     if let Iso::PlayStation(Some(cnf)) = iso_kind(&mut f) {
@@ -275,6 +266,29 @@ pub fn copy_id(p: &Path) -> Option<String> {
     }
     if let Some(at) = x360_default_xex(&mut f) {
         return xex_title(&mut f, at);
+    }
+    None
+}
+
+/// A GameCube or Wii disc's header and which of the two it is, read from its magic numbers (Wii
+/// at 0x18, GameCube at 0x1C). The header is at the start of a plain image; WBFS, CISO and WIA/RVZ
+/// images keep a plain copy of it, so no keys or unpacking are needed.
+fn nintendo_disc(f: &mut fs::File) -> Option<([u8; 0x20], &'static str)> {
+    let mut magic = [0u8; 4];
+    read_at(f, 0, &mut magic).ok()?;
+    let at = match &magic {
+        b"WBFS" => 0x200,
+        b"CISO" => 0x8000,
+        b"WIA\x01" | b"RVZ\x01" => 0x58,
+        _ => 0,
+    };
+    let mut disc = [0u8; 0x20];
+    read_at(f, at, &mut disc).ok()?;
+    if disc[0x18..0x1C] == [0x5D, 0x1C, 0x9E, 0xA3] {
+        return Some((disc, "wii"));
+    }
+    if disc[0x1C..0x20] == [0xC2, 0x33, 0x9F, 0x3D] {
+        return Some((disc, "gc"));
     }
     None
 }
@@ -535,7 +549,7 @@ pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
     identify_with_size(p, || Some(size))
 }
 
-fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+fn identify_by_type(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
     let Some(ext) = p.extension() else { return identify_package(p, size) };
     let ext = ext.to_str()?.to_ascii_lowercase();
     if ext == "zip" || ext == "7z" {
@@ -604,6 +618,25 @@ fn identify_ps3_pkg(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     ps3_pkg_content_id(&ps3_pkg_header(p)?)?;
     let title = p.file_stem()?.to_str()?.to_string();
     Some(RomFile { path: p.to_path_buf(), system: "ps3".into(), title, region: String::new(), size })
+}
+
+/// Disc image types Dolphin writes for both GameCube and Wii games.
+const GC_OR_WII: [&str; 6] = ["iso", "gcm", "rvz", "wia", "wbfs", "ciso"];
+
+/// One file, by its type, then a GameCube or Wii disc image told apart by its header: an .rvz
+/// (or .gcm, .wia...) can hold either console's game, so the file type alone files Wii games as
+/// GameCube ones. Where the header can't be read, what the file type or folder said stays.
+fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let mut rom = identify_by_type(p, size)?;
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !p.is_file() || !GC_OR_WII.contains(&ext.as_str()) {
+        return Some(rom);
+    }
+    let read = fs::File::open(p).ok().and_then(|mut f| nintendo_disc(&mut f));
+    if let Some((_, console)) = read {
+        rom.system = console.into();
+    }
+    Some(rom)
 }
 
 /// Wii U copies: Cemu's .wua archive, and .wux (compressed) and .wud (raw) disc images.
@@ -1433,6 +1466,83 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         assert_eq!(found.len(), 2);
         assert!(found.iter().all(|r| r.system == "wiiu"));
+    }
+
+    /// A disc image big enough to be scanned (sparse), with a GameCube or Wii header where its
+    /// container keeps it: at 0 for a plain image (no container magic), at 0x58 after an RVZ's or
+    /// WIA's own magic.
+    fn nintendo_image(p: &Path, container: &[u8], magic_at: usize, magic: [u8; 4]) {
+        let mut head = vec![0u8; 0x100];
+        let at = if container.is_empty() { 0 } else { 0x58 };
+        head[..container.len()].copy_from_slice(container);
+        head[at..at + 6].copy_from_slice(b"RMCE01");
+        head[at + magic_at..at + magic_at + 4].copy_from_slice(&magic);
+        fs::write(p, head).unwrap();
+        fs::OpenOptions::new().write(true).open(p).unwrap().set_len(60 * 1024 * 1024).unwrap();
+    }
+
+    const WII_MAGIC: [u8; 4] = [0x5D, 0x1C, 0x9E, 0xA3];
+    const GC_MAGIC: [u8; 4] = [0xC2, 0x33, 0x9F, 0x3D];
+
+    #[test]
+    fn an_rvz_with_a_wii_header_is_wii() {
+        let d = tmp("rvz-wii");
+        let p = d.join("Mario Kart Wii (USA).rvz");
+        nintendo_image(&p, b"RVZ\x01", 0x18, WII_MAGIC);
+        let found = identify(&p, 60 * 1024 * 1024);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("wii".to_string()));
+    }
+
+    #[test]
+    fn an_rvz_with_a_gamecube_header_is_gamecube() {
+        let d = tmp("rvz-gc");
+        let p = d.join("Wind Waker (USA).rvz");
+        nintendo_image(&p, b"RVZ\x01", 0x1C, GC_MAGIC);
+        let found = identify(&p, 60 * 1024 * 1024);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("gc".to_string()));
+    }
+
+    #[test]
+    fn a_gcm_with_a_wii_header_is_wii() {
+        let d = tmp("gcm-wii");
+        let p = d.join("Mario Party 8 (USA).gcm");
+        nintendo_image(&p, b"", 0x18, WII_MAGIC);
+        let found = identify(&p, 60 * 1024 * 1024);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("wii".to_string()));
+    }
+
+    #[test]
+    fn an_iso_with_a_wii_header_is_wii() {
+        let d = tmp("iso-wii");
+        let p = d.join("Metroid Other M (USA).iso");
+        nintendo_image(&p, b"", 0x18, WII_MAGIC);
+        let found = identify(&p, 60 * 1024 * 1024);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("wii".to_string()));
+    }
+
+    #[test]
+    fn a_wia_with_a_wii_header_is_found_as_wii() {
+        let d = tmp("wia-wii");
+        let p = d.join("No More Heroes (USA).wia");
+        nintendo_image(&p, b"WIA\x01", 0x18, WII_MAGIC);
+        let found = identify(&p, 60 * 1024 * 1024);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("wii".to_string()));
+    }
+
+    #[test]
+    fn an_rvz_whose_header_cant_be_read_keeps_its_file_type_console() {
+        let d = tmp("rvz-unknown");
+        let p = d.join("Some Game.rvz");
+        fs::write(&p, [0u8; 0x100]).unwrap();
+        fs::OpenOptions::new().write(true).open(&p).unwrap().set_len(60 * 1024 * 1024).unwrap();
+        let found = identify(&p, 60 * 1024 * 1024);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("gc".to_string()));
     }
 
     fn rom(order: &str, title: &str, region: u8) -> Vec<u8> {
