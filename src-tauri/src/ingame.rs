@@ -127,9 +127,13 @@ pub fn show_overlay(app: &AppHandle) {
         return;
     }
     let Some(payload) = overlay_payload(app) else { return };
+    #[cfg(windows)]
+    let monitor = payload.get("id").and_then(serde_json::Value::as_str).and_then(crate::win::game_monitor);
+    #[cfg(not(windows))]
+    let monitor = None;
     app.state::<App>().overlay_open.store(true, Ordering::Relaxed);
     if let Some(w) = app.get_webview_window("overlay") {
-        present_overlay(app, &w, payload);
+        present_overlay(app, &w, payload, monitor);
         return;
     }
     // The window is made the first time it's opened: a launcher that never opens the quick menu
@@ -149,12 +153,20 @@ pub fn show_overlay(app: &AppHandle) {
         };
         // Closed again while it was being made: it stays hidden for next time.
         if app.state::<App>().overlay_open.load(Ordering::Relaxed) {
-            present_overlay(&app, &w, payload);
+            present_overlay(&app, &w, payload, monitor);
         }
     });
 }
 
-fn present_overlay(app: &AppHandle, w: &tauri::WebviewWindow, payload: serde_json::Value) {
+fn present_overlay(app: &AppHandle, w: &tauri::WebviewWindow, payload: serde_json::Value, monitor: Option<crate::win::MonitorBounds>) {
+    #[cfg(windows)]
+    if let Some(m) = monitor {
+        let _ = w.set_position(tauri::PhysicalPosition::new(m.x, m.y));
+        let _ = w.set_size(tauri::PhysicalSize::new(m.width, m.height));
+    }
+    #[cfg(not(windows))]
+    let _ = monitor;
+    #[cfg(not(windows))]
     if let Ok(Some(m)) = app.primary_monitor() {
         let _ = w.set_position(*m.position());
         let _ = w.set_size(*m.size());
