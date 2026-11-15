@@ -2729,6 +2729,16 @@ async function suAct(b) {
     case 'close': return closeSetup();
     case 'found': return suBegin(S.owned[id].path);
     case 'same': return suBegin(su.copy);
+    case 'relink': {
+      let r;
+      try { r = await relinkSetup(id); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
+      if (r === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; return suDraw(); }
+      if (r === 'build') return su.copy ? suBegin(su.copy) : suDraw();
+      SU.note = tf('{file} isn\'t where it was. Pick it again.', { file: r.label }); return suDraw();
+    }
+    case 'prebuilt':
+      try { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
+      SU.stage = 'ready'; SU.result = { text: t('The build on this PC') }; return suDraw();
     case 'iso': case 'folder': {
       const folder = b.dataset.su === 'folder';
       const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(id)).catch(fail);
@@ -2914,6 +2924,7 @@ function suDraw() {
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
       ${SU.note ? `<p class="su-note" role="alert">${esc(SU.note)}</p>` : ''}
       ${prepOptsHtml(su)}
+      ${relinkCards(su, 'data-su')}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
         : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same">${esc(t('Use this'))}</button></div>` : ''}
       <div class="picks${picks.length === 1 ? ' one' : ''}">${picks.join('')}</div>`;
@@ -5392,7 +5403,7 @@ function gameMenu(id) {
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
         { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
         { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
-        ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }] : []),
+        ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }, { act: 'relink', id, label: t('Relink Setup'), icon: 'refresh' }] : []),
         ...(looksHere() ? [{ act: 'looks', id, label: t('Shaders'), icon: 'look' }] : []),
         ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
         ...(S.os === 'linux' && g.proton ? [{ act: 'wine-tools', id, label: t('Wine Tools…'), icon: 'exe' }] : []),
@@ -7660,6 +7671,13 @@ async function act(el, e) {
     case 'gh-add': return githubModal();
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
+    case 'relink': {
+      // The files it was set up with, checked and used again; one that moved opens the setup.
+      let r;
+      try { await loadSetup(id); r = await relinkSetup(id); } catch (e) { return fail(e); }
+      if (r === 'ready') { toast(tf('{name} is set up again with your files.', { name: (byId(id) || S.library[id] || {}).name || id })); if (S.view === 'game') refreshGame(); return; }
+      return setupModal(id);
+    }
     case 'reopen-setup': return setupModal(id);
     case 'setup-cancel': {
       invoke('setup_cancel', { id }).catch(() => {});

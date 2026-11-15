@@ -368,6 +368,11 @@
           "default": 300,
           "description": "Seconds."
         },
+        "done": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the game counts as set up and plays without the copy unless start uses {game}."
+        },
         "version": {
           "type": "string",
           "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to."

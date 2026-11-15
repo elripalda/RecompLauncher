@@ -134,17 +134,18 @@ recomp asks for it once; the player provides nothing:
 
 ## Persistence, replacement and privacy
 
-Named game inputs live in the installed entry's `setup_inputs`. A preparation fingerprint covers
-the declarations, prepare command and selected paths/metadata, **not disc contents** and not the
-installed version. Changing an input, a shared key's metadata or a declaration requires running
-setup again, because the fingerprint no longer matches.
+Named game inputs live in the installed entry's `setup_inputs`. The setup fingerprint is made
+only from the player's files (each one's path, size and modified time, and the game and update
+copies) and `prepare.version`, **not disc contents** and not the installed version. Picking another
+file, or a new `prepare.version`, runs setup again.
 
-An update does not change the fingerprint. It installs the new release as a fresh record with the
-setup marked not done, and keeps the player's selected files (`setup_inputs`). The next Play asks
-the player to finish Easy Setup, with every row already filled in; one click runs `prepare` again
-with the same files. Nothing runs on its own, so the selected source files must still be where the
-player left them, or the player picks them again. Keep source files available after setup if a
-project reads them at runtime.
+An update keeps the setup. The player's files and the fingerprint carry over, and the next Play
+checks them again, so a game set up before plays straight away. When your new release needs the
+setup step to run again (its output changed), bump `prepare.version`. When the step's output lives
+in the game's folder, list it in `prepare.done`; if an update takes it away, Play asks for setup
+again instead of starting without it. The selected source files must still be where the player
+left them, or they're asked for again. Keep source files available after setup if a project reads
+them at runtime.
 
 Imported keys live under the launcher's private `shared-keys/<shared-type>/` directory. These are
 not account credentials and do not use the RecompLauncher account token slot. Replacing keys is

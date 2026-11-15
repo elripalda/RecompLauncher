@@ -98,6 +98,20 @@ pub struct Prepare {
     /// The only thing in the profile that makes a finished setup count as not done.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
+    /// Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the
+    /// game is set up, even when another launcher built it.
+    #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
+    pub done: Vec<String>,
+}
+
+/// A path or a list of them; anything else is nothing.
+fn paths_lenient<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(match v {
+        Value::String(s) if !s.trim().is_empty() => vec![s],
+        Value::Array(l) => l.into_iter().filter_map(|x| x.as_str().map(str::to_string)).filter(|x| !x.trim().is_empty()).collect(),
+        _ => vec![],
+    })
 }
 
 /// prepare.options as written, each one that can be read: one with a value of the wrong type is
@@ -1487,6 +1501,36 @@ impl Profile {
 
     /// The game's files already where it reads them (put there by the player): the folder they're
     /// in. Then no copy has to be picked.
+    /// Its setup step's finished files (`prepare.done`): None when it lists none, else whether
+    /// every one is there.
+    pub fn build_done(&self, install: &Path) -> Option<bool> {
+        let done = &self.prepare.as_ref()?.done;
+        if done.is_empty() {
+            return None;
+        }
+        Some(done.iter().all(|d| Path::new(&fill(d, install, None)).exists()))
+    }
+
+    /// Whether starting the game hands it the player's copy ({game} in its arguments or
+    /// variables). When it doesn't, a finished build is all it needs.
+    pub fn start_uses_game(&self) -> bool {
+        self.start.as_ref().is_some_and(|s| s.args.iter().chain(s.env.values()).any(|a| a.contains("{game}")))
+    }
+
+    /// The game's own folder (the first `folders.game`) when it has a setup step and nothing says
+    /// what it leaves, and that folder already holds files: a build made before, by this
+    /// launcher or the developer's own.
+    pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
+        let pr = self.prepare.as_ref()?;
+        if !pr.done.is_empty() {
+            return None;
+        }
+        let first = self.folders.get("game")?.first()?;
+        let dir = PathBuf::from(fill(&first.path, install, None));
+        let full = std::fs::read_dir(&dir).ok()?.flatten().next().is_some();
+        (full && dir != install).then_some(dir)
+    }
+
     pub fn already_in_place(&self, install: &Path) -> Option<PathBuf> {
         let g = self.game.as_ref()?;
         let into = g.into.trim().trim_matches(['/', '\\']);
@@ -3545,5 +3589,53 @@ mod tests {
         assert!(e.iter().any(|(k, v)| k == "GAME_DATA" && v.ends_with("data") && v.contains("games")));
         assert_eq!(e.len(), 2, "PATH, the launcher's own and bad names stay out: {e:?}");
         assert!(env_name_ok("_X1") && !env_name_ok("A-B") && !env_name_ok("path"));
+    }
+}
+
+#[cfg(test)]
+mod build_here_tests {
+    use super::*;
+
+    fn prof(v: serde_json::Value) -> Profile {
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn a_build_already_made_plays_without_the_copy() {
+        let dir = std::env::temp_dir().join(format!("rl-b51-built-{}", std::process::id()));
+        let game = dir.join("Games").join("Hopper");
+        std::fs::create_dir_all(&game).unwrap();
+        let done = game.join("hopper_prepared.bin");
+        let base = serde_json::json!({
+            "game": { "kind": "iso_or_folder", "label": "Your copy" },
+            "prepare": { "program": ["HopperBuilder.exe"], "args": ["--prepare", "--game", "{game}"], "done": [done.to_string_lossy()] },
+            "start": { "program": ["Hopper.exe"], "args": ["--play", game.to_string_lossy()] },
+            "folders": { "game": [{ "path": game.to_string_lossy() }] }
+        });
+        let p = prof(base.clone());
+        assert_eq!(p.build_done(&dir), Some(false), "one done file missing asks for the copy");
+        std::fs::write(&done, b"x").unwrap();
+        assert_eq!(p.build_done(&dir), Some(true));
+        assert!(!p.start_uses_game());
+        // A start that hands the game the copy still asks for it.
+        let mut v = base.clone();
+        v["start"]["args"] = serde_json::json!(["--disc", "{game}"]);
+        assert!(prof(v).start_uses_game());
+        let mut v = base.clone();
+        v["start"]["env"] = serde_json::json!({ "DISC": "{game}" });
+        assert!(prof(v).start_uses_game());
+        // No done list: the game's folder with files in it is offered as the build on this PC.
+        let mut v = base.clone();
+        v["prepare"].as_object_mut().unwrap().remove("done");
+        let p = prof(v.clone());
+        assert_eq!(p.build_done(&dir), None);
+        assert_eq!(p.build_folder_here(&dir), Some(game.clone()));
+        std::fs::remove_file(&done).unwrap();
+        assert_eq!(prof(v).build_folder_here(&dir), None, "an empty folder isn't a build");
+        // One path for done works too.
+        let mut v = base.clone();
+        v["prepare"]["done"] = serde_json::json!(done.to_string_lossy());
+        assert_eq!(prof(v).prepare.unwrap().done.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

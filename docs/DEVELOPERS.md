@@ -524,6 +524,10 @@ settings are written. It runs again whenever the player changes their copy.
 - Write what you make to the same place your launcher would, so both stay in step.
 - `"version"` (optional): change it only when players who already set up must run the step again,
   like when your output format changes. Nothing else in this file makes them set up again.
+- `"done"` (optional): the files the step leaves when it has finished, like
+  `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
+  when your own launcher built it, and plays without asking for the copy (unless `start` uses
+  `{game}`). If one goes missing, the player is asked to set up again.
 
 #### `prepare.options`: ticks for a vendor's SDK
 

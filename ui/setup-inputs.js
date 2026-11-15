@@ -35,7 +35,7 @@ function namedInputsView(id, su, ns = {}, game = {}) {
   const heading = game.game || game.name;
   const multiple = rows.filter((r) => r.role === 'disc').length > 1;
   return `<div class="ni-heading"><h2>${esc(heading ? tf(multiple ? 'Insert your copies of {game}' : 'Insert your copy of {game}', { game: heading }) : t('Choose your game files'))}</h2><p>${esc(tf('{ready} of {total} required files selected', { ready, total: required.length }))}</p></div>
-    <div class="ni-scroll">${group('Required files', required.filter((r) => !r.shared))}${group('Shared keys', required.filter((r) => r.shared))}${optional.length ? `<div class="ni-optional"><button type="button" class="ni-optional-toggle" data-ni="toggle-optional" aria-expanded="${!!ns.extras}" aria-controls="ni-optional-${esc(id)}"><span>${esc(optionalLabel)} <span class="ni-optional-count">${esc(tf('{added} of {total} added', { added, total: optional.length }))}</span></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="ni-optional-${esc(id)}" ${ns.extras ? '' : 'hidden'}>${group('Optional content', optional)}</div></div>` : ''}</div>
+    <div class="ni-scroll">${relinkCards(su, 'data-ni')}${group('Required files', required.filter((r) => !r.shared))}${group('Shared keys', required.filter((r) => r.shared))}${optional.length ? `<div class="ni-optional"><button type="button" class="ni-optional-toggle" data-ni="toggle-optional" aria-expanded="${!!ns.extras}" aria-controls="ni-optional-${esc(id)}"><span>${esc(optionalLabel)} <span class="ni-optional-count">${esc(tf('{added} of {total} added', { added, total: optional.length }))}</span></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="ni-optional-${esc(id)}" ${ns.extras ? '' : 'hidden'}>${group('Optional content', optional)}</div></div>` : ''}</div>
     ${ns.confirm ? `<div class="ni-notice"><p>${esc(t('Removing shared keys affects every game that uses them. Your original file stays where it is.'))}</p><button type="button" class="btn sm" data-ni="remove-confirm" data-input="${esc(ns.confirm)}">${esc(t('Remove shared keys'))}</button><button type="button" class="btn sm" data-ni="cancel-remove">${esc(t('Keep'))}</button></div>` : ''}
     ${error ? `<p class="su-err" role="alert">${esc(t(error))}</p>` : ''}
     ${typeof prepOptsHtml === 'function' ? prepOptsHtml(su) : ''}
@@ -69,6 +69,26 @@ async function runtimeFetch(id, ns, redraw) {
   catch (e) { ns.dlss = { failed: true }; }
   finally { off(); redraw(); }
 }
+// Use My Previous Setup (Relink): 'ready' when it's set up again, 'build' when the setup step has
+// to run, or { input, label } when one file moved and only it is asked for.
+async function relinkSetup(id) {
+  try { await invoke('setup_relink', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
+  catch (e) {
+    const m = String(e && e.message ? e.message : e);
+    if (m.startsWith('RELINK_BUILD|')) return 'build';
+    const x = m.match(/^RELINK_MISSING\|([^|]*)\|(.*)$/);
+    if (x) return { input: x[1], label: x[2] };
+    throw e;
+  }
+}
+// The two cards above the setup's own: the files it was set up with, and a build already here.
+function relinkCards(su, attr) {
+  if (!su) return '';
+  const prev = su.previous || [];
+  const card = (act, title, sub, button) => `<div class="found su-relink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg><div class="k"><b>${esc(t(title))}</b><span title="${esc(sub)}">${esc(sub)}</span></div><button type="button" class="btn sm main" ${attr}="${act}">${esc(t(button))}</button></div>`;
+  return (prev.length && !su.inputs_ready ? card('relink', 'Use My Previous Setup', prev.join(' · '), 'Use It') : '')
+    + (su.prebuilt ? card('prebuilt', 'Use the Build Already on This PC', su.prebuilt, 'Use It') : '');
+}
 async function namedInputsAction(id, act, input, ns) {
   if (ns.busy) return;
   if (act === 'toggle-optional') { ns.extras = !ns.extras; return; }
@@ -78,6 +98,14 @@ async function namedInputsAction(id, act, input, ns) {
   try {
     const su = S.setup[id], row = namedInputRows(su).find((r) => r.id === input);
     if (act === 'run') return 'run';
+    if (act === 'relink') {
+      const r = await relinkSetup(id);
+      if (r === 'build') return 'run';
+      if (r === 'ready') return 'ready';
+      ns.error = tf('{file} isn\'t where it was. Pick it again, then press Set Up.', { file: r.label });
+      return;
+    }
+    if (act === 'prebuilt') { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
     if (act === 'dlss-off' || act === 'dlss-on') {
       await invoke('dlss_set', { id, input, on: act === 'dlss-on' });
     } else if (act === 'dlss-retry') {
@@ -129,6 +157,7 @@ function namedSetup(id) {
     const pending = namedInputsAction(id, act, input, SU.named); draw();
     const result = await pending;
     if (SU.el !== scrim) return;
+    if (result === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; $('.modal', scrim).classList.remove('ni-modal'); return suDraw(); }
     if (result === 'run') {
       SU.stage = 'run'; SU.step = 'read'; SU.steps = {}; SU.q = []; SU.at = Date.now(); SU.path = ''; $('.modal', scrim).classList.remove('ni-modal'); suDraw();
       try { await invoke('setup_inputs_run', { id }); }

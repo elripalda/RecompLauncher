@@ -305,8 +305,24 @@ pub fn current(p: &Profile, g: &Installed, dir: &Path, stored: &str) -> Option<S
     if stored.starts_with("v2:") { return None; }
     [true, false].into_iter().any(|o| signature_legacy(p, g, dir, o).is_ok_and(|s| s == stored)).then_some(now)
 }
+/// Set up: the player's files are the same as at setup, and what the setup step leaves (when the
+/// profile lists it in `prepare.done`) is still there. An update keeps the setup; a build an
+/// update took away asks again.
 pub fn ready(p: &Profile, g: &Installed, dir: &Path) -> bool {
-    current(p, g, dir, &g.inputs_ready).is_some()
+    current(p, g, dir, &g.inputs_ready).is_some() && p.build_done(&g.path) != Some(false)
+}
+/// Every file picked for setup is still there, and the ones placed in the game's folder are the
+/// same as when they were placed (path, size, time). For putting back a setup an update emptied.
+pub fn kept_since_setup(p: &Profile, g: &Installed, dir: &Path) -> bool {
+    let Ok(rows) = rows(p, g, dir) else { return false };
+    let needed: Vec<&Row> = rows.iter().filter(|r| r.active && r.shared.is_empty() && !r.runtime && !r.optional).collect();
+    if needed.is_empty() || needed.iter().any(|r| r.path.is_none()) {
+        return false;
+    }
+    g.input_stamps.iter().all(|(id, stamp)| {
+        let Some(src) = g.setup_inputs.get(id) else { return true };
+        src.metadata().is_ok_and(|m| &format!("{}|{}|{:?}", src.display(), m.len(), m.modified().ok()) == stamp)
+    })
 }
 pub fn expand(t: &str, paths: &BTreeMap<String, PathBuf>, wine: bool) -> String {
     let mut text = t.to_string();
@@ -682,6 +698,40 @@ mod tests {
         assert!(!ready(&q, &g, &dir));
         let mut h = g.clone(); h.inputs_ready = signature(&q, &g, &dir).unwrap();
         assert!(ready(&q, &h, &dir));
+    }
+    #[test]
+    fn an_update_keeps_the_setup_unless_the_step_version_changes() {
+        let (p, mut g, dir) = prepared(serde_json::json!({}));
+        g.inputs_ready = signature(&p, &g, &dir).unwrap();
+        // The update: a new release, the record carried over as install() now does.
+        let updated = Installed { tag: "v0.1.1".into(), updated_at: 99, ..g.clone() };
+        assert!(ready(&p, &updated, &dir));
+        let (bumped, _, _) = prepared(serde_json::json!({ "prepare": { "program": ["Builder.exe"], "version": "2" } }));
+        assert!(!ready(&bumped, &updated, &dir));
+    }
+    #[test]
+    fn the_build_the_step_leaves_has_to_be_there() {
+        let (_, mut g, dir) = prepared(serde_json::json!({}));
+        let out = dir.join("prepared.bin");
+        let done = serde_json::json!({ "prepare": { "program": ["Builder.exe"], "done": [out.to_string_lossy()] } });
+        let (p, _, _) = prepared(done);
+        g.inputs_ready = signature(&p, &g, &dir).unwrap();
+        assert!(!ready(&p, &g, &dir), "its build isn't there");
+        fs::write(&out, b"built").unwrap();
+        assert!(ready(&p, &g, &dir));
+    }
+    #[test]
+    fn a_setup_an_update_emptied_is_kept_when_its_files_are_the_same() {
+        let (p, mut g, dir) = prepared(serde_json::json!({}));
+        assert!(kept_since_setup(&p, &g, &dir));
+        // A placed file that changed since it was placed: not put back.
+        let disc = g.setup_inputs["disc1"].clone();
+        g.input_stamps.insert("disc1".into(), format!("{}|1|None", disc.display()));
+        assert!(!kept_since_setup(&p, &g, &dir));
+        // A picked file that's gone: not put back either.
+        let (p, mut g, dir) = prepared(serde_json::json!({}));
+        g.setup_inputs.insert("disc1".into(), dir.join("gone.iso"));
+        assert!(!kept_since_setup(&p, &g, &dir));
     }
     fn fixture() -> (Profile, Installed, PathBuf) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

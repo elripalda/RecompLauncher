@@ -92,6 +92,9 @@ pub struct Installed {
     pub setup_inputs: BTreeMap<String, PathBuf>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub inputs_ready: String,
+    /// The player chose the build already on this PC (its game folder) instead of building it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub prebuilt: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input_staged: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
