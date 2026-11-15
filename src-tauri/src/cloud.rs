@@ -159,6 +159,10 @@ fn still_signed_in_as(dir: &Path, a: &Account, id: &str) -> bool {
     same
 }
 
+pub(crate) fn account_scope(dir: &Path) -> String {
+    account_uid(dir)
+}
+
 /// The website said this PC's token is no good any more (signed out from the website).
 fn forget(app: &AppHandle) {
     let st = app.state::<App>();
@@ -223,6 +227,21 @@ fn room_now(used: u64, quota: u64) {
 
 fn is_full(e: &Error) -> bool {
     e.to_string().contains("cloud saves are full")
+}
+
+fn using_drive(dir: &Path) -> bool {
+    crate::save_provider::current(dir) == crate::save_provider::Provider::GoogleDrive
+}
+
+fn transport_drive_error() -> Error {
+    Error::Msg("Google Drive couldn't be reached. Your saves stay on this PC and will retry.".into())
+}
+
+pub(crate) fn reset_provider_status() {
+    PAUSED.store(false, std::sync::atomic::Ordering::Relaxed);
+    FULL_TOLD.store(false, std::sync::atomic::Ordering::Relaxed);
+    *FULL.lock().unwrap() = None;
+    *TRIES.lock().unwrap() = None;
 }
 
 /// A copy that didn't go up whole (cut off, too slow, "didn't arrive whole"): tried again after 1,
@@ -498,7 +517,7 @@ pub struct LinkStart {
     expires: u64,
 }
 
-fn qr_svg(text: &str) -> String {
+pub(crate) fn qr_svg(text: &str) -> String {
     qrcode::QrCode::new(text.as_bytes())
         .map(|q| {
             q.render::<qrcode::render::svg::Color>()
@@ -683,7 +702,7 @@ pub fn shown_root(st: &App) -> PathBuf {
 }
 
 /// One game's saves at the same time: two backups of one game never overlap.
-static BUSY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(crate) static BUSY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Waits its turn for the saves, but not forever: something else that's stuck can't keep a
 /// backup spinning.
@@ -710,9 +729,18 @@ pub struct CloudCopy {
     pub device: String,
     #[serde(default)]
     pub played: u64,
+    #[serde(default)]
+    pub conflict: bool,
+    #[serde(default)]
+    pub revision: String,
+    #[serde(default)]
+    pub head: bool,
 }
 
 async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
+    if using_drive(&app.state::<App>().dir) {
+        return crate::drive::list(app, id).await;
+    }
     let v = get(app, &[("a", "saves"), ("game", id)]).await?;
     let list: Vec<CloudCopy> = serde_json::from_value(v.get("versions").cloned().unwrap_or(json!([]))).unwrap_or_default();
     let mut list = list;
@@ -723,7 +751,7 @@ async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
     Ok((list, json!({"used": v.get("used"), "quota": v.get("quota")})))
 }
 
-const SYNC_CONFLICT: &str = "Both save copies changed. Choose one in Saves → Sync Now.";
+pub(crate) const SYNC_CONFLICT: &str = "Both save copies changed. Choose one in Saves → Sync Now.";
 
 /// Before Play, the cloud's newer save couldn't be put in place (a save folder that's read-only
 /// on this PC, say). Why goes on the line under it.
@@ -839,19 +867,24 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 
 async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
-    // One account from the note to the request: a switch meanwhile must not send this note's
-    // copy with the next account's token.
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    if game(&st, id)?.cloud != Some(true) || !crate::save_provider::ready(&st.dir) {
+        return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
+    }
+    let scope = crate::save_provider::scope(&st.dir);
+    let a = if using_drive(&st.dir) { None } else { Some(load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?) };
     let mut state = saves::state(&st.dir, id);
     // Signed in to another account just now: this note isn't that account's to send (the log
     // says so). The copy stays on this PC and goes up with the new account's own sync.
-    if !still_signed_in_as(&st.dir, &a, id) {
+    if crate::save_provider::scope(&st.dir) != scope {
         return Ok(());
     }
     let copy = saves::manifest(&copies_dir(&st, id).join(name))
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
-    let Some(top) = list.first() else { return upload_copy(app, id, name, 0, &a).await };
+    let Some(top) = list.first() else { return upload_copy(app, id, name, 0, None, a.as_ref()).await };
+    if top.conflict {
+        return Err(Error::Msg(SYNC_CONFLICT.into()));
+    }
     if top.hash == copy.hash {
         state.mark_synced(&copy.hash, top.made, &top.device);
         if state.pending.as_deref() == Some(name) {
@@ -865,13 +898,29 @@ async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         saves::set_state(&st.dir, id, &state);
         return Err(Error::Msg(SYNC_CONFLICT.into()));
     }
-    upload_copy(app, id, name, top.made.saturating_add(1), &a).await
+    upload_copy(app, id, name, top.made.saturating_add(1), None, a.as_ref()).await
 }
 
-async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64, a: &Account) -> Res<()> {
+async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64, resolution: Option<&str>, account: Option<&Account>) -> Res<()> {
     let st = app.state::<App>();
     let path = copies_dir(&st, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
+    if using_drive(&st.dir) {
+        if !crate::net::forced() && copy_wait_left(id, name).is_some() {
+            return Err(Error::Net("Google Drive upload is waiting to retry.".into()));
+        }
+        if let Err(e) = crate::drive::upload(app, id, &path, resolution).await {
+            if matches!(e, Error::Net(_)) { copy_failed(id, name, "Google Drive unavailable"); }
+            return Err(e);
+        }
+        copy_went_up(id, name);
+        let mut state = saves::state(&st.dir, id);
+        state.synced_hash = man.hash;
+        state.pending = None;
+        saves::set_state(&st.dir, id, &state);
+        return Ok(());
+    }
+    let a = account.cloned().or_else(|| load(&st.dir)).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     if paused() {
         return Err(Error::Msg(PAUSED_TEXT.into()));
     }
@@ -994,7 +1043,8 @@ fn pending_ids(st: &App) -> Vec<String> {
 pub async fn upload_pending(app: &AppHandle) {
     let st = app.state::<App>();
     let forced = crate::net::forced();
-    if !signed_in(&st.dir) || (!forced && (crate::net::resting(&save_url("save-put"), false) || full_now())) || paused() {
+    let website = !using_drive(&st.dir);
+    if !crate::save_provider::ready(&st.dir) || (website && ((!forced && (crate::net::resting(&save_url("save-put"), false) || full_now())) || paused())) {
         return;
     }
     let ids = pending_ids(&st);
@@ -1010,11 +1060,11 @@ pub async fn upload_pending(app: &AppHandle) {
             match upload(app, &id, &name).await {
                 Ok(()) => {}
                 // Paused on the site: the rest wait for the next start.
-                Err(_) if paused() => break,
+                Err(_) if !using_drive(&st.dir) && paused() => break,
                 // Full: none of them go until there's room.
                 Err(e) if is_full(&e) => break,
                 // The site isn't answering for saves at all: the rest wait, and go when it does.
-                Err(Error::Net(_)) if crate::net::resting(&save_url("save-put"), false) => {
+                Err(Error::Net(_)) if using_drive(&st.dir) || crate::net::resting(&save_url("save-put"), false) => {
                     no_answer = true;
                     break;
                 }
@@ -1049,11 +1099,12 @@ fn retry_pending_later(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         // The site's own rest, or the soonest a copy that failed may be tried again.
-        let wait = crate::net::wait_left(&save_url("save-put")).max(next_copy_try().unwrap_or((30u64 << n).min(3600)));
+        let url = if using_drive(&app.state::<App>().dir) { "https://www.googleapis.com/drive/v3/files".into() } else { save_url("save-put") };
+        let wait = crate::net::wait_left(&url).max(next_copy_try().unwrap_or((30u64 << n).min(3600)));
         crate::trail::note(format!("Cloud saves: waiting uploads tried again in {wait}s"));
         tokio::time::sleep(crate::net::spread(wait, 0.3)).await;
         RETRY_PLANNED.store(false, std::sync::atomic::Ordering::SeqCst);
-        if paused() {
+        if !using_drive(&app.state::<App>().dir) && paused() {
             return;
         }
         Box::pin(upload_pending(&app)).await;
@@ -1071,7 +1122,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
     // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
-    if g.cloud == Some(true) && signed_in(&st.dir) {
+    if g.cloud == Some(true) && crate::save_provider::ready(&st.dir) {
         if let Some(l) = newest_unsent(&st.dir, id, &g) {
             if let Err(e) = upload(app, id, &l.name).await {
                 let too_big = e.to_string().starts_with("This save is too big");
@@ -1167,21 +1218,26 @@ fn open_sessions(saves_dir: &Path) -> Vec<String> {
 /// this cloud save themselves, over whatever is there.
 async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&str>) -> Res<usize> {
     let st = app.state::<App>();
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    let scope = crate::save_provider::scope(&st.dir);
     let _working = working(app, id, "down");
-    let url = api();
-    let req = st
-        .http
-        .get(&url)
-        .query(&[("a", "save-get"), ("game", id), ("v", &c.v)])
-        .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
-        .timeout(std::time::Duration::from_secs(300));
-    let r = crate::net::send(req, &save_url("save-get"), true).await?;
-    if r.status().as_u16() != 200 {
-        answer(app, r).await?;
-        return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
-    }
-    let bytes = r.bytes().await.map_err(net)?;
+    let bytes = if using_drive(&st.dir) {
+        crate::drive::download(app, id, c).await?
+    } else {
+        let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+        let url = api();
+        let req = st
+            .http
+            .get(&url)
+            .query(&[("a", "save-get"), ("game", id), ("v", &c.v)])
+            .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
+            .timeout(std::time::Duration::from_secs(300));
+        let r = crate::net::send(req, &save_url("save-get"), true).await?;
+        if r.status().as_u16() != 200 {
+            answer(app, r).await?;
+            return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
+        }
+        r.bytes().await.map_err(net)?.to_vec()
+    };
     let g = game(&st, id)?;
     // Checked after the download too: a big save takes a while, and the game can be opened
     // from its folder meanwhile.
@@ -1196,15 +1252,20 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&s
     let spots = spots_of(&st, id, &g);
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
     let checked = checked.map(String::from);
-    let n = blocking(move || match checked {
-        Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
-        None => saves::restore(&dir, &id2, &t2, &spots, &g),
+    let hash = c.hash.clone();
+    let drive = using_drive(&st.dir);
+    let n = blocking(move || {
+        if drive { saves::validate_cloud_copy(&t2, &id2, &hash, &spots)?; }
+        match checked {
+            Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
+            None => saves::restore(&dir, &id2, &t2, &spots, &g),
+        }
     }).await;
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
     // The save is in place either way; only the new account's notes must not claim it as synced.
-    if !still_signed_in_as(&st.dir, &a, id) {
+    if crate::save_provider::scope(&st.dir) != scope {
         s.last_hash = c.hash.clone();
         saves::set_state(&st.dir, id, &s);
         return Ok(n);
@@ -1228,6 +1289,12 @@ fn incoming<'a>(s: &saves::State, list: &'a [CloudCopy]) -> Option<&'a CloudCopy
     }
     let top = list.first()?;
     should_restore(&s.last_hash, &s.synced_hash, &top.hash, false).then_some(top)
+}
+
+fn current_copy<'a>(list: &'a [CloudCopy], local: &str) -> Option<&'a CloudCopy> {
+    let top = list.first()?;
+    if !top.conflict { return Some(top); }
+    list.iter().find(|c| c.head && c.hash != local).or(Some(top))
 }
 
 /// Whether the cloud copy can be put in place without replacing locally changed saves.
@@ -1264,7 +1331,7 @@ fn reserve_sync(st: &App, id: &str) -> Res<crate::Starting> {
 }
 
 /// Upload the checked live save, even if a different save is still in the backup history.
-async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot>, hash: String, after: u64) -> Res<()> {
+async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot>, hash: String, after: u64, resolution: Option<&str>) -> Res<()> {
     let dir = app.state::<App>().dir.clone();
     let id2 = id.to_string();
     let copy = blocking(move || {
@@ -1273,8 +1340,9 @@ async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot
             .ok_or_else(|| Error::Msg("The saves changed. Try syncing again.".into()))
     }).await??;
     // A player can choose a save that was backed up before the current cloud copy.
-    let a = load(&app.state::<App>().dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    let r = upload_copy(app, id, &copy.name, after.saturating_add(1), &a).await;
+    let st = app.state::<App>();
+    let a = if using_drive(&st.dir) { None } else { Some(load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?) };
+    let r = upload_copy(app, id, &copy.name, after.saturating_add(1), resolution, a.as_ref()).await;
     if let Err(e) = &r {
         note_failure(&app.state::<App>().dir, id, e);
     }
@@ -1305,16 +1373,28 @@ pub async fn saves_check(app: AppHandle, id: String, manual: Option<bool>) -> Re
     check_saves(app, id, false).await
 }
 
+async fn prepare_sync(st: &App, id: &str) -> Res<Option<(tokio::sync::MutexGuard<'static, ()>, Installed)>> {
+    let g = game(st, id)?;
+    if g.cloud != Some(true) || !crate::save_provider::ready(&st.dir) {
+        return Ok(None);
+    }
+    let guard = busy().await?;
+    // Consent or the connected account may have changed while another save operation finished.
+    let g = game(st, id)?;
+    if g.cloud != Some(true) || !crate::save_provider::ready(&st.dir) {
+        return Ok(None);
+    }
+    Ok(Some((guard, g)))
+}
+
 async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     let st = app.state::<App>();
-    let g = game(&st, &id)?;
-    if g.cloud != Some(true) || !signed_in(&st.dir) {
+    let Some((_busy, g)) = prepare_sync(&st, &id).await? else {
         if manual {
             return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
         }
         return Ok(json!({"action": "play"}));
-    }
-    let _busy = busy().await?;
+    };
     let _reserved = reserve_sync(&st, &id)?;
     let _working = working(&app, &id, "check");
     let (list, _) = match cloud_list(&app, &id).await {
@@ -1355,14 +1435,14 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     }
     note_folder_too_big(&st.dir, &id, None);
     let s = saves::state(&st.dir, &id);
-    let Some(top) = top else {
+    let Some(top) = current_copy(&list, &local) else {
         if local.is_empty() {
             return Ok(json!({"action": "play"}));
         }
-        upload_current(&app, &id, g, spots, local, 0).await?;
+        upload_current(&app, &id, g, spots, local, 0, None).await?;
         return Ok(json!({"action": "uploaded"}));
     };
-    if top.hash == local {
+    if !top.conflict && top.hash == local {
         // Already the same: a conflict or a problem noted before is over too.
         let stale = s.synced_hash != local || s.pending.is_some() || s.conflict.is_some() || s.problem.is_some();
         if stale {
@@ -1373,7 +1453,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         }
         return Ok(json!({"action": "play"}));
     }
-    if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
+    if !top.conflict && should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
         // Before Play it doesn't stop the game: the program may be a mod tool, not the game. The
         // player is asked whether to play with this PC's save, as when a restore fails.
         if let Some(program) = open_outside(&id, &g).await? {
@@ -1394,9 +1474,9 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         let n = taken?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
     }
-    if top.hash == s.synced_hash {
+    if !top.conflict && top.hash == s.synced_hash {
         if manual {
-            upload_current(&app, &id, g, spots, local, top.made).await?;
+            upload_current(&app, &id, g, spots, local, top.made, None).await?;
             return Ok(json!({"action": "uploaded"}));
         }
         // After Play, the local changes go up at the end of the session.
@@ -1460,18 +1540,23 @@ pub async fn sync_quiet(app: &AppHandle, id: &str) -> Res<()> {
 /// The player's pick after a conflict: keep this PC's save (it goes up as the newest), or the
 /// cloud's (this PC's is kept as a local copy first).
 #[tauri::command]
-pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: String, cloud_version: String) -> Res<()> {
+pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: String, cloud_version: String, cloud_revision: Option<String>) -> Res<()> {
     let _busy = busy().await?;
     let st = app.state::<App>();
     let g = game(&st, &id)?;
-    if g.cloud != Some(true) || !signed_in(&st.dir) {
+    if g.cloud != Some(true) || !crate::save_provider::ready(&st.dir) {
         return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
     }
     let _reserved = reserve_sync(&st, &id)?;
     crate::net::now(async {
         let changed = || Error::Msg("The saves changed. Try syncing again.".into());
         let (list, _) = cloud_list(&app, &id).await?;
-        let top = list.first().filter(|c| c.v == cloud_version).ok_or_else(changed)?;
+        let top = if using_drive(&st.dir) {
+            list.iter().find(|c| c.v == cloud_version && c.head)
+        } else {
+            list.first().filter(|c| c.v == cloud_version)
+        }.ok_or_else(changed)?;
+        if using_drive(&st.dir) && cloud_revision.as_deref() != Some(top.revision.as_str()) { return Err(changed()); }
         let spots = spots_of(&st, &id, &g);
         let (g2, spots2) = (g.clone(), spots.clone());
         let (entries, infos, hash, _) = blocking(move || saves::current(&spots2, &g2)).await?;
@@ -1479,8 +1564,14 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
             return Err(changed());
         }
         match keep.as_str() {
-            "cloud" => take_cloud(&app, &id, top, Some(&hash)).await.map(|_| ()),
-            "local" => upload_current(&app, &id, g, spots, hash, top.made).await,
+            "cloud" => {
+                take_cloud(&app, &id, top, Some(&hash)).await?;
+                if using_drive(&st.dir) && top.conflict {
+                    return upload_current(&app, &id, g, spots, top.hash.clone(), top.made, Some(&top.revision)).await;
+                }
+                Ok(())
+            }
+            "local" => upload_current(&app, &id, g, spots, hash, top.made, Some(&top.revision)).await,
             _ => Err(Error::Msg("Choose this PC or the cloud.".into())),
         }
     }).await
@@ -1506,6 +1597,7 @@ fn follow_every_game(l: &mut crate::library::Library) {
 /// already has something newer, which the next Play sorts out).
 #[tauri::command]
 pub async fn saves_cloud(app: AppHandle, id: String, on: bool) -> Res<Installed> {
+    let _busy = busy().await?;
     let st = app.state::<App>();
     let g = {
         let mut l = st.lib.lock().unwrap();
@@ -1515,12 +1607,18 @@ pub async fn saves_cloud(app: AppHandle, id: String, on: bool) -> Res<Installed>
         let _ = l.save(&st.dir);
         g
     };
-    if on && signed_in(&st.dir) {
+    if on && crate::save_provider::ready(&st.dir) {
         let app2 = app.clone();
         let id2 = id.clone();
         tauri::async_runtime::spawn(async move {
-            let has_cloud = cloud_list(&app2, &id2).await.map(|(l, _)| !l.is_empty()).unwrap_or(true);
+            let has_cloud = {
+                let _busy = BUSY.lock().await;
+                let st = app2.state::<App>();
+                if !crate::save_provider::ready(&st.dir) || game(&st, &id2).map(|g| g.cloud != Some(true)).unwrap_or(true) { return; }
+                cloud_list(&app2, &id2).await.map(|(l, _)| !l.is_empty()).unwrap_or(true)
+            };
             if !has_cloud {
+                // after_session takes BUSY itself, and rechecks consent before uploading.
                 let _ = after_session(&app2, &id2).await;
                 let _ = app2.emit("saves", json!({"id": id2}));
             }
@@ -1540,6 +1638,7 @@ pub struct SpotInfo {
 /// Everything the Saves tab shows.
 #[tauri::command]
 pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
+    let _busy = busy().await?;
     let st = app.state::<App>();
     let g = game(&st, &id)?;
     let spots: Vec<SpotInfo> = spots_of(&st, &id, &g)
@@ -1557,7 +1656,8 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let mut space = Value::Null;
     let mut offline = false;
     let mut next = Value::Null;
-    if g.cloud == Some(true) && signed_in(&st.dir) {
+    let mut cloud_error = String::new();
+    if g.cloud == Some(true) && crate::save_provider::ready(&st.dir) {
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
                 next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
@@ -1566,15 +1666,17 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
-            Err(Error::Net(_)) => offline = true,
-            Err(_) => {}
+            Err(e) => {
+                offline = matches!(e, Error::Net(_));
+                cloud_error = e.to_string();
+            }
         }
     }
     let waiting = waiting_copies(&local, &state);
     Ok(json!({
-        "spots": spots, "local": local, "cloud": cloud, "space": space, "offline": offline,
-        "cloudOn": g.cloud, "signedIn": signed_in(&st.dir), "synced": state.synced_hash, "pending": state.pending.is_some(),
-        "waiting": waiting, "status": STATUS_PAGE,
+        "spots": spots, "local": local, "cloud": cloud, "space": space, "offline": offline, "cloudError": cloud_error,
+        "provider": crate::save_provider::name(&st.dir), "cloudOn": g.cloud, "signedIn": crate::save_provider::ready(&st.dir), "synced": state.synced_hash, "pending": state.pending.is_some(),
+        "waiting": waiting, "status": if using_drive(&st.dir) { "" } else { STATUS_PAGE },
         // The save in the game's folder now (the last copy made or put back), and this PC's name:
         // the tab marks the copy that's current and the ones another PC made.
         "current": state.last_hash, "here": saves::device_name(),
@@ -1582,7 +1684,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         "incoming": next,
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
-        "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
+        "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": !using_drive(&st.dir) && full_now(),
         "override": swap,
     }))
 }
@@ -1717,13 +1819,17 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
     let st = app.state::<App>();
     folder_free(&st, &id)?;
     let g = game(&st, &id)?;
-    if g.cloud != Some(true) || !signed_in(&st.dir) {
+    if g.cloud != Some(true) || !crate::save_provider::ready(&st.dir) {
         return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
     }
     let running = st.running.lock().unwrap().contains_key(&id);
     let r: Res<()> = crate::net::now(async {
         {
             let _busy = busy().await?;
+            let g = game(&st, &id)?;
+            if g.cloud != Some(true) || !crate::save_provider::ready(&st.dir) {
+                return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
+            }
             // A fresh copy of what's there now (a running game's saves wait until it closes).
             if !running {
                 let spots = spots_of(&st, &id, &g);
@@ -1753,6 +1859,7 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
     }
     match r {
         Ok(()) => crate::net::now(saves_info(app.clone(), id)).await,
+        Err(Error::Net(_)) if using_drive(&st.dir) => Err(transport_drive_error()),
         Err(Error::Net(_)) => Err(Error::Msg(format!("The website still can't be reached. Your saves are safe on this PC and go up when it's back. See {STATUS_PAGE} for whether it's on our side."))),
         Err(e) => Err(e),
     }
@@ -1763,14 +1870,12 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
 #[tauri::command]
 pub async fn cloud_retry(app: AppHandle, id: Option<String>) -> Res<Value> {
     let st = app.state::<App>();
-    if !signed_in(&st.dir) {
+    if !crate::save_provider::ready(&st.dir) {
         return Err(Error::Msg("Sign in first.".into()));
     }
     let r = crate::net::now(async {
-        let v = get(&app, &[("a", "me")]).await;
-        if let Err(Error::Net(e)) = v {
-            return Err(Error::Net(e));
-        }
+        let v = if using_drive(&st.dir) { crate::drive::space(&app).await } else { get(&app, &[("a", "me")]).await };
+        v?;
         upload_pending(&app).await;
         Ok(())
     })
@@ -1780,6 +1885,7 @@ pub async fn cloud_retry(app: AppHandle, id: Option<String>) -> Res<Value> {
             Some(id) => crate::net::now(saves_info(app.clone(), id)).await,
             None => Ok(json!({"ok": true})),
         },
+        Err(e) if using_drive(&st.dir) => Err(e),
         Err(_) => Err(Error::Msg(format!("The website still can't be reached. Your saves are safe on this PC and go up when it's back. See {STATUS_PAGE} for whether it's on our side."))),
     }
 }
@@ -1799,7 +1905,7 @@ fn overview(app: &AppHandle) -> Value {
     // Copies made beside the games while the player's folder was away go to it now that it's back.
     let installed: Vec<Installed> = games.iter().map(|(_, g)| g.clone()).collect();
     saves::gather(&st.dir, &installed);
-    let signed = signed_in(&st.dir);
+    let signed = crate::save_provider::ready(&st.dir);
     let mut out = Vec::new();
     for (id, g) in games {
         let local = saves::list(&st.dir, &id, &g);
@@ -1912,6 +2018,7 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     }
     folder_free(&st, &id)?;
     let _busy = BUSY.lock().await;
+    let _reserved = reserve_sync(&st, &id)?;
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
         let c = list.into_iter().find(|c| c.v == v).ok_or_else(|| Error::Msg("That cloud save is gone.".into()))?;
@@ -2305,6 +2412,66 @@ mod child_retry_tests {
         st.uninstalling.lock().unwrap().insert("other".into());
         assert!(folder_free(st, "series").is_ok());
         assert!(folder_free(st, "series--first").is_ok());
+    }
+
+    #[tokio::test]
+    async fn local_only_games_do_not_wait_for_another_save_operation() {
+        let fixture = Fixture::new(games());
+        fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(false);
+        let _busy = BUSY.lock().await;
+        let check = prepare_sync(&fixture.0, "series");
+        tokio::pin!(check);
+        assert!(matches!(futures_util::poll!(&mut check), std::task::Poll::Ready(Ok(None))));
+    }
+
+    #[tokio::test]
+    async fn games_without_cloud_consent_do_not_wait_for_another_save_operation() {
+        let fixture = Fixture::new(games());
+        fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = None;
+        let _busy = BUSY.lock().await;
+        let check = prepare_sync(&fixture.0, "series");
+        tokio::pin!(check);
+        assert!(matches!(futures_util::poll!(&mut check), std::task::Poll::Ready(Ok(None))));
+    }
+
+    #[tokio::test]
+    async fn games_without_a_connected_provider_do_not_wait_for_another_save_operation() {
+        let fixture = Fixture::new(games());
+        std::fs::write(fixture.0.dir.join("save-provider.json"), b"\"disabled\"").unwrap();
+        let _busy = BUSY.lock().await;
+        let check = prepare_sync(&fixture.0, "series");
+        tokio::pin!(check);
+        assert!(matches!(futures_util::poll!(&mut check), std::task::Poll::Ready(Ok(None))));
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn a_waiting_sync_rechecks_cloud_consent() {
+        let fixture = Fixture::new(games());
+        let account = Account { token: "test-token".into(), ..Default::default() };
+        store(&fixture.0.dir, Some(&account));
+        let busy = BUSY.lock().await;
+        let check = prepare_sync(&fixture.0, "series");
+        tokio::pin!(check);
+        assert!(futures_util::poll!(&mut check).is_pending());
+        fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(false);
+        drop(busy);
+        assert!(check.await.unwrap().is_none());
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn a_waiting_sync_rechecks_the_connected_provider() {
+        let fixture = Fixture::new(games());
+        let account = Account { token: "test-token".into(), ..Default::default() };
+        store(&fixture.0.dir, Some(&account));
+        let busy = BUSY.lock().await;
+        let check = prepare_sync(&fixture.0, "series");
+        tokio::pin!(check);
+        assert!(futures_util::poll!(&mut check).is_pending());
+        std::fs::write(fixture.0.dir.join("save-provider.json"), b"\"disabled\"").unwrap();
+        drop(busy);
+        assert!(check.await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -2909,5 +3076,29 @@ mod home_tests {
     #[test]
     fn home_list_without_items_is_left_alone() {
         assert!(!home_ok(&json!({"v": 1, "error": "Try again in a moment."})));
+    }
+}
+
+#[cfg(test)]
+mod provider_conflict_tests {
+    use super::*;
+
+    #[test]
+    fn a_drive_conflict_offers_the_other_devices_save() {
+        let list = vec![
+            CloudCopy { v: "pc".into(), hash: "pc-save".into(), head: true, conflict: true, ..Default::default() },
+            CloudCopy { v: "deck".into(), hash: "deck-save".into(), head: true, conflict: true, ..Default::default() },
+        ];
+        assert_eq!(current_copy(&list, "pc-save").unwrap().v, "deck");
+    }
+
+    #[test]
+    fn old_history_is_not_offered_as_an_unresolved_branch() {
+        let list = vec![
+            CloudCopy { v: "pc".into(), hash: "pc-save".into(), head: true, conflict: true, ..Default::default() },
+            CloudCopy { v: "old".into(), hash: "old-save".into(), head: false, conflict: true, ..Default::default() },
+            CloudCopy { v: "deck".into(), hash: "deck-save".into(), head: true, conflict: true, ..Default::default() },
+        ];
+        assert_eq!(current_copy(&list, "pc-save").unwrap().v, "deck");
     }
 }

@@ -400,8 +400,12 @@ mod imp {
 
     /// Keeps a secret in Windows' Credential Manager, for this Windows user only.
     pub fn cred_write(secret: &str) -> bool {
+        cred_write_named(CRED, secret)
+    }
+
+    pub fn cred_write_named(name: &str, secret: &str) -> bool {
         use windows::Win32::Security::Credentials::{CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC};
-        let mut target: Vec<u16> = CRED.encode_utf16().chain([0]).collect();
+        let mut target: Vec<u16> = name.encode_utf16().chain([0]).collect();
         let mut user: Vec<u16> = "RecompLauncher".encode_utf16().chain([0]).collect();
         let mut blob = secret.as_bytes().to_vec();
         let c = CREDENTIALW {
@@ -417,9 +421,13 @@ mod imp {
     }
 
     pub fn cred_read() -> Option<String> {
+        cred_read_named(CRED)
+    }
+
+    pub fn cred_read_named(name: &str) -> Option<String> {
         use windows::Win32::Security::Credentials::{CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC};
         let mut p: *mut CREDENTIALW = std::ptr::null_mut();
-        unsafe { CredReadW(&HSTRING::from(CRED), CRED_TYPE_GENERIC, None, &mut p) }.ok()?;
+        unsafe { CredReadW(&HSTRING::from(name), CRED_TYPE_GENERIC, None, &mut p) }.ok()?;
         if p.is_null() {
             return None;
         }
@@ -433,8 +441,15 @@ mod imp {
     }
 
     pub fn cred_delete() {
+        cred_delete_named(CRED);
+    }
+
+    pub fn cred_delete_named(name: &str) -> bool {
         use windows::Win32::Security::Credentials::{CredDeleteW, CRED_TYPE_GENERIC};
-        let _ = unsafe { CredDeleteW(&HSTRING::from(CRED), CRED_TYPE_GENERIC, None) };
+        match unsafe { CredDeleteW(&HSTRING::from(name), CRED_TYPE_GENERIC, None) } {
+            Ok(()) => true,
+            Err(e) => e.code() == windows::core::HRESULT::from_win32(windows::Win32::Foundation::ERROR_NOT_FOUND.0),
+        }
     }
 
     // ---------- the administrator prompt ----------

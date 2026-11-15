@@ -875,7 +875,7 @@ const SCOPE_KEY: &str = "cloud_scope";
 /// The sign-in a note's cloud fields are written under now. Read from account.json without
 /// opening the sealed token, so it costs no trip to Windows' Credential Manager.
 fn scope_now(app_dir: &Path) -> String {
-    format!("recompstore:{}", crate::cloud::account_uid(app_dir))
+    crate::save_provider::scope(app_dir)
 }
 
 /// A scope with no account id after the colon is nobody's: nothing in the cloud belongs to it.
@@ -901,7 +901,9 @@ fn write_note(app_dir: &Path, id: &str, s: &State, scope: &str) {
     }
     let mut value = serde_json::to_value(s).unwrap_or_default();
     value[SCOPE_KEY] = scope.into();
-    let _ = fs::write(f, serde_json::to_vec_pretty(&value).unwrap_or_default());
+    let temp = f.with_extension("json.tmp");
+    let result = fs::write(&temp, serde_json::to_vec_pretty(&value).unwrap_or_default()).and_then(|_| fs::rename(&temp, &f));
+    if result.is_err() { let _ = fs::remove_file(temp); }
 }
 
 /// What this PC knows about a game's saves, for whoever is signed in now. The cloud fields only
@@ -1123,6 +1125,61 @@ pub const SAVE_NOT_WRITTEN: &str = "The save couldn't be written to its folder."
 
 fn not_written(path: &Path, e: io::Error) -> Error {
     Error::Msg(format!("{SAVE_NOT_WRITTEN}\n{}: {e}", path.display()))
+}
+
+/// Drive files can be edited outside the launcher. Check every byte before changing live saves,
+/// and only allow destinations this PC already knows belong to the game.
+pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) -> Result<(), Error> {
+    let invalid = || Error::Msg("That cloud save is damaged or doesn't match this game's save folders. Nothing was restored.".into());
+    let mut zip = zip::ZipArchive::new(fs::File::open(path)?).map_err(|_| invalid())?;
+    if zip.len() > MAX_FILES + 1 { return Err(invalid()); }
+    let man: Manifest = {
+        let mut entry = zip.by_name("rlsave.json").map_err(|_| invalid())?;
+        if entry.size() > 8 * 1024 * 1024 { return Err(invalid()); }
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes)?;
+        serde_json::from_slice(&bytes).map_err(|_| invalid())?
+    };
+    if man.format != 1 || man.game != id || man.hash != hash || set_hash(&man.files) != hash || man.files.is_empty() {
+        return Err(invalid());
+    }
+    let picked = !spots.is_empty() && spots.iter().all(|s| s.from == "player");
+    if man.spots.len() != spots.len() || (!picked && man.spots.iter().zip(spots).any(|(a, b)| a != &b.template)) {
+        return Err(invalid());
+    }
+    let mut expected = HashMap::new();
+    let mut total = 0u64;
+    for file in &man.files {
+        let unsafe_name = file.rel.split('/').any(|p| p.is_empty() || p == "." || p == ".." || p.contains(['\\', ':']));
+        if file.spot >= spots.len() || file.size > MAX_FILE || unsafe_name { return Err(invalid()); }
+        total = total.checked_add(file.size).ok_or_else(invalid)?;
+        if total > SPOT_MAX { return Err(invalid()); }
+        let name = format!("{}/{}", file.spot, file.rel);
+        if expected.insert(name, file).is_some() { return Err(invalid()); }
+    }
+    if zip.len() != expected.len() + 1 { return Err(invalid()); }
+    let mut seen = HashSet::new();
+    for index in 0..zip.len() {
+        let mut entry = zip.by_index(index).map_err(|_| invalid())?;
+        let name = entry.name().to_string();
+        if !seen.insert(name.clone()) { return Err(invalid()); }
+        if name == "rlsave.json" { continue; }
+        let file = expected.get(&name).ok_or_else(invalid)?;
+        let symlink = entry.unix_mode().map(|m| m & 0o170000 == 0o120000).unwrap_or(false);
+        if entry.size() != file.size || symlink { return Err(invalid()); }
+        let mut sha = Sha256::new();
+        let mut buffer = [0u8; 64 * 1024];
+        let mut count = 0u64;
+        loop {
+            let n = entry.read(&mut buffer)?;
+            if n == 0 { break; }
+            count += n as u64;
+            if count > file.size { return Err(invalid()); }
+            sha.update(&buffer[..n]);
+        }
+        if count != file.size || hex::encode(sha.finalize()) != file.sha256 { return Err(invalid()); }
+    }
+    Ok(())
 }
 
 /// Puts a copy's files back where the game reads them, on this PC. Saves that are there now and
@@ -1497,6 +1554,98 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
 
 #[cfg(test)]
 mod tests {
+    fn cloud_archive(dir: &Path, template: &str, data: &[u8], actual: &[u8]) -> (PathBuf, String) {
+        let files = vec![FileInfo { spot: 0, rel: "slot.sav".into(), size: data.len() as u64, sha256: hex::encode(Sha256::digest(data)) }];
+        let hash = set_hash(&files);
+        let manifest = Manifest { format: 1, game: "g".into(), hash: hash.clone(), spots: vec![template.into()], files, ..Default::default() };
+        let path = dir.join("cloud.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("rlsave.json", options).unwrap();
+        zip.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        zip.start_file("0/slot.sav", options).unwrap();
+        zip.write_all(actual).unwrap();
+        zip.finish().unwrap();
+        (path, hash)
+    }
+
+    #[test]
+    fn cloud_copy_checks_every_file_before_restore() {
+        let dir = tmp("cloud-valid");
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_ok());
+    }
+
+    #[test]
+    fn cloud_copy_rejects_changed_file_contents() {
+        let dir = tmp("cloud-changed");
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"evil");
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_err());
+    }
+
+    #[test]
+    fn cloud_copy_cannot_redirect_a_save_to_another_folder() {
+        let dir = tmp("cloud-redirect");
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, "{home}/Documents", b"save", b"save");
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_err());
+    }
+
+    #[test]
+    fn cloud_copy_accepts_a_different_folder_the_player_picked_on_this_pc() {
+        let dir = tmp("cloud-player-folder");
+        let spots = vec![Spot { template: "{home}/my-saves".into(), from: "player" }];
+        let (path, hash) = cloud_archive(&dir, "{home}/other-pc-saves", b"save", b"save");
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_ok());
+    }
+
+    #[test]
+    fn cloud_copy_rejects_another_games_archive() {
+        let dir = tmp("cloud-game");
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
+        assert!(validate_cloud_copy(&path, "another-game", &hash, &spots).is_err());
+    }
+
+    #[test]
+    fn provider_changes_discard_the_sync_baseline_and_queue() {
+        let dir = tmp("cloud-provider");
+        let state = State { last_hash: "local".into(), synced_hash: "cloud".into(), pending: Some("123.zip".into()) };
+        set_state(&dir, "g", &state);
+        fs::write(dir.join("save-provider.json"), b"\"google_drive\"").unwrap();
+        let read = super::state(&dir, "g");
+        assert_eq!(read.last_hash, "local");
+        assert!(read.synced_hash.is_empty());
+        assert!(read.pending.is_none());
+    }
+
+    #[test]
+    fn account_changes_discard_the_sync_baseline_and_queue() {
+        let dir = tmp("cloud-account");
+        let value = serde_json::json!({"last_hash": "local", "synced_hash": "cloud", "pending": "123.zip", "cloud_scope": "google_drive:another-account"});
+        fs::create_dir_all(dir.join("saves/g")).unwrap();
+        fs::write(state_file(&dir, "g"), serde_json::to_vec(&value).unwrap()).unwrap();
+        let read = super::state(&dir, "g");
+        assert_eq!(read.last_hash, "local");
+        assert!(read.synced_hash.is_empty());
+        assert!(read.pending.is_none());
+    }
+
+    #[test]
+    fn legacy_website_sync_state_is_migrated() {
+        let dir = tmp("cloud-legacy");
+        let value = serde_json::json!({"last_hash": "local", "synced_hash": "cloud", "pending": "123.zip"});
+        fs::create_dir_all(dir.join("saves/g")).unwrap();
+        fs::write(state_file(&dir, "g"), serde_json::to_vec(&value).unwrap()).unwrap();
+        let read = super::state(&dir, "g");
+        assert_eq!(read.synced_hash, "cloud");
+        assert_eq!(read.pending.as_deref(), Some("123.zip"));
+        let migrated: serde_json::Value = serde_json::from_slice(&fs::read(state_file(&dir, "g")).unwrap()).unwrap();
+        assert!(migrated["cloud_scope"].as_str().unwrap().starts_with("recompstore:"));
+    }
+
     #[test]
     fn several_save_folders_the_player_picked() {
         let d = std::env::temp_dir().join(format!("rl-saves-many-{}", std::process::id()));
