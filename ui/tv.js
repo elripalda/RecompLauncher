@@ -718,7 +718,9 @@
     const a = libAppOf(el.dataset.hero);
     const g = S.library[el.dataset.hero];
     const cap = $('#tv-flowcap', root);
-    if (cap) { cap.innerHTML = `<b>${esc(a.game || a.name)}</b><span>${esc(g ? timeLine(g) : '')}</span>`; cap.classList.remove('swap'); void cap.offsetWidth; cap.classList.add('swap'); }
+    const developer = (devOf(a) || {}).name || a.author || '';
+    const meta = [developer ? tf('By {who}', { who: developer }) : '', g ? timeLine(g) : ''].filter(Boolean).join(' · ');
+    if (cap) { cap.innerHTML = `<b>${esc(a.name)}</b>${a.game && a.game !== a.name ? `<span>${esc(a.game)}</span>` : ''}${meta ? `<small>${esc(meta)}</small>` : ''}`; cap.classList.remove('swap'); void cap.offsetWidth; cap.classList.add('swap'); }
   }
 
   // Pictures fetched ahead of time (kept while they're likely to be needed).
