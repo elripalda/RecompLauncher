@@ -1444,7 +1444,7 @@
     const acts = [
       mainButton(a, 'g-main'),
       // Set Up Again beside Play, marked New while its project has options not answered yet.
-      g && canSetUpAgain(id) ? btn('g-again', 'setup', esc(t('Set Up Again')) + (newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New'))}</b>` : ''), { id, icon: 'disc' }) : '',
+      g && canSetUpAgain(id) ? btn('g-again', 'setup', esc(t('Set Up Again')) + (newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, icon: 'disc' }) : '',
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('I Already Have It')), { id, icon: 'folder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
@@ -2086,7 +2086,7 @@
         const lic = o.license && o.license.name ? tf('Accepts the {license}', { license: o.license.name }) : '';
         const sub = [o.on ? t('On') : t('Off'), lic].filter(Boolean).join(' · ');
         const read = o.license && o.license.url ? it(tf('Read the {license}', { license: o.license.name || o.license.url }), '', () => invoke('open_url', { url: o.license.url }).catch(fail)) : '';
-        return it(o.label + (o.new && su.copy ? ` · ${t('New')}` : ''), sub, toggle(o), o.on ? 'on' : '') + read;
+        return it(o.label + (o.new && su.copy ? ` · ${t('New option')}` : ''), sub, toggle(o), o.on ? 'on' : '') + read;
       };
       const prepOpts = (su.prepare_options || []).map(optItem).join('');
       const again = su.copy && !own ? it(t('Use the copy it was set up with'), su.copy, () => tsBegin(su.copy), 'main') : '';

@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "استخدم بناءً لديك بالفعل",
  "Use a Build You Already Have (On)…": "استخدم بناءً لديك بالفعل (مفعّل)…",
  "Use a Build You Already Have…": "استخدم بناءً لديك بالفعل…",
- "Your own build": "بناؤك الخاص"
+ "Your own build": "بناؤك الخاص",
+ "1 new option": "خيار جديد واحد",
+ "Accepts the {license}": "الموافقة على {license}",
+ "New in {name}: {option}": "جديد في {name}: {option}",
+ "New option": "خيار جديد",
+ "Play as it is": "اللعب كما هي",
+ "Read the {license}": "قراءة {license}",
+ "Sets the game up again from your copy": "يُعدّ اللعبة من جديد من نسختك",
+ "Turning it on accepts the {license}.": "بتفعيله توافق على {license}.",
+ "Turning it on sets the game up again from your copy.": "بتفعيله تُعدّ اللعبة من جديد من نسختك.",
+ "Use the copy it was set up with": "استخدام النسخة التي أُعدّت بها",
+ "{n} new options": "خياران جديدان|{n} خيارات جديدة|{n} خيارًا جديدًا|{n} خيار جديد"
 }

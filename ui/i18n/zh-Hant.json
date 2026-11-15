@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "使用你已有的建置",
  "Use a Build You Already Have (On)…": "使用你已有的建置（已開啟）…",
  "Use a Build You Already Have…": "使用你已有的建置…",
- "Your own build": "你自己的建置"
+ "Your own build": "你自己的建置",
+ "1 new option": "1 個新選項",
+ "Accepts the {license}": "您接受 {license}",
+ "New in {name}: {option}": "{name} 新增：{option}",
+ "New option": "新選項",
+ "Play as it is": "維持現狀直接玩",
+ "Read the {license}": "閱讀 {license}",
+ "Sets the game up again from your copy": "用您的副本重新設定遊戲",
+ "Turning it on accepts the {license}.": "開啟即表示您接受 {license}。",
+ "Turning it on sets the game up again from your copy.": "開啟後會用您的副本重新設定遊戲。",
+ "Use the copy it was set up with": "使用設定時用過的副本",
+ "{n} new options": "{n} 個新選項"
 }

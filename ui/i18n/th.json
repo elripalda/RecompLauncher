@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "ใช้บิลด์ที่คุณมีอยู่แล้ว",
  "Use a Build You Already Have (On)…": "ใช้บิลด์ที่คุณมีอยู่แล้ว (เปิด)…",
  "Use a Build You Already Have…": "ใช้บิลด์ที่คุณมีอยู่แล้ว…",
- "Your own build": "บิลด์ของคุณเอง"
+ "Your own build": "บิลด์ของคุณเอง",
+ "1 new option": "ตัวเลือกใหม่ 1 รายการ",
+ "Accepts the {license}": "ยอมรับ {license}",
+ "New in {name}: {option}": "ใหม่ใน {name}: {option}",
+ "New option": "ตัวเลือกใหม่",
+ "Play as it is": "เล่นแบบเดิม",
+ "Read the {license}": "อ่าน {license}",
+ "Sets the game up again from your copy": "ตั้งค่าเกมอีกครั้งจากสำเนาของคุณ",
+ "Turning it on accepts the {license}.": "การเปิดใช้หมายถึงคุณยอมรับ {license}",
+ "Turning it on sets the game up again from your copy.": "การเปิดใช้จะตั้งค่าเกมอีกครั้งจากสำเนาของคุณ",
+ "Use the copy it was set up with": "ใช้สำเนาที่ใช้ตั้งค่า",
+ "{n} new options": "ตัวเลือกใหม่ {n} รายการ"
 }

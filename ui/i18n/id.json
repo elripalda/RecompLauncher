@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "Gunakan build yang sudah kamu punya",
  "Use a Build You Already Have (On)…": "Gunakan build yang sudah kamu punya (aktif)…",
  "Use a Build You Already Have…": "Gunakan build yang sudah kamu punya…",
- "Your own build": "Build milikmu"
+ "Your own build": "Build milikmu",
+ "1 new option": "1 opsi baru",
+ "Accepts the {license}": "Kamu menerima {license}",
+ "New in {name}: {option}": "Baru di {name}: {option}",
+ "New option": "Opsi baru",
+ "Play as it is": "Main apa adanya",
+ "Read the {license}": "Baca {license}",
+ "Sets the game up again from your copy": "Menyiapkan game lagi dari salinanmu",
+ "Turning it on accepts the {license}.": "Dengan menyalakannya, kamu menerima {license}.",
+ "Turning it on sets the game up again from your copy.": "Dengan menyalakannya, game disiapkan lagi dari salinanmu.",
+ "Use the copy it was set up with": "Pakai salinan yang dipakai saat menyiapkannya",
+ "{n} new options": "{n} opsi baru"
 }

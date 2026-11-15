@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "Использовать готовую сборку",
  "Use a Build You Already Have (On)…": "Использовать готовую сборку (вкл.)…",
  "Use a Build You Already Have…": "Использовать готовую сборку…",
- "Your own build": "Ваша собственная сборка"
+ "Your own build": "Ваша собственная сборка",
+ "1 new option": "1 новый параметр",
+ "Accepts the {license}": "Вы принимаете условия: {license}",
+ "New in {name}: {option}": "Новое в {name}: {option}",
+ "New option": "Новый параметр",
+ "Play as it is": "Играть как есть",
+ "Read the {license}": "Прочитать: {license}",
+ "Sets the game up again from your copy": "Заново настраивает игру с вашей копии",
+ "Turning it on accepts the {license}.": "Включая его, вы принимаете условия: {license}.",
+ "Turning it on sets the game up again from your copy.": "При включении игра будет заново настроена с вашей копии.",
+ "Use the copy it was set up with": "Использовать копию, с которой её настроили",
+ "{n} new options": "{n} новый параметр|{n} новых параметра|{n} новых параметров"
 }

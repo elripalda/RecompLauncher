@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "Een build gebruiken die je al hebt",
  "Use a Build You Already Have (On)…": "Een build gebruiken die je al hebt (aan)…",
  "Use a Build You Already Have…": "Een build gebruiken die je al hebt…",
- "Your own build": "Je eigen build"
+ "Your own build": "Je eigen build",
+ "1 new option": "1 nieuwe optie",
+ "Accepts the {license}": "Je gaat akkoord met {license}",
+ "New in {name}: {option}": "Nieuw in {name}: {option}",
+ "New option": "Nieuwe optie",
+ "Play as it is": "Spelen zoals het is",
+ "Read the {license}": "{license} lezen",
+ "Sets the game up again from your copy": "Stelt het spel opnieuw in met je exemplaar",
+ "Turning it on accepts the {license}.": "Door het aan te zetten ga je akkoord met {license}.",
+ "Turning it on sets the game up again from your copy.": "Door het aan te zetten wordt het spel opnieuw ingesteld met je exemplaar.",
+ "Use the copy it was set up with": "Het exemplaar gebruiken waarmee hij is ingesteld",
+ "{n} new options": "{n} nieuwe opties"
 }

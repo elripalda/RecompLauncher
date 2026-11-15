@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "가지고 있는 빌드 사용",
  "Use a Build You Already Have (On)…": "가지고 있는 빌드 사용(켜짐)…",
  "Use a Build You Already Have…": "가지고 있는 빌드 사용…",
- "Your own build": "내 빌드"
+ "Your own build": "내 빌드",
+ "1 new option": "새 옵션 1개",
+ "Accepts the {license}": "{license}에 동의합니다",
+ "New in {name}: {option}": "{name}의 새 기능: {option}",
+ "New option": "새 옵션",
+ "Play as it is": "그대로 플레이",
+ "Read the {license}": "{license} 읽기",
+ "Sets the game up again from your copy": "사본으로 게임을 다시 설정합니다",
+ "Turning it on accepts the {license}.": "켜면 {license}에 동의하게 됩니다.",
+ "Turning it on sets the game up again from your copy.": "켜면 사본으로 게임을 다시 설정합니다.",
+ "Use the copy it was set up with": "설정에 사용한 사본 사용",
+ "{n} new options": "새 옵션 {n}개"
 }

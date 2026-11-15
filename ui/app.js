@@ -2798,7 +2798,7 @@ function prepOptsHtml(su) {
   if (!list.length) return '';
   return `<section class="su-opts" aria-label="${esc(t('Options'))}"><h3>${esc(t('Options'))}</h3>${list.map((o) => {
     const lic = o.license && o.license.url ? htmlFill(t('I accept the {license}'), { license: `<a href="#" data-url="${esc(o.license.url)}">${esc(o.license.name || o.license.url)}</a>` }) : '';
-    const fresh = o.new && (su.copy || su.inputs_ready) ? ` <span class="su-new">${esc(t('New'))}</span>` : '';
+    const fresh = o.new && (su.copy || su.inputs_ready) ? ` <span class="su-new">${esc(t('New option'))}</span>` : '';
     return `<label class="su-opt"><input type="checkbox" data-popt="${esc(o.id)}"${o.on ? ' checked' : ''}><span><b>${esc(o.label)}</b>${fresh}${lic ? ` <em>(${lic})</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span></label>`;
   }).join('')}</section>`;
 }
@@ -3762,7 +3762,7 @@ function pageDownloads() {
   ];
   // The one at the top: the download that's moving, else the first one there is.
   const lead = act.find((id) => S.jobs[id] && S.jobs[id].phase !== 'queued') || act[0];
-  const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New'); };
+  const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New option'); };
   const jobBtns = (id, small) => { const j = S.jobs[id] || {}, held = !S.jobs[id], sm = small ? ' sm' : '';
     const two = held ? `<button type="button" class="btn main${sm}" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) && j.phase !== 'queued' ? `<button type="button" class="btn${sm}" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
     return `${two}<button type="button" class="btn${sm}" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button>`; };

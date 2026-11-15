@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "Elinizdeki bir derlemeyi kullanın",
  "Use a Build You Already Have (On)…": "Elinizdeki bir derlemeyi kullanın (açık)…",
  "Use a Build You Already Have…": "Elinizdeki bir derlemeyi kullanın…",
- "Your own build": "Kendi derlemeniz"
+ "Your own build": "Kendi derlemeniz",
+ "1 new option": "1 yeni seçenek",
+ "Accepts the {license}": "{license} koşullarını kabul edersiniz",
+ "New in {name}: {option}": "{name} içinde yeni: {option}",
+ "New option": "Yeni seçenek",
+ "Play as it is": "Olduğu gibi oyna",
+ "Read the {license}": "{license} metnini oku",
+ "Sets the game up again from your copy": "Oyunu kopyanızdan yeniden kurar",
+ "Turning it on accepts the {license}.": "Açtığınızda {license} koşullarını kabul etmiş olursunuz.",
+ "Turning it on sets the game up again from your copy.": "Açtığınızda oyun kopyanızdan yeniden kurulur.",
+ "Use the copy it was set up with": "Kurulduğu kopyayı kullan",
+ "{n} new options": "{n} yeni seçenek"
 }

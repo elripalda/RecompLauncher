@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "Dùng bản build bạn đã có",
  "Use a Build You Already Have (On)…": "Dùng bản build bạn đã có (Bật)…",
  "Use a Build You Already Have…": "Dùng bản build bạn đã có…",
- "Your own build": "Bản build của riêng bạn"
+ "Your own build": "Bản build của riêng bạn",
+ "1 new option": "1 tùy chọn mới",
+ "Accepts the {license}": "Bạn chấp nhận {license}",
+ "New in {name}: {option}": "Mới trong {name}: {option}",
+ "New option": "Tùy chọn mới",
+ "Play as it is": "Chơi như hiện tại",
+ "Read the {license}": "Đọc {license}",
+ "Sets the game up again from your copy": "Thiết lập lại trò chơi từ bản sao của bạn",
+ "Turning it on accepts the {license}.": "Bật lên nghĩa là bạn chấp nhận {license}.",
+ "Turning it on sets the game up again from your copy.": "Bật lên sẽ thiết lập lại trò chơi từ bản sao của bạn.",
+ "Use the copy it was set up with": "Dùng bản sao đã dùng để thiết lập",
+ "{n} new options": "{n} tùy chọn mới"
 }

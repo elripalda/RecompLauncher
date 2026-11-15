@@ -3269,5 +3269,16 @@
  "Use a Build You Already Have": "Usar una compilación que ya tienes",
  "Use a Build You Already Have (On)…": "Usar una compilación que ya tienes (activado)…",
  "Use a Build You Already Have…": "Usar una compilación que ya tienes…",
- "Your own build": "Tu propia compilación"
+ "Your own build": "Tu propia compilación",
+ "1 new option": "1 opción nueva",
+ "Accepts the {license}": "Aceptas {license}",
+ "New in {name}: {option}": "Novedad en {name}: {option}",
+ "New option": "Opción nueva",
+ "Play as it is": "Jugar tal como está",
+ "Read the {license}": "Leer {license}",
+ "Sets the game up again from your copy": "Vuelve a configurar el juego con tu copia",
+ "Turning it on accepts the {license}.": "Al activarla, aceptas {license}.",
+ "Turning it on sets the game up again from your copy.": "Al activarla, el juego se vuelve a configurar con tu copia.",
+ "Use the copy it was set up with": "Usar la copia con la que se configuró",
+ "{n} new options": "{n} opciones nuevas"
 }
