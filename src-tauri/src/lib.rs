@@ -3712,6 +3712,10 @@ fn settle_prepare_opts(st: &App, id: &str, pr: &profile::Prepare) {
 /// The setup step options this PC is offered that the player hasn't answered yet, on a game that's
 /// already set up: what its project added after the player's setup (NVIDIA DLSS in an update).
 fn new_prepare_options(st: &App, id: &str) -> Vec<String> {
+    // Skip Easy Setup: the player sets this game up their own way, so nothing is asked.
+    if easy_skipped(&st.lib.lock().unwrap().settings.ui, id) {
+        return vec![];
+    }
     let Some(g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return vec![] };
     let Some(p) = profile_of(st, id, &g) else { return vec![] };
     let Some(pr) = p.prepare.as_ref().filter(|pr| !pr.options.is_empty()) else { return vec![] };
