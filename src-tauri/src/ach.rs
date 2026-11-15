@@ -1532,8 +1532,19 @@ fn files_under(r: &Path, home: bool) -> Vec<PathBuf> {
     out
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Tests keep to their own folders: on Windows the temporary folder is inside %LOCALAPPDATA%,
+    /// so other tests' files would turn up as fresh unlock files.
+    static NO_ROOTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// The player's folders a game may keep its user data in, each looked in two levels down.
 fn search_roots() -> Vec<PathBuf> {
+    #[cfg(test)]
+    if NO_ROOTS.with(|c| c.get()) {
+        return vec![];
+    }
     #[allow(unused_mut)]
     let mut env: Vec<PathBuf> = vec![];
     #[cfg(windows)]
@@ -2968,6 +2979,7 @@ mod tests {
     }
 
     fn watch(install: &Path, title: Option<&str>) -> RexWatch {
+        NO_ROOTS.with(|c| c.set(true));
         RexWatch { game: "g".into(), pid_key: "g".into(), install: install.to_path_buf(), started: 0, catalog_folder: None, title: title.map(str::to_string), roots: vec![] }
     }
 
