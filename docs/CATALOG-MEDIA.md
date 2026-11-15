@@ -3,11 +3,12 @@
 Two optional parts of the catalog decide how a game looks in the launcher. Both are made on the
 website, so changing them never needs a new launcher.
 
-## `media` (per game)
+## `media_design` (per game)
 
 The cartridge, card or disc shown while a game sets up with Easy Setup. The launcher draws the
 console's own media (`ui/media-art.js`) and puts the game on it as this object says. Every field is
-optional; a game without `media` gets the defaults.
+optional; a game without `media_design` gets the defaults. (A game's `media` is something else: its
+"Around the web" links.)
 
 | Field | Meaning |
 |---|---|

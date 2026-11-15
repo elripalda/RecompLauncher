@@ -2,10 +2,11 @@
 // Kept separate from the single-copy flow so existing profiles retain their setup behavior.
 
 // A game's own media on the setup screen (media-art.js): its console's cartridge, card or disc
-// with the game on it, as the site's media design for it says. state: 'ghost' (waiting for the
-// player's files), 'is-in' (arriving), 'is-busy' (working), 'is-done' or ''.
+// with the game on it, as the site's media design for it says (the catalog's media_design; a
+// game's media is its "Around the web" links). state: 'ghost' (waiting for the player's files),
+// 'is-in' (arriving), 'is-busy' (working), 'is-done' or ''.
 function gameMediaArt(a) {
-  return { cover: a.cover ? media(thumbOf(a.cover, 600)) : '', hero: a.hero ? media(thumbOf(a.hero, 960)) : '', logo: a.logo ? media(a.logo) : '', design: a.media && typeof a.media === 'object' ? a.media : null };
+  return { cover: a.cover ? media(thumbOf(a.cover, 600)) : '', hero: a.hero ? media(thumbOf(a.hero, 960)) : '', logo: a.logo ? media(a.logo) : '', design: a.media_design && typeof a.media_design === 'object' && !Array.isArray(a.media_design) ? a.media_design : null };
 }
 function gameMediaHtml(a, state) {
   const kind = MediaArt.kindOf(a.origin);

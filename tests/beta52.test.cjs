@@ -80,7 +80,12 @@ test('the setup screens show the media in place of the old disc, desktop and Big
   assert.match(tv, /\$\{med\(cur <= 0 \? 'is-in' : 'is-busy'\)\}/);
   for (const src of [app, tv, named, css, tvcss]) assert.doesNotMatch(src, /sdisc|bigdisc/);
   // The game's design from the catalog goes straight to the drawing.
-  assert.match(fn(named, 'gameMediaArt'), /design: a\.media && typeof a\.media === 'object' \? a\.media : null/);
+  assert.match(fn(named, 'gameMediaArt'), /design: a\.media_design && typeof a\.media_design === 'object' && !Array\.isArray\(a\.media_design\) \? a\.media_design : null/);
+  // A game's "Around the web" links (its media array) are never read as a design.
+  const art = new Function('media', 'thumbOf', `${fn(named, 'gameMediaArt')}; return gameMediaArt;`)((u) => u, (u) => u);
+  assert.equal(art({ media: [{ url: 'https://example.dev' }] }).design, null);
+  assert.equal(art({ media_design: [] }).design, null);
+  assert.deepEqual(art({ media_design: { style: 'color' } }).design, { style: 'color' });
 });
 
 test('Console Labels on Covers: a setting, the site\'s PNG over the top, badges moved under it', () => {
