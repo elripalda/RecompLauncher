@@ -83,7 +83,8 @@ const OS_WORDS: [(&str, &[&str]); 3] = [
     ("linux", &["linux", "appimage", "ubuntu", "debian", "steamdeck", "deck", "x86_64"]),
     ("macos", &["macos", "mac", "osx", "darwin", "apple", "dmg", "universal"]),
 ];
-const ARM: [&str; 3] = ["arm64", "aarch64", "arm"];
+const ARM64: [&str; 3] = ["arm64", "aarch64", "arm"];
+const ARM32: [&str; 7] = ["armhf", "armhfp", "armel", "armv6", "armv7", "armv7l", "armv7hl"];
 const X64: [&str; 5] = ["x64", "x86_64", "amd64", "win64", "64bit"];
 
 /// What kind of file it is, by its ending, and whether this system can use it as a build.
@@ -155,9 +156,12 @@ fn for_other_platform(name: &str) -> bool {
 fn other_arch(name: &str, arch: &str) -> bool {
     let w = words(name);
     let has = |list: &[&str]| w.iter().any(|x| list.contains(&x.as_str()));
+    if has(&ARM32) {
+        return true;
+    }
     match arch {
-        "arm64" => has(&X64) && !has(&ARM),
-        _ => has(&ARM) && !has(&X64),
+        "arm64" => has(&X64) && !has(&ARM64),
+        _ => has(&ARM64) && !has(&X64),
     }
 }
 
@@ -182,7 +186,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
             s += 50;
         }
     }
-    let mine: &[&str] = if arch == "arm64" { &ARM } else { &X64 };
+    let mine: &[&str] = if arch == "arm64" { &ARM64 } else { &X64 };
     if w.iter().any(|x| mine.contains(&x.as_str())) {
         s += 20;
     }
@@ -217,14 +221,24 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
     s + 1000
 }
 
+/// A list's pattern naming only builds for another processor is ignored, as in `pick`.
+fn pool<'a>(assets: &'a [Asset], arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
+    let Some(p) = pattern.filter(|p| !p.trim().is_empty()) else {
+        return assets.iter().collect();
+    };
+    let named = matching(assets, p);
+    let only_other_arch = !named.is_empty() && named.iter().all(|a| other_arch(&a.name, arch));
+    if only_other_arch {
+        return assets.iter().collect();
+    }
+    named
+}
+
 /// The build for this PC, or None when the release has none.
 /// Builds of one release that are equally good for this PC and differ only in what they're for (one
 /// per region, say: Game-JP and Game-US). The player picks; one alone needs no choice.
 pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
-    let pool: Vec<&Asset> = match pattern.filter(|p| !p.trim().is_empty()) {
-        Some(p) => matching(assets, p),
-        None => assets.iter().collect(),
-    };
+    let pool = pool(assets, arch, pattern);
     let best = pool.iter().map(|a| score(&a.name, os, arch)).max().unwrap_or(i32::MIN);
     if best <= 0 {
         return vec![];
@@ -236,10 +250,7 @@ pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
 /// folder, a portable zip and an installer) and 32-bit builds too. A game server is left out unless
 /// it's all there is. With a pattern from the list, only what it matches.
 pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
-    let pool: Vec<&Asset> = match pattern.filter(|p| !p.trim().is_empty()) {
-        Some(p) => matching(assets, p),
-        None => assets.iter().collect(),
-    };
+    let pool = pool(assets, arch, pattern);
     let mut v: Vec<(i32, &Asset)> = pool.into_iter().map(|a| (score(&a.name, os, arch), a)).filter(|(s, _)| *s != i32::MIN).collect();
     let server = |a: &Asset| words(&a.name).iter().any(|x| matches!(x.as_str(), "server" | "dedicated" | "srv"));
     if v.iter().any(|(_, a)| !server(a)) {
@@ -597,5 +608,33 @@ mod tests {
         assert_eq!(pick(&r, "windows", "x64", Some("nectar-windows.zip")).unwrap().name, "nectar-windows.zip");
         let r = [a("UnleashedRecomp-Windows.zip"), a("UnleashedRecomp-Flatpak.zip")];
         assert_eq!(pick(&r, "linux", "x64", Some("UnleashedRecomp-Flatpak.zip")).unwrap().name, "UnleashedRecomp-Flatpak.zip");
+    }
+
+    fn ja2_0_22_1() -> Vec<Asset> {
+        ["aarch64.AppImage", "android.apk", "armhf.AppImage", "macos.dmg", "win-mingw64-cross.zip", "win-msvc64-142.zip", "x86-64.AppImage"]
+            .iter()
+            .map(|end| a(&format!("ja2-stracciatella_0.22.1-git+11e9430_{end}")))
+            .collect()
+    }
+
+    const JA2_ARMHF: &str = "ja2-stracciatella_*-git+11e9430_armhf.AppImage";
+
+    #[test]
+    fn a_list_naming_the_armhf_build_installs_the_pcs_build() {
+        let rel = ja2_0_22_1();
+        assert_eq!(pick(&rel, "linux", "x64", Some(JA2_ARMHF)).unwrap().name, "ja2-stracciatella_0.22.1-git+11e9430_x86-64.AppImage");
+    }
+
+    #[test]
+    fn a_list_naming_the_armhf_build_installs_the_arm64_build_on_arm64() {
+        let rel = ja2_0_22_1();
+        assert_eq!(pick(&rel, "linux", "arm64", Some(JA2_ARMHF)).unwrap().name, "ja2-stracciatella_0.22.1-git+11e9430_aarch64.AppImage");
+    }
+
+    #[test]
+    fn change_build_lists_the_pcs_build_when_the_list_names_the_armhf_one() {
+        let rel = ja2_0_22_1();
+        let names: Vec<&str> = all_for(&rel, "linux", "x64", Some(JA2_ARMHF)).iter().map(|x| x.name.as_str()).collect();
+        assert_eq!(names, ["ja2-stracciatella_0.22.1-git+11e9430_x86-64.AppImage"]);
     }
 }
