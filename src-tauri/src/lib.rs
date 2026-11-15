@@ -3473,6 +3473,9 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
     }
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
+    if let Some(pr) = &p.prepare {
+        settle_prepare_opts(&st, &id, pr);
+    }
     let copy = PathBuf::from(&path);
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -3687,8 +3690,38 @@ fn prepare_options_here(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<Str
     let (rtx, amd) = dlss::gpu_brands(dir);
     pr.options_here(assets::os_now(), rtx, amd)
         .into_iter()
-        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked) }))
+        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked), "new": !picked.contains_key(&o.id) }))
         .collect()
+}
+
+/// Starting a setup answers every option its screen showed: one the player left as it was counts
+/// as answered too, so it isn't offered again as new after the next update.
+fn settle_prepare_opts(st: &App, id: &str, pr: &profile::Prepare) {
+    let (rtx, amd) = dlss::gpu_brands(&st.dir);
+    let mut l = st.lib.lock().unwrap();
+    let Some(g) = l.installed.get_mut(id) else { return };
+    let answers: Vec<(String, bool)> = pr.unanswered(assets::os_now(), rtx, amd, &g.prepare_opts).into_iter().map(|o| (o.id.clone(), o.on(&g.prepare_opts))).collect();
+    if answers.is_empty() {
+        return;
+    }
+    g.prepare_opts.extend(answers);
+    drop(l);
+    st.save();
+}
+
+/// The setup step options this PC is offered that the player hasn't answered yet, on a game that's
+/// already set up: what its project added after the player's setup (NVIDIA DLSS in an update).
+fn new_prepare_options(st: &App, id: &str) -> Vec<String> {
+    let Some(g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return vec![] };
+    let Some(p) = profile_of(st, id, &g) else { return vec![] };
+    let Some(pr) = p.prepare.as_ref().filter(|pr| !pr.options.is_empty()) else { return vec![] };
+    let has_copy = g.game_copy.as_ref().is_some_and(|c| c.exists()) || p.already_in_place(&g.path).is_some();
+    let set_up = has_copy || (!p.inputs.is_empty() && inputs::ready(&p, &g, &st.dir));
+    if !set_up {
+        return vec![];
+    }
+    let (rtx, amd) = dlss::gpu_brands(&st.dir);
+    pr.unanswered(assets::os_now(), rtx, amd, &g.prepare_opts).into_iter().map(|o| o.id.clone()).collect()
 }
 
 // ---------- plain copies of compressed images ----------
@@ -3743,12 +3776,13 @@ fn convert_cancel() {
 }
 
 /// The ticks the player set for a game's setup step options, kept for its next setup or rebuild.
+/// Added to the ones kept: an answer to one new option (Not now) leaves the others as they were.
 #[tauri::command(async)]
 fn set_prepare_opts(st: State<'_, App>, id: String, opts: BTreeMap<String, bool>) -> Res<()> {
     let ok = |k: &str| !k.is_empty() && k.len() <= 40 && k.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
     let mut l = st.lib.lock().unwrap();
     let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    g.prepare_opts = opts.into_iter().filter(|(k, _)| ok(k)).collect();
+    g.prepare_opts.extend(opts.into_iter().filter(|(k, _)| ok(k)));
     drop(l);
     st.save();
     Ok(())
@@ -4915,6 +4949,9 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     p.input_paths = inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
     if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
     let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
+    if let Some(pr) = &p.prepare {
+        settle_prepare_opts(&st, &rid, pr);
+    }
     INPUT_WORKERS.lock().unwrap().push(id.clone());
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -8371,6 +8408,27 @@ fn take_setup_asked() -> Option<String> {
     SETUP_ASKED.lock().unwrap().take()
 }
 
+/// A shortcut asking to play a game whose project added setup options since its setup: the window
+/// opens on the game with the question (turn it on, or Not now and play as it is) instead.
+pub(crate) fn options_first(app: &AppHandle, id: &str) -> bool {
+    if new_prepare_options(&app.state::<App>(), id).is_empty() {
+        return false;
+    }
+    *OPTIONS_ASKED.lock().unwrap() = Some(id.to_string());
+    show_main(app);
+    let _ = app.emit("options-new", id.to_string());
+    true
+}
+
+/// The game a shortcut wanted to play while it had new options, for a window that opened after the
+/// news went out.
+static OPTIONS_ASKED: Mutex<Option<String>> = Mutex::new(None);
+
+#[tauri::command(async)]
+fn take_options_asked() -> Option<String> {
+    OPTIONS_ASKED.lock().unwrap().take()
+}
+
 // ---------- the window's size and place, kept for next time ----------
 
 static WINDOW_GEN: AtomicU64 = AtomicU64::new(0);
@@ -8768,6 +8826,9 @@ pub fn run() {
                     if setup_first(&app, &rid) {
                         return;
                     }
+                    if options_first(&app, &rid) {
+                        return;
+                    }
                     ready_look(&app, &rid).await;
                     let sync = cloud::sync_quiet(&app, &id).await;
                     if let Err(e) = sync.and_then(|()| start_game_with_steam(&app, &id, steam.as_ref())) {
@@ -9154,6 +9215,9 @@ pub fn run() {
                         if setup_first(&handle, &rid) {
                             return;
                         }
+                        if options_first(&handle, &rid) {
+                            return;
+                        }
                         ready_look(&handle, &rid).await;
                         let sync = cloud::sync_quiet(&handle, &id).await;
                         if let Err(e) = sync.and_then(|()| start_game(&handle, &id)) {
@@ -9235,6 +9299,7 @@ pub fn run() {
             forget_game,
             remove_github,
             take_setup_asked,
+            take_options_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,

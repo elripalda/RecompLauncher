@@ -175,6 +175,10 @@ impl Prepare {
     pub fn options_here(&self, os: &str, nvidia_rtx: bool, amd: bool) -> Vec<&PrepareOption> {
         self.options.iter().filter(|o| !o.id.is_empty() && !o.label.is_empty() && o.applies(os, nvidia_rtx, amd)).collect()
     }
+    /// The options this PC is offered that the player hasn't answered yet (none kept for them).
+    pub fn unanswered(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<&PrepareOption> {
+        self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| !picked.contains_key(&o.id)).collect()
+    }
     /// The arguments the ticked options add, in their order.
     pub fn option_args(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<String> {
         self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.on(picked)).flat_map(|o| o.args.iter().cloned()).collect()
@@ -2547,6 +2551,30 @@ mod tests {
         assert_eq!(pr.option_args("linux", false, false, &std::collections::BTreeMap::new()), ["--hd"]);
         // Not on this PC: never added, whatever was ticked.
         assert!(pr.option_args("windows", false, true, &picked).is_empty());
+    }
+
+    #[test]
+    fn an_option_added_after_setup_is_unanswered_until_the_player_answers_it() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"hd","label":"HD textures","args":["--hd"]},
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"gpu":"nvidia","license":{"name":"A","url":"https://example.com/a"}}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        // Set up when only "hd" existed: "dlss" came with an update.
+        let mut picked = std::collections::BTreeMap::from([("hd".to_string(), true)]);
+        let ids = |picked: &std::collections::BTreeMap<String, bool>| pr.unanswered("windows", true, false, picked).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&picked), ["dlss"]);
+        // Not now is an answer too.
+        picked.insert("dlss".to_string(), false);
+        assert!(ids(&picked).is_empty());
+    }
+
+    #[test]
+    fn an_option_this_pc_isnt_offered_is_never_unanswered() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"gpu":"nvidia"}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        // A Steam Deck: no RTX card, so DLSS is never asked about.
+        assert!(pr.unanswered("linux", false, true, &std::collections::BTreeMap::new()).is_empty());
     }
 
     #[test]
