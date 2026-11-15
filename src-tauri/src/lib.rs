@@ -7897,6 +7897,7 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     l.settings.save_dir = save_dir;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
+    saves::use_chosen_device(&l.settings.ui);
     let discord_now = l.settings.discord;
     l.save(&st.dir)?;
     drop(l);
@@ -9006,6 +9007,7 @@ pub fn run() {
                     let _ = std::fs::remove_dir_all(d.join("cache/gamebanana"));
                 });
             }
+            saves::use_chosen_device(&lib.settings.ui);
             let play = play_arg(&std::env::args().collect::<Vec<_>>()).map(|id| lib.resolve_project_id(&id));
             app.manage(App {
                 dir,
