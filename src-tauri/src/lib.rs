@@ -2519,6 +2519,15 @@ pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
 }
 
 fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
+    start_game_with_monitor_context(app, id, _steam, None)
+}
+
+fn start_game_with_monitor_context(
+    app: &AppHandle,
+    id: &str,
+    _steam: Option<&sysenv::SteamLaunch>,
+    target_monitor: Option<display::MonitorInfo>,
+) -> Res<()> {
     let st = app.state::<App>();
     // One game of a recomp that carries several: the recomp starts, with that game's options.
     let pick = game_of(&st, id);
@@ -3096,6 +3105,20 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             Error::Msg(format!("Couldn't start {shown}: {e}"))
         }
     })?;
+    #[cfg(windows)]
+    if let Some(monitor) = target_monitor {
+        if let Some(handle) = child.raw_handle() {
+            win::watch_game_window(
+                handle,
+                win::MonitorBounds { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height },
+                id.to_string(),
+            );
+        } else {
+            trail::note(format!("Play {id}: couldn't retain the launched process for monitor placement"));
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = target_monitor;
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     let id = id.to_string();
     let run = RUN_NEXT.fetch_add(1, Ordering::Relaxed);
@@ -5249,7 +5272,8 @@ fn discord_info(st: &App, id: &str) -> (String, String, String) {
 // With `replace`, any other game that's running is closed first.
 #[tauri::command]
 async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Option<bool>, program: Option<String>) -> Res<()> {
-    BIG_PICTURE.store(big_picture.unwrap_or(false), Ordering::Relaxed);
+    let from_big_picture = big_picture.unwrap_or(false);
+    BIG_PICTURE.store(from_big_picture, Ordering::Relaxed);
     // One game of a recomp that carries several starts the recomp (start_game picks the game).
     let full = id.clone();
     let id = recomp_of(&app.state::<App>(), &id);
@@ -5280,7 +5304,21 @@ async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Op
         }
     }
     ready_look(&app, &id).await;
-    start_game(&app, &full)
+    #[cfg(windows)]
+    let monitor = if from_big_picture {
+        let preference = app.state::<App>().lib.lock().unwrap().settings.tv_monitor.clone();
+        let monitors = display::enumerate_monitors(&app);
+        let target = display::resolve_target_monitor(&monitors, Some(&preference));
+        if target.is_none() {
+            trail::note("Big Picture game monitor targeting skipped: no monitor was available");
+        }
+        target
+    } else {
+        None
+    };
+    #[cfg(not(windows))]
+    let monitor = None;
+    start_game_with_monitor_context(&app, &full, None, monitor)
 }
 
 /// The game being played in each running recomp, by recomp id: its full id when it's one of
