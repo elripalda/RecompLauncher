@@ -873,6 +873,12 @@ async fn report_counts(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
     Ok(catalog::report_counts(&st.http, &st.dir, force.unwrap_or(false)).await?.data.get("counts").cloned().unwrap_or(Value::Null))
 }
 
+/// The release out now for each recomp, with what its players said (the site's scores).
+#[tauri::command]
+async fn latest_counts(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
+    Ok(catalog::latest_counts(&catalog::play_scores(&st.http, &st.dir, force.unwrap_or(false)).await?.data))
+}
+
 /// Steam Deck players' scores for each recomp (id -> {score, n}), for "Great on Deck".
 #[tauri::command]
 async fn deck_scores(st: State<'_, App>, force: Option<bool>) -> Res<Value> {
@@ -910,8 +916,8 @@ async fn ig_view(st: State<'_, App>, id: String, variant: String, round: u64) ->
 
 /// How a finished download's files were checked (Downloads shows it beside each one).
 #[tauri::command]
-async fn scan_info(st: State<'_, App>, id: String, tag: String) -> Res<Value> {
-    Ok(catalog::scan(&st.http, &st.dir, &id, &tag).await?.data)
+async fn scan_info(st: State<'_, App>, id: String, tag: String, force: Option<bool>) -> Res<Value> {
+    Ok(catalog::scan(&st.http, &st.dir, &id, &tag, force.unwrap_or(false)).await?.data)
 }
 
 /// One recomp's player reports, for its page.
@@ -7302,7 +7308,11 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
     }
     let url = format!("{}/api/logs.php", catalog::base());
     let r = net::send(st.http.post(&url).form(&form).timeout(net::TRANSFER), &url, true).await?;
+    let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
+    if let Some(e) = usage::sign_in_needed(code, &v) {
+        return Err(e);
+    }
     if v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
         Ok(str_of(&v, "message").to_string())
     } else {
@@ -7503,7 +7513,11 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     }
     let url = format!("{}/api/logs.php", catalog::base());
     let r = net::send(st.http.post(&url).form(&form).timeout(net::TRANSFER), &url, true).await?;
+    let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
+    if let Some(e) = usage::sign_in_needed(code, &v) {
+        return Err(e);
+    }
     if v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
         Ok("Sent. Thanks for testing.".into())
     } else {
@@ -9125,7 +9139,7 @@ pub fn run() {
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())

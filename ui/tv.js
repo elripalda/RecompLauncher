@@ -355,11 +355,11 @@
     // One label: with a versions count on the poster, Setup Required stays on the game's page.
     const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
-    const deckb = greatOnDeck(a) && !j ? `<span class="tv-deckb${vers ? ' up' : ''}" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(16)}${esc(t('Deck'))}</span>` : '';
-    const ps = projectState(a), left = /tv-badge left|tv-badge sreq/.test(badge);
-    const stb = ps && ps.kind !== 'quiet' ? `<span class="tv-badge left state ${ps.kind}${left || rank ? ' low' : ''}">${esc(t(STATE_NAME[ps.kind]))}</span>` : '';
+    // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
+    // project's state are on the game's page.
+    const easy = !j && !S.library[a.id] && turnkey(a) ? `<span class="tv-easyb${vers ? ' ico' : ''}" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${svg('disc', 16)}${vers ? '' : esc(t('Easy Setup'))}</span>` : '';
     return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(thumbOf(a.cover, 400)))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
-      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${rk}${badge}${stb}${deckb}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
+      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${rk}${badge}${easy}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
   }
 
@@ -1145,10 +1145,10 @@
   }
 
   // The desktop's scan pill for one release, as a plain label: on the TV the whole row is what A presses.
-  function scanTag(id, tag) {
-    const info = tag && scanInfo({ id, tag });
+  function scanTag(id, tag, update) {
+    const info = tag && scanInfo({ id, tag, update });
     if (!info) return '';
-    return `<span class="scan-pill ${info.cls}"><i>${info.ic}</i>${esc(info.text)}</span>`;
+    return `<span class="scan-pill ${info.cls}" title="${esc(t(SCAN_TIP))}"><i>${info.ic}</i>${esc(info.text)}</span>`;
   }
 
   function pageDownloads() {
@@ -1156,22 +1156,21 @@
     const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
     const ups = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]);
     // Recently installed, with how the store checked each one in the same pill as the desktop.
-    // A opens VirusTotal's report when there is one; ClamAV has no report, so A opens the game.
+    // A opens the game.
     if (!S.dlHist && typeof loadDlHist === 'function') loadDlHist();
     const done = (S.dlHist || []).filter((h) => h.tag).slice(0, 6).map((h) => {
       const info = scanInfo(h);
       if (!info) return '';
       const a = libAppOf(h.id);
-      const report = info.scanner !== 'clamav' && info.sha;
-      const press = report ? `data-tvact="scan" data-sha="${esc(info.sha)}"` : `data-go-game="${esc(h.id)}"`;
-      const pill = scanTag(h.id, h.tag);
+      const press = `data-go-game="${esc(h.id)}"`;
+      const pill = scanTag(h.id, h.tag, h.update);
       return `<button type="button" class="tv-item" data-f data-key="scan:${esc(h.id + '@' + h.tag)}" ${press}>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name || h.name)}<small>${esc(tf('Installed {tag}', { tag: h.tag }))}</small></span>${pill}</button>`;
     }).filter(Boolean);
     // The launcher's own update is counted in the Downloads badge, so it needs a row here too, or the
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
     const lu = S.launcherUpd;
     const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
-    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id])))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
@@ -1708,9 +1707,12 @@
   }
   // How it runs, in one line and a bar: what players said about it.
   function tvRuns(a) {
-    const r = runTally((S.runCounts || {})[a.id]);
-    if (!r.n) return `<div class="tv-runs none"><span class="k">${esc(t('How it runs'))}</span><b>${esc(t('No reports yet'))}</b></div>`;
-    return `<div class="tv-runs"><span class="k">${esc(t('How it runs'))}</span><div class="tv-runs-l"><b>${esc(tf('{pct}% plays great', { pct: r.pct('runs') }))}</b><small>${esc(tn(r.n, '1 report', '{n} reports'))}</small></div>${runBar(r)}</div>`;
+    // The release out now once 3 or more of its players said, with every report under it.
+    const sc = scoreOf((S.runCounts || {})[a.id], (S.latestCounts || {})[a.id]), r = sc.r;
+    if (!sc.all.n) return `<div class="tv-runs none"><span class="k">${esc(t('How it runs'))}</span><b>${esc(t('No reports yet'))}</b></div>`;
+    const under = sc.cur ? `${tf('This version ({v})', { v: sc.v })} · ${tf('All versions: {pct}%', { pct: sc.all.pct('runs') })}`
+      : sc.v && sc.l ? `${tn(sc.all.n, '1 report', '{n} reports')} · ${sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 report so far', '{n} reports so far')}` : tf('{v}: no reports yet', { v: sc.v })}` : tn(r.n, '1 report', '{n} reports');
+    return `<div class="tv-runs"><span class="k">${esc(t('How it runs'))}</span><div class="tv-runs-l"><b>${esc(tf('{pct}% plays great', { pct: r.pct('runs') }))}</b><small>${esc(under)}</small></div>${runBar(r)}</div>`;
   }
   // X on any game: everything you can do with it, in a sheet from the side.
   function gameSheet(id) {
@@ -1822,7 +1824,8 @@
     if (!g) return;
     const items = g.list.map((v) => ({
       label: v.name,
-      sub: [v.id === g.pick ? t('Recommended') : '', S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
+      // Why the site recommends it, on the Recommended line.
+      sub: [v.id === g.pick ? (g.why ? `${t('Recommended')}: ${g.why}` : t('Recommended')) : '', S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
       icon: v.id === id ? 'check' : 'layers',
       run: () => {
         if (v.id === TV.arg) return;
@@ -2802,7 +2805,6 @@
       // Redrawn after: Keep Steam in Sync may have turned off.
       case 'steamremove': sfx('select'); if (window.steamRemoveAll) await window.steamRemoveAll(); return draw(true);
       case 'moveto': sfx('open'); return moveListing(id, el.dataset.to).then(() => { if (TV.view === 'game' && TV.arg === id) { TV.arg = el.dataset.to; draw(true); } });
-      case 'scan': sfx('open'); invoke('open_url', { url: VT_URL(el.dataset.sha) }).catch(fail); return toast(t('The report is open in your browser.'));
       case 'saves': sfx('open'); TV.savesAll = null; return go('saves');
       case 'gsaves': return go('gsaves', id);
       case 'stor': {

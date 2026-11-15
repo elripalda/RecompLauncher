@@ -442,6 +442,19 @@ pub async fn play_scores(http: &reqwest::Client, dir: &Path, force: bool) -> Res
     cached(http, &format!("{}/api/play.php?a=scores", base()), dir.join("cache/play-scores.json"), fresh, crate::net::QUICK, force, |v| v.get("pc").is_some_and(|p| p.is_object() || p.as_array().is_some_and(Vec::is_empty))).await
 }
 
+/// Of the scores, the release out now: id -> {version, runs, issues, broken}, for "This version".
+pub fn latest_counts(scores: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    for (id, v) in scores.get("pc").and_then(Value::as_object).into_iter().flatten() {
+        if let Some(c) = v.get("cur").filter(|c| c.is_object()) {
+            let n = |k: &str| c.get("verdicts").and_then(|x| x.get(k)).and_then(Value::as_u64).unwrap_or(0);
+            let version = c.get("version").and_then(Value::as_str).unwrap_or("");
+            out.insert(id.clone(), serde_json::json!({ "version": version, "runs": n("runs"), "issues": n("issues"), "broken": n("broken") }));
+        }
+    }
+    Value::Object(out)
+}
+
 /// Of the scores, the Steam Deck ones: id -> {score, n}.
 pub fn deck_scores(scores: &Value) -> Value {
     let mut out = serde_json::Map::new();
@@ -613,7 +626,8 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
 
 /// How a release's files were checked before the store offered them (ClamAV on the website's server,
 /// or VirusTotal): for Downloads, beside each finished download. Kept an hour.
-pub async fn scan(http: &reqwest::Client, dir: &Path, id: &str, tag: &str) -> Result<Fetched, Error> {
+/// `force`: asked again (a release still being checked, which turns Verified once the team okays it).
+pub async fn scan(http: &reqwest::Client, dir: &Path, id: &str, tag: &str, force: bool) -> Result<Fetched, Error> {
     let ok_id = !id.is_empty() && id.len() <= 120 && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
     let ok_tag = !tag.is_empty() && tag.len() <= 120 && tag.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+".contains(c));
     if !ok_id || !ok_tag {
@@ -621,7 +635,7 @@ pub async fn scan(http: &reqwest::Client, dir: &Path, id: &str, tag: &str) -> Re
     }
     let url = format!("{}/api/pc.php?a=scan&id={id}&tag={}", base(), tag.replace('+', "%2B"));
     let file = dir.join("cache/scans").join(format!("{id}@{}.json", tag.replace('+', "_")));
-    cached(http, &url, file, 3600, crate::net::QUICK, true, |v| v.get("files").map(Value::is_array).unwrap_or(false)).await
+    cached(http, &url, file, if force { 0 } else { 3600 }, crate::net::QUICK, true, |v| v.get("files").map(Value::is_array).unwrap_or(false)).await
 }
 
 /// A project on GitLab, as the launcher keeps it: `gitlab:group/project` (subgroups too:

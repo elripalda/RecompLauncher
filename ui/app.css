@@ -2441,7 +2441,7 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .ni-runtime .ni-name{position:relative}
 .ni-runtime .ni-bar{display:block;height:3px;border-radius:2px;margin-top:6px;background:linear-gradient(90deg,var(--cyan) var(--p,0%),rgba(255,255,255,.12) var(--p,0%))}
 .ni-runtime.failed .ni-name span{color:var(--warn)}
-/* The scan pill opens VirusTotal's report, or says how ClamAV checked the file. */
+/* The scan pill: a plain label. */
 button.scan-pill{border:0;font:inherit;cursor:pointer}
 button.scan-pill:hover{filter:brightness(1.15)}
 .scan-pop{position:fixed;z-index:80;max-width:288px;padding:10px 14px;border-radius:12px;background:var(--panel2,#1b2333);color:var(--ink,#eef3f8);font-size:13px;line-height:1.45;box-shadow:0 14px 40px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08)}
@@ -2501,3 +2501,12 @@ button.scan-pill:hover{filter:brightness(1.15)}
 .enjoy-pick .btn.enjoy{height:auto;padding:18px 12px;flex-direction:column;gap:8px;font-weight:700}
 .enjoy-pick .btn.enjoy svg{color:var(--cyan)}
 .enjoy-pick .btn.enjoy:last-child svg{color:var(--muted)}
+
+/* Why a version is the recommended one: one line under it. */
+.v-txt .v-why{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cyan);opacity:.85}
+.runs .runs-sub{margin:4px 0 0;font-size:12.5px;color:var(--muted)}
+.runs .rep-filter{display:flex;gap:6px;margin:12px 0 0}
+.runs .rep-filter .chip{height:30px;padding:0 12px;font-size:12.5px}
+.runs .rep-filter .chip.on{color:var(--ink);background:var(--fill2,rgba(255,255,255,.08));border-color:var(--line3)}
+.ask-run .ask-anon{display:block;margin-top:8px;font-size:11.5px;color:var(--muted);text-align:center}
+.loc-ask{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--muted);cursor:pointer}

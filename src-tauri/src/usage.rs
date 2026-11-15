@@ -576,10 +576,23 @@ pub async fn run_report(app: AppHandle, id: String, verdict: String, note: Optio
     let r = crate::net::send(req, &url, true).await?;
     let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
+    if let Some(e) = sign_in_needed(code, &v) {
+        return Err(e);
+    }
     if code >= 400 {
         return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("The website didn't take it. Try again later.").to_string()));
     }
     Ok(v)
+}
+
+/// Reports need an account: the site says so (401, needSignIn), and its words go to the report
+/// form as `NEED_SIGNIN|<text>`, which shows a Sign In button instead of a failure.
+pub fn sign_in_needed(code: u16, v: &Value) -> Option<Error> {
+    if !v.get("needSignIn").and_then(Value::as_bool).unwrap_or(false) && !(code == 401 && v.get("needSignIn").is_some()) {
+        return None;
+    }
+    let text = ["error", "message"].iter().find_map(|k| v.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty())).unwrap_or("Sign in to your RecompLauncher account to send a report. Your name isn't shown with it.");
+    Some(Error::Msg(format!("NEED_SIGNIN|{text}")))
 }
 
 /// The Coming Soon games the signed-in player asked to hear about (one email when each comes out).
@@ -728,6 +741,15 @@ pub async fn recomp_request(app: AppHandle, url: String, note: Option<String>) -
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_report_signed_out_asks_to_sign_in_with_the_sites_words() {
+        let v = serde_json::json!({ "ok": false, "needSignIn": true, "error": "Sign in to your RecompLauncher account to send a report. Your name isn't shown with it." });
+        let Some(crate::Error::Msg(m)) = super::sign_in_needed(401, &v) else { panic!("no sign-in") };
+        assert_eq!(m, "NEED_SIGNIN|Sign in to your RecompLauncher account to send a report. Your name isn't shown with it.");
+        assert!(super::sign_in_needed(400, &serde_json::json!({ "error": "Too short." })).is_none());
+        assert!(super::sign_in_needed(200, &serde_json::json!({ "ok": true })).is_none());
+    }
+
     use super::*;
 
     #[test]

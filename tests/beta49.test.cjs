@@ -13,7 +13,7 @@ test("setup's fingerprint is made from the player's files, never the serialized 
   assert.match(body, /Ok\(format!\("v2:\{\}"/);
   // Older fingerprints are only checked, as two variants, and rewritten as v2.
   assert.match(src, /\[true, false\]\.into_iter\(\)\.any\(\|o\| signature_legacy\(/);
-  assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| upgrade_fingerprints\(&h\.state::<App>\(\), None\)\)/);
+  assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| \{\n\s*let st = h\.state::<App>\(\);\n\s*upgrade_fingerprints\(&st, None\);/);
 });
 
 test('prepare.version is in the schema, the developer guide and the profile', () => {
