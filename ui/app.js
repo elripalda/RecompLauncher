@@ -8357,9 +8357,11 @@ function padAfter() {
   setTimeout(look, 60);
 }
 window.deskPad = (b) => {
-  if (b === 'up' || b === 'down' || b === 'left' || b === 'right') { padMove(b); return true; }
+  if (b === 'up' || b === 'down' || b === 'left' || b === 'right') { PAD.armed = true; padMove(b); return true; }
   const root = padLayer(), list = padTargets(root), cur = padCurrent(root, list);
   if (b === 'a') {
+    // A page may already have keyboard focus; wait for a direction before using it with A.
+    if (root.id === 'app' && !PAD.armed) return true;
     if (!cur) { padMove('down'); return true; }
     if (cur.matches('input[type="range"], select')) return true;
     if (cur.matches('input:not([type="checkbox"]):not([type="radio"]), textarea')) { cur.focus(); return true; }
@@ -8402,7 +8404,9 @@ window.deskPad = (b) => {
 };
 // The mouse moving again: no highlight.
 document.addEventListener('mousemove', (e) => {
-  if (!document.body.classList.contains('pad-nav') || (Math.abs(e.movementX) + Math.abs(e.movementY) < 3)) return;
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+  PAD.armed = false;
+  if (!document.body.classList.contains('pad-nav')) return;
   document.body.classList.remove('pad-nav');
   if (PAD.el) PAD.el.classList.remove('pad-focus');
   PAD.el = null;
