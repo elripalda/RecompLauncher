@@ -59,8 +59,10 @@ pub use imp::*;
 
 #[cfg(windows)]
 mod imp {
+    use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{Duration, Instant};
     use windows::core::{Interface, HSTRING, PCWSTR, PWSTR};
     use windows::Win32::Foundation::{CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, ERROR_SUCCESS, HANDLE, WAIT_TIMEOUT};
@@ -198,6 +200,40 @@ mod imp {
     impl ProcessInstance {
         fn identity(&self) -> ProcessIdentity {
             ProcessIdentity { pid: self.pid, created: self.created }
+        }
+    }
+
+    struct GameProcesses {
+        processes: Vec<ProcessInstance>,
+        // Keep the last confirmed screen while the game window is minimized or rebuilding.
+        last_monitor: Option<super::MonitorBounds>,
+        cancelled: bool,
+    }
+
+    static GAME_PROCESSES: OnceLock<Mutex<HashMap<String, Arc<Mutex<GameProcesses>>>>> = OnceLock::new();
+
+    fn game_processes() -> &'static Mutex<HashMap<String, Arc<Mutex<GameProcesses>>>> {
+        GAME_PROCESSES.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn game_processes_for(game: &str) -> Option<Arc<Mutex<GameProcesses>>> {
+        game_processes().lock().unwrap().get(game).cloned()
+    }
+
+    pub fn track_game_process(game: &str, root: RawHandle) -> bool {
+        let Some(root) = duplicate_process(root).and_then(process_instance) else { return false };
+        let state = Arc::new(Mutex::new(GameProcesses { processes: vec![root], last_monitor: None, cancelled: false }));
+        let previous = game_processes().lock().unwrap().insert(game.to_string(), state);
+        if let Some(previous) = previous {
+            previous.lock().unwrap().cancelled = true;
+        }
+        true
+    }
+
+    pub fn forget_game_process(game: &str) {
+        let state = game_processes().lock().unwrap().remove(game);
+        if let Some(state) = state {
+            state.lock().unwrap().cancelled = true;
         }
     }
 
@@ -472,17 +508,31 @@ mod imp {
     }
 
     fn on_target_monitor(hwnd: windows::Win32::Foundation::HWND, target: super::MonitorBounds) -> bool {
+        monitor_bounds_for_window(hwnd).is_some_and(|bounds| bounds == target)
+    }
+
+    fn monitor_bounds_for_window(hwnd: windows::Win32::Foundation::HWND) -> Option<super::MonitorBounds> {
         use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
         let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
         let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
-        unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() && monitor_matches_target(info.rcMonitor, target)
+        if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+            return None;
+        }
+        let width = u32::try_from(i64::from(info.rcMonitor.right) - i64::from(info.rcMonitor.left)).ok()?;
+        let height = u32::try_from(i64::from(info.rcMonitor.bottom) - i64::from(info.rcMonitor.top)).ok()?;
+        Some(super::MonitorBounds { x: info.rcMonitor.left, y: info.rcMonitor.top, width, height })
     }
 
+    #[cfg(test)]
     fn monitor_matches_target(rect: windows::Win32::Foundation::RECT, target: super::MonitorBounds) -> bool {
         rect.left == target.x
             && rect.top == target.y
             && i64::from(rect.right) - i64::from(rect.left) == i64::from(target.width)
             && i64::from(rect.bottom) - i64::from(rect.top) == i64::from(target.height)
+    }
+
+    fn current_or_last_monitor(current: Option<super::MonitorBounds>, last: Option<super::MonitorBounds>) -> Option<super::MonitorBounds> {
+        current.or(last)
     }
 
     fn move_candidate(candidate: WindowCandidate, processes: &[ProcessInstance], target: super::MonitorBounds) -> bool {
@@ -503,13 +553,30 @@ mod imp {
             && on_target_monitor(hwnd, target)
     }
 
-    pub fn watch_game_window(root: RawHandle, target: super::MonitorBounds, game: String) {
-        let Some(root) = duplicate_process(root).and_then(process_instance) else {
-            crate::trail::note(format!("{game}: couldn't retain the launched process for monitor placement"));
+    pub fn game_monitor(game: &str) -> Option<super::MonitorBounds> {
+        let state = game_processes_for(game)?;
+        let snapshot = process_snapshot();
+        let mut state = state.lock().unwrap();
+        if state.cancelled {
+            return None;
+        }
+        discover_children(&mut state.processes, &snapshot);
+        let candidates = candidates(&state.processes);
+        let current = unique_candidate(&candidates)
+            .filter(|candidate| verify_window(*candidate, &state.processes))
+            .and_then(|candidate| monitor_bounds_for_window(windows::Win32::Foundation::HWND(candidate.key.hwnd as *mut _)));
+        if let Some(monitor) = current {
+            state.last_monitor = Some(monitor);
+        }
+        current_or_last_monitor(current, state.last_monitor)
+    }
+
+    pub fn watch_game_window(game: String, target: super::MonitorBounds) {
+        let Some(state) = game_processes_for(&game) else {
+            crate::trail::note(format!("{game}: no retained game process for monitor placement"));
             return;
         };
         std::thread::spawn(move || {
-            let mut processes = vec![root];
             let deadline = Instant::now() + Duration::from_secs(45);
             let mut candidate_key = None;
             let mut candidate_since = Instant::now();
@@ -517,25 +584,34 @@ mod imp {
             let mut positioned_since = None;
             while Instant::now() < deadline {
                 let snapshot = process_snapshot();
-                discover_children(&mut processes, &snapshot);
-                let windows = candidates(&processes);
+                let mut state = state.lock().unwrap();
+                if state.cancelled {
+                    break;
+                }
+                discover_children(&mut state.processes, &snapshot);
+                let windows = candidates(&state.processes);
                 // Waiting filters short-lived startup windows; Windows has no generic signal that
                 // distinguishes a game's main window from a launcher's only stable main window.
                 let unique = unique_candidate(&windows);
                 if let Some(candidate) = unique {
+                    let hwnd = windows::Win32::Foundation::HWND(candidate.key.hwnd as *mut _);
+                    if let Some(monitor) = monitor_bounds_for_window(hwnd) {
+                        state.last_monitor = Some(monitor);
+                    }
                     if candidate_key != Some(candidate.key) {
                         candidate_key = Some(candidate.key);
                         candidate_since = Instant::now();
                     }
-                    if moved_key == Some(candidate.key) && on_target_monitor(windows::Win32::Foundation::HWND(candidate.key.hwnd as *mut _), target) {
+                    if moved_key == Some(candidate.key) && on_target_monitor(hwnd, target) {
                         if positioned_since.get_or_insert_with(Instant::now).elapsed() >= Duration::from_secs(2) {
                             crate::trail::note(format!("{game}: its window is on the selected Big Picture monitor"));
                             return;
                         }
                     } else if candidate_since.elapsed() >= Duration::from_secs(2) {
-                        if move_candidate(candidate, &processes, target) {
+                        if move_candidate(candidate, &state.processes, target) {
                             moved_key = Some(candidate.key);
                             positioned_since = Some(Instant::now());
+                            state.last_monitor = monitor_bounds_for_window(hwnd).or(Some(target));
                         } else {
                             moved_key = None;
                             positioned_since = None;
@@ -546,12 +622,14 @@ mod imp {
                     moved_key = None;
                     positioned_since = None;
                 }
-                if !processes.iter().any(is_active_instance) {
+                let running = state.processes.iter().any(is_active_instance);
+                drop(state);
+                if !running {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(500));
             }
-            if moved_key.is_none() {
+            if moved_key.is_none() && !state.lock().unwrap().cancelled {
                 crate::trail::note(format!("{game}: no unique game window appeared for Big Picture monitor placement"));
             }
         });
@@ -651,6 +729,15 @@ mod imp {
             let target = super::super::MonitorBounds { x: -1920, y: -200, width: 1920, height: 1080 };
             assert!(monitor_matches_target(windows::Win32::Foundation::RECT { left: -1920, top: -200, right: 0, bottom: 880 }, target));
             assert!(!monitor_matches_target(windows::Win32::Foundation::RECT { left: 0, top: 0, right: 1920, bottom: 1080 }, target));
+        }
+
+        #[test]
+        fn live_game_monitor_replaces_cached_position_and_unavailable_windows_use_last_monitor() {
+            let previous = super::super::MonitorBounds { x: 0, y: 0, width: 1920, height: 1080 };
+            let current = super::super::MonitorBounds { x: -3840, y: 0, width: 3840, height: 2160 };
+            assert_eq!(current_or_last_monitor(Some(current), Some(previous)), Some(current));
+            assert_eq!(current_or_last_monitor(None, Some(previous)), Some(previous));
+            assert_eq!(current_or_last_monitor(None, None), None);
         }
     }
 

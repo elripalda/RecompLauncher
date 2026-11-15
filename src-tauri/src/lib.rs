@@ -3106,15 +3106,16 @@ fn start_game_with_monitor_context(
         }
     })?;
     #[cfg(windows)]
-    if let Some(monitor) = target_monitor {
-        if let Some(handle) = child.raw_handle() {
+    {
+        let tracked = child.raw_handle().is_some_and(|handle| win::track_game_process(id, handle));
+        if !tracked {
+            trail::note(format!("Play {id}: couldn't retain the launched process for game-window tracking"));
+        }
+        if let Some(monitor) = target_monitor.as_ref().filter(|_| tracked) {
             win::watch_game_window(
-                handle,
-                win::MonitorBounds { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height },
                 id.to_string(),
+                win::MonitorBounds { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height },
             );
-        } else {
-            trail::note(format!("Play {id}: couldn't retain the launched process for monitor placement"));
         }
     }
     #[cfg(not(windows))]
@@ -3254,6 +3255,8 @@ fn start_game_with_monitor_context(
             st.running.lock().unwrap().remove(&id);
             st.pids.lock().unwrap().remove(&id);
             st.started.lock().unwrap().remove(&id);
+            #[cfg(windows)]
+            win::forget_game_process(&id);
             ach::end(&app2, &ach_game);
             if let Some(m) = PLAYING_GAME.lock().unwrap().as_mut() {
                 m.remove(&id);
