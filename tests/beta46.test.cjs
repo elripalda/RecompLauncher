@@ -97,8 +97,8 @@ test("a setup step's options show as ticks, a license one off until the player t
   assert.equal(prepOptsHtml({ prepare_options: [] }), '');
   const out = prepOptsHtml({ prepare_options: [{ id: 'dlss', label: 'Upscaler A', note: 'Sharper.', license: { name: 'A license', url: 'https://example.com/a' }, on: false }, { id: 'hd', label: 'HD', on: true }] });
   assert.match(out, /<h3>Options<\/h3>/);
-  assert.match(out, /data-popt="dlss"><span><b>Upscaler A<\/b> <em>\(I accept the <a href="#" data-url="https:\/\/example\.com\/a">A license<\/a>\)<\/em><small>Sharper\.<\/small>/);
-  assert.match(out, /data-popt="hd" checked>/);
+  assert.match(out, /<b>Upscaler A<\/b> <em>\(I accept the <a href="#" data-url="https:\/\/example\.com\/a">A license<\/a>\)<\/em><small>Sharper\.<\/small><\/span><input type="checkbox" role="switch" data-popt="dlss"><span class="switch"/);
+  assert.match(out, /data-popt="hd" checked><span class="switch"/);
   // The ticks are kept for the game, and a rebuild can use the copy it was set up with.
   assert.match(app, /invoke\('set_prepare_opts', \{ id, opts \}\)/);
   assert.match(app, /case 'same': return suBegin\(su\.copy\);/);

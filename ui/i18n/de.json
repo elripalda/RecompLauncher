@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name} bleibt bei der Version, die es hat.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} enthält bereits die Dateien von {name}. Der Launcher kann sie von dort verwenden.",
  "{size} freed. Your copy is in the {bin}.": "{size} freigegeben. Deine Kopie liegt im {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} ist da. Dieses Spiel bleibt bei {old}, bis du die Updates fortsetzt."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} ist da. Dieses Spiel bleibt bei {old}, bis du die Updates fortsetzt.",
+ "1 new option": "1 neue Option",
+ "Accepts the {license}": "Du akzeptierst {license}",
+ "New in {name}: {option}": "Neu in {name}: {option}",
+ "New option": "Neue Option",
+ "Play as it is": "So spielen, wie es ist",
+ "Read the {license}": "{license} lesen",
+ "Sets the game up again from your copy": "Richtet das Spiel mit deiner Kopie neu ein",
+ "Turning it on accepts the {license}.": "Mit dem Einschalten akzeptierst du {license}.",
+ "Turning it on sets the game up again from your copy.": "Beim Einschalten wird das Spiel mit deiner Kopie neu eingerichtet.",
+ "Use the copy it was set up with": "Die Kopie nutzen, mit der es eingerichtet wurde",
+ "{n} new options": "{n} neue Optionen"
 }

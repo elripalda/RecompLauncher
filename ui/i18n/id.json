@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name} tetap di versi yang dimilikinya.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} sudah berisi file {name}. Launcher bisa memakainya dari sana.",
  "{size} freed. Your copy is in the {bin}.": "{size} dikosongkan. Salinanmu ada di: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} sudah rilis. Game ini tetap di {old} sampai kamu melanjutkan pembaruan."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} sudah rilis. Game ini tetap di {old} sampai kamu melanjutkan pembaruan.",
+ "1 new option": "1 opsi baru",
+ "Accepts the {license}": "Kamu menerima {license}",
+ "New in {name}: {option}": "Baru di {name}: {option}",
+ "New option": "Opsi baru",
+ "Play as it is": "Main apa adanya",
+ "Read the {license}": "Baca {license}",
+ "Sets the game up again from your copy": "Menyiapkan game lagi dari salinanmu",
+ "Turning it on accepts the {license}.": "Dengan menyalakannya, kamu menerima {license}.",
+ "Turning it on sets the game up again from your copy.": "Dengan menyalakannya, game disiapkan lagi dari salinanmu.",
+ "Use the copy it was set up with": "Pakai salinan yang dipakai saat menyiapkannya",
+ "{n} new options": "{n} opsi baru"
 }

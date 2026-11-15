@@ -564,6 +564,10 @@ when it's on its `args` are added after the step's own:
   the SDK in your builder's own folder and put runtime files where the game looks.
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
   player sees "Its setup step stopped with code N", so put the reason in your own log.
+- An option you add in a later release reaches players who already set the game up: Set Up
+  Again, beside Play, gets a New mark, and the next time they press Play they're asked once to turn
+  it on (the setup runs again with the copy they set up with) or play as it is. Their answer is
+  kept, so make the step cheap to run again: reuse what the last run made.
 
 ### `game.dumps`: known good copies
 

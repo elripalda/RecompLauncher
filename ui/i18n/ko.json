@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name}이(가) 지금 버전에 머뭅니다.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path}에 이미 {name}의 파일이 있습니다. 런처가 거기서 사용할 수 있습니다.",
  "{size} freed. Your copy is in the {bin}.": "{size} 확보했습니다. 사본은 {bin}에 있습니다.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version}이(가) 나왔습니다. 업데이트를 다시 시작할 때까지 이 게임은 {old}에 머뭅니다."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version}이(가) 나왔습니다. 업데이트를 다시 시작할 때까지 이 게임은 {old}에 머뭅니다.",
+ "1 new option": "새 옵션 1개",
+ "Accepts the {license}": "{license}에 동의합니다",
+ "New in {name}: {option}": "{name}의 새 기능: {option}",
+ "New option": "새 옵션",
+ "Play as it is": "그대로 플레이",
+ "Read the {license}": "{license} 읽기",
+ "Sets the game up again from your copy": "사본으로 게임을 다시 설정합니다",
+ "Turning it on accepts the {license}.": "켜면 {license}에 동의하게 됩니다.",
+ "Turning it on sets the game up again from your copy.": "켜면 사본으로 게임을 다시 설정합니다.",
+ "Use the copy it was set up with": "설정에 사용한 사본 사용",
+ "{n} new options": "새 옵션 {n}개"
 }

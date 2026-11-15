@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name} は今のバージョンのままです。",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} にはすでに {name} のファイルがあります。ランチャーはそこから使えます。",
  "{size} freed. Your copy is in the {bin}.": "{size} 空きました。コピーは {bin} にあります。",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} が出ています。更新を再開するまで、このゲームは {old} のままです。"
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} が出ています。更新を再開するまで、このゲームは {old} のままです。",
+ "1 new option": "新しいオプション 1 件",
+ "Accepts the {license}": "{license} に同意します",
+ "New in {name}: {option}": "{name} の新機能: {option}",
+ "New option": "新しいオプション",
+ "Play as it is": "このまま遊ぶ",
+ "Read the {license}": "{license} を読む",
+ "Sets the game up again from your copy": "ゲームデータからもう一度セットアップします",
+ "Turning it on accepts the {license}.": "オンにすると {license} に同意したことになります。",
+ "Turning it on sets the game up again from your copy.": "オンにすると、ゲームデータからもう一度セットアップします。",
+ "Use the copy it was set up with": "セットアップに使ったゲームデータを使う",
+ "{n} new options": "新しいオプション {n} 件"
 }

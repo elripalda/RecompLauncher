@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name} остаётся на своей версии.",
  "{path} already has the files of {name}. The launcher can use them from there.": "В {path} уже есть файлы {name}. Лаунчер может использовать их оттуда.",
  "{size} freed. Your copy is in the {bin}.": "Освобождено {size}. Ваша копия здесь: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "Вышла версия {version}. Эта игра остаётся на {old}, пока вы не возобновите обновления."
+ "{version} is out. This game stays on {old} until you resume updates.": "Вышла версия {version}. Эта игра остаётся на {old}, пока вы не возобновите обновления.",
+ "1 new option": "1 новый параметр",
+ "Accepts the {license}": "Вы принимаете условия: {license}",
+ "New in {name}: {option}": "Новое в {name}: {option}",
+ "New option": "Новый параметр",
+ "Play as it is": "Играть как есть",
+ "Read the {license}": "Прочитать: {license}",
+ "Sets the game up again from your copy": "Заново настраивает игру с вашей копии",
+ "Turning it on accepts the {license}.": "Включая его, вы принимаете условия: {license}.",
+ "Turning it on sets the game up again from your copy.": "При включении игра будет заново настроена с вашей копии.",
+ "Use the copy it was set up with": "Использовать копию, с которой её настроили",
+ "{n} new options": "{n} новый параметр|{n} новых параметра|{n} новых параметров"
 }

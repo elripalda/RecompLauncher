@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name} sahip olduğu sürümde kalıyor.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} zaten {name} dosyalarını içeriyor. Başlatıcı onları oradan kullanabilir.",
  "{size} freed. Your copy is in the {bin}.": "{size} boşaltıldı. Kopyan şurada: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} çıktı. Güncellemeleri sürdürene kadar bu oyun {old} sürümünde kalır."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} çıktı. Güncellemeleri sürdürene kadar bu oyun {old} sürümünde kalır.",
+ "1 new option": "1 yeni seçenek",
+ "Accepts the {license}": "{license} koşullarını kabul edersiniz",
+ "New in {name}: {option}": "{name} içinde yeni: {option}",
+ "New option": "Yeni seçenek",
+ "Play as it is": "Olduğu gibi oyna",
+ "Read the {license}": "{license} metnini oku",
+ "Sets the game up again from your copy": "Oyunu kopyanızdan yeniden kurar",
+ "Turning it on accepts the {license}.": "Açtığınızda {license} koşullarını kabul etmiş olursunuz.",
+ "Turning it on sets the game up again from your copy.": "Açtığınızda oyun kopyanızdan yeniden kurulur.",
+ "Use the copy it was set up with": "Kurulduğu kopyayı kullan",
+ "{n} new options": "{n} yeni seçenek"
 }

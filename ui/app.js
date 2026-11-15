@@ -1130,6 +1130,14 @@ const canPause = (id) => { const j = S.jobs[id]; return !!j && !j.plug && (j.pha
 function actions(a, size = 'big') {
   const st = status(a), id = esc(a.id), sq = size === 'big' ? 'btn sq glass' : 'btn sq sm', more = `<button type="button" class="${sq}" data-act="menu" data-id="${id}" aria-label="${esc(t('More'))}" title="${esc(t('More'))}">${MORE}</button>`;
   const b = (cls, act, label, icon = '') => `<button type="button" class="btn ${size} ${cls}" data-act="${act}" data-id="${id}">${icon}${label}</button>`;
+  // Set Up Again beside Play on its page, with a dot while its project has options the player
+  // hasn't answered yet. Only the states with Play ask for it.
+  const again = () => {
+    if (size !== 'big' || !canSetUpAgain(a.id)) return '';
+    const fresh = newPrepOpts(S.setup[a.id]).length;
+    const tip = fresh ? `${t('Set Up Again')} · ${tn(fresh, '1 new option', '{n} new options')}` : t('Set Up Again');
+    return `<button type="button" class="${sq} again${fresh ? ' has-new' : ''}" data-act="setup" data-id="${id}" aria-label="${esc(tip)}" title="${esc(tip)}">${DISC_S.replace(/14/g, '20')}</button>`;
+  };
   switch (st) {
     case 'running': return b('main', 'resume', esc(t('Back to the game')), PLAY) + b('', 'stop', esc(t('Close game'))) + more;
     case 'settingup': {
@@ -1144,8 +1152,8 @@ function actions(a, size = 'big') {
     }
     case 'busy': return progress(a.id) + (canPause(a.id) ? `<button type="button" class="${sq}" data-act="dl-pause" data-id="${id}" aria-label="${esc(t('Pause'))}" title="${esc(t('Pause'))}">${PAUSE}</button>` : '') + `<button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>`;
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
-    case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
-    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : b('main', 'play', esc(t('Play')), PLAY) + more;
+    case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + again() + more;
+    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + again() + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + again() + more : b('main', 'play', esc(t('Play')), PLAY) + again() + more;
     case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy.
@@ -2791,8 +2799,59 @@ function prepOptsHtml(su) {
   if (!list.length) return '';
   return `<section class="su-opts" aria-label="${esc(t('Options'))}"><h3>${esc(t('Options'))}</h3>${list.map((o) => {
     const lic = o.license && o.license.url ? htmlFill(t('I accept the {license}'), { license: `<a href="#" data-url="${esc(o.license.url)}">${esc(o.license.name || o.license.url)}</a>` }) : '';
-    return `<label class="su-opt"><input type="checkbox" data-popt="${esc(o.id)}"${o.on ? ' checked' : ''}><span><b>${esc(o.label)}</b>${lic ? ` <em>(${lic})</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span></label>`;
+    const fresh = o.new && (su.copy || su.inputs_ready) ? ` <span class="su-new">${esc(t('New option'))}</span>` : '';
+    // A switch like the ones in Settings, drawn over the real checkbox so keys and screen readers still work.
+    return `<label class="su-opt"><span class="su-opt-text"><b>${esc(o.label)}</b>${fresh}${lic ? ` <em>(${lic})</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span><input type="checkbox" role="switch" data-popt="${esc(o.id)}"${o.on ? ' checked' : ''}><span class="switch" aria-hidden="true"></span></label>`;
   }).join('')}</section>`;
+}
+// The ways to give the game's copy (a file, a folder): side by side with "or" between them, so
+// they read as one choice and not as two things to fill in.
+function pickChoices(picks) {
+  if (picks.length === 1) return `<div class="picks one">${picks[0]}</div>`;
+  return `<div class="picks either">${picks.join(`<span class="picks-or">${esc(t('or'))}</span>`)}</div>`;
+}
+// Options its project added since the game was set up: ones the player hasn't answered yet.
+function newPrepOpts(su) {
+  if (!su || su === 'loading' || !(su.copy || su.inputs_ready)) return [];
+  return (su.prepare_options || []).filter((o) => o.new);
+}
+// An Easy Setup game that's set up: Set Up Again sits beside Play.
+function canSetUpAgain(id) {
+  const su = S.setup[id];
+  return S.easy.has(id) && !!su && su !== 'loading' && !!su.needs && !!(su.copy || su.inputs_ready);
+}
+// Before it plays: each new option is asked about once. Turn on keeps the tick and opens Set Up
+// Again; Not now keeps it off and the game starts as it is. True when it shouldn't start now.
+async function askNewOpts(id) {
+  if (!S.easy.has(id)) return false;
+  let su = S.setup[id];
+  if (su === undefined || su === 'loading') {
+    try { su = S.setup[id] = await invoke('game_setup', { id }); } catch (e) { return false; }
+  }
+  const list = newPrepOpts(su);
+  if (!list.length) return false;
+  const name = (S.library[id] || {}).name || id;
+  const answers = {};
+  for (const o of list) {
+    const link = o.license && o.license.url ? `<a href="#" data-url="${esc(o.license.url)}">${esc(o.license.name || o.license.url)}</a>` : '';
+    const text = `${o.note ? `<p>${esc(o.note)}</p>` : ''}${link ? `<p>${htmlFill(t('Turning it on accepts the {license}.'), { license: link })}</p>` : ''}<p class="muted">${esc(t('Turning it on sets the game up again from your copy.'))}</p>`;
+    const sub = o.license && o.license.name ? tf('Accepts the {license}', { license: o.license.name }) : t('Sets the game up again from your copy');
+    // The option's name is in the title: Big Picture shows the title and the buttons only.
+    const v = await ask(tf('New in {name}: {option}', { name, option: o.label }), text, [{ label: t('Not now'), sub: t('Play as it is'), icon: 'play', v: 'off', focus: true }, { label: t('Turn on'), sub, icon: 'check', v: 'on', main: true }]);
+    if (v === null) return true;
+    answers[o.id] = v === 'on';
+  }
+  try { await invoke('set_prepare_opts', { id, opts: answers }); } catch (e) { fail(e); return true; }
+  for (const o of su.prepare_options) {
+    if (!(o.id in answers)) continue;
+    o.on = answers[o.id];
+    o.new = false;
+  }
+  render(true);
+  if (window.tvRefresh) window.tvRefresh();
+  if (!Object.values(answers).some(Boolean)) return false;
+  setupModal(id);
+  return true;
 }
 document.addEventListener('change', (e) => {
   const box = e.target.closest && e.target.closest('input[data-popt]');
@@ -2963,7 +3022,7 @@ function suDraw() {
       ${relinkCards(su, 'data-su')}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
         : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same">${esc(t('Use this'))}</button></div>` : ''}
-      <div class="picks${picks.length === 1 ? ' one' : ''}">${picks.join('')}</div>`;
+      ${pickChoices(picks)}`;
   } else if (SU.stage === 'run') {
     const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
@@ -2992,7 +3051,7 @@ function suDraw() {
     const picks = [su.update_file ? `<button type="button" class="pick" data-su="ufile"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5z"/><path d="M14 3v4.5h4.5"/></svg><b>${esc(t('Update File'))}</b><span>${esc(t('The file, as it came'))}</span></button>` : '', su.update_folder ? `<button type="button" class="pick" data-su="ufolder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Update Folder'))}</b><span>${esc(t('A folder with its files'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')} ${esc(t('It goes in with your copy, once.'))}</p>
       ${SU.uerr ? `<p class="su-err">${esc(t(SU.uerr))}</p>` : ''}
-      <div class="picks${picks.length === 1 ? ' one' : ''}">${picks.join('')}</div>
+      ${pickChoices(picks)}
       ${su.update_optional ? `<button type="button" class="btn" data-su="uskip" style="margin-top:12px">${esc(t('Skip for Now'))}</button>` : ''}`;
   } else if (SU.stage === 'ready') {
     const r = SU.result || {};
@@ -3711,7 +3770,7 @@ function pageDownloads() {
   ];
   // The one at the top: the download that's moving, else the first one there is.
   const lead = act.find((id) => S.jobs[id] && S.jobs[id].phase !== 'queued') || act[0];
-  const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New'); };
+  const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New option'); };
   const jobBtns = (id, small) => { const j = S.jobs[id] || {}, held = !S.jobs[id], sm = small ? ' sm' : '';
     const two = held ? `<button type="button" class="btn main${sm}" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) && j.phase !== 'queued' ? `<button type="button" class="btn${sm}" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
     return `${two}<button type="button" class="btn${sm}" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button>`; };
@@ -5957,7 +6016,11 @@ async function playGame(id, program) {
   // does nothing.
   if (STARTING.has(id) || S.running.has(id)) return;
   STARTING.add(id);
-  try { await playGame2(id, program); } finally { STARTING.delete(id); }
+  try {
+    // New setup options its project added: asked first, so Not now can still play right away.
+    if (await askNewOpts(id)) return;
+    await playGame2(id, program);
+  } finally { STARTING.delete(id); }
 }
 window.playGame = playGame;
 async function playGame2(id, program) {
@@ -8791,6 +8854,15 @@ T.event.listen('open-game', ({ payload }) => openLinkedGame(payload));
 // Something on its way that takes a while (a Flatpak installing before its game starts).
 T.event.listen('note', ({ payload }) => toast(t(String(payload)), false, null, 9000));
 T.event.listen('setup-required', ({ payload }) => { if (S.cat && S.cat.apps.length) { invoke('take_setup_asked').catch(() => {}); setupReqModal(String(payload)); } });
+// A shortcut asked to play a game whose project added setup options: its page, then Play asks.
+function newOptsFromShortcut(id) {
+  invoke('take_options_asked').catch(() => {});
+  if (document.body.classList.contains('tv-on') && window.tvGoto) window.tvGoto('game', id);
+  else go('game', id);
+  delete S.setup[id];
+  playGame(id);
+}
+T.event.listen('options-new', ({ payload }) => { if (S.cat && S.cat.apps.length) newOptsFromShortcut(String(payload)); });
 // Started again from Steam (or anything with --bigpicture) while already open.
 T.event.listen('bigpicture', () => { if (window.startTV && !document.body.classList.contains('tv-on')) window.startTV(); });
 // Something new from a developer the player follows: Home shows it.
@@ -8873,4 +8945,6 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   invoke('take_link').then((id) => { if (id) setTimeout(() => openLinkedGame(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
   // A shortcut asked to play a recomp that still needs setting up: its Set Up window.
   invoke('take_setup_asked').then((id) => { if (id) setTimeout(() => setupReqModal(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
+  // The same for a game with new setup options to answer before it plays.
+  invoke('take_options_asked').then((id) => { if (id) setTimeout(() => newOptsFromShortcut(id), window.startTV && startsInTV() ? 1600 : 0); }).catch(() => {});
 })();

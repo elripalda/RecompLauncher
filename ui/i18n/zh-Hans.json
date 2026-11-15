@@ -3319,5 +3319,16 @@
  "{name} stays on the version it has.": "{name} 停留在当前版本。",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} 中已有 {name} 的文件。启动器可以直接从那里使用它们。",
  "{size} freed. Your copy is in the {bin}.": "已释放 {size}。你的游戏副本在{bin}中。",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} 已推出。在你恢复更新之前，此游戏会停留在 {old}。"
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} 已推出。在你恢复更新之前，此游戏会停留在 {old}。",
+ "1 new option": "1 个新选项",
+ "Accepts the {license}": "你接受 {license}",
+ "New in {name}: {option}": "{name} 新增：{option}",
+ "New option": "新选项",
+ "Play as it is": "保持现状直接玩",
+ "Read the {license}": "阅读 {license}",
+ "Sets the game up again from your copy": "用你的副本重新设置游戏",
+ "Turning it on accepts the {license}.": "开启即表示你接受 {license}。",
+ "Turning it on sets the game up again from your copy.": "开启后会用你的副本重新设置游戏。",
+ "Use the copy it was set up with": "使用设置时用过的副本",
+ "{n} new options": "{n} 个新选项"
 }
