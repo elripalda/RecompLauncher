@@ -368,6 +368,10 @@
           "default": 300,
           "description": "Seconds."
         },
+        "version": {
+          "type": "string",
+          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to."
+        },
         "options": {
           "type": "array",
           "description": "Ticks shown on the setup screen before the step runs. Each one adds its args when it's on. For a vendor's SDK your builder downloads, like NVIDIA's DLSS SDK: the player accepts its license by ticking it.",

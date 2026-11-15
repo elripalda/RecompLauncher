@@ -467,8 +467,21 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
             None => items.push(err("None of \"prepare.program\" is in this folder", pr.program.join(", "))),
         }
         items.extend(option_items(&pr.options));
+        items.extend(version_item(&pr.version));
     }
     level
+}
+
+/// prepare.version: changing it is how a json asks players who set up already to run it again.
+fn version_item(v: &str) -> Option<Item> {
+    if v.is_empty() {
+        return None;
+    }
+    Some(if v.trim() != v {
+        warn(format!("\"prepare.version\" is \"{v}\" with spaces around it"), "Spaces count too: take them out so it doesn't change by accident.")
+    } else {
+        ok(format!("Setup step version: {v}. Changing it asks everyone who set up already to run setup again"))
+    })
 }
 
 /// What's wrong with a setup step's options (prepare.options), in plain words, or what's fine.
@@ -564,6 +577,13 @@ mod tests {
             assert!(bad.contains(w), "{w}: {bad}");
         }
         assert!(items[2].text.contains("already has the id"));
+    }
+
+    #[test]
+    fn the_setup_steps_version_is_named_in_the_check() {
+        assert!(super::version_item("").is_none());
+        assert!(super::version_item("2").unwrap().text.contains("run setup again"));
+        assert!(super::version_item(" 2").unwrap().text.contains("spaces"));
     }
 
     use super::*;

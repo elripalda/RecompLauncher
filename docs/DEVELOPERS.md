@@ -507,6 +507,8 @@ settings are written. It runs again whenever the player changes their copy.
   text after it shows under the step.
 - Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
 - Write what you make to the same place your launcher would, so both stay in step.
+- `"version"` (optional): change it only when players who already set up must run the step again,
+  like when your output format changes. Nothing else in this file makes them set up again.
 
 #### `prepare.options`: ticks for a vendor's SDK
 

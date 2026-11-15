@@ -2550,6 +2550,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     });
     if let Some(p) = prof.as_ref().filter(|p| !p.inputs.is_empty()) {
         inputs::validate(p).map_err(Error::Msg)?;
+        upgrade_fingerprints(&st, Some(id));
         let ready = match (&pick, whole.as_ref()) {
             (Some(pk), Some(w)) => game_inputs_ready(p, w, &g, &pk.game, &st.dir),
             _ => inputs::ready(p, &g, &st.dir),
@@ -4185,7 +4186,47 @@ pub(crate) fn recomp_of(st: &App, id: &str) -> String {
 /// recomp's whole setup.
 fn game_inputs_ready(scoped: &profile::Profile, whole: &profile::Profile, g: &Installed, game: &games::Game, dir: &Path) -> bool {
     let own = g.games.get(&game.id).map(|p| p.inputs_ready.as_str()).unwrap_or("");
-    (!own.is_empty() && inputs::signature(scoped, g, dir).is_ok_and(|s| s == own)) || inputs::ready(whole, g, dir)
+    inputs::current(scoped, g, dir, own).is_some() || inputs::ready(whole, g, dir)
+}
+
+/// Fingerprints an older launcher saved are rewritten as v2 when they still match, so a game
+/// set up before stays set up and is never checked the old way again. One game (on Play and
+/// Easy Setup) or every installed one (once at startup).
+fn upgrade_fingerprints(st: &App, only: Option<&str>) {
+    let old = |v: &str| !v.is_empty() && !v.starts_with("v2:");
+    let list: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter()
+        .filter(|(k, g)| only.map_or(true, |o| o == k.as_str()) && (old(&g.inputs_ready) || g.games.values().any(|x| old(&x.inputs_ready))))
+        .map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut changed = false;
+    for (id, g) in list {
+        let Some(whole) = profile_of(st, &id, &g) else { continue };
+        let top = old(&g.inputs_ready).then(|| inputs::current(&whole, &g, &st.dir, &g.inputs_ready)).flatten();
+        let all = games_of(st, &id, &g);
+        let mut subs = Vec::new();
+        for (gid, x) in g.games.iter().filter(|(_, x)| old(&x.inputs_ready)) {
+            let Some(game) = all.iter().find(|a| &a.id == gid) else { continue };
+            let mut scoped = whole.clone();
+            games::scope(&mut scoped, game, &all);
+            if let Some(v2) = inputs::current(&scoped, &g, &st.dir, &x.inputs_ready) { subs.push((gid.clone(), x.inputs_ready.clone(), v2)); }
+        }
+        let mut lib = st.lib.lock().unwrap();
+        let Some(cur) = lib.installed.get_mut(&id) else { continue };
+        // Only what was checked: anything changed meanwhile (a new pick, Set Up Again) stays.
+        if let Some(v2) = top.filter(|_| cur.inputs_ready == g.inputs_ready) {
+            cur.inputs_ready = v2;
+            changed = true;
+        }
+        for (gid, was, v2) in subs {
+            if let Some(x) = cur.games.get_mut(&gid).filter(|x| x.inputs_ready == was) {
+                x.inputs_ready = v2;
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        trail::note("Setup fingerprints from an older launcher kept as v2".to_string());
+        st.save();
+    }
 }
 
 /// Every installed recomp that carries several games, with them: the Library's tiles.
@@ -4422,6 +4463,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
     // One game of several: Easy Setup asks only for its own inputs and the shared ones.
     let pick = game_of(&st, &id);
     let id = pick.as_ref().map(|p| p.recomp.clone()).unwrap_or(id);
+    upgrade_fingerprints(&st, Some(&id));
     let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
     let whole = profile_of(&st, &id, &g)?;
     let mut p = whole.clone();
@@ -8766,6 +8808,12 @@ pub fn run() {
             if g_discord(&app.state::<App>()) {
                 discord_idle(&app.state::<App>(), true);
             }
+            // Games set up by an older launcher keep counting as set up: their fingerprints are
+            // rewritten as v2 before anyone presses Play.
+            {
+                let h = app.handle().clone();
+                std::thread::spawn(move || upgrade_fingerprints(&h.state::<App>(), None));
+            }
             // Save copies that didn't reach the cloud last time.
             {
                 let h = app.handle().clone();
@@ -9637,6 +9685,7 @@ mod tests {
             label: "Test Builder".into(),
             timeout: 60,
             options: vec![],
+            version: String::new(),
         };
 
         let generated_file = dir.join("generated.txt");
@@ -9662,6 +9711,50 @@ mod tests {
         let content = std::fs::read_to_string(&generated_file).unwrap();
         assert!(content.contains("generated"));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::*;
+
+    #[test]
+    fn one_game_of_several_set_up_before_stays_set_up() {
+        let dir = std::env::temp_dir().join(format!("recomp-fp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let whole: profile::Profile = serde_json::from_value(serde_json::json!({
+            "prepare": { "program": ["Builder.exe"] },
+            "inputs": [
+                { "id": "a", "label": "Game A", "role": "game", "formats": [{ "type": "file" }] },
+                { "id": "b", "label": "Game B", "role": "game", "formats": [{ "type": "file" }] }
+            ]
+        })).unwrap();
+        let all: Vec<games::Game> = serde_json::from_value(serde_json::json!([
+            { "id": "ga", "name": "A", "inputs": ["a"] }, { "id": "gb", "name": "B", "inputs": ["b"] }
+        ])).unwrap();
+        let file = dir.join("a.bin");
+        std::fs::write(&file, b"a").unwrap();
+        let mut g = Installed { path: dir.clone(), ..Default::default() };
+        g.setup_inputs.insert("a".into(), file.clone());
+        let mut scoped = whole.clone();
+        games::scope(&mut scoped, &all[0], &all);
+        for with_options in [false, true] {
+            let old = inputs::signature_legacy(&scoped, &g, &dir, with_options).unwrap();
+            g.games.entry("ga".into()).or_default().inputs_ready = old.clone();
+            assert!(game_inputs_ready(&scoped, &whole, &g, &all[0], &dir));
+            let v2 = inputs::current(&scoped, &g, &dir, &old).unwrap();
+            assert!(v2.starts_with("v2:"));
+            g.games.get_mut("ga").unwrap().inputs_ready = v2;
+            assert!(game_inputs_ready(&scoped, &whole, &g, &all[0], &dir));
+        }
+        // A changed file, or the developer's version, asks again.
+        let mut moved = g.clone();
+        moved.setup_inputs.insert("a".into(), dir.join("missing.bin"));
+        assert!(!game_inputs_ready(&scoped, &whole, &moved, &all[0], &dir));
+        let mut bumped = scoped.clone();
+        bumped.prepare.as_mut().unwrap().version = "2".into();
+        assert!(!game_inputs_ready(&bumped, &whole, &g, &all[0], &dir));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

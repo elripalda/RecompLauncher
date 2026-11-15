@@ -92,8 +92,12 @@ pub struct Prepare {
     pub timeout: u64,
     /// Ticks on the setup screen before the step runs, each adding its arguments when it's on
     /// (a library the builder downloads under a company's license, say).
-    #[serde(default, deserialize_with = "options_lenient")]
+    #[serde(default, deserialize_with = "options_lenient", skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<PrepareOption>,
+    /// Changed by the developer when players must run this step again (its output changed, say).
+    /// The only thing in the profile that makes a finished setup count as not done.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub version: String,
 }
 
 /// prepare.options as written, each one that can be read: one with a value of the wrong type is
