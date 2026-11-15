@@ -2803,6 +2803,12 @@ function prepOptsHtml(su) {
     return `<label class="su-opt"><span class="su-opt-text"><b>${esc(o.label)}</b>${fresh}${lic ? ` <em>(${lic})</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span><input type="checkbox" role="switch" data-popt="${esc(o.id)}"${o.on ? ' checked' : ''}><span class="switch" aria-hidden="true"></span></label>`;
   }).join('')}</section>`;
 }
+// The ways to give the game's copy (a file, a folder): side by side with "or" between them, so
+// they read as one choice and not as two things to fill in.
+function pickChoices(picks) {
+  if (picks.length === 1) return `<div class="picks one">${picks[0]}</div>`;
+  return `<div class="picks either">${picks.join(`<span class="picks-or">${esc(t('or'))}</span>`)}</div>`;
+}
 // Options its project added since the game was set up: ones the player hasn't answered yet.
 function newPrepOpts(su) {
   if (!su || su === 'loading' || !(su.copy || su.inputs_ready)) return [];
@@ -3015,7 +3021,7 @@ function suDraw() {
       ${relinkCards(su, 'data-su')}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
         : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same">${esc(t('Use this'))}</button></div>` : ''}
-      <div class="picks${picks.length === 1 ? ' one' : ''}">${picks.join('')}</div>`;
+      ${pickChoices(picks)}`;
   } else if (SU.stage === 'run') {
     const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
@@ -3044,7 +3050,7 @@ function suDraw() {
     const picks = [su.update_file ? `<button type="button" class="pick" data-su="ufile"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5z"/><path d="M14 3v4.5h4.5"/></svg><b>${esc(t('Update File'))}</b><span>${esc(t('The file, as it came'))}</span></button>` : '', su.update_folder ? `<button type="button" class="pick" data-su="ufolder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Update Folder'))}</b><span>${esc(t('A folder with its files'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')} ${esc(t('It goes in with your copy, once.'))}</p>
       ${SU.uerr ? `<p class="su-err">${esc(t(SU.uerr))}</p>` : ''}
-      <div class="picks${picks.length === 1 ? ' one' : ''}">${picks.join('')}</div>
+      ${pickChoices(picks)}
       ${su.update_optional ? `<button type="button" class="btn" data-su="uskip" style="margin-top:12px">${esc(t('Skip for Now'))}</button>` : ''}`;
   } else if (SU.stage === 'ready') {
     const r = SU.result || {};
