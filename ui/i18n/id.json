@@ -3248,5 +3248,10 @@
  "{n} reports so far": "Sejauh ini {n} laporan",
  "{v}: no reports yet": "{v}: belum ada laporan",
  "A strip across the top of each cover with its console, like the band on a real game box.": "Strip di atas setiap sampul dengan konsolnya, seperti pita di kotak game asli.",
- "Console Labels on Covers": "Label Konsol di Sampul"
+ "Console Labels on Covers": "Label Konsol di Sampul",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "Game ini melewati penyiapan mudah dan belum punya program untuk dijalankan. Pilih dengan “Pilih program” di menu Kelola-nya.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Setiap game dipasang apa adanya, dan penginstal atau launcher miliknya sendiri yang menyiapkannya. Untuk melewatinya hanya pada satu game, gunakan “Lewati penyiapan mudah” di menunya.",
+ "Skip Easy Setup": "Lewati penyiapan mudah",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} melewati penyiapan mudah: dipasang apa adanya, dan penginstal atau launcher miliknya sendiri yang menyiapkannya.",
+ "{name} uses Easy Setup again.": "{name} kembali memakai penyiapan mudah."
 }

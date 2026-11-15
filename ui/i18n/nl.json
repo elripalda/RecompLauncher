@@ -3248,5 +3248,10 @@
  "{n} reports so far": "{n} meldingen tot nu toe",
  "{v}: no reports yet": "{v}: nog geen meldingen",
  "A strip across the top of each cover with its console, like the band on a real game box.": "Een strook bovenaan elke cover met de console, zoals de band op een echt spelhoesje.",
- "Console Labels on Covers": "Consolelabels op covers"
+ "Console Labels on Covers": "Consolelabels op covers",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "Dit spel slaat eenvoudig instellen over en heeft nog geen programma om te starten. Kies het met ‘Programma kiezen’ in het menu Beheren.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Elk spel wordt geïnstalleerd zoals het is, en het eigen installatieprogramma of de eigen launcher stelt het in. Om het voor één spel over te slaan, gebruik je ‘Eenvoudig instellen overslaan’ in het menu van dat spel.",
+ "Skip Easy Setup": "Eenvoudig instellen overslaan",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} slaat eenvoudig instellen over: het wordt geïnstalleerd zoals het is, en het eigen installatieprogramma of de eigen launcher stelt het in.",
+ "{name} uses Easy Setup again.": "{name} gebruikt weer eenvoudig instellen."
 }

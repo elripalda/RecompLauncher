@@ -3248,5 +3248,10 @@
  "{n} reports so far": "มี {n} รายงานแล้ว",
  "{v}: no reports yet": "{v}: ยังไม่มีรายงาน",
  "A strip across the top of each cover with its console, like the band on a real game box.": "แถบด้านบนของปกแต่ละเกมที่บอกเครื่องเล่น เหมือนแถบบนกล่องเกมจริง",
- "Console Labels on Covers": "ป้ายเครื่องเล่นบนปก"
+ "Console Labels on Covers": "ป้ายเครื่องเล่นบนปก",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "เกมนี้ข้ามการตั้งค่าง่าย และยังไม่มีโปรแกรมให้เปิด เลือกได้ด้วย “เลือกโปรแกรม” ในเมนูจัดการของเกม",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "ทุกเกมจะติดตั้งตามที่มา และตัวติดตั้งหรือลันเชอร์ของเกมเองจะตั้งค่าให้ หากต้องการข้ามเฉพาะเกมเดียว ให้ใช้ “ข้ามการตั้งค่าง่าย” ในเมนูของเกมนั้น",
+ "Skip Easy Setup": "ข้ามการตั้งค่าง่าย",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} ข้ามการตั้งค่าง่าย: ติดตั้งตามที่มา และตัวติดตั้งหรือลันเชอร์ของเกมเองจะตั้งค่าให้",
+ "{name} uses Easy Setup again.": "{name} กลับมาใช้การตั้งค่าง่ายแล้ว"
 }

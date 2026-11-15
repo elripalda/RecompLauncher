@@ -2570,6 +2570,13 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
             manual = Some(library::ManualSetup { exe: Some(mine), how: "none".into(), ..Default::default() });
         }
     }
+    // Easy Setup skipped: started like a game set up by hand, with nothing of the player's copy,
+    // after its own installer or first-time setup when it has one.
+    let skipped = manual.is_none() && easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    if skipped {
+        trail::note(format!("Play {id}: Easy Setup skipped, it starts as its own setup leaves it"));
+        manual = Some(library::ManualSetup { how: "none".into(), ..Default::default() });
+    }
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
     let whole = if manual.is_some() { None } else { profile_of(&st, id, &g) };
@@ -2605,7 +2612,7 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
     // Its own installer or first-time setup, the first time: that opens instead of the game.
     // (A developer's own profile sets the game up itself; one made from the catalog's boot profile
     // still runs the release's setup first.)
-    if (manual.is_none() || rebuild) && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
+    if (manual.is_none() || rebuild || skipped) && !prof.as_ref().map(|p| p.start.is_some() && !p.from_boot).unwrap_or(false) {
         // Only its installer so far: Set Up runs it first.
         if !g.installer_setup.is_empty() && g.exe.is_none() {
             return Err(Error::Msg("Its installer hasn't run yet. Press Set Up on its page.".into()));
@@ -2620,6 +2627,9 @@ fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::Stea
         }
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
+    if skipped && g.exe.is_none() {
+        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.".into()));
+    }
     // Settings on Match My Screen: the monitor's size now, when the monitor changed since it was
     // last written (a size picked in the game's own menu stays otherwise).
     let monitor = screen_now().map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
@@ -3778,7 +3788,14 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[Stri
     }
 }
 
+/// Skip Easy Setup (a game's ⋯ menu, or Settings for every game): the game is set up the way it
+/// comes, by its own installer or launcher, and starts as that leaves it, wherever the player put it.
+fn easy_skipped(ui: &Value, id: &str) -> bool {
+    ui.get("easy_skip_all").and_then(Value::as_bool).unwrap_or(false) || ui.get("easy_skip").and_then(Value::as_array).is_some_and(|a| a.iter().any(|x| x.as_str() == Some(id)))
+}
+
 /// Catalog games the launcher can set up itself (copy and settings): the "Easy setup" ones.
+/// (Skipping it is the page's to apply: the game still can be set up this way.)
 #[tauri::command(async)]
 fn easy_setup(st: State<'_, App>) -> Vec<String> {
     let cat = cached_catalog(&st);
@@ -9986,5 +10003,25 @@ mod copy_listing_tests {
         assert_eq!(listing_for_copy(&cat, "dev/racer-builds", || Some("4d5307e6".into())), Some(("racer".to_string(), "title id")));
         assert_eq!(listing_for_copy(&cat, "dev/unrelated", || Some("11111111".into())), None);
         assert_eq!(listing_for_copy(&cat, "dev/unrelated", || None), None);
+    }
+}
+
+#[cfg(test)]
+mod easy_skip_tests {
+    use super::*;
+
+    #[test]
+    fn easy_setup_is_skipped_for_one_game_or_for_all_of_them() {
+        assert!(!easy_skipped(&json!({}), "hopper"));
+        assert!(!easy_skipped(&Value::Null, "hopper"));
+        let one = json!({ "easy_skip": ["hopper"] });
+        assert!(easy_skipped(&one, "hopper"));
+        assert!(!easy_skipped(&one, "skyracer"));
+        assert!(easy_skipped(&json!({ "easy_skip_all": true }), "skyracer"));
+        assert!(!easy_skipped(&json!({ "easy_skip_all": false, "easy_skip": [] }), "skyracer"));
+        // A game renamed in the catalog keeps its choice: the list follows the new id.
+        let mut ui = json!({ "easy_skip": ["hopper"] });
+        rename_id(&mut ui, "hopper", "hopper-2");
+        assert!(easy_skipped(&ui, "hopper-2"));
     }
 }

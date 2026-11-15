@@ -3248,5 +3248,10 @@
  "{n} reports so far": "これまでに {n} 件のレポート",
  "{v}: no reports yet": "{v}: まだレポートはありません",
  "A strip across the top of each cover with its console, like the band on a real game box.": "実際のゲームのパッケージの帯のように、各カバーの上部にゲーム機名の帯を表示します。",
- "Console Labels on Covers": "カバーにゲーム機ラベルを表示"
+ "Console Labels on Covers": "カバーにゲーム機ラベルを表示",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "このゲームはかんたんセットアップをスキップしていて、起動するプログラムがまだありません。「管理」メニューの「プログラムを選ぶ」で選んでください。",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "どのゲームもそのままインストールされ、ゲーム自身のインストーラーやランチャーがセットアップします。1 つのゲームだけスキップするには、そのゲームのメニューの「かんたんセットアップをスキップ」を使ってください。",
+ "Skip Easy Setup": "かんたんセットアップをスキップ",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} はかんたんセットアップをスキップします。そのままインストールされ、ゲーム自身のインストーラーやランチャーがセットアップします。",
+ "{name} uses Easy Setup again.": "{name} は再びかんたんセットアップを使います。"
 }

@@ -3248,5 +3248,10 @@
  "{n} reports so far": "{n} Berichte bisher",
  "{v}: no reports yet": "{v}: noch keine Berichte",
  "A strip across the top of each cover with its console, like the band on a real game box.": "Ein Streifen oben auf jedem Cover mit seiner Konsole, wie das Band auf einer echten Spielhülle.",
- "Console Labels on Covers": "Konsolen-Banner auf Covern"
+ "Console Labels on Covers": "Konsolen-Banner auf Covern",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "Die einfache Einrichtung wird für dieses Spiel übersprungen, und es hat noch kein Programm zum Starten. Wähle es mit „Programm wählen“ in seinem Menü „Verwalten“.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Jedes Spiel wird so installiert, wie es kommt, und sein eigenes Installationsprogramm oder sein Launcher richtet es ein. Um sie nur für ein Spiel zu überspringen, nutze „Einfache Einrichtung überspringen“ in seinem Menü.",
+ "Skip Easy Setup": "Einfache Einrichtung überspringen",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} überspringt die einfache Einrichtung: Es wird so installiert, wie es kommt, und sein eigenes Installationsprogramm oder sein Launcher richtet es ein.",
+ "{name} uses Easy Setup again.": "{name} nutzt wieder die einfache Einrichtung."
 }

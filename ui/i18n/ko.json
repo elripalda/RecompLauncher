@@ -3248,5 +3248,10 @@
  "{n} reports so far": "지금까지 보고 {n}개",
  "{v}: no reports yet": "{v}: 아직 보고 없음",
  "A strip across the top of each cover with its console, like the band on a real game box.": "실제 게임 케이스의 띠처럼 각 커버 위쪽에 콘솔 이름이 적힌 띠를 표시합니다.",
- "Console Labels on Covers": "커버에 콘솔 라벨 표시"
+ "Console Labels on Covers": "커버에 콘솔 라벨 표시",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "이 게임은 간편 설정을 건너뛰며, 아직 실행할 프로그램이 없습니다. 관리 메뉴의 '프로그램 선택'으로 고르세요.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "모든 게임이 받은 그대로 설치되고, 게임 자체의 설치 프로그램이나 런처가 설정합니다. 한 게임만 건너뛰려면 그 게임 메뉴의 '간편 설정 건너뛰기'를 사용하세요.",
+ "Skip Easy Setup": "간편 설정 건너뛰기",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name}은(는) 간편 설정을 건너뜁니다. 받은 그대로 설치되고, 게임 자체의 설치 프로그램이나 런처가 설정합니다.",
+ "{name} uses Easy Setup again.": "{name}이(가) 다시 간편 설정을 사용합니다."
 }

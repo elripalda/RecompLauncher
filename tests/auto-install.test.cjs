@@ -58,7 +58,7 @@ test('the desktop switch turns an unset Auto-Install off, then on again', async 
   c.invoke = async (command, args) => saved.push({ command, on: args.settings.auto_install });
   c.render = () => {};
   c.fail = (error) => { throw error; };
-  vm.runInContext('let settingsSaving = Promise.resolve();' + fn(app, 'saveSettings') + fn(app, 'act'), c);
+  vm.runInContext('let settingsSaving = Promise.resolve();' + fn(app, 'applyEasySkip') + fn(app, 'saveSettings') + fn(app, 'act'), c);
   const toggle = { dataset: { act: 'toggle', k: 'auto_install' } };
   await c.act(toggle);
   await c.act(toggle);

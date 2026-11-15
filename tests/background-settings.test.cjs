@@ -51,7 +51,7 @@ test('the background toggle saves both choices through the existing settings com
   c.invoke = async (command, args) => saved.push({ command, on: args.settings.close_to_tray });
   c.render = () => {};
   c.fail = (error) => { throw error; };
-  vm.runInContext('let settingsSaving = Promise.resolve();' + fn(app, 'saveSettings') + fn(app, 'act'), c);
+  vm.runInContext('let settingsSaving = Promise.resolve();' + fn(app, 'applyEasySkip') + fn(app, 'saveSettings') + fn(app, 'act'), c);
   const toggle = { dataset: { act: 'toggle', k: 'close_to_tray' } };
   await c.act(toggle);
   await c.act(toggle);

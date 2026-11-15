@@ -3248,5 +3248,10 @@
  "{n} reports so far": "Şimdiye kadar {n} rapor",
  "{v}: no reports yet": "{v}: henüz rapor yok",
  "A strip across the top of each cover with its console, like the band on a real game box.": "Her kapağın üstünde, gerçek bir oyun kutusundaki gibi konsolunu gösteren bir şerit.",
- "Console Labels on Covers": "Kapaklarda Konsol Etiketleri"
+ "Console Labels on Covers": "Kapaklarda Konsol Etiketleri",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "Bu oyun kolay kurulumu atlıyor ve henüz başlatılacak bir programı yok. Yönet menüsündeki “Program seç” ile seç.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Her oyun olduğu gibi kurulur ve kendi yükleyicisi ya da başlatıcısı onu ayarlar. Yalnızca bir oyunda atlamak için o oyunun menüsündeki “Kolay kurulumu atla”yı kullan.",
+ "Skip Easy Setup": "Kolay kurulumu atla",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} kolay kurulumu atlıyor: olduğu gibi kurulur ve kendi yükleyicisi ya da başlatıcısı onu ayarlar.",
+ "{name} uses Easy Setup again.": "{name} yeniden kolay kurulumu kullanıyor."
 }

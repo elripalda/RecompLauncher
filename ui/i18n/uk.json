@@ -3248,5 +3248,10 @@
  "{n} reports so far": "Поки {n} відгук|Поки {n} відгуки|Поки {n} відгуків",
  "{v}: no reports yet": "{v}: відгуків поки немає",
  "A strip across the top of each cover with its console, like the band on a real game box.": "Смуга вгорі кожної обкладинки з її консоллю, як на справжній коробці з грою.",
- "Console Labels on Covers": "Мітки консолей на обкладинках"
+ "Console Labels on Covers": "Мітки консолей на обкладинках",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "Для цієї гри просте налаштування пропущено, а програми для запуску в неї ще немає. Виберіть її через «Вибрати програму» в меню «Керування».",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Кожна гра встановлюється як є, а налаштовує її власний інсталятор або лаунчер. Щоб пропустити його лише для однієї гри, скористайтеся «Пропустити просте налаштування» в її меню.",
+ "Skip Easy Setup": "Пропустити просте налаштування",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} пропускає просте налаштування: гра встановлюється як є, а налаштовує її власний інсталятор або лаунчер.",
+ "{name} uses Easy Setup again.": "{name} знову використовує просте налаштування."
 }

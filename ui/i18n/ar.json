@@ -3248,5 +3248,10 @@
  "{n} reports so far": "تقريران حتى الآن|{n} تقارير حتى الآن|{n} تقريرًا حتى الآن|{n} تقرير حتى الآن",
  "{v}: no reports yet": "{v}: لا تقارير بعد",
  "A strip across the top of each cover with its console, like the band on a real game box.": "شريط أعلى كل غلاف يحمل اسم منصته، مثل الشريط على علبة لعبة حقيقية.",
- "Console Labels on Covers": "شارات المنصات على الأغلفة"
+ "Console Labels on Covers": "شارات المنصات على الأغلفة",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "تتخطى هذه اللعبة الإعداد السهل، وليس لديها بعد برنامج لتشغيله. اختره من «اختر البرنامج» في قائمة «إدارة» الخاصة بها.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "تُثبَّت كل لعبة كما هي، ويتولى مثبّتها أو مشغّلها الخاص إعدادها. لتخطيه في لعبة واحدة فقط، استخدم «تخطي الإعداد السهل» في قائمتها.",
+ "Skip Easy Setup": "تخطي الإعداد السهل",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "تتخطى {name} الإعداد السهل: تُثبَّت كما هي، ويتولى مثبّتها أو مشغّلها الخاص إعدادها.",
+ "{name} uses Easy Setup again.": "تعود {name} إلى استخدام الإعداد السهل."
 }

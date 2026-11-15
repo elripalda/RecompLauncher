@@ -3248,5 +3248,10 @@
  "{n} reports so far": "目前 {n} 份报告",
  "{v}: no reports yet": "{v}：还没有报告",
  "A strip across the top of each cover with its console, like the band on a real game box.": "在每个封面顶部显示其主机的横条，就像真实游戏盒上的那条色带。",
- "Console Labels on Covers": "封面主机标签"
+ "Console Labels on Covers": "封面主机标签",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "此游戏跳过了轻松配置，还没有可启动的程序。请在其“管理”菜单中用“选择程序”选择。",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "每个游戏都按原样安装，由它自己的安装程序或启动器来配置。如只想对某个游戏跳过，请在它的菜单中使用“跳过轻松配置”。",
+ "Skip Easy Setup": "跳过轻松配置",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} 跳过轻松配置：按原样安装，由它自己的安装程序或启动器来配置。",
+ "{name} uses Easy Setup again.": "{name} 重新使用轻松配置。"
 }

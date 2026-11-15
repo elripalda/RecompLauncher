@@ -3248,5 +3248,10 @@
  "{n} reports so far": "Đến nay có {n} báo cáo",
  "{v}: no reports yet": "{v}: chưa có báo cáo",
  "A strip across the top of each cover with its console, like the band on a real game box.": "Một dải trên đầu mỗi bìa ghi hệ máy của nó, như dải trên hộp game thật.",
- "Console Labels on Covers": "Nhãn hệ máy trên bìa"
+ "Console Labels on Covers": "Nhãn hệ máy trên bìa",
+ "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.": "Trò chơi này bỏ qua thiết lập dễ dàng và chưa có chương trình để khởi động. Hãy chọn bằng “Chọn chương trình” trong menu Quản lý của nó.",
+ "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Mọi trò chơi được cài nguyên bản, và trình cài đặt hoặc launcher riêng của nó sẽ thiết lập. Để bỏ qua chỉ cho một trò chơi, dùng “Bỏ qua thiết lập dễ dàng” trong menu của trò đó.",
+ "Skip Easy Setup": "Bỏ qua thiết lập dễ dàng",
+ "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} bỏ qua thiết lập dễ dàng: trò chơi được cài nguyên bản, và trình cài đặt hoặc launcher riêng của nó sẽ thiết lập.",
+ "{name} uses Easy Setup again.": "{name} lại dùng thiết lập dễ dàng."
 }
