@@ -228,10 +228,6 @@ pub fn copy_id(p: &Path) -> Option<String> {
     if !p.is_file() {
         return None;
     }
-    let is_wua = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"));
-    if is_wua {
-        return wua_title_id(p);
-    }
     let mut f = fs::File::open(p).ok()?;
     let mut head = [0u8; 0x60];
     read_at(&mut f, 0, &mut head).ok()?;
@@ -244,6 +240,10 @@ pub fn copy_id(p: &Path) -> Option<String> {
     }
     if head.starts_with(b"\x7FFIH") {
         return ps5_title_id(p.file_stem()?.to_str()?);
+    }
+    let is_wua = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"));
+    if is_wua {
+        return wua_title_id(p);
     }
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if N64.contains(&ext.as_str()) || matches!([head[0], head[1], head[2], head[3]], [0x80, 0x37, 0x12, 0x40] | [0x37, 0x80, 0x40, 0x12] | [0x40, 0x12, 0x37, 0x80]) {
@@ -544,22 +544,22 @@ pub fn identify(p: &Path, size: u64) -> Option<RomFile> {
 fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
     let Some(ext) = p.extension() else { return identify_package(p, size) };
     let ext = ext.to_str()?.to_ascii_lowercase();
-    // Title updates are also kept under names like TU_16L61VP_0000004000000.00000000000G1, where
-    // what looks like a file type is part of the content ID. No file type this scans for is that long.
-    if ext.len() > 4 {
-        return identify_package(p, size);
-    }
-    if ext == "pkg" && is_ps5_pkg(p) {
-        return identify_ps5_pkg(p, size);
-    }
-    if ext == "pkg" {
-        return identify_ps3_pkg(p, size);
-    }
     if ext == "zip" || ext == "7z" {
         return identify_archive(p, &ext, size);
     }
     if WIIU.contains(&ext.as_str()) {
         return identify_wiiu(p, &ext, size);
+    }
+    if ext == "pkg" && is_ps5_pkg(p) {
+        return identify_ps5_pkg(p, size);
+    }
+    // Title updates are also kept under names like TU_16L61VP_0000004000000.00000000000G1, where
+    // what looks like a file type is part of the content ID. No file type this scans for is that long.
+    if ext.len() > 4 {
+        return identify_package(p, size);
+    }
+    if ext == "pkg" {
+        return identify_ps3_pkg(p, size);
     }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
@@ -1341,6 +1341,229 @@ mod tests {
         d
     }
 
+    fn write_zip(p: &Path, names: &[&str]) {
+        use std::io::Write;
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut z = zip::ZipWriter::new(fs::File::create(p).unwrap());
+        for name in names {
+            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            z.write_all(&[0u8; 64]).unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[test]
+    fn a_zip_with_one_snes_rom_is_a_snes_copy() {
+        let d = tmp("zip-snes");
+        let p = d.join("SNES/ActRaiser (USA).zip");
+        write_zip(&p, &["ActRaiser (USA).sfc", "readme.txt"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("snes", "ActRaiser (USA)"));
+    }
+
+    #[test]
+    fn a_zip_with_no_rom_inside_is_ignored() {
+        let d = tmp("zip-none");
+        write_zip(&d.join("Some Game (USA).zip"), &["manual.pdf", "notes.txt"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn a_zip_with_two_roms_is_ignored() {
+        let d = tmp("zip-two");
+        write_zip(&d.join("Pack.zip"), &["One.sfc", "Two.sfc"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn a_7z_with_one_rom_is_a_copy() {
+        let d = tmp("7z-gba");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("Game.gba"), [0u8; 64]).unwrap();
+        let p = d.join("Game.7z");
+        sevenz_rust::compress_to_path(&src, &p).unwrap();
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("gba".to_string()));
+    }
+
+    #[test]
+    fn an_arcade_set_in_an_arcade_folder_is_found() {
+        let d = tmp("zip-arcade");
+        let p = d.join("ARCADE/tmnt.zip");
+        write_zip(&p, &["963-a23.k8", "963-a24.k10", "963-x22.h22"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("arcade", "tmnt"));
+    }
+
+    #[test]
+    fn an_arcade_set_outside_an_arcade_folder_is_ignored() {
+        // Not named for arcade itself: the temporary folder is one of the folders looked at.
+        let d = tmp("zip-set-elsewhere");
+        write_zip(&d.join("Downloads/tmnt.zip"), &["963-a23.k8", "963-a24.k10"]);
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn an_arcade_set_is_matched_by_its_listed_set_name() {
+        let set = |name: &str| RomFile { path: PathBuf::from(format!("D:/ROMS/ARCADE/{name}.zip")), system: "arcade".into(), title: name.into(), region: String::new(), size: 1 };
+        let found = vec![set("tmnt2"), set("tmnt")];
+        let cat = serde_json::json!({ "apps": [{ "id": "tmnt-port", "game": "Teenage Mutant Ninja Turtles", "origin": "arcade", "copy_ids": ["tmnt"] }] });
+        let picked = match_catalog(&cat, &found);
+        assert_eq!(picked["tmnt-port"].title, "tmnt");
+        assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
+    }
+
+    /// A tiny .wua: a names table holding these names, then the ZArchive footer pointing at it.
+    fn wua(names: &[&str]) -> Vec<u8> {
+        let mut table = vec![];
+        for n in names {
+            table.push(n.len() as u8);
+            table.extend_from_slice(n.as_bytes());
+        }
+        let mut b = vec![0u8; 16];
+        let at = b.len() as u64;
+        b.extend_from_slice(&table);
+        let mut foot = [0u8; ZARCHIVE_FOOTER];
+        foot[32..40].copy_from_slice(&at.to_be_bytes());
+        foot[40..48].copy_from_slice(&(table.len() as u64).to_be_bytes());
+        foot[140..144].copy_from_slice(&ZARCHIVE_MAGIC.to_be_bytes());
+        b.extend_from_slice(&foot);
+        b
+    }
+
+    #[test]
+    fn a_wua_is_a_wii_u_copy() {
+        let d = tmp("wua");
+        let p = d.join("The Legend of Zelda - The Wind Waker HD (USA).wua");
+        fs::write(&p, wua(&["0005000010143500_v0", "code", "app.xml"])).unwrap();
+        let found = scan(&[d.clone()]);
+        let id = copy_id(&p);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].system, "wiiu");
+        assert_eq!(id.as_deref(), Some("0005000010143500"));
+    }
+
+    #[test]
+    fn a_wua_is_matched_to_its_game_by_name() {
+        let d = tmp("wua-match");
+        fs::write(d.join("The Legend of Zelda - The Wind Waker HD (USA).wua"), wua(&["0005000010143500_v0"])).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        let cat = serde_json::json!({ "apps": [{ "id": "zeldawwhdrecomp", "game": "The Legend of Zelda: The Wind Waker HD", "origin": "wiiu" }] });
+        assert!(match_catalog(&cat, &found).contains_key("zeldawwhdrecomp"));
+    }
+
+    #[test]
+    fn a_wua_with_only_an_update_says_its_games_id() {
+        let d = tmp("wua-update");
+        let p = d.join("Game Update.wua");
+        fs::write(&p, wua(&["0005000e10143500_v16"])).unwrap();
+        let id = copy_id(&p);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(id.as_deref(), Some("0005000010143500"));
+    }
+
+    #[test]
+    fn a_wua_named_dlc_that_holds_the_game_is_the_game() {
+        let d = tmp("wua-dlc");
+        let p = d.join("PIKMIN 3 (USA) (DLC) (v96).wua");
+        fs::write(&p, wua(&["000500001012bd00_v16", "0005000c1012bd00_v16"])).unwrap();
+        let kind = part_of_file(&p).kind;
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(kind, "game");
+    }
+
+    #[test]
+    fn a_wua_without_its_footer_is_ignored() {
+        let d = tmp("wua-bad");
+        fs::write(d.join("Game.wua"), [0u8; 512]).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn wux_and_wud_images_are_wii_u_copies() {
+        let d = tmp("wux-wud");
+        let mut wux = vec![0u8; 64];
+        wux[..4].copy_from_slice(b"WUX0");
+        fs::write(d.join("Game A.wux"), wux).unwrap();
+        let mut wud = vec![0u8; 64];
+        wud[..10].copy_from_slice(b"WUP-P-ARDE");
+        fs::write(d.join("Game B.wud"), wud).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().all(|r| r.system == "wiiu"));
+    }
+
+    /// The start of a PS5 package: its magic, then bytes that mean nothing without keys.
+    fn ps5_pkg() -> Vec<u8> {
+        let mut b = vec![0xA5u8; 0x100];
+        b[..4].copy_from_slice(b"\x7FFIH");
+        b
+    }
+
+    #[test]
+    fn a_split_ps5_pkg_is_one_copy() {
+        let d = tmp("ps5-split");
+        let game = d.join("PS5/Astro Bot");
+        fs::create_dir_all(&game).unwrap();
+        let first = game.join("JP9000-PPSA21559_00-0000000000000000_0.pkg");
+        fs::write(&first, ps5_pkg()).unwrap();
+        for n in 1..3 {
+            fs::write(game.join(format!("JP9000-PPSA21559_00-0000000000000000_{n}.pkg")), [0x11u8; 0x200]).unwrap();
+        }
+        let found = scan(&[d.clone()]);
+        let id = copy_id(&first);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps5", "Astro Bot"));
+        assert_eq!(found[0].size, 0x100 + 2 * 0x200);
+        assert_eq!(id.as_deref(), Some("PPSA21559"));
+    }
+
+    #[test]
+    fn a_ps5_pkg_named_for_its_game_keeps_that_name() {
+        let d = tmp("ps5-named");
+        fs::write(d.join("Dead Cells.pkg"), ps5_pkg()).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "Dead Cells");
+    }
+
+    #[test]
+    fn a_ps5_dlc_pkg_is_not_picked_as_the_game() {
+        let d = tmp("ps5-dlc");
+        let dlc = d.join("Dead Cells/dlc/EP9000-PPSA01341_00-DEADCELLSGIFT01.pkg");
+        fs::create_dir_all(dlc.parent().unwrap()).unwrap();
+        fs::write(&dlc, ps5_pkg()).unwrap();
+        let found = scan(&[d.clone()]);
+        let kind = part_of_file(&dlc).kind;
+        let cat = serde_json::json!({ "apps": [{ "id": "dc-ps5", "game": "Dead Cells", "origin": "ps5" }] });
+        let picked = match_catalog(&cat, &found);
+        let listed = files_of(&cat["apps"][0], &found).len();
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found[0].title, "Dead Cells");
+        assert_eq!(kind, "dlc");
+        assert!(picked.is_empty());
+        assert_eq!(listed, 1);
+    }
+
     fn rom(order: &str, title: &str, region: u8) -> Vec<u8> {
         let mut h = vec![0u8; 4096];
         h[0..4].copy_from_slice(&[0x80, 0x37, 0x12, 0x40]);
@@ -1830,229 +2053,6 @@ mod tests {
         fs::write(d.join("Some Game.pkg"), ps4).unwrap();
         assert!(scan(&[d.clone()]).is_empty());
         let _ = fs::remove_dir_all(&d);
-    }
-
-    fn write_zip(p: &Path, names: &[&str]) {
-        use std::io::Write;
-        fs::create_dir_all(p.parent().unwrap()).unwrap();
-        let mut z = zip::ZipWriter::new(fs::File::create(p).unwrap());
-        for name in names {
-            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
-            z.write_all(&[0u8; 64]).unwrap();
-        }
-        z.finish().unwrap();
-    }
-
-    #[test]
-    fn a_zip_with_one_snes_rom_is_a_snes_copy() {
-        let d = tmp("zip-snes");
-        let p = d.join("SNES/ActRaiser (USA).zip");
-        write_zip(&p, &["ActRaiser (USA).sfc", "readme.txt"]);
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.len(), 1);
-        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("snes", "ActRaiser (USA)"));
-    }
-
-    #[test]
-    fn a_zip_with_no_rom_inside_is_ignored() {
-        let d = tmp("zip-none");
-        write_zip(&d.join("Some Game (USA).zip"), &["manual.pdf", "notes.txt"]);
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert!(found.is_empty());
-    }
-
-    #[test]
-    fn a_zip_with_two_roms_is_ignored() {
-        let d = tmp("zip-two");
-        write_zip(&d.join("Pack.zip"), &["One.sfc", "Two.sfc"]);
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert!(found.is_empty());
-    }
-
-    #[test]
-    fn a_7z_with_one_rom_is_a_copy() {
-        let d = tmp("7z-gba");
-        let src = d.join("src");
-        fs::create_dir_all(&src).unwrap();
-        fs::write(src.join("Game.gba"), [0u8; 64]).unwrap();
-        let p = d.join("Game.7z");
-        sevenz_rust::compress_to_path(&src, &p).unwrap();
-        let found = identify(&p, 1);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.map(|r| r.system), Some("gba".to_string()));
-    }
-
-    #[test]
-    fn an_arcade_set_in_an_arcade_folder_is_found() {
-        let d = tmp("zip-arcade");
-        let p = d.join("ARCADE/tmnt.zip");
-        write_zip(&p, &["963-a23.k8", "963-a24.k10", "963-x22.h22"]);
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.len(), 1);
-        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("arcade", "tmnt"));
-    }
-
-    #[test]
-    fn an_arcade_set_outside_an_arcade_folder_is_ignored() {
-        // Not named for arcade itself: the temporary folder is one of the folders looked at.
-        let d = tmp("zip-set-elsewhere");
-        write_zip(&d.join("Downloads/tmnt.zip"), &["963-a23.k8", "963-a24.k10"]);
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert!(found.is_empty());
-    }
-
-    #[test]
-    fn an_arcade_set_is_matched_by_its_listed_set_name() {
-        let set = |name: &str| RomFile { path: PathBuf::from(format!("D:/ROMS/ARCADE/{name}.zip")), system: "arcade".into(), title: name.into(), region: String::new(), size: 1 };
-        let found = vec![set("tmnt2"), set("tmnt")];
-        let cat = serde_json::json!({ "apps": [{ "id": "tmnt-port", "game": "Teenage Mutant Ninja Turtles", "origin": "arcade", "copy_ids": ["tmnt"] }] });
-        let picked = match_catalog(&cat, &found);
-        assert_eq!(picked["tmnt-port"].title, "tmnt");
-        assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
-    }
-
-    /// A tiny .wua: a names table holding these names, then the ZArchive footer pointing at it.
-    fn wua(names: &[&str]) -> Vec<u8> {
-        let mut table = vec![];
-        for n in names {
-            table.push(n.len() as u8);
-            table.extend_from_slice(n.as_bytes());
-        }
-        let mut b = vec![0u8; 16];
-        let at = b.len() as u64;
-        b.extend_from_slice(&table);
-        let mut foot = [0u8; ZARCHIVE_FOOTER];
-        foot[32..40].copy_from_slice(&at.to_be_bytes());
-        foot[40..48].copy_from_slice(&(table.len() as u64).to_be_bytes());
-        foot[140..144].copy_from_slice(&ZARCHIVE_MAGIC.to_be_bytes());
-        b.extend_from_slice(&foot);
-        b
-    }
-
-    #[test]
-    fn a_wua_is_a_wii_u_copy() {
-        let d = tmp("wua");
-        let p = d.join("The Legend of Zelda - The Wind Waker HD (USA).wua");
-        fs::write(&p, wua(&["0005000010143500_v0", "code", "app.xml"])).unwrap();
-        let found = scan(&[d.clone()]);
-        let id = copy_id(&p);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].system, "wiiu");
-        assert_eq!(id.as_deref(), Some("0005000010143500"));
-    }
-
-    #[test]
-    fn a_wua_is_matched_to_its_game_by_name() {
-        let d = tmp("wua-match");
-        fs::write(d.join("The Legend of Zelda - The Wind Waker HD (USA).wua"), wua(&["0005000010143500_v0"])).unwrap();
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        let cat = serde_json::json!({ "apps": [{ "id": "zeldawwhdrecomp", "game": "The Legend of Zelda: The Wind Waker HD", "origin": "wiiu" }] });
-        assert!(match_catalog(&cat, &found).contains_key("zeldawwhdrecomp"));
-    }
-
-    #[test]
-    fn a_wua_with_only_an_update_says_its_games_id() {
-        let d = tmp("wua-update");
-        let p = d.join("Game Update.wua");
-        fs::write(&p, wua(&["0005000e10143500_v16"])).unwrap();
-        let id = copy_id(&p);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(id.as_deref(), Some("0005000010143500"));
-    }
-
-    #[test]
-    fn a_wua_named_dlc_that_holds_the_game_is_the_game() {
-        let d = tmp("wua-dlc");
-        let p = d.join("PIKMIN 3 (USA) (DLC) (v96).wua");
-        fs::write(&p, wua(&["000500001012bd00_v16", "0005000c1012bd00_v16"])).unwrap();
-        let kind = part_of_file(&p).kind;
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(kind, "game");
-    }
-
-    #[test]
-    fn a_wua_without_its_footer_is_ignored() {
-        let d = tmp("wua-bad");
-        fs::write(d.join("Game.wua"), [0u8; 512]).unwrap();
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert!(found.is_empty());
-    }
-
-    #[test]
-    fn wux_and_wud_images_are_wii_u_copies() {
-        let d = tmp("wux-wud");
-        let mut wux = vec![0u8; 64];
-        wux[..4].copy_from_slice(b"WUX0");
-        fs::write(d.join("Game A.wux"), wux).unwrap();
-        let mut wud = vec![0u8; 64];
-        wud[..10].copy_from_slice(b"WUP-P-ARDE");
-        fs::write(d.join("Game B.wud"), wud).unwrap();
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.len(), 2);
-        assert!(found.iter().all(|r| r.system == "wiiu"));
-    }
-
-    /// The start of a PS5 package: its magic, then bytes that mean nothing without keys.
-    fn ps5_pkg() -> Vec<u8> {
-        let mut b = vec![0xA5u8; 0x100];
-        b[..4].copy_from_slice(b"\x7FFIH");
-        b
-    }
-
-    #[test]
-    fn a_split_ps5_pkg_is_one_copy() {
-        let d = tmp("ps5-split");
-        let game = d.join("PS5/Astro Bot");
-        fs::create_dir_all(&game).unwrap();
-        let first = game.join("JP9000-PPSA21559_00-0000000000000000_0.pkg");
-        fs::write(&first, ps5_pkg()).unwrap();
-        for n in 1..3 {
-            fs::write(game.join(format!("JP9000-PPSA21559_00-0000000000000000_{n}.pkg")), [0x11u8; 0x200]).unwrap();
-        }
-        let found = scan(&[d.clone()]);
-        let id = copy_id(&first);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.len(), 1);
-        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps5", "Astro Bot"));
-        assert_eq!(found[0].size, 0x100 + 2 * 0x200);
-        assert_eq!(id.as_deref(), Some("PPSA21559"));
-    }
-
-    #[test]
-    fn a_ps5_pkg_named_for_its_game_keeps_that_name() {
-        let d = tmp("ps5-named");
-        fs::write(d.join("Dead Cells.pkg"), ps5_pkg()).unwrap();
-        let found = scan(&[d.clone()]);
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].title, "Dead Cells");
-    }
-
-    #[test]
-    fn a_ps5_dlc_pkg_is_not_picked_as_the_game() {
-        let d = tmp("ps5-dlc");
-        let dlc = d.join("Dead Cells/dlc/EP9000-PPSA01341_00-DEADCELLSGIFT01.pkg");
-        fs::create_dir_all(dlc.parent().unwrap()).unwrap();
-        fs::write(&dlc, ps5_pkg()).unwrap();
-        let found = scan(&[d.clone()]);
-        let kind = part_of_file(&dlc).kind;
-        let cat = serde_json::json!({ "apps": [{ "id": "dc-ps5", "game": "Dead Cells", "origin": "ps5" }] });
-        let picked = match_catalog(&cat, &found);
-        let listed = files_of(&cat["apps"][0], &found).len();
-        let _ = fs::remove_dir_all(&d);
-        assert_eq!(found[0].title, "Dead Cells");
-        assert_eq!(kind, "dlc");
-        assert!(picked.is_empty());
-        assert_eq!(listed, 1);
     }
 
     #[test]
