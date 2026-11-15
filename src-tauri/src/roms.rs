@@ -242,6 +242,9 @@ pub fn copy_id(p: &Path) -> Option<String> {
     if let Some(id) = ps3_pkg_content_id(&head) {
         return Some(ps3_pkg_title_id(id));
     }
+    if head.starts_with(b"\x7FFIH") {
+        return ps5_title_id(p.file_stem()?.to_str()?);
+    }
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if N64.contains(&ext.as_str()) || matches!([head[0], head[1], head[2], head[3]], [0x80, 0x37, 0x12, 0x40] | [0x37, 0x80, 0x40, 0x12] | [0x40, 0x12, 0x37, 0x80]) {
         let mut h = [0u8; 0x40];
@@ -387,6 +390,9 @@ fn x360_package(p: &Path) -> Option<Package> {
 
 /// An Xbox 360 update or DLC package: named for its game, but never a copy of the game itself.
 pub fn is_extra_package(r: &RomFile) -> bool {
+    if r.system == "ps5" {
+        return r.path.is_file() && ps5_extra_kind(&r.path).is_some();
+    }
     r.system == "x360" && r.path.is_file() && x360_package(&r.path).is_some()
 }
 
@@ -542,6 +548,9 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
     // what looks like a file type is part of the content ID. No file type this scans for is that long.
     if ext.len() > 4 {
         return identify_package(p, size);
+    }
+    if ext == "pkg" && is_ps5_pkg(p) {
+        return identify_ps5_pkg(p, size);
     }
     if ext == "pkg" {
         return identify_ps3_pkg(p, size);
@@ -738,6 +747,68 @@ fn listed_set(app: &Value, rom: &RomFile) -> bool {
     }
     let Some(stem) = rom.path.file_stem().and_then(|s| s.to_str()) else { return false };
     copy_ids(app).contains(&id_key(stem))
+}
+
+/// A PS5 package (the fake-signed kind players install) starts with 7F FIH; a PS3 one with 7F PKG
+/// and a PS4 one with 7F CNT. Only the parts after the first of a split package lack it.
+fn is_ps5_pkg(p: &Path) -> bool {
+    let mut magic = [0u8; 4];
+    let read = fs::File::open(p).and_then(|mut f| f.read_exact(&mut magic));
+    read.is_ok() && &magic == b"\x7FFIH"
+}
+
+/// The PS5 title ID ("PPSA01341") in a content ID ("EP9000-PPSA01341_00-DEMONSSOULS00000"). The
+/// package's header keeps it only in its encrypted part, so it's read from the file's name, which
+/// is the content ID for packages as they're made.
+fn ps5_title_id(stem: &str) -> Option<String> {
+    let id = stem.get(7..16)?;
+    let is_content_id = stem.as_bytes().get(6) == Some(&b'-') && id.starts_with("PPSA") && valid_playstation_id(id);
+    is_content_id.then(|| id.to_string())
+}
+
+/// What a PS5 package kept in a folder named for its kind is: "dlc" or "update". Players keep a
+/// game's extra packages that way, as their names don't say it.
+fn ps5_extra_kind(p: &Path) -> Option<&'static str> {
+    let folder = p.parent()?.file_name()?.to_str()?.to_ascii_lowercase();
+    match folder.as_str() {
+        "dlc" | "dlcs" | "addons" | "add-ons" | "addon" => Some("dlc"),
+        "update" | "updates" | "patch" | "patches" => Some("update"),
+        _ => None,
+    }
+}
+
+/// The parts of a split package after its first: "X_0.pkg" goes on in "X_1.pkg", "X_2.pkg"...
+fn pkg_parts(p: &Path) -> Vec<PathBuf> {
+    let Some(stem) = p.file_stem().and_then(|s| s.to_str()) else { return vec![] };
+    let Some(base) = stem.strip_suffix("_0") else { return vec![] };
+    let mut parts = vec![];
+    for n in 1.. {
+        let part = p.with_file_name(format!("{base}_{n}.pkg"));
+        if !part.is_file() {
+            break;
+        }
+        parts.push(part);
+    }
+    parts
+}
+
+/// A PS5 package, as one copy however many parts it's split into (the parts after the first are
+/// never found on their own: they don't start with the package's magic). Named only by its content
+/// ID, it takes its title from the folder it's kept in, and an extra package from the game's.
+fn identify_ps5_pkg(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let stem = p.file_stem()?.to_str()?;
+    let rest: u64 = pkg_parts(p).iter().filter_map(|part| fs::metadata(part).ok()).map(|m| m.len()).sum();
+    let size = size()? + rest;
+    let folder = if ps5_extra_kind(p).is_some() { p.parent()?.parent()? } else { p.parent()? };
+    let folder_name = folder.file_name()?.to_str()?;
+    // A package kept straight in the console's folder has no folder of its own to be named by.
+    let console_folder = ["ps5", "playstation 5", "playstation5"].iter().any(|c| folder_name.eq_ignore_ascii_case(c));
+    let title = if ps5_title_id(stem).is_some() && !console_folder {
+        folder_name.to_string()
+    } else {
+        stem.strip_suffix("_0").unwrap_or(stem).to_string()
+    };
+    Some(RomFile { path: p.to_path_buf(), system: "ps5".into(), title, region: String::new(), size })
 }
 
 /// Read the title and title ID from the little-endian PSF index and string tables.
@@ -1058,6 +1129,10 @@ pub fn part_of_file(p: &Path) -> Part {
     // A PS3 update package's content ID usually says so ("UP0082-BLUS31197_00-DOD3PATCH0000101"),
     // even when its file is only named by that ID.
     let is_pkg = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pkg"));
+    let ps5_extra = if is_pkg && is_ps5_pkg(p) { ps5_extra_kind(p) } else { None };
+    if let Some(kind) = ps5_extra {
+        return Part { kind, disc: None, of: None };
+    }
     let pkg = if is_pkg { ps3_pkg_header(p) } else { None };
     let pkg_patch = pkg.as_ref().and_then(|h| ps3_pkg_content_id(h)).is_some_and(|id| id.to_ascii_uppercase().contains("PATCH"));
     if pkg_patch {
@@ -1924,6 +1999,60 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         assert_eq!(found.len(), 2);
         assert!(found.iter().all(|r| r.system == "wiiu"));
+    }
+
+    /// The start of a PS5 package: its magic, then bytes that mean nothing without keys.
+    fn ps5_pkg() -> Vec<u8> {
+        let mut b = vec![0xA5u8; 0x100];
+        b[..4].copy_from_slice(b"\x7FFIH");
+        b
+    }
+
+    #[test]
+    fn a_split_ps5_pkg_is_one_copy() {
+        let d = tmp("ps5-split");
+        let game = d.join("PS5/Astro Bot");
+        fs::create_dir_all(&game).unwrap();
+        let first = game.join("JP9000-PPSA21559_00-0000000000000000_0.pkg");
+        fs::write(&first, ps5_pkg()).unwrap();
+        for n in 1..3 {
+            fs::write(game.join(format!("JP9000-PPSA21559_00-0000000000000000_{n}.pkg")), [0x11u8; 0x200]).unwrap();
+        }
+        let found = scan(&[d.clone()]);
+        let id = copy_id(&first);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].system.as_str(), found[0].title.as_str()), ("ps5", "Astro Bot"));
+        assert_eq!(found[0].size, 0x100 + 2 * 0x200);
+        assert_eq!(id.as_deref(), Some("PPSA21559"));
+    }
+
+    #[test]
+    fn a_ps5_pkg_named_for_its_game_keeps_that_name() {
+        let d = tmp("ps5-named");
+        fs::write(d.join("Dead Cells.pkg"), ps5_pkg()).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "Dead Cells");
+    }
+
+    #[test]
+    fn a_ps5_dlc_pkg_is_not_picked_as_the_game() {
+        let d = tmp("ps5-dlc");
+        let dlc = d.join("Dead Cells/dlc/EP9000-PPSA01341_00-DEADCELLSGIFT01.pkg");
+        fs::create_dir_all(dlc.parent().unwrap()).unwrap();
+        fs::write(&dlc, ps5_pkg()).unwrap();
+        let found = scan(&[d.clone()]);
+        let kind = part_of_file(&dlc).kind;
+        let cat = serde_json::json!({ "apps": [{ "id": "dc-ps5", "game": "Dead Cells", "origin": "ps5" }] });
+        let picked = match_catalog(&cat, &found);
+        let listed = files_of(&cat["apps"][0], &found).len();
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found[0].title, "Dead Cells");
+        assert_eq!(kind, "dlc");
+        assert!(picked.is_empty());
+        assert_eq!(listed, 1);
     }
 
     #[test]
