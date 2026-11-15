@@ -2174,6 +2174,10 @@
       items = [{ run: () => { TS.stage = S.setup[id]?.inputs?.length ? 'inputs' : 'pick'; TS.named = {}; setTimeout(tsDraw, 0); } }];
       body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
+    if (TS.stage === 'pick') {
+      const location = setupLocationHtml(id, su, true);
+      body += `${location}${it(t('Open its folder'), (S.library[parentId(id)] || {}).path || '', () => invoke('open_folder', { id: parentId(id) }).catch(fail))}`;
+    }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
     if (TS.stage === 'inputs') {

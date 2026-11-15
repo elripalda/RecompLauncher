@@ -233,13 +233,37 @@ These fill in anywhere a path, an argument or a value is written:
 
 | | |
 | --- | --- |
-| `{install}` | Your game's folder |
+| `{install}` | Your game's installation folder, including an exact folder chosen during Easy Install |
 | `{game}` | The player's copy (the .iso or the folder; for a .cue, its .bin unless `label` names .cue) |
 | `{documents}` | Documents |
 | `{local}` | AppData\Local, or ~/.local/share |
 | `{config}` | AppData\Roaming, or ~/.config |
 | `{home}` | The user's home folder |
 | `{pad}` | The controller plugged in: `xbox` or `playstation` |
+
+Easy Install lets the player choose an exact installation folder. Use `{install}` consistently for
+content your setup generates there, the paths used at launch, and `prepare.done`. For example,
+if the `--prepare` step in the example below writes `prepared.bin` next to `yourgame.exe`:
+
+```json
+{
+  "format": 1,
+  "prepare": {
+    "program": ["yourgame.exe"],
+    "args": ["--prepare", "--game", "{game}"],
+    "done": ["{install}/prepared.bin"]
+  },
+  "start": {"program": ["yourgame.exe"]},
+  "folders": {"game": [{"path": "{install}"}]}
+}
+```
+
+This illustrates the setup contract; use the options your own program actually supports. If a
+builder writes elsewhere, pass its documented destination option an `{install}`-relative folder
+and point its launch/config paths at that same folder. Choosing an install location does not rewrite
+`{home}`, change an existing external build, or invent a destination option for a builder. Setup
+shows separately declared build locations. Keep source inputs outside the install unless delivery
+into it is explicitly required. No new manifest field or feature flag is needed for folder selection.
 
 Where a file can be in more than one place, write a list. The first entry whose `if` exists is
 used, and an entry without `if` is the fallback:

@@ -1365,7 +1365,6 @@
  "Its build isn't on this PC anymore.": "Sa version compilée n’est plus sur ce PC.",
  "No reports for this version yet.": "Aucun rapport pour cette version pour l’instant.",
  "Not verified": "Non vérifiée",
- "Pick the folder for each new game when you install it, Easy Install too. Off: new games go to the default library.": "Choisissez le dossier de chaque nouveau jeu à son installation, Installation facile comprise. Désactivé: les nouveaux jeux vont dans la bibliothèque par défaut.",
  "Relink Setup": "Relier la Configuration",
  "Reports": "Rapports",
  "Scan It Online": "L’analyser en Ligne",
@@ -1459,5 +1458,17 @@
  "{name} stays on the version it has.": "{name} reste sur la version qu’il a.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} contient déjà les fichiers de {name}. Le lanceur peut les utiliser depuis là.",
  "{size} freed. Your copy is in the {bin}.": "{size} libérés. Votre copie est dans: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} est sortie. Ce jeu reste sur {old} jusqu’à ce que vous repreniez les mises à jour."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} est sortie. Ce jeu reste sur {old} jusqu’à ce que vous repreniez les mises à jour.",
+ "Choose game folder…": "Choisir le dossier du jeu…",
+ "New game folder…": "Nouveau dossier de jeu…",
+ "Folder name": "Nom du dossier",
+ "Free space unknown": "Espace libre inconnu",
+ "Installed in {folder}.": "Installé dans {folder}.",
+ "Using the build in {folder}.": "Utilisation de la version dans {folder}.",
+ "Choose a folder name without slashes.": "Choisissez un nom de dossier sans barres obliques.",
+ "Choose the game folder. Updates return here. Your original game files stay where they are.": "Choisissez le dossier du jeu. Les mises à jour y reviendront. Vos fichiers originaux restent à leur emplacement.",
+ "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "Demander aussi le dossier pour les installations ordinaires. Installation facile permet toujours de choisir le dossier du jeu.",
+ "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "Le programme d’installation a utilisé un autre dossier. Choisissez-le ci-dessous pour accepter cet emplacement, ou relancez l’installation avec le dossier choisi.",
+ "Ask for ordinary installs too": "Demander aussi pour les installations ordinaires",
+ "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "Désactivé : les archives téléchargées sont supprimées après installation. Activé : elles sont conservées à côté du dossier du jeu."
 }

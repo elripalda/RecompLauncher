@@ -44,6 +44,9 @@ pub struct Installed {
     pub version: String,
     /// The game's folder.
     pub path: PathBuf,
+    /// An installation created in a dedicated folder, including an exact player-selected target.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub managed_install: bool,
     /// The program to start, relative to `path`.
     #[serde(default)]
     pub exe: Option<PathBuf>,
@@ -398,6 +401,9 @@ impl Default for Settings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Library {
+    /// Unfinished downloads retain their exact destination and release across launcher restarts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pending_installs: BTreeMap<String, crate::install_location::Request>,
     /// Old ids retained for Steam and desktop shortcuts after correcting a project match.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub project_aliases: BTreeMap<String, String>,
@@ -595,6 +601,7 @@ impl Library {
         l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
         l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
         l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
+        l.pending_installs = serde_json::from_value(field("pending_installs")).unwrap_or_default();
         l
     }
 

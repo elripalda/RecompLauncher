@@ -33,7 +33,7 @@ function namedInputsShell(id, su, ns = {}, game = {}, tv = false) {
   const selected = namedInputRows(su).some((r) => !r.shared && r.path);
   const disc = `<div class="${tv ? 'tv-media' : 'su-media'}" aria-hidden="true">${gameMediaHtml(game, selected ? '' : 'ghost')}</div>`;
   const summary = `<p class="ni-disc-summary" role="status">${esc(namedDiscSummary(su))}</p>`;
-  return tv ? `<div class="ni-tv-layout"><div class="ni-tv-art">${disc}${summary}</div><div class="ni-tv">${namedInputsView(id, su, ns, game)}</div></div>`
+  return tv ? `<div class="ni-tv-layout"><div class="ni-tv-art">${disc}${summary}</div><div class="ni-tv">${namedInputsView(id, su, { ...ns, tv: true }, game)}</div></div>`
     : `<div class="su-in ni-layout"><div class="su-stage ni-art">${disc}<div class="drive"><i></i></div>${summary}</div><div class="su-r ni-content">${namedInputsView(id, su, ns, game)}</div></div>`;
 }
 function namedInputsView(id, su, ns = {}, game = {}) {
@@ -52,6 +52,8 @@ function namedInputsView(id, su, ns = {}, game = {}) {
   const heading = game.game || game.name;
   const multiple = rows.filter((r) => r.role === 'disc').length > 1;
   return `<div class="ni-heading"><h2>${esc(heading ? tf(multiple ? 'Insert your copies of {game}' : 'Insert your copy of {game}', { game: heading }) : t('Choose your game files'))}</h2><p>${esc(tf('{ready} of {total} required files selected', { ready, total: required.length }))}</p></div>
+    ${typeof setupLocationHtml === 'function' ? setupLocationHtml(id, su, !!ns.tv) : ''}
+    ${ns.tv ? `<button type="button" class="btn sm" data-ni="open-install-folder">${esc(t('Open its folder'))}</button>` : ''}
     <div class="ni-scroll">${relinkCards(su, 'data-ni')}${group('Required files', required.filter((r) => !r.shared))}${group('Shared keys', required.filter((r) => r.shared))}${optional.length ? `<div class="ni-optional"><button type="button" class="ni-optional-toggle" data-ni="toggle-optional" aria-expanded="${!!ns.extras}" aria-controls="ni-optional-${esc(id)}"><span>${esc(optionalLabel)} <span class="ni-optional-count">${esc(tf('{added} of {total} added', { added, total: optional.length }))}</span></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="ni-optional-${esc(id)}" ${ns.extras ? '' : 'hidden'}>${group('Optional content', optional)}</div></div>` : ''}</div>
     ${ns.confirm ? `<div class="ni-notice"><p>${esc(t('Removing shared keys affects every game that uses them. Your original file stays where it is.'))}</p><button type="button" class="btn sm" data-ni="remove-confirm" data-input="${esc(ns.confirm)}">${esc(t('Remove shared keys'))}</button><button type="button" class="btn sm" data-ni="cancel-remove">${esc(t('Keep'))}</button></div>` : ''}
     ${error ? `<p class="su-err" role="alert">${esc(t(error))}</p>` : ''}
@@ -119,6 +121,7 @@ async function useOwnBuild(id) {
 }
 async function namedInputsAction(id, act, input, ns) {
   if (ns.busy) return;
+  if (act === 'open-install-folder') { await invoke('open_folder', { id: parentId(id) }).catch(fail); return; }
   if (act === 'toggle-optional') { ns.extras = !ns.extras; return; }
   if (act === 'remove-key') { ns.confirm = input; return; }
   if (act === 'cancel-remove') { ns.confirm = ''; return; }

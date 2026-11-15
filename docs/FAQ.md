@@ -34,6 +34,25 @@ No. Everything works without one. A free account adds cloud saves, so the same s
 
 The Windows default is a short folder near the top of the drive because some games break in long or OneDrive-synced paths.
 
+**Easy Install asks where each new game should go**, on desktop and in Big Picture. Choosing a
+library such as `D:\Recomp Library` creates the game's own folder inside it. **Choose game folder…**
+uses the exact folder you select, such as `E:\Games\My Recomp`, without adding another folder name.
+On desktop, you can edit the full path to create a new folder; in Big Picture, choose **New game
+folder…**, pick its parent and enter a name. Choose an empty folder for a new install. To add a
+build that already contains files, use **I Already Have It** instead.
+
+The choice applies to this game and does not change your default library. Updates and interrupted
+installs return to the same folder, including after restarting the launcher. Use **Move** to change
+an installed game's location. Settings → **Ask Where to Install** also enables the prompt for
+ordinary installs; Easy Install always offers it.
+
+The release and content installed inside its folder use that location. Original ROMs, discs and
+named source files stay where you selected them. Shared keys and launcher metadata stay in the
+launcher's data folder, and saves/settings may live in the game's usual system folders. Some
+builders use a separate output folder; Easy Setup shows that folder too. Their developer needs to
+support choosing an output path to keep generated content with the installation. External installers
+can also choose another location; the launcher asks you to accept it before finishing setup.
+
 ## Will it touch my saves?
 
 It backs up a game's saves before every update. You can also back up, restore and turn on cloud saves per game from the game's **Saves** tab.
