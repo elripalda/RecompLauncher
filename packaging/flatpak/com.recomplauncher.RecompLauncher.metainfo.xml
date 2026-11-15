@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.52" date="2026-11-15">
+      <description>
+        <p>Easy Setup shows each game's own cartridge, card or disc with its art, with discs that spin and cartridges that click into place, and optional console labels across the top of covers.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.51" date="2026-11-15">
       <description>
         <p>Updates keep the setup and lost setups can be relinked, builds made with a developer's own launcher are picked up, ratings for the latest version, cleaner game cards, reasons for recommended versions, a choice of install folder, sign-in for reports, and a single Verified label for checked releases.</p>
