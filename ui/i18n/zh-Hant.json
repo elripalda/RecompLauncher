@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "每個遊戲都照原樣安裝，由它自己的安裝程式或啟動器來設定。若只想對某個遊戲略過，請在它的選單中使用「略過輕鬆設定」。",
  "Skip Easy Setup": "略過輕鬆設定",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} 略過輕鬆設定：照原樣安裝，由它自己的安裝程式或啟動器來設定。",
- "{name} uses Easy Setup again.": "{name} 重新使用輕鬆設定。"
+ "{name} uses Easy Setup again.": "{name} 重新使用輕鬆設定。",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "以前用遊戲自帶的啟動器或在別處建置過？請選擇它的資料夾。",
+ "Choose Folder": "選擇資料夾",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "此遊戲略過了輕鬆設定，需要先用你的副本建置才能啟動。請選擇你已有建置的資料夾，或讓輕鬆設定來建置。",
+ "It starts your own build now.": "現在啟動的是你自己的建置。",
+ "Point to Your Build": "指定你的建置",
+ "That folder is empty. Pick the folder your build is in.": "該資料夾是空的。請選擇你的建置所在的資料夾。",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "那是啟動器為此遊戲使用的資料夾。請選擇你的建置所在的資料夾。",
+ "The folder your build is in": "你的建置所在的資料夾",
+ "The game's own setup builds it into {folder}.": "遊戲自己的設定會把它建置到 {folder}。",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "該資料夾及其 bin 資料夾中沒有程式。請選擇你的建置所在的資料夾。",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "此遊戲不會建置到單獨的資料夾，因此沒有可指定的建置。",
+ "Use Easy Setup": "使用輕鬆設定",
+ "Use a Build You Already Have": "使用你已有的建置",
+ "Use a Build You Already Have (On)…": "使用你已有的建置（已開啟）…",
+ "Use a Build You Already Have…": "使用你已有的建置…",
+ "Your own build": "你自己的建置"
 }

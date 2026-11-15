@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Mọi trò chơi được cài nguyên bản, và trình cài đặt hoặc launcher riêng của nó sẽ thiết lập. Để bỏ qua chỉ cho một trò chơi, dùng “Bỏ qua thiết lập dễ dàng” trong menu của trò đó.",
  "Skip Easy Setup": "Bỏ qua thiết lập dễ dàng",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} bỏ qua thiết lập dễ dàng: trò chơi được cài nguyên bản, và trình cài đặt hoặc launcher riêng của nó sẽ thiết lập.",
- "{name} uses Easy Setup again.": "{name} lại dùng thiết lập dễ dàng."
+ "{name} uses Easy Setup again.": "{name} lại dùng thiết lập dễ dàng.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Đã từng build, bằng launcher riêng của game hay ở nơi khác? Hãy chọn thư mục của nó.",
+ "Choose Folder": "Chọn thư mục",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Trò chơi này bỏ qua thiết lập dễ dàng và cần được build từ bản sao của bạn trước khi khởi động. Hãy chọn thư mục bản build bạn đã có, hoặc để thiết lập dễ dàng build nó.",
+ "It starts your own build now.": "Giờ nó khởi động bản build của riêng bạn.",
+ "Point to Your Build": "Chỉ đến bản build của bạn",
+ "That folder is empty. Pick the folder your build is in.": "Thư mục đó trống. Hãy chọn thư mục chứa bản build của bạn.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Đó là thư mục của launcher cho trò chơi này. Hãy chọn thư mục chứa bản build của bạn.",
+ "The folder your build is in": "Thư mục chứa bản build của bạn",
+ "The game's own setup builds it into {folder}.": "Thiết lập riêng của trò chơi sẽ build nó vào {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "Không có chương trình nào trong thư mục đó hay thư mục bin của nó. Hãy chọn thư mục chứa bản build của bạn.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Trò chơi này không được build vào thư mục riêng, nên không có bản build nào để chỉ đến.",
+ "Use Easy Setup": "Dùng thiết lập dễ dàng",
+ "Use a Build You Already Have": "Dùng bản build bạn đã có",
+ "Use a Build You Already Have (On)…": "Dùng bản build bạn đã có (Bật)…",
+ "Use a Build You Already Have…": "Dùng bản build bạn đã có…",
+ "Your own build": "Bản build của riêng bạn"
 }

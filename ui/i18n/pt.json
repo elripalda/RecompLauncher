@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Cada jogo instala-se tal como vem, e o seu próprio instalador ou launcher configura-o. Para a saltar só num jogo, usa «Saltar configuração fácil» no menu dele.",
  "Skip Easy Setup": "Saltar configuração fácil",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} salta a configuração fácil: instala-se tal como vem, e o seu próprio instalador ou launcher configura-o.",
- "{name} uses Easy Setup again.": "{name} volta a usar a configuração fácil."
+ "{name} uses Easy Setup again.": "{name} volta a usar a configuração fácil.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Já o compilaste, com o launcher do próprio jogo ou noutro sítio? Escolhe a pasta.",
+ "Choose Folder": "Escolher pasta",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Este jogo salta a configuração fácil e é compilado a partir da tua cópia antes de poder iniciar. Escolhe a pasta da compilação que já tens, ou deixa a configuração fácil compilá-lo.",
+ "It starts your own build now.": "Agora inicia a tua própria compilação.",
+ "Point to Your Build": "Indica a tua compilação",
+ "That folder is empty. Pick the folder your build is in.": "Essa pasta está vazia. Escolhe a pasta onde está a tua compilação.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Essa é a pasta do launcher para este jogo. Escolhe a pasta onde está a tua compilação.",
+ "The folder your build is in": "A pasta da tua compilação",
+ "The game's own setup builds it into {folder}.": "A configuração do próprio jogo compila-o em {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "Não há nenhum programa nessa pasta nem na pasta bin dela. Escolhe a pasta onde está a tua compilação.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Este jogo não é compilado numa pasta própria, por isso não há compilação para indicar.",
+ "Use Easy Setup": "Usar configuração fácil",
+ "Use a Build You Already Have": "Usar uma compilação que já tens",
+ "Use a Build You Already Have (On)…": "Usar uma compilação que já tens (ativado)…",
+ "Use a Build You Already Have…": "Usar uma compilação que já tens…",
+ "Your own build": "A tua própria compilação"
 }

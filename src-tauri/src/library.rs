@@ -95,6 +95,12 @@ pub struct Installed {
     /// The player chose the build already on this PC (its game folder) instead of building it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prebuilt: bool,
+    /// The player's own build of a game its setup builds into a folder of its own (`folders.game`,
+    /// often under the home folder): kept wherever they put it, and used in that folder's place for
+    /// starting it, its settings file and its saves. A build by the launcher goes back to the setup's
+    /// own folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_dir: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input_staged: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

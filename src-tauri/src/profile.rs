@@ -1520,6 +1520,53 @@ impl Profile {
     /// The game's own folder (the first `folders.game`) when it has a setup step and nothing says
     /// what it leaves, and that folder already holds files: a build made before, by this
     /// launcher or the developer's own.
+    /// The folder this game's setup builds it into (its first `folders.game`), filled in, when the
+    /// game is built from the player's copy and that folder isn't the game's own: a build the player
+    /// has somewhere else can stand in for it.
+    pub fn build_home(&self, install: &Path) -> Option<PathBuf> {
+        self.prepare.as_ref()?;
+        self.start.as_ref()?;
+        let first = self.folders.get("game")?.first()?;
+        if first.path.contains("{game}") {
+            return None;
+        }
+        let dir = PathBuf::from(fill(&first.path, install, None));
+        (dir.is_absolute() && dir != install && !dir.starts_with(install)).then_some(dir)
+    }
+
+    /// The player's build in `to` standing in for the setup's own folder: every path of the
+    /// profile in that folder (how it starts, its settings files, its saves, its folders) moves
+    /// with it. What the setup step runs stays as it is: the launcher's own build goes to its folder.
+    pub fn rebase_build(&mut self, install: &Path, to: &Path) {
+        let Some(from) = self.build_home(install) else { return };
+        let moved = |t: &mut String| {
+            if t.is_empty() || t.contains("{game}") {
+                return;
+            }
+            let full = PathBuf::from(fill(t, install, None));
+            if let Ok(rest) = full.strip_prefix(&from) {
+                *t = (if rest.as_os_str().is_empty() { to.to_path_buf() } else { to.join(rest) }).to_string_lossy().into_owned();
+            }
+        };
+        if let Some(st) = self.start.as_mut() {
+            st.args.iter_mut().for_each(moved);
+            st.env.values_mut().for_each(moved);
+        }
+        for c in self.config.iter_mut() {
+            for f in c.file.iter_mut() {
+                moved(&mut f.path);
+                moved(&mut f.when);
+            }
+        }
+        self.saves.iter_mut().for_each(moved);
+        for list in self.folders.values_mut() {
+            for f in list.iter_mut() {
+                moved(&mut f.path);
+                moved(&mut f.when);
+            }
+        }
+    }
+
     pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
         let pr = self.prepare.as_ref()?;
         if !pr.done.is_empty() {
@@ -3637,5 +3684,61 @@ mod build_here_tests {
         v["prepare"]["done"] = serde_json::json!(done.to_string_lossy());
         assert_eq!(prof(v).prepare.unwrap().done.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod own_build_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn builder() -> Profile {
+        serde_json::from_value(json!({
+            "format": 1,
+            "game": { "kind": "iso_or_folder", "label": "Your copy" },
+            "start": { "program": ["HopperBuilder.exe"], "args": ["--play", "{home}/Games/Hopper"] },
+            "prepare": { "program": ["HopperBuilder.exe"], "args": ["--cli", "--prepare", "--game", "{game}"] },
+            "config": [{ "id": "main", "format": "ini", "file": [{ "path": "{home}/Games/Hopper/options.ini" }] }],
+            "saves": ["{local}/hopper", "{home}/Games/Hopper/user"],
+            "folders": { "saves": [{ "path": "{home}/Games/Hopper/user", "if": "{home}/Games/Hopper/user" }], "game": [{ "path": "{home}/Games/Hopper" }] }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_build_the_player_already_has_stands_in_for_the_setups_own_folder() {
+        let install = std::env::temp_dir().join("rl-own-build-install");
+        let mine = std::env::temp_dir().join("rl-own-build-mine");
+        let mut p = builder();
+        let home = p.build_home(&install).expect("built into a folder of its own");
+        assert!(home.ends_with("Games/Hopper") || home.ends_with("Games\\Hopper"));
+        p.rebase_build(&install, &mine);
+        let s = p.start.as_ref().unwrap();
+        assert_eq!(s.args[0], "--play");
+        assert_eq!(PathBuf::from(&s.args[1]), mine);
+        assert_eq!(PathBuf::from(&p.config[0].file[0].path), mine.join("options.ini"));
+        assert_eq!(p.saves[0], "{local}/hopper", "paths outside that folder stay as they are");
+        assert_eq!(PathBuf::from(&p.saves[1]), mine.join("user"));
+        assert_eq!(PathBuf::from(&p.folders["saves"][0].when), mine.join("user"));
+        assert_eq!(PathBuf::from(&p.folders["game"][0].path), mine);
+        // What the setup step runs stays as it is: the launcher's own build goes to its folder.
+        assert_eq!(p.prepare.as_ref().unwrap().args, vec!["--cli", "--prepare", "--game", "{game}"]);
+    }
+
+    #[test]
+    fn only_games_built_into_a_folder_of_their_own_have_one() {
+        let install = std::env::temp_dir().join("rl-own-build-install2");
+        let mut p = builder();
+        p.folders.insert("game".into(), vec![Place { path: "{install}/game".into(), when: String::new() }]);
+        assert_eq!(p.build_home(&install), None, "inside the game's own folder");
+        let mut q = builder();
+        q.prepare = None;
+        assert_eq!(q.build_home(&install), None, "not built from the copy");
+        let mut r = builder();
+        r.folders.remove("game");
+        assert_eq!(r.build_home(&install), None);
+        let before = serde_json::to_string(&p).unwrap();
+        p.rebase_build(&install, Path::new("/elsewhere"));
+        assert_eq!(serde_json::to_string(&p).unwrap(), before, "nothing moves without a folder of its own");
     }
 }

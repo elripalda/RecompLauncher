@@ -36,9 +36,32 @@ test('the menu item and the Settings switch', () => {
 });
 
 test('a skipped game starts as its own setup leaves it, after that setup when it has one', () => {
-  assert.match(rust, /let skipped = manual\.is_none\(\) && easy_skipped\(&st\.lib\.lock\(\)\.unwrap\(\)\.settings\.ui, id\);/);
+  assert.match(rust, /let mut skipped = manual\.is_none\(\) && easy_skipped\(&st\.lib\.lock\(\)\.unwrap\(\)\.settings\.ui, id\);/);
   assert.match(rust, /manual = Some\(library::ManualSetup \{ how: "none"\.into\(\), \.\.Default::default\(\) \}\);/);
   assert.match(rust, /if \(manual\.is_none\(\) \|\| rebuild \|\| skipped\) && !prof/);
   // After the "built from your copy" refusal of Set Up By Hand, so skipping isn't refused.
-  assert.ok(rust.indexOf('NEED_WAY|') < rust.indexOf('let skipped = manual.is_none()'));
+  assert.ok(rust.indexOf('NEED_WAY|') < rust.indexOf('let mut skipped = manual.is_none()'));
+  // A game built from the copy into a folder of its own starts the player's build instead, asked
+  // for once when there isn't one.
+  assert.match(rust, /return Err\(Error::Msg\(format!\("NEED_OWN_BUILD\|\{\}", home_dir\.display\(\)\)\)\);/);
+});
+
+const named = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
+const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+
+test('Use a Build You Already Have: a card in Easy Setup, a menu item, and the skipped-game prompt', () => {
+  assert.match(fn(named, 'relinkCards'), /su\.own_build && !su\.prebuilt \? card\('ownbuild', 'Use a Build You Already Have'/);
+  assert.match(fn(named, 'useOwnBuild'), /invoke\('setup_use_build', \{ id, folder: typeof p === 'string' \? p : p\.path \}\)/);
+  assert.match(app, /case 'ownbuild':\n      try \{ if \(!\(await useOwnBuild\(id\)\)\) return; \}/);
+  assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
+  assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
+  assert.match(tv, /su\.own_build && !su\.prebuilt \? it\(t\('Use a Build You Already Have'\)/);
+  // The setup screen says where the game's own setup builds it.
+  assert.match(app, /su\.own_build \? `<p class="su-where">\$\{esc\(tf\('The game\\'s own setup builds it into \{folder\}\.'/);
+});
+
+test('the launcher building it again goes back to the setup\'s own folder; an update keeps the player\'s', () => {
+  assert.equal((rust.match(/if g\.build_dir\.take\(\)\.is_some\(\) \{/g) || []).length, 2);
+  assert.match(rust, /build_dir: prev\.as_ref\(\)\.and_then\(\|p\| p\.build_dir\.clone\(\)\),/);
+  assert.match(rust, /if let Some\(dir\) = g\.build_dir\.as_ref\(\)\.filter\(\|d\| d\.is_dir\(\)\) \{\n\s+p\.rebase_build\(&g\.path, dir\);/);
 });

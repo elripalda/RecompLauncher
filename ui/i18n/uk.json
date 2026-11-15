@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Кожна гра встановлюється як є, а налаштовує її власний інсталятор або лаунчер. Щоб пропустити його лише для однієї гри, скористайтеся «Пропустити просте налаштування» в її меню.",
  "Skip Easy Setup": "Пропустити просте налаштування",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} пропускає просте налаштування: гра встановлюється як є, а налаштовує її власний інсталятор або лаунчер.",
- "{name} uses Easy Setup again.": "{name} знову використовує просте налаштування."
+ "{name} uses Easy Setup again.": "{name} знову використовує просте налаштування.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Уже збирали гру, її власним лаунчером чи деінде? Виберіть теку збірки.",
+ "Choose Folder": "Вибрати теку",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Для цієї гри просте налаштування пропущено, а перед запуском її треба зібрати з вашої копії. Виберіть теку збірки, яка у вас уже є, або дозвольте простому налаштуванню зібрати гру.",
+ "It starts your own build now.": "Тепер запускається ваша власна збірка.",
+ "Point to Your Build": "Вкажіть свою збірку",
+ "That folder is empty. Pick the folder your build is in.": "Ця тека порожня. Виберіть теку, у якій лежить ваша збірка.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Це тека лаунчера для цієї гри. Виберіть теку, у якій лежить ваша збірка.",
+ "The folder your build is in": "Тека вашої збірки",
+ "The game's own setup builds it into {folder}.": "Власне налаштування гри збирає її в {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "У цій теці та її теці bin немає програми. Виберіть теку, у якій лежить ваша збірка.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Ця гра не збирається в окрему теку, тож вказувати нічого.",
+ "Use Easy Setup": "Використати просте налаштування",
+ "Use a Build You Already Have": "Використати готову збірку",
+ "Use a Build You Already Have (On)…": "Використати готову збірку (увімк.)…",
+ "Use a Build You Already Have…": "Використати готову збірку…",
+ "Your own build": "Ваша власна збірка"
 }

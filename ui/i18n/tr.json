@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Her oyun olduğu gibi kurulur ve kendi yükleyicisi ya da başlatıcısı onu ayarlar. Yalnızca bir oyunda atlamak için o oyunun menüsündeki “Kolay kurulumu atla”yı kullan.",
  "Skip Easy Setup": "Kolay kurulumu atla",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} kolay kurulumu atlıyor: olduğu gibi kurulur ve kendi yükleyicisi ya da başlatıcısı onu ayarlar.",
- "{name} uses Easy Setup again.": "{name} yeniden kolay kurulumu kullanıyor."
+ "{name} uses Easy Setup again.": "{name} yeniden kolay kurulumu kullanıyor.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Daha önce oyunun kendi başlatıcısıyla ya da başka yerde derlediniz mi? Klasörünü seçin.",
+ "Choose Folder": "Klasör seç",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Bu oyun kolay kurulumu atlıyor ve başlayabilmesi için önce kopyanızdan derleniyor. Elinizdeki derlemenin klasörünü seçin ya da kolay kurulumun derlemesine izin verin.",
+ "It starts your own build now.": "Artık kendi derlemeniz başlıyor.",
+ "Point to Your Build": "Derlemenizi gösterin",
+ "That folder is empty. Pick the folder your build is in.": "Bu klasör boş. Derlemenizin bulunduğu klasörü seçin.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Bu, başlatıcının bu oyun için kullandığı klasör. Derlemenizin bulunduğu klasörü seçin.",
+ "The folder your build is in": "Derlemenizin klasörü",
+ "The game's own setup builds it into {folder}.": "Oyunun kendi kurulumu onu {folder} klasörüne derliyor.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "Bu klasörde ve bin klasöründe program yok. Derlemenizin bulunduğu klasörü seçin.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Bu oyun kendine ait bir klasöre derlenmiyor, bu yüzden gösterilecek bir derleme yok.",
+ "Use Easy Setup": "Kolay kurulumu kullan",
+ "Use a Build You Already Have": "Elinizdeki bir derlemeyi kullanın",
+ "Use a Build You Already Have (On)…": "Elinizdeki bir derlemeyi kullanın (açık)…",
+ "Use a Build You Already Have…": "Elinizdeki bir derlemeyi kullanın…",
+ "Your own build": "Kendi derlemeniz"
 }

@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Setiap game dipasang apa adanya, dan penginstal atau launcher miliknya sendiri yang menyiapkannya. Untuk melewatinya hanya pada satu game, gunakan “Lewati penyiapan mudah” di menunya.",
  "Skip Easy Setup": "Lewati penyiapan mudah",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} melewati penyiapan mudah: dipasang apa adanya, dan penginstal atau launcher miliknya sendiri yang menyiapkannya.",
- "{name} uses Easy Setup again.": "{name} kembali memakai penyiapan mudah."
+ "{name} uses Easy Setup again.": "{name} kembali memakai penyiapan mudah.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Sudah pernah dibuild, dengan launcher bawaan game atau di tempat lain? Pilih foldernya.",
+ "Choose Folder": "Pilih folder",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Game ini melewati penyiapan mudah dan perlu dibuild dari salinanmu sebelum bisa dijalankan. Pilih folder build yang sudah kamu punya, atau biarkan penyiapan mudah yang membuildnya.",
+ "It starts your own build now.": "Sekarang yang dijalankan adalah build milikmu.",
+ "Point to Your Build": "Tunjukkan buildmu",
+ "That folder is empty. Pick the folder your build is in.": "Folder itu kosong. Pilih folder tempat buildmu berada.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Itu folder launcher untuk game ini. Pilih folder tempat buildmu berada.",
+ "The folder your build is in": "Folder buildmu",
+ "The game's own setup builds it into {folder}.": "Penyiapan bawaan game membuildnya ke {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "Tidak ada program di folder itu atau di folder bin-nya. Pilih folder tempat buildmu berada.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Game ini tidak dibuild ke folder sendiri, jadi tidak ada build yang perlu ditunjukkan.",
+ "Use Easy Setup": "Gunakan penyiapan mudah",
+ "Use a Build You Already Have": "Gunakan build yang sudah kamu punya",
+ "Use a Build You Already Have (On)…": "Gunakan build yang sudah kamu punya (aktif)…",
+ "Use a Build You Already Have…": "Gunakan build yang sudah kamu punya…",
+ "Your own build": "Build milikmu"
 }

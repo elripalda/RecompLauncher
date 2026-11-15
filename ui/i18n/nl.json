@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Elk spel wordt geïnstalleerd zoals het is, en het eigen installatieprogramma of de eigen launcher stelt het in. Om het voor één spel over te slaan, gebruik je ‘Eenvoudig instellen overslaan’ in het menu van dat spel.",
  "Skip Easy Setup": "Eenvoudig instellen overslaan",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} slaat eenvoudig instellen over: het wordt geïnstalleerd zoals het is, en het eigen installatieprogramma of de eigen launcher stelt het in.",
- "{name} uses Easy Setup again.": "{name} gebruikt weer eenvoudig instellen."
+ "{name} uses Easy Setup again.": "{name} gebruikt weer eenvoudig instellen.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Al eerder gebouwd, met de eigen launcher van het spel of ergens anders? Kies de map.",
+ "Choose Folder": "Map kiezen",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Dit spel slaat eenvoudig instellen over en wordt uit je kopie gebouwd voordat het kan starten. Kies de map van de build die je al hebt, of laat eenvoudig instellen het bouwen.",
+ "It starts your own build now.": "Het start nu je eigen build.",
+ "Point to Your Build": "Wijs je build aan",
+ "That folder is empty. Pick the folder your build is in.": "Die map is leeg. Kies de map waar je build in staat.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Dat is de map van de launcher voor dit spel. Kies de map waar je build in staat.",
+ "The folder your build is in": "De map van je build",
+ "The game's own setup builds it into {folder}.": "De eigen installatie van het spel bouwt het in {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "Er staat geen programma in die map of de bin-map daarin. Kies de map waar je build in staat.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Dit spel wordt niet in een eigen map gebouwd, dus er is geen build om aan te wijzen.",
+ "Use Easy Setup": "Eenvoudig instellen gebruiken",
+ "Use a Build You Already Have": "Een build gebruiken die je al hebt",
+ "Use a Build You Already Have (On)…": "Een build gebruiken die je al hebt (aan)…",
+ "Use a Build You Already Have…": "Een build gebruiken die je al hebt…",
+ "Your own build": "Je eigen build"
 }

@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "모든 게임이 받은 그대로 설치되고, 게임 자체의 설치 프로그램이나 런처가 설정합니다. 한 게임만 건너뛰려면 그 게임 메뉴의 '간편 설정 건너뛰기'를 사용하세요.",
  "Skip Easy Setup": "간편 설정 건너뛰기",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name}은(는) 간편 설정을 건너뜁니다. 받은 그대로 설치되고, 게임 자체의 설치 프로그램이나 런처가 설정합니다.",
- "{name} uses Easy Setup again.": "{name}이(가) 다시 간편 설정을 사용합니다."
+ "{name} uses Easy Setup again.": "{name}이(가) 다시 간편 설정을 사용합니다.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "게임 자체 런처나 다른 곳에서 이미 빌드했나요? 그 폴더를 고르세요.",
+ "Choose Folder": "폴더 선택",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "이 게임은 간편 설정을 건너뛰며, 실행하기 전에 내 사본으로 빌드해야 합니다. 이미 가지고 있는 빌드의 폴더를 고르거나, 간편 설정으로 빌드하세요.",
+ "It starts your own build now.": "이제 내 빌드로 실행합니다.",
+ "Point to Your Build": "내 빌드 지정",
+ "That folder is empty. Pick the folder your build is in.": "그 폴더는 비어 있습니다. 빌드가 들어 있는 폴더를 고르세요.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "그것은 이 게임용 런처 폴더입니다. 빌드가 들어 있는 폴더를 고르세요.",
+ "The folder your build is in": "내 빌드가 있는 폴더",
+ "The game's own setup builds it into {folder}.": "게임 자체 설정이 {folder}에 빌드합니다.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "그 폴더와 그 안의 bin 폴더에 프로그램이 없습니다. 빌드가 들어 있는 폴더를 고르세요.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "이 게임은 자체 폴더에 빌드되지 않으므로 지정할 빌드가 없습니다.",
+ "Use Easy Setup": "간편 설정 사용",
+ "Use a Build You Already Have": "가지고 있는 빌드 사용",
+ "Use a Build You Already Have (On)…": "가지고 있는 빌드 사용(켜짐)…",
+ "Use a Build You Already Have…": "가지고 있는 빌드 사용…",
+ "Your own build": "내 빌드"
 }

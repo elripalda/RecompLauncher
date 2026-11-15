@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "ทุกเกมจะติดตั้งตามที่มา และตัวติดตั้งหรือลันเชอร์ของเกมเองจะตั้งค่าให้ หากต้องการข้ามเฉพาะเกมเดียว ให้ใช้ “ข้ามการตั้งค่าง่าย” ในเมนูของเกมนั้น",
  "Skip Easy Setup": "ข้ามการตั้งค่าง่าย",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} ข้ามการตั้งค่าง่าย: ติดตั้งตามที่มา และตัวติดตั้งหรือลันเชอร์ของเกมเองจะตั้งค่าให้",
- "{name} uses Easy Setup again.": "{name} กลับมาใช้การตั้งค่าง่ายแล้ว"
+ "{name} uses Easy Setup again.": "{name} กลับมาใช้การตั้งค่าง่ายแล้ว",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "เคยบิลด์ไว้แล้ว ด้วยลันเชอร์ของเกมเองหรือที่อื่นใช่ไหม เลือกโฟลเดอร์ของมัน",
+ "Choose Folder": "เลือกโฟลเดอร์",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "เกมนี้ข้ามการตั้งค่าง่าย และต้องบิลด์จากสำเนาของคุณก่อนจึงจะเปิดได้ เลือกโฟลเดอร์ของบิลด์ที่คุณมีอยู่แล้ว หรือให้การตั้งค่าง่ายบิลด์ให้",
+ "It starts your own build now.": "ตอนนี้จะเปิดบิลด์ของคุณเอง",
+ "Point to Your Build": "ระบุบิลด์ของคุณ",
+ "That folder is empty. Pick the folder your build is in.": "โฟลเดอร์นั้นว่างเปล่า เลือกโฟลเดอร์ที่มีบิลด์ของคุณ",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "นั่นคือโฟลเดอร์ของลันเชอร์สำหรับเกมนี้ เลือกโฟลเดอร์ที่มีบิลด์ของคุณ",
+ "The folder your build is in": "โฟลเดอร์ของบิลด์คุณ",
+ "The game's own setup builds it into {folder}.": "การตั้งค่าของเกมเองจะบิลด์ไว้ที่ {folder}",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "ไม่มีโปรแกรมในโฟลเดอร์นั้นหรือโฟลเดอร์ bin ของมัน เลือกโฟลเดอร์ที่มีบิลด์ของคุณ",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "เกมนี้ไม่ได้บิลด์ลงโฟลเดอร์ของตัวเอง จึงไม่มีบิลด์ให้ระบุ",
+ "Use Easy Setup": "ใช้การตั้งค่าง่าย",
+ "Use a Build You Already Have": "ใช้บิลด์ที่คุณมีอยู่แล้ว",
+ "Use a Build You Already Have (On)…": "ใช้บิลด์ที่คุณมีอยู่แล้ว (เปิด)…",
+ "Use a Build You Already Have…": "ใช้บิลด์ที่คุณมีอยู่แล้ว…",
+ "Your own build": "บิลด์ของคุณเอง"
 }

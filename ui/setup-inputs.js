@@ -104,7 +104,18 @@ function relinkCards(su, attr) {
   const prev = su.previous || [];
   const card = (act, title, sub, button) => `<div class="found su-relink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg><div class="k"><b>${esc(t(title))}</b><span title="${esc(sub)}">${esc(sub)}</span></div><button type="button" class="btn sm main" ${attr}="${act}">${esc(t(button))}</button></div>`;
   return (prev.length && !su.inputs_ready ? card('relink', 'Use My Previous Setup', prev.join(' · '), 'Use It') : '')
-    + (su.prebuilt ? card('prebuilt', 'Use the Build Already on This PC', su.prebuilt, 'Use It') : '');
+    + (su.prebuilt ? card('prebuilt', 'Use the Build Already on This PC', su.prebuilt, 'Use It') : '')
+    + (su.own_build && !su.prebuilt ? card('ownbuild', 'Use a Build You Already Have', t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), 'Choose Folder') : '');
+}
+// A build the player already has, anywhere (Use a Build You Already Have): its folder picked, and
+// used in place of building it again. True when it's set.
+async function useOwnBuild(id) {
+  const p = await pickFile({ title: t('The folder your build is in'), directory: true });
+  if (!p) return false;
+  await invoke('setup_use_build', { id, folder: typeof p === 'string' ? p : p.path });
+  S.setup[id] = await invoke('game_setup', { id });
+  await refreshState();
+  return true;
 }
 async function namedInputsAction(id, act, input, ns) {
   if (ns.busy) return;
@@ -123,6 +134,7 @@ async function namedInputsAction(id, act, input, ns) {
       return;
     }
     if (act === 'prebuilt') { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
+    if (act === 'ownbuild') return (await useOwnBuild(id)) ? 'ready' : undefined;
     if (act === 'dlss-off' || act === 'dlss-on') {
       await invoke('dlss_set', { id, input, on: act === 'dlss-on' });
     } else if (act === 'dlss-retry') {

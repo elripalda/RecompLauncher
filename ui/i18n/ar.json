@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "تُثبَّت كل لعبة كما هي، ويتولى مثبّتها أو مشغّلها الخاص إعدادها. لتخطيه في لعبة واحدة فقط، استخدم «تخطي الإعداد السهل» في قائمتها.",
  "Skip Easy Setup": "تخطي الإعداد السهل",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "تتخطى {name} الإعداد السهل: تُثبَّت كما هي، ويتولى مثبّتها أو مشغّلها الخاص إعدادها.",
- "{name} uses Easy Setup again.": "تعود {name} إلى استخدام الإعداد السهل."
+ "{name} uses Easy Setup again.": "تعود {name} إلى استخدام الإعداد السهل.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "سبق أن بنيتها، بمشغّل اللعبة الخاص أو في مكان آخر؟ اختر مجلدها.",
+ "Choose Folder": "اختر المجلد",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "تتخطى هذه اللعبة الإعداد السهل، وتُبنى من نسختك قبل أن تبدأ. اختر مجلد البناء الذي لديك بالفعل، أو دع الإعداد السهل يبنيها.",
+ "It starts your own build now.": "تبدأ الآن من بنائك الخاص.",
+ "Point to Your Build": "حدّد بناءك",
+ "That folder is empty. Pick the folder your build is in.": "هذا المجلد فارغ. اختر المجلد الذي فيه بناؤك.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "هذا مجلد المشغّل لهذه اللعبة. اختر المجلد الذي فيه بناؤك.",
+ "The folder your build is in": "مجلد بنائك",
+ "The game's own setup builds it into {folder}.": "يبنيها إعداد اللعبة الخاص في {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "لا يوجد برنامج في هذا المجلد ولا في مجلد bin داخله. اختر المجلد الذي فيه بناؤك.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "لا تُبنى هذه اللعبة في مجلد خاص بها، لذا لا يوجد بناء لتحديده.",
+ "Use Easy Setup": "استخدم الإعداد السهل",
+ "Use a Build You Already Have": "استخدم بناءً لديك بالفعل",
+ "Use a Build You Already Have (On)…": "استخدم بناءً لديك بالفعل (مفعّل)…",
+ "Use a Build You Already Have…": "استخدم بناءً لديك بالفعل…",
+ "Your own build": "بناؤك الخاص"
 }

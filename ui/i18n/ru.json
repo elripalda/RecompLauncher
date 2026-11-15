@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Каждая игра устанавливается как есть, а настраивает её собственный установщик или лаунчер. Чтобы пропустить её только для одной игры, используйте «Пропустить простую настройку» в её меню.",
  "Skip Easy Setup": "Пропустить простую настройку",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} пропускает простую настройку: игра устанавливается как есть, а настраивает её собственный установщик или лаунчер.",
- "{name} uses Easy Setup again.": "{name} снова использует простую настройку."
+ "{name} uses Easy Setup again.": "{name} снова использует простую настройку.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Уже собирали игру, её собственным лаунчером или где-то ещё? Выберите папку сборки.",
+ "Choose Folder": "Выбрать папку",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Для этой игры простая настройка пропущена, а перед запуском её нужно собрать из вашей копии. Выберите папку сборки, которая у вас уже есть, или позвольте простой настройке собрать игру.",
+ "It starts your own build now.": "Теперь запускается ваша собственная сборка.",
+ "Point to Your Build": "Укажите свою сборку",
+ "That folder is empty. Pick the folder your build is in.": "Эта папка пуста. Выберите папку, в которой лежит ваша сборка.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Это папка лаунчера для этой игры. Выберите папку, в которой лежит ваша сборка.",
+ "The folder your build is in": "Папка вашей сборки",
+ "The game's own setup builds it into {folder}.": "Собственная настройка игры собирает её в {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "В этой папке и её папке bin нет программы. Выберите папку, в которой лежит ваша сборка.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Эта игра не собирается в отдельную папку, поэтому указывать нечего.",
+ "Use Easy Setup": "Использовать простую настройку",
+ "Use a Build You Already Have": "Использовать готовую сборку",
+ "Use a Build You Already Have (On)…": "Использовать готовую сборку (вкл.)…",
+ "Use a Build You Already Have…": "Использовать готовую сборку…",
+ "Your own build": "Ваша собственная сборка"
 }

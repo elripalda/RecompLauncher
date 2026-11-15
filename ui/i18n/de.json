@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "Jedes Spiel wird so installiert, wie es kommt, und sein eigenes Installationsprogramm oder sein Launcher richtet es ein. Um sie nur für ein Spiel zu überspringen, nutze „Einfache Einrichtung überspringen“ in seinem Menü.",
  "Skip Easy Setup": "Einfache Einrichtung überspringen",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} überspringt die einfache Einrichtung: Es wird so installiert, wie es kommt, und sein eigenes Installationsprogramm oder sein Launcher richtet es ein.",
- "{name} uses Easy Setup again.": "{name} nutzt wieder die einfache Einrichtung."
+ "{name} uses Easy Setup again.": "{name} nutzt wieder die einfache Einrichtung.",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "Schon einmal gebaut, mit dem eigenen Launcher des Spiels oder anderswo? Wähle seinen Ordner.",
+ "Choose Folder": "Ordner wählen",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "Die einfache Einrichtung wird für dieses Spiel übersprungen, und es wird aus deiner Kopie gebaut, bevor es starten kann. Wähle den Ordner deines vorhandenen Builds oder lass die einfache Einrichtung es bauen.",
+ "It starts your own build now.": "Es startet jetzt deinen eigenen Build.",
+ "Point to Your Build": "Auf deinen Build zeigen",
+ "That folder is empty. Pick the folder your build is in.": "Dieser Ordner ist leer. Wähle den Ordner, in dem dein Build liegt.",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "Das ist der Ordner des Launchers für dieses Spiel. Wähle den Ordner, in dem dein Build liegt.",
+ "The folder your build is in": "Der Ordner deines Builds",
+ "The game's own setup builds it into {folder}.": "Die eigene Einrichtung des Spiels baut es in {folder}.",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "In diesem Ordner und seinem bin-Ordner ist kein Programm. Wähle den Ordner, in dem dein Build liegt.",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "Dieses Spiel wird nicht in einen eigenen Ordner gebaut, also gibt es keinen Build, auf den du zeigen kannst.",
+ "Use Easy Setup": "Einfache Einrichtung nutzen",
+ "Use a Build You Already Have": "Vorhandenen Build nutzen",
+ "Use a Build You Already Have (On)…": "Vorhandenen Build nutzen (an)…",
+ "Use a Build You Already Have…": "Vorhandenen Build nutzen…",
+ "Your own build": "Dein eigener Build"
 }

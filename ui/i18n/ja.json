@@ -3253,5 +3253,21 @@
  "Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.": "どのゲームもそのままインストールされ、ゲーム自身のインストーラーやランチャーがセットアップします。1 つのゲームだけスキップするには、そのゲームのメニューの「かんたんセットアップをスキップ」を使ってください。",
  "Skip Easy Setup": "かんたんセットアップをスキップ",
  "{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.": "{name} はかんたんセットアップをスキップします。そのままインストールされ、ゲーム自身のインストーラーやランチャーがセットアップします。",
- "{name} uses Easy Setup again.": "{name} は再びかんたんセットアップを使います。"
+ "{name} uses Easy Setup again.": "{name} は再びかんたんセットアップを使います。",
+ "Built it before, with the game's own launcher or anywhere else? Pick its folder.": "ゲーム自身のランチャーや別の場所で、すでにビルドしていますか？そのフォルダーを選んでください。",
+ "Choose Folder": "フォルダーを選ぶ",
+ "Easy Setup is skipped for this game, and it's built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.": "このゲームはかんたんセットアップをスキップしていて、起動する前にあなたのコピーからビルドする必要があります。手元にあるビルドのフォルダーを選ぶか、かんたんセットアップにビルドさせてください。",
+ "It starts your own build now.": "これからは自分のビルドを起動します。",
+ "Point to Your Build": "自分のビルドを指定",
+ "That folder is empty. Pick the folder your build is in.": "このフォルダーは空です。ビルドが入っているフォルダーを選んでください。",
+ "That's the launcher's own folder for this game. Pick the folder your build is in.": "これはこのゲーム用のランチャーのフォルダーです。ビルドが入っているフォルダーを選んでください。",
+ "The folder your build is in": "ビルドが入っているフォルダー",
+ "The game's own setup builds it into {folder}.": "ゲーム自身のセットアップは {folder} にビルドします。",
+ "There's no program in that folder or its bin folder. Pick the folder your build is in.": "そのフォルダーにもその中の bin フォルダーにもプログラムがありません。ビルドが入っているフォルダーを選んでください。",
+ "This game isn't built into a folder of its own, so there's no build to point to.": "このゲームは専用のフォルダーにビルドされないため、指定するビルドはありません。",
+ "Use Easy Setup": "かんたんセットアップを使う",
+ "Use a Build You Already Have": "手元のビルドを使う",
+ "Use a Build You Already Have (On)…": "手元のビルドを使う（オン）…",
+ "Use a Build You Already Have…": "手元のビルドを使う…",
+ "Your own build": "自分のビルド"
 }

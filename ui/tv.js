@@ -2081,6 +2081,9 @@
         }, 'main') : ''}${su.prebuilt ? it(t('Use the Build Already on This PC'), su.prebuilt, async () => {
           try { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           TS.stage = 'ready'; TS.result = { text: t('The build on this PC') }; tsDraw();
+        }, 'main') : ''}${su.own_build && !su.prebuilt ? it(t('Use a Build You Already Have'), t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), async () => {
+          try { if (!(await useOwnBuild(id))) return; } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
+          TS.stage = 'ready'; TS.result = { text: t('Your own build') }; tsDraw();
         }, 'main') : ''}${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
     } else if (TS.stage === 'run') {
       const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);

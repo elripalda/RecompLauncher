@@ -2755,6 +2755,9 @@ async function suAct(b) {
     case 'prebuilt':
       try { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
       SU.stage = 'ready'; SU.result = { text: t('The build on this PC') }; return suDraw();
+    case 'ownbuild':
+      try { if (!(await useOwnBuild(id))) return; } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
+      SU.stage = 'ready'; SU.result = { text: t('Your own build') }; return suDraw();
     case 'iso': case 'folder': {
       const folder = b.dataset.su === 'folder';
       const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(id)).catch(fail);
@@ -2954,6 +2957,7 @@ function suDraw() {
     const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso">${DISC_L}<b>${esc(copyName(fm))}</b><span class="fmts">${fm.exts.length ? fmtTags(fm.exts) : esc(t('The file you made from your own copy'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
       ${SU.note ? `<p class="su-note" role="alert">${esc(SU.note)}</p>` : ''}
+      ${su.own_build ? `<p class="su-where">${esc(tf('The game\'s own setup builds it into {folder}.', { folder: su.own_build }))}</p>` : ''}
       ${prepOptsHtml(su)}
       ${relinkCards(su, 'data-su')}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
@@ -5437,6 +5441,7 @@ function gameMenu(id) {
         { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
         { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...easySkipItem(id),
+        ...(S.setup[id] && S.setup[id] !== 'loading' && (S.setup[id].own_build || S.setup[id].build_dir) ? [{ act: 'ownbuild', id, label: S.setup[id].build_dir ? t('Use a Build You Already Have (On)…') : t('Use a Build You Already Have…'), icon: 'folder' }] : []),
         ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }, { act: 'relink', id, label: t('Relink Setup'), icon: 'refresh' }] : []),
         ...(looksHere() ? [{ act: 'looks', id, label: t('Shaders'), icon: 'look' }] : []),
         ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
@@ -5909,6 +5914,21 @@ async function playGame2(id, program) {
         if (v !== 'yes') return;
         try { S.library[id] = await invoke('set_manual', { id, manual: null }); } catch (e) { return fail(e); }
         return playGame(id);
+      }
+      // Easy Setup skipped on a game built from the copy: it starts the player's own build, so its
+      // folder is asked for once (or Easy Setup goes back on for it).
+      if (/^NEED_OWN_BUILD\|/.test(String(err && err.message ? err.message : err))) {
+        const v = await ask(t('Point to Your Build'), `<p>${esc(t('Easy Setup is skipped for this game, and it\'s built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.'))}</p>`,
+          [{ label: t('Choose Folder'), v: 'pick', main: true }, { label: t('Use Easy Setup'), v: 'easy' }, { label: t('Not Now'), v: null }]);
+        if (v === 'pick') {
+          try { if (!(await useOwnBuild(id))) return; } catch (e) { return fail(e); }
+          return playGame(id);
+        }
+        if (v === 'easy') {
+          await saveUi({ easy_skip: ((S.settings.ui || {}).easy_skip || []).filter((x) => x !== id) }, true);
+          return playGame(id);
+        }
+        return;
       }
       // It couldn't tell which program is the game (every one looks like a tool): the player says.
       if (/^PICK_EXE\|/.test(String(err && err.message ? err.message : err))) return askProgram(id);
@@ -7699,6 +7719,7 @@ async function act(el, e) {
       if (ids.length) toast(tf('Updating {n} games.', { n: ids.length }));
       return;
     }
+    case 'ownbuild': try { if (await useOwnBuild(id)) { toast(t('It starts your own build now.')); render(true); } } catch (err) { fail(err); } return;
     case 'easy-skip': {
       const skip = new Set((S.settings.ui || {}).easy_skip || []), on = !skip.has(id), name = (byId(id) || S.library[id] || { name: id }).name;
       on ? skip.add(id) : skip.delete(id);
