@@ -1,4 +1,7 @@
 fn main() {
+    for name in ["RL_GOOGLE_CLIENT_ID", "RL_GOOGLE_CLIENT_SECRET", "RL_GOOGLE_DEVICE_CLIENT_ID", "RL_GOOGLE_DEVICE_CLIENT_SECRET"] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
     pack();
     // Cross-building for Windows with MinGW: unrar's C++ is built without a C++ library, so
     // libstdc++ goes in statically (the program needs no MinGW DLLs), with the Windows libraries

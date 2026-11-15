@@ -22,7 +22,7 @@ No. The launcher is free and open source under the GPL v3, and so is every recom
 
 ## Do I need an account?
 
-No. Everything works without one. A free account adds cloud saves, so the same save follows you between your PC, your TV PC and a handheld, and keeps your library in sync.
+No. Everything works without one. A free RecompStore account adds cloud saves and keeps your library in sync. You can also connect your own Google Drive for game saves without a RecompStore account, in builds configured for Google sign-in. See [Google Drive saves](GOOGLE-DRIVE.md).
 
 ## Where does it keep my files?
 
