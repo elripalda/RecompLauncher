@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.53" date="2026-11-15">
+      <description>
+        <p>Easy Setup can be skipped for one game from its menu, or for every game in Settings, to use the game's own installer or launcher.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.52" date="2026-11-15">
       <description>
         <p>Easy Setup shows each game's own cartridge, card or disc with its art, with discs that spin and cartridges that click into place, and optional console labels across the top of covers.</p>
