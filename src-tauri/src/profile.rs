@@ -1531,7 +1531,9 @@ impl Profile {
             return None;
         }
         let dir = PathBuf::from(fill(&first.path, install, None));
-        (dir.is_absolute() && dir != install && !dir.starts_with(install)).then_some(dir)
+        // (A folder inside the game's own counts: a build from before the setup moved there can
+        // still stand in for it.)
+        (dir.is_absolute() && dir != install).then_some(dir)
     }
 
     /// The player's build in `to` standing in for the setup's own folder: every path of the
@@ -3729,8 +3731,11 @@ mod own_build_tests {
     fn only_games_built_into_a_folder_of_their_own_have_one() {
         let install = std::env::temp_dir().join("rl-own-build-install2");
         let mut p = builder();
-        p.folders.insert("game".into(), vec![Place { path: "{install}/game".into(), when: String::new() }]);
-        assert_eq!(p.build_home(&install), None, "inside the game's own folder");
+        p.folders.insert("game".into(), vec![Place { path: "{install}".into(), when: String::new() }]);
+        assert_eq!(p.build_home(&install), None, "the game's own folder itself");
+        let mut inside = builder();
+        inside.folders.insert("game".into(), vec![Place { path: "{install}/game".into(), when: String::new() }]);
+        assert_eq!(inside.build_home(&install), Some(install.join("game")), "a folder inside it still has one");
         let mut q = builder();
         q.prepare = None;
         assert_eq!(q.build_home(&install), None, "not built from the copy");
