@@ -3435,7 +3435,7 @@ mod tests {
         assert!(check_copy(&g, &d).is_err());
     }
 
-    /// A raw (2352-byte sector) CD track, as in a PlayStation .bin, with SCUS_944.26 in its top folder.
+    /// A raw (2352-byte sector) CD track, as in a PlayStation .bin, with SLUS_000.01 in its top folder.
     fn raw_track() -> Vec<u8> {
         let sector = |n: usize| n * 2352 + 24;
         let mut img = vec![0u8; 20 * 2352];
@@ -3443,7 +3443,7 @@ mod tests {
         img[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
         img[pvd + 158..pvd + 162].copy_from_slice(&18u32.to_le_bytes());
         img[pvd + 166..pvd + 170].copy_from_slice(&2048u32.to_le_bytes());
-        let name = b"SCUS_944.26;1";
+        let name = b"SLUS_000.01;1";
         let e = sector(18);
         img[e] = (33 + name.len()) as u8;
         img[e + 32] = name.len() as u8;
@@ -3451,8 +3451,8 @@ mod tests {
         img
     }
 
-    fn ctr_copy(label: &str) -> GameCopy {
-        GameCopy { kind: "iso".into(), label: label.into(), check: Check { iso9660: "SCUS_944.26".into(), ..Default::default() }, ..Default::default() }
+    fn racer_copy(label: &str) -> GameCopy {
+        GameCopy { kind: "iso".into(), label: label.into(), check: Check { iso9660: "SLUS_000.01".into(), ..Default::default() }, ..Default::default() }
     }
 
     /// A .cue for one raw data track named `track`.
@@ -3467,20 +3467,20 @@ mod tests {
         let d = tmp("raw-bin");
         let bin = d.join("game.bin");
         std::fs::write(&bin, raw_track()).unwrap();
-        assert!(check_copy(&ctr_copy(""), &bin).is_ok());
+        assert!(check_copy(&racer_copy(""), &bin).is_ok());
     }
 
     #[test]
     fn a_cue_is_checked_through_its_data_track() {
         let d = tmp("cue-check");
         std::fs::write(d.join("game.bin"), raw_track()).unwrap();
-        assert!(check_copy(&ctr_copy(""), &cue_for(&d, "game.bin")).is_ok());
+        assert!(check_copy(&racer_copy(""), &cue_for(&d, "game.bin")).is_ok());
     }
 
     #[test]
     fn a_cue_without_its_tracks_is_refused() {
         let d = tmp("cue-no-tracks");
-        let err = check_copy(&ctr_copy(""), &cue_for(&d, "game.bin")).unwrap_err();
+        let err = check_copy(&racer_copy(""), &cue_for(&d, "game.bin")).unwrap_err();
         assert!(err.contains("aren't beside"), "{err}");
     }
 
@@ -3489,7 +3489,7 @@ mod tests {
         let d = tmp("cue-hand-bin");
         std::fs::write(d.join("game.bin"), raw_track()).unwrap();
         let cue = cue_for(&d, "game.bin");
-        assert_eq!(ctr_copy("Your disc image of Crash Team Racing (USA).").file_for(&cue), d.join("game.bin"));
+        assert_eq!(racer_copy("Your disc image of SkyRacer (USA).").file_for(&cue), d.join("game.bin"));
     }
 
     #[test]
@@ -3497,7 +3497,7 @@ mod tests {
         let d = tmp("cue-hand-cue");
         std::fs::write(d.join("game.bin"), raw_track()).unwrap();
         let cue = cue_for(&d, "game.bin");
-        assert_eq!(ctr_copy("Pick the .cue file, with its .bin tracks beside it.").file_for(&cue), cue);
+        assert_eq!(racer_copy("Pick the .cue file, with its .bin tracks beside it.").file_for(&cue), cue);
     }
 
     #[test]
@@ -3505,9 +3505,9 @@ mod tests {
         let d = tmp("cue-env");
         std::fs::write(d.join("game.bin"), raw_track()).unwrap();
         let cue = cue_for(&d, "game.bin");
-        let p: Profile = serde_json::from_str(r#"{"format":1,"game":{"kind":"iso","label":"Your disc image."},"start":{"program":["ctr-rs"],"env":{"CTR_BIN":"{game}"}}}"#).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"game":{"kind":"iso","label":"Your disc image."},"start":{"program":["skyracer"],"env":{"GAME_BIN":"{game}"}}}"#).unwrap();
         let env = p.env_vars(&d, Some(&cue));
-        assert!(env.iter().any(|(k, v)| k == "CTR_BIN" && v.ends_with("game.bin")), "{env:?}");
+        assert!(env.iter().any(|(k, v)| k == "GAME_BIN" && v.ends_with("game.bin")), "{env:?}");
     }
 
     #[test]
