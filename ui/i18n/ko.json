@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file}이(가) 원래 자리에 없습니다. 다시 고르세요.",
  "{name} is set up again with your files.": "{name}을(를) 파일로 다시 설정했습니다.",
  "{n} reports so far": "지금까지 보고 {n}개",
- "{v}: no reports yet": "{v}: 아직 보고 없음"
+ "{v}: no reports yet": "{v}: 아직 보고 없음",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "실제 게임 케이스의 띠처럼 각 커버 위쪽에 콘솔 이름이 적힌 띠를 표시합니다.",
+ "Console Labels on Covers": "커버에 콘솔 라벨 표시"
 }

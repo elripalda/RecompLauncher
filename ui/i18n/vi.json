@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} không còn ở chỗ cũ. Hãy chọn lại.",
  "{name} is set up again with your files.": "{name} đã được thiết lập lại với các tệp của bạn.",
  "{n} reports so far": "Đến nay có {n} báo cáo",
- "{v}: no reports yet": "{v}: chưa có báo cáo"
+ "{v}: no reports yet": "{v}: chưa có báo cáo",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "Một dải trên đầu mỗi bìa ghi hệ máy của nó, như dải trên hộp game thật.",
+ "Console Labels on Covers": "Nhãn hệ máy trên bìa"
 }

@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} ไม่อยู่ที่เดิมแล้ว เลือกใหม่",
  "{name} is set up again with your files.": "{name} ตั้งค่าใหม่ด้วยไฟล์ของคุณแล้ว",
  "{n} reports so far": "มี {n} รายงานแล้ว",
- "{v}: no reports yet": "{v}: ยังไม่มีรายงาน"
+ "{v}: no reports yet": "{v}: ยังไม่มีรายงาน",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "แถบด้านบนของปกแต่ละเกมที่บอกเครื่องเล่น เหมือนแถบบนกล่องเกมจริง",
+ "Console Labels on Covers": "ป้ายเครื่องเล่นบนปก"
 }

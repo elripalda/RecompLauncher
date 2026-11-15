@@ -653,17 +653,12 @@ body.mini-side .island{--side-w:76px}
 .su-stage{position:relative;display:grid;place-items:center;border-right:1px solid var(--line);background:rgba(5,6,9,.35)}
 .su-drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--dim);font-size:13px;padding-bottom:44px}
 .su-drop b{color:var(--ink);font-size:14.5px;margin-top:-14px}
-.sdisc{width:230px;height:230px;border-radius:50%;position:relative;margin-bottom:44px;background:conic-gradient(from 30deg,#8fa3ba,#eef3f8,#9db0c6,#d9e3ee,#7f95ad,#eef3f8,#8fa3ba);box-shadow:0 22px 50px -14px rgba(0,0,0,.85),inset 0 0 0 1px rgba(244,248,252,.4)}
-.sdisc .lab{position:absolute;inset:16%;border-radius:50%;overflow:hidden;background:var(--card3);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
-.sdisc .lab img{width:100%;height:100%;object-fit:cover;display:block}
-.sdisc .hole{position:absolute;inset:42%;border-radius:50%;background:var(--card);box-shadow:0 0 0 6px rgba(220,230,240,.55)}
-.sdisc.ghost{background:none;box-shadow:none;border:2px dashed rgba(244,248,252,.2);transition:border-color .2s,background .2s}
-.sdisc.ghost .lab,.sdisc.ghost .hole{display:none}
-.su-stage.hot .sdisc.ghost{border-color:var(--cyan);background:rgba(52,242,232,.06)}
-.sdisc.in{animation:sdiscIn .95s var(--ease) both}
-.sdisc.spin{animation:spin 1.5s linear infinite}
-.sdisc.done{animation:settle .6s var(--ease)}
-@keyframes sdiscIn{from{transform:translateY(-150px) rotate(-130deg);opacity:0}}
+/* The game's own media (media-art.js and media-art.css): its console's cartridge or disc, sitting
+   over the drive slot. The outline while it waits lights up when a file is dragged over. */
+.su-media{width:300px;margin-bottom:44px;position:relative}
+.su-drop .su-media{margin-bottom:22px}
+.su-media .md-ghost{color:var(--line3);transition:color .2s}
+.su-stage.hot .su-media .md-ghost{color:var(--cyan)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes settle{from{transform:rotate(-50deg)}}
 .drive{position:absolute;left:38px;right:38px;bottom:62px;height:14px;border-radius:7px;background:#050608;box-shadow:0 1px 0 rgba(244,248,252,.06),inset 0 2px 6px rgba(0,0,0,.8)}
@@ -730,7 +725,7 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ni-footer p{max-width:48ch;line-height:1.5}
 .ni-footer .btn{flex-shrink:0}
 .ni-notice p{margin:0 0 10px;color:var(--muted)}
-@media(max-width:1060px){.ni-modal .ni-layout{grid-template-columns:1fr;grid-template-rows:180px minmax(0,1fr);min-height:0;height:min(760px,90vh)}.ni-layout .ni-art{min-height:0}.ni-art .sdisc{width:120px;height:120px;margin-bottom:30px}.ni-art .drive{bottom:26px;left:20%;right:20%}.ni-art .ni-disc-summary{bottom:5px;font-size:12px}.ni-layout .ni-content{max-height:none;padding:22px 26px}}
+@media(max-width:1060px){.ni-modal .ni-layout{grid-template-columns:1fr;grid-template-rows:180px minmax(0,1fr);min-height:0;height:min(760px,90vh)}.ni-layout .ni-art{min-height:0}.ni-art .su-media{width:170px;margin-bottom:30px}.ni-art .drive{bottom:26px;left:20%;right:20%}.ni-art .ni-disc-summary{bottom:5px;font-size:12px}.ni-layout .ni-content{max-height:none;padding:22px 26px}}
 @media(max-width:600px){.ni-layout .ni-content{padding:20px 18px}.ni-row{flex-wrap:wrap}.ni-name{min-width:55%}.ni-actions{margin-left:34px;max-width:100%;justify-content:flex-start}.ni-footer{align-items:stretch;flex-direction:column;gap:10px}}
 .su-err{color:#ffc2c2}
 
@@ -745,7 +740,7 @@ main.enter-game .gp-hero>img{animation:zoomIn .7s var(--ease) both}
 main.enter-game .gp-top{animation:rise .5s var(--ease) .05s both}
 main.enter-game .tabs{animation:rise .5s var(--ease) .1s both}
 main.enter-game .g-body{animation:rise .5s var(--ease) .15s both}
-:where(.poster img,.gp-hero>img,.gp-amb img,.gp-cover img,.slide>.bg,.sl-cover img,.job img,.shot img,.v-img img,.pin .th img,.isl .th img,.news img,.sdisc .lab img){opacity:0;transition:opacity .45s ease}
+:where(.poster img,.gp-hero>img,.gp-amb img,.gp-cover img,.slide>.bg,.sl-cover img,.job img,.shot img,.v-img img,.pin .th img,.isl .th img,.news img){opacity:0;transition:opacity .45s ease}
 img.ld{opacity:1}
 .gp-amb img.ld{opacity:.32}
 body.oled .gp-amb img.ld{opacity:.26}
@@ -1552,23 +1547,6 @@ body.sliding .island{transition:none}
 .nav .n.badge-n{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--cyan);color:var(--bg);font-size:11px;line-height:20px;text-align:center}
 .tv-tab .tv-tab-n{display:inline-block;margin-left:8px;min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:var(--cyan);color:var(--bg);font-size:14px;line-height:24px;text-align:center;vertical-align:2px}
 
-/* The disc on the setup screen (and in Big Picture): the game's cover printed across the whole
-   disc, with the shine of the data side, a clear hub and the hole in the middle. The shine stays
-   put while the disc spins. */
-.sdisc,.tv-setup .bigdisc{overflow:hidden}
-.sdisc .lab,.tv-setup .bigdisc .lab{inset:0;border-radius:50%;box-shadow:none}
-.sdisc .lab img,.tv-setup .bigdisc .lab img{width:100%;height:100%;object-fit:cover;display:block}
-.sdisc .sheen,.tv-setup .bigdisc .sheen{position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
-  background:repeating-radial-gradient(circle at 50% 50%,rgba(255,255,255,.045) 0 1px,transparent 1px 3px),
-    conic-gradient(from 200deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.3) 38deg,rgba(130,210,255,.14) 64deg,rgba(255,255,255,0) 104deg,rgba(255,255,255,0) 196deg,rgba(255,170,235,.13) 236deg,rgba(255,255,255,.24) 266deg,rgba(255,255,255,0) 306deg);
-  box-shadow:inset 0 0 0 2px rgba(255,255,255,.3),inset 0 0 0 5px rgba(0,0,0,.22)}
-.sdisc .hub,.tv-setup .bigdisc .hub{position:absolute;inset:33%;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,transparent 0 33%,rgba(238,243,248,.7) 34% 50%,rgba(150,166,184,.6) 51% 54%,rgba(255,255,255,.2) 55% 96%,rgba(0,0,0,.25) 97% 100%);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
-.sdisc .hole{position:absolute;inset:44.5%;border-radius:50%;background:var(--card);box-shadow:inset 0 2px 5px rgba(0,0,0,.7),0 0 0 1px rgba(0,0,0,.35)}
-.tv-setup .bigdisc .hole{position:absolute;inset:44.5%;border-radius:50%;background:var(--tvbg);box-shadow:inset 0 3px 7px rgba(0,0,0,.7),0 0 0 1px rgba(0,0,0,.35)}
-.sdisc.ghost .sheen,.sdisc.ghost .hub,.tv-setup .bigdisc.ghost .sheen,.tv-setup .bigdisc.ghost .hub{display:none}
-.sdisc.spin .sheen,.tv-setup .bigdisc.spin .sheen{animation:spin 1.5s linear infinite reverse}
 
 /* The file browser: refresh, pinned folders, extracting an archive. */
 .fb-pinbtn[aria-pressed="true"]{color:var(--cyan);border-color:rgba(52,242,232,.45);background:rgba(52,242,232,.08)}
@@ -2510,3 +2488,11 @@ button.scan-pill:hover{filter:brightness(1.15)}
 .runs .rep-filter .chip.on{color:var(--ink);background:var(--fill2,rgba(255,255,255,.08));border-color:var(--line3)}
 .ask-run .ask-anon{display:block;margin-top:8px;font-size:11.5px;color:var(--muted);text-align:center}
 .loc-ask{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--muted);cursor:pointer}
+
+/* Console Labels on Covers: the console's strip across the top of a cover (the site's PNG), over
+   the art, or pushing it down when the site says so. */
+.poster img.cvl,.tv-poster img.cvl{position:absolute;inset:auto;left:50%;top:calc(var(--cvl-y,0) * 100%);width:calc(var(--cvl-s,1) * 100%);height:auto;object-fit:fill;transform:translateX(-50%);opacity:1;z-index:1;pointer-events:none}
+.poster.cvl-push>img:not(.cvl),.tv-poster.cvl-push>img:not(.cvl){top:calc(var(--cvl-h) * 100%);height:calc(100% - var(--cvl-h) * 100%)}
+.poster.cvl-on .badge.tl,.poster.cvl-on .badge.tr,.poster.cvl-on .badge.rank{top:calc(var(--cvl-top) * 100% + 9px)}
+.poster.cvl-on .badge.tl.low{top:calc(var(--cvl-top) * 100% + 41px)}
+.tv-poster.cvl-on .tv-badge,.tv-poster.cvl-on .tv-rank{top:calc(var(--cvl-top) * 100% + 12px)}

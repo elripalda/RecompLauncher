@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} tidak ada di tempatnya. Pilih lagi.",
  "{name} is set up again with your files.": "{name} sudah disiapkan lagi dengan file-filemu.",
  "{n} reports so far": "Sejauh ini {n} laporan",
- "{v}: no reports yet": "{v}: belum ada laporan"
+ "{v}: no reports yet": "{v}: belum ada laporan",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "Strip di atas setiap sampul dengan konsolnya, seperti pita di kotak game asli.",
+ "Console Labels on Covers": "Label Konsol di Sampul"
 }

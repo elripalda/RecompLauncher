@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} staat niet meer waar het stond. Kies het opnieuw.",
  "{name} is set up again with your files.": "{name} is weer ingesteld met je bestanden.",
  "{n} reports so far": "{n} meldingen tot nu toe",
- "{v}: no reports yet": "{v}: nog geen meldingen"
+ "{v}: no reports yet": "{v}: nog geen meldingen",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "Een strook bovenaan elke cover met de console, zoals de band op een echt spelhoesje.",
+ "Console Labels on Covers": "Consolelabels op covers"
 }

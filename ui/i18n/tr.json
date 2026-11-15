@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} eski yerinde değil. Yeniden seç.",
  "{name} is set up again with your files.": "{name} dosyalarınla yeniden kuruldu.",
  "{n} reports so far": "Şimdiye kadar {n} rapor",
- "{v}: no reports yet": "{v}: henüz rapor yok"
+ "{v}: no reports yet": "{v}: henüz rapor yok",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "Her kapağın üstünde, gerçek bir oyun kutusundaki gibi konsolunu gösteren bir şerit.",
+ "Console Labels on Covers": "Kapaklarda Konsol Etiketleri"
 }

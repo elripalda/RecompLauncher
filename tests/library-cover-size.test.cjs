@@ -32,7 +32,7 @@ function library(dpr = 1) {
   for (const name of ['esc', 'webUrl', 'THUMB_RE', 'THUMB_W', 'thumbW', 'thumbOf', 'tileThumb', 'media', 'pic', 'libTile', 'libWide', 'saveUi']) {
     vm.runInContext(app.match(new RegExp(`^const ${name} = .*`, 'm'))[0], c);
   }
-  vm.runInContext(fn('poster') + fn('libraryGrid') + 'let settingsSaving = Promise.resolve();' + fn('saveSettings'), c);
+  vm.runInContext(fn('coverLabel') + fn('coverLabelPush') + fn('poster') + fn('libraryGrid') + 'let settingsSaving = Promise.resolve();' + fn('saveSettings'), c);
   // Only the tile's button wrapper is omitted; its image URL comes from the real poster renderer.
   vm.runInContext('const tile = (a, o) => poster(a, o.mine, o.inst, o.wide, o.w);', c);
   const start = app.indexOf('let qTimer, tileTimer;');

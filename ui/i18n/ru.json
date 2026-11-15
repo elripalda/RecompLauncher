@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} больше нет на прежнем месте. Выберите его снова.",
  "{name} is set up again with your files.": "{name} снова настроена с вашими файлами.",
  "{n} reports so far": "Пока {n} отзыв|Пока {n} отзыва|Пока {n} отзывов",
- "{v}: no reports yet": "{v}: отзывов пока нет"
+ "{v}: no reports yet": "{v}: отзывов пока нет",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "Полоса вверху каждой обложки с её консолью, как на настоящей коробке с игрой.",
+ "Console Labels on Covers": "Метки консолей на обложках"
 }

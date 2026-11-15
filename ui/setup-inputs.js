@@ -1,5 +1,22 @@
 // Named Easy Setup inputs. Shared reuse is automatic; requirements come only from the profile.
 // Kept separate from the single-copy flow so existing profiles retain their setup behavior.
+
+// A game's own media on the setup screen (media-art.js): its console's cartridge, card or disc
+// with the game on it, as the site's media design for it says. state: 'ghost' (waiting for the
+// player's files), 'is-in' (arriving), 'is-busy' (working), 'is-done' or ''.
+function gameMediaArt(a) {
+  return { cover: a.cover ? media(thumbOf(a.cover, 600)) : '', hero: a.hero ? media(thumbOf(a.hero, 960)) : '', logo: a.logo ? media(a.logo) : '', design: a.media && typeof a.media === 'object' ? a.media : null };
+}
+function gameMediaHtml(a, state) {
+  const kind = MediaArt.kindOf(a.origin);
+  if (state === 'ghost') return MediaArt.ghost(kind);
+  return MediaArt.render(kind, gameMediaArt(a)).replace('<div class="md ', `<div class="md ${state || ''} `);
+}
+function mediaState(m, state) {
+  if (!m || !m.classList.contains('md') || m.classList.contains('md-ghost')) return;
+  m.classList.remove('is-in', 'is-busy', 'is-done');
+  if (state) m.classList.add(state);
+}
 function namedInputRows(su) {
   const rows = (su.inputs || []).filter((r) => r.active);
   if (su.kind) rows.unshift({ id: 'game', legacy: true, label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: [] });
@@ -13,8 +30,7 @@ function namedDiscSummary(su) {
 }
 function namedInputsShell(id, su, ns = {}, game = {}, tv = false) {
   const selected = namedInputRows(su).some((r) => !r.shared && r.path);
-  const artwork = game.cover ? pic(game.cover) : '';
-  const disc = `<div class="${tv ? 'bigdisc' : 'sdisc'}${selected ? '' : ' ghost'}" aria-hidden="true"><div class="lab">${artwork}</div><div class="sheen"></div><div class="hub"></div><div class="hole"></div></div>`;
+  const disc = `<div class="${tv ? 'tv-media' : 'su-media'}" aria-hidden="true">${gameMediaHtml(game, selected ? '' : 'ghost')}</div>`;
   const summary = `<p class="ni-disc-summary" role="status">${esc(namedDiscSummary(su))}</p>`;
   return tv ? `<div class="ni-tv-layout"><div class="ni-tv-art">${disc}${summary}</div><div class="ni-tv">${namedInputsView(id, su, ns, game)}</div></div>`
     : `<div class="su-in ni-layout"><div class="su-stage ni-art">${disc}<div class="drive"><i></i></div>${summary}</div><div class="su-r ni-content">${namedInputsView(id, su, ns, game)}</div></div>`;

@@ -358,8 +358,8 @@
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
     const easy = !j && !S.library[a.id] && turnkey(a) ? `<span class="tv-easyb${vers ? ' ico' : ''}" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${svg('disc', 16)}${vers ? '' : esc(t('Easy Setup'))}</span>` : '';
-    return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(thumbOf(a.cover, 400)))}')"></span>` : ''}<button type="button" class="tv-poster" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
-      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${rk}${badge}${easy}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
+    return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(thumbOf(a.cover, 400)))}')"></span>` : ''}<button type="button" class="tv-poster${coverLabelPush(a)}" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
+      <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${coverLabel(a)}${rk}${badge}${easy}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
   }
 
@@ -2062,7 +2062,7 @@
     if (!el) { el = document.createElement('div'); el.className = 'tv-sheet tv-setup'; st.append(el); }
     const namedScroll = $('.ni-scroll', el)?.scrollTop || 0;
     const cov = a.cover ? media(thumbOf(a.cover, 400)) : '';
-    const label = `<div class="lab">${cov ? `<img src="${esc(cov)}" alt="">` : ''}</div><div class="sheen"></div><div class="hub"></div><div class="hole"></div>`;
+    const med = (state) => `<div class="tv-media">${gameMediaHtml(a, state)}</div>`;
     let items = [], body = '';
     const it = (label, sub, run, cls = '') => { items.push({ run }); const i = items.length - 1; return `<button type="button" class="tv-item ${cls}" data-f data-key="ts:${i}" data-sheet="${i}"><span class="k">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`; };
     const pickIt = async (folder) => { const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(TS.id)).catch(fail); if (p) tsBegin(typeof p === 'string' ? p : p.path); else tsDraw(); };
@@ -2072,7 +2072,7 @@
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'inputs') tsDraw(); }), 0);
     } else if (TS.stage === 'pick') {
       const own = S.owned[id];
-      body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
+      body = `${med('ghost')}<div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
         <div class="opts">${(su.previous || []).length ? it(t('Use My Previous Setup'), su.previous.join(' · '), async () => {
           let r; try { r = await relinkSetup(id); } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
@@ -2097,7 +2097,7 @@
         return;
       }
       el.dataset.step = TS.step + order.length;
-      body = `<div class="bigdisc ${cur <= 0 ? 'in' : 'spin'}">${label}</div><div class="tt"><div class="pct">${esc(tf('{pct}%', { pct: Math.floor((have / tot) * 100) }))}</div><p>${esc(tf('Setting up {name}', { name: a.name }))}</p></div>
+      body = `${med(cur <= 0 ? 'is-in' : 'is-busy')}<div class="tt"><div class="pct">${esc(tf('{pct}%', { pct: Math.floor((have / tot) * 100) }))}</div><p>${esc(tf('Setting up {name}', { name: a.name }))}</p></div>
         <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
         <div class="two" style="margin-top:20px"><button type="button" class="tv-btn" data-f data-key="ts:0" data-sheet="0"><span>${esc(t('Run in Background'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Cancel Setup'))}</span></button></div>`;
       items = [
@@ -2123,21 +2123,21 @@
         try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; }
         TS.uerr = ''; TS.stage = 'ready'; TS.result = TS.result || { text: t('Checked') }; sfx('select'); tsDraw();
       };
-      body = `<div class="bigdisc">${label}</div><div class="tt"><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')}</p>${TS.uerr ? `<p class="err">${esc(t(TS.uerr))}</p>` : ''}</div>
+      body = `${med('is-done')}<div class="tt"><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')}</p>${TS.uerr ? `<p class="err">${esc(t(TS.uerr))}</p>` : ''}</div>
         <div class="opts">${su.update_file ? it(t('Choose the Update File'), t('The file, as it came'), () => pickU(false), 'main') : ''}${su.update_folder ? it(t('Choose the Update Folder'), t('A folder with its files'), () => pickU(true), su.update_file ? '' : 'main') : ''}${su.update_optional ? it(t('Skip for Now'), '', () => { TS.stage = 'ready'; setTimeout(tsDraw, 0); }) : ''}</div>`;
     } else if (TS.stage === 'ready') {
       const r = TS.result || {};
       items = [{ run: () => playGame(id) }, { run: () => { if (TV.view === 'gsettings' && TV.arg === id) draw(true); else go('gsettings', id); } }];
-      body = `<div class="bigdisc">${label}</div><div class="tt"><span class="ok${r.verified ? '' : ' plain'}">${esc(r.text || t('Checked'))}</span><h2>${esc(t('Ready to play'))}</h2><p>${esc(tf('{name} is set up with your copy.', { name: a.name }))}</p></div>
+      body = `${med('is-done')}<div class="tt"><span class="ok${r.verified ? '' : ' plain'}">${esc(r.text || t('Checked'))}</span><h2>${esc(t('Ready to play'))}</h2><p>${esc(tf('{name} is set up with your copy.', { name: a.name }))}</p></div>
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Play'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Settings'))}</span></button></div>`;
     } else if (TS.stage === 'wrong') {
       const w = TS.wrong || {};
       items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }, { run: () => tsBegin(TS.path, true) }];
-      body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('This Looks Like Another Copy'))}</h2><p>${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))} ${esc(t('Another region or version of the game may not work with it.'))}</p></div>
+      body = `${med('ghost')}<div class="tt"><h2>${esc(t('This Looks Like Another Copy'))}</h2><p>${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))} ${esc(t('Another region or version of the game may not work with it.'))}</p></div>
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = S.setup[id]?.inputs?.length ? 'inputs' : 'pick'; TS.named = {}; setTimeout(tsDraw, 0); } }];
-      body = `<div class="bigdisc ghost"></div><div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
+      body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;

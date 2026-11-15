@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} 不在原來的位置了。請重新選擇。",
  "{name} is set up again with your files.": "{name} 已用你的檔案重新設定。",
  "{n} reports so far": "目前 {n} 份回報",
- "{v}: no reports yet": "{v}：還沒有回報"
+ "{v}: no reports yet": "{v}：還沒有回報",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "在每個封面頂端顯示其主機的橫條，就像真實遊戲盒上的那條色帶。",
+ "Console Labels on Covers": "封面主機標籤"
 }

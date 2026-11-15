@@ -304,16 +304,9 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-setup{position:absolute;inset:0;z-index:40;background:var(--tvbg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;animation:tv-fade .4s ease both}
 .tv-setup::after,.tv-boot .aurora::after,.tv-ambient::after{content:"";position:absolute;inset:0;background:var(--noise);pointer-events:none}
 .tv-setup .glow{position:absolute;width:1100px;height:1100px;border-radius:50%;background-size:cover;background-position:center;filter:blur(140px) saturate(1.6);opacity:.3;pointer-events:none}
-.tv-setup .bigdisc{position:relative;width:400px;height:400px;border-radius:50%;background:conic-gradient(from 30deg,var(--tvsoft,#8fa3ba),var(--tvsoft,#eef3f8),#9db0c6,var(--tvsoft,#d9e3ee),#7f95ad,var(--tvsoft,#eef3f8),var(--tvsoft,#8fa3ba));box-shadow:0 40px 110px -30px rgba(0,0,0,.9)}
-.tv-setup .bigdisc .lab{position:absolute;inset:15%;border-radius:50%;overflow:hidden;background:var(--tvcard)}
-.tv-setup .bigdisc .lab img{width:100%;height:100%;object-fit:cover}
-.tv-setup .bigdisc .hole{position:absolute;inset:43%;border-radius:50%;background:var(--tvbg);box-shadow:0 0 0 10px rgba(220,230,240,.5)}
-.tv-setup .bigdisc.ghost{background:none;box-shadow:none;border:3px dashed rgba(var(--tvinkrgb,244,248,252),.22)}
-.tv-setup .bigdisc.ghost .lab,.tv-setup .bigdisc.ghost .hole{display:none}
-.tv-setup .bigdisc.in{animation:tv-discin 1s cubic-bezier(.2,.8,.2,1) both}
-.tv-setup .bigdisc.spin{animation:tv-spin 1.5s linear infinite}
-@keyframes tv-discin{from{transform:scale(.6) rotate(-180deg);opacity:0}}
-@keyframes tv-spin{to{transform:rotate(360deg)}}
+.tv-setup .tv-media{position:relative;width:560px}
+.tv-setup .tv-media .md-ghost{color:rgba(var(--tvinkrgb,244,248,252),.3)}
+.ni-tv-art .tv-media{width:460px}
 .tv-setup .tt{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;max-width:1300px}
 .tv-setup .tt h2{font:700 semi-expanded 56px/1.1 Archivo,sans-serif;margin:0;letter-spacing:-.02em}
 .tv-setup .tt p{margin:0;color:var(--tvsoft,#c9d3e0);font-size:24px}
@@ -399,23 +392,6 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-name .vtick{margin-left:6px;vertical-align:-3px}
 .tv-badge.score{color:#06121a}.tv-badge.score.good{background:#3ddc97}.tv-badge.score.mid{background:#ffc857}.tv-badge.score.low{background:#ff6b6b}
 
-/* The disc on the setup screen (and in Big Picture): the game's cover printed across the whole
-   disc, with the shine of the data side, a clear hub and the hole in the middle. The shine stays
-   put while the disc spins. */
-.sdisc,.tv-setup .bigdisc{overflow:hidden}
-.sdisc .lab,.tv-setup .bigdisc .lab{inset:0;border-radius:50%;box-shadow:none}
-.sdisc .lab img,.tv-setup .bigdisc .lab img{width:100%;height:100%;object-fit:cover;display:block}
-.sdisc .sheen,.tv-setup .bigdisc .sheen{position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
-  background:repeating-radial-gradient(circle at 50% 50%,rgba(255,255,255,.045) 0 1px,transparent 1px 3px),
-    conic-gradient(from 200deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.3) 38deg,rgba(130,210,255,.14) 64deg,rgba(255,255,255,0) 104deg,rgba(255,255,255,0) 196deg,rgba(255,170,235,.13) 236deg,rgba(255,255,255,.24) 266deg,rgba(255,255,255,0) 306deg);
-  box-shadow:inset 0 0 0 2px rgba(255,255,255,.3),inset 0 0 0 5px rgba(0,0,0,.22)}
-.sdisc .hub,.tv-setup .bigdisc .hub{position:absolute;inset:33%;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,transparent 0 33%,rgba(238,243,248,.7) 34% 50%,rgba(150,166,184,.6) 51% 54%,rgba(255,255,255,.2) 55% 96%,rgba(0,0,0,.25) 97% 100%);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
-.sdisc .hole{position:absolute;inset:44.5%;border-radius:50%;background:var(--card);box-shadow:inset 0 2px 5px rgba(0,0,0,.7),0 0 0 1px rgba(0,0,0,.35)}
-.tv-setup .bigdisc .hole{position:absolute;inset:44.5%;border-radius:50%;background:var(--tvbg);box-shadow:inset 0 3px 7px rgba(0,0,0,.7),0 0 0 1px rgba(0,0,0,.35)}
-.sdisc.ghost .sheen,.sdisc.ghost .hub,.tv-setup .bigdisc.ghost .sheen,.tv-setup .bigdisc.ghost .hub{display:none}
-.sdisc.spin .sheen,.tv-setup .bigdisc.spin .sheen{animation:spin 1.5s linear infinite reverse}
 
 /* A small beta mark on the game page's settings button (the launcher's own game settings). */
 .tv-btn .tv-beta-s{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}

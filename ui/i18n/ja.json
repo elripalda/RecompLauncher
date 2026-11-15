@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} が元の場所にありません。選び直してください。",
  "{name} is set up again with your files.": "{name} をあなたのファイルで再セットアップしました。",
  "{n} reports so far": "これまでに {n} 件のレポート",
- "{v}: no reports yet": "{v}: まだレポートはありません"
+ "{v}: no reports yet": "{v}: まだレポートはありません",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "実際のゲームのパッケージの帯のように、各カバーの上部にゲーム機名の帯を表示します。",
+ "Console Labels on Covers": "カバーにゲーム機ラベルを表示"
 }

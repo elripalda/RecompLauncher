@@ -1021,7 +1021,7 @@ function poster(a, mine, inst, wide, w, rank) {
     const art = a.hero || a.cover, logo = a.logo;
     return `<div class="poster wide${lb ? ' local' : ''}"><span class="ph"></span>${art ? `<img class="wbg" src="${esc(media(thumbOf(art)))}" alt="" loading="lazy" decoding="async">` : ''}<span class="wshade"></span>${logo ? `<img class="wlogo" src="${esc(media(logo))}" alt="${esc(a.name)}" loading="lazy" decoding="async">` : `<span class="wname">${esc(a.name)}</span>`}${lb || badge}${prog ? prog : easy}${vers}</div>`;
   }
-  return `<div class="poster${lb ? ' local' : ''}"><span class="ph">${esc(a.name)}</span>${pic(thumbOf(a.cover, Math.max(w || 0, tileThumb())), '', 'loading="lazy"')}${rk}${down(lb || badge)}${prog ? prog : easy}${down(vers)}</div>`;
+  return `<div class="poster${lb ? ' local' : ''}${coverLabelPush(a)}"><span class="ph">${esc(a.name)}</span>${pic(thumbOf(a.cover, Math.max(w || 0, tileThumb())), '', 'loading="lazy"')}${coverLabel(a)}${rk}${down(lb || badge)}${prog ? prog : easy}${down(vers)}</div>`;
 }
 
 // The line under one game of a recomp's tile: its setup still to do, that it's picked in the
@@ -2923,6 +2923,22 @@ T.event.listen('setup', ({ payload: p }) => {
     suPump();
   }
 });
+// Console Labels on Covers: the console's label strip across the top of a cover, from the site.
+function coverLabel(a) {
+  if (!(S.settings.ui || {}).cover_labels || !a) return '';
+  const l = ((S.cat || {}).labels || {})[a.origin];
+  if (!l || !l.src) return '';
+  return `<img class="cvl" src="${esc(media(l.src))}" alt="" decoding="async" style="--cvl-s:${Math.min(1.2, Math.max(.3, +l.s || 1))};--cvl-y:${Math.min(.3, Math.max(-.2, +l.y || 0))}">`;
+}
+// A poster's extra class and style with a label on it: the label's height, so the corner badges
+// sit under it, and whether it pushes the cover down instead of lying over it.
+function coverLabelPush(a) {
+  if (!(S.settings.ui || {}).cover_labels || !a) return '';
+  const l = ((S.cat || {}).labels || {})[a.origin];
+  if (!l || !l.src) return '';
+  const h = Math.min(.4, Math.max(0, +l.h || .11)), y = Math.min(.3, Math.max(-.2, +l.y || 0));
+  return ` cvl-on${l.push ? ' cvl-push' : ''}" style="--cvl-h:${h};--cvl-top:${Math.max(0, h + y)}`;
+}
 function suDraw() {
   if (!SU.el) return;
   if (SU.stage !== 'run') suDrive.stop();
@@ -2930,8 +2946,7 @@ function suDraw() {
   const box = $('.modal', SU.el);
   const game = a.game || a.name;
   const cov = a.cover ? media(a.cover) : '';
-  const discCls = SU.stage === 'pick' ? 'sdisc ghost' : SU.stage === 'convert' ? 'sdisc spin' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'sdisc in' : 'sdisc spin') : SU.stage === 'ready' || SU.stage === 'update' ? 'sdisc done' : 'sdisc';
-  const label = `<div class="lab">${cov ? pic(thumbOf(a.cover, 160)) : ''}</div><div class="sheen"></div><div class="hub"></div><div class="hole"></div>`;
+  const mdState = SU.stage === 'pick' ? 'ghost' : SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
   if (SU.stage === 'pick') {
     const own = S.owned[id];
@@ -3000,8 +3015,8 @@ function suDraw() {
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>
       ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
-  const keepDisc = $('.sdisc', box);
-  const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="sdisc ghost"></div><b>${esc(copyDrop(copyFormats(SU.id)))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="${discCls}">${label}</div>`;
+  const keepDisc = $('.su-media .md', box);
+  const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="su-media">${gameMediaHtml(a, 'ghost')}</div><b>${esc(copyDrop(copyFormats(SU.id)))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="su-media">${gameMediaHtml(a, mdState)}</div>`;
   if (!box.firstChild || box.dataset.stage !== SU.stage) {
     if (SU.stage !== 'run') box.dataset.step = '';
     box.dataset.stage = SU.stage;
@@ -3011,8 +3026,8 @@ function suDraw() {
     if (f) f.focus({ preventScroll: true });
   } else {
     $('.su-r', box).innerHTML = right;
-    const d = $('.sdisc', box);
-    if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('spin')) d.className = 'sdisc spin';
+    const d = $('.su-media .md', box);
+    if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('is-busy')) mediaState(d, 'is-busy');
   }
   if (SU.stage === 'run') suDrive.start($('.drive i', box));
 }
@@ -4051,6 +4066,7 @@ function pageSettings() {
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
+        + row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cover_labels', ui.cover_labels, t('Console Labels on Covers'), 'ui-toggle'))
         + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'ui-toggle'))
         + row(t('Show Game Media'), t('Every version of a game shows the same cover, background, logo and icon: the recommended version\'s. The versions list keeps each one\'s own icon, and pictures you picked yourself stay.'), sw('game_media', ui.game_media, t('Show Game Media'), 'ui-toggle'))
         // Linux: how the window is drawn, read when the launcher starts.

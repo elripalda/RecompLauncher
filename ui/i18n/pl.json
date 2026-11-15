@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "{file} nie ma tam, gdzie był. Wybierz go ponownie.",
  "{name} is set up again with your files.": "{name} jest znowu skonfigurowana z twoimi plikami.",
  "{n} reports so far": "Na razie {n} zgłoszenie|Na razie {n} zgłoszenia|Na razie {n} zgłoszeń",
- "{v}: no reports yet": "{v}: brak zgłoszeń"
+ "{v}: no reports yet": "{v}: brak zgłoszeń",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "Pasek u góry każdej okładki z jej konsolą, jak na prawdziwym pudełku z grą.",
+ "Console Labels on Covers": "Etykiety konsol na okładkach"
 }

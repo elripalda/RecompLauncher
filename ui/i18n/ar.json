@@ -3246,5 +3246,7 @@
  "{file} isn't where it was. Pick it again.": "لم يعد {file} في مكانه. اختره من جديد.",
  "{name} is set up again with your files.": "أُعدّت {name} من جديد بملفاتك.",
  "{n} reports so far": "تقريران حتى الآن|{n} تقارير حتى الآن|{n} تقريرًا حتى الآن|{n} تقرير حتى الآن",
- "{v}: no reports yet": "{v}: لا تقارير بعد"
+ "{v}: no reports yet": "{v}: لا تقارير بعد",
+ "A strip across the top of each cover with its console, like the band on a real game box.": "شريط أعلى كل غلاف يحمل اسم منصته، مثل الشريط على علبة لعبة حقيقية.",
+ "Console Labels on Covers": "شارات المنصات على الأغلفة"
 }
