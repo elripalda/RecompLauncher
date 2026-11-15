@@ -565,6 +565,28 @@ when it's on its `args` are added after the step's own:
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
   player sees "Its setup step stopped with code N", so put the reason in your own log.
 
+**Options.** `prepare.options` puts ticks on the setup screen, each adding its `args` when it's on.
+`os` and `gpu` (`nvidia` for an RTX card, or `amd`) limit where it shows. One with a `license`
+starts off and links it, so ticking it is the player accepting it:
+
+```json
+"options": [
+  {
+    "id": "dlss",
+    "label": "NVIDIA DLSS and frame generation",
+    "note": "Downloads NVIDIA's DLSS SDK during the build.",
+    "gpu": "nvidia",
+    "args": ["--fetch-ngx-sdk", "--accept-nvidia-license"],
+    "license": { "name": "NVIDIA RTX SDKs license", "url": "https://github.com/NVIDIA/DLSS/blob/main/LICENSE.txt" }
+  }
+]
+```
+
+An option you add in a later release reaches players who already set the game up: Set Up Again,
+beside Play, gets a New mark, and the next time they press Play they're asked once to turn it on
+(the setup runs again with the copy they set up with) or play as it is. Their answer is kept, so
+make the step cheap to run again: reuse what the last run made.
+
 ### `game.dumps`: known good copies
 
 ```json
