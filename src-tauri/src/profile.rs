@@ -3620,7 +3620,8 @@ mod tests {
         assert!(check_copy(&g("e0f3ccfa"), &d.join("dump")).is_ok());
         let e = check_copy(&g("11223344"), &d.join("dump")).unwrap_err();
         assert!(e.contains("e0f3ccfa") && e.contains("11223344"), "{e}");
-        assert!(check_copy(&g("e0f3ccfa"), &d).unwrap_err().contains("exefs/main"));
+        // The folder around it: the one inside that has exefs is named.
+        assert!(check_copy(&g("e0f3ccfa"), &d).unwrap_err().contains(&d.join("dump").display().to_string()));
         // A file is judged by its content, whatever it is called.
         std::fs::write(d.join("a.nup"), b"just text").unwrap();
         assert!(check_copy(&g("e0f3ccfa"), &d.join("a.nup")).unwrap_err().contains("isn't a Nintendo Switch .nup"));

@@ -233,3 +233,79 @@ mod tests {
         assert!(list(&d.join("nope")).denied);
     }
 }
+
+/// Moves a file or folder to the Recycle Bin (the trash on Linux and macOS), where the player can
+/// still get it back. Never deleted for good: when the bin can't take it, it stays and this says why.
+pub fn to_trash(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err("it isn't there anymore".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        // SHFILEOPSTRUCTW, as shellapi.h lays it out on 64-bit Windows.
+        #[repr(C)]
+        struct ShOp {
+            hwnd: *mut std::ffi::c_void,
+            func: u32,
+            from: *const u16,
+            to: *const u16,
+            flags: u16,
+            aborted: i32,
+            mappings: *mut std::ffi::c_void,
+            title: *const u16,
+        }
+        #[link(name = "shell32")]
+        extern "system" {
+            fn SHFileOperationW(op: *mut ShOp) -> i32;
+        }
+        const FO_DELETE: u32 = 3;
+        const FOF_SILENT: u16 = 0x0004;
+        const FOF_NOCONFIRMATION: u16 = 0x0010;
+        const FOF_ALLOWUNDO: u16 = 0x0040;
+        const FOF_NOERRORUI: u16 = 0x0400;
+        // Too big for the Recycle Bin: Windows asks before deleting it for good, instead of doing it.
+        const FOF_WANTNUKEWARNING: u16 = 0x4000;
+        // The list ends with two zeros.
+        let mut from: Vec<u16> = path.as_os_str().encode_wide().collect();
+        from.extend([0, 0]);
+        let mut op = ShOp {
+            hwnd: std::ptr::null_mut(),
+            func: FO_DELETE,
+            from: from.as_ptr(),
+            to: std::ptr::null(),
+            flags: FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING,
+            aborted: 0,
+            mappings: std::ptr::null_mut(),
+            title: std::ptr::null(),
+        };
+        // SAFETY: `op` and the path it points at live until the call returns.
+        let r = unsafe { SHFileOperationW(&mut op) };
+        if r != 0 || op.aborted != 0 || path.exists() {
+            return Err(if op.aborted != 0 { "it was cancelled".into() } else { format!("Windows said {r:#x}") });
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::gio::prelude::FileExt;
+        // GLib asks the desktop's trash portal itself when the launcher runs as a Flatpak.
+        webkit2gtk::gio::File::for_path(path).trash(None::<&webkit2gtk::gio::Cancellable>).map_err(|e| e.to_string())?;
+        if path.exists() {
+            return Err("it's still there".into());
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("osascript")
+            .args(["-e", "on run argv", "-e", "tell application \"Finder\" to delete (POSIX file (item 1 of argv))", "-e", "end run"])
+            .arg(path)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() || path.exists() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+        Ok(())
+    }
+}
