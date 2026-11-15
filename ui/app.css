@@ -1610,6 +1610,8 @@ body.light .gp-note{background:rgba(255,255,255,.75)}
 
 /* Covers Only (Settings, Appearance): just the covers, no names under them. */
 body.nonames .tile .t,body.nonames .tile .s,body.nonames .tile .trow{display:none}
+/* Settings → Big Picture mode: the sidebar's own button hidden (the settings page keeps its button). */
+body.no-tv-btn .side-foot .nav[data-act="tv"]{display:none}
 
 /* A cover placeholder only shimmers while there is no picture; under a picture it would repaint for nothing. */
 .ph:has(~ img),img ~ .ph{animation:none!important}

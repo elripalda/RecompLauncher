@@ -4091,6 +4091,7 @@ function pageSettings() {
           + row(t('Monitor'), t('The screen Big Picture mode opens on.'), screens)
           + `<div class="set-row"><div class="k"><b>${esc(t('Size'))}</b><span>${esc(t('Smaller fits more on a big screen; larger is easier to read from the couch or on a handheld.'))}</span></div>
             <div class="seg" role="radiogroup" aria-label="${esc(t('Big Picture mode size'))}">${[['', t('Auto')], ['small', t('Smaller')], ['medium', t('Medium')], ['large', t('Larger')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.tv_size || '') === k}" data-act="tvsize" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
+          + row(t('Show the Button in the Sidebar'), t('The Big Picture mode button at the bottom of the sidebar. Off: it\'s hidden and only the button below here opens it (or hold Menu on your controller).'), sw('hide_tv_btn', !ui.hide_tv_btn, t('Show the Button in the Sidebar'), 'ui-toggle'))
           + row(t('Sounds'), t('The start-up sound and a soft click as you move around.'), sw('sounds', st.sounds, t('Sounds in Big Picture mode')))
           + (S.steam ? row(t('RecompLauncher in Steam'), S.deck ? t('Puts it in your Steam library, so it\'s there in Gaming Mode and opens in Big Picture mode.') : t('Puts it in your Steam library, opening in Big Picture mode. Handy from Steam\'s own Big Picture.'), `<button type="button" class="btn sm" data-act="self-steam">${esc((st.ui || {}).in_steam ? t('Add it again') : t('Add to Steam'))}</button>`) : ''),
         `<button type="button" class="btn sm main" data-act="tv">${esc(t('Open Big Picture mode'))}</button>`)
@@ -4336,6 +4337,7 @@ function renderSide() {
   if (window.achSide) window.achSide();
   document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
   document.body.classList.toggle('nonames', !!ui.hide_names);
+  document.body.classList.toggle('no-tv-btn', !!ui.hide_tv_btn);
   document.body.classList.toggle('light', ui.theme === 'light');
   { const wm = $('#brand .wm'); const want = ui.theme === 'light' ? 'img/wordmark-dark.svg' : 'img/wordmark.svg'; if (wm && wm.getAttribute('src') !== want) wm.setAttribute('src', want); }
   const auto = innerWidth < 1180;
