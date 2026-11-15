@@ -1627,6 +1627,8 @@ async fn fs_list(st: State<'_, App>, path: String) -> Res<FolderView> {
             .take(400)
             .filter_map(|e| if e.kind == "game" { roms::identify(&e.path.join("default.xex"), 0) } else { roms::identify(&e.path, e.size) })
             .collect();
+        // A disc set's .m3u and the .cue files it lists sit side by side: the set is one game.
+        let found = roms::fold_sets(found);
         let mut games = HashMap::new();
         if !found.is_empty() {
             for (id, r) in copies_for(&cat, &found, &dirs) {
@@ -3516,7 +3518,8 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         if let Some(pr) = &p.prepare {
             emit(SetupEv { step: "extras".into(), text: pr.label.clone(), ..Default::default() });
             let extra = prepare_extra(&app.state::<App>().dir, pr, &g.prepare_opts);
-            if let Err(e) = run_prepare(pr, &g.path, &copy, &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
+            let handed = p.handed(Some(&copy)).unwrap_or_else(|| copy.clone());
+            if let Err(e) = run_prepare(pr, &g.path, &handed, &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
                 return fail(e);
             }
         }
@@ -4647,8 +4650,9 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                 // the same argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
                 pr.args = inputs::arguments(&pr.args, &p.input_paths, false);
                 let copy = g.game_copy.as_deref().unwrap_or(&g.path);
+                let copy = p.handed(Some(copy)).unwrap_or_else(|| copy.to_path_buf());
                 let extra = prepare_extra(&dir, &pr, &g.prepare_opts);
-                run_prepare(&pr, &g.path, copy, &extra, &|pct, text| emit("extras", pct, text), &stopped)?;
+                run_prepare(&pr, &g.path, &copy, &extra, &|pct, text| emit("extras", pct, text), &stopped)?;
             }
             if stopped() { return Err("Stopped.".into()); }
             let current = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or("The game was removed during setup.")?;

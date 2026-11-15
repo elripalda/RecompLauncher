@@ -1367,7 +1367,15 @@ impl Profile {
             .is_some_and(|e| e.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe")))
     }
 
+    /// The file the game is given for the player's copy, by its `game` (`GameCopy::file_for`).
+    pub fn handed(&self, game: Option<&Path>) -> Option<PathBuf> {
+        let copy = game?;
+        Some(self.game.as_ref().map(|g| g.file_for(copy)).unwrap_or_else(|| copy.to_path_buf()))
+    }
+
     pub fn prepare(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
+        let handed = self.handed(game);
+        let game = handed.as_deref();
         let _w = WineFill::new(self.through_proton(install));
         for c in &self.config {
             // A path put into a TOML or JSON string: forward slashes, so the backslashes aren't escapes.
@@ -1416,9 +1424,10 @@ impl Profile {
         }
         std::fs::create_dir_all(&dir)?;
         let mut items: Vec<PathBuf> = if copy.is_dir() { std::fs::read_dir(copy)?.flatten().map(|e| e.path()).collect() } else { vec![copy.to_path_buf()] };
-        // A .cue sheet is only the table of contents: the .bin tracks it names come along too.
+        // A .cue or .gdi is only the table of contents: the tracks it names come along too (and an
+        // .m3u's discs with theirs).
         if !copy.is_dir() {
-            let tracks = cue_tracks(copy);
+            let tracks = sheet_tracks(copy);
             // The game wants the disc's one .bin under its own name (ctr-u.bin), and the player
             // picked the sheet: the track it names goes there, not the sheet renamed.
             if tracks.len() == 1 && g.name.trim().to_ascii_lowercase().ends_with(".bin") {
@@ -1491,6 +1500,8 @@ impl Profile {
     }
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
+        let handed = self.handed(game);
+        let game = handed.as_deref();
         let through_proton = self.through_proton(install);
         let _w = WineFill::new(through_proton);
         self.start.as_ref().map(|s| s.env.iter().filter(|(k, _)| env_name_ok(k)).filter_map(|(k, v)| {
@@ -1549,6 +1560,8 @@ impl Profile {
     }
 
     fn expanded_args(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, through_proton: bool) -> Vec<String> {
+        let handed = self.handed(game);
+        let game = handed.as_deref();
         let _w = WineFill::new(through_proton);
         let Some(s) = self.start.as_ref() else { return vec![] };
         let mut args: Vec<String> = s.args.iter().map(|a| fill(a, install, game)).collect();
@@ -2027,17 +2040,34 @@ fn folder_holds(p: &Path) -> Holds {
     if any { Holds::OnlyMedia } else { Holds::Nothing }
 }
 
-/// A file in the top folder of an ISO 9660 disc image (PlayStation 2 and most others).
+/// A file in the top folder of an ISO 9660 disc image (PlayStation 2 and most others), in 2048-byte
+/// sectors or raw CD ones (2352 bytes, the data after a 24 or 16-byte header), which is how a
+/// PlayStation .bin keeps them.
 fn iso9660_has(path: &Path, name: &str) -> bool {
     let Ok(mut f) = std::fs::File::open(path) else { return false };
-    let Some(pvd) = read_at(&mut f, 16 * 2048, 2048) else { return false };
-    if &pvd[1..6] != b"CD001" {
-        return false;
+    for (sector, data_at) in [(2048u64, 0u64), (2352, 24), (2352, 16)] {
+        let Some(pvd) = read_at(&mut f, 16 * sector + data_at, 2048) else { continue };
+        if &pvd[1..6] == b"CD001" {
+            return iso9660_root_has(&mut f, &pvd, sector, data_at, name);
+        }
     }
+    false
+}
+
+/// A file in the root folder the volume descriptor `pvd` points to. The folder is read a sector at
+/// a time, since raw sectors keep each 2048 bytes of it apart.
+fn iso9660_root_has(f: &mut std::fs::File, pvd: &[u8], sector: u64, data_at: u64, name: &str) -> bool {
     let root = &pvd[156..190];
     let lba = u32::from_le_bytes([root[2], root[3], root[4], root[5]]) as u64;
     let size = (u32::from_le_bytes([root[10], root[11], root[12], root[13]]) as usize).min(1 << 20);
-    let Some(dir) = read_at(&mut f, lba * 2048, size) else { return false };
+    let mut dir = Vec::with_capacity(size);
+    for s in 0..size.div_ceil(2048) as u64 {
+        let Some(part) = read_at(f, (lba + s) * sector + data_at, 2048) else { break };
+        dir.extend(part);
+    }
+    if dir.is_empty() {
+        return false;
+    }
     let want = name.to_ascii_uppercase();
     let mut i = 0;
     while i < dir.len() {
@@ -2120,6 +2150,33 @@ pub fn packed(g: &GameCopy, p: &Path) -> Option<String> {
 }
 
 impl GameCopy {
+    /// The file the game is given for the player's copy. A .cue, .gdi or .m3u stands for a disc
+    /// kept as several files: a game whose label (or `name`) names that kind of file reads it, and
+    /// any other one reads single disc images, so it's given the disc's first data track (the
+    /// .bin). An .m3u for a game that names .cue or .gdi gets its first disc's sheet.
+    pub fn file_for(&self, copy: &Path) -> PathBuf {
+        let ext = copy.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if !matches!(ext.as_str(), "cue" | "gdi" | "m3u") || self.names_kind(&ext) {
+            return copy.to_path_buf();
+        }
+        if ext == "m3u" {
+            let first = crate::roms::first_disc(copy);
+            let named = first.as_deref().and_then(Path::extension).is_some_and(|e| self.names_kind(&e.to_string_lossy().to_ascii_lowercase()));
+            if let (Some(disc), true) = (first, named) {
+                return disc;
+            }
+        }
+        let tracks = crate::roms::sheet_data_tracks(copy).unwrap_or_default();
+        tracks.into_iter().next().unwrap_or_else(|| copy.to_path_buf())
+    }
+
+    /// The label or the file name asks for this kind of file: ".cue", or "cue" as a word.
+    fn names_kind(&self, ext: &str) -> bool {
+        let label = self.label.to_ascii_lowercase();
+        let as_word = label.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == ext);
+        as_word || self.name.to_ascii_lowercase().ends_with(&format!(".{ext}"))
+    }
+
     /// Whether its check tells this game's copy from another game's of the same console: a file
     /// only this game has, a disc ID. "Any disc image" or "any N64 ROM" doesn't, so
     /// it isn't used to find the game among the player's copies.
@@ -2203,7 +2260,14 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         // The launcher can make the plain copy itself (convert.rs): the setup offers to.
         return Err(format!("CONVERT|That's a compressed .{ext} image, and this recomp reads plain .iso files."));
     }
-    if !g.check.iso9660.is_empty() && !iso9660_has(p, &g.check.iso9660) {
+    // A .cue, .gdi or .m3u: what's on the disc is in its data tracks, so those are what's checked.
+    // A sheet whose tracks aren't beside it is said now, rather than read as the wrong game.
+    let tracks = crate::roms::sheet_data_tracks(p);
+    if tracks.as_ref().is_some_and(Vec::is_empty) {
+        return Err(format!("The disc's track files (.bin) aren't beside that .{ext}. Keep them in the same folder, with the names it lists."));
+    }
+    let on_disc = tracks.unwrap_or_else(|| vec![p.to_path_buf()]);
+    if !g.check.iso9660.is_empty() && !on_disc.iter().any(|d| iso9660_has(d, &g.check.iso9660)) {
         return Err("That disc image isn't the release this recomp reads.".into());
     }
     // A disc ID that isn't one of this game's (a copy whose ID can't be read isn't refused).
@@ -2308,29 +2372,13 @@ pub fn n64_to_z64(b: &mut [u8], order: u8) {
     }
 }
 
-/// The track files a .cue sheet names (`FILE "Game (Track 1).bin" BINARY`), when they're next to it.
-pub fn cue_tracks(cue: &Path) -> Vec<PathBuf> {
-    if !cue.extension().map(|e| e.eq_ignore_ascii_case("cue")).unwrap_or(false) {
-        return vec![];
-    }
-    let Some(dir) = cue.parent() else { return vec![] };
-    let text = std::fs::read(cue).map(|b| String::from_utf8_lossy(&b[..b.len().min(64 * 1024)]).to_string()).unwrap_or_default();
-    text.lines()
-        .filter_map(|l| {
-            let l = l.trim();
-            if !l.to_ascii_uppercase().starts_with("FILE ") {
-                return None;
-            }
-            let rest = l[5..].trim();
-            let name = if let Some(r) = rest.strip_prefix('"') { r.split('"').next()? } else { rest.split_whitespace().next()? };
-            let p = Path::new(name);
-            // Only a plain file name next to the sheet, never a path out of its folder.
-            if p.components().count() != 1 || name.contains("..") {
-                return None;
-            }
-            Some(dir.join(p)).filter(|f| f.is_file())
-        })
-        .collect()
+/// The files a .cue, .gdi or .m3u names that sit right beside it, read by the scanner's own sheet
+/// reader (crate::roms). They're put in the game's folder under their own names, so a file in
+/// another folder, or one reached through "..", is never brought along.
+pub fn sheet_tracks(sheet: &Path) -> Vec<PathBuf> {
+    let Some(dir) = sheet.parent() else { return vec![] };
+    let files = crate::roms::sheet_files(sheet).unwrap_or_default();
+    files.into_iter().filter(|f| f.parent() == Some(dir)).collect()
 }
 
 /// An N64 ROM's first 64 bytes (its header), in .z64 order whatever order the file is in.
@@ -3235,6 +3283,28 @@ mod tests {
     }
 
     #[test]
+    fn gdi_brings_its_tracks() {
+        let d = tmp("gdi-place");
+        std::fs::write(d.join("game.gdi"), "2\n1 0 4 2352 track01.bin 0\n2 600 0 2352 track02.raw 0\n").unwrap();
+        std::fs::write(d.join("track01.bin"), b"data").unwrap();
+        std::fs::write(d.join("track02.raw"), b"music").unwrap();
+        let b: Value = serde_json::from_str(r#"{"start":"g.exe","files":{"how":"folder","folder":".","accepts":"iso"}}"#).unwrap();
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        from_boot(&b).unwrap().place(&install, Some(&d.join("game.gdi"))).unwrap();
+        assert!(install.join("track01.bin").is_file() && install.join("track02.raw").is_file());
+    }
+
+    #[test]
+    fn a_track_in_another_folder_is_not_brought_along() {
+        let d = tmp("cue-subfolder");
+        std::fs::create_dir_all(d.join("tracks")).unwrap();
+        std::fs::write(d.join("tracks/game.bin"), b"disc").unwrap();
+        std::fs::write(d.join("game.cue"), "FILE \"tracks/game.bin\" BINARY\n  TRACK 01 MODE2/2352\n").unwrap();
+        assert!(sheet_tracks(&d.join("game.cue")).is_empty());
+    }
+
+    #[test]
     fn rom_game_version_and_byte_order() {
         let d = tmp("n64id");
         let mut h = vec![0u8; 128];
@@ -3363,6 +3433,81 @@ mod tests {
         let g2 = GameCopy { check: Check { iso9660: "SLUS_999.99".into(), ..Default::default() }, ..g.clone() };
         assert!(check_copy(&g2, &iso).is_err());
         assert!(check_copy(&g, &d).is_err());
+    }
+
+    /// A raw (2352-byte sector) CD track, as in a PlayStation .bin, with SCUS_944.26 in its top folder.
+    fn raw_track() -> Vec<u8> {
+        let sector = |n: usize| n * 2352 + 24;
+        let mut img = vec![0u8; 20 * 2352];
+        let pvd = sector(16);
+        img[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
+        img[pvd + 158..pvd + 162].copy_from_slice(&18u32.to_le_bytes());
+        img[pvd + 166..pvd + 170].copy_from_slice(&2048u32.to_le_bytes());
+        let name = b"SCUS_944.26;1";
+        let e = sector(18);
+        img[e] = (33 + name.len()) as u8;
+        img[e + 32] = name.len() as u8;
+        img[e + 33..e + 33 + name.len()].copy_from_slice(name);
+        img
+    }
+
+    fn ctr_copy(label: &str) -> GameCopy {
+        GameCopy { kind: "iso".into(), label: label.into(), check: Check { iso9660: "SCUS_944.26".into(), ..Default::default() }, ..Default::default() }
+    }
+
+    /// A .cue for one raw data track named `track`.
+    fn cue_for(d: &Path, track: &str) -> PathBuf {
+        let cue = d.join("game.cue");
+        std::fs::write(&cue, format!("FILE \"{track}\" BINARY\n  TRACK 01 MODE2/2352\n")).unwrap();
+        cue
+    }
+
+    #[test]
+    fn a_raw_bin_passes_an_iso9660_check() {
+        let d = tmp("raw-bin");
+        let bin = d.join("game.bin");
+        std::fs::write(&bin, raw_track()).unwrap();
+        assert!(check_copy(&ctr_copy(""), &bin).is_ok());
+    }
+
+    #[test]
+    fn a_cue_is_checked_through_its_data_track() {
+        let d = tmp("cue-check");
+        std::fs::write(d.join("game.bin"), raw_track()).unwrap();
+        assert!(check_copy(&ctr_copy(""), &cue_for(&d, "game.bin")).is_ok());
+    }
+
+    #[test]
+    fn a_cue_without_its_tracks_is_refused() {
+        let d = tmp("cue-no-tracks");
+        let err = check_copy(&ctr_copy(""), &cue_for(&d, "game.bin")).unwrap_err();
+        assert!(err.contains("aren't beside"), "{err}");
+    }
+
+    #[test]
+    fn a_game_that_reads_single_images_is_given_a_cues_bin() {
+        let d = tmp("cue-hand-bin");
+        std::fs::write(d.join("game.bin"), raw_track()).unwrap();
+        let cue = cue_for(&d, "game.bin");
+        assert_eq!(ctr_copy("Your disc image of Crash Team Racing (USA).").file_for(&cue), d.join("game.bin"));
+    }
+
+    #[test]
+    fn a_game_that_names_cue_is_given_the_cue() {
+        let d = tmp("cue-hand-cue");
+        std::fs::write(d.join("game.bin"), raw_track()).unwrap();
+        let cue = cue_for(&d, "game.bin");
+        assert_eq!(ctr_copy("Pick the .cue file, with its .bin tracks beside it.").file_for(&cue), cue);
+    }
+
+    #[test]
+    fn the_handed_file_reaches_the_games_environment() {
+        let d = tmp("cue-env");
+        std::fs::write(d.join("game.bin"), raw_track()).unwrap();
+        let cue = cue_for(&d, "game.bin");
+        let p: Profile = serde_json::from_str(r#"{"format":1,"game":{"kind":"iso","label":"Your disc image."},"start":{"program":["ctr-rs"],"env":{"CTR_BIN":"{game}"}}}"#).unwrap();
+        let env = p.env_vars(&d, Some(&cue));
+        assert!(env.iter().any(|(k, v)| k == "CTR_BIN" && v.ends_with("game.bin")), "{env:?}");
     }
 
     #[test]
