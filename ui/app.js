@@ -6260,9 +6260,8 @@ function updateToast(v) {
     requiredShown = true;
     modal(`<h2>${esc(t('Time to Update'))}</h2><p>${esc(v.required ? tf('This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.', { version: verName(v.version) }) : tf('You\'re a few updates behind. {version} has fixes for crashes and setup problems people ran into on this one. It only takes a moment.', { version: verName(v.version) }))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Update now'))}</button></div>`, (x, close) => { close(); if (x.dataset.x === 'yes') selfUpdate(); }, t('Time to Update'));
-    return;
   }
-  toast(tf('RecompLauncher {version} is out.', { version: verName(v.version) }), false, `${esc(tf('RecompLauncher {version} is out.', { version: verName(v.version) }))} <a href="#" data-act="self-update">${esc(t('Update now'))}</a>`, 20000);
+  // Otherwise no toast: the start window and the Downloads page already announce the update.
 }
 
 function resetModal(what) {
