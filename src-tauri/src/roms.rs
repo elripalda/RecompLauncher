@@ -228,6 +228,10 @@ pub fn copy_id(p: &Path) -> Option<String> {
     if !p.is_file() {
         return None;
     }
+    let is_wua = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"));
+    if is_wua {
+        return wua_title_id(p);
+    }
     let mut f = fs::File::open(p).ok()?;
     let mut head = [0u8; 0x60];
     read_at(&mut f, 0, &mut head).ok()?;
@@ -545,6 +549,9 @@ fn identify_with_size(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<Ro
     if ext == "zip" || ext == "7z" {
         return identify_archive(p, &ext, size);
     }
+    if WIIU.contains(&ext.as_str()) {
+        return identify_wiiu(p, &ext, size);
+    }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
     let is_cart = CART.contains(&ext.as_str());
@@ -597,6 +604,85 @@ fn identify_ps3_pkg(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     ps3_pkg_content_id(&ps3_pkg_header(p)?)?;
     let title = p.file_stem()?.to_str()?.to_string();
     Some(RomFile { path: p.to_path_buf(), system: "ps3".into(), title, region: String::new(), size })
+}
+
+/// Wii U copies: Cemu's .wua archive, and .wux (compressed) and .wud (raw) disc images.
+const WIIU: [&str; 3] = ["wua", "wux", "wud"];
+
+/// The last bytes of a .wua (Cemu's ZArchive): six section offsets and sizes, a hash, the total
+/// size, the version and this magic, all big-endian.
+const ZARCHIVE_FOOTER: usize = 144;
+const ZARCHIVE_MAGIC: u32 = 0x169F_52D6;
+
+/// The names table of a .wua. Unlike its files, it isn't compressed, and its first names are the
+/// title folders ("000500001012bd00_v16"), so the title IDs are read without unpacking anything.
+fn wua_names(p: &Path) -> Option<Vec<String>> {
+    use std::io::{Seek, SeekFrom};
+    let mut f = fs::File::open(p).ok()?;
+    let len = f.seek(SeekFrom::End(0)).ok()?;
+    let mut foot = [0u8; ZARCHIVE_FOOTER];
+    read_at(&mut f, len.checked_sub(ZARCHIVE_FOOTER as u64)?, &mut foot).ok()?;
+    let be64 = |i: usize| u64::from_be_bytes(foot[i..i + 8].try_into().unwrap());
+    if u32::from_be_bytes(foot[140..144].try_into().unwrap()) != ZARCHIVE_MAGIC {
+        return None;
+    }
+    // The title folders come first, so the start of the table is enough.
+    let (at, size) = (be64(32), be64(40).min(64 * 1024) as usize);
+    let mut table = vec![0u8; size];
+    read_at(&mut f, at, &mut table).ok()?;
+    let mut names = vec![];
+    let mut i = 0usize;
+    while i < table.len() {
+        // A length byte, or two when its top bit is set.
+        let mut n = table[i] as usize;
+        i += 1;
+        if n & 0x80 != 0 {
+            let Some(&low) = table.get(i) else { break };
+            n = ((n & 0x7F) << 8) | low as usize;
+            i += 1;
+        }
+        let Some(name) = table.get(i..i + n) else { break };
+        names.push(String::from_utf8_lossy(name).into_owned());
+        i += n;
+    }
+    Some(names)
+}
+
+/// The Wii U title IDs a .wua holds, upper case: its game's, its update's (0005000E...) and DLC's
+/// (0005000C...), from its title folders' names.
+fn wua_titles(p: &Path) -> Vec<String> {
+    let is_title = |id: &str| id.len() == 16 && id.starts_with("0005") && id.bytes().all(|b| b.is_ascii_hexdigit());
+    let names = wua_names(p).unwrap_or_default();
+    names.iter().filter_map(|n| n.split('_').next()).filter(|id| is_title(id)).map(str::to_ascii_uppercase).collect()
+}
+
+/// The game's title ID for a .wua: its base game's, or, in one holding only an update or DLC, the
+/// game's ID they share (the same low half under 00050000).
+fn wua_title_id(p: &Path) -> Option<String> {
+    let titles = wua_titles(p);
+    if let Some(base) = titles.iter().find(|t| t.starts_with("00050000")) {
+        return Some(base.clone());
+    }
+    titles.first().map(|t| format!("00050000{}", &t[8..]))
+}
+
+/// A Wii U copy, matched by its file name. Each kind is checked by what it starts or ends with, so
+/// a file that merely has the extension isn't taken: a .wua's footer magic, a .wux's "WUX0", a
+/// .wud's product code ("WUP-P-ARDE").
+fn identify_wiiu(p: &Path, ext: &str, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
+    let ok = match ext {
+        "wua" => wua_names(p).is_some(),
+        _ => {
+            let mut head = [0u8; 4];
+            read_at(&mut fs::File::open(p).ok()?, 0, &mut head).ok()?;
+            &head == if ext == "wux" { b"WUX0" } else { b"WUP-" }
+        }
+    };
+    if !ok {
+        return None;
+    }
+    let title = p.file_stem()?.to_str()?.to_string();
+    Some(RomFile { path: p.to_path_buf(), system: "wiiu".into(), title, region: String::new(), size: size()? })
 }
 
 /// The names of the files in a zip or 7z, read from its index only: nothing is unpacked. None when
@@ -976,6 +1062,12 @@ pub fn part_of_file(p: &Path) -> Part {
     let pkg_patch = pkg.as_ref().and_then(|h| ps3_pkg_content_id(h)).is_some_and(|id| id.to_ascii_uppercase().contains("PATCH"));
     if pkg_patch {
         return Part { kind: "update", disc: None, of: None };
+    }
+    // A .wua named "(DLC)" often packs the game with its DLC and update: it's the game when its
+    // title folders include the game's own.
+    let is_wua = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("wua"));
+    if is_wua && wua_titles(p).iter().any(|t| t.starts_with("00050000")) {
+        return Part { kind: "game", disc: None, of: None };
     }
     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     part_of(&name)
@@ -1747,6 +1839,91 @@ mod tests {
         let picked = match_catalog(&cat, &found);
         assert_eq!(picked["tmnt-port"].title, "tmnt");
         assert_eq!(files_of(&cat["apps"][0], &found).len(), 1);
+    }
+
+    /// A tiny .wua: a names table holding these names, then the ZArchive footer pointing at it.
+    fn wua(names: &[&str]) -> Vec<u8> {
+        let mut table = vec![];
+        for n in names {
+            table.push(n.len() as u8);
+            table.extend_from_slice(n.as_bytes());
+        }
+        let mut b = vec![0u8; 16];
+        let at = b.len() as u64;
+        b.extend_from_slice(&table);
+        let mut foot = [0u8; ZARCHIVE_FOOTER];
+        foot[32..40].copy_from_slice(&at.to_be_bytes());
+        foot[40..48].copy_from_slice(&(table.len() as u64).to_be_bytes());
+        foot[140..144].copy_from_slice(&ZARCHIVE_MAGIC.to_be_bytes());
+        b.extend_from_slice(&foot);
+        b
+    }
+
+    #[test]
+    fn a_wua_is_a_wii_u_copy() {
+        let d = tmp("wua");
+        let p = d.join("The Legend of Zelda - The Wind Waker HD (USA).wua");
+        fs::write(&p, wua(&["0005000010143500_v0", "code", "app.xml"])).unwrap();
+        let found = scan(&[d.clone()]);
+        let id = copy_id(&p);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].system, "wiiu");
+        assert_eq!(id.as_deref(), Some("0005000010143500"));
+    }
+
+    #[test]
+    fn a_wua_is_matched_to_its_game_by_name() {
+        let d = tmp("wua-match");
+        fs::write(d.join("The Legend of Zelda - The Wind Waker HD (USA).wua"), wua(&["0005000010143500_v0"])).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        let cat = serde_json::json!({ "apps": [{ "id": "zeldawwhdrecomp", "game": "The Legend of Zelda: The Wind Waker HD", "origin": "wiiu" }] });
+        assert!(match_catalog(&cat, &found).contains_key("zeldawwhdrecomp"));
+    }
+
+    #[test]
+    fn a_wua_with_only_an_update_says_its_games_id() {
+        let d = tmp("wua-update");
+        let p = d.join("Game Update.wua");
+        fs::write(&p, wua(&["0005000e10143500_v16"])).unwrap();
+        let id = copy_id(&p);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(id.as_deref(), Some("0005000010143500"));
+    }
+
+    #[test]
+    fn a_wua_named_dlc_that_holds_the_game_is_the_game() {
+        let d = tmp("wua-dlc");
+        let p = d.join("PIKMIN 3 (USA) (DLC) (v96).wua");
+        fs::write(&p, wua(&["000500001012bd00_v16", "0005000c1012bd00_v16"])).unwrap();
+        let kind = part_of_file(&p).kind;
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(kind, "game");
+    }
+
+    #[test]
+    fn a_wua_without_its_footer_is_ignored() {
+        let d = tmp("wua-bad");
+        fs::write(d.join("Game.wua"), [0u8; 512]).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn wux_and_wud_images_are_wii_u_copies() {
+        let d = tmp("wux-wud");
+        let mut wux = vec![0u8; 64];
+        wux[..4].copy_from_slice(b"WUX0");
+        fs::write(d.join("Game A.wux"), wux).unwrap();
+        let mut wud = vec![0u8; 64];
+        wud[..10].copy_from_slice(b"WUP-P-ARDE");
+        fs::write(d.join("Game B.wud"), wud).unwrap();
+        let found = scan(&[d.clone()]);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().all(|r| r.system == "wiiu"));
     }
 
     #[test]
