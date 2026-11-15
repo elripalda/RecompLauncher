@@ -65,6 +65,8 @@ mod update_rollback_tests;
 mod update_check_tests;
 pub mod usage;
 pub mod win;
+#[cfg(windows)]
+mod game_window;
 mod installer;
 
 use catalog::Release;
