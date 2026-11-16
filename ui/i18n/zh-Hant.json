@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "這款重新編譯遊戲還沒有發行任何版本。",
  "This recomp isn't listed anymore": "這款重新編譯遊戲已下架",
  "This recomp isn't listed anymore.": "這款重新編譯遊戲已下架。",
+ "This recomp": "這款重新編譯遊戲",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "這個版本有多個組建，通常每個地區一個。請選擇與您的遊戲副本相符的那個。之後可以從右鍵選單切換。",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "這個版本的 RecompLauncher 太舊，跟不上現在的重製了。更新到 {version} 就能繼續玩，只需片刻。",
  "This week": "本週",
@@ -1370,6 +1371,7 @@
  "Tile size": "圖塊大小",
  "Tiles": "圖塊",
  "Time to Update": "該更新了",
+ "Total game playtime": "遊戲總遊玩時間",
  "Triangle": "三角",
  "Troubleshoot": "疑難排解",
  "Troubleshoot {name}": "{name} 疑難排解",
@@ -3331,5 +3333,7 @@
  "Turning it on accepts the {license}.": "開啟即表示您接受 {license}。",
  "Turning it on sets the game up again from your copy.": "開啟後會用您的副本重新設定遊戲。",
  "Use the copy it was set up with": "使用設定時用過的副本",
- "{n} new options": "{n} 個新選項"
+ "{n} new options": "{n} 個新選項",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "一次下載即可安裝其全部 {n} 款遊戲，每款都會在收藏庫中單獨顯示。",
+ "{name} is installed. Its {n} games are in your Library.": "{name} 已安裝。其中的 {n} 款遊戲已在你的收藏庫中。"
 }

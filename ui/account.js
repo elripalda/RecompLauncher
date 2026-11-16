@@ -27,6 +27,8 @@ async function loadAccount(fresh) {
   if (window.afterSignIn && !S.account.offline) window.afterSignIn();
   // The saved list, kept with the account.
   if (S.account.signedIn && !S.account.offline && typeof libSync === 'function') libSync();
+  // Playtime over all the account's PCs (or back to this PC's own when signed out).
+  if (typeof playSync === 'function') playSync().then((changed) => changed && render(true));
 }
 
 // ---------- your reports ----------

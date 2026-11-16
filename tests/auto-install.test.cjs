@@ -83,5 +83,5 @@ test('a finished Easy Install download opens its setup only with Auto-Install on
 
 test('Easy Install skips Pick Your Copy First with Auto-Install off', () => {
   const start = fn(app, 'startInstall');
-  assert.match(start, /if \(autoInstall\(\) && !S\.library\[id\] && !tag && !anyway && turnkey\(byId\(id\)\)/);
+  assert.match(start, /if \(autoInstall\(\) && !S\.library\[id\] && !tag && !anyway && !pack\.length && turnkey\(byId\(id\)\)/);
 });

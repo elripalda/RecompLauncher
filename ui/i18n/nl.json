@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Deze recomp heeft nog geen release uitgebracht.",
  "This recomp isn't listed anymore": "Deze recomp staat er niet meer tussen",
  "This recomp isn't listed anymore.": "Deze recomp staat er niet meer tussen.",
+ "This recomp": "Deze recomp",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Deze release heeft meer dan één build, vaak één per regio. Kies de build die past bij je kopie van de game. Je kunt later wisselen via het rechtermuisknopmenu.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Deze versie van RecompLauncher is te oud voor de huidige recomps. Werk bij naar {version} om verder te spelen. Het duurt maar even.",
  "This week": "Deze week",
@@ -1370,6 +1371,7 @@
  "Tile size": "Tegelgrootte",
  "Tiles": "Tegels",
  "Time to Update": "Tijd om bij te werken",
+ "Total game playtime": "Totale speeltijd",
  "Triangle": "Driehoek",
  "Troubleshoot": "Problemen oplossen",
  "Troubleshoot {name}": "Problemen met {name} oplossen",
@@ -3331,5 +3333,7 @@
  "Turning it on accepts the {license}.": "Door het aan te zetten ga je akkoord met {license}.",
  "Turning it on sets the game up again from your copy.": "Door het aan te zetten wordt het spel opnieuw ingesteld met je exemplaar.",
  "Use the copy it was set up with": "Het exemplaar gebruiken waarmee hij is ingesteld",
- "{n} new options": "{n} nieuwe opties"
+ "{n} new options": "{n} nieuwe opties",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Eén download installeert alle {n} games. Elke game krijgt een eigen plek in je bibliotheek.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} is geïnstalleerd. De {n} games staan in je bibliotheek."
 }

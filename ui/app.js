@@ -200,7 +200,8 @@ const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installer
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
-const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.id] || {}).files || {}).how || '')));
+// A game of a multi-game recomp is set up as its recomp is.
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
@@ -320,7 +321,31 @@ async function libSync() {
     if (Object.keys(next).sort().join('|') !== before && ['library', 'home'].includes(S.view)) render(true);
   } catch (e) { /* the website can't be reached: this PC's list stays, and it's tried again later */ } finally { S.libSyncing = false; }
 }
-setInterval(() => { if (!document.hidden) libSync(); }, 10 * 60 * 1000);
+// Playtime kept with the account: this PC's time goes up and every PC's total comes back for the
+// game pages (games.js). All of this PC's time goes up after signing in and then once a day; after
+// a session, just that game's. Signed out, or the website can't say, it's this PC's own numbers.
+const PLAY_FULL_EVERY = 24 * 3600;
+// True when the totals the pages show changed, so the caller draws again.
+async function playSync(ids) {
+  const before = JSON.stringify(S.cloudPlay || null);
+  const uid = accountId();
+  if (!uid || (S.account && S.account.offline)) {
+    S.cloudPlay = null;
+    return before !== 'null';
+  }
+  const ui = S.settings.ui || {};
+  const now = Math.floor(Date.now() / 1000);
+  const fullDue = ui.play_synced !== uid || now - (Number(ui.play_full_at) || 0) >= PLAY_FULL_EVERY;
+  try {
+    const all = !ids && fullDue;
+    const sent = await invoke('playtime_push', { games: all ? null : ids || [] });
+    if (all && sent) await saveUi({ play_synced: uid, play_full_at: now }, true);
+    const r = await invoke('playtime_pull');
+    S.cloudPlay = r && typeof r === 'object' ? { games: r.games || {}, titles: r.titles || {} } : null;
+  } catch (e) { /* this PC's own numbers stay */ }
+  return JSON.stringify(S.cloudPlay || null) !== before;
+}
+setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); } }, 10 * 60 * 1000);
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
@@ -607,8 +632,14 @@ function index() {
     // Each game of a recomp that carries several, by its full id (not in Discover's list).
     addGameApps(ids);
     const titles = new Map();
+    const packGames = [...ids.values()].filter((a) => a.parent);
     for (const ti of (S.cat && S.cat.titles) || []) {
-      const every = (ti.pc || []).map((id) => ids.get(id)).filter((a) => a && a.title === ti.id);
+      // A game inside a multi-game recomp is one more version of its game: listed by its full id,
+      // or found by its name, as the website's "Also in" finds it.
+      const named = packGames.filter((c) => !(ti.pc || []).includes(c.id) && sfold(c.name) === sfold(ti.name));
+      const listed = (ti.pc || []).map((id) => ids.get(id)).filter((a) => a && a.parent);
+      for (const c of [...listed, ...named]) c.title = ti.id;
+      const every = [...(ti.pc || []).map((id) => ids.get(id)), ...named].filter((a) => a && a.title === ti.id);
       if (every.length < 2) continue;
       const pick = String(ti.pick || '').replace(/^pc:/, '');
       every.sort((x, y) => (y.id === pick) - (x.id === pick) || (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || byDl(x, y));
@@ -815,7 +846,7 @@ const notPC = (a) => !isPC(a);
 const byDlConsolesFirst = (x, y) => (isPC(x) ? 1 : 0) - (isPC(y) ? 1 : 0) || byDl(x, y);
 // How many recomps a list holds: every version, not every tile (a game with three versions is
 // one tile and three recomps). Coming Soon ones aren't counted.
-const recompCount = (list) => list.filter((a) => !a.soon).length;
+const recompCount = (list) => recompsIn(list);
 // Updated recomps first, as on Home's Recently updated, so a brand-new one doesn't read as an update.
 const byUpdated = (x, y) => (wasUpdated(y) ? 1 : 0) - (wasUpdated(x) ? 1 : 0) || String(y.released || '').localeCompare(String(x.released || ''));
 // Discover's Show filter: everything, what's installed, what isn't, what needs setting up first,
@@ -1019,10 +1050,16 @@ function gameTileLine(a) {
   if (a.menuPick) return `<span>${esc(t('Pick the game in its menu'))}</span>`;
   return `<span>${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</span>`;
 }
-// On one game's page: the recomp it's part of, as a link.
+// On one game's page: a pill naming the recomp it's part of and how many games that holds,
+// opening the recomp's page.
 function partOfLine(a) {
   if (!a.parent) return '';
-  return `<div class="part-of"><button type="button" class="link-btn" data-act="open" data-id="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</div>`;
+  const name = a.parentName || (byId(a.parent) || {}).name || '';
+  const n = gamesOf(a.parent, byId(a.parent)).length;
+  const count = n ? `<em>${esc(tn(n, '1 game', '{n} games'))}</em>` : '';
+  const pill = `<button type="button" class="ver-pill part-pill" data-act="open" data-id="${esc(a.parent)}">${LAYERS}<span>${esc(tf('Part of {name}', { name }))}</span>${count}</button>`;
+  const pick = a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : '';
+  return `<div class="part-of">${pill}${pick}</div>`;
 }
 // On a recomp's page: the games it includes, each a tile. One row when they fit, else rows
 // split evenly (never one left over on its own).
@@ -1434,21 +1471,23 @@ function pageHome() {
   const pool = (mine.length ? mine : apps).filter((a) => !a.soon);
   const feats = turnkeyFirst(bannerApps() || oneEach(uniq([...pool.filter((a) => a.featured && (a.hero || a.cover)), ...pool.filter((a) => a.hero && notPC(a)).sort(byDl), ...pool.filter(notPC).sort(byDl)].map((a) => a.id)).map(byId)).slice(0, 5));
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
-  const ready = oneEach(pool.filter(turnkey).sort(byNew), true);
-  const played = libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
+  // The banner and the weekly chart stay per recomp (picked and ranked as one); the rows list its games.
+  const games = withGames(pool);
+  const ready = oneEach(games.filter(turnkey).sort(byNew), true);
+  const played = jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = foundInFolders();
-  const easy = oneEach(pool.filter((a) => S.easy.has(a.id) && !haveAny(a)));
+  const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
   return `<div class="page home">${offlineNote()}
     ${feats.length ? slider(feats) : ''}
     ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
     ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
     ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
-    ${shelf('updated', t('Recently updated'), recentlyUpdated(pool), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
-    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(pool.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
+    ${shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
+    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
     ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
     ${trendShelf(pool)}
-    ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: true, turnkey: true })}
+    ${shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true })}
     ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
     ${newsSection()}
   </div>`;
@@ -1677,8 +1716,8 @@ function discoverList(ended = false, leftOut = false) {
   const f = S.find, q = S.q.trim();
   const games = byGame();
   const onThisPC = leftOut ? hiddenByProton : forOS;
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
-    && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name] : [a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
+  let list = withGames(visible()).filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
+    && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name, a.parentName] : [a.name, a.game, a.parentName, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
   if (!ended && !leftOut) S.findCount = recompCount(list);
@@ -1690,15 +1729,6 @@ function discoverList(ended = false, leftOut = false) {
   }
   // Discover's own order (Popular, not picked by the player): turnkey recomps first.
   if (f.sort === 'popular' && !f.picked) out = turnkeyFirst(out);
-  // A search also finds the games inside recomps that carry several, after the recomps themselves.
-  if (q && !ended && !leftOut && !games) {
-    const kids = [];
-    for (const a of visible()) {
-      if (!forOS(a) || !keepEnded(a, f)) continue;
-      for (const g of gamesOf(a.id, a)) { const c = byId(a.id + '--' + g.id); if (c && !isHidden(c.id) && sMatch(c.name, q)) kids.push(c); }
-    }
-    out = out.concat(kids);
-  }
   return out;
 }
 
@@ -1916,7 +1946,10 @@ function libList() {
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
   if (q) list = list.filter((x) => sMatch([x.a.name, x.a.game].join(' '), q));
   if (S.lib.sort === 'az') list.sort((x, y) => x.a.name.localeCompare(y.a.name));
-  else if (S.lib.sort === 'time') list.sort((x, y) => (y.g.played_secs || 0) - (x.g.played_secs || 0));
+  else if (S.lib.sort === 'time') {
+    const seconds = new Map(list.map(({ a }) => [a.id, gamePlaytime(a)?.played_secs || 0]));
+    list.sort((x, y) => seconds.get(y.a.id) - seconds.get(x.a.id));
+  }
   else list.sort((x, y) => (y.g.last_played || 0) - (x.g.last_played || 0) || (y.g.updated_at || y.g.installed_at || 0) - (x.g.updated_at || x.g.installed_at || 0));
   // More than one version of a game installed: one tile, the one played last, with how many.
   const T = index().titles, seen = new Map(), out = [];
@@ -2094,18 +2127,27 @@ const OS_SHORT = (a) => (a.systems || []).filter((k) => OS_NAME[k]);
 // Each version keeps its own store icon in the versions list, even when Show Game Media or the
 // player's pictures for every version make them all look alike: it's how they're told apart.
 const verIcon = (v) => catalogArt(v, 'icon') || catalogArt(v, 'cover');
+// A version that comes inside a multi-game recomp: installing it brings that recomp's other games too.
+function packLine(v) {
+  if (!v || !v.parent) return '';
+  const n = gamesOf(v.parent, byId(v.parent)).length;
+  const name = v.parentName || (byId(v.parent) || {}).name || '';
+  return [tf('Part of {name}', { name }), n ? tn(n, '1 game', '{n} games') : ''].filter(Boolean).join(' · ');
+}
+const packTag = (v) => (v && v.parent ? `<span class="vtag pack">${esc(packLine(v))}</span>` : '');
 function verRow(v, cur, g, cls) {
   const inst = S.library[v.id], here = v.id === cur;
+  const play = recompPlaytime(v.id);
   const rec = v.id === g.pick, dev = devOf(v);
   const STAR = '<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
-  const tags = [rec ? `<span class="vtag rec">${STAR}${esc(t('Recommended'))}</span>` : '', inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
+  const tags = [rec ? `<span class="vtag rec">${STAR}${esc(t('Recommended'))}</span>` : '', packTag(v), inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
   const who = (dev || {}).name || v.author || '';
   const line = [who ? `<span class="v-dev${dev && dev.verified ? ' ver' : ''}">${esc(who)}${dev && dev.verified ? TICK(12) : ''}</span>` : '', esc(v.adds || '')].filter(Boolean).join(' · ');
   const os = OS_SHORT(v);
   const ic = verIcon(v);
   return `<button type="button" class="${cls}${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
     <span class="v-ic">${ic ? pic(ic, '', 'loading="lazy"') : ''}</span>
-    <span class="v-txt"><span class="v-n"><b>${esc(ownName(v))}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}${rec && g.why ? `<small class="v-why" title="${esc(g.why)}">${esc(g.why)}</small>` : ''}</span>
+    <span class="v-txt"><span class="v-n"><b>${esc(ownName(v))}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}${rec && g.why ? `<small class="v-why" title="${esc(g.why)}">${esc(g.why)}</small>` : ''}${play?.last_played ? `<small>${esc(tf('{time} played', { time: playedFor(play) }))}</small>` : ''}</span>
     <span class="v-os">${os.map((k) => `<span title="${esc(OS_NAME[k])}">${osIcon(k)}</span>`).join('')}</span>
     <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span>
     <span class="v-go">${here ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>` : CHEV_R}</span></button>`;
@@ -2406,12 +2448,14 @@ function gameBody(a) {
   if (S.tab === 'ach' && window.achBody) return window.achBody(a) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
+    const play = gamePlaytime(a);
     const stats = inst
-      ? [[t('Played'), playedFor(inst)], [t('Last played'), inst.last_played ? ago(inst.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
+      ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
       : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—'], [t('Size'), a.size || '—']];
     // Under the installed version: how the store checked that release (a player's own game has none).
     const verScan = inst && inst.tag && !inst.local ? scanPill({ id, tag: inst.tag }) : '';
-    body = `<div class="stack"><div class="stats">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}</div>`).join('')}</div>
+    if (!inst && play?.last_played) stats.unshift(...playtimeRows(a, play));
+    body = `<div class="stack"><div class="stats" style="--stat-cols:${stats.length}">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}</div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
@@ -4775,6 +4819,7 @@ function paintSetupProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
+  S.removedPlayHistory = st.removedPlayHistory || {};
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
   document.body.classList.toggle('linux', S.os === 'linux');
@@ -5802,13 +5847,54 @@ function beginWith(id, path) {
   if (SU.el && SU.id === id && SU.stage === 'pick') return suBegin(path);
   if (window.tvBeginWith) window.tvBeginWith(id, path);
 }
+// Before a recomp of several games installs: the games it adds to the Library. Big Picture shows
+// the same in its wide sheet, Install first.
+async function confirmPack(id, pack) {
+  const name = (byId(id) || {}).name || id;
+  const title = tf('Install {name}?', { name });
+  const line = tf('One download installs all {n} of its games. Each one gets its own place in your Library.', { n: pack.length });
+  if (inTV() && window.tvAsk) {
+    const head = `<h3>${esc(title)}</h3><p class="tv-sreq-p">${esc(line)}</p><ul class="tv-sreq-steps tv-pack">${pack.map((g) => `<li dir="auto">${esc(g.name)}</li>`).join('')}</ul>`;
+    return (await window.tvAsk(title, [{ label: t('Install'), icon: 'down' }, { label: t('Cancel'), icon: 'chevL' }], head)) === 0;
+  }
+  // Only a game's own cover: the recomp's, repeated beside every name, would read as a mistake.
+  const items = pack.map((g) => `<li>${g.cover ? pic(thumbOf(g.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`).join('');
+  const text = `<p>${esc(line)}</p><ul class="pack-list">${items}</ul>`;
+  const v = await ask(title, text, [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Install'), icon: 'down', v: 'go', main: true, focus: true }]);
+  return v === 'go';
+}
+// A recomp of several games is in: where its games went, then the setup of the one it was
+// installed from, when that game needs the player's copy (the recomp's own would ask for all of them).
+async function packInstalled(id, name, games, open) {
+  const from = (S.packFrom || {})[id] || '';
+  if (S.packFrom) delete S.packFrom[id];
+  toast(tf('{name} is installed. Its {n} games are in your Library.', { name, n: games.length }));
+  if (from) await saveUi({ pack_from: Object.assign({}, (S.settings.ui || {}).pack_from, { [id]: from }) }, true);
+  if (!from || !open || !S.easy.has(id)) return;
+  await refreshState();
+  // Asked here, not through loadSetup: the game's open page may be loading it already, and that
+  // returns before the answer is in.
+  let su;
+  try { su = S.setup[from] = await invoke('game_setup', { id: from }); } catch (e) { return; }
+  // Its own named inputs say whether it's set up; the install's one copy may be another game's.
+  const ready = su && (su.inputs?.length ? su.inputs_ready : su.copy);
+  if (su && su.needs && !ready) setupModal(from);
+}
 async function startInstall(id, dir, tag, anyway) {
   // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
+  const from = subOf(id) ? id : '';
   id = parentId(id);
   // Another version of this game is installed: switch to this one completely, or keep both.
   // Asked once, before where it goes (that asks again with the place).
   if (dir === undefined && !S.library[id] && window.askSwitch && !(await askSwitch(id))) return;
   if (dir === undefined && !S.library[id]) await copyFromOther(id);
+  // Its first install puts every one of its games in the Library: the player sees which first.
+  // Asked once, before where it goes (that question comes back here with dir set).
+  const pack = gamesOf(id, byId(id));
+  if (dir === undefined && !S.library[id] && !tag && !anyway && pack.length) {
+    if (!(await confirmPack(id, pack))) return;
+    (S.packFrom = S.packFrom || {})[id] = from;
+  }
   // An update of a recomp with several games: all of them get it.
   if (S.library[id] && hasGames(id) && S.updates[id] && !tag) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
   // Asked where it goes: the first time, with more than one library, or always when the player
@@ -5823,7 +5909,8 @@ async function startInstall(id, dir, tag, anyway) {
   // Easy Install with no copy found in the player's folders: pick it first, and it's checked against
   // what the game needs before anything downloads. Once it's in, setup goes straight on with it.
   // With Auto-Install off nothing sets up by itself after the download, so there's nothing to pick it for.
-  if (autoInstall() && !S.library[id] && !tag && !anyway && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
+  // A recomp of several games: each game's copy is asked for on its own setup, after the download.
+  if (autoInstall() && !S.library[id] && !tag && !anyway && !pack.length && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
     const pickIt = async () => {
       for (;;) {
         const f = await pickFile(copyPickOpts(id)).catch(() => null);
@@ -8714,13 +8801,19 @@ T.event.listen('install', ({ payload: p }) => {
       if (preUp) delete S.preUpdate[id];
       // Auto-Install off (Settings → Updates): nothing opens by itself; Set Up on its page starts it.
       const auto = autoInstall();
-      // Only an installer: its Set Up opens to run it (an update's too).
-      if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
-      // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
-      else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-      else if (S.easy.has(id) && !busy) (preUp ? invoke('set_update_copy', { id, path: preUp }).catch(() => {}) : Promise.resolve()).then(() => loadSetup(id)).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre) beginWith(id, pre); } else toast(tf('{name} is ready to play.', { name })); });
-      else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
-      else toast(tf('{name} is ready to play.', { name }));
+      const after = () => {
+        // Only an installer: its Set Up opens to run it (an update's too).
+        if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
+        // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
+        else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
+        else if (S.easy.has(id) && !busy) (preUp ? invoke('set_update_copy', { id, path: preUp }).catch(() => {}) : Promise.resolve()).then(() => loadSetup(id)).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre) beginWith(id, pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
+        else toast(tf('{name} is ready to play.', { name }));
+      };
+      // A first install of a recomp of several games (the catalog may not list them; its own file
+      // does): told where its games went, and set up per game. Anything else as before.
+      if (wasInstalled || isInstallerApp(byId(id))) after();
+      else invoke('recomp_games').then((sets) => { const list = gameList(((sets || {})[id] || {}).games); if (list.length) packInstalled(id, name, list, auto && !busy); else after(); }).catch(after);
     }
     else if (p.phase === 'error' && String(p.msg || '').startsWith('PICK_BUILD|')) { S.recent = S.recent.filter((r) => r !== p); pickBuild(id, buildList(p.msg)); }
     else if (p.phase === 'error') { if (!blocked(id, p.msg)) toast(tf('{name}: {msg}', { name, msg: cleanMsg(p.msg) }), true); p.msg = cleanMsg(p.msg); }
@@ -8750,6 +8843,7 @@ T.event.listen('game', ({ payload: p }) => {
     if (S.setup[p.id] && S.setup[p.id] !== 'loading') { delete S.setup[p.id]; loadSetup(p.id); }
   }
   refreshState().then(() => render(true));
+  if (p.state !== 'running' && accountId()) playSync([p.id]).then((changed) => changed && render(true));
 });
 
 // ---------- how are you enjoying it (asked once) ----------

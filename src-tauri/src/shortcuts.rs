@@ -935,6 +935,8 @@ mod tests {
         assert_eq!(desktop_starts(body, "hookshot", Path::new("/games/Hookshot"), Path::new(DATA)), None);
     }
 
+    // Desktop entries are Linux's: there, /games/... is a whole path; on Windows it isn't.
+    #[cfg(not(windows))]
     #[test]
     fn the_games_own_entry_into_its_folder_is_found_but_not_ours() {
         let body = "[Desktop Entry]\nName=Hookshot\nExec=\"/games/Recomp Library/Hookshot/hookshot\"\nIcon=/games/Recomp Library/Hookshot/hookshot.png\n";
@@ -942,6 +944,8 @@ mod tests {
         assert_eq!(desktop_starts(body, "hookshot", folder, Path::new(DATA)), Some((false, false)));
     }
 
+    // Desktop entries are Linux's: there, /games/... is a whole path; on Windows it isn't.
+    #[cfg(not(windows))]
     #[test]
     fn a_direct_entry_with_the_launchers_icon_is_ours() {
         let body = "[Desktop Entry]\nExec=\"/games/dkb/game/dkb\" \nIcon=/home/p/.local/share/com.recomplauncher.app/covers/dkb-icon-list.png\n";

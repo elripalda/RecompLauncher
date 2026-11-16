@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "لم تطرح هذه اللعبة المعاد تجميعها أي إصدار بعد.",
  "This recomp isn't listed anymore": "لم تعد هذه اللعبة المعاد تجميعها مدرجة",
  "This recomp isn't listed anymore.": "لم تعد هذه اللعبة المعاد تجميعها مدرجة.",
+ "This recomp": "هذه اللعبة المعاد تجميعها",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "يأتي هذا الإصدار بأكثر من نسخة بناء، غالبًا واحدة لكل منطقة. اختر ما يطابق نسختك من اللعبة. يمكنك التغيير لاحقًا من قائمة النقر بزر الماوس الأيمن.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "هذا الإصدار من RecompLauncher قديم جدًا على إعادات التجميع الحالية. حدّث إلى {version} لتواصل اللعب. يستغرق لحظة فقط.",
  "This week": "هذا الأسبوع",
@@ -1370,6 +1371,7 @@
  "Tile size": "حجم المربعات",
  "Tiles": "مربعات",
  "Time to Update": "حان وقت التحديث",
+ "Total game playtime": "إجمالي وقت لعب اللعبة",
  "Triangle": "مثلث",
  "Troubleshoot": "حل المشكلات",
  "Troubleshoot {name}": "حل مشكلات {name}",
@@ -3331,5 +3333,7 @@
  "Turning it on accepts the {license}.": "بتفعيله توافق على {license}.",
  "Turning it on sets the game up again from your copy.": "بتفعيله تُعدّ اللعبة من جديد من نسختك.",
  "Use the copy it was set up with": "استخدام النسخة التي أُعدّت بها",
- "{n} new options": "خياران جديدان|{n} خيارات جديدة|{n} خيارًا جديدًا|{n} خيار جديد"
+ "{n} new options": "خياران جديدان|{n} خيارات جديدة|{n} خيارًا جديدًا|{n} خيار جديد",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "تنزيل واحد يثبّت ألعابه الـ{n} كلها. لكل واحدة مكانها في مكتبتك.|تنزيل واحد يثبّت ألعابه الـ{n} كلها. لكل واحدة مكانها في مكتبتك.|تنزيل واحد يثبّت ألعابه الـ{n} كلها. لكل واحدة مكانها في مكتبتك.|تنزيل واحد يثبّت ألعابه الـ{n} كلها. لكل واحدة مكانها في مكتبتك.",
+ "{name} is installed. Its {n} games are in your Library.": "تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.|تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.|تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.|تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك."
 }

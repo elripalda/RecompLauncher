@@ -297,6 +297,50 @@ pub async fn library_push(app: AppHandle, games: Vec<String>, on: bool) -> Res<V
     post(&app, "library-save", body, true).await
 }
 
+// ---------- playtime, kept with the account ----------
+//
+// Each PC sends its own running total per game; the website adds the PCs up (docs/LAUNCHER-API.md).
+// Quiet on purpose: playtime is extra, so any failure (no connection, a site without these calls
+// yet) just leaves this PC's own numbers showing. It never signs the player out, because a site
+// that doesn't know the call answers 401 before it looks at the token.
+
+async fn play_call(req: reqwest::RequestBuilder, url: &str) -> Option<Value> {
+    let r = crate::net::send(req.timeout(crate::net::QUICK), url, false).await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    (v.get("ok") != Some(&Value::Bool(false))).then_some(v)
+}
+
+/// Sends this PC's time to the account: for `games` only (after a session), or all of it.
+/// True when the website took it.
+#[tauri::command]
+pub async fn playtime_push(app: AppHandle, games: Option<Vec<String>>) -> Res<bool> {
+    let st = app.state::<App>();
+    let Some(a) = load(&st.dir) else { return Ok(false) };
+    let entries = st.lib.lock().unwrap().play_entries(games.as_deref());
+    let url = format!("{}?a=play", api());
+    for chunk in entries.chunks(500) {
+        let req = st.http.post(&url).json(&json!({ "games": chunk })).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+        if play_call(req, &url).await.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// The account's totals over all its PCs: {games: {id: {secs, last}}, titles: {title: {secs, last}}}.
+/// Null when signed out or the website can't say.
+#[tauri::command]
+pub async fn playtime_pull(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let Some(a) = load(&st.dir) else { return Ok(Value::Null) };
+    let url = format!("{}?a=play", api());
+    let req = st.http.get(&url).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    Ok(play_call(req, &url).await.unwrap_or(Value::Null))
+}
+
 // ---------- signing in ----------
 
 /// The sign-in that's waiting for the player to approve it on the website.

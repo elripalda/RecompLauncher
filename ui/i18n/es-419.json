@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Este recomp todavía no publica ninguna versión.",
  "This recomp isn't listed anymore": "Este recomp ya no aparece en la lista",
  "This recomp isn't listed anymore.": "Este recomp ya no aparece en la lista.",
+ "This recomp": "Esta recomp",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Esta versión viene en más de una compilación, a menudo una por región. Elige la que coincida con tu copia del juego. Puedes cambiarla después desde su menú de clic derecho.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Esta versión de RecompLauncher es demasiado antigua para los recomps actuales. Actualiza a {version} para seguir jugando. Solo toma un momento.",
  "This week": "Esta semana",
@@ -1370,6 +1371,7 @@
  "Tile size": "Tamaño de los mosaicos",
  "Tiles": "Mosaicos",
  "Time to Update": "Hora de actualizar",
+ "Total game playtime": "Tiempo de juego total",
  "Triangle": "Triángulo",
  "Troubleshoot": "Solucionar problemas",
  "Troubleshoot {name}": "Solucionar problemas de {name}",
@@ -3331,5 +3333,7 @@
  "Turning it on accepts the {license}.": "Al activarla, aceptas {license}.",
  "Turning it on sets the game up again from your copy.": "Al activarla, el juego se vuelve a configurar con tu copia.",
  "Use the copy it was set up with": "Usar la copia con la que se configuró",
- "{n} new options": "{n} opciones nuevas"
+ "{n} new options": "{n} opciones nuevas",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Una sola descarga instala sus {n} juegos. Cada uno tiene su propio lugar en tu biblioteca.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} está instalado. Sus {n} juegos ya están en tu biblioteca."
 }

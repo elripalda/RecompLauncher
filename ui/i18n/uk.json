@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "У цієї рекомпіляції ще немає релізів.",
  "This recomp isn't listed anymore": "Цієї рекомпіляції більше немає в каталозі",
  "This recomp isn't listed anymore.": "Цієї рекомпіляції більше немає в каталозі.",
+ "This recomp": "Ця рекомпіляція",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Цей реліз має кілька збірок, часто по одній для кожного регіону. Вибери ту, що відповідає твоїй копії гри. Змінити її можна пізніше через меню правої кнопки.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Ця версія RecompLauncher застара для нинішніх рекомпів. Оновіться до {version}, щоб грати далі. Це займе хвилинку.",
  "This week": "Цього тижня",
@@ -1370,6 +1371,7 @@
  "Tile size": "Розмір плиток",
  "Tiles": "Плитки",
  "Time to Update": "Час оновитися",
+ "Total game playtime": "Загальний час у грі",
  "Triangle": "Трикутник",
  "Troubleshoot": "Усунення проблем",
  "Troubleshoot {name}": "Усунення проблем: {name}",
@@ -3331,5 +3333,7 @@
  "Turning it on accepts the {license}.": "Увімкнувши його, ти приймаєш умови: {license}.",
  "Turning it on sets the game up again from your copy.": "Після ввімкнення гру буде знову налаштовано з твоєї копії.",
  "Use the copy it was set up with": "Використати копію, з якою її налаштовано",
- "{n} new options": "{n} новий параметр|{n} нові параметри|{n} нових параметрів"
+ "{n} new options": "{n} новий параметр|{n} нові параметри|{n} нових параметрів",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Одне завантаження встановлює {n} гру, що входить до неї. Кожна має своє місце в бібліотеці.|Одне завантаження встановлює всі {n} ігри, що входять до неї. Кожна має своє місце в бібліотеці.|Одне завантаження встановлює всі {n} ігор, що входять до неї. Кожна має своє місце в бібліотеці.",
+ "{name} is installed. Its {n} games are in your Library.": "{name}: встановлено. {n} гра вже в бібліотеці.|{name}: встановлено. {n} гри вже в бібліотеці.|{name}: встановлено. {n} ігор уже в бібліотеці."
 }

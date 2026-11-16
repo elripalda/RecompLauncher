@@ -103,7 +103,8 @@ fn host(url: &str) -> String {
 ///
 /// Cloud saves going up or coming down rest on their own ("{host}/saves"): a big upload that's cut
 /// off or too slow says nothing about the list or the account. So does usage and logs
-/// ("{host}/stats"). Only the site's own gate marks it Offline.
+/// ("{host}/stats"), and playtime ("{host}/play"), which a site without that call yet fails
+/// every time. Only the site's own gate marks it Offline.
 fn key(url: &str) -> String {
     let h = host(url);
     let parsed = reqwest::Url::parse(url).ok();
@@ -111,6 +112,8 @@ fn key(url: &str) -> String {
     let action = parsed.as_ref().and_then(|u| u.query_pairs().find(|(k, _)| k == "a").map(|(_, v)| v.to_string())).unwrap_or_default();
     if path.ends_with("/api/launcher.php") && matches!(action.as_str(), "save-put" | "save-get" | "save-delete") {
         format!("{h}/saves")
+    } else if path.ends_with("/api/launcher.php") && action == "play" {
+        format!("{h}/play")
     } else if path.ends_with("/api/launcher-ping.php") || path.ends_with("/api/logs.php") || (path.ends_with("/api/launcher.php") && matches!(action.as_str(), "events" | "hello" | "report")) {
         format!("{h}/stats")
     } else if path.ends_with("/api/gh.php") {
@@ -481,6 +484,12 @@ mod tests {
 
     /// The tests that read or change the site's Offline mark, one at a time.
     static SITE: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn playtime_rests_on_its_own() {
+        let b = base();
+        assert_eq!(key(&format!("{b}/api/launcher.php?a=play")), "recomplauncher.com/play");
+    }
 
     #[test]
     fn saves_and_usage_rest_on_their_own() {
