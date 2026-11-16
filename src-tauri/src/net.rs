@@ -714,6 +714,29 @@ pub fn with_proxy(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     b.no_proxy().proxy(reqwest::Proxy::custom(proxy_for))
 }
 
+/// Redirects are followed (GitHub's and SourceForge's downloads go through them), but never from
+/// https down to plain http.
+fn redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|a| {
+        if a.previous().len() >= 10 {
+            a.error("too many redirects")
+        } else if a.url().scheme() != "https" && a.previous().iter().any(|u| u.scheme() == "https") {
+            a.error("a redirect away from https")
+        } else {
+            a.follow()
+        }
+    })
+}
+
+/// The settings of the launcher's client, for any other client that has to match it.
+pub fn client_builder() -> reqwest::ClientBuilder {
+    with_proxy(reqwest::Client::builder())
+        .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
+        .redirect(redirects())
+        // Slow DNS or a busy mobile connection can take a while to connect.
+        .connect_timeout(Duration::from_secs(15))
+}
+
 #[cfg(test)]
 mod proxy_tests {
     use super::*;

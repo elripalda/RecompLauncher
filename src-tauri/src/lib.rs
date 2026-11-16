@@ -9352,22 +9352,7 @@ pub fn run() {
                     trail::note(format!("Proxy setting not used: {e}"));
                 }
             }
-            let http = net::with_proxy(reqwest::Client::builder())
-                .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
-                // Redirects are followed (GitHub's and SourceForge's downloads go through them), but
-                // never from https down to plain http.
-                .redirect(reqwest::redirect::Policy::custom(|a| {
-                    if a.previous().len() >= 10 {
-                        a.error("too many redirects")
-                    } else if a.url().scheme() != "https" && a.previous().iter().any(|u| u.scheme() == "https") {
-                        a.error("a redirect away from https")
-                    } else {
-                        a.follow()
-                    }
-                }))
-                // Slow DNS or a busy mobile connection can take a while to connect.
-                .connect_timeout(std::time::Duration::from_secs(15))
-                .build()?;
+            let http = net::client_builder().build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
             // Save copies in the player's own folder, when they picked one; any made here while it
