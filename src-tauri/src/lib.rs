@@ -4711,6 +4711,10 @@ struct Setup {
     /// Built from the copy into a folder of its own: a build the player already has, anywhere,
     /// can be picked instead (Use a Build You Already Have). The setup's own folder, for the hint.
     own_build: Option<PathBuf>,
+    /// That folder, for the hint ("The game's own setup builds it into ..."), only when it's
+    /// outside the game's own folder. One inside it is where Easy Setup builds, so there's
+    /// nothing for the player to go and find.
+    build_where: Option<PathBuf>,
     /// The player's own build in use, and where.
     build_dir: Option<PathBuf>,
     /// The player's copy is asked for, and how.
@@ -4810,6 +4814,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         prebuilt: if set_up { None } else { p.build_folder_here(&g.path) },
         prebuilt_on: g.prebuilt && built,
         own_build: if set_up { None } else { whole.build_home(&g.path) },
+        build_where: if set_up { None } else { whole.build_home(&g.path).filter(|h| !h.starts_with(&g.path)) },
         build_dir: g.build_dir.clone().filter(|d| d.is_dir()),
         needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
