@@ -112,6 +112,25 @@ The same file uploaded twice, once without the version for `releases/latest/down
 the one that names its version and doesn't ask the player to choose. GitHub's SHA-256 of each file
 says they're the same.
 
+### Mac apps
+
+Put your `.app` at the top of a zip, with `recomplauncher.json` beside it, and say the system in
+the name (`MyGame-1.2.0-macos-arm64.zip`) so it's picked over a disk image. Links inside the app,
+like a framework's `Versions/Current`, are kept. Name the app in `start.program` and
+`prepare.program`; the launcher runs the program its `Info.plist` names:
+
+```json
+"start": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"] },
+"prepare": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"], "args": ["--prepare", "--game", "{game}"] }
+```
+
+The first entry that exists on the player's system runs, so one file covers a Mac and Linux.
+RecompLauncher 0.90 Beta 54 and older find an app in `start.program` and `prepare.program` only by
+its program's own path, which works everywhere: `"MyGame.app/Contents/MacOS/MyGame"`.
+
+If your app updates itself (Sparkle, say), leave that off when `RECOMPLAUNCHER` is set: the
+launcher installs each of your releases over the app, and two updaters on one app fight.
+
 Two examples are worth reading:
 
 - [fifawc14.json](examples/fifawc14.json): 2014 FIFA World Cup (Xbox 360), with a settings file
