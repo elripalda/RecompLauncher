@@ -2618,9 +2618,9 @@ fn start_game_with_monitor_context(
         trail::note(format!("Play {id}: set up by hand, but it's built from the copy first; asking to use the launcher's way"));
         return Err(Error::Msg("NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".into()));
     }
-    // "Program it starts" picked by the player, and not the program the game's setup file starts
-    // (the game they moved somewhere else, or a build of their own): theirs starts, as it is. The
-    // setup file's command line is for its own program, and its own folder may be gone.
+    // The executable the player picked (Set Game Executable), not the program the game's setup
+    // file starts (the game they moved somewhere else, or a build of their own): theirs starts, as
+    // it is. The setup file's command line is for its own program, and its own folder may be gone.
     if manual.is_none() {
         if let Some(mine) = player_program(&st, id, &g) {
             trail::note(format!("Play {id}: the program the player picked ({}), not its setup file's", mine.display()));
@@ -2698,7 +2698,7 @@ fn start_game_with_monitor_context(
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
     if skipped && g.exe.is_none() {
-        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.".into()));
+        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.".into()));
     }
     // Settings on Match My Screen: the monitor's size now, when the monitor changed since it was
     // last written (a size picked in the game's own menu stays otherwise).
@@ -4722,6 +4722,10 @@ struct Setup {
     build_where: Option<PathBuf>,
     /// The player's own build in use, and where.
     build_dir: Option<PathBuf>,
+    /// The program the player picked with Set Game Executable, when Play starts it as it is instead of
+    /// the way the setup file says (player_program). Shown, so the player can tell Easy Setup is
+    /// out of the way, and undo it.
+    own_program: Option<PathBuf>,
     /// The player's copy is asked for, and how.
     needs: Option<String>,
     kind: String,
@@ -4821,6 +4825,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         own_build: if set_up { None } else { whole.build_home(&g.path) },
         build_where: if set_up { None } else { whole.build_home(&g.path).filter(|h| !h.starts_with(&g.path)) },
         build_dir: g.build_dir.clone().filter(|d| d.is_dir()),
+        own_program: player_program(&st, &id, &g),
         needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
         copy,
@@ -6346,13 +6351,30 @@ fn python_here() -> Option<(PathBuf, Vec<&'static str>)> {
 
 /// The program the player picked in the game's settings, when the game's setup file starts another
 /// one: a moved game, or a program of their own. None when they didn't pick, or picked the same.
-fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+fn picked_program(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, profile::Profile)> {
     if g.exe_rules != u8::MAX {
         return None;
     }
     let exe = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }).filter(|e| e.is_file())?;
     let p = profile_of(st, id, g)?;
-    (p.start.is_some() && !p.starts_program(&exe)).then_some(exe)
+    (p.start.is_some() && !p.starts_program(&exe)).then_some((exe, p))
+}
+
+/// The player's picked program, when Play starts it as it is. On a game Easy Setup can do, only
+/// while Easy Setup is off for it: Skip Easy Setup is the one switch for who sets a game up, so
+/// the game's page and Play can't disagree (picking the program turns it off, in the UI).
+fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    let (exe, p) = picked_program(st, id, g)?;
+    let easy_on = p.easy_setup() && !easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    (!easy_on).then_some(exe)
+}
+
+/// The games whose program the player picked, so the UI turns Easy Setup off for them: once for
+/// picks made before Skip Easy Setup was the switch, and when Easy Setup is turned on for every game.
+#[tauri::command(async)]
+fn own_program_games(st: State<'_, App>) -> Vec<String> {
+    let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    games.iter().filter(|g| picked_program(&st, &g.id, g).is_some()).map(|g| g.id.clone()).collect()
 }
 
 /// Set Up By Hand: the program and its command line, with the player's game files put where they
@@ -6837,6 +6859,27 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     drop(l);
     st.save();
     Ok(out)
+}
+
+/// Set Game Executable undone (Use Default): the player's pick goes, and the launcher
+/// picks the program again by its own rules, so Play starts the game its setup file's way.
+#[tauri::command]
+fn forget_program(st: State<'_, App>, id: String) -> Res<Installed> {
+    let g = {
+        let mut l = st.lib.lock().unwrap();
+        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        if g.exe_rules == u8::MAX {
+            g.exe = None;
+            g.exe_rules = 0;
+        }
+        g.clone()
+    };
+    st.save();
+    // The same pick Play makes when the launcher's rules change, made now so the game's page
+    // shows the program again straight away.
+    let _ = own_setup::pending(&st, &id, &g);
+    trail::note(format!("{id}: the program the player picked is let go; the launcher starts it its own way again"));
+    st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
 }
 
 #[tauri::command(async)]
@@ -9652,7 +9695,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, own_program_games, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,

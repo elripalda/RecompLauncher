@@ -1318,19 +1318,34 @@ function copyLine(id) {
   return `<button type="button" class="linkish copy-line" data-act="copies" data-id="${esc(id)}">${esc(t('Game detected'))} · ${esc(tn(n, '1 file found', '{n} files found'))}${esc(gap)}</button>`;
 }
 const pickBtn = (id) => `<button type="button" class="btn sm" data-act="found-fix" data-id="${esc(id)}">${esc(t('Choose Your Copy'))}</button>`;
+// The player's copy as Before you play shows it: the file it's set up with (none yet: '') and the
+// formats to ask for. A game set up through named inputs goes by its own inputs: the install
+// records one copy only, and only for a required input, so a game of a recomp that carries several
+// (or one whose inputs are all optional) would otherwise always look not set up.
+function copyState(id, su) {
+  if (!su.inputs?.length) return { file: su.copy || '', exts: copyFormats(id).exts };
+  // The game's own files: not shared keys, nor a file the launcher fetches itself.
+  const mine = su.inputs.filter((r) => !r.runtime && !r.shared);
+  const file = su.inputs_ready ? ((mine.find((r) => r.path) || {}).path || '') : '';
+  return { file, exts: [...new Set(mine.flatMap((r) => r.extensions || []))] };
+}
 function readyRows(a) {
   const id = a.id, g = S.library[id], pc = S.pc || {}, rows = [];
   const own = S.owned[id], su = S.setup[id];
-  if (su && su.needs) rows.push({ k: t('Your copy of the game'), v: su.copy ? true : own ? null : null,
-    d: su.copy ? tf('Set up with {file}', { file: baseName(su.copy) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !su.copy && own ? copyLine(id) : '',
-    tags: su.copy || own ? '' : fmtTags(copyFormats(id).exts),
-    fix: su.copy ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
+  // A self-managed install doesn't need the player's copy or its update: Play just starts their
+  // executable.
+  const selfRun = !!(su && su.own_program);
+  const cs = su && su.needs ? copyState(id, su) : null;
+  if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
+    d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
+    tags: cs.file || own ? '' : fmtTags(cs.exts),
+    fix: cs.file ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
   else if (!g && S.easy.has(id)) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
     d: own ? t('It\'s set up for you after it installs.') : t('You insert it after it installs, and the launcher sets the game up.'), html: own ? copyLine(id) : '', tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
-  else if (a.needs) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
+  else if (a.needs && !selfRun) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
     d: own ? '' : g && g.last_played ? t('Set up the first time you played') : t('Not found'), html: own ? copyLine(id) : '',
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
-  if (su && su.needs && su.update) rows.push({ k: t('The game\'s update'), v: su.update_copy ? true : su.update_optional ? true : null,
+  if (su && su.needs && su.update && !selfRun) rows.push({ k: t('The game\'s update'), v: su.update_copy ? true : su.update_optional ? true : null,
     d: su.update_copy ? tf('Set up with {file}', { file: baseName(su.update_copy) }) : su.update,
     fix: su.update_copy || su.update_optional ? '' : `<button type="button" class="btn sm main" data-act="setupdate" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` });
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
@@ -2466,7 +2481,7 @@ function gameBody(a) {
     // Under the installed version: how the store checked that release (a player's own game has none).
     const verScan = inst && inst.tag && !inst.local ? scanPill({ id, tag: inst.tag }) : '';
     if (!inst && play?.last_played) stats.unshift(...playtimeRows(a, play));
-    body = `<div class="stack"><div class="stats" style="--stat-cols:${stats.length}">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}</div>`).join('')}</div>
+    body = `<div class="stack"><div class="stats" style="--stat-cols:${stats.length}">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}${inst && k === t('Installed') ? selfManagedPill(id) : ''}</div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
@@ -2510,7 +2525,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
-      <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
+      ${programRow(id, inst)}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
@@ -5581,6 +5596,99 @@ function menu(at, items) {
   show(items, '');
 }
 
+// The game's setup info when it's loaded (game_setup), else null.
+function setupOf(id) {
+  const su = S.setup[id];
+  return su && su !== 'loading' ? su : null;
+}
+// The player picked the game's own executable and Play starts it as it is (game_setup's
+// own_program): they manage this install, not the launcher.
+function selfManaged(id) {
+  const su = setupOf(id);
+  return !!(su && su.own_program);
+}
+function selfManagedPill(id) {
+  if (!selfManaged(id)) return '';
+  return `<span class="own-pill" title="${esc(t('You manage this install. Play starts the executable you picked, as it is, without Easy Setup or the launcher\'s setup steps.'))}">${esc(t('Self-Managed'))}</span>`;
+}
+// The program's full path (it's kept relative to the game's folder when it's inside it).
+function exePath(inst) {
+  const e = String(inst.exe || '');
+  if (!e || /^([a-zA-Z]:[\\/]|[\\/])/.test(e)) return e;
+  const sep = S.os === 'windows' ? '\\' : '/';
+  return String(inst.path || '').replace(/[\\/]+$/, '') + sep + e;
+}
+// Game Executable on the game's page: what Play starts, in a path box, with Change. On a game Easy
+// Setup does it says what picking the game's own executable does there, and once Play starts the
+// pick as it is, that the player manages the install (the pill). The way back: Use Easy Setup
+// Instead where Easy Setup can come back on for this game alone, otherwise Use Default.
+function programRow(id, inst) {
+  const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
+  const path = exePath(inst);
+  const sub = mine ? t('Play starts this file as it is. You manage this install, and Easy Setup is skipped.')
+    : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
+      : t('The file Play starts.');
+  const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
+  const easyBack = easy && !(S.settings.ui || {}).easy_skip_all;
+  const backBtn = easyBack ? ['easy-again', t('Use Easy Setup Instead')] : ['forget-program', t('Use Default')];
+  const back = mine ? `<button type="button" class="btn" data-act="${backBtn[0]}" data-id="${esc(id)}">${esc(backBtn[1])}</button>` : '';
+  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
+    <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
+}
+// Skip Easy Setup for one game, or Easy Setup on for it again. Turning it back on lets go of an
+// executable the player picked, so the launcher starts the game its own way again.
+async function setEasySkip(id, on) {
+  const skip = new Set((S.settings.ui || {}).easy_skip || []);
+  if (!on && S.library[id]) S.library[id] = await invoke('forget_program', { id });
+  if (on) skip.add(id);
+  else skip.delete(id);
+  await saveUi({ easy_skip: [...skip] }, true);
+  if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
+}
+// Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
+async function askEasyOff(id) {
+  const name = (byId(id) || S.library[id] || { name: id }).name;
+  const text = tf('Set Game Executable turns off Easy Setup for {name}. Play then starts just the file you pick, as it is, and you manage this install.', { name });
+  const v = await ask(t('Turn Off Easy Setup?'), `<p>${esc(text)}</p>`, [{ label: t('Turn Off'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
+  return v === 'yes';
+}
+// Set Game Executable: the program Play starts, picked by the player. True when it's set.
+async function chooseProgram(id) {
+  const g = S.library[id];
+  const easyOn = S.easy.has(id);
+  if (easyOn && !(await askEasyOff(id))) return false;
+  const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] });
+  if (!p) return false;
+  S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path });
+  if (easyOn) await setEasySkip(id, true);
+  // The setup info says whether Play starts the pick as it is.
+  if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
+  return true;
+}
+// Where's Your Build?: asked on Play when Easy Setup is skipped for a game built from the player's
+// copy and the launcher has no build for it. Two ways in: the build's folder (the launcher still
+// starts it the game's way, with its settings and save backups pointed there), or the game's own
+// executable (Play just starts that file). Picking only sets it; the player presses Play.
+// Resolves to 'folder', 'program', 'easy' or null.
+function askWhereBuild() {
+  const title = t('Where\'s Your Build?');
+  const intro = t('Easy Setup is off for this game, so the launcher doesn\'t build it. Pick your build, then press Play.');
+  const folder = [t('Use My Build Folder'), t('The launcher starts it and keeps its settings and save backups.')];
+  const program = [t('Set Game Executable'), t('Play just starts that file. You manage everything else.')];
+  if (inTV()) {
+    return ask(title, `<p>${esc(intro)}</p>`, [{ label: folder[0], sub: folder[1], v: 'folder', main: true }, { label: program[0], sub: program[1], v: 'program' }, { label: t('Use Easy Setup Instead'), v: 'easy' }, { label: t('Not Now'), v: null }]);
+  }
+  const card = (v, [b, s]) => `<button type="button" class="pick-card pick-btn" data-x="${v}"><b>${esc(b)}</b><span>${esc(s)}</span></button>`;
+  return new Promise((res) => {
+    let picked = null;
+    const box = modal(`<h2>${esc(title)}</h2><p>${esc(intro)}</p><div class="build-picks">${card('folder', folder)}${card('program', program)}</div>
+      <div class="build-foot"><button type="button" class="linkish" data-x="easy">${esc(t('Use Easy Setup Instead'))}</button><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button></div>`, (x, close) => {
+      picked = x.dataset.x;
+      close();
+    }, title);
+    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
+  });
+}
 // Skip Easy Setup for one game, in its menu: only on games Easy Setup can do, and not while it's
 // skipped for every game in Settings.
 function easySkipItem(id) {
@@ -5616,7 +5724,7 @@ function gameMenu(id) {
         { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
-        { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
+        { act: 'setexe', id, label: selfManaged(id) ? t('Set Game Executable (On)…') : t('Set Game Executable…'), icon: 'exe' },
         { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...easySkipItem(id),
         ...(S.setup[id] && S.setup[id] !== 'loading' && S.setup[id].build_at ? [{ act: 'move-build', id, label: t('Move Build…'), icon: 'move' }] : []),
@@ -6145,17 +6253,22 @@ async function playGame2(id, program) {
         try { S.library[id] = await invoke('set_manual', { id, manual: null }); } catch (e) { return fail(e); }
         return playGame(id);
       }
-      // Easy Setup skipped on a game built from the copy: it starts the player's own build, so its
-      // folder is asked for once (or Easy Setup goes back on for it).
+      // Easy Setup skipped on a game built from the copy, with no build yet: where it is, asked
+      // once (or Easy Setup goes back on for it).
       if (/^NEED_OWN_BUILD\|/.test(String(err && err.message ? err.message : err))) {
-        const v = await ask(t('Point to Your Build'), `<p>${esc(t('Easy Setup is skipped for this game, and it\'s built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.'))}</p>`,
-          [{ label: t('Choose Folder'), v: 'pick', main: true }, { label: t('Use Easy Setup'), v: 'easy' }, { label: t('Not Now'), v: null }]);
-        if (v === 'pick') {
+        const v = await askWhereBuild();
+        if (v === 'folder') {
           try { if (!(await useOwnBuild(id))) return; } catch (e) { return fail(e); }
-          return playGame(id);
+          toast(t('Build folder set. Press Play to start it.'));
+          return render(true);
+        }
+        if (v === 'program') {
+          try { if (!(await chooseProgram(id))) return; } catch (e) { return fail(e); }
+          toast(t('Game executable set. Press Play to start it.'));
+          return render(true);
         }
         if (v === 'easy') {
-          await saveUi({ easy_skip: ((S.settings.ui || {}).easy_skip || []).filter((x) => x !== id) }, true);
+          try { await setEasySkip(id, false); } catch (e) { return fail(e); }
           return playGame(id);
         }
         return;
@@ -6856,7 +6969,26 @@ window.keepOut = keepOut;
 async function loadEasy(quiet) {
   try { S.easyAll = new Set(await invoke('easy_setup')); } catch (e) { S.easyAll = new Set(); }
   applyEasySkip();
+  await skipOwnPrograms();
   if (!quiet) render(true);
+}
+// A game whose executable the player picked has Easy Setup off: Skip Easy Setup is the one switch
+// for who sets a game up. For picks made before it was (Beta 57 and earlier, when the pick took
+// over on its own), it's turned off here to match: those games already started the pick as it is.
+async function skipOwnPrograms() {
+  const ui = S.settings.ui || {};
+  if (ui.easy_skip_all) return;
+  const own = await invoke('own_program_games').catch(() => []);
+  const add = own.filter((id) => S.easy.has(id));
+  if (!add.length) return;
+  await saveUi({ easy_skip: [...(ui.easy_skip || []), ...add] }, true);
+}
+// Easy Setup on for every game again: a game whose executable the player picked keeps it off (its
+// own menu turns it back on), so the pick still starts.
+async function easyForEveryGame() {
+  const skip = new Set((S.settings.ui || {}).easy_skip || []);
+  for (const id of await invoke('own_program_games').catch(() => [])) skip.add(id);
+  return saveUi({ easy_skip_all: false, easy_skip: [...skip] });
 }
 async function loadOwned() {
   try { S.owned = await invoke('rom_matches'); S.ownedOk = true; } catch (e) { S.owned = {}; S.ownedOk = false; }
@@ -7228,7 +7360,7 @@ async function crashModal(p) {
     ${log ? `<div class="sec-h" style="margin:4px 0 6px"><span class="muted" style="font-size:13px">${esc(tf('From {file}', { file: log[0] }))}</span><button type="button" class="linkbtn" data-x="copy">${esc(t('Copy details'))}</button></div><pre class="logbox">${esc(log[1])}</pre>` : ''}
     <textarea class="field" id="c-note" rows="2" placeholder="${esc(t('What were you doing when it closed? A sentence helps the developer find it.'))}" aria-label="${esc(t('What happened'))}"></textarea>
     <div class="acts grid2">${evenActs([`<button type="button" class="btn" data-x="folder">${esc(t('Open its folder'))}</button>`, `<button type="button" class="btn${!fix && p.secs < 5 && !goBack && !gameOwn ? ' main' : ''}" data-x="trouble">${esc(t('Troubleshoot'))}</button>`, `<button type="button" class="btn${fix || p.secs < 5 || gameOwn || goBack ? '' : ' main'}" data-x="send">${esc(t('Send it to Ripalda'))}</button>`, `<button type="button" class="btn" data-x="ghreport">${esc(t('Report on GitHub'))}</button>`,
-      modName ? `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>` : armProton ? `<button type="button" class="btn main" data-x="geproton">${esc(t('Install GE-Proton'))}</button>` : sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : copySetup ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : twoGpu ? `<button type="button" class="btn main" data-x="fastgpu">${esc(t('Use the Faster Graphics Card'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Shader'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : oldCopies ? `<button type="button" class="btn main" data-x="dllaside">${esc(t('Move Them Aside'))}</button>` : madeOnly && S.easy && S.easy.has(p.id) ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : dllVC && !oldVulkan ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : dllDX ? `<button type="button" class="btn main" data-x="dxruntime">${esc(t('Get DirectX'))}</button>` : python ? `<button type="button" class="btn main" data-x="python">${esc(t('Get Python'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : toolRan ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Choose Program'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : goBack ? `<button type="button" class="btn main" data-x="goback">${esc(tf('Go Back to {version}', { version: goBack }))}</button>` : a ? `<button type="button" class="btn${gameOwn ? ' main' : ''}" data-x="report">${esc(t('Report to the Developer'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`, plainExit ? `<button type="button" class="btn" data-x="mine">${esc(t('I Closed It Myself'))}</button>` : '', `<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button>`])}</div>`, async (x, close) => {
+      modName ? `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>` : armProton ? `<button type="button" class="btn main" data-x="geproton">${esc(t('Install GE-Proton'))}</button>` : sac ? `<button type="button" class="btn main" data-x="sac">${esc(t('Open Windows Security'))}</button>` : otherBuild ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Set Game Executable'))}</button>` : badOpts ? `<button type="button" class="btn main" data-x="clearopts">${esc(t('Clear launch options'))}</button>` : rootFlag ? `<button type="button" class="btn main" data-x="gdr">${esc(t('Pick your game files'))}</button>` : copySetup ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : twoGpu ? `<button type="button" class="btn main" data-x="fastgpu">${esc(t('Use the Faster Graphics Card'))}</button>` : dotnet ? `<button type="button" class="btn main" data-x="dotnet">${esc(t('Get .NET'))}</button>` : noWrite ? `<button type="button" class="btn main" data-x="manage">${esc(t('Manage'))}</button>` : lookOn ? `<button type="button" class="btn main" data-x="nolook">${esc(t('Play Without the Shader'))}</button>` : glSetting ? `<button type="button" class="btn main" data-x="gset">${esc(t('Game settings'))}</button>` : oldCopies ? `<button type="button" class="btn main" data-x="dllaside">${esc(t('Move Them Aside'))}</button>` : madeOnly && S.easy && S.easy.has(p.id) ? `<button type="button" class="btn main" data-x="copysetup">${esc(t('Set Up Your Game Copy'))}</button>` : dllVC && !oldVulkan ? `<button type="button" class="btn main" data-x="vcredist">${esc(t('Get Visual C++'))}</button>` : dllDX ? `<button type="button" class="btn main" data-x="dxruntime">${esc(t('Get DirectX'))}</button>` : python ? `<button type="button" class="btn main" data-x="python">${esc(t('Get Python'))}</button>` : setupExe ? `<button type="button" class="btn main" data-x="setup">${esc(t('Run its setup'))}</button>` : toolRan ? `<button type="button" class="btn main" data-x="pickexe">${esc(t('Set Game Executable'))}</button>` : usage ? `<button type="button" class="btn main" data-x="opts">${esc(t('Launch options'))}</button>` : goBack ? `<button type="button" class="btn main" data-x="goback">${esc(tf('Go Back to {version}', { version: goBack }))}</button>` : a ? `<button type="button" class="btn${gameOwn ? ' main' : ''}" data-x="report">${esc(t('Report to the Developer'))}</button>` : `<button type="button" class="btn" data-x="copy">${esc(t('Copy details'))}</button>`, plainExit ? `<button type="button" class="btn" data-x="mine">${esc(t('I Closed It Myself'))}</button>` : '', `<button type="button" class="btn" data-x="no">${esc(t('Close'))}</button>`])}</div>`, async (x, close) => {
     if (x.dataset.x === 'copysetup') { close(); delete S.setup[p.id]; setupModal(p.id); }
     if (x.dataset.x === 'dllaside') { try { const moved = await invoke('dll_aside', { id: p.id }); close(); toast(moved.length ? tf('Moved aside: {files}. Press Play to try it.', { files: moved.join(', ') }) : t('Nothing needed moving.')); } catch (e) { fail(e); } }
     if (x.dataset.x === 'fastgpu') { try { await invoke('prefer_fast_gpu', { id: p.id }); close(); toast(t('It starts on the faster graphics card from now on. Press Play to try it.')); } catch (e) { fail(e); } }
@@ -7534,7 +7666,7 @@ const TS_FIX = {
   dllaside: [N_('Move Them Aside'), async (id) => { const moved = await invoke('dll_aside', { id }); toast(moved.length ? tf('Moved aside: {files}. Press Play to try it.', { files: moved.join(', ') }) : t('Nothing needed moving.')); }],
   setup: [N_('Set Up Your Game Copy'), (id) => { delete S.setup[id]; return setupModal(id); }],
   quiet: [N_('Turn It Back On'), async (id) => { const q = Object.assign({}, (S.settings.ui || {}).quiet_exits || {}); delete q[id]; await saveUi({ quiet_exits: q }, true); toast(t('The crash window shows for it again.')); }],
-  setexe: [N_('Choose Program…'), (id) => actOn(id, 'setexe')],
+  setexe: [N_('Set Game Executable…'), (id) => actOn(id, 'setexe')],
   reinstall: [N_('Reinstall'), (id) => actOn(id, 'versions')],
   proton: [N_('Open Settings'), () => { S.setTab = 'pc'; go('settings'); }],
   unblock: [N_('Unblock'), async (id) => { const n = await invoke('unblock_game', { id }); toast(tn(n, 'Unblocked 1 file.', 'Unblocked {n} files.')); }],
@@ -7968,9 +8100,9 @@ async function act(el, e) {
     }
     case 'ownbuild': try { if (await useOwnBuild(id)) { toast(t('It starts your own build now.')); render(true); } } catch (err) { fail(err); } return;
     case 'easy-skip': {
-      const skip = new Set((S.settings.ui || {}).easy_skip || []), on = !skip.has(id), name = (byId(id) || S.library[id] || { name: id }).name;
-      on ? skip.add(id) : skip.delete(id);
-      await saveUi({ easy_skip: [...skip] });
+      const on = !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
+      try { await setEasySkip(id, on); } catch (err) { return fail(err); }
+      render(true);
       toast(on ? tf('{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.', { name }) : tf('{name} uses Easy Setup again.', { name }));
       return;
     }
@@ -8055,7 +8187,9 @@ async function act(el, e) {
       renderSide();
       return render(true);
     }
-    case 'ui-toggle': return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
+    case 'ui-toggle':
+      if (el.dataset.k === 'easy_skip_all' && (S.settings.ui || {}).easy_skip_all) return easyForEveryGame();
+      return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }
     case 'side-move': {
@@ -8244,13 +8378,23 @@ async function act(el, e) {
       return;
     }
     case 'manual': return manualModal(id);
-    case 'setexe': {
-      const g = S.library[id];
-      const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
-      if (!p) return;
-      try { S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path }); toast(t('Play starts that program now.')); render(true); } catch (err) { fail(err); }
+    case 'setexe':
+      try { if (await chooseProgram(id)) { toast(t('Play starts that program now.')); render(true); } } catch (err) { fail(err); }
       return;
+    case 'easy-again': {
+      const name = (byId(id) || S.library[id] || { name: id }).name;
+      try { await setEasySkip(id, false); } catch (err) { return fail(err); }
+      toast(tf('{name} uses Easy Setup again.', { name }));
+      return render(true);
     }
+    case 'forget-program':
+      try {
+        S.library[id] = await invoke('forget_program', { id });
+        S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
+        toast(t('The launcher starts it its own way again.'));
+        render(true);
+      } catch (err) { fail(err); }
+      return;
     case 'uninstall': return confirmUninstall(parentId(id));
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
