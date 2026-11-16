@@ -403,6 +403,8 @@ pub struct Library {
     pub project_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub installed: BTreeMap<String, Installed>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) removed_play_history: BTreeMap<String, PlayHistory>,
     #[serde(default)]
     pub settings: Settings,
     /// What the last ROM scan found.
@@ -421,6 +423,14 @@ pub struct Library {
     /// Library first, or kept when a game is uninstalled): put on the game when it's installed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub arts: BTreeMap<String, ArtSet>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub(crate) struct PlayHistory {
+    #[serde(flatten)]
+    recomp: crate::games::Played,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    games: BTreeMap<String, crate::games::Played>,
 }
 
 /// A game's own pictures without the game: what Customize keeps for it.
@@ -464,21 +474,45 @@ impl Library {
         self.project_aliases.get(id).filter(|new| self.installed.contains_key(*new)).cloned().unwrap_or_else(|| id.to_string())
     }
 
-    /// A game into the Library: pictures the player picked for it before go on it.
+    /// A game into the Library: restore its pictures and play history.
     pub fn put(&mut self, id: &str, mut g: Installed) {
         if let Some(a) = self.arts.remove(id) {
             a.onto(&mut g);
+        }
+        if let Some(history) = self.removed_play_history.remove(id) {
+            g.played_secs = history.recomp.played_secs;
+            g.last_played = history.recomp.last_played;
+            g.sessions = history.recomp.sessions;
+            for (id, mut played) in history.games {
+                let game = g.games.entry(id).or_default();
+                played.inputs_ready = std::mem::take(&mut game.inputs_ready);
+                *game = played;
+            }
         }
         g.exe = g.exe.map(|e| unix_path(&g.path, e));
         self.installed.insert(id.to_string(), g);
     }
 
-    /// A game out of the Library: its own pictures stay for it.
+    /// A game out of the Library: keep its pictures and play history.
     pub fn forget(&mut self, id: &str) -> Option<Installed> {
         let g = self.installed.remove(id)?;
         let a = ArtSet::of(&g);
         if !a.is_empty() {
             self.arts.insert(id.to_string(), a);
+        }
+        let mut history = PlayHistory::default();
+        history.recomp.played_secs = g.played_secs;
+        history.recomp.last_played = g.last_played;
+        history.recomp.sessions = g.sessions.clone();
+        for (sub, played) in &g.games {
+            let mut played = played.clone();
+            played.inputs_ready.clear();
+            if played != crate::games::Played::default() {
+                history.games.insert(sub.clone(), played);
+            }
+        }
+        if history != PlayHistory::default() {
+            self.removed_play_history.insert(id.to_string(), history);
         }
         Some(g)
     }
@@ -595,6 +629,7 @@ impl Library {
         l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
         l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
         l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
+        l.removed_play_history = serde_json::from_value(field("removed_play_history")).unwrap_or_default();
         l
     }
 
@@ -722,6 +757,29 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn reinstall_restores_saved_play_history() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "series".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played {
+            played_secs: 90, last_played: 200, sessions: vec![[110, 90]], inputs_ready: "old setup".into(),
+        });
+        l.put("series", g);
+        l.forget("series").unwrap();
+
+        let saved = serde_json::to_value(&l).unwrap();
+        let mut l: Library = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(Library::lenient(&saved).removed_play_history, l.removed_play_history);
+        l.put("series", Installed { id: "series".into(), ..Default::default() });
+
+        let g = &l.installed["series"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
+        let game = &g.games["first"];
+        assert_eq!((game.played_secs, game.last_played, game.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
+        assert!(game.inputs_ready.is_empty());
+        assert!(l.removed_play_history.is_empty());
+    }
 
     #[test]
     fn round_trip_and_old_files_still_load() {

@@ -8170,6 +8170,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "site": catalog::base(),
         "thumbs": net::THUMBS,
         "library": l.installed,
+        "removedPlayHistory": l.removed_play_history,
         "arts": l.arts,
         "settings": l.settings,
         "roms": l.roms,

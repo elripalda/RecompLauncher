@@ -451,7 +451,7 @@ body.light .known-fix b{color:#127a45}
 .blurb{margin:0;font-size:17px;color:#d6dce5;line-height:1.55}
 .feat{display:flex;flex-wrap:wrap;gap:8px}
 .feat span{height:30px;padding:0 12px;border-radius:9px;background:var(--card);border:1px solid var(--line);font-size:13px;font-weight:600;display:inline-flex;align-items:center}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stats{display:grid;grid-template-columns:repeat(var(--stat-cols,4),minmax(0,1fr));gap:12px}
 .stats>div{padding:15px 18px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
 .stats span{font-size:12px;font-weight:600;color:var(--dim)}
 .stats b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

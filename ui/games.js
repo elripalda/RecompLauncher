@@ -94,6 +94,36 @@ const libRecs = () => Object.values(S.library).filter((g) => !hasGames(g.id));
 // The core's own records only (one per install): for sizes and counts of installs.
 const libInstalls = () => Object.values(S.library).filter((g) => !g._sub);
 
+function recompPlaytime(id) {
+  if (S.library[id]) return S.library[id];
+  const removed = S.removedPlayHistory || {};
+  const sub = subOf(id);
+  return sub ? removed[sub.rid]?.games?.[sub.game.id] : removed[id];
+}
+
+function gamePlaytime(a) {
+  if (!a) return;
+  const local = recompPlaytime(a.id);
+  const group = a.title && index().titles.get(a.title);
+  if (!group || gamesOf(a.id, a).length) return local;
+
+  const total = { played_secs: 0, last_played: 0 };
+  for (const version of group.every) {
+    if (gamesOf(version.id, version).length) continue;
+    const play = recompPlaytime(version.id);
+    if (!play) continue;
+    total.played_secs += play.played_secs || 0;
+    total.last_played = Math.max(total.last_played, play.last_played || 0);
+  }
+  return total;
+}
+
+function playtimeRows(a, total) {
+  const local = recompPlaytime(a.id);
+  if (total === local) return [[t('Played'), playedFor(local)]];
+  return [[t('Total game playtime'), playedFor(total)], [t('This recomp'), playedFor(local)]];
+}
+
 // What the core is asked with a game's id. Most things are the recomp's (its install, updates,
 // folder, settings): those get the recomp's id. Playing it, its setup, shortcuts and achievements
 // go by the game's own id, and so do its saves when it keeps its own.

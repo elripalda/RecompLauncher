@@ -337,7 +337,11 @@
   const homePinned = () => (S.settings.ui || {}).tv_home === 'pinned';
   const installed = () => libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
   const pool = () => visible().filter((a) => forOS(a) && !a.soon);
-  const timeLine = (g) => (!g ? '' : !g.last_played ? t('Not played yet') : `${ago(g.last_played).replace(/^./, (c) => c.toUpperCase())} · ${playedFor(g)}`);
+  const timeLine = (g) => {
+    if (!g) return '';
+    const play = gamePlaytime(byId(g.id)) || g;
+    return !play.last_played ? t('Not played yet') : `${ago(play.last_played).replace(/^./, (c) => c.toUpperCase())} · ${playedFor(play)}`;
+  };
 
   const htmlIn = (text, v) => esc(text).replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
   // A wide card (Continue playing, What's new).
@@ -598,12 +602,13 @@
   }
   function heroText(a, g, home) {
     const kick = S.running.has(a.id) ? t('Playing now') : S.updates[a.id] ? t('Update ready') : g ? (g.last_played ? tf('Played {when}', { when: ago(g.last_played) }) : t('In your library')) : (window.bannerInfo && bannerInfo(a.id).tag) || (a.featured ? t('Featured') : t('Most played'));
-    const meta = [a.game ? '' : originName(a.origin), g ? (g.played_secs ? tf('{time} played', { time: fmtTime(g.played_secs) }) : '') : a.downloads ? tf('{n} downloads', { n: fmtN(a.downloads) }) : ''].filter(Boolean).join(' · ');
+    const play = gamePlaytime(a);
+    const meta = [a.game ? '' : originName(a.origin), g ? (play?.played_secs ? tf('{time} played', { time: fmtTime(play.played_secs) }) : '') : a.downloads ? tf('{n} downloads', { n: fmtN(a.downloads) }) : ''].filter(Boolean).join(' · ');
     const acts = home
       ? `<span class="tv-btn main tv-fake" data-hact="main" data-id="${esc(a.id)}">${glyph('a', 'tv-keyg')}<span>${esc(mainWords(a))}</span></span><span class="tv-btn tv-fake" data-hact="page" data-id="${esc(a.id)}">${glyph('y', 'tv-keyg')}<span>${esc(t('Game page'))}</span></span>`
       : `${mainButton(a, 'hero-main')}${btn('hero-page', 'page', esc(t('Game page')), { id: a.id, g: 'y' })}`;
     // On Home the time played joins the line over the title, to leave the logo room.
-    return `<span class="tv-kick">${esc(home && meta ? `${kick} · ${g && g.played_secs ? fmtTime(g.played_secs) : meta}` : kick)}</span>${titleOf(a)}${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></p>` : ''}${meta && !home ? `<p class="tv-meta">${esc(meta)}</p>` : ''}
+    return `<span class="tv-kick">${esc(home && meta ? `${kick} · ${g && play?.played_secs ? fmtTime(play.played_secs) : meta}` : kick)}</span>${titleOf(a)}${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></p>` : ''}${meta && !home ? `<p class="tv-meta">${esc(meta)}</p>` : ''}
       <div class="tv-acts">${acts}</div>`;
   }
 
@@ -1446,11 +1451,12 @@
     const checks = readyRows(a);
     // How the store checked the installed version; a game the player brought themselves has no release.
     const installedScan = g && !g.local ? scanTag(id, g.tag) : '';
+    const play = gamePlaytime(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
       [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : (S.held || {})[parentId(id)] ? t('updates paused') : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
       ...(installedScan ? [[esc(t('Safety')), installedScan]] : []),
-      g ? [esc(t('Played')), esc(playedFor(g))] : [esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')],
+      ...(g || play?.last_played ? playtimeRows(a, play).map(([label, value]) => [esc(label), esc(value)]) : [[esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')]]),
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
     const bad = checks.filter((r) => r.v === false).length;
@@ -1489,7 +1495,7 @@
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
-          ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
+          ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
