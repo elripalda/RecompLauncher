@@ -4717,6 +4717,10 @@ struct Setup {
     build_where: Option<PathBuf>,
     /// The player's own build in use, and where.
     build_dir: Option<PathBuf>,
+    /// The program the player picked with Choose Program, when Play starts it as it is instead of
+    /// the way the setup file says (player_program). Shown, so the player can tell Easy Setup is
+    /// out of the way, and undo it.
+    own_program: Option<PathBuf>,
     /// The player's copy is asked for, and how.
     needs: Option<String>,
     kind: String,
@@ -4816,6 +4820,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         own_build: if set_up { None } else { whole.build_home(&g.path) },
         build_where: if set_up { None } else { whole.build_home(&g.path).filter(|h| !h.starts_with(&g.path)) },
         build_dir: g.build_dir.clone().filter(|d| d.is_dir()),
+        own_program: player_program(&st, &id, &g),
         needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
         copy,
@@ -6832,6 +6837,27 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     drop(l);
     st.save();
     Ok(out)
+}
+
+/// Choose Program undone (Let the Launcher Start It): the player's pick goes, and the launcher
+/// picks the program again by its own rules, so Play starts the game its setup file's way.
+#[tauri::command]
+fn forget_program(st: State<'_, App>, id: String) -> Res<Installed> {
+    let g = {
+        let mut l = st.lib.lock().unwrap();
+        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        if g.exe_rules == u8::MAX {
+            g.exe = None;
+            g.exe_rules = 0;
+        }
+        g.clone()
+    };
+    st.save();
+    // The same pick Play makes when the launcher's rules change, made now so the game's page
+    // shows the program again straight away.
+    let _ = own_setup::pending(&st, &id, &g);
+    trail::note(format!("{id}: the program the player picked is let go; the launcher starts it its own way again"));
+    st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
 }
 
 #[tauri::command(async)]
@@ -9639,7 +9665,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
