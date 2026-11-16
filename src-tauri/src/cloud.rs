@@ -1255,7 +1255,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&s
     let hash = c.hash.clone();
     let drive = using_drive(&st.dir);
     let n = blocking(move || {
-        if drive { saves::validate_cloud_copy(&t2, &id2, &hash, &spots)?; }
+        if drive { saves::validate_cloud_copy(&t2, &id2, &hash, &spots, &g)?; }
         match checked {
             Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
             None => saves::restore(&dir, &id2, &t2, &spots, &g),
