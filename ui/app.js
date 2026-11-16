@@ -200,7 +200,8 @@ const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installer
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
-const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.id] || {}).files || {}).how || '')));
+// A game of a multi-game recomp is set up as its recomp is.
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
@@ -1454,21 +1455,23 @@ function pageHome() {
   const pool = (mine.length ? mine : apps).filter((a) => !a.soon);
   const feats = turnkeyFirst(bannerApps() || oneEach(uniq([...pool.filter((a) => a.featured && (a.hero || a.cover)), ...pool.filter((a) => a.hero && notPC(a)).sort(byDl), ...pool.filter(notPC).sort(byDl)].map((a) => a.id)).map(byId)).slice(0, 5));
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
-  const ready = oneEach(pool.filter(turnkey).sort(byNew), true);
+  // The banner and the weekly chart stay per recomp (picked and ranked as one); the rows list its games.
+  const games = withGames(pool);
+  const ready = oneEach(games.filter(turnkey).sort(byNew), true);
   const played = libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = foundInFolders();
-  const easy = oneEach(pool.filter((a) => S.easy.has(a.id) && !haveAny(a)));
+  const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
   return `<div class="page home">${offlineNote()}
     ${feats.length ? slider(feats) : ''}
     ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
     ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
     ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
-    ${shelf('updated', t('Recently updated'), recentlyUpdated(pool), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
-    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(pool.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
+    ${shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
+    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
     ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
     ${trendShelf(pool)}
-    ${shelf('new', t('Just added'), oneEach([...pool].sort(byNew), true), { see: true, turnkey: true })}
+    ${shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true })}
     ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
     ${newsSection()}
   </div>`;

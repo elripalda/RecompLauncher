@@ -163,3 +163,23 @@ test('Big Picture lists each game on its own and shows the recomp\'s games on it
   assert.match(app, /const played = libRecs\(\)/);
   assert.match(app, /let list = libRecs\(\)\.map/);
 });
+
+test('Home\'s rows list a recomp\'s games; the banner and the weekly chart keep the recomp', () => {
+  const home = fn(app, 'pageHome');
+  assert.match(home, /const games = withGames\(pool\);/);
+  for (const row of ['games.filter(turnkey)', 'recentlyUpdated(games)', 'games.filter((a) => a.dev', '[...games].sort(byNew)']) assert.ok(home.includes(row), row);
+  assert.match(home, /trendShelf\(pool\)/);
+  assert.match(tv, /const games = withGames\(pool\(\)\);/);
+  assert.match(tv, /recentlyUpdated\(games\)/);
+  assert.match(tv, /const trend = trendList\(pool\(\)\);/);
+});
+
+test('a game of a recomp Easy Setup does is set up as its recomp is', () => {
+  const c = discoverCtx();
+  c.S.easy = new Set(['cogbox']);
+  c.builtinBoot = () => ({});
+  c.TURNKEY_HOW = [];
+  vm.runInContext(`${app.match(/^const needsSetup = .*$/m)[0]}\n${app.match(/^const turnkey = .*$/m)[0]}`, c);
+  assert.equal(vm.runInContext("turnkey(byId('cogbox--gow1'))", c), true);
+  assert.equal(vm.runInContext("turnkey(byId('solo'))", c), false);
+});

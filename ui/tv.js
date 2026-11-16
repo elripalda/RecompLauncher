@@ -519,15 +519,17 @@
     if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
     const owned = foundInFolders();
     if (owned.length) rows.push(row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
-    const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
-    const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
+    // As on the desktop: the rows list a multi-game recomp's games; the dock and the chart keep the recomp.
+    const games = withGames(pool());
+    const disc = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
+    const ready = oneEach(games.filter(turnkey).sort(byNew), true);
     if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
     if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
-    const upd = recentlyUpdated(pool()).slice(0, 14);
+    const upd = recentlyUpdated(games).slice(0, 14);
     if (upd.length) rows.push(row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')));
-    rows.push(row('new', t('Just added'), turnkeyFirst(oneEach(pool().sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
+    rows.push(row('new', t('Just added'), turnkeyFirst(oneEach([...games].sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
     // This week's chart when it's in (each version on its own, with the chart's ranks), else the most played.
     const trend = trendList(pool());
     if (trend.length) rows.push(row('trend', t('Trending This Week'), trend.slice(0, 14).map(({ a, e }) => poster(a, 'tr:' + a.id, trendLine(e, a), Number(e.rank))).join('')));
