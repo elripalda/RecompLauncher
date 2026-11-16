@@ -5791,8 +5791,8 @@ async function confirmPack(id, pack) {
     const head = `<h3>${esc(title)}</h3><p class="tv-sreq-p">${esc(line)}</p><ul class="tv-sreq-steps tv-pack">${pack.map((g) => `<li dir="auto">${esc(g.name)}</li>`).join('')}</ul>`;
     return (await window.tvAsk(title, [{ label: t('Install'), icon: 'down' }, { label: t('Cancel'), icon: 'chevL' }], head)) === 0;
   }
-  const cover = (g) => (byId(id + GAME_SEP + g.id) || {}).cover;
-  const items = pack.map((g) => `<li>${cover(g) ? pic(thumbOf(cover(g), 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`).join('');
+  // Only a game's own cover: the recomp's, repeated beside every name, would read as a mistake.
+  const items = pack.map((g) => `<li>${g.cover ? pic(thumbOf(g.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`).join('');
   const text = `<p>${esc(line)}</p><ul class="pack-list">${items}</ul>`;
   const v = await ask(title, text, [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Install'), icon: 'down', v: 'go', main: true, focus: true }]);
   return v === 'go';

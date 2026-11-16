@@ -236,3 +236,10 @@ test('a game\'s page doesn\'t show its recomp\'s game info as its own', () => {
   assert.equal(c.ids.get('cogbox--gow1').about, undefined);
   assert.equal(c.ids.get('cogbox').about.summary, 'Judgment');
 });
+
+test('the install dialog shows a game\'s own cover, never its recomp\'s repeated', () => {
+  const confirm = fn(app, 'confirmPack');
+  assert.match(confirm, /g\.cover \? pic\(thumbOf\(g\.cover, 160\)/);
+  assert.match(confirm, /: '<span class="ph"><\/span>'/);
+  assert.doesNotMatch(confirm, /byId\(id \+ GAME_SEP/);
+});
