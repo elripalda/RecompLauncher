@@ -20,6 +20,8 @@ on each PC and enable the same games there.
 
 When both PCs changed their saves, choose which to use. Simultaneous uploads are tracked by
 snapshot ancestry, rather than assuming the PC with the later clock has the right save.
+Choosing the cloud copy resolves from that snapshot, even when restoring into the game's
+install folder retains extra local save slots. Those extra slots stay on this PC.
 The other copies remain available in the Saves tab. The newest five ordinary cloud copies
 are kept; unresolved branches retain their history until resolved. Removed old copies go
 to Drive's Trash, which still uses Google storage until emptied. Local backups retain their
@@ -95,6 +97,8 @@ Installed release files, selected launch programs and managed inputs are protect
 Links in restore destinations or staging paths are rejected before any live saves are changed.
 File-count and total-size limits are checked separately for each save location, matching backup
 discovery when a game saves in several folders.
+The manifest budget scales with the archive's entry count and path lengths, including full
+backups from multiple save locations. Unrelated excess manifest data is still rejected.
 
 ## Reviewing the UI without a Google account
 

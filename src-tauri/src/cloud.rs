@@ -804,7 +804,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
-async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
+async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, resolve: bool) -> Res<usize> {
     let st = app.state::<App>();
     let bytes = if using_drive(&st.dir) {
         crate::drive::download(app, id, c).await?
@@ -833,17 +833,34 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
     let hash = c.hash.clone();
     let drive = using_drive(&st.dir);
-    let n = blocking(move || {
-        if drive { return saves::restore_cloud_copy(&dir, &id2, &t2, &hash, &spots, &g); }
-        saves::restore(&dir, &id2, &t2, &spots, &g)
-    }).await;
+    let n = if drive {
+        restore_drive_copy(dir, id2, t2, hash, spots, g, |archive| async move {
+            if resolve { crate::drive::upload(app, id, &archive, Some(&c.revision)).await?; }
+            Ok(())
+        }).await
+    } else {
+        blocking(move || saves::restore(&dir, &id2, &t2, &spots, &g)).await.and_then(|n| n)
+    };
     let _ = tokio::fs::remove_file(&tmp).await;
-    let n = n??;
+    let n = n?;
     let mut s = saves::state(&st.dir, id);
     s.synced_hash = c.hash.clone();
     s.last_hash = c.hash.clone();
     saves::set_state(&st.dir, id, &s);
     Ok(n)
+}
+
+async fn restore_drive_copy<F, Fut>(dir: PathBuf, id: String, archive: PathBuf, hash: String, spots: Vec<Spot>, g: Installed, resolve: F) -> Res<usize>
+where
+    F: FnOnce(PathBuf) -> Fut,
+    Fut: std::future::Future<Output = Res<()>>,
+{
+    let path = archive.clone();
+    let restored = blocking(move || saves::restore_cloud_copy(&dir, &id, &path, &hash, &spots, &g)).await??;
+    // The install-folder fallback retains extra local slots. Resolve the chosen archive itself,
+    // rather than requiring those live files to match the cloud branch exactly.
+    resolve(archive).await?;
+    Ok(restored)
 }
 
 fn current_copy<'a>(list: &'a [CloudCopy], local: &str) -> Option<&'a CloudCopy> {
@@ -967,7 +984,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if !top.conflict && should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        let n = take_cloud(&app, &id, top).await?;
+        let n = take_cloud(&app, &id, top, false).await?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
     }
     if !top.conflict && top.hash == s.synced_hash {
@@ -1022,10 +1039,8 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
         }
         match keep.as_str() {
             "cloud" => {
-                take_cloud(&app, &id, top).await?;
-                if using_drive(&st.dir) && top.conflict {
-                    return upload_current(&app, &id, g, spots, top.hash.clone(), top.made, Some(&top.revision)).await;
-                }
+                let resolve = using_drive(&st.dir) && top.conflict;
+                take_cloud(&app, &id, top, resolve).await?;
                 Ok(())
             }
             "local" => upload_current(&app, &id, g, spots, hash, top.made, Some(&top.revision)).await,
@@ -1332,7 +1347,7 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
         let c = list.into_iter().find(|c| c.v == v).ok_or_else(|| Error::Msg("That cloud save is gone.".into()))?;
-        return take_cloud(&app, &id, &c).await;
+        return take_cloud(&app, &id, &c, false).await;
     }
     let name = name.unwrap_or_default();
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
@@ -1894,6 +1909,60 @@ mod sync_tests {
 #[cfg(test)]
 mod provider_conflict_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cloud_resolution_uses_the_selected_archive_when_local_slots_remain() {
+        let dir = std::env::temp_dir().join(format!("rl-cloud-resolution-retained-{}", std::process::id()));
+        let app = dir.join("app");
+        let install = dir.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::write(install.join("slot.sav"), b"cloud save").unwrap();
+        let g = Installed { id: "g".into(), path: install.clone(), ..Default::default() };
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let chosen = saves::backup(&app, "g", &spots, &g).unwrap().unwrap();
+        let archive = saves::dir_of(&app, "g").join(&chosen.name);
+        let expected = archive.clone();
+        std::fs::write(install.join("slot.sav"), b"local change").unwrap();
+        std::fs::write(install.join("extra.sav"), b"extra local slot").unwrap();
+        let local_hash = saves::current(&spots, &g).2;
+        let result = restore_drive_copy(app.clone(), "g".into(), archive, chosen.hash.clone(), spots.clone(), g.clone(), |upload| async move {
+            assert_eq!(upload, expected);
+            assert_eq!(saves::manifest(&upload).unwrap().hash, chosen.hash);
+            assert_ne!(saves::current(&spots, &g).2, chosen.hash, "retained slots must not change the archive used for resolution");
+            Ok(())
+        }).await.unwrap();
+        assert_eq!(result, 1);
+        assert_eq!(std::fs::read(install.join("slot.sav")).unwrap(), b"cloud save");
+        assert_eq!(std::fs::read(install.join("extra.sav")).unwrap(), b"extra local slot");
+        assert!(saves::list(&app, "g").iter().any(|c| c.hash == local_hash));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn interrupted_cloud_resolution_can_retry_with_retained_local_slots() {
+        let dir = std::env::temp_dir().join(format!("rl-cloud-resolution-retry-{}", std::process::id()));
+        let app = dir.join("app");
+        let install = dir.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::write(install.join("slot.sav"), b"cloud save").unwrap();
+        let g = Installed { id: "g".into(), path: install.clone(), ..Default::default() };
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let chosen = saves::backup(&app, "g", &spots, &g).unwrap().unwrap();
+        let archive = saves::dir_of(&app, "g").join(&chosen.name);
+        std::fs::write(install.join("extra.sav"), b"extra local slot").unwrap();
+        saves::set_state(&app, "g", &saves::State { synced_hash: "previous-cloud".into(), ..Default::default() });
+        let interrupted = restore_drive_copy(app.clone(), "g".into(), archive.clone(), chosen.hash.clone(), spots.clone(), g.clone(), |_| async {
+            Err(Error::Net("interrupted resolution".into()))
+        }).await;
+        assert!(matches!(interrupted, Err(Error::Net(_))));
+        assert_eq!(saves::state(&app, "g").synced_hash, "previous-cloud");
+        restore_drive_copy(app, "g".into(), archive, chosen.hash.clone(), spots, g, |upload| async move {
+            assert_eq!(saves::manifest(&upload).unwrap().hash, chosen.hash);
+            Ok(())
+        }).await.unwrap();
+        assert_eq!(std::fs::read(install.join("extra.sav")).unwrap(), b"extra local slot");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn a_drive_conflict_offers_the_other_devices_save() {

@@ -800,11 +800,13 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot], g:
     let mut zip = zip::ZipArchive::new(fs::File::open(path)?).map_err(|_| invalid())?;
     let max_entries = spots.len().saturating_mul(MAX_FILES).saturating_add(1);
     if zip.len() > max_entries { return Err(invalid()); }
+    let manifest_limit = cloud_manifest_limit(&zip, spots.len());
     let man: Manifest = {
         let mut entry = zip.by_name("rlsave.json").map_err(|_| invalid())?;
-        if entry.size() > 8 * 1024 * 1024 { return Err(invalid()); }
+        if entry.size() > manifest_limit { return Err(invalid()); }
         let mut bytes = Vec::new();
-        entry.read_to_end(&mut bytes)?;
+        entry.by_ref().take(manifest_limit + 1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > manifest_limit { return Err(invalid()); }
         serde_json::from_slice(&bytes).map_err(|_| invalid())?
     };
     if man.format != 1 || man.game != id || man.hash != hash || set_hash(&man.files) != hash || man.files.is_empty() {
@@ -855,6 +857,16 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot], g:
         if count != file.size || hex::encode(sha.finalize()) != file.sha256 { return Err(invalid()); }
     }
     Ok(())
+}
+
+fn cloud_manifest_limit(zip: &zip::ZipArchive<fs::File>, spots: usize) -> u64 {
+    // JSON may escape each path byte. Budget the entry fields too, plus source folder paths
+    // up to native path limits; picked folders can differ between the two PCs.
+    let names: u64 = zip.file_names().map(|name| name.len() as u64).sum();
+    let paths = names.saturating_mul(6);
+    let fields = (zip.len() as u64).saturating_mul(256);
+    let folders = (spots as u64).saturating_mul(128 * 1024 * 6);
+    paths.saturating_add(fields).saturating_add(folders).saturating_add(64 * 1024)
 }
 
 pub fn restore_cloud_copy(app_dir: &Path, id: &str, path: &Path, hash: &str, spots: &[Spot], g: &Installed) -> Result<usize, Error> {
@@ -1665,15 +1677,37 @@ mod tests {
         ];
         fs::create_dir_all(dir.join("saves-0")).unwrap();
         fs::create_dir_all(dir.join("saves-1")).unwrap();
-        let count = MAX_FILES + 2;
+        let count = MAX_FILES * 2;
+        let prefix = "s".repeat(90);
         for n in 0..count {
-            let path = dir.join(format!("saves-{}/slot-{}.sav", n % 2, n / 2));
+            let path = dir.join(format!("saves-{}/{prefix}-{n:05}.sav", n % 2));
             fs::write(path, b"save").unwrap();
         }
         let copy = backup(&dir, "g", &spots, &g).unwrap().unwrap();
         assert_eq!(copy.files, count);
         let archive = dir_of(&dir, "g").join(copy.name);
+        let mut zip = zip::ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();
+        assert!(zip.by_name("rlsave.json").unwrap().size() > 8 * 1024 * 1024);
+        drop(zip);
         assert!(validate_cloud_copy(&archive, "g", &copy.hash, &spots, &g).is_ok());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cloud_copy_rejects_a_manifest_bomb_disproportionate_to_its_files() {
+        let dir = tmp("cloud-manifest-bomb");
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
+        let manifest = read_manifest(&path).unwrap();
+        let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("rlsave.json", options).unwrap();
+        zip.write_all(&vec![b' '; 2 * 1024 * 1024]).unwrap();
+        serde_json::to_writer(&mut zip, &manifest).unwrap();
+        zip.start_file("0/slot.sav", options).unwrap();
+        zip.write_all(b"save").unwrap();
+        zip.finish().unwrap();
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots, &game(&dir)).is_err());
         fs::remove_dir_all(dir).unwrap();
     }
 
