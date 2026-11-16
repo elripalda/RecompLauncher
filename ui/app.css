@@ -580,8 +580,8 @@ button.prog.su-prog:focus-visible,.prog.su-prog:focus-visible{outline:2px solid 
 .shotgrid .shot small{color:var(--dim)}
 
 /* ---------- the island: messages and downloads ---------- */
-.island{position:fixed;left:calc(var(--side-w) + (100vw - var(--side-w)) / 2);bottom:20px;transform:translateX(-50%);z-index:240;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;transition:left .3s var(--ease)}
-body.mini-side .island{--side-w:76px}
+/* Centred on the whole window, not on the area beside the sidebar. */
+.island{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:240;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
 .island>*{pointer-events:auto}
 .toasts{display:flex;flex-direction:column;align-items:center;gap:8px}
 .toast{max-width:min(560px,80vw);padding:12px 20px;border-radius:24px;background:rgba(20,31,51,.94);backdrop-filter:blur(20px);border:1px solid var(--line2);box-shadow:0 18px 44px -12px rgba(0,0,0,.8);font-size:14px;font-weight:600;animation:islIn .36s var(--ease) both;text-align:center}
@@ -750,7 +750,6 @@ body.oled .gp-amb img.ld{opacity:.26}
 
 @media (max-width:1240px){.g-body{grid-template-columns:minmax(0,1fr) 300px}.news-grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:1060px){.gp .gp-side{align-items:flex-start}.gp-top{grid-template-columns:150px minmax(0,1fr);grid-template-rows:1fr auto auto;grid-template-areas:"cover name" "cover title" "side side"}.gp.noart .gp-top{grid-template-columns:minmax(0,1fr);grid-template-areas:"name" "title" "side"}.sl-logo{height:80px}.g-body{grid-template-columns:1fr}.gp-cover{width:150px}.sl-cover{display:none}.sl-in{right:48px}.page{padding-left:28px;padding-right:28px}.su-in{grid-template-columns:1fr}.su-stage{min-height:300px;border-right:0;border-bottom:1px solid var(--line)}}
-body.tv-on .island{left:50%}
 .tile-b:focus-visible{outline:none}
 .tile-b:focus-visible .poster{box-shadow:0 0 0 3px var(--cyan),0 22px 40px -18px rgba(0,0,0,.9)}
 
@@ -1458,7 +1457,6 @@ body.tv-on .vbar{display:none}
 body.sliding .topbar.solid{backdrop-filter:none;background:rgba(11,18,32,.96)}
 body.sliding .tile .glow{display:none}
 body.sliding main{overflow-x:hidden}
-body.sliding .island{transition:none}
 
 /* Settings > Beta */
 .beta-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:24px 26px;border-radius:22px;border:1px solid rgba(52,242,232,.22);background:var(--noise),radial-gradient(120% 140% at 0% 0%,rgba(52,242,232,.13),transparent 55%),var(--card)}
