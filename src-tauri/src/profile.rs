@@ -22,7 +22,8 @@ pub struct Profile {
     #[serde(skip)]
     pub input_paths: BTreeMap<String, PathBuf>,
     /// Optional inputs this launcher skipped (a shared type or role it doesn't know, or DLSS on a PC
-    /// it doesn't apply to): their {input:...} arguments are left out instead of failing.
+    /// it doesn't apply to), and the other games' inputs when one game of several is played: their
+    /// {input:...} arguments are left out instead of failing.
     #[serde(skip)]
     pub skipped_inputs: Vec<String>,
     /// The installed build's platform preference, supplied by the launcher, never a manifest.
@@ -190,7 +191,7 @@ impl Prepare {
     /// the same name (a release's Game-nightly-4-x86_64.AppImage for "Game.AppImage"), as Play
     /// finds the game's own program.
     pub fn program_in(&self, install: &Path) -> Option<PathBuf> {
-        let named = self.program.iter().map(|p| install.join(p)).find(|p| p.is_file());
+        let named = self.program.iter().find_map(|p| named_program(install.join(p)));
         if named.is_some() || cfg!(windows) {
             return named;
         }
@@ -791,6 +792,20 @@ fn to_apprun(p: &mut Profile, dir: &Path) {
 /// From the catalog's boot profile (crate::boot): the player's copy and how it reaches the game,
 /// when it goes on the command line (`files.how: "flag"`) or into a folder (`"folder"`), and the
 /// game's settings the launcher can show (`settings: {config, settings}`).
+/// A program a profile names (`start.program`, `prepare.program`), as a path in the game's folder:
+/// the file itself, or on a Mac a Game.app, as the program inside it its Info.plist names, the one
+/// Play starts for a bundle anyway.
+pub fn named_program(path: PathBuf) -> Option<PathBuf> {
+    if path.is_file() {
+        return Some(path);
+    }
+    let mac_app = crate::assets::os_now() == "macos" && crate::macos::is_bundle(&path);
+    if !mac_app {
+        return None;
+    }
+    crate::macos::bundle_executable(&path, crate::assets::arch_now())
+}
+
 /// A native build's program for the Windows one a game's setup names: the same name without its
 /// Windows and processor parts. pd.i686.exe is pd.x86_64, not pd.pal.x86_64 (a build for another
 /// region, with a word the Windows name doesn't have).
@@ -1374,7 +1389,7 @@ impl Profile {
         let s = self.start.as_ref()?;
         let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
         (if windows_build { None } else { twin() })
-            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
+            .or_else(|| s.program.iter().find_map(|p| named_program(install.join(p))))
             .or_else(twin)
     }
 
@@ -1656,7 +1671,9 @@ impl Profile {
             // Game.AppImage for Game-nightly-4-x86_64.AppImage, as Play finds it.
             let base = want_name.split('.').next().unwrap_or_default();
             let twin = matches!(low(want, true).as_str(), "appimage" | "");
-            want_name == name || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
+            // The program inside Game.app, for "Game.app", as named_program finds it.
+            let in_bundle = want_name.ends_with(".app") && exe.ancestors().any(|a| low(a, false) == want_name);
+            want_name == name || in_bundle || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
         })
     }
 
@@ -2903,6 +2920,53 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// Game.app with Info.plist naming Contents/MacOS/Game, a Mach-O program for this processor.
+    #[cfg(target_os = "macos")]
+    fn mac_app(dir: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let contents = dir.join("Game.app/Contents");
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        let plist = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Game</string></dict></plist>"#;
+        std::fs::write(contents.join("Info.plist"), plist).unwrap();
+        let cpu: u32 = if crate::assets::arch_now() == "arm64" { 0x0100000c } else { 0x01000007 };
+        let mut head = vec![0u8; 32];
+        head[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        head[4..8].copy_from_slice(&cpu.to_le_bytes());
+        head[12..16].copy_from_slice(&2u32.to_le_bytes());
+        let exe = contents.join("MacOS/Game");
+        std::fs::write(&exe, head).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_mac_app_named_in_start_and_prepare_runs_its_program() {
+        let d = tmp("mac-app");
+        mac_app(&d);
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.app"]},"prepare":{"program":["Game.app"],"args":["--install"]}}"#).unwrap();
+        let inner = d.join("Game.app/Contents/MacOS/Game");
+        assert_eq!(p.prepare.as_ref().unwrap().program_in(&d), Some(inner.clone()));
+        assert_eq!(p.command_for(&d, None, &BTreeMap::new(), false).map(|c| c.0), Some(inner));
+    }
+
+    #[test]
+    fn a_program_is_a_file_and_a_folder_only_as_a_mac_app() {
+        let d = tmp("named-program");
+        std::fs::write(d.join("game.exe"), b"MZ").unwrap();
+        std::fs::create_dir_all(d.join("Game.app/Contents/MacOS")).unwrap();
+        assert_eq!(named_program(d.join("game.exe")), Some(d.join("game.exe")));
+        assert_eq!(named_program(d.join("missing.exe")), None);
+        // A folder with no Info.plist is no program, on a Mac either.
+        assert_eq!(named_program(d.join("Game.app")), None);
+    }
+
+    #[test]
+    fn the_program_inside_a_named_app_is_the_one_start_names() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Theme Park World.app"]}}"#).unwrap();
+        assert!(p.starts_program(Path::new("/Games/tpw/Theme Park World.app/Contents/MacOS/Theme Park World")));
+        assert!(!p.starts_program(Path::new("/Games/tpw/Other.app/Contents/MacOS/Theme Park World")));
     }
 
     #[test]

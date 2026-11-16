@@ -168,6 +168,9 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     let declarations: BTreeSet<_> = p.inputs.iter().map(|i| i.id.as_str()).chain(p.skipped_inputs.iter().map(String::as_str)).collect();
     let mut texts: Vec<&str> = p.start.iter().flat_map(|s| s.args.iter().chain(s.env.values()).map(String::as_str)).collect();
     texts.extend(p.prepare.iter().flat_map(|pr| pr.args.iter().map(String::as_str)));
+    // A game's own args are filled too, so a misspelled id there is caught like one in start.args.
+    let games = crate::games::of(p.games.as_ref(), &serde_json::Value::Null);
+    texts.extend(games.iter().flat_map(|g| g.args.iter().map(String::as_str)));
     for text in texts {
         for suffix in text.split("{input:").skip(1) {
             let id = suffix.split_once('}').map(|(id, _)| id).ok_or("Unclosed input placeholder.")?;
