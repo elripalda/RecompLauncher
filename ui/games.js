@@ -32,7 +32,7 @@ function subOf(id) {
 const parentId = (id) => { const s = subOf(id); return s ? s.rid : id; };
 
 // One game as an app the pages and tiles can show: the recomp's details, the game's name and art
-// (falling back to the recomp's). Not part of the version groups or Discover's list.
+// (falling back to the recomp's). Not part of the version groups; Discover lists it through withGames.
 function childApp(a, g) {
   const c = Object.assign({}, a, {
     id: a.id + GAME_SEP + g.id, name: g.name, game: g.name, parent: a.id, parentName: a.name, sub: g.id,
@@ -62,6 +62,18 @@ function addGameApps(ids) {
   }
   S.subs = subs;
 }
+
+// The games of a recomp that carries several, as Discover lists them: the ones not hidden.
+function shownGames(a) {
+  return gamesOf(a.id, a).map((g) => byId(a.id + GAME_SEP + g.id)).filter((c) => c && !isHidden(c.id));
+}
+// Discover's list as a player picks from it: a recomp that carries several games shows as those
+// games, each a store entry of its own. Its own page is one press away, from their "Part of" pill.
+function withGames(list) {
+  return list.flatMap((a) => (a.parent || !gamesOf(a.id, a).length ? [a] : shownGames(a)));
+}
+// How many recomps a list holds: the games of one count once, as it.
+const recompsIn = (list) => new Set(list.filter((a) => !a.soon).map((a) => a.parent || a.id)).size;
 
 // Each installed recomp with several games: a record for each game in the Library (its own play
 // time and last played), beside the recomp's own (which the lists leave out). Answers the core

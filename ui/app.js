@@ -812,7 +812,7 @@ const notPC = (a) => !isPC(a);
 const byDlConsolesFirst = (x, y) => (isPC(x) ? 1 : 0) - (isPC(y) ? 1 : 0) || byDl(x, y);
 // How many recomps a list holds: every version, not every tile (a game with three versions is
 // one tile and three recomps). Coming Soon ones aren't counted.
-const recompCount = (list) => list.filter((a) => !a.soon).length;
+const recompCount = (list) => recompsIn(list);
 // Updated recomps first, as on Home's Recently updated, so a brand-new one doesn't read as an update.
 const byUpdated = (x, y) => (wasUpdated(y) ? 1 : 0) - (wasUpdated(x) ? 1 : 0) || String(y.released || '').localeCompare(String(x.released || ''));
 // Discover's Show filter: everything, what's installed, what isn't, what needs setting up first,
@@ -1033,10 +1033,16 @@ function gameTileLine(a) {
   if (a.menuPick) return `<span>${esc(t('Pick the game in its menu'))}</span>`;
   return `<span>${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</span>`;
 }
-// On one game's page: the recomp it's part of, as a link.
+// On one game's page: a pill naming the recomp it's part of and how many games that holds,
+// opening the recomp's page.
 function partOfLine(a) {
   if (!a.parent) return '';
-  return `<div class="part-of"><button type="button" class="link-btn" data-act="open" data-id="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</div>`;
+  const name = a.parentName || (byId(a.parent) || {}).name || '';
+  const n = gamesOf(a.parent, byId(a.parent)).length;
+  const count = n ? `<em>${esc(tn(n, '1 game', '{n} games'))}</em>` : '';
+  const pill = `<button type="button" class="ver-pill part-pill" data-act="open" data-id="${esc(a.parent)}">${LAYERS}<span>${esc(tf('Part of {name}', { name }))}</span>${count}</button>`;
+  const pick = a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : '';
+  return `<div class="part-of">${pill}${pick}</div>`;
 }
 // On a recomp's page: the games it includes, each a tile. One row when they fit, else rows
 // split evenly (never one left over on its own).
@@ -1691,8 +1697,8 @@ function discoverList(ended = false, leftOut = false) {
   const f = S.find, q = S.q.trim();
   const games = byGame();
   const onThisPC = leftOut ? hiddenByProton : forOS;
-  let list = visible().filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
-    && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name] : [a.name, a.game, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
+  let list = withGames(visible()).filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
+    && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name, a.parentName] : [a.name, a.game, a.parentName, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
   if (!ended && !leftOut) S.findCount = recompCount(list);
@@ -1704,15 +1710,6 @@ function discoverList(ended = false, leftOut = false) {
   }
   // Discover's own order (Popular, not picked by the player): turnkey recomps first.
   if (f.sort === 'popular' && !f.picked) out = turnkeyFirst(out);
-  // A search also finds the games inside recomps that carry several, after the recomps themselves.
-  if (q && !ended && !leftOut && !games) {
-    const kids = [];
-    for (const a of visible()) {
-      if (!forOS(a) || !keepEnded(a, f)) continue;
-      for (const g of gamesOf(a.id, a)) { const c = byId(a.id + '--' + g.id); if (c && !isHidden(c.id) && sMatch(c.name, q)) kids.push(c); }
-    }
-    out = out.concat(kids);
-  }
   return out;
 }
 

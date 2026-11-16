@@ -1122,7 +1122,7 @@
   function pageDiscover() {
     wantCounts();
     const g = TV.genre || '';
-    const apps = pool();
+    const apps = withGames(pool());
     const genres = Object.keys(GENRES).filter((x) => apps.some((a) => a.genre === x));
     // "Easy Setup" is a chip of its own, before the genres.
     // Search, a console and the order narrow it further (Sort & Filter).
@@ -1133,7 +1133,7 @@
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
-      .filter((a) => !q || window.sMatch(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`, q))
+      .filter((a) => !q || window.sMatch(`${a.name} ${a.game || ''} ${a.parentName || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`, q))
       .filter((a) => (ended ? isEnded(a) : !TV.dended || !isEnded(a)));
     const byOrder = (l) => l.sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
     const each = byOrder(chain(false));
@@ -1487,7 +1487,7 @@
           <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${deckChip}${stChip}</div>
           ${titleOf(a)}
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
-          ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
+          ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>

@@ -96,6 +96,7 @@ test('the tile line and the recomp\'s page: setup, menu pick, part of, and even 
   vm.runInContext('addGameApps(ids); expandLib()', c);
   c.byId = (id) => c.ids.get(id);
   c.tile = (a) => `[${a.id}]`;
+  c.LAYERS = '';
   vm.runInContext(fn(app, 'gameTileLine') + fn(app, 'partOfLine') + fn(app, 'includesBox'), c);
   assert.match(vm.runInContext("gameTileLine(byId('cogbox--gow2'))", c), /Set Up/);
   assert.match(vm.runInContext("gameTileLine(byId('cogbox--gowj'))", c), /Pick the game in its menu/);
@@ -111,6 +112,48 @@ test('the tile line and the recomp\'s page: setup, menu pick, part of, and even 
   vm.runInContext('addGameApps(ids)', c);
   assert.match(vm.runInContext("includesBox(byId('big'))", c), /--inc-cols:4/);
   assert.equal(vm.runInContext("includesBox(byId('cogbox--gow1'))", c), '');
+});
+
+// Discover's catalog: COGBox with its four games, and a recomp of one game.
+function discoverCtx(hidden = []) {
+  const c = ctx({ isHidden: (id) => hidden.includes(id) });
+  c.ids = new Map([['cogbox', COG], ['solo', { id: 'solo', name: 'Solo' }]]);
+  vm.runInContext('addGameApps(ids)', c);
+  c.byId = (id) => c.ids.get(id);
+  c.list = [COG, c.ids.get('solo')];
+  return c;
+}
+
+test('Discover lists a recomp that carries several games as its games', () => {
+  const c = discoverCtx();
+  assert.equal(vm.runInContext('withGames(list).map((a) => a.id).join()', c), 'cogbox--gow1,cogbox--gow2,cogbox--gow3,cogbox--gowj,solo');
+});
+
+test('a game hidden from Discover is left out, and the others stay', () => {
+  const c = discoverCtx(['cogbox--gow2']);
+  assert.equal(vm.runInContext('withGames(list).map((a) => a.id).join()', c), 'cogbox--gow1,cogbox--gow3,cogbox--gowj,solo');
+});
+
+test('Discover counts a recomp\'s games as one recomp', () => {
+  const c = discoverCtx();
+  assert.equal(vm.runInContext('recompsIn(withGames(list))', c), 2);
+});
+
+test('a game\'s page says which recomp it\'s part of and how many games that holds', () => {
+  const c = discoverCtx();
+  c.LAYERS = '';
+  vm.runInContext(fn(app, 'partOfLine'), c);
+  const pill = vm.runInContext("partOfLine(byId('cogbox--gow1'))", c);
+  assert.match(pill, /class="ver-pill part-pill"/);
+  assert.match(pill, /Part of COGBox/);
+  assert.match(pill, /4 games/);
+});
+
+test('Discover and Big Picture search find a game inside a recomp by either name', () => {
+  assert.match(app, /let list = withGames\(visible\(\)\)/);
+  assert.match(app, /a\.name, a\.game, a\.parentName/);
+  assert.match(tv, /const apps = withGames\(pool\(\)\)/);
+  assert.match(tv, /\$\{a\.parentName \|\| ''\}/);
 });
 
 test('Big Picture lists each game on its own and shows the recomp\'s games on its page', () => {

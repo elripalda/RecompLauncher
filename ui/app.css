@@ -388,9 +388,7 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .gp-cover img{width:100%;height:100%;object-fit:cover;display:block}
 .gp-title{grid-area:title;min-width:0;display:flex;flex-direction:column;gap:10px;padding-bottom:4px}
 .gp-title:empty{display:none}
-.part-of{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 14px;margin-top:-4px;font-size:14px;color:var(--muted);font-weight:600}
-.part-of .link-btn{text-decoration:none;font-weight:700}
-.part-of .link-btn:hover{text-decoration:underline}
+.part-of{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;font-size:14px;color:var(--muted);font-weight:600}
 /* A recomp's games on its page: one row when they fit, else rows split evenly (--inc-cols). */
 .gp-includes{position:relative;z-index:2;max-width:var(--gp-max);margin:34px auto 0;padding:0 40px}
 .gp-includes h2{font-size:20px;margin:0 0 16px}
