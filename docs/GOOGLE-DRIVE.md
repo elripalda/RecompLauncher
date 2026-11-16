@@ -10,6 +10,9 @@ archives using the same `rlsave.json` format as local backups. The launcher requ
 request access to the rest of your Drive. Files and credentials travel directly to Google;
 RecompLauncher servers do not receive them.
 
+Google sign-in requests and save transfers follow **Settings → Network → Proxy**. Changes
+apply without restarting the launcher, including choosing **Off** to bypass system proxies.
+
 Before play, the launcher checks for another PC's saves. After play it makes a local backup
 and uploads changed saves. **Sync Now** checks immediately. Offline saves wait on this PC
 and retry later, including after restarting the launcher. Connect the same Google account
@@ -87,6 +90,8 @@ No `recomplauncher.json` changes are needed. Existing `saves` paths and managed-
 apply to Drive backups too. Downloads are checked against the archive manifest and individual
 file hashes before restoration, and archive destinations must match this PC's known save folders
 (or the folders the player explicitly picked).
+File-count and total-size limits are checked separately for each save location, matching backup
+discovery when a game saves in several folders.
 
 ## Reviewing the UI without a Google account
 

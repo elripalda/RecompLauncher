@@ -798,7 +798,8 @@ fn moved_places(copy: &[String], now: &[Spot]) -> Option<Vec<Spot>> {
 pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) -> Result<(), Error> {
     let invalid = || Error::Msg("That cloud save is damaged or doesn't match this game's save folders. Nothing was restored.".into());
     let mut zip = zip::ZipArchive::new(fs::File::open(path)?).map_err(|_| invalid())?;
-    if zip.len() > MAX_FILES + 1 { return Err(invalid()); }
+    let max_entries = spots.len().saturating_mul(MAX_FILES).saturating_add(1);
+    if zip.len() > max_entries { return Err(invalid()); }
     let man: Manifest = {
         let mut entry = zip.by_name("rlsave.json").map_err(|_| invalid())?;
         if entry.size() > 8 * 1024 * 1024 { return Err(invalid()); }
@@ -813,13 +814,11 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) ->
     if man.spots.len() != spots.len() || (!picked && man.spots.iter().zip(spots).any(|(a, b)| a != &b.template)) {
         return Err(invalid());
     }
+    if !cloud_files_within_limits(&man.files, spots.len()) { return Err(invalid()); }
     let mut expected = HashMap::new();
-    let mut total = 0u64;
     for file in &man.files {
         let unsafe_name = file.rel.split('/').any(|p| p.is_empty() || p == "." || p == ".." || p.contains(['\\', ':']));
-        if file.spot >= spots.len() || file.size > MAX_FILE || unsafe_name { return Err(invalid()); }
-        total = total.checked_add(file.size).ok_or_else(invalid)?;
-        if total > SPOT_MAX { return Err(invalid()); }
+        if unsafe_name { return Err(invalid()); }
         let name = format!("{}/{}", file.spot, file.rel);
         if expected.insert(name, file).is_some() { return Err(invalid()); }
     }
@@ -846,6 +845,19 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) ->
         if count != file.size || hex::encode(sha.finalize()) != file.sha256 { return Err(invalid()); }
     }
     Ok(())
+}
+
+fn cloud_files_within_limits(files: &[FileInfo], spots: usize) -> bool {
+    // Discovery budgets each save location separately, including when one backup covers several.
+    let mut counts = vec![0usize; spots];
+    let mut sizes = vec![0u64; spots];
+    for file in files {
+        if file.spot >= spots || file.size > MAX_FILE { return false; }
+        counts[file.spot] += 1;
+        sizes[file.spot] += file.size;
+        if counts[file.spot] > MAX_FILES || sizes[file.spot] > SPOT_MAX { return false; }
+    }
+    true
 }
 
 /// Puts a copy's files back where the game reads them, on this PC. Saves that are there now and
@@ -1382,6 +1394,64 @@ mod tests {
         let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
         let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
         assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_ok());
+    }
+
+    #[test]
+    fn cloud_copy_accepts_a_backup_with_many_files_across_locations() {
+        let dir = tmp("cloud-many-files");
+        let g = game(&dir);
+        let spots = vec![
+            Spot { template: "{install}/saves-0".into(), from: "developer" },
+            Spot { template: "{install}/saves-1".into(), from: "developer" },
+        ];
+        fs::create_dir_all(dir.join("saves-0")).unwrap();
+        fs::create_dir_all(dir.join("saves-1")).unwrap();
+        let count = MAX_FILES + 2;
+        for n in 0..count {
+            let path = dir.join(format!("saves-{}/slot-{}.sav", n % 2, n / 2));
+            fs::write(path, b"save").unwrap();
+        }
+        let copy = backup(&dir, "g", &spots, &g).unwrap().unwrap();
+        assert_eq!(copy.files, count);
+        let archive = dir_of(&dir, "g").join(copy.name);
+        assert!(validate_cloud_copy(&archive, "g", &copy.hash, &spots).is_ok());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cloud_file_counts_cannot_exceed_one_locations_limit() {
+        let file = FileInfo { spot: 0, rel: "slot.sav".into(), size: 4, sha256: String::new() };
+        let files = vec![file; MAX_FILES + 1];
+        assert!(!cloud_files_within_limits(&files, 2));
+    }
+
+    #[test]
+    fn cloud_file_sizes_are_budgeted_per_location() {
+        let count = (SPOT_MAX / MAX_FILE + 1) as usize;
+        let files: Vec<_> = (0..count).map(|n| FileInfo {
+            spot: n % 2, rel: format!("slot-{n}.sav"), size: MAX_FILE, sha256: String::new(),
+        }).collect();
+        assert!(files.iter().map(|f| f.size).sum::<u64>() > SPOT_MAX);
+        assert!(cloud_files_within_limits(&files, 2));
+    }
+
+    #[test]
+    fn cloud_file_sizes_cannot_exceed_one_locations_budget() {
+        let count = (SPOT_MAX / MAX_FILE + 1) as usize;
+        let file = FileInfo { spot: 0, rel: "slot.sav".into(), size: MAX_FILE, sha256: String::new() };
+        assert!(!cloud_files_within_limits(&vec![file; count], 2));
+    }
+
+    #[test]
+    fn cloud_files_reject_an_unknown_location() {
+        let file = FileInfo { spot: 2, rel: "slot.sav".into(), size: 4, sha256: String::new() };
+        assert!(!cloud_files_within_limits(&[file], 2));
+    }
+
+    #[test]
+    fn cloud_files_reject_a_file_larger_than_the_discovery_limit() {
+        let file = FileInfo { spot: 0, rel: "slot.sav".into(), size: MAX_FILE + 1, sha256: String::new() };
+        assert!(!cloud_files_within_limits(&[file], 1));
     }
 
     #[test]
