@@ -4,7 +4,8 @@
 //   that say "A game crashes or runs badly" are closed with a link to the game's own issue page.
 // - The "not a launcher bug" label does the same for any issue someone on the team marks.
 // - Kept open (labelled "needs a look"): the game can't be found in the catalog, or what the player
-//   wrote points at the launcher (Easy Setup, installing, updating).
+//   wrote points at the launcher (Easy Setup, installing, updating), or the game's log says the
+//   launcher's setup step never built it.
 // - Issues the team opened themselves are never closed on their own.
 // Run by hand (workflow_dispatch), it goes through every open crash issue.
 
@@ -20,6 +21,9 @@ const LABELS = {
 };
 // Words in the player's own note that point at the launcher rather than the game.
 const OURS = /easy setup|setting (it )?up|set ?up|install|download|updat|the launcher|recomplauncher|won'?t (start|open|launch) from/i;
+// Lines in the game's log that mean the launcher's setup step didn't finish (a game built from the
+// player's copy that was never built): that's ours to look at.
+const SETUP_LOG = /not built yet|build it with|run (its|the) setup|set up your game copy/i;
 
 async function catalog(core) {
   try {
@@ -84,7 +88,7 @@ async function ensureLabels(github, repo) {
 function message(app, link, crash) {
   const what = crash ? 'This crash happened in the game itself' : 'This is about the game itself, not the launcher';
   if (app && link) {
-    return `Thanks for the report! ${what}, so ${app.name}'s developer is the one who can fix it. Report it to them here (the details are filled in): ${link}\n\nIn the launcher, **Report to the Developer** in the crash window does the same. If you think it's a launcher problem after all, reply here and we'll reopen it.`;
+    return `Thanks for the report! ${what}, so ${app.name}'s developer is the one who can fix it. **[Report it to them here](${link})** (the details are filled in).\n\nIn the launcher, **Report to the Developer** in the crash window does the same. If you think it's a launcher problem after all, reply here and we'll reopen it.`;
   }
   return `Thanks for the report! ${what}, so its developer is the one who can fix it. Open the game's page in the launcher and use **Report to the Developer**, or report it on the game's GitHub page.\n\nIf you think it's a launcher problem after all, reply here and we'll reopen it.`;
 }
@@ -98,9 +102,10 @@ async function handle(github, repo, issue, apps, opts, core) {
   if (!opts.marked && TEAM.includes(issue.author_association)) return;
   const app = findGame(issue, apps);
   const note = (String(issue.body || '').match(/\*\*What happened:\*\*([^\n]*)/) || [])[1] || formValue(issue.body, 'What happened\\?');
-  if (!opts.marked && (!app || OURS.test(note))) {
+  const setupLog = SETUP_LOG.test(String(issue.body || ''));
+  if (!opts.marked && (!app || OURS.test(note) || setupLog)) {
     if (!labels.includes(L_LOOK)) await github.rest.issues.addLabels({ ...repo, issue_number: issue.number, labels: [L_LOOK] });
-    core.info(`#${issue.number}: kept open (${app ? 'the note points at the launcher' : 'game not found'})`);
+    core.info(`#${issue.number}: kept open (${!app ? 'game not found' : setupLog ? 'setup didn\'t finish' : 'the note points at the launcher'})`);
     return;
   }
   const link = app ? issueLink(app, issue) : '';
