@@ -534,7 +534,14 @@ settings are written. It runs again whenever the player changes their copy.
 - Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
 - Write what you make to the same place your launcher would, so both stay in step.
 - `"version"` (optional): change it only when players who already set up must run the step again,
-  like when your output format changes. Nothing else in this file makes them set up again.
+  like when your output format changes. Nothing else in this file makes them set up again. Their
+  next Play opens Easy Setup with a note that the game is built again, whether it's set up from
+  named `inputs` or from a single `game` copy. A build the player pointed the launcher at
+  themselves ("Use a Build You Already Have") isn't asked.
+- To build into the player's install folder instead of their home folder, pass it to your builder
+  (`"args": ["--cli", "--prepare", "--game", "{game}", "--out", "{install}/YourGame"]`) and start
+  from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
+  When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like
   `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
   when your own launcher built it, and plays without asking for the copy (unless `start` uses

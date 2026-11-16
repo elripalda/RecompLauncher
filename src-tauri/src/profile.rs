@@ -1615,16 +1615,33 @@ impl Profile {
     /// through Proton), so the profile's Windows program comes first. With a native build, a program
     /// with the same name comes first: an old `.exe` left beside it (a switch from the Windows build)
     /// must not hide the native one.
-    /// A game its setup step builds (`prepare`) and then starts from a folder outside the game's own
-    /// ("--play {home}/Games/Game"): that folder, when it isn't there. Built somewhere the player
-    /// then moved or deleted, it can't start, and building it again puts it back.
+    /// A game its setup step builds (`prepare`) and then starts from the folder it built
+    /// ("--play {home}/Games/Game", or "--play {install}/Game"): that folder, when it isn't there.
+    /// Built somewhere the player then moved or deleted, or a manifest that now builds somewhere
+    /// else (Hookshot moving from {home}/Games into its install folder), it can't start, and
+    /// building it again puts it back.
     pub fn built_folder_missing(&self, install: &Path) -> Option<PathBuf> {
         self.prepare.as_ref()?;
         let s = self.start.as_ref()?;
-        s.args.iter().filter(|a| ["{home}/", "{documents}/", "{local}/", "{config}/", "{appdata}/"].iter().any(|r| a.starts_with(r))).find_map(|a| {
+        // Inside the game's own folder only the folder its setup builds into counts: other
+        // {install} paths in `start` are the release's own files, not something it built.
+        let home_inside = self.build_home(install).filter(|h| h.starts_with(install));
+        let outside = ["{home}/", "{documents}/", "{local}/", "{config}/", "{appdata}/"];
+        s.args.iter().find_map(|a| {
             let p = PathBuf::from(fill(a, install, None));
-            (!p.exists()).then_some(p)
+            let built_outside = outside.iter().any(|r| a.starts_with(r));
+            let built_inside = a.starts_with("{install}/") && home_inside.as_ref().is_some_and(|h| p.starts_with(h));
+            let ours = built_outside || built_inside;
+            (ours && !p.exists()).then_some(p)
         })
+    }
+
+    /// Whether a game the launcher built from the player's copy was built with another
+    /// `prepare.version` than the manifest has now (`built_with`: the one kept at setup). The
+    /// developer changed it because players who already set up have to run the step again.
+    pub fn prepare_version_changed(&self, built_with: &str) -> bool {
+        let Some(pr) = self.prepare.as_ref() else { return false };
+        pr.version != built_with
     }
 
     /// Whether `exe` is the program its start names (in any of its forms: the Windows one, or the
@@ -2603,6 +2620,56 @@ mod tests {
         // Without a build step, a folder named on the command line is the game's business.
         let plain: super::Profile = serde_json::from_str(&format!(r#"{{"format":1,"start":{{"program":["Hopper.exe"],"args":["--data","{{home}}/{name}"]}}}}"#)).unwrap();
         assert_eq!(plain.built_folder_missing(&install), None);
+    }
+
+    /// A builder profile that builds into `{install}/Game` and starts with `start_args`.
+    fn builds_into_install(start_args: &str) -> super::Profile {
+        let json = format!(r#"{{"format":1,"start":{{"program":["HopperBuilder.exe"],"args":[{start_args}]}},
+            "prepare":{{"program":["HopperBuilder.exe"],"args":["--prepare","--out","{{install}}/Game"]}},
+            "folders":{{"game":[{{"path":"{{install}}/Game"}}]}}}}"#);
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn a_build_folder_inside_the_install_folder_that_is_missing_is_noticed() {
+        let install = std::env::temp_dir().join(format!("rl-built-inside-{}", std::process::id()));
+        std::fs::create_dir_all(&install).unwrap();
+        let p = builds_into_install(r#""--play","{install}/Game""#);
+        let game = std::path::PathBuf::from(super::fill("{install}/Game", &install, None));
+        assert_eq!(p.built_folder_missing(&install), Some(game));
+        std::fs::create_dir_all(install.join("Game")).unwrap();
+        assert_eq!(p.built_folder_missing(&install), None);
+        let _ = std::fs::remove_dir_all(&install);
+    }
+
+    #[test]
+    fn an_install_path_that_isnt_the_build_folder_is_not_taken_for_a_build() {
+        // A release file named in `start` (its own config) isn't something the setup built.
+        let install = std::env::temp_dir().join(format!("rl-not-built-{}", std::process::id()));
+        std::fs::create_dir_all(&install).unwrap();
+        let p = builds_into_install(r#""--config","{install}/settings.ini""#);
+        assert_eq!(p.built_folder_missing(&install), None);
+        let _ = std::fs::remove_dir_all(&install);
+    }
+
+    #[test]
+    fn a_changed_prepare_version_asks_for_a_new_build() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"],"version":"2"}}"#).unwrap();
+        assert!(p.prepare_version_changed(""));
+        assert!(p.prepare_version_changed("1"));
+        assert!(!p.prepare_version_changed("2"));
+    }
+
+    #[test]
+    fn no_prepare_version_matches_a_setup_from_before_versions_were_kept() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"]}}"#).unwrap();
+        assert!(!p.prepare_version_changed(""));
+    }
+
+    #[test]
+    fn a_game_without_a_setup_step_never_asks_for_a_new_build() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.exe"]}}"#).unwrap();
+        assert!(!p.prepare_version_changed("2"));
     }
 
     #[test]

@@ -707,6 +707,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         prepare_opts: prev.as_ref().map(|p| p.prepare_opts.clone()).unwrap_or_default(),
         from_backup,
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
+        // (an update keeps the build it was set up with, and so the version it was built with)
+        prepare_version: prev.as_ref().map(|p| p.prepare_version.clone()).unwrap_or_default(),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
         // A finished setup stays through an update: its fingerprint leaves the release out, and
@@ -2783,6 +2785,19 @@ fn start_game_with_monitor_context(
                     None => return Err(Error::Msg(format!("NEED_UPDATE|{}", up.label))),
                 }
             }
+            // Built by the launcher from the copy, but the manifest's prepare.version changed since:
+            // its developer needs the step run again (a new output folder, a new format), so it's
+            // built again through Easy Setup. Not a build the player chose themselves.
+            let launcher_built = copy.is_some() && !g.prebuilt && g.build_dir.is_none();
+            if launcher_built && p.prepare_version_changed(&g.prepare_version) {
+                let now = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or_default();
+                trail::note(format!("Play {id}: its setup step changed (version '{}' -> '{now}'); it's built again", g.prepare_version));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg("NEED_REBUILD|".into()));
+            }
             // Built from the copy into a folder of its own, and that folder is gone (moved or
             // deleted): built again, through Easy Setup, rather than starting into nothing.
             if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
@@ -3695,6 +3710,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
             x.game_copy = Some(copy.clone());
             x.prebuilt = false;
+            x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
         }
         st.save();
         if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
