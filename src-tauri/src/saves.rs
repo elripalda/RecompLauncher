@@ -1144,6 +1144,7 @@ const CARRY_LAYOUT: &str = "The other version's saves are laid out differently f
 const CARRY_SHARED: &str = "Both versions keep their saves in the same place, so they share them already.";
 /// Nothing to bring over: switching completely can still go ahead.
 pub const CARRY_NONE: &str = "The other version has no saves yet.";
+const CARRY_KIND: &str = "The other version's saves are a different kind of file from this one's, so this one probably can't read them.";
 
 /// A save place that is one file (`{install}/save.dat`), not a folder. One that isn't there yet
 /// counts as a file only when the one file coming in has the same extension: a folder's name can
@@ -1294,7 +1295,19 @@ pub fn carry_plan(pairs: &[(Spot, Spot)], from: &Installed, to: &Installed) -> R
     if plan.is_empty() {
         return Err(CARRY_LAYOUT.into());
     }
+    if !same_kind(&plan, &collect(&to_spots, to)) {
+        return Err(CARRY_KIND.into());
+    }
     Ok(plan)
+}
+
+/// A cheap guard against saves the other version can't read: when this version has saves of its
+/// own, the ones coming in share at least one kind of file with them (`.sav` and `.sav`, not
+/// `.sav` and `.json`). With none yet (before its first start) there's nothing to go by.
+fn same_kind(plan: &[Carry], here: &[Entry]) -> bool {
+    let kind = |p: &Path| p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ours: HashSet<String> = here.iter().map(|e| kind(&e.abs)).collect();
+    ours.is_empty() || plan.iter().any(|c| ours.contains(&kind(&c.from)))
 }
 
 /// Copies another version's saves into this one (see `carry_plan`). What this one has now is kept
@@ -1710,6 +1723,19 @@ mod tests {
         let to_spots = [Spot { template: "{install}/slot.sav".into(), from: "developer" }];
         let plan = carry_plan(&pair(&from_spots, &to_spots), &from, &to).unwrap();
         assert_eq!(plan[0].to, to.path.join("slot.sav"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn saves_of_another_kind_of_file_are_refused() {
+        let d = tmp("carry-kind");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        put(&from.path.join("saves/slot1.sav"), "theirs");
+        put(&to.path.join("save/profile.json"), "mine");
+        let from_spots = [Spot { template: "{install}/saves".into(), from: "developer" }];
+        let to_spots = [Spot { template: "{install}/save".into(), from: "developer" }];
+        assert_eq!(carry_plan(&pair(&from_spots, &to_spots), &from, &to), Err(CARRY_KIND.to_string()));
         let _ = fs::remove_dir_all(&d);
     }
 

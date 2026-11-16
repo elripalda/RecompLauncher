@@ -3370,5 +3370,6 @@
  "Switch completely, and {old} is uninstalled when you first start {name}. Its saves don't work in {name}, so they don't come along. Or keep both and play either one.": "Wechsle komplett, dann wird {old} deinstalliert, wenn du {name} zum ersten Mal startest. Seine Spielstände funktionieren in {name} nicht, deshalb kommen sie nicht mit. Oder behalte beide und spiel, welche du willst.",
  "Your copy of the game from {name} comes along.": "Deine Spielkopie aus {name} kommt mit.",
  "Your copy from {name}": "Deine Kopie aus {name}",
- "Switching from {old} to {name}…": "Wechsel von {old} zu {name} läuft…"
+ "Switching from {old} to {name}…": "Wechsel von {old} zu {name} läuft…",
+ "The other version's saves are a different kind of file from this one's, so this one probably can't read them.": "Die Spielstände der anderen Version sind eine andere Art von Datei als die dieser Version, deshalb kann sie sie wahrscheinlich nicht lesen."
 }
