@@ -2747,6 +2747,32 @@ fn start_game_with_monitor_context(
                 }
                 other => other?,
             };
+            // Both checks below come before its settings are written: the settings file often
+            // lives in the folder it built (hookshot_options.ini), and writing it would make a
+            // missing build folder look present again.
+            // Built by the launcher from the copy, but the manifest's prepare.version changed since:
+            // its developer needs the step run again (a new output folder, a new format), so it's
+            // built again through Easy Setup. Not a build the player chose themselves.
+            let launcher_built = copy.is_some() && !g.prebuilt && g.build_dir.is_none();
+            if launcher_built && p.prepare_version_changed(&g.prepare_version) {
+                let now = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or_default();
+                trail::note(format!("Play {id}: its setup step changed (version '{}' -> '{now}'); it's built again", g.prepare_version));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg("NEED_REBUILD|".into()));
+            }
+            // Built from the copy into a folder of its own, and that folder is gone (moved or
+            // deleted): built again, through Easy Setup, rather than starting into nothing.
+            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
+                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
+            }
             p.prepare(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
             p.place(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't put your copy of the game where it reads it: {e}")))?;
             // Everything the game reads has to be there now; if not, the copy picked isn't the
@@ -2784,29 +2810,6 @@ fn start_game_with_monitor_context(
                     None if up.optional || up.in_place(&g.path).is_some() || (built && copy.is_none()) => {}
                     None => return Err(Error::Msg(format!("NEED_UPDATE|{}", up.label))),
                 }
-            }
-            // Built by the launcher from the copy, but the manifest's prepare.version changed since:
-            // its developer needs the step run again (a new output folder, a new format), so it's
-            // built again through Easy Setup. Not a build the player chose themselves.
-            let launcher_built = copy.is_some() && !g.prebuilt && g.build_dir.is_none();
-            if launcher_built && p.prepare_version_changed(&g.prepare_version) {
-                let now = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or_default();
-                trail::note(format!("Play {id}: its setup step changed (version '{}' -> '{now}'); it's built again", g.prepare_version));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
-                return Err(Error::Msg("NEED_REBUILD|".into()));
-            }
-            // Built from the copy into a folder of its own, and that folder is gone (moved or
-            // deleted): built again, through Easy Setup, rather than starting into nothing.
-            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
-                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
-                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
             }
             game_env = p.env_vars(&g.path, copy.as_deref());
             // Its program under another name than the profile's (a Linux build): the one the game
