@@ -135,4 +135,20 @@ module.exports = async ({ github, context, core }) => {
   for (const issue of open) {
     try { await handle(github, repo, issue, apps, { marked: false }, core); } catch (e) { core.warning(`#${issue.number}: ${e.message}`); }
   }
+  // And the bot's own comments on ones it closed are brought back to the current wording.
+  const closed = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'closed', labels: L_CRASH, per_page: 100 });
+  for (const issue of closed) {
+    try { await reword(github, repo, issue, apps, core); } catch (e) { core.warning(`#${issue.number}: ${e.message}`); }
+  }
 };
+
+async function reword(github, repo, issue, apps, core) {
+  const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: issue.number, per_page: 100 });
+  const mine = comments.filter((c) => c.user && c.user.login === 'github-actions[bot]').pop();
+  if (!mine) return;
+  const app = findGame(issue, apps);
+  const body = message(app, app ? issueLink(app, issue) : '', kindOf(issue) === 'crash');
+  if (mine.body === body) return;
+  await github.rest.issues.updateComment({ ...repo, comment_id: mine.id, body });
+  core.info(`#${issue.number}: comment reworded`);
+}
