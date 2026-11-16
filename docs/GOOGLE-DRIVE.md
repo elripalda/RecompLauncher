@@ -95,6 +95,8 @@ file hashes before restoration, and archive destinations must match this PC's kn
 Each entry must also pass the save-file exclusions and match its local file or wildcard template.
 Installed release files, selected launch programs and managed inputs are protected from replacement.
 Links in restore destinations or staging paths are rejected before any live saves are changed.
+If the developer or catalog moves a save folder, old copies restore into the current named
+location with the same file checks. A guessed save folder cannot authorize that remapping.
 File-count and total-size limits are checked separately for each save location, matching backup
 discovery when a game saves in several folders.
 The manifest budget scales with the archive's entry count and path lengths, including full

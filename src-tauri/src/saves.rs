@@ -1147,7 +1147,10 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot], g:
         return Err(invalid());
     }
     let picked = !spots.is_empty() && spots.iter().all(|s| s.from == "player");
-    if man.spots.len() != spots.len() || (!picked && man.spots.iter().zip(spots).any(|(a, b)| a != &b.template)) {
+    let moved = moved_places(&man.spots, spots).is_some();
+    let same = man.spots.iter().zip(spots).all(|(a, b)| a == &b.template);
+    // Use the same trusted remapping as restore, while validating every file against the new roots.
+    if man.spots.len() != spots.len() || !(picked || moved || same) {
         return Err(invalid());
     }
     if !cloud_files_within_limits(&man.files, spots.len()) { return Err(invalid()); }
@@ -1949,11 +1952,26 @@ mod tests {
     }
 
     #[test]
-    fn cloud_copy_cannot_redirect_a_save_to_another_folder() {
+    fn cloud_copy_cannot_redirect_a_save_to_a_guessed_folder() {
         let dir = tmp("cloud-redirect");
-        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "found" }];
         let (path, hash) = cloud_archive(&dir, "{home}/Documents", b"save", b"save");
         assert!(validate_cloud_copy(&path, "g", &hash, &spots, &game(&dir)).is_err());
+    }
+
+    #[test]
+    fn cloud_restore_uses_current_named_folders_instead_of_archive_destinations() {
+        let dir = tmp("cloud-redirect-named");
+        let outside = dir.join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("slot.sav"), b"keep this").unwrap();
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, outside.to_str().unwrap(), b"save", b"save");
+        let g = game(&dir.join("game"));
+        assert_eq!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &g).unwrap(), 1);
+        assert_eq!(fs::read(g.path.join("saves/slot.sav")).unwrap(), b"save");
+        assert_eq!(fs::read(outside.join("slot.sav")).unwrap(), b"keep this");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -3004,6 +3022,18 @@ mod tests {
         fs::write(g.path.join("sub"), "not a folder").unwrap();
         let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
         (g, archive, place)
+    }
+
+    #[test]
+    fn cloud_restore_follows_a_save_folder_the_developer_moved() {
+        let d = tmp("cloud-restore-moved");
+        let (g, archive) = copy_from_old_folder(&d);
+        let now = spots(&["{install}/new".into()], &[], &g);
+        let hash = manifest(&archive).unwrap().hash;
+        assert_eq!(restore_cloud_copy(&d.join("app"), "g", &archive, &hash, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("new/progress.sav")).unwrap(), "progress");
+        assert!(!g.path.join("old").exists());
+        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
