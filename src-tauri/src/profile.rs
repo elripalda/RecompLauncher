@@ -842,6 +842,23 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
     best.map(|(_, _, p)| p)
 }
 
+/// A .NET app host on Linux finds the runtime only where .NET put it system-wide. When the
+/// player's runtime lives elsewhere (~/.dotnet, a folder it downloaded) the host stops at once
+/// with "You must install .NET". A release's own start script finds that runtime and sets
+/// DOTNET_ROOT before starting the host, so when a game's profile resolves to such a host, Play
+/// starts the script instead.
+fn through_start_script(host: PathBuf) -> PathBuf {
+    if !cfg!(target_os = "linux") {
+        return host;
+    }
+    let Some(dir) = host.parent() else { return host };
+    let Some(name) = host.file_name().map(|n| n.to_string_lossy().to_string()) else { return host };
+    if !dir.join(format!("{name}.runtimeconfig.json")).is_file() {
+        return host;
+    }
+    crate::linux_twin(&host).unwrap_or(host)
+}
+
 pub fn from_boot(b: &Value) -> Option<Profile> {
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
     let (config, settings) = boot_settings(b);
@@ -1373,9 +1390,12 @@ impl Profile {
     fn program_for(&self, install: &Path, windows_build: bool) -> Option<PathBuf> {
         let s = self.start.as_ref()?;
         let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
-        (if windows_build { None } else { twin() })
+        let program = (if windows_build { None } else { twin() })
             .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
-            .or_else(twin)
+            .or_else(twin)?;
+        // A .NET app host on Linux needs the start script a release ships with it (see
+        // `through_start_script`), whether the profile named the Windows program or the host itself.
+        Some(if cfg!(windows) { program } else { through_start_script(program) })
     }
 
     /// The selected program is a Windows one that plays through Proton here. Leftover Windows
@@ -2820,6 +2840,39 @@ mod tests {
         assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0.file_name().unwrap(), "parasite-eve-pc");
         // The plain call keeps the Windows-first behavior for callers that don't know the build.
         assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_dotnet_app_host_starts_through_the_releases_script() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dotnet-start");
+        // The layout of Symphony Recomp's Linux release: the app host, the files that say it's a
+        // .NET one, and the run.sh that finds the player's runtime before starting it.
+        let host = d.join("sotn");
+        std::fs::write(&host, b"\x7fELF").unwrap();
+        std::fs::set_permissions(&host, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(d.join("sotn.runtimeconfig.json"), b"{}").unwrap();
+        let script = d.join("run.sh");
+        std::fs::write(&script, b"#!/bin/sh\nexport DOTNET_ROOT=\"$HOME/.dotnet\"\nexec \"$DIR/sotn\" \"$@\"\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["sotn.exe"]}}"#).unwrap();
+        let picks = BTreeMap::new();
+        // The host alone finds no runtime; the release's script finds one and passes the profile's
+        // arguments on, so that's what Play starts.
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, script);
+        // The same when the profile names the Linux host itself rather than its Windows name.
+        let by_host: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["sotn"]}}"#).unwrap();
+        assert_eq!(by_host.command_for(&d, None, &picks, false).unwrap().0, script);
+        // Without a script it's still the host.
+        std::fs::remove_file(&script).unwrap();
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, host);
+        // A native build is itself, even with a run.sh beside it.
+        std::fs::write(&script, b"#!/bin/sh\nexec \"$DIR/sotn\"\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_file(d.join("sotn.runtimeconfig.json")).unwrap();
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, host);
         let _ = std::fs::remove_dir_all(&d);
     }
 
