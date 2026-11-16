@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "리컴프에서 업적을 달성하고, 프로필에서 확인하고, 순위표에서 올라가세요. 지금 시스템을 준비하고 있습니다. 곧 자세히 알려 드릴게요.",
  "Easy Setup": "간편 설정",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "이 게임은 간편 설정이 꺼져 있어 런처가 빌드하지 않습니다. 빌드를 고른 다음 플레이를 누르세요.",
+ "Easy Setup is off for {name}. You set it up yourself.": "{name}의 간편 설정이 꺼졌습니다. 직접 설정합니다.",
  "Easy Setup…": "간편 설정…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "이 게임은 간편 설정을 건너뛰며, 아직 실행할 프로그램이 없습니다. 관리 메뉴의 '게임 실행 파일 설정'으로 고르세요.",
  "Edit Game Info": "게임 정보 편집",

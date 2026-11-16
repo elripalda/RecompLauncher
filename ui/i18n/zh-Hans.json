@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "在重编译游戏中解锁成就，在个人资料中查看，并在排行榜上不断攀升。我们正在准备这套系统，更多信息即将公布。",
  "Easy Setup": "轻松配置",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "此游戏已关闭轻松配置，所以启动器不会构建它。请选择你的构建，然后按“开始游戏”。",
+ "Easy Setup is off for {name}. You set it up yourself.": "{name} 的轻松配置已关闭。由你自己配置。",
  "Easy Setup…": "轻松配置…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "此游戏跳过了轻松配置，还没有可启动的程序。请在其“管理”菜单中用“设置游戏可执行文件”选择。",
  "Edit Game Info": "编辑游戏信息",

@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "Recomp'larında başarımlar kazan, profilinde takip et ve liderlik tablolarında yüksel. Sistemi hazırlıyoruz. Yakında daha fazla bilgi.",
  "Easy Setup": "Kolay kurulum",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "Bu oyun için kolay kurulum kapalı, bu yüzden başlatıcı onu derlemiyor. Derlemenizi seçin, sonra Oyna'ya basın.",
+ "Easy Setup is off for {name}. You set it up yourself.": "{name} için kolay kurulum kapalı. Kendiniz kurarsınız.",
  "Easy Setup…": "Kolay kurulum…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Bu oyun kolay kurulumu atlıyor ve henüz başlatılacak bir programı yok. Yönet menüsündeki “Oyunun çalıştırılabilir dosyasını ayarla” ile seç.",
  "Edit Game Info": "Oyun bilgilerini düzenle",

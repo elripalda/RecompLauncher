@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "リコンパイル版で実績を解除して、プロフィールで記録し、ランキングで上を目指しましょう。現在システムを準備中です。詳細はまもなくお知らせします。",
  "Easy Setup": "かんたんセットアップ",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "このゲームはかんたんセットアップがオフなので、ランチャーはビルドしません。ビルドを選んでから「プレイ」を押してください。",
+ "Easy Setup is off for {name}. You set it up yourself.": "{name} のかんたんセットアップはオフです。自分でセットアップします。",
  "Easy Setup…": "かんたんセットアップ…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "このゲームはかんたんセットアップをスキップしていて、起動するプログラムがまだありません。「管理」メニューの「ゲームの実行ファイルを設定」で選んでください。",
  "Edit Game Info": "ゲーム情報を編集",

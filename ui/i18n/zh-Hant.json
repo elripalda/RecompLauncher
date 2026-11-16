@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "在重新編譯遊戲中解鎖成就，在個人檔案中查看，並在排行榜上不斷攀升。我們正在準備這套系統，更多資訊即將公布。",
  "Easy Setup": "輕鬆設定",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "此遊戲已關閉輕鬆設定，所以啟動器不會建置它。請選擇你的建置，然後按「開始遊戲」。",
+ "Easy Setup is off for {name}. You set it up yourself.": "{name} 的輕鬆設定已關閉。由你自己設定。",
  "Easy Setup…": "輕鬆設定…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "此遊戲略過了輕鬆設定，還沒有可啟動的程式。請在它的「管理」選單中用「設定遊戲執行檔」選擇。",
  "Edit Game Info": "編輯遊戲資訊",

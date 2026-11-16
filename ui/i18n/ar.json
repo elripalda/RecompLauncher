@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "احصل على إنجازات في ألعابك المعاد تجميعها، وتابعها في ملفك الشخصي، وتقدّم في لوحات الصدارة. نحن نجهّز النظام الآن. المزيد من المعلومات قريبًا.",
  "Easy Setup": "إعداد سهل",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "الإعداد السهل متوقف لهذه اللعبة، لذا لا يبنيها المشغّل. اختر بناءك، ثم اضغط «تشغيل».",
+ "Easy Setup is off for {name}. You set it up yourself.": "تم إيقاف الإعداد السهل لـ {name}. أنت من يُعدّها بنفسك.",
  "Easy Setup…": "إعداد سهل…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "تتخطى هذه اللعبة الإعداد السهل، وليس لديها بعد برنامج لتشغيله. اختره من «تعيين الملف التنفيذي للعبة» في قائمة «إدارة» الخاصة بها.",
  "Edit Game Info": "تعديل معلومات اللعبة",

@@ -8130,7 +8130,10 @@ async function act(el, e) {
       const on = !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
       try { await setEasySkip(id, on); } catch (err) { return fail(err); }
       render(true);
-      toast(on ? tf('{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.', { name }) : tf('{name} uses Easy Setup again.', { name }));
+      if (!on) return toast(tf('{name} uses Easy Setup again.', { name }));
+      // Installed, it's the Manage tab's switch: said in its words. Before install, how it'll install.
+      if (S.library[id]) return toast(tf('Easy Setup is off for {name}. You set it up yourself.', { name }));
+      toast(tf('{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.', { name }));
       return;
     }
     case 'hold-up': return toggleHold(id);

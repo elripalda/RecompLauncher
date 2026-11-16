@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "Consigue logros en tus recomps, síguelos en tu perfil y sube en las tablas de clasificación. Estamos preparando el sistema. Pronto habrá más información.",
  "Easy Setup": "Configuración fácil",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "La configuración fácil está desactivada para este juego, así que el launcher no lo compila. Elige tu compilación y luego pulsa Jugar.",
+ "Easy Setup is off for {name}. You set it up yourself.": "La configuración fácil está desactivada para {name}. Lo configuras tú.",
  "Easy Setup…": "Configuración fácil…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Este juego se salta la configuración fácil y todavía no tiene un programa para iniciar. Elígelo con «Establecer ejecutable del juego» en su menú Administrar.",
  "Edit Game Info": "Editar información del juego",

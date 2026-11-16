@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "Schalte Erfolge in deinen Recomps frei, verfolge sie in deinem Profil und klettere in den Bestenlisten nach oben. Wir bereiten das System gerade vor. Mehr Infos bald.",
  "Easy Setup": "Einfache Einrichtung",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "Die einfache Einrichtung ist für dieses Spiel aus, deshalb baut der Launcher es nicht. Wähle deinen Build und drück dann „Spielen“.",
+ "Easy Setup is off for {name}. You set it up yourself.": "Die einfache Einrichtung ist für {name} aus. Du richtest es selbst ein.",
  "Easy Setup…": "Einfache Einrichtung…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Die einfache Einrichtung wird für dieses Spiel übersprungen, und es hat noch kein Programm zum Starten. Wähle es mit „Ausführbare Spieldatei festlegen“ in seinem Menü „Verwalten“.",
  "Edit Game Info": "Spielinfos bearbeiten",

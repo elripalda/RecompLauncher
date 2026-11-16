@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "ปลดล็อกความสำเร็จใน Recomp ของคุณ ติดตามได้บนโปรไฟล์ และไต่อันดับบนลีดเดอร์บอร์ด เรากำลังเตรียมระบบอยู่ เร็วๆ นี้จะมีข้อมูลเพิ่มเติม",
  "Easy Setup": "ตั้งค่าง่าย",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "เกมนี้ปิดการตั้งค่าง่ายไว้ ตัวเปิดเกมจึงไม่บิลด์ให้ เลือกบิลด์ของคุณ แล้วกด เล่น",
+ "Easy Setup is off for {name}. You set it up yourself.": "ปิดการตั้งค่าง่ายของ {name} แล้ว คุณตั้งค่าเอง",
  "Easy Setup…": "ตั้งค่าง่าย…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "เกมนี้ข้ามการตั้งค่าง่าย และยังไม่มีโปรแกรมให้เปิด เลือกได้ด้วย “ตั้งไฟล์โปรแกรมของเกม” ในเมนูจัดการของเกม",
  "Edit Game Info": "แก้ไขข้อมูลเกม",

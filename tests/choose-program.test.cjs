@@ -60,6 +60,13 @@ test('no Easy Setup switch on a game Easy Setup can\'t do, or while it\'s skippe
   assert.equal(easyRowHtml(true, false, { easy_skip_all: true }), '');
 });
 
+test('turning Easy Setup off says it in the switch\'s words once installed, and how it installs before', () => {
+  const sw = app.match(/case 'easy-skip': \{[^]*?\n    \}/)[0];
+  assert.match(sw, /if \(!on\) return toast\(tf\('\{name\} uses Easy Setup again\.', \{ name \}\)\);/);
+  assert.match(sw, /if \(S\.library\[id\]\) return toast\(tf\('Easy Setup is off for \{name\}\. You set it up yourself\.', \{ name \}\)\);/);
+  assert.match(sw, /toast\(tf\('\{name\} skips Easy Setup: it installs as it comes/);
+});
+
 test('the game\'s menu: Skip Easy Setup ticked before install, Easy Setup… (to the switch) once installed', () => {
   const item = fn(app, 'easySkipItem');
   assert.match(item, /if \(S\.library\[id\]\) return \[\{ act: 'easy-row', id, label: t\('Easy Setup…'\), icon: 'disc' \}\];/);

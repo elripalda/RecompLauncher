@@ -367,6 +367,7 @@
  "Earn achievements in your recomps, track them on your profile and climb the leaderboards. We're preparing the system. More info soon.": "Raih pencapaian di recomp-mu, pantau di profilmu, dan naiki papan peringkat. Kami sedang menyiapkan sistemnya. Info lebih lanjut segera.",
  "Easy Setup": "Penyiapan mudah",
  "Easy Setup is off for this game, so the launcher doesn't build it. Pick your build, then press Play.": "Penyiapan mudah mati untuk game ini, jadi launcher tidak membuildnya. Pilih build-mu, lalu tekan Main.",
+ "Easy Setup is off for {name}. You set it up yourself.": "Penyiapan mudah dimatikan untuk {name}. Kamu menyiapkannya sendiri.",
  "Easy Setup…": "Penyiapan mudah…",
  "Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Game ini melewati penyiapan mudah dan belum punya program untuk dijalankan. Pilih dengan “Atur file eksekusi game” di menu Kelola-nya.",
  "Edit Game Info": "Edit info game",
