@@ -194,13 +194,19 @@ async function toggleSaveShare(title) {
   const current = (S.settings.ui || {}).save_share_titles || [];
   await saveUi({ save_share_titles: current.includes(title) ? current.filter((x) => x !== title) : [...current, title] }, true);
 }
+// Switching from one recomp of a game to another: the saves of a version already played come
+// along into this one.
+const CARRY = N_('Bring saves from another version');
+const CARRY_HELP = N_('Switching versions? Copy the saves of one you\'ve played into this one. What it has now is kept as a copy first.');
+const otherVersions = (id) => (saveShareTitle(id) ? verGroup(byId(id)).list.filter((v) => v.id !== id && S.library[v.id]) : []);
 function savesTab(a) {
   const id = a.id, s = S.saves[id], g = S.library[id] || {};
   if (!s || s === 'loading') { if (!s) loadSaves(id); return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading…'))}</p></div></div>`; }
   if (s.error) return `<div class="stack"><div class="card"><p style="margin:0">${esc(t(s.error))}</p></div></div>`;
   const signed = s.signedIn, on = s.cloudOn === true;
   const shareTitle = saveShareTitle(id);
-  const shareCard = shareTitle ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t(SHARE_SAVES))}</b><span>${esc(t(SHARE_SAVES_HELP))}</span></div><button type="button" class="switch" role="switch" aria-checked="${saveShareOn(shareTitle)}" aria-label="${esc(t(SHARE_SAVES))}" data-act="saves-share" data-id="${esc(id)}"></button></div></div>` : '';
+  const carryRow = otherVersions(id).length ? `<div class="set-row"><div class="k"><b>${esc(t(CARRY))}</b><span>${esc(t(CARRY_HELP))}</span></div><button type="button" class="btn sm" data-act="saves-carry" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${esc(t('Bring Saves Over'))}</button></div>` : '';
+  const shareCard = shareTitle ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t(SHARE_SAVES))}</b><span>${esc(t(SHARE_SAVES_HELP))}</span></div><button type="button" class="switch" role="switch" aria-checked="${saveShareOn(shareTitle)}" aria-label="${esc(t(SHARE_SAVES))}" data-act="saves-share" data-id="${esc(id)}"></button></div>${carryRow}</div>` : '';
   // Several folders the player picked (a launcher with more than one game): each can come off the list.
   const many = s.spots.filter((p) => p.from === 'player').length > 1;
   const where = s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${p.from === 'found' ? `<button type="button" class="btn sm" data-act="saves-forget" data-id="${esc(id)}">${esc(t('Not right?'))}</button>` : ''}${many ? `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>` : `${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`}</span></div>`).join('')
@@ -335,10 +341,132 @@ async function ask(title, text, buttons) {
     new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
   });
 }
+// ---------- bringing saves over from another version ----------
+// What would come over, side by side with this version, and that it only works with the same
+// kind of save.
+function carryText(o) {
+  const theirs = `<div class="pick-card"><b>${esc(o.name)}</b><span>${esc(tf('Last saved {when}', { when: whenText(o.when) }))}</span><span>${esc(tn(o.files, '1 file', '{n} files'))}</span></div>`;
+  const mine = `<div class="pick-card"><b>${esc(t('This version'))}</b><span>${esc(o.has ? t('What it has now is kept as a copy') : t('No save yet'))}</span></div>`;
+  const undo = o.has ? ' ' + t('Put back on its Saves tab undoes this.') : '';
+  return `<div class="pick-two">${theirs}${mine}</div><p>${esc(t('Copy only if both versions support the same save format.') + undo)}</p>`;
+}
+// The player said yes. false: it didn't work, and they're told why.
+async function carryNow(o, id) {
+  try { S.library[id] = await invoke('saves_carry', { from: o.id, to: id }); } catch (e) { fail(e); return false; }
+  savesChanged(id);
+  toast(tf('Your saves from {name} are here now.', { name: o.name }));
+  return true;
+}
+// From the Saves tab: which version (when more than one has saves), then a yes.
+async function bringSaves(id) {
+  let r;
+  try { r = await invoke('saves_carry_from', { to: id }); } catch (e) { return fail(e); }
+  const offers = (r && r.offers) || [];
+  const why = r && r.blocked && r.blocked[0];
+  if (!offers.length) return toast(why ? `${why.name}: ${t(why.why)}` : t('No other version of this game is installed.'), true);
+  let o = offers[0];
+  if (offers.length > 1) {
+    const each = offers.map((x) => ({ label: x.name, sub: tf('Last saved {when}', { when: whenText(x.when) }), v: x.id }));
+    const v = await ask(t('Bring saves from which version?'), '', each.concat([{ label: t('Cancel'), v: null, last: true }]));
+    o = offers.find((x) => x.id === v);
+    if (!o) return;
+  }
+  const v = await ask(tf('Bring your saves from {name}?', { name: o.name }), carryText(o),
+    [{ label: t('Cancel'), v: null, focus: true }, { label: t('Bring them over'), sub: tf('Last saved {when}', { when: whenText(o.when) }), v: 'yes', main: true }]);
+  if (v === 'yes') await carryNow(o, id);
+}
+// A version's first start, while it has no saves of its own: the saves of the one played last
+// are offered once. false: don't start it.
+async function carryOnFirstPlay(id) {
+  const g = S.library[id];
+  if (!g || g.last_played) return true;
+  let r;
+  // The offer is a help, not a step: when it can't be worked out, the game starts as before.
+  try { r = await invoke('saves_carry_from', { to: id }); } catch (e) { return true; }
+  const o = r && r.offers && r.offers[0];
+  if (!o || o.has) return true;
+  const v = await ask(tf('Bring your saves from {name}?', { name: o.name }), carryText(o),
+    [{ label: t('Start fresh'), sub: t('This version starts without saves'), v: 'fresh', focus: true },
+      { label: t('Bring them over'), sub: tf('Last saved {when}', { when: whenText(o.when) }), v: 'carry', main: true }]);
+  if (v == null) return false;
+  if (v === 'fresh') return true;
+  return carryNow(o, id);
+}
+// ---------- switching completely to another version ----------
+// Installing a version of a game while another one is installed: switch to it, or keep both. A
+// switch waits in switch_from ({new id: old id}) until the new one's first start, so the old one
+// stays until the new one is installed and set up.
+const switchFrom = (id) => ((S.settings.ui || {}).switch_from || {})[id] || null;
+async function setSwitch(id, from) {
+  const all = Object.assign({}, (S.settings.ui || {}).switch_from || {});
+  if (from) all[id] = from;
+  else delete all[id];
+  await saveUi({ switch_from: all }, true);
+}
+// false: the player closed the question, so nothing installs.
+async function askSwitch(id) {
+  const lastPlayed = (x, y) => (S.library[y.id].last_played || 0) - (S.library[x.id].last_played || 0);
+  const old = otherVersions(id).sort(lastPlayed)[0];
+  if (!old) return true;
+  // The versions' own names: with Show Game Names on, both would be called after the game.
+  const words = { old: ownName(old), name: byId(id) ? ownName(byId(id)) : id };
+  // The catalog says whether saves of one version work in another: same, maybe or no.
+  const kind = verGroup(byId(id)).saves;
+  const how = kind === 'no' ? tf('Switch completely, and {old} is uninstalled when you first start {name}. Its saves don\'t work in {name}, so they don\'t come along. Or keep both and play either one.', words)
+    : tf('Switch completely, and your saves from {old} come along when you first start {name}. Then {old} is uninstalled. Or keep both and play either one.', words);
+  const maybe = kind === 'maybe' ? `<p class="muted">${esc(t('That works when both versions read the same kind of save. Your saves are kept as copies either way.'))}</p>` : '';
+  const v = await ask(tf('Switch from {old} to {name}?', words), `<p>${esc(how)}</p>${maybe}`,
+    [{ label: t('Keep both'), sub: tf('{name} installs next to {old}', words), v: 'both', focus: true },
+      { label: t('Switch completely'), sub: kind === 'no' ? tf('{old} is uninstalled', words) : tf('Saves come along, {old} is uninstalled', words), v: 'switch', main: true },
+      { label: t('Cancel'), v: null, last: true }]);
+  if (v == null) return false;
+  await setSwitch(id, v === 'switch' ? old.id : null);
+  return true;
+}
+// The first start after switching completely: the saves come along (when they work in this
+// version), then the old version is uninstalled. false: don't start it.
+async function finishSwitch(id) {
+  const from = switchFrom(id);
+  await setSwitch(id, null);
+  const old = S.library[from];
+  if (!old) return true;
+  // Said at once: copying the saves and uninstalling the old one takes a few seconds before the
+  // game starts.
+  toast(tf('Switching from {old} to {name}…', { old: old.name, name: (S.library[id] || {}).name || id }));
+  if (verGroup(byId(id)).saves !== 'no') {
+    let r = null;
+    try { r = await invoke('saves_carry_from', { to: id }); } catch (e) { fail(e); }
+    const offer = ((r && r.offers) || []).find((o) => o.id === from);
+    const why = ((r && r.blocked) || []).find((b) => b.id === from);
+    // Its saves couldn't come along: it stays, so they aren't lost with it. Nothing to bring is fine.
+    if (!offer && !(why && why.empty)) {
+      toast(tf('{old} stays installed: its saves couldn\'t come along.', { old: old.name }) + (why ? ' ' + t(why.why) : ''), true);
+      return true;
+    }
+    if (offer && !(await carryNow(offer, id))) return false;
+  }
+  // One more copy of its saves as they are now, kept with the launcher's backups.
+  try { await invoke('saves_backup', { id: from }); } catch (e) { /* the copy from its last session is there */ }
+  // Its shortcuts in the app menu and on the desktop start this one from now on.
+  try { await invoke('move_shortcuts', { from, to: id }); } catch (e) { /* uninstalling takes them away */ }
+  const r = await uninstallNow(from, ownFolder(old), !!old.installer);
+  // The copy of the game both used was inside the old one's folder and was moved out: this one
+  // reads it from where it went.
+  const mine = S.library[id];
+  if (r && r.kept_copy && mine && old.game_copy && mine.game_copy === old.game_copy) {
+    try { await invoke('set_game_copy', { id, path: r.kept_copy }); } catch (e) { /* setup asks for it again */ }
+  }
+  return true;
+}
 async function beforePlay(id) {
   if (!(await beforeCloudPlay(id))) return false;
   const title = saveShareTitle(id);
-  if (!title || !saveShareOn(title)) return true;
+  if (!title) return true;
+  // Switching completely, as the player said when it was installed: no more questions.
+  if (switchFrom(id)) return finishSwitch(id);
+  // Sharing off: on this version's first start, the saves of another one already played are
+  // offered once. On: the newer save is offered every time, below.
+  if (!saveShareOn(title)) return carryOnFirstPlay(id);
   let offer;
   try { offer = await invoke('saves_share', { id, selection: null }); } catch (e) { fail(e); return true; }
   if (!offer) return true;
@@ -461,6 +589,12 @@ window.accountAct = async (act, el) => {
       const title = saveShareTitle(id);
       if (title) await toggleSaveShare(title);
       return refreshGame();
+    }
+    case 'saves-carry': {
+      el.disabled = true;
+      await bringSaves(id);
+      el.disabled = false;
+      return loadSaves(id);
     }
     case 'saves-now': {
       el.disabled = true;

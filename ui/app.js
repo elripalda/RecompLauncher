@@ -695,6 +695,9 @@ function applyCover(a, id) {
   return a;
 }
 const byId = (id) => applyCover(index().ids.get(id), id);
+// A version's own name (Longshot), also with Show Game Names on, where every version is called
+// after the game. A name the player gave that version stays.
+const ownName = (v) => ((S.settings.ui || {}).names || {})[v.id] || (v._name !== undefined ? v._name : v.name);
 // A game in the Library the catalog doesn't have (added by the player, a local build).
 const libApp = (g) => byId(g.id) || { id: g.id, name: ((S.settings.ui || {}).names || {})[g.id] || ((S.settings.ui || {}).game_names && g.game) || g.name, game: g.game || '', repo: g.repo, systems: [S.os], cover: g.cover_file ? 'local:' + g.cover_file : '', hero: g.hero_file ? 'local:' + g.hero_file : '', logo: g.logo_file ? 'local:' + g.logo_file : '', icon: g.icon_file ? 'local:' + g.icon_file : '' };
 // The developer behind a recomp, when they have an account: { slug, name, verified, avatar }.
@@ -970,31 +973,14 @@ function betterNote(a) {
   const to = betterOf(a);
   if (!to) return '';
   const g = verGroup(a);
-  return `<div class="gp-note better" role="note"><b>${esc(t('A Better Version Is Out'))}</b><span dir="auto">${esc(g.why || tf('{name} is the version of {game} most players should use now.', { name: to.name, game: g.name }))}</span>
-    <div class="note-acts"><button type="button" class="btn sm main" data-act="better-go" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(tf('Switch to {name}', { name: to.name }))}</button><button type="button" class="btn sm" data-act="better-off" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Not Now'))}</button></div></div>`;
+  return `<div class="gp-note better" role="note"><b>${esc(t('A Better Version Is Out'))}</b><span dir="auto">${esc(g.why || tf('{name} is the version of {game} most players should use now.', { name: ownName(to), game: g.name }))}</span>
+    <div class="note-acts"><button type="button" class="btn sm main" data-act="better-go" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(tf('Switch to {name}', { name: ownName(to) }))}</button><button type="button" class="btn sm" data-act="better-off" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Not Now'))}</button></div></div>`;
 }
-// Switching: the new version installs beside the old one; once it's in, the launcher offers to
-// uninstall the old one (the player says yes). What happens to saves is said before anything starts.
-async function betterGo(from, to) {
-  const a = byId(from), b = byId(to), g = verGroup(a);
-  if (!a || !b || !g) return;
-  const saves = g.saves === 'same' ? t('Your saves work in it. With Share Saves Between Versions on, the launcher copies them over.')
-    : g.saves === 'no' ? tf('Saves from {old} don\'t work in {name}. They stay where they are, so keep {old} if you need them.', { old: a.name, name: b.name })
-      : tf('Saves from {old} may not work in {name}. They stay where they are either way.', { old: a.name, name: b.name });
-  const v = await ask(tf('Switch to {name}?', { name: b.name }), `<p>${esc(tf('{name} installs next to {old}. When it\'s in, the launcher asks whether to uninstall {old}.', { name: b.name, old: a.name }))}</p><p class="muted">${esc(saves)}</p>`,
-    [{ label: tf('Install {name}', { name: b.name }), icon: 'down', v: 'go', main: true }, { label: t('Cancel'), icon: 'chevL', v: null }]);
-  if (v !== 'go') return;
-  await saveUi({ switch_from: Object.assign({}, (S.settings.ui || {}).switch_from || {}, { [to]: from }) }, true);
+// Switching to the better version: installing it asks whether to switch completely (the saves come
+// along and the old one is uninstalled on its first start) or keep both. See askSwitch.
+function betterGo(from, to) {
+  if (!byId(from) || !byId(to)) return;
   return startInstall(to);
-}
-// The new version is in: offered to take out the old one.
-async function betterDone(to) {
-  const from = (((S.settings.ui || {}).switch_from) || {})[to];
-  if (!from) return;
-  const rest = Object.assign({}, (S.settings.ui || {}).switch_from || {});
-  delete rest[to];
-  await saveUi({ switch_from: rest }, true);
-  if (S.library[from] && S.library[to] && !S.running.has(from)) confirmUninstall(from);
 }
 async function moveListing(from, to) {
   if (S.running.has(from) || S.jobs[from]) return toast(t('Close the game and wait for its downloads first.'), true);
@@ -2161,7 +2147,7 @@ function verRow(v, cur, g, cls) {
   const ic = verIcon(v);
   return `<button type="button" class="${cls}${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
     <span class="v-ic">${ic ? pic(ic, '', 'loading="lazy"') : ''}</span>
-    <span class="v-txt"><span class="v-n"><b>${esc(v.name)}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}${rec && g.why ? `<small class="v-why" title="${esc(g.why)}">${esc(g.why)}</small>` : ''}${play?.last_played ? `<small>${esc(tf('{time} played', { time: playedFor(play) }))}</small>` : ''}</span>
+    <span class="v-txt"><span class="v-n"><b>${esc(ownName(v))}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}${rec && g.why ? `<small class="v-why" title="${esc(g.why)}">${esc(g.why)}</small>` : ''}${play?.last_played ? `<small>${esc(tf('{time} played', { time: playedFor(play) }))}</small>` : ''}</span>
     <span class="v-os">${os.map((k) => `<span title="${esc(OS_NAME[k])}">${osIcon(k)}</span>`).join('')}</span>
     <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span>
     <span class="v-go">${here ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>` : CHEV_R}</span></button>`;
@@ -2173,6 +2159,8 @@ function verPill(a) {
   const n = g.list.filter((v) => S.library[v.id]).length;
   return `<button type="button" class="ver-pill" data-act="ver-menu" data-id="${esc(a.id)}" aria-haspopup="listbox" aria-expanded="false">${LAYERS}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${n > 1 ? `<em>${esc(tn(n, '1 installed', '{n} installed'))}</em>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
+// Once one version is played, switching to another needn't start over: said where versions are picked.
+const carryNote = (g) => (g.list.some((v) => S.library[v.id]) ? ' ' + t('Switching? Your saves can come along: the new version offers them on its first start, and its Saves tab brings them over any time.') : '');
 // On Overview: every version, like the website's list.
 // Under the versions list: Windows-only versions this Linux PC leaves out until Proton is on.
 function protonHiddenNote(a, cls) {
@@ -2186,10 +2174,10 @@ function versionsCard(a) {
   if (!g) return protonHiddenNote(a, 'vc-solo');
   const hide = !!(S.settings.ui || {}).verHide;
   return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
-      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
+      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: ownName(a) }))}</span></div>
       <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
     ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
-    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>
+    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.') + carryNote(g))}</p>
     ${protonHiddenNote(a, 'vc-note')}`}</div>`;
 }
 function verMenu(el) {
@@ -2203,7 +2191,8 @@ function verMenu(el) {
   m.dataset.for = a.id;
   m.setAttribute('role', 'listbox');
   m.setAttribute('aria-label', tf('{n} versions of {game}', { n: g.list.length, game: g.name }));
-  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g, 'vm-row')).join('')}`;
+  const note = carryNote(g).trim();
+  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g, 'vm-row')).join('')}${note ? `<p class="vm-f">${esc(note)}</p>` : ''}`;
   document.body.append(m);
   const r = el.getBoundingClientRect();
   const w = Math.min(560, innerWidth - 24);
@@ -2578,6 +2567,10 @@ function refreshGame() {
   $$('.tabs-in button').forEach((b) => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
   const acts = $(`.gp-acts`);
   if (acts) morph(acts, actions(a));
+  // The versions pill counts the installed ones: another version installed or uninstalled while
+  // this page is open (switching uninstalls the old one) changes it.
+  const pill = $('.gp-title .ver-pill');
+  if (pill && pill.getAttribute('aria-expanded') !== 'true') pill.outerHTML = verPill(a);
   const main = $('#main'), top = main.scrollTop;
   const body = $('#g-body');
   body.classList.add('still');
@@ -2797,6 +2790,7 @@ async function suAct(b) {
   switch (b.dataset.su) {
     case 'close': return closeSetup();
     case 'found': return suBegin(S.owned[id].path);
+    case 'kin': return suBegin(kinCopy(id).path);
     case 'same': return suBegin(su.copy);
     case 'relink': {
       let r;
@@ -3056,7 +3050,7 @@ function suDraw() {
   const mdState = SU.stage === 'pick' ? 'ghost' : SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
   if (SU.stage === 'pick') {
-    const own = S.owned[id];
+    const own = S.owned[id], kin = !su.copy && kinCopy(id);
     const kind = su.kind || 'iso', fm = copyFormats(id);
     const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso">${DISC_L}<b>${esc(copyName(fm))}</b><span class="fmts">${fm.exts.length ? fmtTags(fm.exts) : esc(t('The file you made from your own copy'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
@@ -3065,7 +3059,7 @@ function suDraw() {
       ${prepOptsHtml(su)}
       ${relinkCards(su, 'data-su')}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
-        : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same">${esc(t('Use this'))}</button></div>` : ''}
+        : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same">${esc(t('Use this'))}</button></div>` : ''}${!own && kin ? `<div class="found">${DISC_L}<div class="k"><b>${esc(tf('Your copy from {name}', { name: kin.name }))}</b><span>${esc(kin.path)}</span></div><button type="button" class="btn sm main" data-su="kin">${esc(t('Use this'))}</button></div>` : ''}
       ${pickChoices(picks)}`;
   } else if (SU.stage === 'run') {
     const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
@@ -5682,22 +5676,31 @@ function confirmUninstall(id) {
     if (!x) return;
     const del = !!($('#u-del', s) || {}).checked, unins = !!($('#u-unins', s) || {}).checked;
     s.remove();
-    if (unins) toast(tf('{name}\'s uninstaller is opening. Finish it there.', { name: g.name }));
-    let r = {};
-    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
-    if (window.usageUninstall) window.usageUninstall(id);
-    await keepOut(id);
-    delete S.updates[id]; await refreshState(); render(true);
-    // Some files couldn't go (still in use by something): say where they are.
-    if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
-    else if (del && r.kept && r.copy_stuck) toast(tf('{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn\'t be moved out. It\'s in {path}.', { name: g.name, path: r.path }), true);
-    else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
-    else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
-    else toast(tf('{name} is uninstalled.', { name: g.name }));
-    // The player's own files that were inside its folder: said apart, whatever else happened.
-    if (r.kept_copy) toast(tf('Your copy of the game was inside its folder, so it\'s kept in {path}.', { path: r.kept_copy }));
+    await uninstallNow(id, del, unins);
   });
   s.addEventListener('keydown', (e) => { if (e.key === 'Escape') s.remove(); });
+}
+// Uninstall, once the player said so (here, or when switching completely to another version).
+// del: its folder goes too; unins: its own uninstaller runs. -> what the core said, or null.
+async function uninstallNow(id, del, unins) {
+  const g = S.library[id];
+  if (!g) return;
+  if (unins) toast(tf('{name}\'s uninstaller is opening. Finish it there.', { name: g.name }));
+  let r = {};
+  try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins })) || {}; } catch (err) { await refreshState(); render(true); fail(err); return null; }
+  if (window.usageUninstall) window.usageUninstall(id);
+  await keepOut(id);
+  delete S.updates[id]; await refreshState(); render(true);
+  if (window.tvRefresh) window.tvRefresh();
+  // Some files couldn't go (still in use by something): say where they are.
+  if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
+  else if (del && r.kept && r.copy_stuck) toast(tf('{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn\'t be moved out. It\'s in {path}.', { name: g.name, path: r.path }), true);
+  else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
+  else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
+  else toast(tf('{name} is uninstalled.', { name: g.name }));
+  // The player's own files that were inside its folder: said apart, whatever else happened.
+  if (r.kept_copy) toast(tf('Your copy of the game was inside its folder, so it\'s kept in {path}.', { path: r.kept_copy }));
+  return r;
 }
 
 
@@ -5812,6 +5815,38 @@ function wineTools() {
     } catch (e) { fail(e); }
   }, t('Wine Tools'));
 }
+// The player's copy of the game (and its update) that another installed version was set up with
+// comes along to this one, switching or keeping both: setup starts with it right after the
+// download, as if they had picked it first. Not when it doesn't pass this version's checks.
+async function copyFromOther(id) {
+  if ((S.prePicked || {})[id]) return;
+  const from = kinCopy(id);
+  if (!from) return;
+  try { await invoke('precheck_copy', { id, path: from.path }); } catch (e) {
+    const msg = String(e && e.message ? e.message : e);
+    // Compressed is fine (setup makes a plain copy), and so is one only setup can check.
+    const later = /^CONVERT\|/.test(msg) || /only be checked once it's installed/i.test(msg);
+    if (!later) return;
+  }
+  (S.prePicked = S.prePicked || {})[id] = from.path;
+  if (from.update) (S.preUpdate = S.preUpdate || {})[id] = from.update;
+  toast(tf('Your copy of the game from {name} comes along.', { name: from.name }));
+}
+// The copy (and update) another installed version of this game was set up with, while this one
+// has none: { path, update, name }, or null. The version being switched from comes first.
+function kinCopy(id) {
+  if ((S.library[id] || {}).game_copy) return null;
+  const lastPlayed = (x, y) => (y.last_played || 0) - (x.last_played || 0);
+  const had = otherVersions(id).map((v) => S.library[v.id]).filter((g) => g.game_copy).sort(lastPlayed);
+  const from = had.find((g) => g.id === switchFrom(id)) || had[0];
+  return from ? { path: from.game_copy, update: from.update_copy || null, name: from.name } : null;
+}
+// Setup starts with a copy picked (or brought along) before the download, on the desktop or in
+// Big Picture.
+function beginWith(id, path) {
+  if (SU.el && SU.id === id && SU.stage === 'pick') return suBegin(path);
+  if (window.tvBeginWith) window.tvBeginWith(id, path);
+}
 // Before a recomp of several games installs: the games it adds to the Library. Big Picture shows
 // the same in its wide sheet, Install first.
 async function confirmPack(id, pack) {
@@ -5849,6 +5884,10 @@ async function startInstall(id, dir, tag, anyway) {
   // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
   const from = subOf(id) ? id : '';
   id = parentId(id);
+  // Another version of this game is installed: switch to this one completely, or keep both.
+  // Asked once, before where it goes (that asks again with the place).
+  if (dir === undefined && !S.library[id] && window.askSwitch && !(await askSwitch(id))) return;
+  if (dir === undefined && !S.library[id]) await copyFromOther(id);
   // Its first install puts every one of its games in the Library: the player sees which first.
   // Asked once, before where it goes (that question comes back here with dir set).
   const pack = gamesOf(id, byId(id));
@@ -8071,7 +8110,7 @@ async function act(el, e) {
     case 'libf': S.lib.filter = el.dataset.f; return updateLibrary();
     case 'ver-menu': return verMenu(el);
     case 'follow': return toggleFollow(el.dataset.dev);
-    case 'play-pick': { const a = byId(id); return menu(el, [a, ...otherInstalled(a)].map((v) => ({ act: 'play', id: v.id, label: tf('Play {name}', { name: v.name }), icon: 'play' }))); }
+    case 'play-pick': { const a = byId(id); return menu(el, [a, ...otherInstalled(a)].map((v) => ({ act: 'play', id: v.id, label: tf('Play {name}', { name: ownName(v) }), icon: 'play' }))); }
     case 'great': S.find.great = !S.find.great; return updateDiscover();
     case 'deck-f': S.find.deckgreat = !S.find.deckgreat; return updateDiscover();
     case 'notify': return toggleNotify(id);
@@ -8752,13 +8791,14 @@ T.event.listen('install', ({ payload: p }) => {
     const wasInstalled = !!S.library[id];
     if (p.phase === 'done') {
       delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; loadNews();
-      // Switched to a better version: once it's in, the old one is offered for uninstall.
-      if ((((S.settings.ui || {}).switch_from) || {})[id]) refreshState().then(() => betterDone(id));
       // A game the launcher sets up: straight on to its copy, unless it already has one.
       const busy = SU.el || (window.tvSetupBusy && window.tvSetupBusy());
       // A copy picked (and checked) before the download: its setup starts with it at once.
       const pre = (S.prePicked || {})[id];
       if (pre) delete S.prePicked[id];
+      // The update another version was set up with: in place before setup looks for one.
+      const preUp = (S.preUpdate || {})[id];
+      if (preUp) delete S.preUpdate[id];
       // Auto-Install off (Settings → Updates): nothing opens by itself; Set Up on its page starts it.
       const auto = autoInstall();
       const after = () => {
@@ -8766,7 +8806,7 @@ T.event.listen('install', ({ payload: p }) => {
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
         else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id) && !busy) (preUp ? invoke('set_update_copy', { id, path: preUp }).catch(() => {}) : Promise.resolve()).then(() => loadSetup(id)).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre) beginWith(id, pre); } else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
       };

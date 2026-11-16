@@ -1119,6 +1119,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         trail::note(format!("Uninstall {id}: an installed game{}", if ran { ", its uninstaller ran" } else { "" }));
         st.lib.lock().unwrap().forget(&id);
         st.save();
+        shortcuts::remove_for(&id, &g.path, &st.dir);
         return Ok(json!({"left": 0, "path": g.path, "kept": g.path.is_dir() && !ran, "uninstaller": ran, "installer": true}));
     }
     // A local build's folder is the developer's: it only leaves the Library.
@@ -1176,6 +1177,12 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     }
     st.lib.lock().unwrap().forget(&id);
     st.save();
+    // Its shortcuts can't start it anymore: the ones through the launcher go, and so do the ones
+    // into its folder when that's gone (its own installer's too).
+    let n = shortcuts::remove_for(&id, &g.path, &st.dir);
+    if n > 0 {
+        trail::note(format!("Uninstall {id}: {n} shortcut(s) taken away"));
+    }
     Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck}))
 }
 
@@ -1976,6 +1983,29 @@ async fn desktop_shortcut(st: State<'_, App>, id: String, menu: Option<bool>) ->
     // One game of several always goes through the launcher (it picks the game, and counts its time).
     let direct = if direct_on && game_of(&st, &id).is_none() { direct_start(&st, &id, &g) } else { None };
     Ok(shortcuts::desktop_shortcut(&id, &name, icon.as_deref(), direct.as_ref().map(|(e, a)| (e.as_path(), a.as_slice())), menu.unwrap_or(false))?.to_string_lossy().into())
+}
+
+/// Switching completely to another version: the launcher's shortcuts for the old one (app menu,
+/// desktop) become the new one's, in the same places. -> how many it made.
+#[tauri::command]
+async fn move_shortcuts(st: State<'_, App>, from: String, to: String) -> Res<usize> {
+    let old = st.lib.lock().unwrap().installed.get(&from).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let found: Vec<shortcuts::Found> = shortcuts::shortcuts_for(&from, &old.path, &st.dir).into_iter().filter(|f| f.ours).collect();
+    // The old ones go first: with Show Game Names on, both versions' shortcuts have the same name.
+    for f in &found {
+        let _ = std::fs::remove_file(&f.file);
+    }
+    let mut places: Vec<bool> = found.iter().map(|f| f.menu).collect();
+    places.sort();
+    places.dedup();
+    let mut made = 0;
+    for menu in places {
+        if desktop_shortcut(st.clone(), to.clone(), Some(menu)).await.is_ok() {
+            made += 1;
+        }
+    }
+    trail::note(format!("Switch {from} to {to}: {} shortcut(s) moved", found.len()));
+    Ok(made)
 }
 
 /// What a shortcut straight to the game runs: its program and arguments, as the launcher would start
@@ -9659,7 +9689,7 @@ pub fn run() {
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_carry_from, cloud::saves_carry, move_shortcuts, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())

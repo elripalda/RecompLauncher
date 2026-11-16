@@ -38,6 +38,8 @@ The Windows default is a short folder near the top of the drive because some gam
 
 It backs up a game's saves before every update. You can also back up, restore and turn on cloud saves per game from the game's **Saves** tab.
 
+Installing another version of a game you already have (another recomp of it)? Your copy of the game comes along: setup starts with the copy the other version was set up with, when it fits. The launcher also asks whether to **switch completely** or **keep both**. Switching brings your saves along on the new version's first start, moves the old one's shortcuts in your app menu and on the desktop over to it, then uninstalls the old one. If they can't come along, the old version stays. Keeping both, the new version still offers your saves on its first start, and its **Saves** tab has **Bring Saves Over** for any time after. What the new version had is backed up first, so **Put back** undoes it. Saves only work in the new version if both read the same kind of save. When the new version already has saves of its own and they're a different kind of file (`.json`, say, where the old one has `.sav`), they aren't brought over.
+
 ## Does it collect data?
 
 Only if you say yes. The first time you open it, the launcher asks whether to share anonymous usage stats: when it's open and which recomps are being played, under a random ID that isn't linked to you. You can change it any time in **Settings > General**.
