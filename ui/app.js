@@ -4789,7 +4789,14 @@ function paintSetupProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
+  const previousLibrary = S.library || {};
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, pendingInstalls: st.pendingInstalls || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
+  for (const id of Object.keys(previousLibrary)) {
+    if (S.library[id] || S.pendingInstalls[id]) continue;
+    if (S.dlArgs) delete S.dlArgs[id];
+    if (S.paused) delete S.paused[id];
+    if (S.prePicked) delete S.prePicked[id];
+  }
   setClock((S.settings.ui || {}).clock);
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
@@ -5615,7 +5622,7 @@ function gameMenu(id) {
 
 // Dedicated installs belong to the launcher; adopted folders keep their existing ownership.
 function ownFolder(g) {
-  if (!g || g.local || !g.path) return false;
+  if (!g || g.local || g.preserve_folder || !g.path) return false;
   if (g.managed_install) return true;
   const norm = (p) => String(p || '').replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
   const parent = norm(g.path).replace(/\/[^/]*$/, '');
@@ -5836,8 +5843,9 @@ async function startInstall(id, dir, tag, anyway, target) {
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
   const previous = installArgs(id);
-  const file = tag && tag !== previous.tag ? null : previous.file || null;
-  const args = { ...previous, id, dir: null, target: location.target, tag: tag || previous.tag || null, file, source: S.library[id] ? null : (S.prePicked || {})[id] || (S.owned[id] || {}).path || null };
+  const resetRelease = tag !== undefined;
+  const file = resetRelease ? null : previous.file || null;
+  const args = { ...previous, id, dir: null, target: location.target, tag: resetRelease ? tag : previous.tag || null, file, resetRelease, source: S.library[id] ? null : (S.prePicked || {})[id] || (S.owned[id] || {}).path || null };
   dlArgs(id, args);
   try { await invoke('install', args); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
 }
@@ -5845,7 +5853,8 @@ async function startInstall(id, dir, tag, anyway, target) {
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
 function installArgs(id) {
   const pending = (S.pendingInstalls || {})[id] || {};
-  return (S.dlArgs || {})[id] || { id, dir: null, target: pending.target || null, tag: pending.tag || null, file: pending.file || null, source: pending.source || null };
+  const args = (S.dlArgs || {})[id] || { id, dir: null, target: pending.target || null, tag: pending.tag || null, file: pending.file || null, source: pending.source || null };
+  return { ...args, resetRelease: false };
 }
 async function cancelInstall(id) {
   id = parentId(id);

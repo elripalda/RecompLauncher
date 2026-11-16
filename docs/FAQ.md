@@ -46,6 +46,12 @@ installs return to the same folder, including after restarting the launcher. Use
 an installed game's location. Settings → **Ask Where to Install** also enables the prompt for
 ordinary installs; Easy Install always offers it.
 
+If a game's folder is missing, **Find Its Folder…** can link an existing folder again. This does
+not make that folder launcher-owned: uninstall keeps its contents, including unrelated files.
+Uninstalling or removing a game also clears unfinished update requests, so a later reinstall starts
+with a fresh release selection. Choosing the newest version explicitly replaces an older failed
+download's version choice.
+
 Temporary downloads and extraction use the launcher's private data folder, so a folder-only grant
 or a writable game folder beneath a read-only parent can be used. Leave room on that drive as well
 as the game's drive. With **Keep downloaded files** enabled, archives remain under

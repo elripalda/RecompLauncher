@@ -85,6 +85,55 @@ test('choosing another release does not send the previous release asset', async 
   assert.equal(calls.at(-1).args.file, null);
 });
 
+test('explicit newest release replaces the failed older release and asset', async () => {
+  const { c, calls } = context();
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'old.zip' } };
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v1', file: 'old.zip' });
+  await c.startInstall('example', undefined, null, false, '/drive/Chosen');
+  assert.equal(calls.at(-1).args.tag, null);
+  assert.equal(calls.at(-1).args.file, null);
+  assert.equal(calls.at(-1).args.resetRelease, true);
+});
+
+test('Big Picture newest choice survives location confirmation and clears the old release', async () => {
+  const { c, calls } = context();
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'old.zip' } };
+  let items;
+  c.sheet = (_title, choices) => { items = choices; };
+  c.date = () => '';
+  c.invoke = async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'versions') return [{ tag: 'v2', newest: true }];
+    if (command === 'install_location') return { target: '/drive/Chosen' };
+  };
+  vm.runInContext(tv.match(/^  async function versionsSheet\([^]*?^  }/m)[0], c);
+  await c.versionsSheet('example');
+  await items[0].run();
+  const picker = calls.at(-1);
+  assert.equal(picker.command, 'picker');
+  assert.equal(picker.args[1], null);
+  c.document.body.classList.contains = () => true;
+  c.window.tvAsk = async () => 0;
+  vm.runInContext(fn('locationModal'), c);
+  await c.locationModal('example', picker.args[1]);
+  assert.equal(calls.at(-1).command, 'install');
+  assert.equal(calls.at(-1).args.tag, null);
+  assert.equal(calls.at(-1).args.file, null);
+  assert.equal(calls.at(-1).args.resetRelease, true);
+});
+
+test('build selection and resume consume a release reset only on the initial request', async () => {
+  const { c, calls } = context();
+  await c.startInstall('example', undefined, null, false, '/drive/Chosen');
+  assert.equal(calls.at(-1).args.resetRelease, true);
+  c.window.tvPickBuild = (_id, _builds, _current, choose) => { choose('eu.zip'); return true; };
+  c.pickBuild('example', [{ name: 'eu.zip' }]);
+  assert.equal(calls.at(-1).args.resetRelease, false);
+  c.resumeDl('example');
+  assert.equal(calls.at(-1).args.resetRelease, false);
+  assert.equal(calls.at(-1).args.file, 'eu.zip');
+});
+
 test('an invalid destination stops before starting any download', async () => {
   const { c, calls } = context();
   c.invoke = async (command) => { calls.push({ command }); throw new Error('Folder is occupied'); };
@@ -255,6 +304,28 @@ test('custom managed installs offer folder deletion without registering a librar
   assert.equal(c.ownFolder({ id: 'example', path: '/drive/My Custom Folder', managed_install: true }), true);
   assert.equal(c.ownFolder({ id: 'example', path: '/drive/My Custom Folder', asset: 'game.zip' }), false);
   assert.equal(c.ownFolder({ id: 'example', path: '/drive/My Custom Folder', local: true, managed_install: true }), false);
+  assert.equal(c.ownFolder({ id: 'example', path: '/games/example', asset: 'game.zip', managed_install: true, preserve_folder: true }), false);
+});
+
+test('refresh after uninstall clears cached update arguments before a fresh install', async () => {
+  const { c } = context();
+  c.S.library.example = { id: 'example', path: '/drive/Chosen' };
+  c.S.paused.example = {};
+  c.S.prePicked = { example: '/source/game.iso' };
+  c.dlArgs('example', { id: 'example', tag: 'old', file: 'old.zip' });
+  c.invoke = async () => ({ library: {}, pendingInstalls: {}, settings: {} });
+  c.setClock = () => {};
+  c.document.body.classList.toggle = () => {};
+  c.loadGameSets = async () => {};
+  c.S.gameSets = {};
+  c.expandLib = () => {};
+  c.ENDED = {};
+  vm.runInContext(fn('refreshState'), c);
+  await c.refreshState();
+  assert.equal(c.installArgs('example').tag, null);
+  assert.equal(c.installArgs('example').file, null);
+  assert.equal(c.S.paused.example, undefined);
+  assert.equal(c.S.prePicked.example, undefined);
 });
 
 test('setup displays both the chosen installation and an external build location safely', () => {

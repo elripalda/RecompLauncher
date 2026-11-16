@@ -687,6 +687,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         version: str_of(&entry, "version").into(),
         path: target,
         managed_install: prev.as_ref().map(|p| p.managed_install).unwrap_or(true),
+        preserve_folder: prev.as_ref().map(|p| p.preserve_folder).unwrap_or(false),
         exe,
         asset: asset.name.clone(),
         size: asset.size,
@@ -998,7 +999,7 @@ fn discard_empty_install(st: &App, id: &str, token: Option<&str>) {
 }
 
 #[tauri::command]
-async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, target: Option<String>, tag: Option<String>, file: Option<String>, source: Option<String>) -> Res<()> {
+async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, target: Option<String>, tag: Option<String>, file: Option<String>, source: Option<String>, reset_release: Option<bool>) -> Res<()> {
     if st.moving.lock().unwrap().contains(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
@@ -1014,7 +1015,7 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         let target = target.filter(|d| !d.is_empty()).map(PathBuf::from);
         let target = install_location::resolve(&l, &id, dir.as_deref(), target.as_deref())?;
         install_location::validate(&l, &st.dir, &id, &target)?;
-        let mut request = install_location::request(&l, &id, target, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()));
+        let mut request = install_location::request(&l, &id, target, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), reset_release.unwrap_or(false));
         request.source = source.map(PathBuf::from).or(request.source);
         install_location::validate_source(&request.target, request.source.as_deref())?;
         l.pending_installs.insert(id.clone(), request.clone());
@@ -1155,7 +1156,12 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         return Err(Error::Msg(MOVING.into()));
     }
     let libs = st.lib.lock().unwrap().settings.all_libraries();
-    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return Ok(json!({})) };
+    let game = st.lib.lock().unwrap().installed.get(&id).cloned();
+    let Some(g) = game else {
+        install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
+        st.save();
+        return Ok(json!({}));
+    };
     // Its AppImage unpacked for the Flatpak: a copy in the launcher's cache, never the player's.
     flatpak::forget_unpacked(&id);
     // Still open outside the launcher (or still closing): Windows won't let its files go.
@@ -1168,7 +1174,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         let _ = std::fs::remove_dir_all(installer::staging(&st.dir, &id));
         let ran = run_uninstaller == Some(true) && g.installer && g.path.is_dir() && installer::run_uninstaller(&g.path);
         trail::note(format!("Uninstall {id}: an installed game{}", if ran { ", its uninstaller ran" } else { "" }));
-        st.lib.lock().unwrap().forget(&id);
+        install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
         st.save();
         return Ok(json!({"left": 0, "path": g.path, "kept": g.path.is_dir() && !ran, "uninstaller": ran, "installer": true}));
     }
@@ -1187,11 +1193,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
                 flatpak::remove(&app_id);
             }
         }
-        // Dedicated install folders can be deleted; adopted and shared folders keep their contents.
-        // The name/library checks preserve ownership for records saved before managed_install.
-        let in_lib = g.path.parent().map(|p| libs.iter().any(|l| library::same_path(l, p))).unwrap_or(false);
-        let made_here = !g.asset.is_empty() && g.path.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&library::folder_name(&id))).unwrap_or(false);
-        let ok = (g.managed_install || in_lib || made_here) && !library::shared_folder(&g.path, &libs) && g.path.is_dir();
+        let ok = g.owns_folder(&libs) && g.path.is_dir();
         // The player's own files (their copy of the game, its update) kept inside the game's
         // folder are theirs: moved out to "Game Copies" beside it first, and if one can't be, the
         // folder stays. Only files: a folder there is the launcher's unpack of their disc.
@@ -1224,7 +1226,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
             }
         }
     }
-    st.lib.lock().unwrap().forget(&id);
+    install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
     st.save();
     Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck}))
 }
@@ -8615,20 +8617,14 @@ pub static HANDHELD: AtomicBool = AtomicBool::new(false);
 /// The folder has to hold the game's program, when the launcher knows which one it is.
 #[tauri::command(async)]
 fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
-    let to = PathBuf::from(&path);
-    if !to.is_dir() {
-        return Err(Error::Msg("Pick the game's folder.".into()));
+    if st.running.lock().unwrap().contains_key(&id) || st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg(MOVING.into()));
     }
     let g = {
-        let mut l = st.lib.lock().unwrap();
-        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
-        if let Some(exe) = g.exe.as_ref().filter(|e| !e.as_os_str().is_empty() && e.is_relative()) {
-            if !to.join(exe).is_file() {
-                return Err(Error::Msg(format!("That folder doesn't have {}. Pick the folder {} is in.", exe.display(), g.name)));
-            }
-        }
-        g.path = to;
-        g.clone()
+        let mut library = st.lib.lock().unwrap();
+        let game = library.relink(&id, Path::new(&path))?;
+        install_location::clear_pending(&mut library, &id, &st.dir);
+        game
     };
     st.save();
     Ok(g)
@@ -8637,7 +8633,10 @@ fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
 /// Takes a game out of the Library without touching any files (its folder is gone anyway).
 #[tauri::command(async)]
 fn forget_game(st: State<'_, App>, id: String) -> Res<()> {
-    st.lib.lock().unwrap().forget(&id);
+    if st.running.lock().unwrap().contains_key(&id) || st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg(MOVING.into()));
+    }
+    install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
     st.save();
     Ok(())
 }
@@ -10452,7 +10451,7 @@ mod tests {
         zip.write_all(b"#!/bin/sh\nexit 0\n").unwrap();
         zip.finish().unwrap();
         let lib = Library::default();
-        let request = install_location::request(&lib, "game", target.clone(), None, None);
+        let request = install_location::request(&lib, "game", target.clone(), None, None, false);
         let work = install_location::claim(&request, false, &root.join("data")).unwrap();
         install::unpack(&archive, &target, &work.join("staging")).unwrap();
         let profile: profile::Profile = serde_json::from_value(json!({

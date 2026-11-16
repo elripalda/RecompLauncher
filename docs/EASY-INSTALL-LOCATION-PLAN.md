@@ -1,6 +1,6 @@
 # Easy Install: choose the game's installation folder
 
-Status: draft implementation with the four P2 review findings addressed below. Existing manifest
+Status: draft implementation with both rounds of review findings addressed below. Existing manifest
 fields and `{install}` support the selected folder; no manifest extension was added. External builders
 retain their declared output paths until their integrations expose a supported destination option.
 
@@ -46,6 +46,28 @@ The follow-up fixes all four findings and adds regression coverage for the repor
 The earlier macOS lifecycle-test failure was a fixture using an unnormalized `/var` temporary path;
 that fixture now uses the same normalization as production destinations. Native platform smoke tests
 remain separate from these automated checks.
+
+## Ownership and recovery follow-up
+
+The second review identified one P1 and three P2 issues, addressed with additional regression tests:
+
+- [x] **Relinking does not transfer deletion permission.** A replacement location is checked for
+  overlaps with installed games after normalizing filesystem aliases. The relinked record clears
+  managed ownership and explicitly preserves its folder, even when legacy library/name heuristics
+  would otherwise allow deletion. The protection is saved and carried through updates; desktop
+  and Big Picture do not offer to delete the folder. Relinking also clears work for the old path.
+- [x] **Uninstall and forget clear recovery state.** All removal paths discard the pending request
+  and only its owned work. Library removal also clears reservations when no installed record exists.
+  Frontend refresh drops cached update arguments when the installed record is removed. A failed
+  update followed by uninstall/reinstall no longer reuses an anchor pointing at the deleted game.
+- [x] **Explicit newest differs from retry.** Choosing a version, including newest, sends an explicit
+  release reset. It clears the previous tag, selected asset and backup metadata while retaining the
+  folder's ownership token. Location confirmation preserves that intent; subsequent build choices
+  and resumes retain the new selection without repeating the reset.
+- [x] **Cross-volume updates safely replace read-only files.** Regular files are copied to a private
+  temporary location on the destination volume and replaced by rename, rather than copying over
+  the existing file. Failed copies leave the previous file intact. A real cross-filesystem tar.gz
+  test installs and updates a mode-0444 file and checks that saves and file permissions remain.
 
 The player should choose the final game folder before an Easy Install begins. The release,
 launcher-managed game content, and supported setup/build output should stay under that folder.
