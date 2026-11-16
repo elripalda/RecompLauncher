@@ -107,6 +107,11 @@ there is no extracted copy to become stale.
 
 Developer tools identify the embedded source and check the profile actually in use.
 
+The same file uploaded twice, once without the version for `releases/latest/download` links
+(`Game-1.2.0-x86_64.AppImage` and `Game-x86_64.AppImage`), is one build: the launcher installs
+the one that names its version and doesn't ask the player to choose. GitHub's SHA-256 of each file
+says they're the same.
+
 Two examples are worth reading:
 
 - [fifawc14.json](examples/fifawc14.json): 2014 FIFA World Cup (Xbox 360), with a settings file
