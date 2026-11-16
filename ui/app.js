@@ -2647,7 +2647,7 @@ function setupLocationHtml(id, su, tv = false) {
   if (!game) return '';
   const folder = su.build_dir || su.build_where;
   const output = folder ? `<p>${esc(su.build_dir ? tf('Using the build in {folder}.', { folder }) : tf("The game's own setup builds it into {folder}.", { folder }))}</p>` : '';
-  const open = tv ? '' : `<button type="button" class="btn sm" data-act="folder" data-id="${esc(id)}">${esc(t('Open its folder'))}</button>`;
+  const open = tv ? '' : `<button type="button" class="btn sm" data-act="folder" data-id="${esc(parentId(id))}">${esc(t('Open its folder'))}</button>`;
   return `<div class="setup-location"><p>${esc(tf('Installed in {folder}.', { folder: game.path }))}</p>${output}${open}</div>`;
 }
 async function setupModal(id) {
@@ -4119,7 +4119,7 @@ function pageSettings() {
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
-        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
+        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: downloaded archives are deleted after installation. On: they are kept in the launcher\'s data folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
         + networkGroup(group, row, st);
@@ -5846,6 +5846,15 @@ function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
 function installArgs(id) {
   const pending = (S.pendingInstalls || {})[id] || {};
   return (S.dlArgs || {})[id] || { id, dir: null, target: pending.target || null, tag: pending.tag || null, file: pending.file || null, source: pending.source || null };
+}
+async function cancelInstall(id) {
+  id = parentId(id);
+  await invoke('cancel', { id });
+  if (S.paused) delete S.paused[id];
+  if (S.dlArgs) delete S.dlArgs[id];
+  if (S.pendingInstalls) delete S.pendingInstalls[id];
+  if (S.prePicked) delete S.prePicked[id];
+  render(true);
 }
 // Carries on a paused download from where it stopped (the part file is still there).
 function resumeDl(id) {
@@ -8108,7 +8117,7 @@ async function act(el, e) {
     case 'wine-tools': return wineTools();
     case 'have-it': return haveIt(id);
     case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) startInstall(u); return;
-    case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; render(true); } return invoke('cancel', { id });
+    case 'cancel': return cancelInstall(id);
     case 'dl-pause': return invoke('pause', { id });
     case 'dl-resume': return resumeDl(id);
     case 'play': return playGame(id);

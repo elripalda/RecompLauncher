@@ -3341,5 +3341,5 @@
  "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "Спрашивать папку и при обычной установке. Простая установка всегда позволяет выбрать папку игры.",
  "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "Установщик использовал другую папку. Выберите её ниже, чтобы принять это расположение, или запустите установщик снова с выбранной папкой.",
  "Ask for ordinary installs too": "Спрашивать и при обычной установке",
- "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "Выкл.: загруженные архивы удаляются после установки. Вкл.: они сохраняются рядом с папкой игры."
+ "Off: downloaded archives are deleted after installation. On: they are kept in the launcher's data folder.": "Выкл.: загруженные архивы удаляются после установки. Вкл.: они сохраняются в папке данных лаунчера."
 }

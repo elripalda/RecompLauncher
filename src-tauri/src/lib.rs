@@ -248,7 +248,7 @@ fn same_tag(a: &str, b: &str) -> bool {
 }
 
 async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_location::Request, cancel: Arc<AtomicBool>) -> Res<()> {
-    let (tag, file) = (request.tag.clone().or(request.selected_tag.clone()), request.file.clone());
+    let (tag, file) = (request.release_tag(), request.file.clone());
     let picked_tag = request.tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -265,30 +265,18 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     // Its project is down and the list says so: the release from the RecompLauncher backup (each
     // file checked against its SHA-256). When the backup can't help, its own releases as usual.
     let backup_ok = catalog::backup_on(&entry);
-    let mut from_backup = false;
-    let from_bk = if backup_ok && tag.is_none() {
-        match getting_ready(catalog::backup_release(&st.http, id, os_for(st, &entry, id)), &cancel).await {
-            Ok(r) => Some(r),
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(e) => {
-                trail::note(format!("Install {id}: the backup couldn't help ({e}), so its own releases"));
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let rels: Vec<Release> = match from_bk {
-        Some(r) => {
-            trail::note(format!("Install {id}: {} from the RecompLauncher backup", r.tag_name));
-            from_backup = true;
-            vec![r]
-        }
-        None => {
+    let (rels, mut from_backup) = request.releases(
+        backup_ok,
+        || getting_ready(catalog::backup_release(&st.http, id, os_for(st, &entry, id)), &cancel),
+        || async {
             trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
-            serde_json::from_value(getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?
-        }
-    };
+            let fetched = getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?;
+            Ok(serde_json::from_value::<Vec<Release>>(fetched.data)?)
+        },
+    ).await?;
+    if from_backup {
+        trail::note(format!("Install {id}: using the checked RecompLauncher backup release"));
+    }
     trail::note(format!("Install {id}: {} releases", rels.len()));
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
@@ -330,7 +318,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         None => newest,
     };
     let pinned = picked_tag && rel.tag_name != newest.tag_name && !fell_back;
-    remember_install_release(st, id, &rel.tag_name, None)?;
+    remember_install_release(st, id, &rel.tag_name, None, from_backup.then_some(rel))?;
     let (mut os, arch) = (os_for(st, &entry, id), assets::arch_now());
     // On Linux with Proton, a release with a Linux build and a Windows one: the player picks the
     // first time (the Linux one is the usual pick), and updates keep the system they picked. A
@@ -399,7 +387,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         _ => {}
     }
 
-    remember_install_release(st, id, &rel.tag_name, Some(&asset.name))?;
+    remember_install_release(st, id, &rel.tag_name, Some(&asset.name), from_backup.then_some(rel))?;
     let (keep, backup_first, prev) = {
         let l = st.lib.lock().unwrap();
         install_location::validate(&l, &st.dir, id, &request.target)?;
@@ -409,10 +397,16 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         return Err(Error::Msg("That's your local build. Take it out of the Library first to install the release.".into()));
     }
     let target = request.target.clone();
-    let home = install_location::claim(&request, prev.is_some())?;
+    let home = install_location::claim(&request, prev.is_some(), &st.dir)?;
     if let Some(free) = manage::free_space(&target) {
         if free < asset.size.saturating_mul(3) {
             return Err(Error::Msg(format!("There isn't enough space on that drive ({} free).", human(free))));
+        }
+    }
+
+    if let Some(free) = manage::free_space(&home) {
+        if free < asset.size.saturating_mul(3) {
+            return Err(Error::Msg(format!("There isn't enough space for temporary installation files in the launcher's data folder ({} free).", human(free))));
         }
     }
 
@@ -460,7 +454,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
     }
-    install_location::claim(&request, prev.is_some())?;
+    install_location::claim(&request, prev.is_some(), &st.dir)?;
     // The release it ends up from: the one picked, or a newer one when that was taken down.
     let mut tag_got = rel.tag_name.clone();
     let got = match install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await {
@@ -470,7 +464,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
             trail::note(format!("Install {id}: {} didn't match its checked SHA-256", asset.name));
             return Err(Error::Msg("The download didn't match the checked file, so it wasn't installed. Try again.".into()));
         }
-        Err(Error::Msg(m)) if !sf && (m.contains("anymore (error 404)") || m.contains("anymore (error 410)")) => {
+        Err(Error::Msg(m)) if !sf && !from_backup && (m.contains("anymore (error 404)") || m.contains("anymore (error 410)")) => {
             trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
             // A developer swapping a release's files: give it a moment to finish.
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
@@ -527,6 +521,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
             asset = a;
             tag_got = bk.tag_name.clone();
             from_backup = true;
+            remember_install_release(st, id, &tag_got, Some(&asset.name), Some(&bk))?;
             install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await?
         }
         Err(e) => return Err(e),
@@ -534,7 +529,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     if from_backup {
         trail::note(format!("Install {id}: {} came from the RecompLauncher backup", asset.name));
     }
-    remember_install_release(st, id, &tag_got, Some(&asset.name))?;
+    remember_install_release(st, id, &tag_got, Some(&asset.name), None)?;
     drop(permit);
     // A pause that came just as the download finished: there's nothing left to pause, so the
     // install carries on.
@@ -598,7 +593,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
             l.pending_installs.remove(id);
         }
         st.save();
-        install_location::finish(&request, keep);
+        install_location::finish(&request, keep, &st.dir);
         trail::note(format!("Install {id}: its installer {} is ready for Set Up", setup.file_name().unwrap_or_default().to_string_lossy()));
         note_download(&st.dir, json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}));
         st.jobs.lock().unwrap().remove(id);
@@ -606,7 +601,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         return Ok(());
     }
 
-    install_location::claim(&request, prev.is_some())?;
+    install_location::claim(&request, prev.is_some(), &st.dir)?;
     // The settings the player picked on the game's page, put back after the update's files.
     let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.repo, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
@@ -762,7 +757,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         l.pending_installs.remove(id);
     }
     st.save();
-    install_location::finish(&request, keep);
+    install_location::finish(&request, keep, &st.dir);
     note_download(
         &st.dir,
         json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
@@ -976,13 +971,10 @@ fn install_location(st: State<'_, App>, id: String, dir: Option<String>, target:
     Ok(install_location::preview(target))
 }
 
-fn remember_install_release(st: &App, id: &str, tag: &str, file: Option<&str>) -> Res<()> {
+fn remember_install_release(st: &App, id: &str, tag: &str, file: Option<&str>, backup: Option<&Release>) -> Res<()> {
     let mut l = st.lib.lock().unwrap();
     if let Some(request) = l.pending_installs.get_mut(id) {
-        request.selected_tag = Some(tag.into());
-        if let Some(file) = file {
-            request.file = Some(file.into());
-        }
+        request.remember_release(tag, file, backup);
         l.save(&st.dir)?;
     }
     Ok(())
@@ -995,8 +987,8 @@ fn discard_empty_install(st: &App, id: &str, token: Option<&str>) {
         return;
     }
     if l.installed.contains_key(id) {
-        install_location::finish(request, false);
-    } else if !install_location::discard_empty(request) {
+        install_location::finish(request, false, &st.dir);
+    } else if !install_location::discard_empty(request, &st.dir) {
         return;
     }
     l.pending_installs.remove(id);
@@ -10446,6 +10438,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("recomp-exact-flow-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
+        // macOS temp paths may traverse /var's symlink; production destinations are normalized too.
+        let root = install_location::normalized(&root).unwrap();
         let target = root.join("Chosen récomp 日本");
         let source = root.join("original.dat");
         std::fs::write(&source, b"original game").unwrap();
@@ -10459,7 +10453,7 @@ mod tests {
         zip.finish().unwrap();
         let lib = Library::default();
         let request = install_location::request(&lib, "game", target.clone(), None, None);
-        let work = install_location::claim(&request, false).unwrap();
+        let work = install_location::claim(&request, false, &root.join("data")).unwrap();
         install::unpack(&archive, &target, &work.join("staging")).unwrap();
         let profile: profile::Profile = serde_json::from_value(json!({
             "format": 1,
@@ -10471,7 +10465,7 @@ mod tests {
         let (exe, args) = profile.command_for(&target, Some(&source), &BTreeMap::new(), false).unwrap();
         assert_eq!(exe, target.join("game.sh"));
         assert_eq!(args, vec![target.join("generated.dat").to_string_lossy().to_string()]);
-        install_location::finish(&request, false);
+        install_location::finish(&request, false, &root.join("data"));
         let moved = root.join("Moved game");
         manage::move_dir(&target, &moved, &|_, _| {}).unwrap();
         assert_eq!(profile.build_done(&moved), Some(true));

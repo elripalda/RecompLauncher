@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+const named = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 const fn = (name) => app.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 const tf = (text, args) => text.replace(/\{(\w+)\}/g, (_, key) => args[key]);
 
@@ -28,7 +29,7 @@ function context() {
       if (command === 'install_location') return { target: args.target || (args.dir || '/games') + '/example', free: 1000 };
     },
   });
-  vm.runInContext(fn('dlArgs') + fn('installArgs') + fn('startInstall') + fn('resumeDl') + fn('pickBuild'), c);
+  vm.runInContext(fn('dlArgs') + fn('installArgs') + fn('startInstall') + fn('resumeDl') + fn('pickBuild') + fn('cancelInstall'), c);
   return { c, calls };
 }
 
@@ -98,6 +99,49 @@ test('resuming a paused download preserves its destination and selected build', 
   assert.equal(calls[0].args.target, '/drive/Chosen');
   assert.equal(calls[0].args.tag, 'v1');
   assert.equal(calls[0].args.file, 'eu.zip');
+});
+
+test('desktop paused cancellation clears the old release before a fresh install without an event', async () => {
+  const { c, calls } = context();
+  c.S.paused.example = { phase: 'paused' };
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'old.zip' } };
+  c.S.prePicked = { example: '/source/old.iso' };
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v1', file: 'old.zip' });
+  vm.runInContext(fn('act'), c);
+  await c.act({ dataset: { act: 'cancel', id: 'example' } });
+  await c.startInstall('example', undefined, undefined, false, '/drive/New');
+  assert.equal(calls[0].command, 'cancel');
+  assert.equal(calls.at(-1).args.tag, null);
+  assert.equal(calls.at(-1).args.file, null);
+  assert.equal(calls.at(-1).args.source, null);
+  assert.equal(c.S.paused.example, undefined);
+  assert.equal(c.S.pendingInstalls.example, undefined);
+});
+
+test('Big Picture paused cancellation also clears the old release without an event', async () => {
+  const { c, calls } = context();
+  c.S.paused.example = { phase: 'paused' };
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'old.zip' } };
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v1', file: 'old.zip' });
+  c.TV = { sheet: null };
+  c.draw = () => {};
+  vm.runInContext(tv.match(/^  async function activate\([^]*?^  }/m)[0], c);
+  await c.activate({ dataset: { tvact: 'cancel', id: 'example' } });
+  await c.startInstall('example', undefined, undefined, false, '/drive/New');
+  assert.equal(calls[0].command, 'cancel');
+  assert.equal(calls.at(-1).args.tag, null);
+  assert.equal(calls.at(-1).args.file, null);
+  assert.equal(c.S.paused.example, undefined);
+});
+
+test('a failed cancellation retains the request for resuming', async () => {
+  const { c } = context();
+  c.S.paused.example = { phase: 'paused' };
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v1', file: 'old.zip' });
+  c.invoke = async () => { throw new Error('Cancellation failed'); };
+  await assert.rejects(c.cancelInstall('example'), /Cancellation failed/);
+  assert.equal(c.installArgs('example').tag, 'v1');
+  assert.equal(c.S.paused.example.phase, 'paused');
 });
 
 test('a launcher restart recovers the pending destination and build from backend state', () => {
@@ -222,4 +266,29 @@ test('setup displays both the chosen installation and an external build location
   assert.match(html, /Installed in \/drive\/Chosen\./);
   assert.match(html, /\/home\/Game &lt;external>/);
   assert.match(html, /data-act="folder"/);
+});
+
+test('the legacy child-game setup folder button opens the parent installation', async () => {
+  const { c, calls } = context();
+  c.S.library.series = { path: '/drive/Series' };
+  c.parentId = (id) => id.split(':')[0];
+  vm.runInContext(fn('setupLocationHtml') + fn('act'), c);
+  const html = c.setupLocationHtml('series:child', {});
+  const id = html.match(/data-act="folder" data-id="([^"]+)"/)[1];
+  await c.act({ dataset: { act: 'folder', id } });
+  assert.equal(calls[0].command, 'open_folder');
+  assert.equal(calls[0].args.id, 'series');
+  assert.match(html, /Installed in \/drive\/Series\./);
+});
+
+test('the named-input child-game setup folder button opens the parent installation', async () => {
+  const { c, calls } = context();
+  c.S.library.series = { path: '/drive/Series' };
+  c.parentId = (id) => id.split(':')[0];
+  vm.runInContext(fn('setupLocationHtml') + fn('act') + named, c);
+  const html = c.namedInputsView('series:child', { inputs: [] });
+  const id = html.match(/data-act="folder" data-id="([^"]+)"/)[1];
+  await c.act({ dataset: { act: 'folder', id } });
+  assert.equal(calls[0].command, 'open_folder');
+  assert.equal(calls[0].args.id, 'series');
 });

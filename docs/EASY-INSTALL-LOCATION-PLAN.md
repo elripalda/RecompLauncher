@@ -1,8 +1,8 @@
 # Easy Install: choose the game's installation folder
 
-Status: draft implementation with four outstanding P2 review findings below. Existing manifest fields and `{install}` support
-the selected folder; no manifest extension was added. External builders retain their declared output
-paths until their integrations expose a supported destination option.
+Status: draft implementation with the four P2 review findings addressed below. Existing manifest
+fields and `{install}` support the selected folder; no manifest extension was added. External builders
+retain their declared output paths until their integrations expose a supported destination option.
 
 The implementation includes a desktop/controller picker, exact-target validation, persisted pending
 requests, owned work directories, retry/cancel recovery and dedicated-folder ownership for uninstall.
@@ -20,31 +20,32 @@ supplied by a catalog or an upstream release are external rollout dependencies. 
 automatically, and existing external builds remain in place. The sections below preserve the design
 and acceptance criteria for future integration updates.
 
-## Outstanding P2 review findings
+## P2 review fixes
 
-These findings are deferred for follow-up; they are not fixed by this draft. The passing tests below
-do not cover these scenarios yet.
+The follow-up fixes all four findings and adds regression coverage for the reported scenarios.
 
-- [ ] **Keep work directories within the granted filesystem scope.** `install_location::claim`
-  creates a sibling work directory under the selected folder's parent. A Flatpak portal grant may
-  allow access only to the selected folder; a writable game folder can also have a read-only parent.
-  Both cases fail despite a writable target. Allocate work within an accessible scope or obtain
-  parent access before accepting the destination. Add coverage for a folder-only portal grant and
-  a writable target beneath a read-only parent.
-- [ ] **Preserve backup provenance when resuming an automatic release.** `do_install` promotes
-  the saved `selected_tag` to `tag`, causing the `backup_ok && tag.is_none()` check to skip the
-  backup on retry. If the upstream project is unavailable, a backup-sourced installation cannot
-  resume. Persist and reuse the backup source alongside the selected release. Cover pause/resume,
-  failure/retry and build selection with the upstream project unavailable.
-- [ ] **Clear retained arguments when cancelling a paused install.** The paused-cancel path clears
-  the backend reservation without emitting a `cancelled` event, leaving `S.dlArgs[id]` behind.
-  A fresh Easy Install can inherit the cancelled tag and asset, such as v1 instead of the current
-  release. Clear the retained frontend request on this path. Add a regression test that cancels a
-  paused older release, then starts a fresh installation.
-- [ ] **Use the parent recomp ID for the desktop setup folder button.** `setupLocationHtml` reads
-  the parent's installation but emits the child ID in its Open Folder button. `open_folder` only
-  finds persisted parent IDs, so child-game setup returns "It isn't installed." Use `parentId(id)`
-  consistently with Big Picture. Cover both legacy and named-input child-game setup views.
+- [x] **Keep work directories within the granted filesystem scope.** Downloads and extraction use
+  owned directories under the launcher's private `cache/install-work/`, without creating anything
+  beside the selected target. Write checks on existing targets do not require access to the parent.
+  Tests cover a folder-only grant model (a parent without read/list/write permission) and a writable
+  game folder beneath a read-only parent. Cache-drive space is checked separately. Mac bundles are
+  staged on the target volume before swapping, so a cache on another volume preserves app updates.
+- [x] **Preserve backup provenance when resuming an automatic release.** Pending requests retain
+  the checked backup release, including asset URLs and SHA-256 digests, before build selection or
+  downloading. Pause/restart, failure/retry and build selection reuse that source without querying
+  a removed upstream project. Selecting a different explicit release clears the stored backup.
+- [x] **Clear retained arguments when cancelling a paused install.** Desktop and Big Picture use
+  one cancellation helper. After backend cancellation succeeds, it clears the paused state, saved
+  frontend request, pending request and preselected source, without waiting for a `cancelled` event.
+  Tests cancel a paused older release and then start a fresh install; failed cancellation keeps the
+  resumable state.
+- [x] **Use the parent recomp ID for the desktop setup folder button.** The button passes
+  `parentId(id)`, matching Big Picture. Tests exercise folder opening from both legacy and named-input
+  child-game setup views.
+
+The earlier macOS lifecycle-test failure was a fixture using an unnormalized `/var` temporary path;
+that fixture now uses the same normalization as production destinations. Native platform smoke tests
+remain separate from these automated checks.
 
 The player should choose the final game folder before an Easy Install begins. The release,
 launcher-managed game content, and supported setup/build output should stay under that folder.
@@ -105,8 +106,10 @@ arbitrary third-party installer or builder can be forced into a folder it does n
   offer **I Already Have It** for adopting an existing build instead of overwriting it.
 - Probe write access and available space on the selected volume. Recheck before writing, including
   after an external drive disappears. Unknown free space must not be reported as sufficient.
-- Allocate isolated download/extraction work areas on that volume, outside the final game folder.
-  Preserve archive traversal protections. Only remove work paths owned by this installation.
+- Allocate isolated download/extraction work areas in the launcher's private data folder. This
+  keeps work within the launcher's filesystem grant even when the game picker grants only the
+  target. Check space on both drives, preserve archive traversal protections and only remove owned
+  work paths. Complete Mac app bundles on the target drive before an atomic replacement.
 - A failed first attempt needs enough persisted pending-install state to retry into its own partial
   folder without treating it as an unrelated nonempty folder. Record ownership and target before
   writing game content; never recursively delete a selected pre-existing folder during cleanup.

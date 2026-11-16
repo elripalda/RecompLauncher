@@ -851,21 +851,38 @@ fn remove_empty_parents(top: &Path, file: &Path) {
 }
 
 fn replace_bundle(from: &Path, to: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(to).is_err() {
-        return fs::rename(from, to);
+    if fs::symlink_metadata(to).is_err() && fs::rename(from, to).is_ok() {
+        return Ok(());
     }
-    // Staging is on the library's drive. Keep the old bundle until the new one is in place;
-    // on a failed rename restore it. A pre-existing backup name is never overwritten.
-    let backup_dir = from.with_extension("app.previous");
-    fs::create_dir(&backup_dir)?;
-    let backup = backup_dir.join("previous");
-    fs::rename(to, &backup)?;
-    if let Err(error) = fs::rename(from, to) {
-        fs::rename(&backup, to)?;
-        let _ = fs::remove_dir(&backup_dir);
+    // Downloads may be on another drive. Complete the new bundle on the target drive before
+    // swapping it, so a failed copy never removes the working app or merges old and new files.
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let work = to.parent().unwrap().join(format!(".recomplauncher-bundle-{}-{time}", std::process::id()));
+    fs::create_dir(&work)?;
+    let backup = work.join("previous");
+    let result = replace_staged_bundle(from, to, &work, &backup);
+    // If restoring the old app also failed, retain it for recovery.
+    if result.is_ok() || !backup.exists() {
+        let _ = fs::remove_dir_all(work);
+    }
+    result
+}
+
+fn replace_staged_bundle(from: &Path, to: &Path, work: &Path, backup: &Path) -> io::Result<()> {
+    let staged = work.join("new");
+    if fs::rename(from, &staged).is_err() {
+        overlay(from, &staged)?;
+    }
+    let had_bundle = fs::symlink_metadata(to).is_ok();
+    if had_bundle {
+        fs::rename(to, backup)?;
+    }
+    if let Err(error) = fs::rename(&staged, to) {
+        if had_bundle {
+            fs::rename(backup, to)?;
+        }
         return Err(error);
     }
-    let _ = fs::remove_dir_all(backup_dir);
     Ok(())
 }
 
@@ -2291,6 +2308,45 @@ mod mac_archive_tests {
         assert!(!target.join("Game.app/Contents/Resources/obsolete").exists());
         assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"player progress");
         assert!(fs::read_link(target.join("Game.app/Contents/Frameworks/Engine.framework/Versions/Current")).is_ok());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mac_app_can_install_and_update_from_another_volume() {
+        use std::os::unix::fs::MetadataExt;
+        if !Path::new("/dev/shm").is_dir() {
+            return;
+        }
+        let d = temp("bundle-other-volume");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let other = Path::new("/dev/shm").join(format!("recomp-bundle-{}-{time}", std::process::id()));
+        fs::create_dir(&other).unwrap();
+        assert_ne!(fs::metadata(&d).unwrap().dev(), fs::metadata(&other).unwrap().dev());
+        let target = other.join("installed");
+        fs::write(d.join("game.zip"), app_zip(&[("Game.app/Contents/Resources/obsolete", b"old", 0o644)])).unwrap();
+        unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        fs::write(target.join("save.sav"), b"player progress").unwrap();
+        fs::write(d.join("game.zip"), app_zip(&[])).unwrap();
+        unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        assert!(!target.join("Game.app/Contents/Resources/obsolete").exists());
+        assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"player progress");
+        assert_eq!(fs::read(target.join("Game.app/Contents/MacOS/Game")).unwrap(), b"program");
+        assert_eq!(fs::read(target.join("Game.app/Contents/Frameworks/Engine.framework/Engine")).unwrap(), b"library");
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 2);
+        fs::remove_dir_all(other).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn failed_bundle_staging_keeps_the_previous_app() {
+        let d = temp("bundle-copy-failure");
+        let target = d.join("Game.app");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("old"), b"working app").unwrap();
+        assert!(replace_bundle(&d.join("missing-source"), &target).is_err());
+        assert_eq!(fs::read(target.join("old")).unwrap(), b"working app");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]

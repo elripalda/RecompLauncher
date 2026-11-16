@@ -15,12 +15,51 @@ pub struct Request {
     pub tag: Option<String>,
     #[serde(default)]
     pub selected_tag: Option<String>,
+    #[serde(default)]
+    pub backup_release: Option<crate::catalog::Release>,
     pub file: Option<String>,
     pub token: String,
     #[serde(default)]
     pub source: Option<PathBuf>,
     pub anchor: PathBuf,
     pub volume: Option<u64>,
+}
+
+impl Request {
+    pub fn release_tag(&self) -> Option<String> {
+        self.backup_release.as_ref().map(|r| r.tag_name.clone()).or(self.tag.clone()).or(self.selected_tag.clone())
+    }
+
+    pub fn remember_release(&mut self, tag: &str, file: Option<&str>, backup: Option<&crate::catalog::Release>) {
+        self.selected_tag = Some(tag.into());
+        if let Some(file) = file {
+            self.file = Some(file.into());
+        }
+        if let Some(backup) = backup {
+            self.backup_release = Some(backup.clone());
+        } else if self.backup_release.as_ref().is_some_and(|r| r.tag_name != tag) {
+            self.backup_release = None;
+        }
+    }
+
+    pub async fn releases<B, U>(&self, backup_enabled: bool, backup: impl FnOnce() -> B, upstream: impl FnOnce() -> U) -> Res<(Vec<crate::catalog::Release>, bool)>
+    where
+        B: std::future::Future<Output = Res<crate::catalog::Release>>,
+        U: std::future::Future<Output = Res<Vec<crate::catalog::Release>>>,
+    {
+        // A checked backup can be the only surviving source. Retrying must not depend on upstream.
+        if let Some(release) = &self.backup_release {
+            return Ok((vec![release.clone()], true));
+        }
+        if backup_enabled && self.tag.is_none() && self.selected_tag.is_none() {
+            match backup().await {
+                Ok(release) => return Ok((vec![release], true)),
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(e) => crate::trail::note(format!("The RecompLauncher backup couldn't help ({e}), so trying the project's releases")),
+            }
+        }
+        Ok((upstream().await?, false))
+    }
 }
 
 #[derive(Serialize)]
@@ -178,6 +217,7 @@ pub fn request(lib: &Library, id: &str, target: PathBuf, tag: Option<String>, fi
         target,
         tag: tag.or_else(|| previous.and_then(|r| r.tag.clone())),
         selected_tag: previous.filter(|_| same_release).and_then(|r| r.selected_tag.clone()),
+        backup_release: previous.filter(|_| same_release).and_then(|r| r.backup_release.clone()),
         file: file.or_else(|| previous.filter(|_| same_release).and_then(|r| r.file.clone())),
         token,
         source: previous.and_then(|r| r.source.clone()),
@@ -216,7 +256,9 @@ fn mark(dir: &Path, token: &str) -> Res<()> {
 
 pub fn writable(target: &Path) -> Res<()> {
     let parent = target.parent().ok_or_else(|| Error::Msg("Choose a game folder.".into()))?;
-    fs::create_dir_all(parent)?;
+    if !target.is_dir() {
+        fs::create_dir_all(parent)?;
+    }
     let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
     let place = if target.is_dir() { target } else { parent };
     let probe = place.join(format!(".recomplauncher-probe-{}-{time}", std::process::id()));
@@ -226,7 +268,11 @@ pub fn writable(target: &Path) -> Res<()> {
     Ok(())
 }
 
-pub fn claim(request: &Request, installed: bool) -> Res<PathBuf> {
+fn work_dir(request: &Request, app_dir: &Path) -> PathBuf {
+    app_dir.join("cache").join("install-work").join(&request.token)
+}
+
+pub fn claim(request: &Request, installed: bool, app_dir: &Path) -> Res<PathBuf> {
     if !request.anchor.is_dir() || request.volume.is_some_and(|v| volume(&request.anchor) != Some(v)) {
         return Err(Error::Msg("The selected drive isn't available. Reconnect it before retrying this installation.".into()));
     }
@@ -241,7 +287,9 @@ pub fn claim(request: &Request, installed: bool) -> Res<PathBuf> {
         }
         mark(&request.target, &request.token)?;
     }
-    let work = request.target.parent().unwrap().join(format!(".recomplauncher-work-{}", request.token));
+    // Folder pickers can grant only the target. Temporary files must not require its parent.
+    let work = work_dir(request, app_dir);
+    fs::create_dir_all(work.parent().unwrap())?;
     match fs::create_dir(&work) {
         Ok(()) => mark(&work, &request.token)?,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && owns(&work, &request.token) => {}
@@ -254,18 +302,17 @@ pub fn preview(target: PathBuf) -> Preview {
     Preview { free: manage::free_space(&target), target }
 }
 
-pub fn finish(request: &Request, keep_downloads: bool) {
+pub fn finish(request: &Request, keep_downloads: bool, app_dir: &Path) {
     if owns(&request.target, &request.token) {
         let _ = fs::remove_file(request.target.join(MARKER));
     }
-    let Some(parent) = request.target.parent() else { return };
-    let work = parent.join(format!(".recomplauncher-work-{}", request.token));
+    let work = work_dir(request, app_dir);
     if !keep_downloads && owns(&work, &request.token) {
         let _ = fs::remove_dir_all(work);
     }
 }
 
-pub fn discard_empty(request: &Request) -> bool {
+pub fn discard_empty(request: &Request, app_dir: &Path) -> bool {
     if request.target.exists() {
         let Ok(mut entries) = fs::read_dir(&request.target) else { return false };
         let only_marker = entries.all(|e| e.is_ok_and(|e| e.file_name() == MARKER));
@@ -274,7 +321,7 @@ pub fn discard_empty(request: &Request) -> bool {
         }
     }
     // Cancelling a download releases its reservation, but a partially unpacked game stays recoverable.
-    finish(request, false);
+    finish(request, false, app_dir);
     true
 }
 
@@ -288,6 +335,145 @@ mod tests {
         let path = std::env::temp_dir().join(format!("recomp-location-{}-{time}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         normalized(&path).unwrap()
+    }
+
+    fn backup_release() -> crate::catalog::Release {
+        let answer = serde_json::json!({
+            "version": "v1",
+            "files": [
+                {"name": "game-linux.zip", "url": "https://backup.example/game.zip", "os": "linux", "size": 100, "sha256": "a".repeat(64)},
+                {"name": "game-linux-eu.zip", "url": "https://backup.example/game-eu.zip", "os": "linux", "size": 100, "sha256": "b".repeat(64)}
+            ]
+        });
+        crate::catalog::backup_release_from(&answer, "linux").unwrap()
+    }
+
+    #[tokio::test]
+    async fn automatic_install_uses_the_backup_without_querying_upstream() {
+        let root = temp();
+        let pending = request(&Library::default(), "game", root.join("game"), None, None);
+        let (releases, from_backup) = pending.releases(
+            true,
+            || async { Ok(backup_release()) },
+            || async { panic!("The removed upstream project must not be queried") },
+        ).await.unwrap();
+        assert!(from_backup);
+        assert_eq!(releases[0].tag_name, "v1");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn paused_backup_install_resumes_after_restart_without_querying_upstream() {
+        let root = temp();
+        let mut lib = Library::default();
+        let mut pending = request(&lib, "game", root.join("game"), None, None);
+        let release = backup_release();
+        pending.remember_release("v1", Some("game-linux.zip"), Some(&release));
+        lib.pending_installs.insert("game".into(), pending);
+        lib.save(&root.join("data")).unwrap();
+        let loaded = Library::load(&root.join("data"));
+        let resumed = request(&loaded, "game", root.join("game"), None, None);
+        let (releases, from_backup) = resumed.releases(
+            true,
+            || async { panic!("The saved checked release must not need refetching") },
+            || async { panic!("The removed upstream project must not be queried") },
+        ).await.unwrap();
+        assert!(from_backup);
+        assert_eq!(resumed.release_tag().as_deref(), Some("v1"));
+        assert_eq!(resumed.tag, None);
+        assert_eq!(resumed.file.as_deref(), Some("game-linux.zip"));
+        assert_eq!(releases[0].assets[0].digest, release.assets[0].digest);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_backup_download_retries_the_recorded_source_even_if_the_listing_changes() {
+        let root = temp();
+        let mut lib = Library::default();
+        let mut pending = request(&lib, "game", root.join("game"), None, None);
+        pending.remember_release("v1", Some("game-linux.zip"), Some(&backup_release()));
+        pending.remember_release("v1", Some("game-linux.zip"), None);
+        lib.pending_installs.insert("game".into(), pending);
+        let retried = request(&lib, "game", root.join("game"), None, None);
+        let (releases, from_backup) = retried.releases(
+            false,
+            || async { panic!("Retry must retain its checked metadata") },
+            || async { panic!("Retry must retain its backup source") },
+        ).await.unwrap();
+        assert!(from_backup);
+        assert_eq!(releases[0].assets[0].browser_download_url, "https://backup.example/game.zip");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn picking_a_build_preserves_the_backup_release_source() {
+        let root = temp();
+        let mut lib = Library::default();
+        let mut pending = request(&lib, "game", root.join("game"), None, None);
+        pending.remember_release("v1", None, Some(&backup_release()));
+        lib.pending_installs.insert("game".into(), pending);
+        let chosen = request(&lib, "game", root.join("game"), None, Some("game-linux-eu.zip".into()));
+        let (releases, from_backup) = chosen.releases(
+            true,
+            || async { panic!("Build selection must use the saved release") },
+            || async { panic!("Build selection must not query a removed project") },
+        ).await.unwrap();
+        assert!(from_backup);
+        assert_eq!(chosen.file.as_deref(), Some(releases[0].assets[1].name.as_str()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn explicitly_selecting_a_release_still_queries_upstream() {
+        let root = temp();
+        let pending = request(&Library::default(), "game", root.join("game"), Some("v1".into()), None);
+        let (_, from_backup) = pending.releases(
+            true,
+            || async { panic!("An explicit upstream version must not select a different backup") },
+            || async { Ok(vec![backup_release()]) },
+        ).await.unwrap();
+        assert!(!from_backup);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn folder_only_access_does_not_require_listing_or_writing_the_parent() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp();
+        let parent = root.join("restricted");
+        let target = parent.join("granted");
+        fs::create_dir_all(&target).unwrap();
+        let pending = request(&Library::default(), "game", target, None, None);
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o111)).unwrap();
+        let claimed = claim(&pending, false, &root.join("data"));
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(claimed.unwrap().starts_with(root.join("data")));
+        assert_eq!(fs::read_dir(parent).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writable_game_folder_under_a_read_only_parent_can_install() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp();
+        let parent = root.join("read-only");
+        let target = parent.join("game");
+        fs::create_dir_all(&target).unwrap();
+        let pending = request(&Library::default(), "game", target.clone(), None, None);
+        let archive = root.join("game.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        zip.start_file("game.exe", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"game").unwrap();
+        zip.finish().unwrap();
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o555)).unwrap();
+        let claimed = claim(&pending, false, &root.join("data"));
+        let installed = claimed.and_then(|work| crate::install::unpack(&archive, &target, &work.join("staging")));
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
+        installed.unwrap();
+        assert_eq!(fs::read(target.join("game.exe")).unwrap(), b"game");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -452,11 +638,13 @@ mod tests {
         let mut lib = Library::default();
         let mut pending = request(&lib, "game", target.clone(), Some("v1".into()), Some("old.zip".into()));
         pending.selected_tag = Some("v1".into());
+        pending.backup_release = Some(backup_release());
         lib.pending_installs.insert("game".into(), pending);
         let changed = request(&lib, "game", target, Some("v2".into()), None);
         assert_eq!(changed.tag.as_deref(), Some("v2"));
         assert_eq!(changed.file, None);
         assert_eq!(changed.selected_tag, None);
+        assert!(changed.backup_release.is_none());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -466,12 +654,12 @@ mod tests {
         let mut lib = Library::default();
         let pending = request(&lib, "game", root.join("chosen"), None, None);
         lib.pending_installs.insert("game".into(), pending.clone());
-        let work = claim(&pending, false).unwrap();
+        let work = claim(&pending, false, &root.join("data")).unwrap();
         fs::write(pending.target.join("partial.dat"), b"partial").unwrap();
         lib.save(&root.join("data")).unwrap();
         let loaded = Library::load(&root.join("data"));
         validate(&loaded, &root.join("data"), "game", &pending.target).unwrap();
-        assert_eq!(claim(&loaded.pending_installs["game"], false).unwrap(), work);
+        assert_eq!(claim(&loaded.pending_installs["game"], false, &root.join("data")).unwrap(), work);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -481,11 +669,11 @@ mod tests {
         let mut lib = Library::default();
         let pending = request(&lib, "game", root.join("chosen"), None, None);
         lib.pending_installs.insert("game".into(), pending.clone());
-        claim(&pending, false).unwrap();
+        claim(&pending, false, &root.join("data")).unwrap();
         fs::write(pending.target.join("mine"), b"keep").unwrap();
         fs::remove_file(pending.target.join(MARKER)).unwrap();
         assert!(validate(&lib, &root.join("data"), "game", &pending.target).is_err());
-        assert!(claim(&pending, false).is_err());
+        assert!(claim(&pending, false, &root.join("data")).is_err());
         assert_eq!(fs::read(pending.target.join("mine")).unwrap(), b"keep");
         fs::remove_dir_all(root).unwrap();
     }
@@ -496,8 +684,8 @@ mod tests {
         let lib = Library::default();
         let first = request(&lib, "first", root.join("a"), None, None);
         let second = request(&lib, "second", root.join("b"), None, None);
-        let first_work = claim(&first, false).unwrap();
-        let second_work = claim(&second, false).unwrap();
+        let first_work = claim(&first, false, &root.join("data")).unwrap();
+        let second_work = claim(&second, false, &root.join("data")).unwrap();
         assert_ne!(first_work, second_work);
         assert!(!first_work.starts_with(&first.target));
         fs::remove_dir_all(root).unwrap();
@@ -507,9 +695,9 @@ mod tests {
     fn finishing_removes_only_owned_work_and_keeps_game_content() {
         let root = temp();
         let pending = request(&Library::default(), "game", root.join("game"), None, None);
-        let work = claim(&pending, false).unwrap();
+        let work = claim(&pending, false, &root.join("data")).unwrap();
         fs::write(pending.target.join("game.exe"), b"game").unwrap();
-        finish(&pending, false);
+        finish(&pending, false, &root.join("data"));
         assert!(!work.exists());
         assert!(!pending.target.join(MARKER).exists());
         assert_eq!(fs::read(pending.target.join("game.exe")).unwrap(), b"game");
@@ -522,8 +710,8 @@ mod tests {
         let target = root.join("selected");
         fs::create_dir(&target).unwrap();
         let pending = request(&Library::default(), "game", target.clone(), None, None);
-        let work = claim(&pending, false).unwrap();
-        assert!(discard_empty(&pending));
+        let work = claim(&pending, false, &root.join("data")).unwrap();
+        assert!(discard_empty(&pending, &root.join("data")));
         assert!(!work.exists());
         assert!(target.is_dir());
         assert!(fs::read_dir(target).unwrap().next().is_none());
@@ -534,9 +722,9 @@ mod tests {
     fn cancelling_after_unpacking_keeps_the_partial_game_recoverable() {
         let root = temp();
         let pending = request(&Library::default(), "game", root.join("game"), None, None);
-        let work = claim(&pending, false).unwrap();
+        let work = claim(&pending, false, &root.join("data")).unwrap();
         fs::write(pending.target.join("partial"), b"partial").unwrap();
-        assert!(!discard_empty(&pending));
+        assert!(!discard_empty(&pending, &root.join("data")));
         assert!(work.is_dir());
         assert!(owns(&pending.target, &pending.token));
         fs::remove_dir_all(root).unwrap();
@@ -549,7 +737,7 @@ mod tests {
         fs::create_dir(&anchor).unwrap();
         let pending = request(&Library::default(), "game", anchor.join("game"), None, None);
         fs::remove_dir(&anchor).unwrap();
-        assert!(claim(&pending, false).is_err());
+        assert!(claim(&pending, false, &root.join("data")).is_err());
         assert!(!anchor.exists());
         fs::remove_dir_all(root).unwrap();
     }

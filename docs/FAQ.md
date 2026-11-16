@@ -46,6 +46,11 @@ installs return to the same folder, including after restarting the launcher. Use
 an installed game's location. Settings → **Ask Where to Install** also enables the prompt for
 ordinary installs; Easy Install always offers it.
 
+Temporary downloads and extraction use the launcher's private data folder, so a folder-only grant
+or a writable game folder beneath a read-only parent can be used. Leave room on that drive as well
+as the game's drive. With **Keep downloaded files** enabled, archives remain under
+`cache/install-work/` in the launcher's data folder; otherwise each install's work files are removed.
+
 The release and content installed inside its folder use that location. Original ROMs, discs and
 named source files stay where you selected them. Shared keys and launcher metadata stay in the
 launcher's data folder, and saves/settings may live in the game's usual system folders. Some

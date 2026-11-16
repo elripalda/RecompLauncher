@@ -3341,5 +3341,5 @@
  "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "일반 설치에서도 폴더를 묻습니다. 간편 설치는 항상 게임 폴더를 선택할 수 있습니다.",
  "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "설치 프로그램이 다른 폴더를 사용했습니다. 아래에서 해당 위치를 선택해 수락하거나 선택한 폴더로 설치 프로그램을 다시 실행하세요.",
  "Ask for ordinary installs too": "일반 설치에서도 묻기",
- "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "끄기: 설치 후 다운로드한 압축 파일을 삭제합니다. 켜기: 게임 폴더 옆에 보관합니다."
+ "Off: downloaded archives are deleted after installation. On: they are kept in the launcher's data folder.": "끄기: 설치 후 다운로드한 압축 파일을 삭제합니다. 켜기: 런처의 데이터 폴더에 보관합니다."
 }

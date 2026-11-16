@@ -3341,5 +3341,5 @@
  "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "普通安装也询问文件夹。轻松安装始终允许选择游戏文件夹。",
  "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "安装程序使用了其他文件夹。请在下方选择以接受该位置，或用所选文件夹重新运行安装程序。",
  "Ask for ordinary installs too": "普通安装也询问",
- "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "关闭：安装后删除下载的压缩包。开启：保留在游戏文件夹旁边。"
+ "Off: downloaded archives are deleted after installation. On: they are kept in the launcher's data folder.": "关闭：安装后删除下载的压缩包。开启：保留在启动器的数据文件夹中。"
 }

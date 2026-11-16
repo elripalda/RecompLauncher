@@ -3341,5 +3341,5 @@
  "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "Tanyakan folder juga untuk pemasangan biasa. Pasang mudah selalu memungkinkan pemilihan folder game.",
  "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "Penginstal memakai folder lain. Pilih di bawah untuk menerima lokasi itu, atau jalankan penginstal lagi dengan folder pilihanmu.",
  "Ask for ordinary installs too": "Tanyakan juga untuk pemasangan biasa",
- "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "Nonaktif: arsip unduhan dihapus setelah pemasangan. Aktif: arsip disimpan di samping folder game."
+ "Off: downloaded archives are deleted after installation. On: they are kept in the launcher's data folder.": "Nonaktif: arsip unduhan dihapus setelah pemasangan. Aktif: arsip disimpan di folder data peluncur."
 }

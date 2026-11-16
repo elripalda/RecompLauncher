@@ -3341,5 +3341,5 @@
  "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "ถามโฟลเดอร์สำหรับการติดตั้งทั่วไปด้วย การติดตั้งง่ายให้เลือกโฟลเดอร์เกมได้เสมอ",
  "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "โปรแกรมติดตั้งใช้โฟลเดอร์อื่น เลือกโฟลเดอร์นั้นด้านล่างเพื่อยอมรับตำแหน่ง หรือเรียกโปรแกรมติดตั้งอีกครั้งด้วยโฟลเดอร์ที่เลือกไว้",
  "Ask for ordinary installs too": "ถามสำหรับการติดตั้งทั่วไปด้วย",
- "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "ปิด: ลบไฟล์บีบอัดที่ดาวน์โหลดหลังติดตั้ง เปิด: เก็บไว้ข้างโฟลเดอร์เกม"
+ "Off: downloaded archives are deleted after installation. On: they are kept in the launcher's data folder.": "ปิด: ลบไฟล์บีบอัดที่ดาวน์โหลดหลังติดตั้ง เปิด: เก็บไว้ในโฟลเดอร์ข้อมูลของตัวเรียกใช้งาน"
 }

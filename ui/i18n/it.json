@@ -3341,5 +3341,5 @@
  "Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.": "Chiedi la cartella anche per le installazioni normali. Installazione facile permette sempre di scegliere la cartella del gioco.",
  "The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.": "Il programma di installazione ha usato un’altra cartella. Sceglila qui sotto per accettarla, oppure ripeti l’installazione con la cartella scelta.",
  "Ask for ordinary installs too": "Chiedi anche per le installazioni normali",
- "Off: downloaded archives are deleted after installation. On: they are kept beside the game folder.": "Disattivato: gli archivi scaricati vengono eliminati dopo l’installazione. Attivato: restano accanto alla cartella del gioco."
+ "Off: downloaded archives are deleted after installation. On: they are kept in the launcher's data folder.": "Disattivato: gli archivi scaricati vengono eliminati dopo l’installazione. Attivato: restano nella cartella dei dati del launcher."
 }
