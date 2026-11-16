@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "En l'activant, vous acceptez {license}.",
  "Turning it on sets the game up again from your copy.": "En l'activant, le jeu est reconfiguré à partir de votre copie.",
  "Use the copy it was set up with": "Utiliser la copie avec laquelle il a été configuré",
- "{n} new options": "{n} nouvelles options"
+ "{n} new options": "{n} nouvelles options",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Un seul téléchargement installe ses {n} jeux. Chacun a sa propre place dans votre bibliothèque.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} est installé. Ses {n} jeux sont dans votre bibliothèque."
 }

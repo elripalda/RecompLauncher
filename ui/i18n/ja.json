@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "オンにすると {license} に同意したことになります。",
  "Turning it on sets the game up again from your copy.": "オンにすると、ゲームデータからもう一度セットアップします。",
  "Use the copy it was set up with": "セットアップに使ったゲームデータを使う",
- "{n} new options": "新しいオプション {n} 件"
+ "{n} new options": "新しいオプション {n} 件",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "1 回のダウンロードで {n} 本のゲームがすべてインストールされます。それぞれがライブラリに表示されます。",
+ "{name} is installed. Its {n} games are in your Library.": "{name} をインストールしました。{n} 本のゲームがライブラリにあります。"
 }

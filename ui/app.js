@@ -5781,9 +5781,50 @@ function wineTools() {
     } catch (e) { fail(e); }
   }, t('Wine Tools'));
 }
+// Before a recomp of several games installs: the games it adds to the Library. Big Picture shows
+// the same in its wide sheet, Install first.
+async function confirmPack(id, pack) {
+  const name = (byId(id) || {}).name || id;
+  const title = tf('Install {name}?', { name });
+  const line = tf('One download installs all {n} of its games. Each one gets its own place in your Library.', { n: pack.length });
+  if (inTV() && window.tvAsk) {
+    const head = `<h3>${esc(title)}</h3><p class="tv-sreq-p">${esc(line)}</p><ul class="tv-sreq-steps tv-pack">${pack.map((g) => `<li dir="auto">${esc(g.name)}</li>`).join('')}</ul>`;
+    return (await window.tvAsk(title, [{ label: t('Install'), icon: 'down' }, { label: t('Cancel'), icon: 'chevL' }], head)) === 0;
+  }
+  const cover = (g) => (byId(id + GAME_SEP + g.id) || {}).cover;
+  const items = pack.map((g) => `<li>${cover(g) ? pic(thumbOf(cover(g), 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`).join('');
+  const text = `<p>${esc(line)}</p><ul class="pack-list">${items}</ul>`;
+  const v = await ask(title, text, [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Install'), icon: 'down', v: 'go', main: true, focus: true }]);
+  return v === 'go';
+}
+// A recomp of several games is in: where its games went, then the setup of the one it was
+// installed from, when that game needs the player's copy (the recomp's own would ask for all of them).
+async function packInstalled(id, name, games, open) {
+  const from = (S.packFrom || {})[id] || '';
+  if (S.packFrom) delete S.packFrom[id];
+  toast(tf('{name} is installed. Its {n} games are in your Library.', { name, n: games.length }));
+  if (from) await saveUi({ pack_from: Object.assign({}, (S.settings.ui || {}).pack_from, { [id]: from }) }, true);
+  if (!from || !open || !S.easy.has(id)) return;
+  await refreshState();
+  // Asked here, not through loadSetup: the game's open page may be loading it already, and that
+  // returns before the answer is in.
+  let su;
+  try { su = S.setup[from] = await invoke('game_setup', { id: from }); } catch (e) { return; }
+  // Its own named inputs say whether it's set up; the install's one copy may be another game's.
+  const ready = su && (su.inputs?.length ? su.inputs_ready : su.copy);
+  if (su && su.needs && !ready) setupModal(from);
+}
 async function startInstall(id, dir, tag, anyway) {
   // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
+  const from = subOf(id) ? id : '';
   id = parentId(id);
+  // Its first install puts every one of its games in the Library: the player sees which first.
+  // Asked once, before where it goes (that question comes back here with dir set).
+  const pack = gamesOf(id, byId(id));
+  if (dir === undefined && !S.library[id] && !tag && !anyway && pack.length) {
+    if (!(await confirmPack(id, pack))) return;
+    (S.packFrom = S.packFrom || {})[id] = from;
+  }
   // An update of a recomp with several games: all of them get it.
   if (S.library[id] && hasGames(id) && S.updates[id] && !tag) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
   // Asked where it goes: the first time, with more than one library, or always when the player
@@ -5798,7 +5839,8 @@ async function startInstall(id, dir, tag, anyway) {
   // Easy Install with no copy found in the player's folders: pick it first, and it's checked against
   // what the game needs before anything downloads. Once it's in, setup goes straight on with it.
   // With Auto-Install off nothing sets up by itself after the download, so there's nothing to pick it for.
-  if (autoInstall() && !S.library[id] && !tag && !anyway && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
+  // A recomp of several games: each game's copy is asked for on its own setup, after the download.
+  if (autoInstall() && !S.library[id] && !tag && !anyway && !pack.length && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
     const pickIt = async () => {
       for (;;) {
         const f = await pickFile(copyPickOpts(id)).catch(() => null);
@@ -8688,13 +8730,19 @@ T.event.listen('install', ({ payload: p }) => {
       if (pre) delete S.prePicked[id];
       // Auto-Install off (Settings → Updates): nothing opens by itself; Set Up on its page starts it.
       const auto = autoInstall();
-      // Only an installer: its Set Up opens to run it (an update's too).
-      if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
-      // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
-      else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-      else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
-      else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
-      else toast(tf('{name} is ready to play.', { name }));
+      const after = () => {
+        // Only an installer: its Set Up opens to run it (an update's too).
+        if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
+        // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
+        else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
+        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
+        else toast(tf('{name} is ready to play.', { name }));
+      };
+      // A first install of a recomp of several games (the catalog may not list them; its own file
+      // does): told where its games went, and set up per game. Anything else as before.
+      if (wasInstalled || isInstallerApp(byId(id))) after();
+      else invoke('recomp_games').then((sets) => { const list = gameList(((sets || {})[id] || {}).games); if (list.length) packInstalled(id, name, list, auto && !busy); else after(); }).catch(after);
     }
     else if (p.phase === 'error' && String(p.msg || '').startsWith('PICK_BUILD|')) { S.recent = S.recent.filter((r) => r !== p); pickBuild(id, buildList(p.msg)); }
     else if (p.phase === 'error') { if (!blocked(id, p.msg)) toast(tf('{name}: {msg}', { name, msg: cleanMsg(p.msg) }), true); p.msg = cleanMsg(p.msg); }

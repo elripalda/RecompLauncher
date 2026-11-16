@@ -1866,11 +1866,12 @@
     if (el) focus(el, true);
   }
   // A question as a sheet, for app.js (cloud saves before Play): resolves to the pick, or -1.
-  window.tvAsk = (title, items) => new Promise((res) => {
+  // `head`: text over the choices (escaped already), in the wide sheet that has room for it.
+  window.tvAsk = (title, items, head) => new Promise((res) => {
     if (!TV.on) return res(null);
     let done = false;
     const fin = (v) => { if (!done) { done = true; res(v); } };
-    sheet(title, items.map((x, i) => ({ ...x, run: () => fin(i) })));
+    sheet(title, items.map((x, i) => ({ ...x, run: () => fin(i) })), head ? 'sreq' : '', head);
     TV.sheet.onClose = () => setTimeout(() => fin(-1), 0);
   });
   // Signing in from the couch: a QR code for a phone, and the code to type.

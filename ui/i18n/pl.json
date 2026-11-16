@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "Włączając ją, akceptujesz {license}.",
  "Turning it on sets the game up again from your copy.": "Włączenie jej ponownie skonfiguruje grę z twojej kopii.",
  "Use the copy it was set up with": "Użyj kopii, z którą ją skonfigurowano",
- "{n} new options": "{n} nowa opcja|{n} nowe opcje|{n} nowych opcji"
+ "{n} new options": "{n} nowa opcja|{n} nowe opcje|{n} nowych opcji",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Jedno pobranie instaluje {n} jego grę. Każda ma własne miejsce w bibliotece.|Jedno pobranie instaluje wszystkie {n} jego gry. Każda ma własne miejsce w bibliotece.|Jedno pobranie instaluje wszystkie {n} jego gier. Każda ma własne miejsce w bibliotece.",
+ "{name} is installed. Its {n} games are in your Library.": "Zainstalowano {name}. {n} jego gra jest w bibliotece.|Zainstalowano {name}. {n} jego gry są w bibliotece.|Zainstalowano {name}. {n} jego gier jest w bibliotece."
 }

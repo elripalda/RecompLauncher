@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "Dengan menyalakannya, kamu menerima {license}.",
  "Turning it on sets the game up again from your copy.": "Dengan menyalakannya, game disiapkan lagi dari salinanmu.",
  "Use the copy it was set up with": "Pakai salinan yang dipakai saat menyiapkannya",
- "{n} new options": "{n} opsi baru"
+ "{n} new options": "{n} opsi baru",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Satu unduhan memasang semua {n} game-nya. Masing-masing punya tempat sendiri di Pustaka-mu.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} sudah terpasang. {n} game-nya ada di Pustaka-mu."
 }

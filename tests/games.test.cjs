@@ -215,3 +215,16 @@ test('installing a recomp of several games doesn\'t put all of them in Jump back
   // The Library itself still has every game.
   assert.equal(vm.runInContext('libRecs().length', c), 5);
 });
+
+test('a recomp of several games asks before its first install, then says where its games went', () => {
+  const start = fn(app, 'startInstall');
+  assert.match(start, /const from = subOf\(id\) \? id : '';\n\s+id = parentId\(id\);/);
+  assert.match(start, /if \(dir === undefined && !S\.library\[id\] && !tag && !anyway && pack\.length\) \{\n\s+if \(!\(await confirmPack\(id, pack\)\)\) return;/);
+  // Asked before where it goes, so it's asked once.
+  assert.ok(start.indexOf('confirmPack(') < start.indexOf('locationModal('));
+  assert.match(fn(app, 'confirmPack'), /tf\('Install \{name\}\?', \{ name \}\)/);
+  assert.match(app, /else invoke\('recomp_games'\)\.then\(\(sets\) => \{ const list = gameList\(/);
+  const done = fn(app, 'packInstalled');
+  assert.match(done, /Its \{n\} games are in your Library/);
+  assert.match(done, /setupModal\(from\)/);
+});

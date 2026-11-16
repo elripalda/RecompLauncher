@@ -1991,6 +1991,11 @@ body.pad-nav .pill-sel:has(.pad-focus){outline:3px solid var(--cyan)!important;o
 body.pad-nav :is(.side,.menu,.choices,.fb-list,.fb-side,.adopt-list,.set-nav) .pad-focus{outline-offset:-3px}
 body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .modal ul.lacks{margin:-2px 0 6px;padding-left:20px;line-height:1.65;color:var(--ink)}
+/* Before a recomp of several games installs: the games it adds, as small covers with their names. */
+.modal ul.pack-list{list-style:none;margin:2px 0 8px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-height:300px;overflow:auto}
+.pack-list li{display:flex;align-items:center;gap:10px;min-width:0;font-size:13.5px;font-weight:700;color:var(--ink)}
+.pack-list img,.pack-list .ph{flex:none;width:30px;height:45px;border-radius:5px;object-fit:cover;background:var(--fill2)}
+.pack-list span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Great on Deck (Steam blue), Notify Me, and the team's notes on top of Discover. */
 .badge.deck{top:auto;bottom:9px;right:9px;color:#fff;background:#1a9fff;gap:4px;padding:0 8px}.badge.deck.up{bottom:39px}
 .tag.deck{color:#1a9fff;background:rgba(26,159,255,.1);border-color:rgba(26,159,255,.42)}
