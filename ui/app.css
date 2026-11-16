@@ -388,9 +388,7 @@ body.oled .gp-hero::after{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,r
 .gp-cover img{width:100%;height:100%;object-fit:cover;display:block}
 .gp-title{grid-area:title;min-width:0;display:flex;flex-direction:column;gap:10px;padding-bottom:4px}
 .gp-title:empty{display:none}
-.part-of{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 14px;margin-top:-4px;font-size:14px;color:var(--muted);font-weight:600}
-.part-of .link-btn{text-decoration:none;font-weight:700}
-.part-of .link-btn:hover{text-decoration:underline}
+.part-of{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;font-size:14px;color:var(--muted);font-weight:600}
 /* A recomp's games on its page: one row when they fit, else rows split evenly (--inc-cols). */
 .gp-includes{position:relative;z-index:2;max-width:var(--gp-max);margin:34px auto 0;padding:0 40px}
 .gp-includes h2{font-size:20px;margin:0 0 16px}
@@ -451,7 +449,7 @@ body.light .known-fix b{color:#127a45}
 .blurb{margin:0;font-size:17px;color:#d6dce5;line-height:1.55}
 .feat{display:flex;flex-wrap:wrap;gap:8px}
 .feat span{height:30px;padding:0 12px;border-radius:9px;background:var(--card);border:1px solid var(--line);font-size:13px;font-weight:600;display:inline-flex;align-items:center}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stats{display:grid;grid-template-columns:repeat(var(--stat-cols,4),minmax(0,1fr));gap:12px}
 .stats>div{padding:15px 18px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
 .stats span{font-size:12px;font-weight:600;color:var(--dim)}
 .stats b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -580,8 +578,8 @@ button.prog.su-prog:focus-visible,.prog.su-prog:focus-visible{outline:2px solid 
 .shotgrid .shot small{color:var(--dim)}
 
 /* ---------- the island: messages and downloads ---------- */
-.island{position:fixed;left:calc(var(--side-w) + (100vw - var(--side-w)) / 2);bottom:20px;transform:translateX(-50%);z-index:240;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;transition:left .3s var(--ease)}
-body.mini-side .island{--side-w:76px}
+/* Centred on the whole window, not on the area beside the sidebar. */
+.island{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:240;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
 .island>*{pointer-events:auto}
 .toasts{display:flex;flex-direction:column;align-items:center;gap:8px}
 .toast{max-width:min(560px,80vw);padding:12px 20px;border-radius:24px;background:rgba(20,31,51,.94);backdrop-filter:blur(20px);border:1px solid var(--line2);box-shadow:0 18px 44px -12px rgba(0,0,0,.8);font-size:14px;font-weight:600;animation:islIn .36s var(--ease) both;text-align:center}
@@ -754,7 +752,6 @@ body.oled .gp-amb img.ld{opacity:.26}
 
 @media (max-width:1240px){.g-body{grid-template-columns:minmax(0,1fr) 300px}.news-grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:1060px){.gp .gp-side{align-items:flex-start}.gp-top{grid-template-columns:150px minmax(0,1fr);grid-template-rows:1fr auto auto;grid-template-areas:"cover name" "cover title" "side side"}.gp.noart .gp-top{grid-template-columns:minmax(0,1fr);grid-template-areas:"name" "title" "side"}.sl-logo{height:80px}.g-body{grid-template-columns:1fr}.gp-cover{width:150px}.sl-cover{display:none}.sl-in{right:48px}.page{padding-left:28px;padding-right:28px}.su-in{grid-template-columns:1fr}.su-stage{min-height:300px;border-right:0;border-bottom:1px solid var(--line)}}
-body.tv-on .island{left:50%}
 .tile-b:focus-visible{outline:none}
 .tile-b:focus-visible .poster{box-shadow:0 0 0 3px var(--cyan),0 22px 40px -18px rgba(0,0,0,.9)}
 
@@ -1337,6 +1334,7 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .vtag{flex:none;height:20px;padding:0 8px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;letter-spacing:.01em;background:var(--fill2);color:var(--muted)}
 .vtag.rec{color:#06121a;background:linear-gradient(180deg,#34f2e8,#2fc7d6);box-shadow:0 2px 10px rgba(52,242,232,.28)}
 .vtag.rec svg{flex:none}
+.vtag.pack{color:var(--ink);box-shadow:inset 0 0 0 1px var(--line3)}
 .vtag.inst{color:#3ddc97;background:rgba(61,220,151,.13);box-shadow:inset 0 0 0 1px rgba(61,220,151,.35)}
 .v-os{flex:none;display:flex;gap:7px;color:var(--ink);opacity:.72;min-width:20px;justify-content:flex-end}
 .v-os .os-ico{width:16px;height:16px}
@@ -1462,7 +1460,6 @@ body.tv-on .vbar{display:none}
 body.sliding .topbar.solid{backdrop-filter:none;background:rgba(11,18,32,.96)}
 body.sliding .tile .glow{display:none}
 body.sliding main{overflow-x:hidden}
-body.sliding .island{transition:none}
 
 /* Settings > Beta */
 .beta-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:24px 26px;border-radius:22px;border:1px solid rgba(52,242,232,.22);background:var(--noise),radial-gradient(120% 140% at 0% 0%,rgba(52,242,232,.13),transparent 55%),var(--card)}
@@ -1992,6 +1989,11 @@ body.pad-nav .pill-sel:has(.pad-focus){outline:3px solid var(--cyan)!important;o
 body.pad-nav :is(.side,.menu,.choices,.fb-list,.fb-side,.adopt-list,.set-nav) .pad-focus{outline-offset:-3px}
 body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .modal ul.lacks{margin:-2px 0 6px;padding-left:20px;line-height:1.65;color:var(--ink)}
+/* Before a recomp of several games installs: the games it adds, as small covers with their names. */
+.modal ul.pack-list{list-style:none;margin:2px 0 8px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-height:300px;overflow:auto}
+.pack-list li{display:flex;align-items:center;gap:10px;min-width:0;font-size:13.5px;font-weight:700;color:var(--ink)}
+.pack-list img,.pack-list .ph{flex:none;width:30px;height:45px;border-radius:5px;object-fit:cover;background:var(--fill2)}
+.pack-list span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Great on Deck (Steam blue), Notify Me, and the team's notes on top of Discover. */
 .badge.deck{top:auto;bottom:9px;right:9px;color:#fff;background:#1a9fff;gap:4px;padding:0 8px}.badge.deck.up{bottom:39px}
 .tag.deck{color:#1a9fff;background:rgba(26,159,255,.1);border-color:rgba(26,159,255,.42)}
@@ -2093,6 +2095,23 @@ body.mac .tile .glow{display:none}
 .inst-exe{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:6px}.inst-exe .sel{width:100%}.inst-exe span{font-size:13px;color:var(--muted)}
 /* A link inside a sentence (the status page on the Saves tab). */
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+/* Game Executable: the file Play starts, in a box with Change beside it. */
+.exe-row .k{flex:1 1 auto}
+.exe-row .k b{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.path-line{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.path-box{flex:1 1 260px;min-width:0;padding:10px 12px;border-radius:10px;background:var(--fill2);border:1px solid var(--line2);font:600 13px/1.3 ui-monospace,Consolas,monospace;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text;-webkit-user-select:text}
+/* A long path is cut at its start, so the file's name stays in view (the whole path is its title). */
+.path-box:not(.empty){direction:rtl;text-align:left}
+.path-box>bdi{direction:ltr;unicode-bidi:isolate}
+.path-box.empty{font-family:inherit;font-weight:500;color:var(--dim)}
+/* Self-Managed: Play starts the player's own executable; the launcher doesn't set the game up. */
+.own-pill{display:inline-flex!important;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11.5px!important;font-weight:700;letter-spacing:.02em;color:var(--cyan)!important;border:1px solid rgba(52,242,232,.32);background:rgba(52,242,232,.08);cursor:help;flex:none}
+.stats .own-pill{align-self:flex-start;margin-top:6px}
+/* Where's Your Build?: the two ways in as cards, then Easy Setup and Not Now. */
+.build-picks{display:grid;gap:10px;margin:14px 0 4px}
+.pick-btn{text-align:left;font:inherit;color:inherit;cursor:pointer}
+.pick-btn:hover,.pick-btn:focus-visible{border-color:var(--cyan);background:rgba(52,242,232,.06);outline:none}
+.build-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}
 .cloud-now b{font-weight:600}
 /* Your copy of the game: what was found, grouped, one row each */
 .copy-line{font-weight:700}

@@ -105,7 +105,7 @@ function relinkCards(su, attr) {
   const card = (act, title, sub, button) => `<div class="found su-relink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg><div class="k"><b>${esc(t(title))}</b><span title="${esc(sub)}">${esc(sub)}</span></div><button type="button" class="btn sm main" ${attr}="${act}">${esc(t(button))}</button></div>`;
   return (prev.length && !su.inputs_ready ? card('relink', 'Use My Previous Setup', prev.join(' · '), 'Use It') : '')
     + (su.prebuilt ? card('prebuilt', 'Use the Build Already on This PC', su.prebuilt, 'Use It') : '')
-    + (su.own_build && !su.prebuilt ? card('ownbuild', 'Use a Build You Already Have', t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), 'Choose Folder') : '');
+    + (su.own_build && !su.prebuilt ? card('ownbuild', 'Use a Build You Already Have', t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), N_('Choose Folder')) : '');
 }
 // A build the player already has, anywhere (Use a Build You Already Have): its folder picked, and
 // used in place of building it again. True when it's set.

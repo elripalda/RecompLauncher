@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.58" date="2026-11-16">
+      <description>
+        <p>Playtime by game across recomps, kept through reinstalls and synced with your account, and each game of a multi-game release gets its own place in the store.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.57" date="2026-11-16">
       <description>
         <p>Linux .NET games start through their own start script, controller A waits for the D-pad on the desktop, and setups that build inside the game's folder are recognized.</p>

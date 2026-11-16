@@ -31,7 +31,8 @@ test('the menu item and the Settings switch', () => {
   const menu = fn(app, 'gameMenu');
   assert.match(menu, /\.\.\.\(!g \? easySkipItem\(id\) : \[\]\)/);
   assert.match(menu, /act: 'manual'[^\n]*\n\s+\.\.\.easySkipItem\(id\),/);
-  assert.match(app, /case 'easy-skip': \{[^]*?saveUi\(\{ easy_skip: \[\.\.\.skip\] \}\)/);
+  assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
+  assert.match(fn(app, 'setEasySkip'), /saveUi\(\{ easy_skip: \[\.\.\.skip\] \}, true\)/);
   assert.match(app, /sw\('easy_skip_all', ui\.easy_skip_all, t\('Skip Easy Setup'\), 'ui-toggle'\)/);
 });
 

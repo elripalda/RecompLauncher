@@ -107,6 +107,30 @@ there is no extracted copy to become stale.
 
 Developer tools identify the embedded source and check the profile actually in use.
 
+The same file uploaded twice, once without the version for `releases/latest/download` links
+(`Game-1.2.0-x86_64.AppImage` and `Game-x86_64.AppImage`), is one build: the launcher installs
+the one that names its version and doesn't ask the player to choose. GitHub's SHA-256 of each file
+says they're the same.
+
+### Mac apps
+
+Put your `.app` at the top of a zip, with `recomplauncher.json` beside it, and say the system in
+the name (`MyGame-1.2.0-macos-arm64.zip`) so it's picked over a disk image. Links inside the app,
+like a framework's `Versions/Current`, are kept. Name the app in `start.program` and
+`prepare.program`; the launcher runs the program its `Info.plist` names:
+
+```json
+"start": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"] },
+"prepare": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"], "args": ["--prepare", "--game", "{game}"] }
+```
+
+The first entry that exists on the player's system runs, so one file covers a Mac and Linux.
+RecompLauncher 0.90 Beta 54 and older find an app in `start.program` and `prepare.program` only by
+its program's own path, which works everywhere: `"MyGame.app/Contents/MacOS/MyGame"`.
+
+If your app updates itself (Sparkle, say), leave that off when `RECOMPLAUNCHER` is set: the
+launcher installs each of your releases over the app, and two updaters on one app fight.
+
 Two examples are worth reading:
 
 - [fifawc14.json](examples/fifawc14.json): 2014 FIFA World Cup (Xbox 360), with a settings file
@@ -278,9 +302,10 @@ This only follows places your file or the catalog names, not ones the launcher n
 
 ### `games`: several games in one release
 
-A release that carries a whole series lists its games. Each one gets its own tile in the Library
-and Big Picture, its own play time, achievements, pins and shortcuts. Installing, updating and
-removing stay one thing for the whole release.
+A release that carries a whole series lists its games. Players see each one as a game of its own:
+in Discover, search and Home, with its own page (a "Part of" pill leads to the release's page) and
+its own tile in the Library and Big Picture, with its own play time, achievements, pins and
+shortcuts. Installing, updating and removing stay one thing for the whole release.
 
 ```json
 "games": [
@@ -294,7 +319,12 @@ removing stay one thing for the whole release.
   (`recomplauncher://game/<recomp id>--<id>`).
 - `name`: shown on its tile.
 - `args`: added after `start.args` when this game is played. Without them Play opens your own
-  menu, and the tile says to pick the game there.
+  menu, and the tile says to pick the game there. They can carry this game's files with
+  `{input:id}`, as `start.args` can; an argument whose file isn't chosen is left out:
+
+  ```json
+  { "id": "blue", "name": "Pokémon Blue", "args": ["--game=blue", "--rom={input:rom-blue}"], "inputs": ["rom-blue"] }
+  ```
 - `title_id` (Xbox 360): this game's title id. Only its own unlock file, `<title_id>.toml`, is read.
 - `inputs`: the ids of the setup inputs this game needs. Inputs no game lists are shared by all.
   Easy Setup for a game asks only for its own and the shared ones.
@@ -302,7 +332,9 @@ removing stay one thing for the whole release.
   release's saves are shared by its games.
 
 With one game or none, the release shows as one game, as before. When your release has no list,
-the one on recomplauncher.com is used. Launchers older than 0.90 Beta 36 skip it and show one tile.
+the one on recomplauncher.com is used. Before anyone installs your release, the launcher only has
+that list to go on: ask for your games to be listed there (with their art), or the release shows
+as one game until it's installed. Launchers older than 0.90 Beta 36 skip it and show one tile.
 
 ## Settings: in the launcher
 
@@ -546,6 +578,21 @@ settings are written. It runs again whenever the player changes their copy.
   `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
   when your own launcher built it, and plays without asking for the copy (unless `start` uses
   `{game}`). If one goes missing, the player is asked to set up again.
+
+**A second file from the player.** When your step needs more than the copy, like an official patch
+or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{game}`. The
+setup screen asks for both. Don't download it in the step: players bring their own files.
+
+```json
+"inputs": [
+  { "id": "patch", "label": "The official 2.0 patch (patch20.zip)", "role": "update",
+    "formats": [{ "type": "file", "extensions": ["zip"] }] }
+],
+"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game", "{game}", "--patch", "{input:patch}"] }
+```
+
+[SETUP-INPUTS.md](SETUP-INPUTS.md) has the rest: several discs, optional DLC, and `{input:<id>}` in
+`start.args` and `start.env` too.
 
 #### `prepare.options`: ticks for a vendor's SDK
 
