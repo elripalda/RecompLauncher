@@ -151,6 +151,21 @@ The first automated branch review found two additional P2 issues:
   paused job. Both use the existing cancellation helper. Tests exercise the two actions and ensure
   active/paused downloads keep their existing controls.
 
+The second automated review found two more P2 issues:
+
+- [x] **Retargeting keeps release metadata.** Release/tag, asset, checked backup metadata and source
+  paths are retained independently of the destination. A new target gets a new ownership token,
+  anchor and volume. Tests cover automatic release recovery across restart, checked-backup retries
+  without upstream access, and explicitly resetting the release while retargeting.
+- [x] **Change Build binds the displayed release.** Both desktop and Big Picture send the tag
+  returned with the displayed assets and explicitly replace an older pending release choice.
+  Install-time build selection continues the existing request. Tests cover different and identical
+  asset names across releases and resuming the newly chosen build.
+
+Windows/macOS CI also identified two pending-operation fixtures that passed unnormalized temporary
+paths into `claim`. Both now normalize their temporary roots just like production; the ownership
+and destination checks remain unchanged.
+
 ## Original implementation baseline
 
 - `ui/app.js`: `startInstall` already opens `locationModal` on the first install, when additional

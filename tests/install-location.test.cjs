@@ -77,6 +77,47 @@ test('a build choice preserves the selected destination and release', async () =
   assert.equal(request.file, 'eu.zip');
 });
 
+test('desktop Change Build submits the release whose assets were displayed', async () => {
+  const { c, calls } = context();
+  c.S.library.example = { path: '/drive/Chosen', tag: 'v2' };
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'v1.zip' } };
+  let choose;
+  c.modal = (_html, action) => { choose = action; };
+  c.invoke = async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'release_builds') return { tag: 'v2', current: 'v2.zip', builds: [{ name: 'v2.zip' }, { name: 'v2-eu.zip' }] };
+  };
+  vm.runInContext(fn('changeBuild'), c);
+  await c.changeBuild('example');
+  choose({ dataset: { x: 'b', f: 'v2-eu.zip' } }, () => {});
+  const args = calls.at(-1).args;
+  assert.equal(args.tag, 'v2');
+  assert.equal(args.file, 'v2-eu.zip');
+  assert.equal(args.resetRelease, true);
+  assert.equal(args.target, '/drive/Chosen');
+});
+
+test('Big Picture Change Build binds identical asset names to the displayed release and resumes it', async () => {
+  const { c, calls } = context();
+  c.S.library.example = { path: '/drive/Chosen', tag: 'v2' };
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'game.zip' } };
+  let choose;
+  c.window.tvPickBuild = (_id, _builds, _current, go) => { choose = go; return true; };
+  c.invoke = async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'release_builds') return { tag: 'v2', current: 'game.zip', builds: [{ name: 'game.zip' }, { name: 'other.zip' }] };
+  };
+  vm.runInContext(fn('changeBuild'), c);
+  await c.changeBuild('example');
+  choose('game.zip');
+  assert.equal(calls.at(-1).args.tag, 'v2');
+  assert.equal(calls.at(-1).args.resetRelease, true);
+  c.resumeDl('example');
+  assert.equal(calls.at(-1).args.tag, 'v2');
+  assert.equal(calls.at(-1).args.file, 'game.zip');
+  assert.equal(calls.at(-1).args.resetRelease, false);
+});
+
 test('choosing another release does not send the previous release asset', async () => {
   const { c, calls } = context();
   c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v1', file: 'old.zip' } };

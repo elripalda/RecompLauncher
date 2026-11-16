@@ -10164,6 +10164,7 @@ mod tests {
         let d = std::env::temp_dir().join(format!("rl-project-pending-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("game")).unwrap();
+        let d = install_location::normalized(&d).unwrap();
         let mut lib = Library::default();
         lib.installed.insert("old".into(), Installed { id: "old".into(), path: d.join("game"), ..Default::default() });
         let app = app_in(&d, lib);
@@ -10419,6 +10420,7 @@ mod tests {
         let d = std::env::temp_dir().join(format!("rl-merge-pending-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("game")).unwrap();
+        let d = install_location::normalized(&d).unwrap();
         catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
         let mut lib = Library::default();
         lib.installed.insert("mine".into(), Installed { id: "mine".into(), path: d.join("game"), ..Default::default() });

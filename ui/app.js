@@ -5890,9 +5890,18 @@ const STARTING = new Set();
 const BUILD_KINDS = [N_('Flatpak'), N_('AppImage'), N_('Linux Folder'), N_('Installer'), N_('32-Bit Installer'), N_('Program'), N_('32-Bit Program'), N_('Portable'), N_('32-Bit Portable'), N_('Build'), N_('Windows Build')];
 // "PICK_BUILD|*name<tab>kind|name<tab>kind" from an install: the usual pick has the *.
 const buildList = (msg) => String(msg).split('|').slice(1).map((s) => { const best = s.startsWith('*'); const [name, label] = s.replace(/^\*/, '').split('\t'); return { name, label: label || '', best }; });
-function pickBuild(id, builds, current) {
+function pickBuild(id, builds, current, tag) {
   const a = byId(id) || { name: id };
-  const go = (file) => { S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() }; render(true); const args = { ...installArgs(id), file }; dlArgs(id, args); invoke('install', args).catch((e) => { delete S.jobs[id]; fail(e); render(true); }); };
+  const go = (file) => {
+    S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
+    render(true);
+    const previous = installArgs(id);
+    const args = { ...previous, file };
+    // Change Build lists a particular release; an install-time chooser resumes its saved request.
+    if (tag !== undefined) Object.assign(args, { tag, resetRelease: true });
+    dlArgs(id, args);
+    invoke('install', args).catch((e) => { dlArgs(id, previous); delete S.jobs[id]; fail(e); render(true); });
+  };
   if (window.tvPickBuild && window.tvPickBuild(id, builds, current, go)) return;
   // Kinds of build to choose from (a portable zip, an installer): each shows its kind, and the usual
   // one is marked. Builds of one kind (one per region): just their names, none suggested.
@@ -5908,7 +5917,7 @@ async function changeBuild(id) {
   try {
     const r = await invoke('release_builds', { id });
     if (!r || (r.builds || []).length < 2) return toast(t('Its release has one build for your PC.'));
-    pickBuild(id, r.builds, r.current);
+    pickBuild(id, r.builds, r.current, r.tag);
   } catch (e) { fail(e); }
 }
 

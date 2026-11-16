@@ -215,16 +215,17 @@ pub fn validate_source(target: &Path, source: Option<&Path>) -> Res<()> {
 }
 
 pub fn request(lib: &Library, id: &str, target: PathBuf, tag: Option<String>, file: Option<String>, reset_release: bool) -> Request {
-    let previous = lib.pending_installs.get(id).filter(|r| same(&r.target, &target));
+    let previous = lib.pending_installs.get(id);
+    let location = previous.filter(|r| same(&r.target, &target));
     let same_release = !reset_release && tag.as_ref().map(|t| previous.is_some_and(|r| r.tag.as_ref() == Some(t) || r.selected_tag.as_ref() == Some(t))).unwrap_or(true);
-    let token = previous.map(|r| r.token.clone()).unwrap_or_else(|| {
+    let token = location.map(|r| r.token.clone()).unwrap_or_else(|| {
         let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
         format!("{}-{time}-{}", folder_name(id), std::process::id())
     });
-    let anchor = previous.map(|r| r.anchor.clone()).unwrap_or_else(|| {
+    let anchor = location.map(|r| r.anchor.clone()).unwrap_or_else(|| {
         target.ancestors().find(|p| p.is_dir()).unwrap_or(&target).to_path_buf()
     });
-    let volume = previous.and_then(|r| r.volume).or_else(|| volume(&anchor));
+    let volume = location.and_then(|r| r.volume).or_else(|| volume(&anchor));
     Request {
         target,
         tag: tag.or_else(|| previous.filter(|_| same_release).and_then(|r| r.tag.clone())),
@@ -723,6 +724,70 @@ mod tests {
             ]
         });
         crate::catalog::backup_release_from(&answer, "linux").unwrap()
+    }
+
+    #[test]
+    fn retargeting_after_restart_keeps_the_automatic_release_and_asset_with_new_ownership() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let first = root.join("first");
+        let second = root.join("other/second");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(second.parent().unwrap()).unwrap();
+        let mut lib = Library::default();
+        let mut old = request(&lib, "game", first, None, None, false);
+        old.remember_release("v1", Some("v1-linux.zip"), None);
+        let work = claim(&old, false, &app_dir).unwrap();
+        fs::write(work.join("partial"), b"download").unwrap();
+        lib.pending_installs.insert("game".into(), old.clone());
+        lib.save(&app_dir).unwrap();
+        let mut loaded = Library::load(&app_dir);
+        let changed = request(&loaded, "game", second.clone(), None, Some("v1-linux.zip".into()), false);
+        assert_eq!(changed.release_tag().as_deref(), Some("v1"));
+        assert_eq!(changed.tag, None);
+        assert_eq!(changed.file.as_deref(), Some("v1-linux.zip"));
+        assert_ne!(changed.token, old.token);
+        assert_eq!(changed.anchor, second.parent().unwrap());
+        reserve(&mut loaded, "game", changed.clone(), &app_dir).unwrap();
+        assert!(!work.exists());
+        claim(&changed, false, &app_dir).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn retargeting_keeps_the_checked_backup_source_without_contacting_upstream() {
+        let root = temp();
+        let mut lib = Library::default();
+        let mut old = request(&lib, "game", root.join("first"), None, None, false);
+        old.remember_release("v1", Some("game-linux.zip"), Some(&backup_release()));
+        lib.pending_installs.insert("game".into(), old.clone());
+        let changed = request(&lib, "game", root.join("second"), None, None, false);
+        let (releases, from_backup) = changed.releases(
+            false,
+            || async { panic!("The checked backup must stay with its selected asset") },
+            || async { panic!("A different destination must not require the removed project") },
+        ).await.unwrap();
+        assert!(from_backup);
+        assert_eq!(changed.file.as_deref(), Some("game-linux.zip"));
+        assert_eq!(releases[0].assets[0].digest, backup_release().assets[0].digest);
+        assert_ne!(changed.token, old.token);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retargeting_and_selecting_newest_clears_the_old_release_and_backup() {
+        let root = temp();
+        let mut lib = Library::default();
+        let mut old = request(&lib, "game", root.join("first"), Some("v1".into()), None, false);
+        old.remember_release("v1", Some("game-linux.zip"), Some(&backup_release()));
+        lib.pending_installs.insert("game".into(), old.clone());
+        let changed = request(&lib, "game", root.join("second"), None, None, true);
+        assert_eq!(changed.tag, None);
+        assert_eq!(changed.selected_tag, None);
+        assert_eq!(changed.file, None);
+        assert!(changed.backup_release.is_none());
+        assert_ne!(changed.token, old.token);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
