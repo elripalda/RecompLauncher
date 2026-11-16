@@ -2617,9 +2617,9 @@ fn start_game_with_monitor_context(
         trail::note(format!("Play {id}: set up by hand, but it's built from the copy first; asking to use the launcher's way"));
         return Err(Error::Msg("NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".into()));
     }
-    // "Program it starts" picked by the player, and not the program the game's setup file starts
-    // (the game they moved somewhere else, or a build of their own): theirs starts, as it is. The
-    // setup file's command line is for its own program, and its own folder may be gone.
+    // The executable the player picked (Set Game Executable), not the program the game's setup
+    // file starts (the game they moved somewhere else, or a build of their own): theirs starts, as
+    // it is. The setup file's command line is for its own program, and its own folder may be gone.
     if manual.is_none() {
         if let Some(mine) = player_program(&st, id, &g) {
             trail::note(format!("Play {id}: the program the player picked ({}), not its setup file's", mine.display()));
@@ -2697,7 +2697,7 @@ fn start_game_with_monitor_context(
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
     if skipped && g.exe.is_none() {
-        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.".into()));
+        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.".into()));
     }
     // Settings on Match My Screen: the monitor's size now, when the monitor changed since it was
     // last written (a size picked in the game's own menu stays otherwise).
@@ -4717,7 +4717,7 @@ struct Setup {
     build_where: Option<PathBuf>,
     /// The player's own build in use, and where.
     build_dir: Option<PathBuf>,
-    /// The program the player picked with Choose Program, when Play starts it as it is instead of
+    /// The program the player picked with Set Game Executable, when Play starts it as it is instead of
     /// the way the setup file says (player_program). Shown, so the player can tell Easy Setup is
     /// out of the way, and undo it.
     own_program: Option<PathBuf>,
@@ -6839,7 +6839,7 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     Ok(out)
 }
 
-/// Choose Program undone (Let the Launcher Start It): the player's pick goes, and the launcher
+/// Set Game Executable undone (Use Default): the player's pick goes, and the launcher
 /// picks the program again by its own rules, so Play starts the game its setup file's way.
 #[tauri::command]
 fn forget_program(st: State<'_, App>, id: String) -> Res<Installed> {
