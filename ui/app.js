@@ -1057,7 +1057,8 @@ function tile(a, opts = {}) {
   // Not in the Library yet: add it from the cover; added: install from the cover.
   const qadd = !quick && !opts.mine && !S.library[a.id] && !S.jobs[a.id] && status(a) === 'get';
   const qsaved = qadd && isSaved(a.id);
-  const ver = opts.ver ? `<span class="s tver"><span>${esc(verText(opts.ver))}</span></span>` : '';
+  // With the setting on every tile keeps the line, empty when there's no version, so names in a row stay level.
+  const ver = opts.ver != null ? `<span class="s tver"><span>${opts.ver ? esc(verText(opts.ver)) : '&nbsp;'}</span></span>` : '';
   return `<div class="tile${opts.on ? ' on' : ''}" data-id="${esc(a.id)}">${cov ? `<span class="glow" style="background-image:url('${cssUrl(cov)}')"></span>` : ''}
     <button type="button" class="tile-b" data-act="${opts.act || 'open'}" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${poster(a, opts.mine, opts.inst, opts.wide, opts.w, opts.rank)}${vt ? '<span class="trow">' : ''}<span class="t"${shortName(a.name) !== a.name ? ` data-short="${esc(shortName(a.name))}" data-full="${esc(a.name)}"` : ''} title="${esc(a.name)}">${esc(a.name)}</span>${vt ? `${TICK(15)}</span>` : ''}${ver}<span class="s">${sub}${opts.wide ? '' : osMarks(a)}</span></button>
     ${quick ? `<span class="qpw"><button type="button" class="qp" data-act="${S.running.has(a.id) ? 'resume' : 'play'}" data-id="${esc(a.id)}" aria-label="${esc(tf('Play {name}', { name: a.name }))}" title="${esc(t('Play'))}">${PLAY}</button></span>` : ''}${qadd ? `<span class="qpw"><button type="button" class="qp${qsaved ? '' : ' add'}" data-act="${qsaved ? 'install' : 'addlib'}" data-id="${esc(a.id)}" aria-label="${esc(qsaved ? tf('Install {name}', { name: a.name }) : tf('Add {name} to your Library', { name: a.name }))}" title="${esc(qsaved ? t('Install') : t('Add to Library'))}">${qsaved ? DOWN : PLUS}</button></span>` : ''}</div>`;
@@ -1871,7 +1872,7 @@ function discoverGrid() {
 const showVer = () => !!(S.settings.ui || {}).show_versions;
 // A Discover tile: by game, the game's name with how many versions it has under it.
 const discTile = (a) => {
-  const ver = showVer() ? a.version : '';
+  const ver = showVer() ? a.version || '' : null;
   const sub = a._game ? `${LAYERS}<span>${esc(a._versions > 1 ? tn(a._versions, '1 version', '{n} versions') : a.name === a.game ? originName(a.origin) : byId(a.id).name)}</span>` : undefined;
   return tile(a, { quick: true, ver, sub });
 };
@@ -1999,7 +2000,7 @@ function libraryGrid() {
   // copies are 160, 400 and 640 wide: the one that covers the tile's real size on this screen.
   const px = libTile() * (devicePixelRatio || 1);
   const w = px > 420 ? 640 : px > 190 ? 400 : 0;
-  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, ver: showVer() ? x.g.tag : '', sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
+  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, ver: showVer() ? '' : null, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, ver: showVer() ? x.g.tag || '' : null, sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
 }
 
 

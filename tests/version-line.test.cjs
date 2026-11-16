@@ -43,6 +43,11 @@ test('a tile has no version line without one', () => {
   assert.doesNotMatch(html, /tver/);
 });
 
+test('a tile keeps an empty version line when the setting is on but there is no version', () => {
+  const html = vm.runInContext('tile(game, { ver: "" })', Object.assign(ctx({}), { game }));
+  assert.match(html, /<span class="s tver"><span>&nbsp;<\/span><\/span>/);
+});
+
 test('Discover leaves the version line off by default', () => {
   const html = vm.runInContext('discTile(game)', Object.assign(ctx({}), { game }));
   assert.doesNotMatch(html, /tver/);
@@ -55,7 +60,7 @@ test('Discover shows the latest version with the setting on', () => {
 
 test('the Library passes the installed release to its tiles only with the setting on', () => {
   const grid = fn('libraryGrid');
-  assert.match(grid, /ver: showVer\(\) \? x\.g\.tag : ''/);
+  assert.match(grid, /ver: showVer\(\) \? x\.g\.tag \|\| '' : null/);
 });
 
 test('a game page before install shows the latest version with its scan, then the stars', () => {
