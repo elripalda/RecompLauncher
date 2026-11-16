@@ -1464,7 +1464,7 @@ function pageHome() {
   // The banner and the weekly chart stay per recomp (picked and ranked as one); the rows list its games.
   const games = withGames(pool);
   const ready = oneEach(games.filter(turnkey).sort(byNew), true);
-  const played = libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
+  const played = jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = foundInFolders();
   const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));

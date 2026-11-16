@@ -160,7 +160,7 @@ test('Big Picture lists each game on its own and shows the recomp\'s games on it
   assert.match(tv, /const installed = \(\) => libRecs\(\)/);
   assert.match(tv, /Includes \{n\} Games/);
   assert.match(tv, /data-go-game="\$\{esc\(a\.parent\)\}"/);
-  assert.match(app, /const played = libRecs\(\)/);
+  assert.match(app, /const played = jumpRecs\(\)/);
   assert.match(app, /let list = libRecs\(\)\.map/);
 });
 
@@ -197,4 +197,21 @@ test('in the versions menu, a version from a recomp of several says which and ho
   assert.equal(vm.runInContext("packLine(byId('solo'))", c), '');
   assert.match(fn(app, 'verRow'), /packTag\(v\)/);
   assert.match(tv, /packLine\(v\), S\.library\[v\.id\]/);
+});
+
+test('installing a recomp of several games doesn\'t put all of them in Jump back in', () => {
+  const c = ctx();
+  install(c);
+  c.ids = new Map([['cogbox', COG]]);
+  vm.runInContext('addGameApps(ids); expandLib()', c);
+  const jump = () => vm.runInContext('jumpRecs().map((g) => g.id).sort().join()', c);
+  // gow2 was played: it and the other recomp, not the unplayed games.
+  assert.equal(jump(), 'cogbox--gow2,other');
+  // None played yet: the one it was installed from, else its first.
+  c.S.library['cogbox--gow2'].last_played = 0;
+  assert.equal(jump(), 'cogbox--gow1,other');
+  c.S.settings.ui.pack_from = { cogbox: 'cogbox--gow3' };
+  assert.equal(jump(), 'cogbox--gow3,other');
+  // The Library itself still has every game.
+  assert.equal(vm.runInContext('libRecs().length', c), 5);
 });

@@ -336,6 +336,8 @@
   const pins = () => ((S.settings.ui || {}).tv_pins || []).filter((id) => byId(id) || S.library[id]);
   const homePinned = () => (S.settings.ui || {}).tv_home === 'pinned';
   const installed = () => libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
+  // The dock and Continue playing: a recomp of several games brings only its played ones (jumpRecs).
+  const recent = () => jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
   const pool = () => visible().filter((a) => forOS(a) && !a.soon);
   const timeLine = (g) => (!g ? '' : !g.last_played ? t('Not played yet') : `${ago(g.last_played).replace(/^./, (c) => c.toUpperCase())} · ${playedFor(g)}`);
 
@@ -496,7 +498,7 @@
   const HOME_ROW = 14;
   function dockList() {
     if (homePinned()) { const p = pins().map(libAppOf); if (p.length) return { list: p, kind: 'pinned' }; }
-    const mine = installed().map((x) => x.a);
+    const mine = recent().map((x) => x.a);
     if (mine.length) return { list: mine.slice(0, DOCK_MAX), kind: 'mine' };
     // Nothing installed yet: the games picked for the top of Home, in their order.
     const picked = window.bannerApps && bannerApps();
@@ -516,7 +518,7 @@
     TV.hero = sel ? sel.id : null;
     const rows = [];
     // Below the dock, a press of down away: the rest of Home.
-    if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
+    if (d.kind === 'pinned') { const mine = recent().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
     const owned = foundInFolders();
     if (owned.length) rows.push(row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
     // As on the desktop: the rows list a multi-game recomp's games; the dock and the chart keep the recomp.

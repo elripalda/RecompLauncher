@@ -103,6 +103,24 @@ function expandLib() {
 const hasGames = (id) => !!((S.gameSets || {})[id] && S.gameSets[id].games && S.gameSets[id].games.length && S.library[id] && !S.library[id]._sub);
 // The Library's records as the lists show them: each game of a recomp, not the recomp itself.
 const libRecs = () => Object.values(S.library).filter((g) => !hasGames(g.id));
+// The game of a recomp the player installed it from (its full id): the one whose setup opens after
+// the download, and the one Jump back in shows of it besides those played.
+const packPick = (rid) => (((S.settings || {}).ui || {}).pack_from || {})[rid] || '';
+// Jump back in and Continue playing: installing a recomp of several games doesn't put all of them
+// there. Its games that were played are, and the one it was installed from (else its first, until
+// one is played).
+function jumpRecs() {
+  const recs = libRecs();
+  const played = new Set(recs.filter((g) => g._sub && g.last_played).map((g) => g.parent));
+  const first = {};
+  for (const g of recs) if (g._sub && !(g.parent in first)) first[g.parent] = g.id;
+  return recs.filter((g) => {
+    if (!g._sub || g.last_played) return true;
+    const pick = packPick(g.parent);
+    if (pick) return g.id === pick;
+    return !played.has(g.parent) && g.id === first[g.parent];
+  });
+}
 // The core's own records only (one per install): for sizes and counts of installs.
 const libInstalls = () => Object.values(S.library).filter((g) => !g._sub);
 
@@ -126,4 +144,4 @@ async function loadGameSets() {
   expandLib();
 }
 
-if (typeof window !== 'undefined') Object.assign(window, { gameList, gamesOf, subOf, parentId, childApp, addGameApps, expandLib, hasGames, libRecs, libInstalls, gameArgs, loadGameSets });
+if (typeof window !== 'undefined') Object.assign(window, { gameList, gamesOf, subOf, parentId, childApp, addGameApps, expandLib, hasGames, libRecs, jumpRecs, packPick, libInstalls, gameArgs, loadGameSets });
