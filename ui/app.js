@@ -2411,9 +2411,11 @@ function gameBody(a) {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const stats = inst
       ? [[t('Played'), playedFor(inst)], [t('Last played'), inst.last_played ? ago(inst.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
-      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—'], [t('Size'), a.size || '—']];
-    // Under the installed version: how the store checked that release (a player's own game has none).
-    const verScan = inst && inst.tag && !inst.local ? scanPill({ id, tag: inst.tag }) : '';
+      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—']];
+    // Under the version: how the store checked that release (a player's own game has none). Before
+    // installing it's the latest release, so the player sees it was checked before downloading it.
+    const verTag = inst ? (inst.local ? '' : inst.tag) : a.version;
+    const verScan = verTag ? scanPill({ id, tag: verTag }) : '';
     body = `<div class="stack"><div class="stats">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}</div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
