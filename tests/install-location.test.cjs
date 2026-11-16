@@ -232,6 +232,75 @@ function controllerContext(choices) {
   return { c, calls, starts };
 }
 
+async function desktopPreviewContext() {
+  const { c, calls } = context();
+  const starts = [], pending = [], listeners = {};
+  const pathField = { value: '/games/example' }, confirm = { disabled: false }, free = { textContent: '' };
+  let modal;
+  const invoke = c.invoke;
+  c.invoke = (command, args) => {
+    if (command === 'install_location' && args.dir) {
+      calls.push({ command, args });
+      return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+    }
+    return invoke(command, args);
+  };
+  c.libChoices = () => '';
+  c.$ = (selector) => {
+    if (selector === '[data-install-path]') return pathField;
+    if (selector === '[data-x="yes"]') return confirm;
+    if (selector === '[data-install-free]') return free;
+    return { checked: false };
+  };
+  c.modal = (_html, click) => {
+    modal = { dataset: {}, click, addEventListener: (name, fn) => { listeners[name] = fn; } };
+    return modal;
+  };
+  c.startInstall = (...args) => starts.push(args);
+  vm.runInContext(fn('locationModal'), c);
+  await c.locationModal('example');
+  return { c, starts, pending, modal, listeners, pathField, confirm };
+}
+
+test('desktop cannot confirm the previous library while the selected library is resolving', async () => {
+  const { starts, pending, modal, listeners, pathField, confirm } = await desktopPreviewContext();
+  const selection = listeners.change({ target: { name: 'lib', value: '/other-drive' } });
+  assert.equal(confirm.disabled, true);
+  await modal.click({ dataset: { x: 'yes' } }, () => {});
+  assert.equal(starts.length, 0);
+  pending[0].resolve({ target: '/other-drive/example', free: 100 });
+  await selection;
+  assert.equal(confirm.disabled, false);
+  assert.equal(pathField.value, '/other-drive/example');
+  await modal.click({ dataset: { x: 'yes' } }, () => {});
+  assert.equal(starts[0][4], '/other-drive/example');
+});
+
+test('an older preview cannot enable confirmation while a newer selection is pending', async () => {
+  const { starts, pending, modal, listeners, pathField, confirm } = await desktopPreviewContext();
+  const first = listeners.change({ target: { name: 'lib', value: '/first' } });
+  const second = listeners.change({ target: { name: 'lib', value: '/second' } });
+  pending[0].resolve({ target: '/first/example' });
+  await first;
+  assert.equal(confirm.disabled, true);
+  await modal.click({ dataset: { x: 'yes' } }, () => {});
+  assert.equal(starts.length, 0);
+  pending[1].resolve({ target: '/second/example' });
+  await second;
+  assert.equal(pathField.value, '/second/example');
+  assert.equal(confirm.disabled, false);
+});
+
+test('a failed library preview cannot install into the previous library', async () => {
+  const { starts, pending, modal, listeners, confirm } = await desktopPreviewContext();
+  const selection = listeners.change({ target: { name: 'lib', value: '/unavailable' } });
+  pending[0].reject(new Error('Drive unavailable'));
+  await assert.rejects(selection, /Drive unavailable/);
+  assert.equal(confirm.disabled, true);
+  await modal.click({ dataset: { x: 'yes' } }, () => {});
+  assert.equal(starts.length, 0);
+});
+
 test('desktop confirmation preserves the exact folder and older release without registering a library', async () => {
   const { c, calls } = context();
   const starts = [], saved = [];

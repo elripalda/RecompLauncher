@@ -623,8 +623,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     if !keep {
         let _ = std::fs::remove_file(&got.file);
     }
-    if let Some(p) = prev.as_ref().filter(|p| p.path == target) {
-        let removed = install::remove_dropped(&target, &p.files, &files, p.updated_at, p.exe.as_deref());
+    if let Some(p) = prev.as_ref() {
+        let removed = install::remove_dropped_for(p, &target, &files);
         if !removed.is_empty() {
             trail::note(format!("Install {id}: {} files of {} that {tag_got} no longer has, removed", removed.len(), p.tag));
         }

@@ -113,6 +113,13 @@ pub fn same(a: &Path, b: &Path) -> bool {
     names(a) == names(b)
 }
 
+pub fn same_location(a: &Path, b: &Path) -> bool {
+    match (normalized(a), normalized(b)) {
+        (Ok(a), Ok(b)) => same(&a, &b),
+        _ => false,
+    }
+}
+
 pub fn overlaps(a: &Path, b: &Path) -> bool {
     let (a, b) = (names(a), names(b));
     a.starts_with(&b) || b.starts_with(&a)
@@ -346,6 +353,32 @@ mod tests {
         let path = std::env::temp_dir().join(format!("recomp-location-{}-{time}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         normalized(&path).unwrap()
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn update_removes_obsolete_files_when_the_saved_install_path_uses_a_folder_link() {
+        let root = temp();
+        let target = root.join("real-game");
+        let alias = root.join("saved-game");
+        fs::create_dir(&target).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        #[cfg(windows)]
+        crate::win::junction(&target, &alias).unwrap();
+        fs::write(target.join("obsolete.c"), b"old source").unwrap();
+        fs::write(target.join("game.exe"), b"new release").unwrap();
+        fs::write(target.join("save.sav"), b"save").unwrap();
+        let previous = Installed {
+            path: alias, files: vec!["obsolete.c".into(), "game.exe".into()],
+            updated_at: crate::library::now() + 5, ..Default::default()
+        };
+        let removed = crate::install::remove_dropped_for(&previous, &target, &["game.exe".into()]);
+        assert_eq!(removed, vec![PathBuf::from("obsolete.c")]);
+        assert!(!target.join("obsolete.c").exists());
+        assert_eq!(fs::read(target.join("game.exe")).unwrap(), b"new release");
+        assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"save");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Easy Install: choose the game's installation folder
 
-Status: draft implementation with both rounds of review findings addressed below. Existing manifest
+Status: draft implementation with all three rounds of review findings addressed below. Existing manifest
 fields and `{install}` support the selected folder; no manifest extension was added. External builders
 retain their declared output paths until their integrations expose a supported destination option.
 
@@ -72,6 +72,26 @@ The second review identified one P1 and three P2 issues, addressed with addition
 The player should choose the final game folder before an Easy Install begins. The release,
 launcher-managed game content, and supported setup/build output should stay under that folder.
 Updates, retries and later setup must use the same location.
+
+## Repository, preview and release-note follow-up
+
+The third review identified four additional P2 issues, addressed with regression tests:
+
+- [x] **Cloned repositories transfer across volumes.** Repository entries try a rename and fall
+  back to copying directories, files and links. Executable permissions and `.git` metadata are
+  retained, and existing release files remain authoritative. A real `/tmp` → `/dev/shm` test
+  exercises the same transfer helper used after cloning, without contacting GitHub.
+- [x] **Confirm uses a resolved library selection.** The desktop dialog disables Install while the
+  newest preview is pending or invalid. Older responses cannot enable confirmation. Delayed-response
+  tests select another library, attempt immediate confirmation, and verify the chosen destination.
+- [x] **Updates clean obsolete files through folder aliases.** Dropped-file cleanup compares
+  normalized locations, including symlinks and Windows junctions. Its regression test uses an alias
+  in the saved installation and verifies that obsolete source is removed while current files and
+  saves remain.
+- [x] **SDK handoffs stay private.** `tools/public-release-notes.py` removes the draft title and
+  maintainer-only SDK section, retaining later public sections. The release workflow uses that
+  filtered body for new releases and updates existing drafts. Tests render the actual Beta 53
+  notes and verify the SDK handoff remains in the source draft only.
 
 ## What exists today
 

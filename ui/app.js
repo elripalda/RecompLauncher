@@ -6320,6 +6320,8 @@ async function locationModal(id, tag) {
     <label class="loc-ask"><input type="checkbox" data-ask-where${(S.settings.ui || {}).ask_where ? ' checked' : ''}><span>${esc(t('Ask for ordinary installs too'))}</span></label>
     <div class="acts"><button type="button" class="btn" data-x="browse">${esc(t('Choose game folder…'))}</button><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Install here'))}</button></div>`;
   let previewVersion = 0;
+  let previewPending = false;
+  let previewValid = true;
   const m = modal(draw(), async (x, close) => {
     if (x.dataset.x === 'browse') {
       const picked = await pickFile({ title: t('Choose game folder…'), directory: true }).catch(fail);
@@ -6332,7 +6334,7 @@ async function locationModal(id, tag) {
       $('[data-install-path]', m).focus();
       return;
     }
-    if (x.dataset.x !== 'yes' || m.dataset.busy) return;
+    if (x.dataset.x !== 'yes' || m.dataset.busy || previewPending || !previewValid) return;
     previewVersion++;
     m.dataset.busy = '1';
     try {
@@ -6348,14 +6350,24 @@ async function locationModal(id, tag) {
   }, t('Choose where to install'));
   const preview = async (args) => {
     const version = ++previewVersion;
+    previewPending = true;
+    previewValid = false;
+    $('[data-x="yes"]', m).disabled = true;
     $('[data-install-free]', m).textContent = t('Free space unknown');
     try {
       const checked = await invoke('install_location', { id, ...args });
       if (version !== previewVersion) return;
       location = checked;
+      previewValid = true;
       $('[data-install-path]', m).value = location.target;
       $('[data-install-free]', m).textContent = location.free == null ? t('Free space unknown') : tf('{free} free', { free: fmtB(location.free) });
     } catch (e) { if (version === previewVersion) fail(e); }
+    finally {
+      if (version === previewVersion) {
+        previewPending = false;
+        $('[data-x="yes"]', m).disabled = !previewValid;
+      }
+    }
   };
   m.addEventListener('change', (e) => {
     if (e.target.name === 'lib') return preview({ dir: e.target.value, target: null });

@@ -231,8 +231,8 @@ jobs:
           beta=$(echo "$v" | sed -n 's/.*-beta\.\([0-9]*\).*/\1/p')
           title="RecompLauncher $major_minor${beta:+ Beta $beta}"
           notes="docs/PATCH-NOTES-$major_minor${beta:+-beta-$beta}.md"
-          # The notes file's own heading isn't repeated in the release.
-          if [ -f "$notes" ]; then sed '1{/^# /d}' "$notes" | sed '/./,$!d' > body.md; else : > body.md; fi
+          # The SDK handoff stays in the draft for maintainers, never in the release players see.
+          if [ -f "$notes" ]; then python3 tools/public-release-notes.py "$notes" > body.md; else : > body.md; fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             # Only ever a draft: a published release is never changed from here.
             if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
@@ -240,6 +240,7 @@ jobs:
               exit 1
             fi
             gh release upload "$TAG" out/* --clobber
+            gh release edit "$TAG" --notes-file body.md
           else
             gh release create "$TAG" out/* --draft --prerelease --title "$title" --notes-file body.md --verify-tag
           fi

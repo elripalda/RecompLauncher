@@ -359,6 +359,51 @@ mod tests {
         copy_tree(&d.join("b/game"), &d.join("c/game"), &mut done, 5, &|_, _| {}).unwrap();
         assert_eq!(done, 5);
     }
+
+    #[test]
+    fn repository_files_do_not_replace_release_files() {
+        let d = tmp("repo-release");
+        let scratch = d.join("clone");
+        let into = d.join("game");
+        fs::create_dir_all(scratch.join("src")).unwrap();
+        fs::create_dir_all(&into).unwrap();
+        fs::write(scratch.join("game.exe"), b"repo version").unwrap();
+        fs::write(scratch.join("src/game.c"), b"source").unwrap();
+        fs::write(into.join("game.exe"), b"release version").unwrap();
+        install_clone(&scratch, &into).unwrap();
+        assert_eq!(fs::read(into.join("game.exe")).unwrap(), b"release version");
+        assert_eq!(fs::read(into.join("src/game.c")).unwrap(), b"source");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cloned_repository_entries_transfer_across_filesystems() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let d = tmp("repo-other-volume");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let into = Path::new("/dev/shm").join(format!("recomp-repo-{}-{time}", std::process::id()));
+        fs::create_dir(&into).unwrap();
+        assert_ne!(fs::metadata(&d).unwrap().dev(), fs::metadata(&into).unwrap().dev());
+        let scratch = d.join("clone");
+        fs::create_dir_all(scratch.join(".git/objects")).unwrap();
+        fs::create_dir_all(scratch.join("src/nested")).unwrap();
+        fs::write(scratch.join(".git/HEAD"), b"ref: refs/heads/main").unwrap();
+        fs::write(scratch.join("src/nested/game.c"), b"source").unwrap();
+        fs::write(scratch.join("build.sh"), b"#!/bin/sh\n").unwrap();
+        fs::set_permissions(scratch.join("build.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink("nested/game.c", scratch.join("src/current.c")).unwrap();
+        fs::write(scratch.join("release.exe"), b"repo version").unwrap();
+        fs::write(into.join("release.exe"), b"downloaded release").unwrap();
+        install_clone(&scratch, &into).unwrap();
+        assert_eq!(fs::read(into.join(".git/HEAD")).unwrap(), b"ref: refs/heads/main");
+        assert_eq!(fs::read(into.join("src/nested/game.c")).unwrap(), b"source");
+        assert_eq!(fs::read_link(into.join("src/current.c")).unwrap(), PathBuf::from("nested/game.c"));
+        assert_eq!(fs::metadata(into.join("build.sh")).unwrap().permissions().mode() & 0o777, 0o755);
+        assert_eq!(fs::read(into.join("release.exe")).unwrap(), b"downloaded release");
+        fs::remove_dir_all(into).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
 }
 
 /// For a game whose own setup works from a clone of its repo: clone it (shallow) and put it in
@@ -395,13 +440,48 @@ pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> 
         let why = String::from_utf8_lossy(&out.stderr).lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("").to_string();
         return Err(Error::Msg(format!("Couldn't get its project files from GitHub. {why}")));
     }
-    fs::create_dir_all(into)?;
-    for e in fs::read_dir(scratch)?.flatten() {
-        let to = into.join(e.file_name());
-        if !to.exists() {
-            fs::rename(e.path(), &to)?;
-        }
-    }
+    install_clone(scratch, into)?;
     let _ = fs::remove_dir_all(scratch);
     Ok(())
+}
+
+fn install_clone(scratch: &Path, into: &Path) -> io::Result<()> {
+    fs::create_dir_all(into)?;
+    for e in fs::read_dir(scratch)? {
+        let e = e?;
+        let to = into.join(e.file_name());
+        // Release files win, including a link whose target is currently unavailable.
+        if fs::symlink_metadata(&to).is_ok() {
+            continue;
+        }
+        if fs::rename(e.path(), &to).is_ok() {
+            continue;
+        }
+        copy_repo_entry(&e.path(), &to)?;
+    }
+    Ok(())
+}
+
+fn copy_repo_entry(from: &Path, to: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(from)?;
+    if metadata.is_symlink() {
+        #[cfg(unix)]
+        return std::os::unix::fs::symlink(fs::read_link(from)?, to);
+        #[cfg(windows)]
+        return if from.is_dir() {
+            std::os::windows::fs::symlink_dir(fs::read_link(from)?, to)
+        } else {
+            std::os::windows::fs::symlink_file(fs::read_link(from)?, to)
+        };
+    }
+    if !metadata.is_dir() {
+        fs::copy(from, to)?;
+        return Ok(());
+    }
+    fs::create_dir(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        copy_repo_entry(&entry.path(), &to.join(entry.file_name()))?;
+    }
+    fs::set_permissions(to, metadata.permissions())
 }

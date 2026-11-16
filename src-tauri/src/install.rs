@@ -805,6 +805,13 @@ fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
 /// 0.2.0's runtime/gfx_present.c broke 0.3.0's link with duplicate symbols). A file changed since
 /// that install (settings the game rewrote, a file the player edited) and `keep` (the program the
 /// player starts) stay. Returns what it removed.
+pub fn remove_dropped_for(previous: &crate::library::Installed, target: &Path, new: &[PathBuf]) -> Vec<PathBuf> {
+    if !crate::install_location::same_location(&previous.path, target) {
+        return vec![];
+    }
+    remove_dropped(target, &previous.files, new, previous.updated_at, previous.exe.as_deref())
+}
+
 pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u64, keep: Option<&Path>) -> Vec<PathBuf> {
     // Case doesn't tell files apart on Windows and Mac: a file only renamed in case is still there.
     let fold = |p: &Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
