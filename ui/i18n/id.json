@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} tetap di versi yang dimilikinya.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} sudah berisi file {name}. Launcher bisa memakainya dari sana.",
  "{size} freed. Your copy is in the {bin}.": "{size} dikosongkan. Salinanmu ada di: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} sudah rilis. Game ini tetap di {old} sampai kamu melanjutkan pembaruan."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} sudah rilis. Game ini tetap di {old} sampai kamu melanjutkan pembaruan.",
+ "Show Versions Under Names": "Tampilkan Versi di Bawah Nama",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Versi terbaru setiap recomp di Jelajahi, dan versi yang kamu pasang di Pustaka."
 }

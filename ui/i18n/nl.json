@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} blijft op de versie die het heeft.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} heeft de bestanden van {name} al. De launcher kan ze daar gebruiken.",
  "{size} freed. Your copy is in the {bin}.": "{size} vrijgemaakt. Je kopie staat in: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} is uit. Dit spel blijft op {old} tot je de updates hervat."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} is uit. Dit spel blijft op {old} tot je de updates hervat.",
+ "Show Versions Under Names": "Versies onder namen tonen",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "De nieuwste versie van elke recomp in Ontdekken, en de versie die je hebt geïnstalleerd in de Bibliotheek."
 }

@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name}이(가) 지금 버전에 머뭅니다.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path}에 이미 {name}의 파일이 있습니다. 런처가 거기서 사용할 수 있습니다.",
  "{size} freed. Your copy is in the {bin}.": "{size} 확보했습니다. 사본은 {bin}에 있습니다.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version}이(가) 나왔습니다. 업데이트를 다시 시작할 때까지 이 게임은 {old}에 머뭅니다."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version}이(가) 나왔습니다. 업데이트를 다시 시작할 때까지 이 게임은 {old}에 머뭅니다.",
+ "Show Versions Under Names": "이름 아래에 버전 표시",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "탐색에서는 각 리컴프의 최신 버전을, 라이브러리에서는 설치된 버전을 보여 줍니다."
 }

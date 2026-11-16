@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} залишається на своїй версії.",
  "{path} already has the files of {name}. The launcher can use them from there.": "У {path} уже є файли {name}. Лаунчер може використовувати їх звідти.",
  "{size} freed. Your copy is in the {bin}.": "Звільнено {size}. Ваша копія тут: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "Вийшла версія {version}. Ця гра залишається на {old}, доки ви не відновите оновлення."
+ "{version} is out. This game stays on {old} until you resume updates.": "Вийшла версія {version}. Ця гра залишається на {old}, доки ви не відновите оновлення.",
+ "Show Versions Under Names": "Показувати версії під назвами",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Найновіша версія кожного рекомпу в «Огляді» та встановлена версія в Бібліотеці."
 }

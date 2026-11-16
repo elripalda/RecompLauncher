@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} อยู่ที่เวอร์ชันที่มี",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} มีไฟล์ของ {name} อยู่แล้ว ลันเชอร์ใช้ไฟล์จากที่นั่นได้",
  "{size} freed. Your copy is in the {bin}.": "คืนพื้นที่ {size} แล้ว สำเนาของคุณอยู่ใน: {bin}",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} ออกแล้ว เกมนี้จะอยู่ที่ {old} จนกว่าคุณจะอัปเดตต่อ"
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} ออกแล้ว เกมนี้จะอยู่ที่ {old} จนกว่าคุณจะอัปเดตต่อ",
+ "Show Versions Under Names": "แสดงเวอร์ชันใต้ชื่อ",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "เวอร์ชันล่าสุดของแต่ละ recomp ในหน้าค้นพบ และเวอร์ชันที่คุณติดตั้งไว้ในคลัง"
 }

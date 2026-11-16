@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} 停留在当前版本。",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} 中已有 {name} 的文件。启动器可以直接从那里使用它们。",
  "{size} freed. Your copy is in the {bin}.": "已释放 {size}。你的游戏副本在{bin}中。",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} 已推出。在你恢复更新之前，此游戏会停留在 {old}。"
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} 已推出。在你恢复更新之前，此游戏会停留在 {old}。",
+ "Show Versions Under Names": "在名称下显示版本",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "在“发现”中显示每个 recomp 的最新版本，在库中显示你已安装的版本。"
 }

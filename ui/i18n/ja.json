@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} は今のバージョンのままです。",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} にはすでに {name} のファイルがあります。ランチャーはそこから使えます。",
  "{size} freed. Your copy is in the {bin}.": "{size} 空きました。コピーは {bin} にあります。",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} が出ています。更新を再開するまで、このゲームは {old} のままです。"
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} が出ています。更新を再開するまで、このゲームは {old} のままです。",
+ "Show Versions Under Names": "名前の下にバージョンを表示",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "「見つける」では各リコンプの最新バージョン、ライブラリではインストール済みのバージョン。"
 }

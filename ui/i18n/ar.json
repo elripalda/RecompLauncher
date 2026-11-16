@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "تبقى {name} على الإصدار الذي لديها.",
  "{path} already has the files of {name}. The launcher can use them from there.": "يحتوي {path} بالفعل على ملفات {name}. يمكن للمشغّل استخدامها من هناك.",
  "{size} freed. Your copy is in the {bin}.": "تم إخلاء {size}. نسختك في: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "صدر {version}. تبقى هذه اللعبة على {old} حتى تستأنف التحديثات."
+ "{version} is out. This game stays on {old} until you resume updates.": "صدر {version}. تبقى هذه اللعبة على {old} حتى تستأنف التحديثات.",
+ "Show Versions Under Names": "إظهار الإصدارات تحت الأسماء",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "أحدث إصدار لكل recomp في «استكشاف»، والإصدار المثبّت لديك في المكتبة."
 }

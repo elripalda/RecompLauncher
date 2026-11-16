@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} sahip olduğu sürümde kalıyor.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} zaten {name} dosyalarını içeriyor. Başlatıcı onları oradan kullanabilir.",
  "{size} freed. Your copy is in the {bin}.": "{size} boşaltıldı. Kopyan şurada: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "{version} çıktı. Güncellemeleri sürdürene kadar bu oyun {old} sürümünde kalır."
+ "{version} is out. This game stays on {old} until you resume updates.": "{version} çıktı. Güncellemeleri sürdürene kadar bu oyun {old} sürümünde kalır.",
+ "Show Versions Under Names": "İsimlerin Altında Sürümleri Göster",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Keşfet'te her recomp'un en yeni sürümü, Kitaplık'ta ise yüklü olan sürüm."
 }

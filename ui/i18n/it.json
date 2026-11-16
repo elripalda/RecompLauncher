@@ -3319,5 +3319,7 @@
  "{name} stays on the version it has.": "{name} resta sulla versione che ha.",
  "{path} already has the files of {name}. The launcher can use them from there.": "{path} contiene già i file di {name}. Il launcher può usarli da lì.",
  "{size} freed. Your copy is in the {bin}.": "{size} liberati. La tua copia è in: {bin}.",
- "{version} is out. This game stays on {old} until you resume updates.": "È uscita la {version}. Questo gioco resta sulla {old} finché non riprendi gli aggiornamenti."
+ "{version} is out. This game stays on {old} until you resume updates.": "È uscita la {version}. Questo gioco resta sulla {old} finché non riprendi gli aggiornamenti.",
+ "Show Versions Under Names": "Mostra le versioni sotto i nomi",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "La versione più recente di ogni recomp in Scopri e la versione installata nella Libreria."
 }
