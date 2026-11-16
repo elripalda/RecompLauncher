@@ -553,6 +553,21 @@ settings are written. It runs again whenever the player changes their copy.
   when your own launcher built it, and plays without asking for the copy (unless `start` uses
   `{game}`). If one goes missing, the player is asked to set up again.
 
+**A second file from the player.** When your step needs more than the copy, like an official patch
+or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{game}`. The
+setup screen asks for both. Don't download it in the step: players bring their own files.
+
+```json
+"inputs": [
+  { "id": "patch", "label": "The official 2.0 patch (patch20.zip)", "role": "update",
+    "formats": [{ "type": "file", "extensions": ["zip"] }] }
+],
+"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game", "{game}", "--patch", "{input:patch}"] }
+```
+
+[SETUP-INPUTS.md](SETUP-INPUTS.md) has the rest: several discs, optional DLC, and `{input:<id>}` in
+`start.args` and `start.env` too.
+
 #### `prepare.options`: ticks for a vendor's SDK
 
 Some builds need a vendor's SDK at build time, like NVIDIA's DLSS SDK: it's not open source, you
