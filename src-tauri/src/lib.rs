@@ -14,6 +14,7 @@ mod appimage_update;
 pub mod art;
 pub mod assets;
 pub mod boot;
+mod backup_store;
 pub mod catalog;
 pub mod cloud;
 pub mod devtools;
@@ -172,11 +173,6 @@ impl App {
 
 fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(Value::as_str).unwrap_or("")
-}
-
-/// Where a game's backups go: beside it, in its library's .backups folder.
-fn backups_dir(g: &Installed) -> PathBuf {
-    g.path.parent().unwrap_or(Path::new(".")).join(".backups").join(g.path.file_name().unwrap_or_default())
 }
 
 // ---------- installing ----------
@@ -544,8 +540,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     // An update: keep a copy of the player's saves and settings first.
     if let (Some(p), true) = (&prev, backup_first) {
         report(Progress::new(id, "backup", 0, 0));
-        let (dir, files, bdir) = (p.path.clone(), inputs::release_files(p), backups_dir(p));
-        let _ = tokio::task::spawn_blocking(move || manage::backup(&dir, &files, &bdir, 5)).await;
+        let (game, app_dir) = (p.clone(), st.dir.clone());
+        tokio::task::spawn_blocking(move || backup_store::create(&game, &app_dir)).await.map_err(|e| Error::Msg(e.to_string()))?
+            .map_err(|e| Error::Msg(format!("The game wasn't updated because its backup couldn't be saved: {e}")))?;
     }
 
     // Only an installer: it waits in the launcher's staging folder for Set Up, which runs it when
@@ -1018,7 +1015,7 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
         let mut request = install_location::request(&l, &id, target, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), reset_release.unwrap_or(false));
         request.source = source.map(PathBuf::from).or(request.source);
         install_location::validate_source(&request.target, request.source.as_deref())?;
-        l.pending_installs.insert(id.clone(), request.clone());
+        install_location::reserve(&mut l, &id, request.clone(), &st.dir)?;
         l.save(&st.dir)?;
         install::unpause(&id);
         install::resumed(&id);
@@ -1386,6 +1383,7 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     if library::shared_folder(&g.path, &st.lib.lock().unwrap().settings.all_libraries()) {
         return Err(Error::Msg("Its folder holds more than the game, so it stays where it is. Install it into a library to be able to move it.".into()));
     }
+    install_location::ensure_movable(&st.lib.lock().unwrap(), &id)?;
     let dest = PathBuf::from(&to).join(g.path.file_name().unwrap_or_default());
     if dest == g.path {
         return Ok(g);
@@ -1396,17 +1394,15 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
         if use_there != Some(true) {
             return Err(Error::Msg(format!("SAME_THERE|{}", dest.display())));
         }
-        let old_b = backups_dir(&g);
+        backup_store::preserve_before_move(&g, &st.dir)?;
         let mut out = g.clone();
         out.path = dest;
-        if old_b.is_dir() && !backups_dir(&out).exists() {
-            let _ = manage::move_dir(&old_b, &backups_dir(&out), &|_, _| {});
-        }
         st.lib.lock().unwrap().installed.insert(id.clone(), out.clone());
         st.save();
         trail::note(format!("{id}: uses the copy already at {} (the old folder stays at {})", out.path.display(), g.path.display()));
         return Ok(out);
     }
+    backup_store::preserve_before_move(&g, &st.dir)?;
     looks::tidy(&st.dir, &id);
     st.moving.lock().unwrap().insert(id.clone());
     let (from, d2, app2, id2) = (g.path.clone(), dest.clone(), app.clone(), id.clone());
@@ -1423,13 +1419,9 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     .map_err(|e| Error::Msg(e.to_string()))?;
     st.moving.lock().unwrap().remove(&id);
     r?;
-    // Its backups go with it.
-    let old_b = backups_dir(&g);
+    // Private backups are keyed by game ID and remain available after the path changes.
     let mut out = g.clone();
     out.path = dest;
-    if old_b.is_dir() {
-        let _ = manage::move_dir(&old_b, &backups_dir(&out), &|_, _| {});
-    }
     st.lib.lock().unwrap().installed.insert(id.clone(), out.clone());
     st.save();
     let _ = app.emit("move", json!({"id": id, "done": 1, "total": 1, "finished": true}));
@@ -1452,7 +1444,7 @@ fn holds_same_game(g: &Installed, dest: &Path) -> bool {
 #[tauri::command(async)]
 fn backups(st: State<'_, App>, id: String) -> Res<Vec<manage::Backup>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    Ok(manage::list_backups(&backups_dir(&g)))
+    Ok(backup_store::list(&g, &st.dir))
 }
 
 #[tauri::command]
@@ -1461,7 +1453,8 @@ async fn backup_now(st: State<'_, App>, id: String) -> Res<Option<manage::Backup
     if g.local {
         return Ok(None);
     }
-    tokio::task::spawn_blocking(move || manage::backup(&g.path, &inputs::release_files(&g), &backups_dir(&g), 5)).await.map_err(|e| Error::Msg(e.to_string()))?
+    let app_dir = st.dir.clone();
+    tokio::task::spawn_blocking(move || backup_store::create(&g, &app_dir)).await.map_err(|e| Error::Msg(e.to_string()))?
 }
 
 #[tauri::command]
@@ -1473,8 +1466,8 @@ async fn restore_backup(st: State<'_, App>, id: String, name: String) -> Res<usi
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
         return Err(Error::Msg("That isn't one of its backups.".into()));
     }
-    let file = backups_dir(&g).join(&name);
-    tokio::task::spawn_blocking(move || manage::restore(&file, &g.path)).await.map_err(|e| Error::Msg(e.to_string()))?
+    let app_dir = st.dir.clone();
+    tokio::task::spawn_blocking(move || backup_store::restore(&g, &app_dir, &name)).await.map_err(|e| Error::Msg(e.to_string()))?
 }
 
 /// Text Size: the launcher's window zoomed (0.9 to 1.5).

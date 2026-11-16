@@ -5847,7 +5847,7 @@ async function startInstall(id, dir, tag, anyway, target) {
   const file = resetRelease ? null : previous.file || null;
   const args = { ...previous, id, dir: null, target: location.target, tag: resetRelease ? tag : previous.tag || null, file, resetRelease, source: S.library[id] ? null : (S.prePicked || {})[id] || (S.owned[id] || {}).path || null };
   dlArgs(id, args);
-  try { await invoke('install', args); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
+  try { await invoke('install', args); } catch (err) { dlArgs(id, previous); delete S.jobs[id]; fail(err); render(true); }
 }
 // What each download was started with, so Resume carries on with the same version and folder.
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }

@@ -46,6 +46,11 @@ installs return to the same folder, including after restarting the launcher. Use
 an installed game's location. Settings → **Ask Where to Install** also enables the prompt for
 ordinary installs; Easy Install always offers it.
 
+Finish or cancel a pending update before moving its game. A failed download can be retried in
+another empty folder once its old download work is cleaned up. If extraction has already started,
+retry in the original folder or remove that partial folder before selecting another destination;
+the launcher keeps its recovery record until then.
+
 If a game's folder is missing, **Find Its Folder…** can link an existing folder again. This does
 not make that folder launcher-owned: uninstall keeps its contents, including unrelated files.
 Uninstalling or removing a game also clears unfinished update requests, so a later reinstall starts
@@ -67,6 +72,12 @@ can also choose another location; the launcher asks you to accept it before fini
 ## Will it touch my saves?
 
 It backs up a game's saves before every update. You can also back up, restore and turn on cloud saves per game from the game's **Saves** tab.
+
+Update backups and **Back Up Now** use `backups/<game-id>/` in the launcher's data folder, so the
+game folder's parent need not be writable. The history stays available when you move the game.
+Readable backups from the older library `.backups` location remain listed and restorable, and are
+copied into private storage before Move changes their location. If an enabled update backup fails,
+the update stops and reports the failure.
 
 ## Does it collect data?
 

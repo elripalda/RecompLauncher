@@ -141,6 +141,19 @@ test('an invalid destination stops before starting any download', async () => {
   assert.deepEqual(calls.map((x) => x.command), ['install_location']);
 });
 
+test('a refused destination change keeps the original resumable request', async () => {
+  const { c } = context();
+  c.S.pendingInstalls = { example: { target: '/drive/Original', tag: 'v1', file: 'game.zip' } };
+  c.invoke = async (command, args) => {
+    if (command === 'install_location') return { target: args.target };
+    if (command === 'install') throw new Error('Retry the partial extraction in its original folder');
+  };
+  await assert.rejects(c.startInstall('example', undefined, undefined, false, '/drive/Other'), /partial extraction/);
+  assert.equal(c.installArgs('example').target, '/drive/Original');
+  assert.equal(c.installArgs('example').tag, 'v1');
+  assert.equal(c.installArgs('example').file, 'game.zip');
+});
+
 test('resuming a paused download preserves its destination and selected build', () => {
   const { c, calls } = context();
   c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v1', file: 'eu.zip' });

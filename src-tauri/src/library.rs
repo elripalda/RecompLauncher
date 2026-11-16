@@ -500,8 +500,7 @@ impl Library {
         }
         for (other, game) in &self.installed {
             if other == id { continue; }
-            let existing = crate::install_location::normalized(&game.path)?;
-            if crate::install_location::overlaps(&to, &existing) {
+            if crate::install_location::conflicts(&to, &game.path) {
                 return Err(crate::Error::Msg(format!("That folder overlaps {}. Choose a separate game folder.", game.name)));
             }
         }

@@ -125,7 +125,7 @@ pub fn overlaps(a: &Path, b: &Path) -> bool {
     a.starts_with(&b) || b.starts_with(&a)
 }
 
-fn conflicts(target: &Path, other: &Path) -> bool {
+pub fn conflicts(target: &Path, other: &Path) -> bool {
     normalized(other).map(|p| overlaps(target, &p)).unwrap_or_else(|_| overlaps(target, other))
 }
 
@@ -343,6 +343,32 @@ pub fn clear_pending(lib: &mut Library, id: &str, app_dir: &Path) {
     }
 }
 
+pub fn ensure_movable(lib: &Library, id: &str) -> Res<()> {
+    if lib.pending_installs.contains_key(id) {
+        return Err(Error::Msg("Finish or cancel this game's pending update before moving it.".into()));
+    }
+    Ok(())
+}
+
+pub fn reserve(lib: &mut Library, id: &str, request: Request, app_dir: &Path) -> Res<()> {
+    if let Some(previous) = lib.pending_installs.get(id).filter(|r| !same(&r.target, &request.target)) {
+        let available = previous.target.ancestors().find(|path| path.is_dir());
+        if available.is_none() || previous.volume.is_some_and(|v| available.and_then(volume) != Some(v)) {
+            return Err(Error::Msg("Reconnect the previous installation's drive before choosing another folder.".into()));
+        }
+        previous.target.try_exists()?;
+        // A partial game cannot lose its only ownership record. Download-only work can be abandoned.
+        if !discard_empty(previous, app_dir) {
+            return Err(Error::Msg(format!("An unfinished extraction is still in {}. Retry there, or remove that partial folder before choosing another location.", previous.target.display())));
+        }
+        if work_dir(previous, app_dir).try_exists()? {
+            return Err(Error::Msg("The previous download's work folder couldn't be cleared. Try again before choosing another destination.".into()));
+        }
+    }
+    lib.pending_installs.insert(id.into(), request);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,6 +379,139 @@ mod tests {
         let path = std::env::temp_dir().join(format!("recomp-location-{}-{time}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         normalized(&path).unwrap()
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn relinking_ignores_an_unavailable_unrelated_installation() {
+        let root = temp();
+        let target = root.join("found");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("game.exe"), b"program").unwrap();
+        let unavailable = root.join("unavailable");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.join("disconnected-drive"), &unavailable).unwrap();
+        #[cfg(windows)]
+        crate::win::junction(&root.join("disconnected-drive"), &unavailable).unwrap();
+        assert!(normalized(&unavailable).is_err());
+        let mut lib = Library::default();
+        lib.installed.insert("game".into(), Installed { path: root.join("missing"), exe: Some("game.exe".into()), ..Default::default() });
+        lib.installed.insert("other".into(), Installed { path: unavailable, ..Default::default() });
+        assert_eq!(lib.relink("game", &target).unwrap().path, target);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn unavailable_paths_still_block_lexically_overlapping_relinks() {
+        let root = temp();
+        let target = root.join("found");
+        fs::create_dir(&target).unwrap();
+        let unavailable = target.join("other");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.join("disconnected-drive"), &unavailable).unwrap();
+        #[cfg(windows)]
+        crate::win::junction(&root.join("disconnected-drive"), &unavailable).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("game".into(), Installed { path: root.join("missing"), ..Default::default() });
+        lib.installed.insert("other".into(), Installed { path: unavailable, ..Default::default() });
+        assert!(lib.relink("game", &target).is_err());
+        assert_eq!(lib.installed["game"].path, root.join("missing"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn paused_updates_block_move_without_changing_resume_state() {
+        let root = temp();
+        let target = root.join("game");
+        fs::create_dir(&target).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("game".into(), Installed { path: target.clone(), ..Default::default() });
+        let pending = request(&lib, "game", target.clone(), Some("v2".into()), Some("game.zip".into()), false);
+        reserve(&mut lib, "game", pending.clone(), &root.join("data")).unwrap();
+        assert!(ensure_movable(&lib, "game").is_err());
+        assert_eq!(lib.installed["game"].path, target);
+        assert_eq!(resolve(&lib, "game", None, Some(&pending.target)).unwrap(), target);
+        assert_eq!(lib.pending_installs["game"].tag.as_deref(), Some("v2"));
+        assert_eq!(lib.pending_installs["game"].file.as_deref(), Some("game.zip"));
+        clear_pending(&mut lib, "game", &root.join("data"));
+        ensure_movable(&lib, "game").unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changing_a_download_only_destination_removes_its_old_owned_work() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let old = request(&lib, "game", root.join("first"), None, None, false);
+        let work = claim(&old, false, &app_dir).unwrap();
+        fs::write(work.join("download.part"), b"partial download").unwrap();
+        reserve(&mut lib, "game", old.clone(), &app_dir).unwrap();
+        let new = request(&lib, "game", root.join("second"), None, None, false);
+        reserve(&mut lib, "game", new.clone(), &app_dir).unwrap();
+        assert!(!work.exists());
+        assert!(fs::read_dir(&old.target).unwrap().next().is_none());
+        assert_eq!(lib.pending_installs["game"].target, new.target);
+        claim(&new, false, &app_dir).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changing_a_partially_extracted_destination_keeps_its_recovery_metadata() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let old = request(&lib, "game", root.join("first"), Some("v1".into()), None, false);
+        let work = claim(&old, false, &app_dir).unwrap();
+        fs::write(old.target.join("extracted.dat"), b"partial game").unwrap();
+        reserve(&mut lib, "game", old.clone(), &app_dir).unwrap();
+        let new = request(&lib, "game", root.join("second"), None, None, false);
+        assert!(reserve(&mut lib, "game", new, &app_dir).is_err());
+        assert_eq!(lib.pending_installs["game"].token, old.token);
+        assert_eq!(lib.pending_installs["game"].target, old.target);
+        assert!(work.is_dir());
+        lib.save(&app_dir).unwrap();
+        let loaded = Library::load(&app_dir);
+        validate(&loaded, &app_dir, "game", &old.target).unwrap();
+        assert_eq!(claim(&loaded.pending_installs["game"], false, &app_dir).unwrap(), work);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn destination_replacement_does_not_drop_work_it_cannot_safely_clean() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let old = request(&lib, "game", root.join("first"), None, None, false);
+        let work = claim(&old, false, &app_dir).unwrap();
+        fs::write(work.join("keep"), b"unverified work").unwrap();
+        fs::remove_file(work.join(MARKER)).unwrap();
+        reserve(&mut lib, "game", old.clone(), &app_dir).unwrap();
+        let new = request(&lib, "game", root.join("second"), None, None, false);
+        assert!(reserve(&mut lib, "game", new, &app_dir).is_err());
+        assert_eq!(lib.pending_installs["game"].token, old.token);
+        assert_eq!(fs::read(work.join("keep")).unwrap(), b"unverified work");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn removing_the_partial_folder_allows_choosing_a_new_destination() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let target = root.join("first");
+        fs::create_dir(&target).unwrap();
+        let old = request(&lib, "game", target.clone(), None, None, false);
+        let work = claim(&old, false, &app_dir).unwrap();
+        fs::write(target.join("partial.dat"), b"partial game").unwrap();
+        reserve(&mut lib, "game", old, &app_dir).unwrap();
+        fs::remove_dir_all(target).unwrap();
+        let new = request(&lib, "game", root.join("second"), None, None, false);
+        reserve(&mut lib, "game", new.clone(), &app_dir).unwrap();
+        assert!(!work.exists());
+        claim(&new, false, &app_dir).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(any(unix, windows))]

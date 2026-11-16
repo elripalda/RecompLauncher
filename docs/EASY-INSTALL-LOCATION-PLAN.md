@@ -1,6 +1,6 @@
 # Easy Install: choose the game's installation folder
 
-Status: draft implementation with all three rounds of review findings addressed below. Existing manifest
+Status: draft implementation with all four rounds of review findings addressed below. Existing manifest
 fields and `{install}` support the selected folder; no manifest extension was added. External builders
 retain their declared output paths until their integrations expose a supported destination option.
 
@@ -93,7 +93,29 @@ The third review identified four additional P2 issues, addressed with regression
   filtered body for new releases and updates existing drafts. Tests render the actual Beta 53
   notes and verify the SDK handoff remains in the source draft only.
 
-## What exists today
+## Backup and reservation lifecycle follow-up
+
+The fourth review identified four additional P2 issues:
+
+- [x] **Backups stay in an accessible scope.** Automatic update backups and manual backup now use
+  launcher-private `backups/<game-id>/` storage. Listing/restoration include readable legacy library
+  backups; Move preserves those archives in private storage first. Private histories are keyed by
+  game ID and do not depend on the game path. Enabled backup failures stop the update instead of
+  silently continuing. Tests cover backup/list/restore under a traversal-only parent, backup write
+  failure, and restoration after moving both current and legacy histories.
+- [x] **Unavailable unrelated installs do not block relinking.** Overlap checks use normalized paths
+  when available and conservative lexical checks otherwise. Dangling unrelated links no longer
+  abort relink, while lexically overlapping unavailable paths still reject it.
+- [x] **Pending updates block Move.** The backend requires finishing or cancelling the reserved
+  update first. The installed path and pending target/anchor remain unchanged, so Resume stays
+  valid. Tests verify rejection preserves release/build state and cancellation permits Move.
+- [x] **Retargeting reconciles the old reservation.** Download-only work must be cleaned before a
+  new destination is reserved. Partially extracted games retain their only recovery record and must
+  be retried in place or removed before retargeting. Failed cleanup retains the old reservation;
+  the frontend also restores its previous request if retargeting is rejected. Tests cover owned
+  work cleanup, partial recovery across save/load, failed cleanup and retry after manual removal.
+
+## Original implementation baseline
 
 - `ui/app.js`: `startInstall` already opens `locationModal` on the first install, when additional
   libraries exist, or when Settings → Ask Where to Install is enabled. This includes Easy Install.
