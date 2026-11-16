@@ -418,6 +418,14 @@ fn steam_cmd(steam: &Path, args: &[&str], link: &str) -> std::process::Command {
         let mut c = std::process::Command::new("flatpak");
         c.args(["run", "com.valvesoftware.Steam"]).args(args);
         c
+    } else if on_path("steam") && on_path("systemd-run") && user_systemd() {
+        // Steam started as our child would stay in the launcher's systemd scope, and desktop
+        // portals name an app after its scope: Steam's own screen-capture request (Remote Play,
+        // recording) then asked players to share their screen "with RecompLauncher". Its own
+        // app-steam scope, as the desktop's menu would give it, names Steam instead.
+        let mut c = std::process::Command::new("systemd-run");
+        c.args(["--user", "--scope", "--quiet", "--collect"]).arg(format!("--unit={}", steam_scope_name())).arg("steam").args(args);
+        c
     } else if on_path("steam") {
         let mut c = std::process::Command::new("steam");
         c.args(args);
@@ -433,6 +441,22 @@ fn steam_cmd(steam: &Path, args: &[&str], link: &str) -> std::process::Command {
     c.process_group(0);
     c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     c
+}
+
+/// Whether this session has a systemd user manager to ask for a scope. Without one (some
+/// containers, non-systemd distros) systemd-run fails and Steam would never start.
+#[cfg(not(windows))]
+fn user_systemd() -> bool {
+    let Some(run) = std::env::var_os("XDG_RUNTIME_DIR") else { return false };
+    Path::new(&run).join("systemd").join("private").exists()
+}
+
+/// A scope name in the freedesktop form (app-<app id>-<random>.scope) that portals read the app
+/// id "steam" from, matching Steam's steam.desktop.
+#[cfg(not(windows))]
+fn steam_scope_name() -> String {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    format!("app-steam-{:x}{:x}.scope", std::process::id(), nanos)
 }
 
 pub async fn close_steam(steam: &Path) -> Result<(), Error> {
@@ -748,6 +772,14 @@ pub fn remove_art(cfg: &Path, app_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn steam_scope_name_is_an_app_steam_scope() {
+        let name = steam_scope_name();
+        let random = name.strip_prefix("app-steam-").and_then(|r| r.strip_suffix(".scope")).unwrap();
+        assert!(!random.is_empty() && random.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 
     #[test]
     fn a_flatpak_starts_with_flatpak_run() {
