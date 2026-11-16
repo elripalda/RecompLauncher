@@ -66,5 +66,14 @@ test('the Library passes the installed release to its tiles only with the settin
 test('a game page before install shows the latest version with its scan, then the stars', () => {
   const body = fn('gameBody');
   assert.match(body, /\[t\('Version'\), a\.version \|\| '—'\], \[t\('Stars'\)/);
-  assert.match(body, /const verTag = inst \? \(inst\.local \? '' : inst\.tag\) : a\.version;/);
+});
+
+test('a game page before install looks up the scan by the release tag, not the version', () => {
+  const body = fn('gameBody');
+  assert.match(body, /const verTag = inst \? \(inst\.local \? '' : inst\.tag\) : a\.tag \|\| a\.version;/);
+});
+
+test('a Library game that is only saved shows its latest version', () => {
+  const grid = fn('libraryGrid');
+  assert.match(grid, /x\.saved \? tile\(x\.a, \{ wide, w, ver: showVer\(\) \? x\.a\.version \|\| '' : null/);
 });

@@ -2000,7 +2000,7 @@ function libraryGrid() {
   // copies are 160, 400 and 640 wide: the one that covers the tile's real size on this screen.
   const px = libTile() * (devicePixelRatio || 1);
   const w = px > 420 ? 640 : px > 190 ? 400 : 0;
-  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, ver: showVer() ? '' : null, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, ver: showVer() ? x.g.tag || '' : null, sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
+  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, ver: showVer() ? x.a.version || '' : null, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, ver: showVer() ? x.g.tag || '' : null, sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
 }
 
 
@@ -2422,7 +2422,8 @@ function gameBody(a) {
       : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—']];
     // Under the version: how the store checked that release (a player's own game has none). Before
     // installing it's the latest release, so the player sees it was checked before downloading it.
-    const verTag = inst ? (inst.local ? '' : inst.tag) : a.version;
+    // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").
+    const verTag = inst ? (inst.local ? '' : inst.tag) : a.tag || a.version;
     const verScan = verTag ? scanPill({ id, tag: verTag }) : '';
     body = `<div class="stack"><div class="stats">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}</div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
