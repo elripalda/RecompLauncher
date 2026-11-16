@@ -278,9 +278,10 @@ This only follows places your file or the catalog names, not ones the launcher n
 
 ### `games`: several games in one release
 
-A release that carries a whole series lists its games. Each one gets its own tile in the Library
-and Big Picture, its own play time, achievements, pins and shortcuts. Installing, updating and
-removing stay one thing for the whole release.
+A release that carries a whole series lists its games. Players see each one as a game of its own:
+in Discover, search and Home, with its own page (a "Part of" pill leads to the release's page) and
+its own tile in the Library and Big Picture, with its own play time, achievements, pins and
+shortcuts. Installing, updating and removing stay one thing for the whole release.
 
 ```json
 "games": [
@@ -302,7 +303,9 @@ removing stay one thing for the whole release.
   release's saves are shared by its games.
 
 With one game or none, the release shows as one game, as before. When your release has no list,
-the one on recomplauncher.com is used. Launchers older than 0.90 Beta 36 skip it and show one tile.
+the one on recomplauncher.com is used. Before anyone installs your release, the launcher only has
+that list to go on: ask for your games to be listed there (with their art), or the release shows
+as one game until it's installed. Launchers older than 0.90 Beta 36 skip it and show one tile.
 
 ## Settings: in the launcher
 

@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "켜면 {license}에 동의하게 됩니다.",
  "Turning it on sets the game up again from your copy.": "켜면 사본으로 게임을 다시 설정합니다.",
  "Use the copy it was set up with": "설정에 사용한 사본 사용",
- "{n} new options": "새 옵션 {n}개"
+ "{n} new options": "새 옵션 {n}개",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "한 번의 다운로드로 게임 {n}개가 모두 설치됩니다. 각각 라이브러리에 따로 표시됩니다.",
+ "{name} is installed. Its {n} games are in your Library.": "{name}을(를) 설치했습니다. 게임 {n}개가 라이브러리에 있습니다."
 }

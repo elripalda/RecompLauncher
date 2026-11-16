@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "Door het aan te zetten ga je akkoord met {license}.",
  "Turning it on sets the game up again from your copy.": "Door het aan te zetten wordt het spel opnieuw ingesteld met je exemplaar.",
  "Use the copy it was set up with": "Het exemplaar gebruiken waarmee hij is ingesteld",
- "{n} new options": "{n} nieuwe opties"
+ "{n} new options": "{n} nieuwe opties",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Eén download installeert alle {n} games. Elke game krijgt een eigen plek in je bibliotheek.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} is geïnstalleerd. De {n} games staan in je bibliotheek."
 }

@@ -81,7 +81,7 @@ test('updates and removal go to the one install; playing, setup and achievements
   vm.runInContext('addGameApps(ids); expandLib()', c);
   const ask = (cmd, id) => vm.runInContext(`gameArgs(${JSON.stringify(cmd)}, { id: ${JSON.stringify(id)} }).id`, c);
   for (const cmd of ['install', 'uninstall', 'check_updates', 'open_folder', 'set_game_options', 'stop', 'mods_state']) assert.equal(ask(cmd, 'cogbox--gow1'), 'cogbox', cmd);
-  for (const cmd of ['play', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game']) assert.equal(ask(cmd, 'cogbox--gow1'), 'cogbox--gow1', cmd);
+  for (const cmd of ['play', 'game_info', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game']) assert.equal(ask(cmd, 'cogbox--gow1'), 'cogbox--gow1', cmd);
   // Saves: the game's own when it declares them, else the recomp's shared ones.
   assert.equal(ask('saves_info', 'cogbox--gow2'), 'cogbox--gow2');
   assert.equal(ask('saves_info', 'cogbox--gow1'), 'cogbox');
@@ -96,6 +96,7 @@ test('the tile line and the recomp\'s page: setup, menu pick, part of, and even 
   vm.runInContext('addGameApps(ids); expandLib()', c);
   c.byId = (id) => c.ids.get(id);
   c.tile = (a) => `[${a.id}]`;
+  c.LAYERS = '';
   vm.runInContext(fn(app, 'gameTileLine') + fn(app, 'partOfLine') + fn(app, 'includesBox'), c);
   assert.match(vm.runInContext("gameTileLine(byId('cogbox--gow2'))", c), /Set Up/);
   assert.match(vm.runInContext("gameTileLine(byId('cogbox--gowj'))", c), /Pick the game in its menu/);
@@ -113,10 +114,132 @@ test('the tile line and the recomp\'s page: setup, menu pick, part of, and even 
   assert.equal(vm.runInContext("includesBox(byId('cogbox--gow1'))", c), '');
 });
 
+// Discover's catalog: COGBox with its four games, and a recomp of one game.
+function discoverCtx(hidden = []) {
+  const c = ctx({ isHidden: (id) => hidden.includes(id) });
+  c.ids = new Map([['cogbox', COG], ['solo', { id: 'solo', name: 'Solo' }]]);
+  vm.runInContext('addGameApps(ids)', c);
+  c.byId = (id) => c.ids.get(id);
+  c.list = [COG, c.ids.get('solo')];
+  return c;
+}
+
+test('Discover lists a recomp that carries several games as its games', () => {
+  const c = discoverCtx();
+  assert.equal(vm.runInContext('withGames(list).map((a) => a.id).join()', c), 'cogbox--gow1,cogbox--gow2,cogbox--gow3,cogbox--gowj,solo');
+});
+
+test('a game hidden from Discover is left out, and the others stay', () => {
+  const c = discoverCtx(['cogbox--gow2']);
+  assert.equal(vm.runInContext('withGames(list).map((a) => a.id).join()', c), 'cogbox--gow1,cogbox--gow3,cogbox--gowj,solo');
+});
+
+test('Discover counts a recomp\'s games as one recomp', () => {
+  const c = discoverCtx();
+  assert.equal(vm.runInContext('recompsIn(withGames(list))', c), 2);
+});
+
+test('a game\'s page says which recomp it\'s part of and how many games that holds', () => {
+  const c = discoverCtx();
+  c.LAYERS = '';
+  vm.runInContext(fn(app, 'partOfLine'), c);
+  const pill = vm.runInContext("partOfLine(byId('cogbox--gow1'))", c);
+  assert.match(pill, /class="ver-pill part-pill"/);
+  assert.match(pill, /Part of COGBox/);
+  assert.match(pill, /4 games/);
+});
+
+test('Discover and Big Picture search find a game inside a recomp by either name', () => {
+  assert.match(app, /let list = withGames\(visible\(\)\)/);
+  assert.match(app, /a\.name, a\.game, a\.parentName/);
+  assert.match(tv, /const apps = withGames\(pool\(\)\)/);
+  assert.match(tv, /\$\{a\.parentName \|\| ''\}/);
+});
+
 test('Big Picture lists each game on its own and shows the recomp\'s games on its page', () => {
   assert.match(tv, /const installed = \(\) => libRecs\(\)/);
   assert.match(tv, /Includes \{n\} Games/);
   assert.match(tv, /data-go-game="\$\{esc\(a\.parent\)\}"/);
-  assert.match(app, /const played = libRecs\(\)/);
+  assert.match(app, /const played = jumpRecs\(\)/);
   assert.match(app, /let list = libRecs\(\)\.map/);
+});
+
+test('Home\'s rows list a recomp\'s games; the banner and the weekly chart keep the recomp', () => {
+  const home = fn(app, 'pageHome');
+  assert.match(home, /const games = withGames\(pool\);/);
+  for (const row of ['games.filter(turnkey)', 'recentlyUpdated(games)', 'games.filter((a) => a.dev', '[...games].sort(byNew)']) assert.ok(home.includes(row), row);
+  assert.match(home, /trendShelf\(pool\)/);
+  assert.match(tv, /const games = withGames\(pool\(\)\);/);
+  assert.match(tv, /recentlyUpdated\(games\)/);
+  assert.match(tv, /const trend = trendList\(pool\(\)\);/);
+});
+
+test('a game of a recomp Easy Setup does is set up as its recomp is', () => {
+  const c = discoverCtx();
+  c.S.easy = new Set(['cogbox']);
+  c.builtinBoot = () => ({});
+  c.TURNKEY_HOW = [];
+  vm.runInContext(`${app.match(/^const needsSetup = .*$/m)[0]}\n${app.match(/^const turnkey = .*$/m)[0]}`, c);
+  assert.equal(vm.runInContext("turnkey(byId('cogbox--gow1'))", c), true);
+  assert.equal(vm.runInContext("turnkey(byId('solo'))", c), false);
+});
+
+test('a game inside a recomp of several joins its game\'s versions, by full id or by name', () => {
+  const idx = fn(app, 'index');
+  assert.match(idx, /const named = packGames\.filter\(\(c\) => !\(ti\.pc \|\| \[\]\)\.includes\(c\.id\) && sfold\(c\.name\) === sfold\(ti\.name\)\);/);
+  assert.match(idx, /for \(const c of \[\.\.\.listed, \.\.\.named\]\) c\.title = ti\.id;/);
+});
+
+test('in the versions menu, a version from a recomp of several says which and how many games it holds', () => {
+  const c = discoverCtx();
+  vm.runInContext(fn(app, 'packLine'), c);
+  assert.equal(vm.runInContext("packLine(byId('cogbox--gow2'))", c), 'Part of COGBox · 4 games');
+  assert.equal(vm.runInContext("packLine(byId('solo'))", c), '');
+  assert.match(fn(app, 'verRow'), /packTag\(v\)/);
+  assert.match(tv, /packLine\(v\), S\.library\[v\.id\]/);
+});
+
+test('installing a recomp of several games doesn\'t put all of them in Jump back in', () => {
+  const c = ctx();
+  install(c);
+  c.ids = new Map([['cogbox', COG]]);
+  vm.runInContext('addGameApps(ids); expandLib()', c);
+  const jump = () => vm.runInContext('jumpRecs().map((g) => g.id).sort().join()', c);
+  // gow2 was played: it and the other recomp, not the unplayed games.
+  assert.equal(jump(), 'cogbox--gow2,other');
+  // None played yet: the one it was installed from, else its first.
+  c.S.library['cogbox--gow2'].last_played = 0;
+  assert.equal(jump(), 'cogbox--gow1,other');
+  c.S.settings.ui.pack_from = { cogbox: 'cogbox--gow3' };
+  assert.equal(jump(), 'cogbox--gow3,other');
+  // The Library itself still has every game.
+  assert.equal(vm.runInContext('libRecs().length', c), 5);
+});
+
+test('a recomp of several games asks before its first install, then says where its games went', () => {
+  const start = fn(app, 'startInstall');
+  assert.match(start, /const from = subOf\(id\) \? id : '';\n\s+id = parentId\(id\);/);
+  assert.match(start, /if \(dir === undefined && !S\.library\[id\] && !tag && !anyway && pack\.length\) \{\n\s+if \(!\(await confirmPack\(id, pack\)\)\) return;/);
+  // Asked before where it goes, so it's asked once.
+  assert.ok(start.indexOf('confirmPack(') < start.indexOf('locationModal('));
+  assert.match(fn(app, 'confirmPack'), /tf\('Install \{name\}\?', \{ name \}\)/);
+  assert.match(app, /else invoke\('recomp_games'\)\.then\(\(sets\) => \{ const list = gameList\(/);
+  const done = fn(app, 'packInstalled');
+  assert.match(done, /Its \{n\} games are in your Library/);
+  assert.match(done, /setupModal\(from\)/);
+});
+
+test('a game\'s page doesn\'t show its recomp\'s game info as its own', () => {
+  const c = ctx();
+  c.ids = new Map([['cogbox', Object.assign({}, COG, { about: { summary: 'Judgment' } })]]);
+  vm.runInContext('addGameApps(ids)', c);
+  assert.equal(c.ids.get('cogbox--gow1').about, undefined);
+  assert.equal(c.ids.get('cogbox').about.summary, 'Judgment');
+});
+
+test('the install dialog shows a game\'s own cover, never its recomp\'s repeated', () => {
+  const confirm = fn(app, 'confirmPack');
+  assert.match(confirm, /g\.cover \? pic\(thumbOf\(g\.cover, 160\)/);
+  assert.match(confirm, /: '<span class="ph"><\/span>'/);
+  assert.doesNotMatch(confirm, /byId\(id \+ GAME_SEP/);
 });

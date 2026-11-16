@@ -32,13 +32,16 @@ function subOf(id) {
 const parentId = (id) => { const s = subOf(id); return s ? s.rid : id; };
 
 // One game as an app the pages and tiles can show: the recomp's details, the game's name and art
-// (falling back to the recomp's). Not part of the version groups or Discover's list.
+// (falling back to the recomp's). Not part of the version groups; Discover lists it through withGames.
 function childApp(a, g) {
   const c = Object.assign({}, a, {
     id: a.id + GAME_SEP + g.id, name: g.name, game: g.name, parent: a.id, parentName: a.name, sub: g.id,
     cover: g.cover || a.cover, hero: g.hero || a.hero, logo: g.logo || a.logo, icon: g.icon || a.icon,
     menuPick: !(Array.isArray(g.args) && g.args.length),
   });
+  // The recomp's game info is about one game of them (Red's for all of Gen 1): a game's page asks
+  // for its own instead, unless the catalog gives it one.
+  if (g.about) c.about = g.about; else delete c.about;
   delete c.title; delete c.games; delete c._name; delete c._cov; delete c._hero; delete c._logo; delete c._icon;
   return c;
 }
@@ -62,6 +65,18 @@ function addGameApps(ids) {
   }
   S.subs = subs;
 }
+
+// The games of a recomp that carries several, as Discover lists them: the ones not hidden.
+function shownGames(a) {
+  return gamesOf(a.id, a).map((g) => byId(a.id + GAME_SEP + g.id)).filter((c) => c && !isHidden(c.id));
+}
+// Discover's list as a player picks from it: a recomp that carries several games shows as those
+// games, each a store entry of its own. Its own page is one press away, from their "Part of" pill.
+function withGames(list) {
+  return list.flatMap((a) => (a.parent || !gamesOf(a.id, a).length ? [a] : shownGames(a)));
+}
+// How many recomps a list holds: the games of one count once, as it.
+const recompsIn = (list) => new Set(list.filter((a) => !a.soon).map((a) => a.parent || a.id)).size;
 
 // Each installed recomp with several games: a record for each game in the Library (its own play
 // time and last played), beside the recomp's own (which the lists leave out). Answers the core
@@ -91,13 +106,31 @@ function expandLib() {
 const hasGames = (id) => !!((S.gameSets || {})[id] && S.gameSets[id].games && S.gameSets[id].games.length && S.library[id] && !S.library[id]._sub);
 // The Library's records as the lists show them: each game of a recomp, not the recomp itself.
 const libRecs = () => Object.values(S.library).filter((g) => !hasGames(g.id));
+// The game of a recomp the player installed it from (its full id): the one whose setup opens after
+// the download, and the one Jump back in shows of it besides those played.
+const packPick = (rid) => (((S.settings || {}).ui || {}).pack_from || {})[rid] || '';
+// Jump back in and Continue playing: installing a recomp of several games doesn't put all of them
+// there. Its games that were played are, and the one it was installed from (else its first, until
+// one is played).
+function jumpRecs() {
+  const recs = libRecs();
+  const played = new Set(recs.filter((g) => g._sub && g.last_played).map((g) => g.parent));
+  const first = {};
+  for (const g of recs) if (g._sub && !(g.parent in first)) first[g.parent] = g.id;
+  return recs.filter((g) => {
+    if (!g._sub || g.last_played) return true;
+    const pick = packPick(g.parent);
+    if (pick) return g.id === pick;
+    return !played.has(g.parent) && g.id === first[g.parent];
+  });
+}
 // The core's own records only (one per install): for sizes and counts of installs.
 const libInstalls = () => Object.values(S.library).filter((g) => !g._sub);
 
 // What the core is asked with a game's id. Most things are the recomp's (its install, updates,
 // folder, settings): those get the recomp's id. Playing it, its setup, shortcuts and achievements
 // go by the game's own id, and so do its saves when it keeps its own.
-const GAME_CMDS = new Set(['play', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game', 'ach_set_disc', 'ach_set_folder']);
+const GAME_CMDS = new Set(['play', 'game_info', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game', 'ach_set_disc', 'ach_set_folder']);
 const SAVE_CMDS = new Set(['saves_check', 'saves_pick', 'saves_info', 'saves_upload_now', 'saves_backup', 'saves_restore', 'saves_open', 'saves_open_backups']);
 function gameArgs(cmd, args) {
   if (!args || typeof args.id !== 'string') return args;
@@ -114,4 +147,4 @@ async function loadGameSets() {
   expandLib();
 }
 
-if (typeof window !== 'undefined') Object.assign(window, { gameList, gamesOf, subOf, parentId, childApp, addGameApps, expandLib, hasGames, libRecs, libInstalls, gameArgs, loadGameSets });
+if (typeof window !== 'undefined') Object.assign(window, { gameList, gamesOf, subOf, parentId, childApp, addGameApps, expandLib, hasGames, libRecs, jumpRecs, packPick, libInstalls, gameArgs, loadGameSets });

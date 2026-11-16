@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "開啟即表示您接受 {license}。",
  "Turning it on sets the game up again from your copy.": "開啟後會用您的副本重新設定遊戲。",
  "Use the copy it was set up with": "使用設定時用過的副本",
- "{n} new options": "{n} 個新選項"
+ "{n} new options": "{n} 個新選項",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "一次下載即可安裝其全部 {n} 款遊戲，每款都會在收藏庫中單獨顯示。",
+ "{name} is installed. Its {n} games are in your Library.": "{name} 已安裝。其中的 {n} 款遊戲已在你的收藏庫中。"
 }

@@ -3331,5 +3331,7 @@
  "Turning it on accepts the {license}.": "การเปิดใช้หมายถึงคุณยอมรับ {license}",
  "Turning it on sets the game up again from your copy.": "การเปิดใช้จะตั้งค่าเกมอีกครั้งจากสำเนาของคุณ",
  "Use the copy it was set up with": "ใช้สำเนาที่ใช้ตั้งค่า",
- "{n} new options": "ตัวเลือกใหม่ {n} รายการ"
+ "{n} new options": "ตัวเลือกใหม่ {n} รายการ",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "ดาวน์โหลดครั้งเดียวติดตั้งครบทั้ง {n} เกม แต่ละเกมมีที่ของตัวเองในคลังของคุณ",
+ "{name} is installed. Its {n} games are in your Library.": "ติดตั้ง {name} แล้ว ทั้ง {n} เกมอยู่ในคลังของคุณแล้ว"
 }
