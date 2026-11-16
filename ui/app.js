@@ -6038,7 +6038,10 @@ async function playGame2(id, program) {
       // Built from the copy into a folder that's gone now: picked again, and built again.
       const gone = String(err && err.message ? err.message : err).match(/^NEED_BUILD\|(.*)$/);
       if (gone) S.setupNote = { id, text: tf('The game built from your copy isn\'t in {folder} anymore. Pick your copy and it\'s built again.', { folder: gone[1] }) };
-      if (m || gone || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
+      // Its developer changed how it's built (prepare.version) since it was set up: built again.
+      const rebuild = /^NEED_REBUILD\|/.test(String(err && err.message ? err.message : err));
+      if (rebuild) S.setupNote = { id, text: t('This game\'s setup changed since you built it. Pick your copy and it\'s built again.') };
+      if (m || gone || rebuild || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
       // A Python game on a PC without Python: what to install, and where.
       const py = String(err && err.message ? err.message : err).match(/^NEED_PYTHON\|(.*)$/);
       if (py) {
