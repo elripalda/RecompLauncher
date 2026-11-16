@@ -1809,6 +1809,7 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
                 if let Some(a) = l.arts.remove(&old) {
                     l.arts.entry(new.clone()).or_insert(a);
                 }
+                l.move_play_history(&old, &new);
                 if let Some(mut g) = l.installed.remove(&old) {
                     g.id = new.clone();
                     l.put(&new, g);
@@ -8177,6 +8178,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "site": catalog::base(),
         "thumbs": net::THUMBS,
         "library": l.installed,
+        "removedPlayHistory": l.removed_play_history,
         "arts": l.arts,
         "settings": l.settings,
         "roms": l.roms,
@@ -9651,7 +9653,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,

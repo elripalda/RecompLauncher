@@ -127,6 +127,51 @@ function jumpRecs() {
 // The core's own records only (one per install): for sizes and counts of installs.
 const libInstalls = () => Object.values(S.library).filter((g) => !g._sub);
 
+// This PC's own time for a recomp (or one of its games), installed or kept from an uninstall.
+function localPlaytime(id) {
+  if (S.library[id]) return S.library[id];
+  const removed = S.removedPlayHistory || {};
+  const sub = subOf(id);
+  return sub ? removed[sub.rid]?.games?.[sub.game.id] : removed[id];
+}
+
+// The account's total over all its PCs, when signed in and the website has one ({secs, last}).
+// It already counts this PC, but may not have this PC's newest session yet: the larger one wins.
+function withAccount(play, cloud) {
+  if (!cloud) return play;
+  const secs = Math.max(Number(cloud.secs) || 0, play?.played_secs || 0);
+  const last = Math.max(Number(cloud.last) || 0, play?.last_played || 0);
+  return { played_secs: secs, last_played: last };
+}
+
+function recompPlaytime(id) {
+  return withAccount(localPlaytime(id), S.cloudPlay?.games?.[id]);
+}
+
+// A recomp's time, or the original game's over all its recomps (marked `grouped`).
+function gamePlaytime(a) {
+  if (!a) return;
+  const own = recompPlaytime(a.id);
+  const group = a.title && index().titles.get(a.title);
+  if (!group || gamesOf(a.id, a).length) return own;
+
+  let total = { played_secs: 0, last_played: 0 };
+  for (const version of group.every) {
+    if (gamesOf(version.id, version).length) continue;
+    const play = recompPlaytime(version.id);
+    if (!play) continue;
+    total.played_secs += play.played_secs || 0;
+    total.last_played = Math.max(total.last_played, play.last_played || 0);
+  }
+  total = withAccount(total, S.cloudPlay?.titles?.[a.title]);
+  return Object.assign(total, { grouped: true });
+}
+
+function playtimeRows(a, total) {
+  if (!total?.grouped) return [[t('Played'), playedFor(total)]];
+  return [[t('Total game playtime'), playedFor(total)], [t('This recomp'), playedFor(recompPlaytime(a.id))]];
+}
+
 // What the core is asked with a game's id. Most things are the recomp's (its install, updates,
 // folder, settings): those get the recomp's id. Playing it, its setup, shortcuts and achievements
 // go by the game's own id, and so do its saves when it keeps its own.

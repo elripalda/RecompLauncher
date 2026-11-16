@@ -74,6 +74,71 @@ test('one install shows as a tile for each game, with its own play time', () => 
   assert.equal(c.S.library['cogbox--gow3'].tag, 'v2');
 });
 
+test('original game playtime includes removed recomps and keeps each version visible', () => {
+  const first = { id: 'hookshot', title: 'ocarina' };
+  const second = { id: 'longshot', title: 'ocarina' };
+  const bundle = { ...COG, title: 'ocarina' };
+  const c = ctx({
+    first, second, bundle,
+    index: () => ({ titles: new Map([['ocarina', { every: [first, second, bundle] }]]) }),
+    playedFor: (play) => play?.played_secs || 0,
+  });
+  install(c);
+  c.S.library.hookshot = { played_secs: 3600, last_played: 100 };
+  c.S.removedPlayHistory = { longshot: { played_secs: 3600, last_played: 200 } };
+  assert.equal(vm.runInContext('gamePlaytime(first).played_secs', c), 7200);
+  assert.equal(vm.runInContext('gamePlaytime(second).last_played', c), 200);
+  assert.equal(vm.runInContext('gamePlaytime(bundle).played_secs', c), 100);
+  assert.equal(vm.runInContext('JSON.stringify(playtimeRows(second, gamePlaytime(second)))', c),
+    JSON.stringify([['Total game playtime', 7200], ['This recomp', 3600]]));
+  c.S.library.longshot = { played_secs: 3900, last_played: 300 };
+  assert.equal(vm.runInContext('gamePlaytime(first).played_secs', c), 7500);
+});
+
+function ocarina() {
+  const first = { id: 'hookshot', title: 'ocarina' };
+  const second = { id: 'longshot', title: 'ocarina' };
+  const c = ctx({
+    first, second,
+    index: () => ({ titles: new Map([['ocarina', { every: [first, second] }]]) }),
+    playedFor: (play) => play?.played_secs || 0,
+  });
+  c.S.library.hookshot = { played_secs: 600, last_played: 100 };
+  return c;
+}
+
+test('signed in, the original game shows the account total over all its PCs', () => {
+  const c = ocarina();
+  c.S.cloudPlay = { games: { hookshot: { secs: 900, last: 300 } }, titles: { ocarina: { secs: 1500, last: 300 } } };
+  assert.equal(vm.runInContext('gamePlaytime(first).played_secs', c), 1500);
+  assert.equal(vm.runInContext('gamePlaytime(first).last_played', c), 300);
+});
+
+test('signed in, a recomp shows its own total over all PCs', () => {
+  const c = ocarina();
+  c.S.cloudPlay = { games: { hookshot: { secs: 900, last: 300 } }, titles: {} };
+  assert.equal(vm.runInContext('recompPlaytime("hookshot").played_secs', c), 900);
+});
+
+test('a session the account has not heard about yet still counts', () => {
+  const c = ocarina();
+  c.S.cloudPlay = { games: { hookshot: { secs: 300, last: 50 } }, titles: { ocarina: { secs: 300, last: 50 } } };
+  assert.equal(vm.runInContext('gamePlaytime(first).played_secs', c), 600);
+  assert.equal(vm.runInContext('recompPlaytime("hookshot").last_played', c), 100);
+});
+
+test('signed out, playtime is this PC\'s own', () => {
+  const c = ocarina();
+  c.S.cloudPlay = null;
+  assert.equal(vm.runInContext('gamePlaytime(first).played_secs', c), 600);
+});
+
+test('a game played only on another PC shows the account time', () => {
+  const c = ocarina();
+  c.S.cloudPlay = { games: { longshot: { secs: 120, last: 400 } }, titles: {} };
+  assert.equal(vm.runInContext('recompPlaytime("longshot").played_secs', c), 120);
+});
+
 test('updates and removal go to the one install; playing, setup and achievements go by the game', () => {
   const c = ctx();
   install(c);
