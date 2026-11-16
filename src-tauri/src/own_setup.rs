@@ -278,12 +278,8 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
         std::process::Command::new(p)
     };
     crate::sysenv::clean_std(&mut c);
-    // A setup that comes as an AppImage, on a PC without FUSE 2 (NixOS, a container): it unpacks
-    // itself to run, as a game's AppImage does at Play.
     #[cfg(target_os = "linux")]
-    if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")) && !crate::sysenv::has_fuse2() {
-        c.env("APPIMAGE_EXTRACT_AND_RUN", "1");
-    }
+    unpack_if_appimage(&mut c, p);
     if let Some(x) = copy {
         c.arg(x);
     }
@@ -295,6 +291,27 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
             crate::win::run_as_admin(p, &args, &dir).map(Started::Admin)
         }
         Err(e) => Err(e),
+    }
+}
+
+/// A setup that comes as an AppImage can't mount itself in the Flatpak or on a PC without FUSE 2
+/// (NixOS, a container): it unpacks itself to run, as a game's AppImage does at Play.
+#[cfg(target_os = "linux")]
+fn unpack_if_appimage(c: &mut std::process::Command, p: &Path) {
+    if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")) {
+        return;
+    }
+    let sandboxed = crate::flatpak::sandboxed();
+    if !sandboxed && crate::sysenv::has_fuse2() {
+        return;
+    }
+    c.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+    if !sandboxed {
+        return;
+    }
+    // The sandbox's /tmp is memory (about half the PC's RAM at most): a big setup unpacks on disk.
+    if let Some(dir) = crate::flatpak::scratch_dir() {
+        c.env("TMPDIR", dir);
     }
 }
 
