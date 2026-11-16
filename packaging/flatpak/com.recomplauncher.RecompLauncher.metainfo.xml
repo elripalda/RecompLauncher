@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.57" date="2026-11-16">
+      <description>
+        <p>Linux .NET games start through their own start script, controller A waits for the D-pad on the desktop, and setups that build inside the game's folder are recognized.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.56" date="2026-11-16">
       <description>
         <p>Games built from your copy are built again when their setup changes or their build is missing, and Steam names itself when it asks to share the screen.</p>
