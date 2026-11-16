@@ -8790,6 +8790,13 @@ fn keep_window_place(w: &tauri::Window, now: bool) {
         // Maximized: the size it goes back to stays the one kept before.
         let mut place: WindowPlace = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         place.maximized = maximized;
+        // But it moves to the screen the window is maximized on: moved there while maximized
+        // (Win+Shift+arrow, or dragged), it opens on that screen next time, like any window.
+        if maximized {
+            if let Ok(Some(screen)) = w.current_monitor() {
+                place = normal_place_on(place, &monitor_rect(&screen), screen.work_area());
+            }
+        }
         if !maximized {
             if let (Ok(p), Ok(sz)) = (w.outer_position(), w.outer_size()) {
                 place = WindowPlace { x: p.x, y: p.y, w: sz.width, h: sz.height, maximized: false };
@@ -8809,30 +8816,76 @@ fn keep_window_place(w: &tauri::Window, now: bool) {
     }
 }
 
-/// Put the window back where it was last time, if that's still on a screen.
+/// Put the window back where it was last time, if that's still on a screen. Otherwise (the first
+/// start, or that screen is gone) it stays where it opened, made smaller if it doesn't fit there.
 fn restore_window_place(w: &tauri::WebviewWindow, dir: &Path) {
-    let Some(place) = std::fs::read(dir.join("window.json")).ok().and_then(|b| serde_json::from_slice::<WindowPlace>(&b).ok()) else { return };
-    if place.w < 400 || place.h < 300 {
-        return;
-    }
-    // The screen its top middle (where the title bar is) is on, so it can always be grabbed.
-    let (cx, cy) = (place.x + place.w as i32 / 2, place.y + 20);
-    let monitors = w.available_monitors().unwrap_or_default();
-    let screen = monitors.iter().find(|m| {
-        let (mp, ms) = (m.position(), m.size());
-        cx >= mp.x && cx < mp.x + ms.width as i32 && cy >= mp.y && cy < mp.y + ms.height as i32
-    });
-    if let Some(screen) = screen {
-        let fit = fit_on_screen(&place, screen.work_area());
+    let kept = std::fs::read(dir.join("window.json")).ok().and_then(|b| serde_json::from_slice::<WindowPlace>(&b).ok());
+    let kept = kept.filter(|p| p.w >= 400 && p.h >= 300);
+    let place = kept.as_ref().and_then(|p| kept_place_on_a_screen(w, p)).or_else(|| first_place(w));
+    if let Some(place) = place {
         // Place first, size second. The window starts on the main screen, and moving it onto a
         // screen with another scale (100% and 150%, say) makes Windows rescale it: a size set
         // before the move grew with it, past the screen, and was kept that way for next time.
-        let _ = w.set_position(tauri::PhysicalPosition::new(fit.x, fit.y));
-        let _ = w.set_size(tauri::PhysicalSize::new(fit.w, fit.h));
+        let _ = w.set_position(tauri::PhysicalPosition::new(place.x, place.y));
+        let _ = w.set_size(tauri::PhysicalSize::new(place.w, place.h));
     }
-    if place.maximized {
+    if kept.is_some_and(|p| p.maximized) {
         let _ = w.maximize();
     }
+}
+
+/// The kept place fitted to the screen its title bar is on, so it can always be grabbed. None
+/// when no screen has it any more.
+fn kept_place_on_a_screen(w: &tauri::WebviewWindow, place: &WindowPlace) -> Option<WindowPlace> {
+    let monitors = w.available_monitors().ok()?;
+    let screen = monitors.iter().find(|m| title_bar_within(place, &monitor_rect(m)))?;
+    Some(fit_on_screen(place, screen.work_area()))
+}
+
+/// The window as it first opens (the size in tauri.conf.json, centred on the main screen), made
+/// to fit when that screen is smaller: 1360x860 at 150% is more than a 1080p laptop shows. None
+/// when it fits, so it stays exactly as it opened.
+fn first_place(w: &tauri::WebviewWindow) -> Option<WindowPlace> {
+    let screen = w.current_monitor().ok().flatten()?;
+    let size = w.outer_size().ok()?;
+    let area = screen.work_area();
+    let fits = size.width <= area.size.width && size.height <= area.size.height;
+    if fits {
+        return None;
+    }
+    Some(centred_on_screen(size.width, size.height, area))
+}
+
+fn monitor_rect(m: &tauri::Monitor) -> tauri::PhysicalRect<i32, u32> {
+    tauri::PhysicalRect { position: *m.position(), size: *m.size() }
+}
+
+/// Whether the window's top middle, where the title bar is, is inside the rect.
+fn title_bar_within(place: &WindowPlace, rect: &tauri::PhysicalRect<i32, u32>) -> bool {
+    let (x, y) = (place.x + place.w as i32 / 2, place.y + 20);
+    let (left, top) = (rect.position.x, rect.position.y);
+    let right = left + rect.size.width as i32;
+    let bottom = top + rect.size.height as i32;
+    x >= left && x < right && y >= top && y < bottom
+}
+
+/// A window centred on a screen's free area, at most nine tenths of it each way, so it still
+/// looks like a window and not like a maximized one.
+fn centred_on_screen(w: u32, h: u32, area: &tauri::PhysicalRect<i32, u32>) -> WindowPlace {
+    let w = w.min(area.size.width / 10 * 9);
+    let h = h.min(area.size.height / 10 * 9);
+    let x = area.position.x + ((area.size.width - w) / 2) as i32;
+    let y = area.position.y + ((area.size.height - h) / 2) as i32;
+    WindowPlace { x, y, w, h, maximized: false }
+}
+
+/// The size a maximized window goes back to, kept on the screen it's maximized on: where it was
+/// if that's this screen, otherwise centred on it.
+fn normal_place_on(place: WindowPlace, screen: &tauri::PhysicalRect<i32, u32>, area: &tauri::PhysicalRect<i32, u32>) -> WindowPlace {
+    if title_bar_within(&place, screen) {
+        return place;
+    }
+    WindowPlace { maximized: place.maximized, ..centred_on_screen(place.w, place.h, area) }
 }
 
 /// The kept place made to fit a screen's free area (the screen without its taskbar): never
@@ -9836,6 +9889,37 @@ mod tests {
         let place = super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: false };
         let fit = super::fit_on_screen(&place, &right_screen);
         assert_eq!(fit, place);
+    }
+
+    #[test]
+    fn a_first_window_too_big_for_the_screen_shrinks_and_centres() {
+        // 1360x860 at 150% on a 1080p laptop.
+        let place = super::centred_on_screen(2040, 1290, &screen_area());
+        assert_eq!(place, super::WindowPlace { x: 96, y: 52, w: 1728, h: 936, maximized: false });
+    }
+
+    /// A 2560x1440 screen right of the 1920x1080 one, its bottom 40 pixels the taskbar.
+    fn right_screen() -> (tauri::PhysicalRect<i32, u32>, tauri::PhysicalRect<i32, u32>) {
+        let position = tauri::PhysicalPosition::new(1920, 0);
+        let whole = tauri::PhysicalRect { position, size: tauri::PhysicalSize::new(2560, 1440) };
+        let free = tauri::PhysicalRect { position, size: tauri::PhysicalSize::new(2560, 1400) };
+        (whole, free)
+    }
+
+    #[test]
+    fn a_window_maximized_on_its_own_screen_keeps_its_normal_place() {
+        let (whole, free) = right_screen();
+        let place = super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: true };
+        let kept = super::normal_place_on(place, &whole, &free);
+        assert_eq!(kept, super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: true });
+    }
+
+    #[test]
+    fn a_window_maximized_on_another_screen_moves_its_normal_place_there() {
+        let (whole, free) = right_screen();
+        let place = super::WindowPlace { x: 200, y: 100, w: 1360, h: 860, maximized: true };
+        let kept = super::normal_place_on(place, &whole, &free);
+        assert_eq!(kept, super::WindowPlace { x: 2520, y: 270, w: 1360, h: 860, maximized: true });
     }
 
     #[test]
