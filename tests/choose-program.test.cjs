@@ -16,7 +16,7 @@ const row = (setup, easy, exe = 'Hookshot\\bin\\hookshot.exe') => {
 
 test('the path box shows the full path, with Change beside it', () => {
   const html = row(null, false);
-  assert.match(html, /<div class="path-box" title="F:\\Library\\hookshot\\Hookshot\\bin\\hookshot\.exe">/);
+  assert.match(html, /<div class="path-box" title="F:\\Library\\hookshot\\Hookshot\\bin\\hookshot\.exe"><bdi>F:\\Library\\hookshot\\Hookshot\\bin\\hookshot\.exe<\/bdi><\/div>/);
   assert.match(html, /data-act="setexe"[^>]*>Change</);
   assert.match(html, /<b>Game Executable<\/b><span>The file Play starts\.<\/span>/);
 });

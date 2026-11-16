@@ -5570,7 +5570,7 @@ function programRow(id, inst) {
   const sub = mine ? t('Play starts this file as it is. You manage this install, and Easy Setup is skipped.')
     : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
       : t('The file Play starts.');
-  const box = path ? `<div class="path-box" title="${esc(path)}">${esc(path)}</div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
+  const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
   const back = mine ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Use Default'))}</button>` : '';
   return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
