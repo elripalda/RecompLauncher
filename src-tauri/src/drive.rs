@@ -852,14 +852,20 @@ pub async fn upload(app: &AppHandle, id: &str, path: &Path, resolution: Option<&
     Ok(())
 }
 
-async fn prune(app: &AppHandle, files: &[Remote]) {
+fn prune_candidates(files: &[Remote]) -> Vec<&Remote> {
     // Conflicting branches and their ancestry are retained until the player resolves them.
     if heads(files).len() != 1 {
-        return;
+        return Vec::new();
     }
     let mut ordered: Vec<_> = files.iter().collect();
-    ordered.sort_by_key(|f| std::cmp::Reverse(f.snapshot.generation));
-    for file in ordered.into_iter().skip(5) {
+    ordered.sort_by_key(|f| f.snapshot.generation);
+    ordered.truncate(files.len().saturating_sub(5));
+    ordered
+}
+
+async fn prune(app: &AppHandle, files: &[Remote]) {
+    // Removing older parents first keeps the head set intact if a later request fails.
+    for file in prune_candidates(files) {
         let request = client().patch(format!("{API}/files/{}", file.id)).timeout(Duration::from_secs(20)).json(&json!({"trashed": true}));
         if send(app, request).await.is_err() {
             break;
@@ -1004,6 +1010,38 @@ mod tests {
         let files = vec![file("four", "four", 4, &["three"]), file("five", "five", 5, &["four"])];
         assert_eq!(heads(&files).len(), 1);
         assert_eq!(copies(&files)[0].v, "five");
+    }
+
+    #[test]
+    fn interrupted_pruning_preserves_the_head_after_every_deletion() {
+        let mut files = Vec::new();
+        for generation in 1..=7 {
+            let id = format!("v{generation}");
+            let parent = format!("v{}", generation - 1);
+            let parents = if generation == 1 { vec![] } else { vec![parent.as_str()] };
+            files.push(file(&id, &id, generation, &parents));
+        }
+        files.reverse();
+        let expected = revision(&files);
+        let discarded: Vec<_> = prune_candidates(&files).iter().map(|f| f.id.clone()).collect();
+        assert_eq!(discarded, ["v1", "v2"]);
+        for id in discarded {
+            files.retain(|f| f.id != id);
+            assert_eq!(revision(&files), expected);
+            assert_eq!(heads(&files)[0].id, "v7");
+            assert!(!copies(&files)[0].conflict);
+        }
+        assert_eq!(files.len(), 5);
+    }
+
+    #[test]
+    fn pruning_keeps_unresolved_branches_and_their_ancestors() {
+        let files = vec![
+            file("v1", "old", 1, &[]), file("v2", "old", 2, &["v1"]),
+            file("v3", "old", 3, &["v2"]), file("v4", "old", 4, &["v3"]),
+            file("pc", "pc-save", 5, &["v4"]), file("deck", "deck-save", 5, &["v4"]),
+        ];
+        assert!(prune_candidates(&files).is_empty());
     }
 
     #[test]

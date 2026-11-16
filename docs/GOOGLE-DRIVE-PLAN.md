@@ -151,14 +151,20 @@ and recorded native/live results establish that saves survive the release scenar
 - Drive restores also reject non-save entries, installed release files, selected launch programs,
   managed inputs, mismatched file/glob destinations and links in destination or staging paths.
   The complete archive is validated before any backup or live restore begins.
-- Regression tests include a launcher-generated backup with 10,001 files in each of two
+- Pruning removes discarded ancestors oldest-first, preserving the head set after each deletion.
+  Choosing a cloud branch resolves from its validated archive even when extra local slots remain.
+  Manifest validation budgets entries, paths and locations instead of using a fixed 8 MiB cap.
+- Regression tests include a launcher-generated backup with 20,000 files in each of two
   locations, independent size budgets, rejected uploads, retained sessions after server errors,
   and proxy changes on the existing Drive client.
+- Further regressions cover interruption after each pruned ancestor, unresolved branch retention,
+  cloud resolution and retry with retained local slots, a large manifest with 100-character
+  filenames, and rejection of a compressed manifest padded out of proportion to its files.
 - Restore regressions reject forged executable replacements with matching hashes and confirm
   that a later invalid archive entry leaves earlier saves untouched. Valid file, glob and nested
   folder restores still pass; release files, managed inputs and linked staging paths stay intact.
 - JavaScript suite: all 271 tests passed after the fixes.
-- Rust suite: 684 passed, one ignored. The full suite ran outside the filesystem sandbox
+- Rust suite: 689 passed, one ignored. The full suite ran outside the filesystem sandbox
   because an existing profile test creates and removes a temporary home-directory folder.
 - Browser smoke check: desktop, connected account and Big Picture checks passed with no
   reported errors. Artifacts from this run: `/tmp/rl-drive-ui-CgbXpt`.
