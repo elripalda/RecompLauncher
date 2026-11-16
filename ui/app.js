@@ -1281,16 +1281,28 @@ function copyLine(id) {
   return `<button type="button" class="linkish copy-line" data-act="copies" data-id="${esc(id)}">${esc(t('Game detected'))} · ${esc(tn(n, '1 file found', '{n} files found'))}${esc(gap)}</button>`;
 }
 const pickBtn = (id) => `<button type="button" class="btn sm" data-act="found-fix" data-id="${esc(id)}">${esc(t('Choose Your Copy'))}</button>`;
+// The player's copy as Before you play shows it: the file it's set up with (none yet: '') and the
+// formats to ask for. A game set up through named inputs goes by its own inputs: the install
+// records one copy only, and only for a required input, so a game of a recomp that carries several
+// (or one whose inputs are all optional) would otherwise always look not set up.
+function copyState(id, su) {
+  if (!su.inputs?.length) return { file: su.copy || '', exts: copyFormats(id).exts };
+  // The game's own files: not shared keys, nor a file the launcher fetches itself.
+  const mine = su.inputs.filter((r) => !r.runtime && !r.shared);
+  const file = su.inputs_ready ? ((mine.find((r) => r.path) || {}).path || '') : '';
+  return { file, exts: [...new Set(mine.flatMap((r) => r.extensions || []))] };
+}
 function readyRows(a) {
   const id = a.id, g = S.library[id], pc = S.pc || {}, rows = [];
   const own = S.owned[id], su = S.setup[id];
   // A self-managed install doesn't need the player's copy or its update: Play just starts their
   // executable.
   const selfRun = !!(su && su.own_program);
-  if (su && su.needs && !selfRun) rows.push({ k: t('Your copy of the game'), v: su.copy ? true : own ? null : null,
-    d: su.copy ? tf('Set up with {file}', { file: baseName(su.copy) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !su.copy && own ? copyLine(id) : '',
-    tags: su.copy || own ? '' : fmtTags(copyFormats(id).exts),
-    fix: su.copy ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
+  const cs = su && su.needs ? copyState(id, su) : null;
+  if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
+    d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
+    tags: cs.file || own ? '' : fmtTags(cs.exts),
+    fix: cs.file ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
   else if (!g && S.easy.has(id)) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
     d: own ? t('It\'s set up for you after it installs.') : t('You insert it after it installs, and the launcher sets the game up.'), html: own ? copyLine(id) : '', tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
   else if (a.needs && !selfRun) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,

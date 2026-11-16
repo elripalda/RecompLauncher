@@ -68,7 +68,7 @@ test('Use Default lets the pick go in the core', () => {
 test('Before you play doesn\'t ask a self-managed install for the player\'s copy', () => {
   const rows = fn(app, 'readyRows');
   assert.match(rows, /const selfRun = !!\(su && su\.own_program\);/);
-  assert.match(rows, /if \(su && su\.needs && !selfRun\) rows\.push\(/);
+  assert.match(rows, /if \(cs && !selfRun\) rows\.push\(/);
   assert.match(rows, /else if \(a\.needs && !selfRun\) rows\.push\(/);
   assert.match(rows, /if \(su && su\.needs && su\.update && !selfRun\) rows\.push\(/);
 });
