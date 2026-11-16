@@ -5568,6 +5568,7 @@ function gameMenu(id) {
   const pinned = pins().includes(id);
   return [
     ...(first ? [first] : []),
+    ...pendingInstallItems(id),
     ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
     ...(g && S.updates[id] ? [{ act: 'install', id, label: t('Update'), icon: 'down' }] : []),
     ...(S.view !== 'game' || S.arg !== id ? [{ act: 'open', id, label: t('Game page'), icon: 'page' }] : []),
@@ -5855,6 +5856,12 @@ function installArgs(id) {
   const pending = (S.pendingInstalls || {})[id] || {};
   const args = (S.dlArgs || {})[id] || { id, dir: null, target: pending.target || null, tag: pending.tag || null, file: pending.file || null, source: pending.source || null };
   return { ...args, resetRelease: false };
+}
+function pendingInstallItems(id) {
+  id = parentId(id);
+  const request = (S.pendingInstalls || {})[id] || (S.dlArgs || {})[id];
+  if (!request?.target || S.jobs[id] || (S.paused || {})[id]) return [];
+  return [{ act: 'cancel', id, label: t('Cancel the download'), icon: 'stop' }];
 }
 async function cancelInstall(id) {
   id = parentId(id);
@@ -8084,6 +8091,8 @@ async function act(el, e) {
     case 'skip-ver': {
       const id = el.dataset.id, tag = S.updates[id];
       if (!tag) return;
+      // Skipping abandons that release, including any failed request waiting to retry it.
+      await cancelInstall(id);
       await saveUi({ skip_ver: Object.assign({}, (S.settings.ui || {}).skip_ver, { [id]: tag }) }, true);
       delete S.updates[id];
       S.recent = S.recent.filter((r) => r.id !== id);

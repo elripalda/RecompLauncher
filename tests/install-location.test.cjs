@@ -29,7 +29,7 @@ function context() {
       if (command === 'install_location') return { target: args.target || (args.dir || '/games') + '/example', free: 1000 };
     },
   });
-  vm.runInContext(fn('dlArgs') + fn('installArgs') + fn('startInstall') + fn('resumeDl') + fn('pickBuild') + fn('cancelInstall'), c);
+  vm.runInContext(fn('dlArgs') + fn('installArgs') + fn('startInstall') + fn('resumeDl') + fn('pickBuild') + fn('pendingInstallItems') + fn('cancelInstall'), c);
   return { c, calls };
 }
 
@@ -204,6 +204,108 @@ test('a failed cancellation retains the request for resuming', async () => {
   await assert.rejects(c.cancelInstall('example'), /Cancellation failed/);
   assert.equal(c.installArgs('example').tag, 'v1');
   assert.equal(c.S.paused.example.phase, 'paused');
+});
+
+test('skipping a failed release after restarting lets the next ordinary update choose its release', async () => {
+  const { c, calls } = context();
+  c.S.library.example = { path: '/drive/Chosen', tag: 'v1' };
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', selected_tag: 'v2', file: 'v2.zip' } };
+  c.S.updates.example = 'v2';
+  c.S.recent = [{ id: 'example', phase: 'error' }];
+  c.renderSide = () => {};
+  c.badVersion = () => false;
+  c.invoke = async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'install_location') return { target: c.S.library[args.id].path };
+  };
+  c.saveUi = async (settings) => {
+    calls.push({ command: 'save-ui', settings });
+    Object.assign(c.S.settings.ui, settings);
+  };
+  vm.runInContext(fn('act'), c);
+  await c.act({ dataset: { act: 'skip-ver', id: 'example' } });
+  assert.equal(calls[0].command, 'cancel');
+  assert.equal(calls[1].command, 'save-ui');
+  assert.equal(c.S.settings.ui.skip_ver.example, 'v2');
+  assert.equal(c.S.pendingInstalls.example, undefined);
+  assert.equal(c.S.updates.example, undefined);
+  assert.equal(c.S.library.example.path, '/drive/Chosen');
+  c.S.updates.example = 'v3';
+  await c.startInstall('example');
+  assert.equal(calls.at(-1).args.tag, null);
+  assert.equal(calls.at(-1).args.file, null);
+  assert.equal(calls.at(-1).args.target, '/drive/Chosen');
+});
+
+test('skipping a failed release also clears a request cached in the current session', async () => {
+  const { c } = context();
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v2', file: 'v2.zip' });
+  c.S.updates.example = 'v2';
+  c.S.recent = [];
+  c.renderSide = () => {};
+  vm.runInContext(fn('act'), c);
+  await c.act({ dataset: { act: 'skip-ver', id: 'example' } });
+  assert.equal(c.installArgs('example').tag, null);
+  assert.equal(c.installArgs('example').file, null);
+});
+
+test('failed cancellation prevents skipping a release and preserves its retry state', async () => {
+  const { c } = context();
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', tag: 'v2', file: 'v2.zip' } };
+  c.S.updates.example = 'v2';
+  c.invoke = async () => { throw new Error('Cancellation failed'); };
+  vm.runInContext(fn('act'), c);
+  await assert.rejects(c.act({ dataset: { act: 'skip-ver', id: 'example' } }), /Cancellation failed/);
+  assert.equal(c.S.updates.example, 'v2');
+  assert.equal(c.S.pendingInstalls.example.file, 'v2.zip');
+  assert.equal(c.S.settings.ui.skip_ver, undefined);
+});
+
+test('a persisted failed update can be cancelled from the desktop game menu after restart', async () => {
+  const { c, calls } = context();
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen', selected_tag: 'v2', file: 'v2.zip' } };
+  vm.runInContext(fn('act'), c);
+  const [item] = c.pendingInstallItems('example');
+  assert.equal(item.label, 'Cancel the download');
+  assert.match(fn('gameMenu'), /\.\.\.pendingInstallItems\(id\)/);
+  await c.act({ dataset: item });
+  assert.equal(calls[0].command, 'cancel');
+  assert.equal(c.S.pendingInstalls.example, undefined);
+  assert.equal(c.pendingInstallItems('example').length, 0);
+});
+
+test('Big Picture exposes cancellation for a dismissed build choice without an active job', async () => {
+  const { c, calls } = context();
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v2' });
+  c.S.setup = {};
+  c.S.mods = {};
+  c.TV = { view: 'game', arg: 'example' };
+  c.GAMEVIEWS = ['game'];
+  c.libAppOf = (id) => ({ id, name: 'Example' });
+  c.pins = () => [];
+  c.mainItem = () => null;
+  c.verGroup = () => null;
+  c.window.isHidden = () => false;
+  c.draw = () => {};
+  let items;
+  c.sheet = (_title, choices) => { items = choices; c.TV.sheet = {}; };
+  vm.runInContext(tv.match(/^  function gameSheet\([^]*?^  }/m)[0], c);
+  c.gameSheet('example');
+  const cancel = items.find((item) => item.label === 'Cancel the download');
+  assert.ok(cancel);
+  await cancel.run();
+  assert.equal(calls[0].command, 'cancel');
+  assert.equal(c.S.dlArgs.example, undefined);
+});
+
+test('pending cancellation does not duplicate active or paused download controls', () => {
+  const { c } = context();
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen' } };
+  c.S.jobs.example = { phase: 'download' };
+  assert.equal(c.pendingInstallItems('example').length, 0);
+  delete c.S.jobs.example;
+  c.S.paused.example = { phase: 'paused' };
+  assert.equal(c.pendingInstallItems('example').length, 0);
 });
 
 test('a launcher restart recovers the pending destination and build from backend state', () => {

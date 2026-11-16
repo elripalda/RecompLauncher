@@ -47,10 +47,14 @@ an installed game's location. Settings → **Ask Where to Install** also enables
 ordinary installs; Easy Install always offers it.
 
 Finish or cancel a pending update before moving its game or changing its project. Automatic
-listing changes also wait until pending installs have finished or been cancelled. A failed download can be retried in
-another empty folder once its old download work is cleaned up. If extraction has already started,
+listing changes also wait until pending installs have finished or been cancelled. If an update
+failed or you closed its build chooser, use **Cancel the download** from the game's menu
+(**Options** in Big Picture). This remains available after restarting the launcher.
+
+A failed download can be retried in another empty folder once its old download work is cleaned up. If extraction has already started,
 retry in the original folder or remove that partial folder before selecting another destination;
-the launcher keeps its recovery record until then.
+the launcher keeps its recovery record until then. **Skip This Version** discards the failed
+update request so a later update can install the next version into the same game folder.
 
 If a game's folder is missing, **Find Its Folder…** can link an existing folder again. This does
 not make that folder launcher-owned: uninstall keeps its contents, including unrelated files.

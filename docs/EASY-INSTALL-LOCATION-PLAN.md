@@ -1,6 +1,6 @@
 # Easy Install: choose the game's installation folder
 
-Status: draft implementation with all five rounds of review findings addressed below. Existing manifest
+Status: draft implementation with review findings and their fixes recorded below. Existing manifest
 fields and `{install}` support the selected folder; no manifest extension was added. External builders
 retain their declared output paths until their integrations expose a supported destination option.
 
@@ -136,6 +136,20 @@ The fifth review identified one P1 and three P2 issues:
   pending requests before Change Project or Move to It. Automatic reconciliation waits and retains
   the custom listing. Tests retain the original token, selected build and owned work until cancelled,
   then verify the ID change can proceed.
+
+## Automated review loop
+
+The first automated branch review found two additional P2 issues:
+
+- [x] **Skipping abandons the failed release.** Skip This Version cancels the retained installation
+  before recording the skipped tag. Installed games keep their destination; the next ordinary or
+  automatic update can choose the new release and asset. Failed cancellation preserves the retry
+  state and does not record the skip. Tests cover requests restored after restart and cached in
+  the current session.
+- [x] **Idle requests offer cancellation.** A failed update or dismissed build choice can be
+  cancelled from the desktop game menu or Big Picture Options, even when there is no active or
+  paused job. Both use the existing cancellation helper. Tests exercise the two actions and ensure
+  active/paused downloads keep their existing controls.
 
 ## Original implementation baseline
 
