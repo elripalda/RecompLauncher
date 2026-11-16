@@ -743,7 +743,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Added after start.args when this game is played. None: Play opens your own menu, and the tile says to pick the game there."
+            "description": "Added after start.args when this game is played. {input:id} is filled with this game's file; an argument whose file isn't chosen is left out. None: Play opens your own menu, and the tile says to pick the game there."
           },
           "title_id": {
             "type": "string",

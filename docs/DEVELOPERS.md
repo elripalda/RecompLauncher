@@ -319,7 +319,12 @@ shortcuts. Installing, updating and removing stay one thing for the whole releas
   (`recomplauncher://game/<recomp id>--<id>`).
 - `name`: shown on its tile.
 - `args`: added after `start.args` when this game is played. Without them Play opens your own
-  menu, and the tile says to pick the game there.
+  menu, and the tile says to pick the game there. They can carry this game's files with
+  `{input:id}`, as `start.args` can; an argument whose file isn't chosen is left out:
+
+  ```json
+  { "id": "blue", "name": "Pokémon Blue", "args": ["--game=blue", "--rom={input:rom-blue}"], "inputs": ["rom-blue"] }
+  ```
 - `title_id` (Xbox 360): this game's title id. Only its own unlock file, `<title_id>.toml`, is read.
 - `inputs`: the ids of the setup inputs this game needs. Inputs no game lists are shared by all.
   Easy Setup for a game asks only for its own and the shared ones.
