@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.56" date="2026-11-16">
+      <description>
+        <p>Games built from your copy are built again when their setup changes or their build is missing, and Steam names itself when it asks to share the screen.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.55" date="2026-11-16">
       <description>
         <p>Saves restore into the folder a game uses now, Switch copies are recognized by their title ID, and setups run more reliably in the Flatpak.</p>
