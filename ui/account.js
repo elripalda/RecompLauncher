@@ -21,7 +21,7 @@ const cloudReady = () => !!S.saveProvider?.connected;
 
 function applySaveProvider(result) {
   S.saveProvider = result.state || result;
-  if (result.installed) S.library = result.installed;
+  if (result.installed) { S.library = result.installed; expandLib(); }
   S.saves = {}; S.savesAll = null;
   if (window.tvSavesReset) window.tvSavesReset();
 }
@@ -68,20 +68,24 @@ async function connectDrive() {
     let result;
     try { result = await invoke('drive_connect_poll'); } catch (e) { result = { status: 'error', error: String(e) }; }
     if (closed) return;
-    if (result.status === 'pending' && Date.now() < until) { timer = setTimeout(poll, 1000); return; }
+    if (result.status === 'pending' && Date.now() < until) { schedule(); return; }
     closed = true;
     if (tv) tv.close(true);
     if (box) box.remove();
     if (result.status !== 'ok') { cancel(); return fail(result.error || t('Google sign-in expired. Try connecting again.')); }
-    await loadSaveProvider();
     // The backend may have cleared consent when a different Google account replaced the old one.
-    const current = await invoke('save_provider_set', { provider: S.saveProvider.provider });
-    applySaveProvider(current);
+    applySaveProvider(await invoke('save_provider_state'));
     renderAccountBits();
     toast(t('Google Drive connected.'));
     await chooseSaveProvider('google_drive');
   };
-  timer = setTimeout(() => poll().catch((e) => { cancel(); fail(e); }), 1000);
+  const schedule = () => { timer = setTimeout(() => poll().catch((e) => {
+    cancel();
+    if (tv) tv.close(true);
+    if (box) box.remove();
+    fail(e);
+  }), 1000); };
+  schedule();
 }
 
 async function disconnectDrive() {
@@ -102,7 +106,7 @@ function saveProviderSection(group, row) {
   const button = (label, act, disabled = false) => `<button type="button" class="btn sm" data-act="acc-${act}"${disabled ? ' disabled' : ''}>${esc(t(label))}</button>`;
   const info = tf('Current destination: {name}. Enable cloud saves separately for each game.', { name: p.name });
   const googleHelp = google.needsReconnect ? t('Google Drive needs you to connect again.') : google.connected ? google.email : google.configured ? t('Connect your Google account. Save copies go directly to your Drive.') : t('Google Drive is not configured in this launcher build.');
-  return group(t('Save destination'), `<p class="set-note">${esc(info)}</p>`
+  return group(t('Save Destination'), `<p class="set-note">${esc(info)}</p>`
     + row('RecompStore', t('Use your RecompStore account for game saves.'), button(p.provider === 'recompstore' ? 'Selected' : 'Use RecompStore', 'provider-recompstore', p.provider === 'recompstore'))
     + row('Google Drive', googleHelp, `<span class="acts">${google.connected ? button('Reconnect', 'drive-connect') + button('Disconnect', 'drive-disconnect') + button(p.provider === 'google_drive' ? 'Selected' : 'Use Google Drive', 'provider-google', p.provider === 'google_drive') : button('Connect Google Drive', 'drive-connect', !google.configured)}</span>`)
     + row(t('Ask for Each New Game'), t('Ask before enabling cloud saves for a game.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)

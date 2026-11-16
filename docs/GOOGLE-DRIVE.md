@@ -33,6 +33,12 @@ Big Picture has the same connection, provider selection, per-game switch and syn
 It normally opens the browser on the same PC. Approved limited-input builds can offer a
 Google device code and QR code for a phone. A phone cannot finish a desktop loopback callback.
 
+The save destination controls in desktop and Big Picture:
+
+![Desktop save destination settings](images/google-drive-desktop.webp)
+
+![Google Drive selected in Big Picture](images/google-drive-big-picture.webp)
+
 ## Configuring a release build
 
 The project maintainer must configure one Google Cloud project, enable the Drive API, configure
@@ -81,6 +87,21 @@ No `recomplauncher.json` changes are needed. Existing `saves` paths and managed-
 apply to Drive backups too. Downloads are checked against the archive manifest and individual
 file hashes before restoration, and archive destinations must match this PC's known save folders
 (or the folders the player explicitly picked).
+
+## Reviewing the UI without a Google account
+
+On Linux with Google Chrome installed, run:
+
+```sh
+node tools/check-google-drive-ui.cjs
+```
+
+Set `RL_UI_CHROME` to another Chrome executable if needed. An optional directory argument chooses
+where the check writes its screenshots and results; otherwise it uses a new temporary directory.
+It exercises the shipped desktop and Big Picture UI with simulated Tauri responses, including
+connection cancellation, missing OAuth configuration, connected account controls, and keyboard navigation.
+It never signs into Google or changes your launcher data. The screenshots above use this simulated
+state and a sample account address. Native launcher and live Google validation are separate checks.
 
 ## Validation before a public release
 

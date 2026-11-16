@@ -54,12 +54,12 @@ pub fn state(app: &AppHandle) -> Value {
 
 #[tauri::command]
 pub fn save_provider_state(app: AppHandle) -> Value {
-    state(&app)
+    let st = app.state::<App>();
+    json!({"state": state(&app), "installed": st.lib.lock().unwrap().installed})
 }
 
 pub fn emit(app: &AppHandle) {
-    let st = app.state::<App>();
-    let _ = app.emit("save-provider", json!({"state": state(app), "installed": st.lib.lock().unwrap().installed}));
+    let _ = app.emit("save-provider", save_provider_state(app.clone()));
 }
 
 pub fn ensure_idle(st: &App) -> Result<(), Error> {
@@ -100,5 +100,5 @@ pub async fn save_provider_set(app: AppHandle, provider: Provider) -> Result<Val
         std::fs::rename(temp, st.dir.join("save-provider.json"))?;
     }
     emit(&app);
-    Ok(json!({"state": state(&app), "installed": st.lib.lock().unwrap().installed}))
+    Ok(save_provider_state(app.clone()))
 }

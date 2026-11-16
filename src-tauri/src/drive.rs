@@ -469,11 +469,18 @@ pub async fn drive_disconnect(app: AppHandle) -> Res<Value> {
     if save_provider::current(&st.dir) == save_provider::Provider::GoogleDrive {
         save_provider::clear_consent(&st)?;
     }
-    crate::secret::forget_named(&st.dir, CREDENTIAL)?;
-    *ACCESS.lock().await = None;
-    NEEDS_RECONNECT.store(false, Ordering::Relaxed);
+    disconnect_account(&st.dir).await?;
     save_provider::emit(&app);
-    Ok(json!({"state": save_provider::state(&app), "installed": st.lib.lock().unwrap().installed}))
+    Ok(save_provider::save_provider_state(app.clone()))
+}
+
+async fn disconnect_account(dir: &Path) -> Res<()> {
+    // A refresh may replace the stored token. Let it finish before removing the credentials.
+    let mut cached = ACCESS.lock().await;
+    crate::secret::forget_named(dir, CREDENTIAL)?;
+    *cached = None;
+    NEEDS_RECONNECT.store(false, Ordering::Relaxed);
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -863,6 +870,34 @@ pub async fn download(app: &AppHandle, id: &str, copy: &cloud::CloudCopy) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn disconnect_waits_for_refresh_before_removing_credentials() {
+        let dir = std::env::temp_dir().join(format!("rl-drive-disconnect-{}", random_text().unwrap()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut account = Account {
+            id: "player".into(),
+            email: "player@example.com".into(),
+            refresh: "original".into(),
+            client_id: "client".into(),
+            client_secret: "secret".into(),
+        };
+        store(&dir, &account).unwrap();
+        let mut refresh = ACCESS.lock().await;
+        *refresh = Some(Access { account: account.id.clone(), token: "access".into(), until: Instant::now() + Duration::from_secs(60) });
+        let disconnect = disconnect_account(&dir);
+        tokio::pin!(disconnect);
+        assert!(futures_util::poll!(&mut disconnect).is_pending());
+        assert!(connected(&dir), "credentials stay until the in-flight refresh finishes");
+        account.refresh = "rotated".into();
+        store(&dir, &account).unwrap();
+        drop(refresh);
+        disconnect.await.unwrap();
+        assert!(!connected(&dir), "a late refresh must not recreate the disconnected account");
+        assert!(ACCESS.lock().await.is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn file(id: &str, hash: &str, generation: u64, parents: &[&str]) -> Remote {
         Remote {
