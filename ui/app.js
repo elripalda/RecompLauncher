@@ -5574,8 +5574,9 @@ function exePath(inst) {
   return String(inst.path || '').replace(/[\\/]+$/, '') + sep + e;
 }
 // Game Executable on the game's page: what Play starts, in a path box, with Change. On a game Easy
-// Setup does it says what picking the game's own executable does there, and once that pick has
-// taken over, that the player manages the install (the pill), with Use Default to go back.
+// Setup does it says what picking the game's own executable does there, and once Play starts the
+// pick as it is, that the player manages the install (the pill). The way back: Use Easy Setup
+// Instead where Easy Setup can come back on for this game alone, otherwise Use Default.
 function programRow(id, inst) {
   const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
   const path = exePath(inst);
@@ -5583,17 +5584,39 @@ function programRow(id, inst) {
     : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
       : t('The file Play starts.');
   const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
-  const back = mine ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Use Default'))}</button>` : '';
+  const easyBack = easy && !(S.settings.ui || {}).easy_skip_all;
+  const backBtn = easyBack ? ['easy-again', t('Use Easy Setup Instead')] : ['forget-program', t('Use Default')];
+  const back = mine ? `<button type="button" class="btn" data-act="${backBtn[0]}" data-id="${esc(id)}">${esc(backBtn[1])}</button>` : '';
   return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
+}
+// Skip Easy Setup for one game, or Easy Setup on for it again. Turning it back on lets go of an
+// executable the player picked, so the launcher starts the game its own way again.
+async function setEasySkip(id, on) {
+  const skip = new Set((S.settings.ui || {}).easy_skip || []);
+  if (!on && S.library[id]) S.library[id] = await invoke('forget_program', { id });
+  if (on) skip.add(id);
+  else skip.delete(id);
+  await saveUi({ easy_skip: [...skip] }, true);
+  if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
+}
+// Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
+async function askEasyOff(id) {
+  const name = (byId(id) || S.library[id] || { name: id }).name;
+  const text = tf('Set Game Executable turns off Easy Setup for {name}. Play then starts just the file you pick, as it is, and you manage this install.', { name });
+  const v = await ask(t('Turn Off Easy Setup?'), `<p>${esc(text)}</p>`, [{ label: t('Turn Off'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
+  return v === 'yes';
 }
 // Set Game Executable: the program Play starts, picked by the player. True when it's set.
 async function chooseProgram(id) {
   const g = S.library[id];
+  const easyOn = S.easy.has(id);
+  if (easyOn && !(await askEasyOff(id))) return false;
   const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] });
   if (!p) return false;
   S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path });
-  // The setup info says whether the pick took over from Easy Setup.
+  if (easyOn) await setEasySkip(id, true);
+  // The setup info says whether Play starts the pick as it is.
   if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
   return true;
 }
@@ -6158,7 +6181,7 @@ async function playGame2(id, program) {
           return render(true);
         }
         if (v === 'easy') {
-          await saveUi({ easy_skip: ((S.settings.ui || {}).easy_skip || []).filter((x) => x !== id) }, true);
+          try { await setEasySkip(id, false); } catch (e) { return fail(e); }
           return playGame(id);
         }
         return;
@@ -6859,7 +6882,26 @@ window.keepOut = keepOut;
 async function loadEasy(quiet) {
   try { S.easyAll = new Set(await invoke('easy_setup')); } catch (e) { S.easyAll = new Set(); }
   applyEasySkip();
+  await skipOwnPrograms();
   if (!quiet) render(true);
+}
+// A game whose executable the player picked has Easy Setup off: Skip Easy Setup is the one switch
+// for who sets a game up. For picks made before it was (Beta 57 and earlier, when the pick took
+// over on its own), it's turned off here to match: those games already started the pick as it is.
+async function skipOwnPrograms() {
+  const ui = S.settings.ui || {};
+  if (ui.easy_skip_all) return;
+  const own = await invoke('own_program_games').catch(() => []);
+  const add = own.filter((id) => S.easy.has(id));
+  if (!add.length) return;
+  await saveUi({ easy_skip: [...(ui.easy_skip || []), ...add] }, true);
+}
+// Easy Setup on for every game again: a game whose executable the player picked keeps it off (its
+// own menu turns it back on), so the pick still starts.
+async function easyForEveryGame() {
+  const skip = new Set((S.settings.ui || {}).easy_skip || []);
+  for (const id of await invoke('own_program_games').catch(() => [])) skip.add(id);
+  return saveUi({ easy_skip_all: false, easy_skip: [...skip] });
 }
 async function loadOwned() {
   try { S.owned = await invoke('rom_matches'); S.ownedOk = true; } catch (e) { S.owned = {}; S.ownedOk = false; }
@@ -7971,9 +8013,9 @@ async function act(el, e) {
     }
     case 'ownbuild': try { if (await useOwnBuild(id)) { toast(t('It starts your own build now.')); render(true); } } catch (err) { fail(err); } return;
     case 'easy-skip': {
-      const skip = new Set((S.settings.ui || {}).easy_skip || []), on = !skip.has(id), name = (byId(id) || S.library[id] || { name: id }).name;
-      on ? skip.add(id) : skip.delete(id);
-      await saveUi({ easy_skip: [...skip] });
+      const on = !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
+      try { await setEasySkip(id, on); } catch (err) { return fail(err); }
+      render(true);
       toast(on ? tf('{name} skips Easy Setup: it installs as it comes, and its own installer or launcher sets it up.', { name }) : tf('{name} uses Easy Setup again.', { name }));
       return;
     }
@@ -8058,7 +8100,9 @@ async function act(el, e) {
       renderSide();
       return render(true);
     }
-    case 'ui-toggle': return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
+    case 'ui-toggle':
+      if (el.dataset.k === 'easy_skip_all' && (S.settings.ui || {}).easy_skip_all) return easyForEveryGame();
+      return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }
     case 'side-move': {
@@ -8250,6 +8294,12 @@ async function act(el, e) {
     case 'setexe':
       try { if (await chooseProgram(id)) { toast(t('Play starts that program now.')); render(true); } } catch (err) { fail(err); }
       return;
+    case 'easy-again': {
+      const name = (byId(id) || S.library[id] || { name: id }).name;
+      try { await setEasySkip(id, false); } catch (err) { return fail(err); }
+      toast(tf('{name} uses Easy Setup again.', { name }));
+      return render(true);
+    }
     case 'forget-program':
       try {
         S.library[id] = await invoke('forget_program', { id });

@@ -6346,13 +6346,30 @@ fn python_here() -> Option<(PathBuf, Vec<&'static str>)> {
 
 /// The program the player picked in the game's settings, when the game's setup file starts another
 /// one: a moved game, or a program of their own. None when they didn't pick, or picked the same.
-fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+fn picked_program(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, profile::Profile)> {
     if g.exe_rules != u8::MAX {
         return None;
     }
     let exe = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }).filter(|e| e.is_file())?;
     let p = profile_of(st, id, g)?;
-    (p.start.is_some() && !p.starts_program(&exe)).then_some(exe)
+    (p.start.is_some() && !p.starts_program(&exe)).then_some((exe, p))
+}
+
+/// The player's picked program, when Play starts it as it is. On a game Easy Setup can do, only
+/// while Easy Setup is off for it: Skip Easy Setup is the one switch for who sets a game up, so
+/// the game's page and Play can't disagree (picking the program turns it off, in the UI).
+fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    let (exe, p) = picked_program(st, id, g)?;
+    let easy_on = p.easy_setup() && !easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    (!easy_on).then_some(exe)
+}
+
+/// The games whose program the player picked, so the UI turns Easy Setup off for them: once for
+/// picks made before Skip Easy Setup was the switch, and when Easy Setup is turned on for every game.
+#[tauri::command(async)]
+fn own_program_games(st: State<'_, App>) -> Vec<String> {
+    let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    games.iter().filter(|g| picked_program(&st, &g.id, g).is_some()).map(|g| g.id.clone()).collect()
 }
 
 /// Set Up By Hand: the program and its command line, with the player's game files put where they
@@ -9665,7 +9682,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, own_program_games, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
