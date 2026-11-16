@@ -326,7 +326,8 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
     }
     tried(url);
     let started = Instant::now();
-    match rb.send().await {
+    // Over Encrypted Client Hello when the site has a key for it (ech.rs).
+    match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
             if trouble_status(code) {
@@ -367,7 +368,7 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
         return None;
     }
     let started = Instant::now();
-    match rb.send().await {
+    match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
             if !r.status().is_success() {
@@ -728,7 +729,8 @@ fn redirects() -> reqwest::redirect::Policy {
     })
 }
 
-/// The settings of the launcher's client, for any other client that has to match it.
+/// The settings of the launcher's client. Here rather than where it's made, so the client that
+/// asks the server over Encrypted Client Hello (ech.rs) is the same in everything but its TLS.
 pub fn client_builder() -> reqwest::ClientBuilder {
     with_proxy(reqwest::Client::builder())
         .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))

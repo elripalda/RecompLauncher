@@ -21,6 +21,7 @@ pub mod display;
 pub mod dllcheck;
 pub mod discord;
 pub mod dlss;
+mod ech;
 pub mod extract;
 pub mod files;
 pub mod gamefiles;
