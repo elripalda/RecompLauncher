@@ -1809,6 +1809,7 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
                 if let Some(a) = l.arts.remove(&old) {
                     l.arts.entry(new.clone()).or_insert(a);
                 }
+                l.move_play_history(&old, &new);
                 if let Some(mut g) = l.installed.remove(&old) {
                     g.id = new.clone();
                     l.put(&new, g);

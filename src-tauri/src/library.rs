@@ -433,6 +433,19 @@ pub(crate) struct PlayHistory {
     games: BTreeMap<String, crate::games::Played>,
 }
 
+impl Library {
+    /// A project's new id takes over the play history kept for its old one, so a renamed
+    /// project's uninstalled time isn't left behind under an id nothing uses any more.
+    pub(crate) fn move_play_history(&mut self, old: &str, new: &str) {
+        let Some(history) = self.removed_play_history.remove(old) else { return };
+        let kept = self.removed_play_history.entry(new.to_string()).or_default();
+        kept.recomp.absorb(history.recomp);
+        for (sub, played) in history.games {
+            kept.games.entry(sub).or_default().absorb(played);
+        }
+    }
+}
+
 /// A game's own pictures without the game: what Customize keeps for it.
 #[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 pub struct ArtSet {
@@ -479,14 +492,15 @@ impl Library {
         if let Some(a) = self.arts.remove(id) {
             a.onto(&mut g);
         }
+        // Added to, not replaced: a record that already has time (a rename, a backup) keeps it.
         if let Some(history) = self.removed_play_history.remove(id) {
-            g.played_secs = history.recomp.played_secs;
-            g.last_played = history.recomp.last_played;
-            g.sessions = history.recomp.sessions;
-            for (id, mut played) in history.games {
-                let game = g.games.entry(id).or_default();
-                played.inputs_ready = std::mem::take(&mut game.inputs_ready);
-                *game = played;
+            let mut recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, sessions: std::mem::take(&mut g.sessions), ..Default::default() };
+            recomp.absorb(history.recomp);
+            g.played_secs = recomp.played_secs;
+            g.last_played = recomp.last_played;
+            g.sessions = recomp.sessions;
+            for (sub, played) in history.games {
+                g.games.entry(sub).or_default().absorb(played);
             }
         }
         g.exe = g.exe.map(|e| unix_path(&g.path, e));
@@ -778,6 +792,29 @@ mod tests {
         let game = &g.games["first"];
         assert_eq!((game.played_secs, game.last_played, game.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
         assert!(game.inputs_ready.is_empty());
+        assert!(l.removed_play_history.is_empty());
+    }
+
+    #[test]
+    fn restored_play_history_adds_to_time_already_there() {
+        let mut l = Library::default();
+        l.put("x", Installed { id: "x".into(), played_secs: 60, last_played: 100, sessions: vec![[40, 60]], ..Default::default() });
+        l.forget("x").unwrap();
+        l.put("x", Installed { id: "x".into(), played_secs: 30, last_played: 300, sessions: vec![[270, 30]], ..Default::default() });
+
+        let g = &l.installed["x"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (90, 300, &[[40, 60], [270, 30]][..]));
+    }
+
+    #[test]
+    fn renamed_project_takes_its_old_play_history() {
+        let mut l = Library::default();
+        l.put("old", Installed { id: "old".into(), played_secs: 60, last_played: 100, ..Default::default() });
+        l.forget("old").unwrap();
+        l.move_play_history("old", "new");
+        l.put("new", Installed { id: "new".into(), ..Default::default() });
+
+        assert_eq!(l.installed["new"].played_secs, 60);
         assert!(l.removed_play_history.is_empty());
     }
 
