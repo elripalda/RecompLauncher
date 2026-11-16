@@ -8764,7 +8764,7 @@ fn take_options_asked() -> Option<String> {
 
 static WINDOW_GEN: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
 struct WindowPlace {
     x: i32,
     y: i32,
@@ -8815,19 +8815,37 @@ fn restore_window_place(w: &tauri::WebviewWindow, dir: &Path) {
     if place.w < 400 || place.h < 300 {
         return;
     }
-    let on_screen = w.available_monitors().unwrap_or_default().iter().any(|m| {
+    // The screen its top middle (where the title bar is) is on, so it can always be grabbed.
+    let (cx, cy) = (place.x + place.w as i32 / 2, place.y + 20);
+    let monitors = w.available_monitors().unwrap_or_default();
+    let screen = monitors.iter().find(|m| {
         let (mp, ms) = (m.position(), m.size());
-        // Its top middle (where the title bar is) on a screen, so it can always be grabbed.
-        let (cx, cy) = (place.x + place.w as i32 / 2, place.y + 20);
         cx >= mp.x && cx < mp.x + ms.width as i32 && cy >= mp.y && cy < mp.y + ms.height as i32
     });
-    if on_screen {
-        let _ = w.set_size(tauri::PhysicalSize::new(place.w, place.h));
-        let _ = w.set_position(tauri::PhysicalPosition::new(place.x, place.y));
+    if let Some(screen) = screen {
+        let fit = fit_on_screen(&place, screen.work_area());
+        // Place first, size second. The window starts on the main screen, and moving it onto a
+        // screen with another scale (100% and 150%, say) makes Windows rescale it: a size set
+        // before the move grew with it, past the screen, and was kept that way for next time.
+        let _ = w.set_position(tauri::PhysicalPosition::new(fit.x, fit.y));
+        let _ = w.set_size(tauri::PhysicalSize::new(fit.w, fit.h));
     }
     if place.maximized {
         let _ = w.maximize();
     }
+}
+
+/// The kept place made to fit a screen's free area (the screen without its taskbar): never
+/// bigger than it, and moved in only as far as needed for all of it to show. A size kept by an
+/// older launcher can be wider than both screens together, and would come back that way forever.
+fn fit_on_screen(place: &WindowPlace, area: &tauri::PhysicalRect<i32, u32>) -> WindowPlace {
+    let w = place.w.min(area.size.width);
+    let h = place.h.min(area.size.height);
+    let right_most = area.position.x + (area.size.width - w) as i32;
+    let bottom_most = area.position.y + (area.size.height - h) as i32;
+    let x = place.x.clamp(area.position.x, right_most);
+    let y = place.y.clamp(area.position.y, bottom_most);
+    WindowPlace { x, y, w, h, maximized: place.maximized }
 }
 
 fn show_main(app: &AppHandle) {
@@ -9785,6 +9803,41 @@ mod tests {
         assert_eq!(update_strike(&d, "0.90.0-beta.33", u, "bbb", 1), 1);
         std::fs::remove_dir_all(&d).unwrap();
     }
+
+    /// A 1920x1080 screen whose bottom 40 pixels are the taskbar.
+    fn screen_area() -> tauri::PhysicalRect<i32, u32> {
+        tauri::PhysicalRect { position: tauri::PhysicalPosition::new(0, 0), size: tauri::PhysicalSize::new(1920, 1040) }
+    }
+
+    #[test]
+    fn a_kept_window_that_fits_comes_back_unchanged() {
+        let place = super::WindowPlace { x: 100, y: 50, w: 1360, h: 860, maximized: false };
+        let fit = super::fit_on_screen(&place, &screen_area());
+        assert_eq!(fit, place);
+    }
+
+    #[test]
+    fn a_kept_window_wider_than_both_screens_shrinks_to_one() {
+        let place = super::WindowPlace { x: -200, y: 120, w: 4600, h: 1500, maximized: false };
+        let fit = super::fit_on_screen(&place, &screen_area());
+        assert_eq!(fit, super::WindowPlace { x: 0, y: 0, w: 1920, h: 1040, maximized: false });
+    }
+
+    #[test]
+    fn a_kept_window_hanging_off_the_edge_moves_back_on() {
+        let place = super::WindowPlace { x: 1000, y: 600, w: 1360, h: 860, maximized: true };
+        let fit = super::fit_on_screen(&place, &screen_area());
+        assert_eq!(fit, super::WindowPlace { x: 560, y: 180, w: 1360, h: 860, maximized: true });
+    }
+
+    #[test]
+    fn a_kept_window_on_a_second_screen_stays_there() {
+        let right_screen = tauri::PhysicalRect { position: tauri::PhysicalPosition::new(1920, 0), size: tauri::PhysicalSize::new(2560, 1400) };
+        let place = super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: false };
+        let fit = super::fit_on_screen(&place, &right_screen);
+        assert_eq!(fit, place);
+    }
+
     #[test]
     fn only_plain_game_links_open_anything() {
         assert_eq!(super::link_game("recomplauncher://game/recompia").as_deref(), Some("recompia"));
