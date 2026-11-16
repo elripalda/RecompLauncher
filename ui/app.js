@@ -2525,6 +2525,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
+      ${easyRow(id)}
       ${programRow(id, inst)}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
@@ -5618,10 +5619,20 @@ function exePath(inst) {
   const sep = S.os === 'windows' ? '\\' : '/';
   return String(inst.path || '').replace(/[\\/]+$/, '') + sep + e;
 }
+// Easy Setup on the game's Manage tab: the one switch for who sets the game up, the same as Skip
+// Easy Setup. Turning it back on lets go of an executable the player picked (setEasySkip). Only on
+// games Easy Setup can do, and not while it's skipped for every game in Settings.
+function easyRow(id) {
+  const ui = S.settings.ui || {};
+  if (!S.easyAll || !S.easyAll.has(id) || ui.easy_skip_all) return '';
+  const sub = t('The launcher sets this game up with your copy. Off: you set it up yourself.');
+  return `<div class="set-row" id="easy-row"><div class="k"><b>${esc(t('Easy Setup'))}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.easy.has(id)}" aria-label="${esc(t('Easy Setup'))}" data-act="easy-skip" data-id="${esc(id)}"></button></div>`;
+}
 // Game Executable on the game's page: what Play starts, in a path box, with Change. On a game Easy
 // Setup does it says what picking the game's own executable does there, and once Play starts the
-// pick as it is, that the player manages the install (the pill). The way back: Use Easy Setup
-// Instead where Easy Setup can come back on for this game alone, otherwise Use Default.
+// pick as it is, that the player manages the install (the pill). The way back is the Easy Setup
+// switch above it; Use Default only where that switch isn't (a game Easy Setup can't do, or one
+// skipped with every game).
 function programRow(id, inst) {
   const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
   const path = exePath(inst);
@@ -5629,9 +5640,8 @@ function programRow(id, inst) {
     : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
       : t('The file Play starts.');
   const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
-  const easyBack = easy && !(S.settings.ui || {}).easy_skip_all;
-  const backBtn = easyBack ? ['easy-again', t('Use Easy Setup Instead')] : ['forget-program', t('Use Default')];
-  const back = mine ? `<button type="button" class="btn" data-act="${backBtn[0]}" data-id="${esc(id)}">${esc(backBtn[1])}</button>` : '';
+  const hasSwitch = easy && !(S.settings.ui || {}).easy_skip_all;
+  const back = mine && !hasSwitch ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Use Default'))}</button>` : '';
   return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
 }
@@ -5690,11 +5700,27 @@ function askWhereBuild() {
   });
 }
 // Skip Easy Setup for one game, in its menu: only on games Easy Setup can do, and not while it's
-// skipped for every game in Settings.
+// skipped for every game in Settings. Before it's installed it's ticked here (it changes how the
+// game installs, and there's no Manage tab yet); once installed, Easy Setup… opens its switch.
 function easySkipItem(id) {
   const ui = S.settings.ui || {};
   if (!S.easyAll || !S.easyAll.has(id) || ui.easy_skip_all) return [];
+  if (S.library[id]) return [{ act: 'easy-row', id, label: t('Easy Setup…'), icon: 'disc' }];
   return [{ act: 'easy-skip', id, label: t('Skip Easy Setup'), icon: 'disc', check: (ui.easy_skip || []).includes(id) }];
+}
+// Easy Setup… in an installed game's menu: its Manage tab, scrolled to the switch, which lights up.
+async function showEasyRow(id) {
+  S.nextTab = 'installed';
+  go('game', id);
+  let row = null;
+  for (let i = 0; i < 20 && !row; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    row = document.getElementById('easy-row');
+  }
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: calm() ? 'auto' : 'smooth' });
+  row.classList.add('lit');
+  setTimeout(() => row.classList.remove('lit'), 1800);
 }
 // The same menu wherever a game is: its "…" button, or a right-click on its tile.
 function gameMenu(id) {
@@ -8382,12 +8408,7 @@ async function act(el, e) {
     case 'setexe':
       try { if (await chooseProgram(id)) { toast(t('Play starts that program now.')); render(true); } } catch (err) { fail(err); }
       return;
-    case 'easy-again': {
-      const name = (byId(id) || S.library[id] || { name: id }).name;
-      try { await setEasySkip(id, false); } catch (err) { return fail(err); }
-      toast(tf('{name} uses Easy Setup again.', { name }));
-      return render(true);
-    }
+    case 'easy-row': return showEasyRow(id);
     case 'forget-program':
       try {
         S.library[id] = await invoke('forget_program', { id });

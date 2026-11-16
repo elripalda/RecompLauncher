@@ -8,11 +8,15 @@ const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([
 
 test('Skip Easy Setup: per game or for every game, and the page treats those games as plain installs', () => {
   const run = new Function('S', 't', `${fn(app, 'applyEasySkip')}; ${fn(app, 'easySkipItem')}; return { applyEasySkip, easySkipItem };`);
-  const S = { settings: { ui: {} }, easyAll: new Set(['hopper', 'skyracer']) };
+  const S = { settings: { ui: {} }, library: {}, easyAll: new Set(['hopper', 'skyracer']) };
   const { applyEasySkip, easySkipItem } = run(S, (x) => x);
   applyEasySkip();
   assert.deepEqual([...S.easy], ['hopper', 'skyracer']);
   assert.equal(easySkipItem('hopper')[0].check, false);
+  // Installed, the menu opens the Easy Setup switch on its Manage tab instead.
+  S.library.skyracer = {};
+  assert.deepEqual(easySkipItem('skyracer'), [{ act: 'easy-row', id: 'skyracer', label: 'Easy Setup…', icon: 'disc' }]);
+  delete S.library.skyracer;
   assert.deepEqual(easySkipItem('plain'), [], 'only games Easy Setup can do get the item');
   S.settings.ui.easy_skip = ['hopper'];
   applyEasySkip();
