@@ -42,7 +42,9 @@ to release drafts. Flatpak has its own [build guide](../packaging/flatpak/README
 ### Nix and NixOS
 
 The repository is a flake: `nix build` builds the launcher, and `nix develop` opens a shell with
-everything `npm run dev` needs. See [the Nix packaging guide](../packaging/nix/README.md).
+everything `npm run dev` needs. See [the Nix packaging guide](../packaging/nix/README.md). The
+`Nix` workflow builds it on pull requests that touch it; like the Flatpak build, it isn't a
+required check.
 
 ### macOS (initial Apple Silicon support)
 
