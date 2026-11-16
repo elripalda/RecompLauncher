@@ -2466,7 +2466,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
-      <div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'))}</span></div><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button></div>
+      ${programRow(id, inst)}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
@@ -5536,6 +5536,33 @@ function menu(at, items) {
   show(items, '');
 }
 
+// The game's setup info when it's loaded (game_setup), else null.
+function setupOf(id) {
+  const su = S.setup[id];
+  return su && su !== 'loading' ? su : null;
+}
+// "Program it starts" on the game's page. On a game Easy Setup does, it says what picking a program
+// does there (Play just starts it, without Easy Setup), and once a pick has taken over, that it
+// has, with the way back.
+function programRow(id, inst) {
+  const su = setupOf(id), mine = su && su.own_program;
+  const what = inst.exe ? esc(inst.exe) : esc(t('Not found. Pick it so Play knows what to start.'));
+  const easy = S.easyAll && S.easyAll.has(id);
+  const note = mine ? t('Play starts this program as it is. Easy Setup and the game\'s own way of starting it are skipped.')
+    : easy ? t('Managing the game yourself? Pick its own program, and Play just starts that, without Easy Setup.') : '';
+  const back = mine ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Let the Launcher Start It'))}</button>` : '';
+  return `<div class="set-row"><div class="k"><b>${esc(t('Program it starts'))}</b><span>${what}</span>${note ? `<span>${esc(note)}</span>` : ''}</div><div class="acts"><button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Choose Program'))}</button>${back}</div></div>`;
+}
+// Choose Program: the program Play starts, picked by the player. True when it's set.
+async function chooseProgram(id) {
+  const g = S.library[id];
+  const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] });
+  if (!p) return false;
+  S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path });
+  // The setup info says whether the pick took over from Easy Setup.
+  if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
+  return true;
+}
 // Skip Easy Setup for one game, in its menu: only on games Easy Setup can do, and not while it's
 // skipped for every game in Settings.
 function easySkipItem(id) {
@@ -5571,7 +5598,7 @@ function gameMenu(id) {
         { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
-        { act: 'setexe', id, label: t('Choose Program…'), icon: 'exe' },
+        { act: 'setexe', id, label: setupOf(id) && setupOf(id).own_program ? t('Choose Program (On)…') : t('Choose Program…'), icon: 'exe' },
         { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...easySkipItem(id),
         ...(S.setup[id] && S.setup[id] !== 'loading' && S.setup[id].build_at ? [{ act: 'move-build', id, label: t('Move Build…'), icon: 'move' }] : []),
@@ -6059,12 +6086,17 @@ async function playGame2(id, program) {
         return playGame(id);
       }
       // Easy Setup skipped on a game built from the copy: it starts the player's own build, so its
-      // folder is asked for once (or Easy Setup goes back on for it).
+      // folder is asked for once. Or the game's own program, which Play then just starts (Choose
+      // Program), or Easy Setup goes back on for it.
       if (/^NEED_OWN_BUILD\|/.test(String(err && err.message ? err.message : err))) {
-        const v = await ask(t('Point to Your Build'), `<p>${esc(t('Easy Setup is skipped for this game, and it\'s built from your copy before it can start. Pick the folder of the build you already have, or let Easy Setup build it.'))}</p>`,
-          [{ label: t('Choose Folder'), v: 'pick', main: true }, { label: t('Use Easy Setup'), v: 'easy' }, { label: t('Not Now'), v: null }]);
+        const v = await ask(t('Point to Your Build'), `<p>${esc(t('Easy Setup is skipped for this game, and it\'s built from your copy before it can start. Pick the folder of the build you already have, and the launcher starts it the game\'s way.'))}</p><p>${esc(t('Managing the game yourself? Pick its own program instead, and Play just starts that program, as it is.'))}</p>`,
+          [{ label: t('Choose Folder'), v: 'pick', main: true }, { label: t('Choose Program'), v: 'program' }, { label: t('Use Easy Setup'), v: 'easy' }, { label: t('Not Now'), v: null }]);
         if (v === 'pick') {
           try { if (!(await useOwnBuild(id))) return; } catch (e) { return fail(e); }
+          return playGame(id);
+        }
+        if (v === 'program') {
+          try { if (!(await chooseProgram(id))) return; } catch (e) { return fail(e); }
           return playGame(id);
         }
         if (v === 'easy') {
@@ -8157,13 +8189,17 @@ async function act(el, e) {
       return;
     }
     case 'manual': return manualModal(id);
-    case 'setexe': {
-      const g = S.library[id];
-      const p = await pickFile({ title: t('The program that starts the game'), program: true, defaultPath: g.path, directory: false, multiple: false, filters: S.os === 'windows' ? [{ name: t('Programs'), extensions: ['exe'] }] : [] }).catch(fail);
-      if (!p) return;
-      try { S.library[id] = await invoke('set_exe', { id, path: typeof p === 'string' ? p : p.path }); toast(t('Play starts that program now.')); render(true); } catch (err) { fail(err); }
+    case 'setexe':
+      try { if (await chooseProgram(id)) { toast(t('Play starts that program now.')); render(true); } } catch (err) { fail(err); }
       return;
-    }
+    case 'forget-program':
+      try {
+        S.library[id] = await invoke('forget_program', { id });
+        S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
+        toast(t('The launcher starts it its own way again.'));
+        render(true);
+      } catch (err) { fail(err); }
+      return;
     case 'uninstall': return confirmUninstall(parentId(id));
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
