@@ -583,7 +583,21 @@ fn launcher_icon() -> String {
             return icon;
         }
     }
+    if crate::nix_managed() {
+        if let Some(icon) = nix_icon() {
+            return icon;
+        }
+    }
     launcher_exe().to_string_lossy().to_string()
+}
+
+/// The icon beside the Nix wrapper the PC starts (a profile's bin, see start_path): the profile's
+/// share/icons survives updates, where the program's own store path is gone after the next one.
+fn nix_icon() -> Option<String> {
+    let wrapper = PathBuf::from(std::env::var_os("RL_START_PATH")?);
+    let profile = wrapper.parent()?.parent()?;
+    let icon = profile.join("share/icons/hicolor/512x512/apps/recomplauncher.png");
+    icon.is_file().then(|| icon.to_string_lossy().to_string())
 }
 
 fn flatpak_icon() -> Option<String> {
