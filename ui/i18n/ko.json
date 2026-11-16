@@ -1375,6 +1375,7 @@
  "This recomp hasn't put out a release yet.": "이 리컴프는 아직 릴리스가 없습니다.",
  "This recomp isn't listed anymore": "더 이상 목록에 없는 리컴프입니다",
  "This recomp isn't listed anymore.": "더 이상 목록에 없는 리컴프입니다.",
+ "This recomp": "이 리컴프",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "이 릴리스에는 빌드가 여러 개 있으며, 보통 지역마다 하나씩입니다. 가지고 있는 게임 사본에 맞는 것을 고르세요. 나중에 마우스 오른쪽 버튼 메뉴에서 바꿀 수 있습니다.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "이 RecompLauncher 버전은 지금의 리컴프를 따라가기엔 너무 오래됐습니다. 계속 플레이하려면 {version}(으)로 업데이트하세요. 금방 끝납니다.",
  "This week": "이번 주",
@@ -1383,6 +1384,7 @@
  "Tile size": "타일 크기",
  "Tiles": "타일",
  "Time to Update": "업데이트할 시간입니다",
+ "Total game playtime": "게임 총 플레이 시간",
  "Triangle": "세모",
  "Troubleshoot": "문제 해결",
  "Troubleshoot {name}": "{name} 문제 해결",
@@ -3346,5 +3348,7 @@
  "Turning it on accepts the {license}.": "켜면 {license}에 동의하게 됩니다.",
  "Turning it on sets the game up again from your copy.": "켜면 사본으로 게임을 다시 설정합니다.",
  "Use the copy it was set up with": "설정에 사용한 사본 사용",
- "{n} new options": "새 옵션 {n}개"
+ "{n} new options": "새 옵션 {n}개",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "한 번의 다운로드로 게임 {n}개가 모두 설치됩니다. 각각 라이브러리에 따로 표시됩니다.",
+ "{name} is installed. Its {n} games are in your Library.": "{name}을(를) 설치했습니다. 게임 {n}개가 라이브러리에 있습니다."
 }

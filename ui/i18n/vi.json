@@ -1375,6 +1375,7 @@
  "This recomp hasn't put out a release yet.": "Bản recomp này chưa có bản phát hành nào.",
  "This recomp isn't listed anymore": "Bản recomp này không còn trong danh mục",
  "This recomp isn't listed anymore.": "Bản recomp này không còn trong danh mục.",
+ "This recomp": "Bản recomp này",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Bản phát hành này có nhiều bản dựng, thường mỗi khu vực một bản. Hãy chọn bản khớp với bản sao trò chơi của bạn. Bạn có thể đổi sau trong menu chuột phải.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Phiên bản RecompLauncher này quá cũ cho các recomp hiện nay. Hãy cập nhật lên {version} để tiếp tục chơi. Chỉ mất một chút thôi.",
  "This week": "Tuần này",
@@ -1383,6 +1384,7 @@
  "Tile size": "Kích thước ô",
  "Tiles": "Ô",
  "Time to Update": "Đã đến lúc cập nhật",
+ "Total game playtime": "Tổng thời gian chơi game",
  "Triangle": "Tam giác",
  "Troubleshoot": "Khắc phục sự cố",
  "Troubleshoot {name}": "Khắc phục sự cố {name}",
@@ -3346,5 +3348,7 @@
  "Turning it on accepts the {license}.": "Bật lên nghĩa là bạn chấp nhận {license}.",
  "Turning it on sets the game up again from your copy.": "Bật lên sẽ thiết lập lại trò chơi từ bản sao của bạn.",
  "Use the copy it was set up with": "Dùng bản sao đã dùng để thiết lập",
- "{n} new options": "{n} tùy chọn mới"
+ "{n} new options": "{n} tùy chọn mới",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Một lần tải sẽ cài cả {n} trò chơi. Mỗi trò có chỗ riêng trong Thư viện của bạn.",
+ "{name} is installed. Its {n} games are in your Library.": "Đã cài {name}. {n} trò chơi của nó đã có trong Thư viện."
 }
