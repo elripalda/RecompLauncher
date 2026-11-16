@@ -6182,7 +6182,8 @@ async function playGame2(id, program) {
         }
         if (v === 'easy') {
           try { await setEasySkip(id, false); } catch (e) { return fail(e); }
-          return playGame(id);
+          // This Play goes on, the launcher's way: playGame would see it still starting and do nothing.
+          return playGame2(id, program);
         }
         return;
       }

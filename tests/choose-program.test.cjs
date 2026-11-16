@@ -102,6 +102,8 @@ test('turning Easy Setup back on lets go of the picked executable', () => {
   // Every way back on goes through it: the game's menu, Where's Your Build?, and the Game Executable row.
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(app, /if \(v === 'easy'\) \{\n\s+try \{ await setEasySkip\(id, false\); \}/);
+  // That link goes on with the Play already starting: a second playGame would be ignored.
+  assert.match(fn(app, 'playGame2'), /if \(v === 'easy'\) \{\n[^\n]*\n[^\n]*\n\s+return playGame2\(id, program\);/);
   assert.match(app, /case 'easy-again': \{[^]*?await setEasySkip\(id, false\);/);
 });
 
