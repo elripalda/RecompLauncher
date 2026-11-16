@@ -52,7 +52,7 @@ struct Connection {
 fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        crate::net::with_proxy(reqwest::Client::builder())
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(300))
@@ -158,7 +158,7 @@ fn api_error(status: u16, body: &Value) -> Error {
     Error::Msg(format!("Google Drive refused the request ({status}). Check its connection in Settings → Account."))
 }
 
-async fn send(app: &AppHandle, request: reqwest::RequestBuilder) -> Res<reqwest::Response> {
+async fn send_response(app: &AppHandle, request: reqwest::RequestBuilder) -> Res<reqwest::Response> {
     let url = request
         .try_clone()
         .ok_or_else(|| Error::Msg("Couldn't prepare the Drive request.".into()))?
@@ -174,12 +174,20 @@ async fn send(app: &AppHandle, request: reqwest::RequestBuilder) -> Res<reqwest:
         let request = retry.ok_or_else(|| Error::Msg(RECONNECT.into()))?;
         r = request.bearer_auth(token).send().await.map_err(transport)?;
     }
+    Ok(r)
+}
+
+async fn check_response(r: reqwest::Response) -> Res<reqwest::Response> {
     let status = r.status().as_u16();
     if status < 400 {
         return Ok(r);
     }
     let body = r.json().await.unwrap_or(Value::Null);
     Err(api_error(status, &body))
+}
+
+async fn send(app: &AppHandle, request: reqwest::RequestBuilder) -> Res<reqwest::Response> {
+    check_response(send_response(app, request).await?).await
 }
 
 fn transport_error() -> Error {
@@ -659,6 +667,18 @@ fn save_ticket(path: &Path, ticket: &Ticket) -> Res<()> {
     Ok(())
 }
 
+fn invalidate_session(path: &Path, ticket: &mut Ticket, status: u16) -> Res<()> {
+    if !(400..500).contains(&status) { return Ok(()); }
+    // Google requires a fresh session after upload 4xx errors, including after a restart.
+    ticket.url = None;
+    save_ticket(path, ticket)
+}
+
+async fn upload_response(path: &Path, ticket: &mut Ticket, response: reqwest::Response) -> Res<reqwest::Response> {
+    invalidate_session(path, ticket, response.status().as_u16())?;
+    check_response(response).await
+}
+
 fn valid_session(url: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(url) else { return false };
     url.scheme() == "https"
@@ -706,12 +726,13 @@ async fn upload_bytes(app: &AppHandle, ticket_path: &Path, ticket: &mut Ticket, 
             .send()
             .await
             .map_err(transport)?;
+        invalidate_session(ticket_path, ticket, r.status().as_u16())?;
         match r.status().as_u16() {
             200 | 201 => {
                 return if complete(app, ticket, bytes.len()).await? { Ok(()) } else { Err(transport_error()) };
             }
             308 => offset = resume_offset(r.headers(), bytes.len())?,
-            404 | 410 => ticket.url = None,
+            404 | 410 => {},
             status => return Err(api_error(status, &r.json().await.unwrap_or(Value::Null))),
         }
     } else {
@@ -746,7 +767,8 @@ async fn upload_bytes(app: &AppHandle, ticket_path: &Path, ticket: &mut Ticket, 
         .header("Content-Type", "application/zip")
         .header("Content-Range", format!("bytes {offset}-{}/{total}", total - 1))
         .body(bytes[offset..].to_vec());
-    let r = send(app, request).await?;
+    let response = send_response(app, request).await?;
+    let r = upload_response(ticket_path, ticket, response).await?;
     if !r.status().is_success() {
         return Err(transport_error());
     }
@@ -870,6 +892,34 @@ pub async fn download(app: &AppHandle, id: &str, copy: &cloud::CloudCopy) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drive_client_observes_proxy_changes_without_being_rebuilt() {
+        let _guard = crate::net::PROXY_TEST_LOCK.lock().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = proxy.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = proxy.accept().await.unwrap();
+                let mut bytes = [0; 4096];
+                let count = stream.read(&mut bytes).await.unwrap();
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nproxy").await.unwrap();
+                String::from_utf8_lossy(&bytes[..count]).to_string()
+            });
+            let http = client();
+            let target = "http://drive-proxy.invalid/save";
+            crate::net::set_proxy("custom", &format!("http://{address}"), "", "").unwrap();
+            let proxied = http.get(target).timeout(Duration::from_secs(2)).send().await;
+            crate::net::set_proxy("off", "", "", "").unwrap();
+            let direct = http.get(target).timeout(Duration::from_secs(2)).send().await;
+            crate::net::set_proxy("system", "", "", "").unwrap();
+            let request = tokio::time::timeout(Duration::from_secs(3), server).await.unwrap().unwrap();
+            assert_eq!(proxied.unwrap().text().await.unwrap(), "proxy");
+            assert!(request.starts_with("GET http://drive-proxy.invalid/save HTTP/1.1"));
+            assert!(direct.is_err(), "turning the proxy off must stop using the existing client connection");
+        });
+    }
 
     #[cfg(not(windows))]
     #[tokio::test]
@@ -1026,6 +1076,80 @@ mod tests {
         assert!(!valid_session("https://www.googleapis.com.attacker.example/upload/drive/v3/files"));
         assert!(!valid_session("http://www.googleapis.com/upload/drive/v3/files"));
         assert!(!valid_session("https://www.googleapis.com:444/upload/drive/v3/files"));
+    }
+
+    fn upload_ticket() -> (PathBuf, Ticket) {
+        let dir = std::env::temp_dir().join(format!("rl-drive-ticket-{}", random_text().unwrap()));
+        let path = dir.join("ticket.json");
+        let ticket = Ticket {
+            id: "allocated-file".into(),
+            archive_hash: "archive-hash".into(),
+            snapshot: file("allocated-file", "save-hash", 1, &[]).snapshot,
+            url: Some("https://www.googleapis.com/upload/drive/v3/files?upload_id=expired".into()),
+        };
+        save_ticket(&path, &ticket).unwrap();
+        (path, ticket)
+    }
+
+    fn upload_reply(status: u16, body: Value) -> reqwest::Response {
+        tauri::http::Response::builder().status(status).body(body.to_string()).unwrap().into()
+    }
+
+    #[test]
+    fn invalid_upload_probes_discard_the_persisted_session() {
+        let (path, mut ticket) = upload_ticket();
+        invalidate_session(&path, &mut ticket, 400).unwrap();
+        let saved: Ticket = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(ticket.url.is_none());
+        assert!(saved.url.is_none());
+        assert_eq!(saved.id, "allocated-file");
+        assert_eq!(saved.archive_hash, "archive-hash");
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejected_upload_data_discards_the_session_and_reports_quota() {
+        let (path, mut ticket) = upload_ticket();
+        let response = upload_reply(403, json!({"error": {"errors": [{"reason": "storageQuotaExceeded"}]}}));
+        let error = upload_response(&path, &mut ticket, response).await.unwrap_err();
+        let saved: Ticket = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(error.to_string().contains("Google Drive storage is full"));
+        assert!(saved.url.is_none());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn unauthorized_upload_data_discards_the_session_and_requests_reconnect() {
+        let (path, mut ticket) = upload_ticket();
+        let response = upload_reply(401, Value::Null);
+        let error = upload_response(&path, &mut ticket, response).await.unwrap_err();
+        let saved: Ticket = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(error.to_string(), RECONNECT);
+        assert!(saved.url.is_none());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn rate_limited_upload_data_discards_the_session_and_retries() {
+        let (path, mut ticket) = upload_ticket();
+        let response = upload_reply(403, json!({"error": {"errors": [{"reason": "userRateLimitExceeded"}]}}));
+        let error = upload_response(&path, &mut ticket, response).await.unwrap_err();
+        let saved: Ticket = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(matches!(error, Error::Net(_)));
+        assert!(saved.url.is_none());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn upload_server_errors_preserve_the_session_for_resume() {
+        let (path, mut ticket) = upload_ticket();
+        let response = upload_reply(503, Value::Null);
+        let error = upload_response(&path, &mut ticket, response).await.unwrap_err();
+        let saved: Ticket = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(matches!(error, Error::Net(_)));
+        assert_eq!(saved.url, ticket.url);
+        assert!(saved.url.is_some());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
     #[test]
