@@ -5030,7 +5030,7 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
     // A build the player has somewhere else (theirs, from the game's own launcher, or an older
     // install): that folder stands in for the one the setup builds into.
     let mine = match folder.map(PathBuf::from) {
-        Some(f) => Some(own_build_folder(&st, &id, &g, &f)?),
+        Some(f) => own_build_folder(&st, &id, &g, &f)?,
         None => None,
     };
     if mine.is_some() {
@@ -5056,9 +5056,22 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
 /// A folder the player picked as their own build of a game built from their copy: a real folder
 /// with something in it, not the game's own folder, and holding a program (anything that runs).
 /// The folder the build is in when they pick its program or its bin folder: the one above.
-fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf> {
+/// None when they picked the setup's own folder: the build already on this PC.
+fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<Option<PathBuf>> {
     let p = profile_of(st, id, &Installed { build_dir: None, ..g.clone() }).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     let home = p.build_home(&g.path).ok_or_else(|| Error::Msg("This game isn't built into a folder of its own, so there's no build to point to.".into()))?;
+    let picked = check_own_build(&home, &g.path, f)?;
+    match &picked {
+        Some(dir) => trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display())),
+        None => trail::note(format!("Setup {id}: the folder picked is the setup's own, {}", home.display())),
+    }
+    Ok(picked)
+}
+
+/// The checks behind own_build_folder, on the folders alone. None when the folder picked is the
+/// setup's own folder inside the game's: that's the build already on this PC, not one from
+/// somewhere else, so nothing has to stand in for it.
+fn check_own_build(home: &Path, install: &Path, f: &Path) -> Res<Option<PathBuf>> {
     let mut dir = if f.is_file() { f.parent().map(Path::to_path_buf).unwrap_or_default() } else { f.to_path_buf() };
     if dir.file_name().map(|n| n.eq_ignore_ascii_case("bin")).unwrap_or(false) {
         if let Some(up) = dir.parent() {
@@ -5068,7 +5081,10 @@ fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf>
     if !dir.is_dir() || std::fs::read_dir(&dir).map(|mut r| r.next().is_none()).unwrap_or(true) {
         return Err(Error::Msg("That folder is empty. Pick the folder your build is in.".into()));
     }
-    if dir == g.path || dir.starts_with(&g.path) {
+    // (Games that build into a folder inside their own, with --out {install}/...: the setup
+    // window names that folder, so picking it has to work.)
+    let setups_own = dir == home && home.starts_with(install);
+    if dir.starts_with(install) && !setups_own {
         return Err(Error::Msg("That's the launcher's own folder for this game. Pick the folder your build is in.".into()));
     }
     let runs = |d: &Path| std::fs::read_dir(d).map(|r| r.flatten().any(|e| {
@@ -5078,8 +5094,7 @@ fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf>
     if !runs(&dir) && !runs(&dir.join("bin")) {
         return Err(Error::Msg("There's no program in that folder or its bin folder. Pick the folder your build is in.".into()));
     }
-    trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display()));
-    Ok(dir)
+    Ok((!setups_own).then_some(dir))
 }
 
 #[cfg(unix)]
@@ -10556,5 +10571,51 @@ mod beta54_tests {
         assert!(!holds_same_game(&g, &to));
         assert!(!holds_same_game(&g, &from), "its own folder isn't another place");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod own_build_pick_tests {
+    use super::*;
+
+    /// A game folder with a build in `inside` (a program in its bin folder), and the setup's own
+    /// folder at `home`, both under a fresh temporary folder.
+    fn game_with_build(name: &str, inside: &str) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let install = root.join("library").join("hopper");
+        let build = install.join(inside);
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join("bin").join("hopper.exe"), b"").unwrap();
+        (root, install)
+    }
+
+    #[test]
+    fn picking_the_setups_own_folder_inside_the_game_folder_is_the_build_already_there() {
+        let (root, install) = game_with_build("rl-own-pick-home", "Hopper");
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &home).unwrap(), None);
+        assert_eq!(check_own_build(&home, &install, &home.join("bin")).unwrap(), None, "its bin folder counts as the folder above");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn another_folder_inside_the_game_folder_is_still_refused() {
+        let (root, install) = game_with_build("rl-own-pick-other", "Older");
+        let home = install.join("Hopper");
+        let err = check_own_build(&home, &install, &install.join("Older")).unwrap_err().to_string();
+        assert!(err.contains("launcher's own folder"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_build_outside_the_game_folder_stands_in_for_the_setups_own() {
+        let (root, install) = game_with_build("rl-own-pick-mine", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(mine.join("bin")).unwrap();
+        std::fs::write(mine.join("bin").join("hopper.exe"), b"").unwrap();
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &mine).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
