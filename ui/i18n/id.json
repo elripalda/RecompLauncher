@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Recomp ini belum merilis apa pun.",
  "This recomp isn't listed anymore": "Recomp ini sudah tidak terdaftar",
  "This recomp isn't listed anymore.": "Recomp ini sudah tidak terdaftar.",
+ "This recomp": "Recomp ini",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Rilis ini punya lebih dari satu build, sering kali satu untuk tiap region. Pilih yang cocok dengan salinan game-mu. Kamu bisa menggantinya nanti dari menu klik kanan.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Versi RecompLauncher ini terlalu lama untuk recomp saat ini. Perbarui ke {version} untuk terus bermain. Hanya sebentar.",
  "This week": "Minggu ini",
@@ -1370,6 +1371,7 @@
  "Tile size": "Ukuran ubin",
  "Tiles": "Ubin",
  "Time to Update": "Saatnya Memperbarui",
+ "Total game playtime": "Total waktu bermain",
  "Triangle": "Segitiga",
  "Troubleshoot": "Atasi masalah",
  "Troubleshoot {name}": "Atasi masalah {name}",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "Dengan menyalakannya, game disiapkan lagi dari salinanmu.",
  "Use the copy it was set up with": "Pakai salinan yang dipakai saat menyiapkannya",
  "{n} new options": "{n} opsi baru",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Satu unduhan memasang semua {n} game-nya. Masing-masing punya tempat sendiri di Pustaka-mu.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} sudah terpasang. {n} game-nya ada di Pustaka-mu.",
  "Show Versions Under Names": "Tampilkan Versi di Bawah Nama",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Versi terbaru setiap recomp di Jelajahi, dan versi yang kamu pasang di Pustaka."
 }

@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Bu recomp henüz bir sürüm yayınlamadı.",
  "This recomp isn't listed anymore": "Bu recomp artık listelenmiyor",
  "This recomp isn't listed anymore.": "Bu recomp artık listelenmiyor.",
+ "This recomp": "Bu recomp",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Bu sürümün birden fazla derlemesi var, genellikle her bölge için bir tane. Oyun kopyanıza uyanı seçin. Daha sonra sağ tık menüsünden değiştirebilirsiniz.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "RecompLauncher'ın bu sürümü güncel recomp'lar için çok eski. Oynamaya devam etmek için {version} sürümüne güncelle. Sadece bir dakika sürer.",
  "This week": "Bu hafta",
@@ -1370,6 +1371,7 @@
  "Tile size": "Döşeme boyutu",
  "Tiles": "Döşemeler",
  "Time to Update": "Güncelleme Zamanı",
+ "Total game playtime": "Toplam oynama süresi",
  "Triangle": "Üçgen",
  "Troubleshoot": "Sorun giderme",
  "Troubleshoot {name}": "{name} sorun giderme",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "Açtığınızda oyun kopyanızdan yeniden kurulur.",
  "Use the copy it was set up with": "Kurulduğu kopyayı kullan",
  "{n} new options": "{n} yeni seçenek",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Tek bir indirme {n} oyunun hepsini kurar. Her biri kitaplığında kendi yerini alır.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} kuruldu. {n} oyunu kitaplığında.",
  "Show Versions Under Names": "İsimlerin Altında Sürümleri Göster",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Keşfet'te her recomp'un en yeni sürümü, Kitaplık'ta ise yüklü olan sürüm."
 }

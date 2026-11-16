@@ -163,6 +163,20 @@ impl Played {
             }
         }
     }
+
+    /// Time played kept from elsewhere (an uninstalled copy, an old id) added to this: both
+    /// count, so neither side is lost. Setup state stays this one's.
+    pub fn absorb(&mut self, other: Played) {
+        self.played_secs += other.played_secs;
+        self.last_played = self.last_played.max(other.last_played);
+        self.sessions.extend(other.sessions);
+        self.sessions.sort_unstable();
+        self.sessions.dedup();
+        let n = self.sessions.len();
+        if n > 500 {
+            self.sessions.drain(..n - 500);
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "У этой рекомпиляции ещё нет релизов.",
  "This recomp isn't listed anymore": "Этой рекомпиляции больше нет в каталоге",
  "This recomp isn't listed anymore.": "Этой рекомпиляции больше нет в каталоге.",
+ "This recomp": "Эта рекомпиляция",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "В этом релизе несколько сборок, часто по одной для каждого региона. Выберите ту, что подходит к вашей копии игры. Сменить её можно позже через меню правой кнопки.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Эта версия RecompLauncher слишком старая для нынешних рекомпов. Обновитесь до {version}, чтобы играть дальше. Это займёт минуту.",
  "This week": "На этой неделе",
@@ -1370,6 +1371,7 @@
  "Tile size": "Размер плиток",
  "Tiles": "Плитки",
  "Time to Update": "Пора обновиться",
+ "Total game playtime": "Общее время в игре",
  "Triangle": "Треугольник",
  "Troubleshoot": "Устранение неполадок",
  "Troubleshoot {name}": "Устранение неполадок: {name}",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "При включении игра будет заново настроена с вашей копии.",
  "Use the copy it was set up with": "Использовать копию, с которой её настроили",
  "{n} new options": "{n} новый параметр|{n} новых параметра|{n} новых параметров",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Одна загрузка устанавливает {n} входящую в неё игру. У каждой своё место в библиотеке.|Одна загрузка устанавливает все {n} входящие в неё игры. У каждой своё место в библиотеке.|Одна загрузка устанавливает все {n} входящих в неё игр. У каждой своё место в библиотеке.",
+ "{name} is installed. Its {n} games are in your Library.": "{name}: установлено. {n} игра уже в библиотеке.|{name}: установлено. {n} игры уже в библиотеке.|{name}: установлено. {n} игр уже в библиотеке.",
  "Show Versions Under Names": "Показывать версии под названиями",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Новейшая версия каждого рекомпа в «Обзоре» и установленная версия в Библиотеке."
 }

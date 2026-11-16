@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Esta recomp ainda não lançou nenhuma versão.",
  "This recomp isn't listed anymore": "Esta recomp já não está na lista",
  "This recomp isn't listed anymore.": "Esta recomp já não está na lista.",
+ "This recomp": "Esta recomp",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Esta versão vem em mais do que uma compilação, muitas vezes uma por região. Escolhe a que corresponde à tua cópia do jogo. Podes mudar mais tarde no menu do botão direito.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Esta versão do RecompLauncher é demasiado antiga para os recomps atuais. Atualiza para {version} para continuar a jogar. Demora só um momento.",
  "This week": "Esta semana",
@@ -1370,6 +1371,7 @@
  "Tile size": "Tamanho dos mosaicos",
  "Tiles": "Mosaicos",
  "Time to Update": "Hora de atualizar",
+ "Total game playtime": "Tempo de jogo total",
  "Triangle": "Triângulo",
  "Troubleshoot": "Resolver problemas",
  "Troubleshoot {name}": "Resolver problemas de {name}",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "Ao ativar, o jogo é configurado de novo com a tua cópia.",
  "Use the copy it was set up with": "Usar a cópia com que foi configurado",
  "{n} new options": "{n} novas opções",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Uma só transferência instala os seus {n} jogos. Cada um fica no seu próprio lugar na biblioteca.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} está instalado. Os seus {n} jogos estão na biblioteca.",
  "Show Versions Under Names": "Mostrar versões sob os nomes",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "A versão mais recente de cada recomp em Descobrir e a versão que tens instalada na Biblioteca."
 }

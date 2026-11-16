@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Questo recomp non ha ancora pubblicato una release.",
  "This recomp isn't listed anymore": "Questo recomp non è più in elenco",
  "This recomp isn't listed anymore.": "Questo recomp non è più in elenco.",
+ "This recomp": "Questo recomp",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Questa release è disponibile in più build, spesso una per regione. Scegli quella che corrisponde alla tua copia del gioco. Puoi cambiarla più tardi dal menu del clic destro.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Questa versione di RecompLauncher è troppo vecchia per i recomp attuali. Aggiorna a {version} per continuare a giocare. Ci vuole solo un attimo.",
  "This week": "Questa settimana",
@@ -1370,6 +1371,7 @@
  "Tile size": "Dimensione dei riquadri",
  "Tiles": "Riquadri",
  "Time to Update": "È ora di aggiornare",
+ "Total game playtime": "Tempo di gioco totale",
  "Triangle": "Triangolo",
  "Troubleshoot": "Risolvi problemi",
  "Troubleshoot {name}": "Risolvi problemi di {name}",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "Attivandola, il gioco viene configurato di nuovo dalla tua copia.",
  "Use the copy it was set up with": "Usa la copia con cui è stato configurato",
  "{n} new options": "{n} nuove opzioni",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Un solo download installa tutti i suoi {n} giochi. Ognuno ha il suo posto nella tua libreria.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} è installato. I suoi {n} giochi sono nella tua libreria.",
  "Show Versions Under Names": "Mostra le versioni sotto i nomi",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "La versione più recente di ogni recomp in Scopri e la versione installata nella Libreria."
 }

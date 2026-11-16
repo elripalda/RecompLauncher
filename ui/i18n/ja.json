@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "このリコンパイル版はまだリリースを公開していません。",
  "This recomp isn't listed anymore": "このリコンパイル版は掲載終了しました",
  "This recomp isn't listed anymore.": "このリコンパイル版は掲載終了しました。",
+ "This recomp": "このリコンパイル版",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "このリリースには複数のビルドがあり、多くは地域ごとに分かれています。お持ちのゲームに合うものを選んでください。あとから右クリックメニューで切り替えられます。",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "この RecompLauncher は古すぎて、今のリコンプに対応できません。{version} にアップデートして遊び続けましょう。すぐに終わります。",
  "This week": "今週",
@@ -1370,6 +1371,7 @@
  "Tile size": "タイルのサイズ",
  "Tiles": "タイル",
  "Time to Update": "アップデートの時間です",
+ "Total game playtime": "ゲームの合計プレイ時間",
  "Triangle": "△",
  "Troubleshoot": "トラブルシューティング",
  "Troubleshoot {name}": "{name} のトラブルシューティング",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "オンにすると、ゲームデータからもう一度セットアップします。",
  "Use the copy it was set up with": "セットアップに使ったゲームデータを使う",
  "{n} new options": "新しいオプション {n} 件",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "1 回のダウンロードで {n} 本のゲームがすべてインストールされます。それぞれがライブラリに表示されます。",
+ "{name} is installed. Its {n} games are in your Library.": "{name} をインストールしました。{n} 本のゲームがライブラリにあります。",
  "Show Versions Under Names": "名前の下にバージョンを表示",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "「見つける」では各リコンプの最新バージョン、ライブラリではインストール済みのバージョン。"
 }

@@ -1362,6 +1362,7 @@
  "This recomp hasn't put out a release yet.": "Dieser Recomp hat noch kein Release veröffentlicht.",
  "This recomp isn't listed anymore": "Dieser Recomp ist nicht mehr gelistet",
  "This recomp isn't listed anymore.": "Dieser Recomp ist nicht mehr gelistet.",
+ "This recomp": "Dieser Recomp",
  "This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.": "Dieses Release gibt es in mehr als einem Build, oft einem pro Region. Wähl den, der zu deiner Kopie des Spiels passt. Du kannst später über das Rechtsklickmenü wechseln.",
  "This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.": "Diese Version von RecompLauncher ist zu alt für die aktuellen Recomps. Aktualisiere auf {version}, um weiterzuspielen. Das dauert nur einen Moment.",
  "This week": "Diese Woche",
@@ -1370,6 +1371,7 @@
  "Tile size": "Kachelgröße",
  "Tiles": "Kacheln",
  "Time to Update": "Zeit für ein Update",
+ "Total game playtime": "Gesamte Spielzeit",
  "Triangle": "Dreieck",
  "Troubleshoot": "Problembehandlung",
  "Troubleshoot {name}": "Problembehandlung: {name}",
@@ -3332,6 +3334,8 @@
  "Turning it on sets the game up again from your copy.": "Beim Einschalten wird das Spiel mit deiner Kopie neu eingerichtet.",
  "Use the copy it was set up with": "Die Kopie nutzen, mit der es eingerichtet wurde",
  "{n} new options": "{n} neue Optionen",
+ "One download installs all {n} of its games. Each one gets its own place in your Library.": "Ein Download installiert alle {n} enthaltenen Spiele. Jedes bekommt seinen eigenen Platz in deiner Bibliothek.",
+ "{name} is installed. Its {n} games are in your Library.": "{name} ist installiert. Die {n} Spiele sind jetzt in deiner Bibliothek.",
  "Show Versions Under Names": "Versionen unter den Namen zeigen",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Die neueste Version jedes Recomps in Entdecken und die installierte Version in der Bibliothek."
 }
