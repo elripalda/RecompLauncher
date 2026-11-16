@@ -26,6 +26,11 @@ pub struct Request {
 }
 
 impl Request {
+    pub fn installed_path(&self, previous: Option<&crate::library::Installed>) -> PathBuf {
+        // Stored source paths use the saved folder's spelling, including aliases. Keep them aligned.
+        previous.map(|game| game.path.clone()).unwrap_or_else(|| self.target.clone())
+    }
+
     pub fn release_tag(&self) -> Option<String> {
         self.backup_release.as_ref().map(|r| r.tag_name.clone()).or(self.tag.clone()).or(self.selected_tag.clone())
     }
@@ -379,6 +384,48 @@ mod tests {
         let path = std::env::temp_dir().join(format!("recomp-location-{}-{time}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         normalized(&path).unwrap()
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn updating_through_a_folder_alias_keeps_original_files_protected_on_uninstall() {
+        let root = temp();
+        let actual = root.join("actual");
+        let alias = root.join("alias");
+        fs::create_dir_all(actual.join("game")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&actual, &alias).unwrap();
+        #[cfg(windows)]
+        crate::win::junction(&actual, &alias).unwrap();
+        let path = alias.join("game");
+        let copy = path.join("original.iso");
+        let update = path.join("update.iso");
+        fs::write(&copy, b"original").unwrap();
+        fs::write(&update, b"update").unwrap();
+        let mut lib = Library::default();
+        let mut game = Installed { id: "game".into(), path: path.clone(), game_copy: Some(copy.clone()), update_copy: Some(update.clone()), managed_install: true, ..Default::default() };
+        lib.installed.insert("game".into(), game.clone());
+        let target = resolve(&lib, "game", None, None).unwrap();
+        assert_eq!(target, actual.join("game"));
+        let pending = request(&lib, "game", target, Some("v2".into()), None, false);
+        game.path = pending.installed_path(Some(&game));
+        game.tag = "v2".into();
+        lib.installed.insert("game".into(), game);
+        let app_dir = root.join("data");
+        lib.save(&app_dir).unwrap();
+        let loaded = Library::load(&app_dir);
+        let saved = &loaded.installed["game"];
+        assert_eq!(saved.path, path);
+        assert!(saved.owns_folder(&[]));
+        assert!(crate::library::inside(&copy, &saved.path));
+        assert!(crate::library::inside(&update, &saved.path));
+        let kept_copy = crate::save_copy_out(&saved.path, "game", &copy).unwrap();
+        let kept_update = crate::save_copy_out(&saved.path, "game", &update).unwrap();
+        assert!(crate::remove_game_folder(&saved.path).is_empty());
+        assert!(!actual.join("game").exists());
+        assert_eq!(fs::read(kept_copy).unwrap(), b"original");
+        assert_eq!(fs::read(kept_update).unwrap(), b"update");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(any(unix, windows))]

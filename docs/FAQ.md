@@ -46,7 +46,8 @@ installs return to the same folder, including after restarting the launcher. Use
 an installed game's location. Settings → **Ask Where to Install** also enables the prompt for
 ordinary installs; Easy Install always offers it.
 
-Finish or cancel a pending update before moving its game. A failed download can be retried in
+Finish or cancel a pending update before moving its game or changing its project. Automatic
+listing changes also wait until pending installs have finished or been cancelled. A failed download can be retried in
 another empty folder once its old download work is cleaned up. If extraction has already started,
 retry in the original folder or remove that partial folder before selecting another destination;
 the launcher keeps its recovery record until then.
@@ -77,7 +78,9 @@ Update backups and **Back Up Now** use `backups/<game-id>/` in the launcher's da
 game folder's parent need not be writable. The history stays available when you move the game.
 Readable backups from the older library `.backups` location remain listed and restorable, and are
 copied into private storage before Move changes their location. If an enabled update backup fails,
-the update stops and reports the failure.
+the update stops and reports the failure. Private update backups also follow **Change Project**
+and **Move to It**. Automatic listing changes wait if both project IDs already have private backup
+histories, so neither history is overwritten.
 
 ## Does it collect data?
 

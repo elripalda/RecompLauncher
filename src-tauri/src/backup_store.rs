@@ -6,7 +6,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn directory(game: &Installed, app_dir: &Path) -> PathBuf {
-    app_dir.join("backups").join(folder_name(&game.id))
+    directory_for(app_dir, &game.id)
+}
+
+pub fn directory_for(app_dir: &Path, id: &str) -> PathBuf {
+    app_dir.join("backups").join(folder_name(id))
+}
+
+pub fn rename_project(app_dir: &Path, old: &str, new: &str) -> Res<Option<(PathBuf, PathBuf)>> {
+    let from = directory_for(app_dir, old);
+    let to = directory_for(app_dir, new);
+    if from == to || !from.try_exists()? {
+        return Ok(None);
+    }
+    if to.try_exists()? {
+        return Err(Error::Msg("The new project already has update backups. Keep both histories before changing its project.".into()));
+    }
+    fs::rename(&from, &to)?;
+    Ok(Some((from, to)))
 }
 
 fn legacy_directory(game: &Installed) -> PathBuf {

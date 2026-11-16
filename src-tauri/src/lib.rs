@@ -682,7 +682,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         repo,
         tag: tag_got.clone(),
         version: str_of(&entry, "version").into(),
-        path: target,
+        path: request.installed_path(prev.as_ref()),
         managed_install: prev.as_ref().map(|p| p.managed_install).unwrap_or(true),
         preserve_folder: prev.as_ref().map(|p| p.preserve_folder).unwrap_or(false),
         exe,
@@ -1848,32 +1848,47 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
         let had = {
             let mut l = st.lib.lock().unwrap();
             let had = l.installed.contains_key(&old);
-            if busy || (had && l.installed.contains_key(&new)) {
-                None
-            } else {
-                if let Some(a) = l.arts.remove(&old) {
-                    l.arts.entry(new.clone()).or_insert(a);
-                }
-                if let Some(mut g) = l.installed.remove(&old) {
-                    g.id = new.clone();
-                    l.put(&new, g);
-                }
-                for target in l.project_aliases.values_mut() {
-                    if target == &old { *target = new.clone(); }
-                }
-                if let Some(m) = l.mods.remove(&old) {
-                    l.mods.entry(new.clone()).or_insert(m);
-                }
-                if let Some(v) = l.seen_versions.remove(&old) {
-                    l.seen_versions.entry(new.clone()).or_insert(v);
-                }
-                rename_id(&mut l.settings.ui, &old, &new);
-                Some(had)
+            let pending = [&old, &new].iter().any(|id| l.pending_installs.contains_key(*id));
+            if busy || pending || (had && l.installed.contains_key(&new)) {
+                keep.push(e);
+                continue;
             }
-        };
-        let Some(had) = had else {
-            keep.push(e);
-            continue;
+            // Private update history must move before the ID does. A collision or unavailable
+            // history defers reconciliation; saving failure rolls both changes back together.
+            let history = match backup_store::rename_project(&st.dir, &old, &new) {
+                Ok(moved) => moved,
+                Err(err) => {
+                    trail::note(format!("{old}: couldn't move its update backups to {new} ({err})"));
+                    keep.push(e);
+                    continue;
+                }
+            };
+            let before = l.clone();
+            if let Some(a) = l.arts.remove(&old) {
+                l.arts.entry(new.clone()).or_insert(a);
+            }
+            if let Some(mut g) = l.installed.remove(&old) {
+                g.id = new.clone();
+                l.put(&new, g);
+            }
+            for target in l.project_aliases.values_mut() {
+                if target == &old { *target = new.clone(); }
+            }
+            if let Some(m) = l.mods.remove(&old) {
+                l.mods.entry(new.clone()).or_insert(m);
+            }
+            if let Some(v) = l.seen_versions.remove(&old) {
+                l.seen_versions.entry(new.clone()).or_insert(v);
+            }
+            rename_id(&mut l.settings.ui, &old, &new);
+            if let Err(err) = l.save(&st.dir) {
+                *l = before;
+                if let Some((from, to)) = history { let _ = std::fs::rename(to, from); }
+                trail::note(format!("{old}: couldn't save its change to {new} ({err})"));
+                keep.push(e);
+                continue;
+            }
+            had
         };
         // Its save backups and this PC's notes about them, and its Look. What the official one
         // already has stays as it is.
@@ -10125,6 +10140,57 @@ mod tests {
     }
 
     #[test]
+    fn changing_project_keeps_private_update_backups_restorable() {
+        let d = std::env::temp_dir().join(format!("rl-project-private-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        std::fs::write(d.join("game/save.sav"), b"save").unwrap();
+        let game = Installed { id: "old".into(), path: d.join("game"), ..Default::default() };
+        let backup = backup_store::create(&game, &d).unwrap().unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("old".into(), game);
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "new", "repo": "Owner/New" }] });
+        let next = adopt::change_project(&app, "old", "new", &cat).unwrap();
+        std::fs::write(next.path.join("save.sav"), b"changed").unwrap();
+        backup_store::restore(&next, &d, &backup.name).unwrap();
+        assert_eq!(std::fs::read(next.path.join("save.sav")).unwrap(), b"save");
+        assert!(!backup_store::directory_for(&d, "old").exists());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn pending_installs_block_project_changes_and_listing_moves_until_cancelled() {
+        let d = std::env::temp_dir().join(format!("rl-project-pending-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("old".into(), Installed { id: "old".into(), path: d.join("game"), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "replaced": { "old": "new" }, "apps": [{ "id": "new", "repo": "Owner/New" }] });
+        for id in ["old", "new"] {
+            let mut l = app.lib.lock().unwrap();
+            let target = if id == "old" { d.join("game") } else { d.join("new-game") };
+            let pending = install_location::request(&l, id, target, Some("v1".into()), Some("build.zip".into()), false);
+            let work = install_location::claim(&pending, id == "old", &d).unwrap();
+            std::fs::write(work.join("download.part"), b"download").unwrap();
+            l.pending_installs.insert(id.into(), pending.clone());
+            drop(l);
+            assert!(adopt::change_project(&app, "old", "new", &cat).is_err());
+            assert!(adopt::move_listing_in(&app, &cat, "old", "new").is_err());
+            let mut l = app.lib.lock().unwrap();
+            assert!(l.installed.contains_key("old") && !l.installed.contains_key("new"));
+            assert_eq!(l.pending_installs[id].token, pending.token);
+            assert_eq!(l.pending_installs[id].file, pending.file);
+            assert_eq!(std::fs::read(work.join("download.part")).unwrap(), b"download");
+            install_location::clear_pending(&mut l, id, &d);
+            assert!(!work.exists());
+        }
+        adopt::change_project(&app, "old", "new", &cat).unwrap();
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
     fn project_changes_reject_conflicts_busy_games_and_missing_projects() {
         let d = std::env::temp_dir().join(format!("rl-project-conflict-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -10171,6 +10237,9 @@ mod tests {
         lib.installed.insert("old-recomp".into(), Installed { id: "old-recomp".into(), name: "Old Listing".into(), repo: "someone/old-recomp".into(), tag: "v0.1.1".into(), path: d.join("games/old"), played_secs: 7200, game_copy: Some(copy.clone()), ..Default::default() });
         std::fs::create_dir_all(saves::dir_of(&d, "old-recomp")).unwrap();
         std::fs::write(saves::dir_of(&d, "old-recomp").join("1.zip"), b"save").unwrap();
+        std::fs::create_dir_all(d.join("games/old")).unwrap();
+        std::fs::write(d.join("games/old/save.sav"), b"private save").unwrap();
+        let private_backup = backup_store::create(&lib.installed["old-recomp"], &d).unwrap().unwrap();
         let app = app_in(&d, lib);
         let cat = json!({ "replaced": { "old-recomp": "new-recomp" }, "apps": [{ "id": "new-recomp", "repo": "another/new-recomp", "name": "New Listing" }, { "id": "other", "repo": "x/y" }] });
         // Only to the listing the catalog says.
@@ -10187,6 +10256,10 @@ mod tests {
         assert_eq!(g.name, "New Listing");
         assert_eq!(l.project_aliases.get("old-recomp").map(String::as_str), Some("new-recomp"), "old links still open it");
         assert!(saves::dir_of(&d, "new-recomp").join("1.zip").is_file());
+        std::fs::write(g.path.join("save.sav"), b"changed").unwrap();
+        backup_store::restore(g, &d, &private_backup.name).unwrap();
+        assert_eq!(std::fs::read(g.path.join("save.sav")).unwrap(), b"private save");
+        assert!(!backup_store::directory_for(&d, "old-recomp").exists());
         drop(l);
         // The same project under a new id keeps its version and files.
         let mut lib = Library::default();
@@ -10208,6 +10281,9 @@ mod tests {
         let backup = saves::dir_of(&d, "old");
         std::fs::create_dir_all(&backup).unwrap();
         std::fs::write(backup.join("save.zip"), b"save").unwrap();
+        let private = backup_store::directory_for(&d, "old");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("1.zip"), b"private history").unwrap();
         // A directory at the temporary-file path forces Library::save to fail.
         std::fs::create_dir_all(d.join("library.json.tmp")).unwrap();
         let app = app_in(&d, lib);
@@ -10218,6 +10294,8 @@ mod tests {
         assert!(!l.installed.contains_key("new") && l.project_aliases.is_empty());
         assert_eq!(std::fs::read(backup.join("save.zip")).unwrap(), b"save");
         assert!(!saves::dir_of(&d, "new").exists());
+        assert_eq!(std::fs::read(private.join("1.zip")).unwrap(), b"private history");
+        assert!(!backup_store::directory_for(&d, "new").exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -10265,6 +10343,106 @@ mod tests {
         // Nothing more to do the next time.
         assert!(merge_mine(&st, &catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game" }] }))).is_empty());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_keeps_private_update_backups_restorable() {
+        let d = std::env::temp_dir().join(format!("rl-merge-private-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        std::fs::write(d.join("game/save.sav"), b"save").unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        let game = Installed { id: "mine".into(), path: d.join("game"), ..Default::default() };
+        let backup = backup_store::create(&game, &d).unwrap().unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), game);
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        assert_eq!(merge_mine(&app, &cat).len(), 1);
+        let saved = Library::load(&d);
+        let next = &saved.installed["official"];
+        std::fs::write(next.path.join("save.sav"), b"changed").unwrap();
+        backup_store::restore(next, &d, &backup.name).unwrap();
+        assert_eq!(std::fs::read(next.path.join("save.sav")).unwrap(), b"save");
+        assert!(!backup_store::directory_for(&d, "mine").exists());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_rolls_back_private_history_when_saving_fails() {
+        let d = std::env::temp_dir().join(format!("rl-merge-private-rollback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("library.json.tmp")).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        let private = backup_store::directory_for(&d, "mine");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("1.zip"), b"history").unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), Installed { id: "mine".into(), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        assert!(merge_mine(&app, &cat).is_empty());
+        let l = app.lib.lock().unwrap();
+        assert!(l.installed.contains_key("mine") && !l.installed.contains_key("official"));
+        assert_eq!(std::fs::read(private.join("1.zip")).unwrap(), b"history");
+        assert!(!backup_store::directory_for(&d, "official").exists());
+        assert_eq!(catalog::mine(&d).len(), 1);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_defers_when_private_histories_conflict() {
+        let d = std::env::temp_dir().join(format!("rl-merge-private-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        for id in ["mine", "official"] {
+            let private = backup_store::directory_for(&d, id);
+            std::fs::create_dir_all(&private).unwrap();
+            std::fs::write(private.join("1.zip"), id.as_bytes()).unwrap();
+        }
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), Installed { id: "mine".into(), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        assert!(merge_mine(&app, &cat).is_empty());
+        assert!(app.lib.lock().unwrap().installed.contains_key("mine"));
+        for id in ["mine", "official"] {
+            assert_eq!(std::fs::read(backup_store::directory_for(&d, id).join("1.zip")).unwrap(), id.as_bytes());
+        }
+        assert_eq!(catalog::mine(&d).len(), 1);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_waits_until_pending_installs_are_cancelled() {
+        let d = std::env::temp_dir().join(format!("rl-merge-pending-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), Installed { id: "mine".into(), path: d.join("game"), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        for id in ["mine", "official"] {
+            let mut l = app.lib.lock().unwrap();
+            let target = if id == "mine" { d.join("game") } else { d.join("new-game") };
+            let pending = install_location::request(&l, id, target, Some("v1".into()), Some("build.zip".into()), false);
+            let work = install_location::claim(&pending, id == "mine", &d).unwrap();
+            l.pending_installs.insert(id.into(), pending.clone());
+            drop(l);
+            assert!(merge_mine(&app, &cat).is_empty());
+            let mut l = app.lib.lock().unwrap();
+            assert!(l.installed.contains_key("mine") && !l.installed.contains_key("official"));
+            assert_eq!(l.pending_installs[id].token, pending.token);
+            assert_eq!(l.pending_installs[id].file, pending.file);
+            assert!(work.is_dir());
+            assert_eq!(catalog::mine(&d).len(), 1);
+            install_location::clear_pending(&mut l, id, &d);
+            assert!(!work.exists());
+        }
+        assert_eq!(merge_mine(&app, &cat).len(), 1);
+        std::fs::remove_dir_all(d).unwrap();
     }
 
     #[test]

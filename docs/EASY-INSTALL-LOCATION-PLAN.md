@@ -1,6 +1,6 @@
 # Easy Install: choose the game's installation folder
 
-Status: draft implementation with all four rounds of review findings addressed below. Existing manifest
+Status: draft implementation with all five rounds of review findings addressed below. Existing manifest
 fields and `{install}` support the selected folder; no manifest extension was added. External builders
 retain their declared output paths until their integrations expose a supported destination option.
 
@@ -114,6 +114,28 @@ The fourth review identified four additional P2 issues:
   be retried in place or removed before retargeting. Failed cleanup retains the old reservation;
   the frontend also restores its previous request if retargeting is rejected. Tests cover owned
   work cleanup, partial recovery across save/load, failed cleanup and retry after manual removal.
+
+## Source protection, copy recovery and project changes
+
+The fifth review identified one P1 and three P2 issues:
+
+- [x] **Alias updates preserve source-file protection.** Requests still validate canonical paths,
+  while completed updates retain the installed folder's saved spelling. Stored original-game and
+  update paths remain internal to that folder. A symlink/junction regression test saves and reloads
+  an updated record, then moves both original files out before deleting the game folder.
+- [x] **Repository copies publish complete entries.** Cross-volume entries copy into an isolated
+  temporary directory on the destination volume, then rename into place. Git metadata is published
+  last so a failed working-tree copy stays retryable; failed Git pulls now return an error. Tests
+  reproduce a truncated file copy and an actual cross-volume directory failure, then retry both.
+- [x] **Private update backups follow ID changes.** Change Project and Move to It include the
+  private history in their existing migration/rollback transaction. Automatic reconciliation moves
+  that history before committing its ID change and rolls it back if saving fails. Conflicting
+  histories defer reconciliation rather than dropping archives. Tests restore real backups after
+  all three actions and cover rollback and collision handling.
+- [x] **Pending installs block ID changes.** Both source and destination IDs must be free of
+  pending requests before Change Project or Move to It. Automatic reconciliation waits and retains
+  the custom listing. Tests retain the original token, selected build and owned work until cancelled,
+  then verify the ID change can proceed.
 
 ## Original implementation baseline
 

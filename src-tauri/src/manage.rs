@@ -376,6 +376,62 @@ mod tests {
         fs::remove_dir_all(d).unwrap();
     }
 
+    #[test]
+    fn failed_repository_file_copy_is_not_published_and_retry_copies_the_whole_file() {
+        let d = tmp("repo-file-retry");
+        let source = d.join("source");
+        let target = d.join("target");
+        let data = vec![7u8; 4096];
+        fs::write(&source, &data).unwrap();
+        let result = stage_repo_entry(&source, &target, |_, staged| {
+            fs::write(staged, &data[..1024])?;
+            Err(io::Error::other("copy interrupted"))
+        });
+        assert!(result.is_err());
+        assert!(!target.exists());
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        stage_repo_entry(&source, &target, copy_repo_entry).unwrap();
+        assert_eq!(fs::read(target).unwrap(), data);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn incomplete_repository_metadata_does_not_report_a_successful_update() {
+        let d = tmp("repo-invalid-git");
+        let target = d.join("game");
+        fs::create_dir_all(target.join(".git")).unwrap();
+        assert!(clone_repo("unused/project", &target, &d.join("scratch")).is_err());
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_repository_directory_copy_stays_retryable_across_filesystems() {
+        let d = tmp("repo-directory-retry");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let target = Path::new("/dev/shm").join(format!("recomp-repo-retry-{}-{time}", std::process::id()));
+        let scratch = d.join("clone");
+        fs::create_dir_all(scratch.join(".git")).unwrap();
+        fs::write(scratch.join(".git/HEAD"), b"metadata").unwrap();
+        fs::create_dir_all(scratch.join("src")).unwrap();
+        fs::write(scratch.join("src/source.c"), b"complete source").unwrap();
+        let socket = scratch.join("src/unreadable");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        assert!(install_clone(&scratch, &target).is_err());
+        assert!(!target.join("src").exists());
+        assert!(!target.join(".git").exists());
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
+        drop(listener);
+        fs::remove_file(&socket).unwrap();
+        fs::write(&socket, b"recovered").unwrap();
+        install_clone(&scratch, &target).unwrap();
+        assert_eq!(fs::read(target.join("src/source.c")).unwrap(), b"complete source");
+        assert_eq!(fs::read(target.join("src/unreadable")).unwrap(), b"recovered");
+        assert_eq!(fs::read(target.join(".git/HEAD")).unwrap(), b"metadata");
+        fs::remove_dir_all(target).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn cloned_repository_entries_transfer_across_filesystems() {
@@ -422,7 +478,11 @@ pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> 
     };
     let no_git = || Error::Msg("This game builds itself from its project files, which need Git. Install Git for Windows from git-scm.com, then press Install again.".into());
     if into.join(".git").exists() {
-        let _ = git(&["-C".as_ref(), into.as_os_str(), "pull".as_ref(), "--ff-only".as_ref()]);
+        let out = git(&["-C".as_ref(), into.as_os_str(), "pull".as_ref(), "--ff-only".as_ref()])
+            .map_err(|e| if e.kind() == io::ErrorKind::NotFound { no_git() } else { Error::Io(e) })?;
+        if !out.status.success() {
+            return Err(Error::Msg(format!("Couldn't update its project files. {}", String::from_utf8_lossy(&out.stderr).trim())));
+        }
         return Ok(());
     }
     let _ = fs::remove_dir_all(scratch);
@@ -447,8 +507,10 @@ pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> 
 
 fn install_clone(scratch: &Path, into: &Path) -> io::Result<()> {
     fs::create_dir_all(into)?;
-    for e in fs::read_dir(scratch)? {
-        let e = e?;
+    let mut entries = fs::read_dir(scratch)?.collect::<io::Result<Vec<_>>>()?;
+    // A retry must finish the working tree before clone_repo can recognize a complete repository.
+    entries.sort_by_key(|e| (e.file_name() == ".git", e.file_name()));
+    for e in entries {
         let to = into.join(e.file_name());
         // Release files win, including a link whose target is currently unavailable.
         if fs::symlink_metadata(&to).is_ok() {
@@ -457,9 +519,21 @@ fn install_clone(scratch: &Path, into: &Path) -> io::Result<()> {
         if fs::rename(e.path(), &to).is_ok() {
             continue;
         }
-        copy_repo_entry(&e.path(), &to)?;
+        stage_repo_entry(&e.path(), &to, copy_repo_entry)?;
     }
     Ok(())
+}
+
+fn stage_repo_entry(from: &Path, to: &Path, copy: impl FnOnce(&Path, &Path) -> io::Result<()>) -> io::Result<()> {
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let work = to.parent().unwrap().join(format!(".recomplauncher-repo-{}-{time}", std::process::id()));
+    fs::create_dir(&work)?;
+    let staged = work.join("entry");
+    let result = copy(from, &staged).and_then(|_| fs::rename(&staged, to));
+    // Only complete entries are published. Failed copies cannot masquerade as release files on retry.
+    crate::clear_read_only(&work);
+    let _ = fs::remove_dir_all(work);
+    result
 }
 
 fn copy_repo_entry(from: &Path, to: &Path) -> io::Result<()> {
