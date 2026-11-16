@@ -433,7 +433,55 @@ pub(crate) struct PlayHistory {
     games: BTreeMap<String, crate::games::Played>,
 }
 
+/// One game's time on this PC as the website keeps it: seconds played here, ever, and when last.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct PlayEntry {
+    pub game: String,
+    pub secs: u64,
+    pub last: u64,
+}
+
+/// A developer's own builds ("local-…", "own-…") aren't catalog games: their time stays on this PC.
+fn own_build(id: &str) -> bool {
+    id.starts_with("local-") || id.starts_with("own-")
+}
+
+fn entry(game: String, p: &crate::games::Played) -> Option<PlayEntry> {
+    if p.played_secs == 0 {
+        return None;
+    }
+    Some(PlayEntry { game, secs: p.played_secs, last: p.last_played })
+}
+
 impl Library {
+    /// Every game's time on this PC, for the account: installed games and what's kept from
+    /// uninstalled ones. A recomp with several games also sends each game as "recomp--game".
+    /// `only`: just those ids (a recomp's id brings its games along).
+    pub fn play_entries(&self, only: Option<&[String]>) -> Vec<PlayEntry> {
+        let wanted = |id: &str| only.is_none_or(|ids| ids.iter().any(|w| w == id));
+        let mut out = Vec::new();
+        for (id, g) in &self.installed {
+            if g.local || own_build(id) || !wanted(id) {
+                continue;
+            }
+            let recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, ..Default::default() };
+            out.extend(entry(id.clone(), &recomp));
+            for (sub, p) in &g.games {
+                out.extend(entry(crate::games::full(id, sub), p));
+            }
+        }
+        for (id, h) in &self.removed_play_history {
+            if own_build(id) || !wanted(id) || self.installed.contains_key(id) {
+                continue;
+            }
+            out.extend(entry(id.clone(), &h.recomp));
+            for (sub, p) in &h.games {
+                out.extend(entry(crate::games::full(id, sub), p));
+            }
+        }
+        out
+    }
+
     /// A project's new id takes over the play history kept for its old one, so a renamed
     /// project's uninstalled time isn't left behind under an id nothing uses any more.
     pub(crate) fn move_play_history(&mut self, old: &str, new: &str) {
@@ -816,6 +864,45 @@ mod tests {
 
         assert_eq!(l.installed["new"].played_secs, 60);
         assert!(l.removed_play_history.is_empty());
+    }
+
+    #[test]
+    fn play_entries_cover_installed_games_and_their_games() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "bundle".into(), played_secs: 90, last_played: 200, ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 60, last_played: 150, ..Default::default() });
+        l.put("bundle", g);
+
+        let ids: Vec<String> = l.play_entries(None).into_iter().map(|e| e.game).collect();
+        assert_eq!(ids, ["bundle", "bundle--first"]);
+    }
+
+    #[test]
+    fn play_entries_include_uninstalled_games() {
+        let mut l = Library::default();
+        l.put("gone", Installed { id: "gone".into(), played_secs: 30, last_played: 100, ..Default::default() });
+        l.forget("gone").unwrap();
+
+        assert_eq!(l.play_entries(None), [PlayEntry { game: "gone".into(), secs: 30, last: 100 }]);
+    }
+
+    #[test]
+    fn play_entries_leave_out_own_builds_and_unplayed_games() {
+        let mut l = Library::default();
+        l.put("local-test", Installed { id: "local-test".into(), played_secs: 30, local: true, ..Default::default() });
+        l.put("fresh", Installed { id: "fresh".into(), ..Default::default() });
+
+        assert!(l.play_entries(None).is_empty());
+    }
+
+    #[test]
+    fn play_entries_for_one_game_only() {
+        let mut l = Library::default();
+        l.put("a", Installed { id: "a".into(), played_secs: 30, ..Default::default() });
+        l.put("b", Installed { id: "b".into(), played_secs: 40, ..Default::default() });
+
+        let ids: Vec<String> = l.play_entries(Some(&["b".to_string()])).into_iter().map(|e| e.game).collect();
+        assert_eq!(ids, ["b"]);
     }
 
     #[test]

@@ -46,6 +46,34 @@ With the website's sign-in cookie: `GET ?a=pcs`, `POST ?a=pc-remove {id}`, `GET 
 `GET ?a=cloud-get&game=&v=`, `POST ?a=cloud-delete {game, v}`. Deleting the account deletes its
 PCs and cloud saves too.
 
+## Playtime
+
+Signed in, each PC sends its own running total per game (seconds played on that PC, ever), and the
+website adds the PCs up. Because a PC always sends its total and never "since last time", a resend
+or a lost request never counts anything twice.
+
+| Call | |
+| --- | --- |
+| `POST ?a=play` | `{"games": [{"game", "secs", "last"}]}`, up to 500 → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
+| `GET ?a=play` | `{"games": {ID: {"secs", "last"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+
+- `game` is the recomp's id, or `recomp--game` for one game of a recomp that carries several.
+  A developer's own builds (`local-…`, `own-…`) aren't sent.
+- A title is the sum of its recomps in the catalog's `titles[].pc`, and a replaced listing counts
+  as its new id. `recomp--game` rows don't count toward titles until the catalog maps those games.
+- The launcher sends everything after signing in and then once a day (installed games and what
+  it kept from uninstalled ones), one game after each session, and reads the totals with the
+  account and every 10 minutes (`cloud::playtime_push`, `playtime_pull`; `playSync` in app.js).
+- 120 sends and 120 reads an hour per PC. Any failure, a 401 included, just leaves this PC's own
+  numbers showing: these calls never sign the PC out, and they rest on their own in net.rs.
+- `save-put`'s `played` only labels save copies (the "Which save do you want?" picker) and isn't
+  counted.
+- `tools/fake-play-site.cjs` stands in for the website to try this locally (`RL_API`).
+
+Account page (cookie): `GET ?a=playtime` (each game's total and each PC's share), `POST
+?a=playtime-clear {game?}` (one game, or everything). Removing a PC keeps its rows; deleting the
+account deletes them.
+
 ## Get it on my PC
 
 The website's game page has a button that sends a recomp to one of your signed-in PCs. It only

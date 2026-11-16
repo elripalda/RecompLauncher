@@ -320,7 +320,31 @@ async function libSync() {
     if (Object.keys(next).sort().join('|') !== before && ['library', 'home'].includes(S.view)) render(true);
   } catch (e) { /* the website can't be reached: this PC's list stays, and it's tried again later */ } finally { S.libSyncing = false; }
 }
-setInterval(() => { if (!document.hidden) libSync(); }, 10 * 60 * 1000);
+// Playtime kept with the account: this PC's time goes up and every PC's total comes back for the
+// game pages (games.js). All of this PC's time goes up after signing in and then once a day; after
+// a session, just that game's. Signed out, or the website can't say, it's this PC's own numbers.
+const PLAY_FULL_EVERY = 24 * 3600;
+// True when the totals the pages show changed, so the caller draws again.
+async function playSync(ids) {
+  const before = JSON.stringify(S.cloudPlay || null);
+  const uid = accountId();
+  if (!uid || (S.account && S.account.offline)) {
+    S.cloudPlay = null;
+    return before !== 'null';
+  }
+  const ui = S.settings.ui || {};
+  const now = Math.floor(Date.now() / 1000);
+  const fullDue = ui.play_synced !== uid || now - (Number(ui.play_full_at) || 0) >= PLAY_FULL_EVERY;
+  try {
+    const all = !ids && fullDue;
+    const sent = await invoke('playtime_push', { games: all ? null : ids || [] });
+    if (all && sent) await saveUi({ play_synced: uid, play_full_at: now }, true);
+    const r = await invoke('playtime_pull');
+    S.cloudPlay = r && typeof r === 'object' ? { games: r.games || {}, titles: r.titles || {} } : null;
+  } catch (e) { /* this PC's own numbers stay */ }
+  return JSON.stringify(S.cloudPlay || null) !== before;
+}
+setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); } }, 10 * 60 * 1000);
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
@@ -8717,6 +8741,7 @@ T.event.listen('game', ({ payload: p }) => {
     if (S.setup[p.id] && S.setup[p.id] !== 'loading') { delete S.setup[p.id]; loadSetup(p.id); }
   }
   refreshState().then(() => render(true));
+  if (p.state !== 'running' && accountId()) playSync([p.id]).then((changed) => changed && render(true));
 });
 
 // ---------- how are you enjoying it (asked once) ----------
