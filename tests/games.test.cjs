@@ -228,3 +228,11 @@ test('a recomp of several games asks before its first install, then says where i
   assert.match(done, /Its \{n\} games are in your Library/);
   assert.match(done, /setupModal\(from\)/);
 });
+
+test('a game\'s page doesn\'t show its recomp\'s game info as its own', () => {
+  const c = ctx();
+  c.ids = new Map([['cogbox', Object.assign({}, COG, { about: { summary: 'Judgment' } })]]);
+  vm.runInContext('addGameApps(ids)', c);
+  assert.equal(c.ids.get('cogbox--gow1').about, undefined);
+  assert.equal(c.ids.get('cogbox').about.summary, 'Judgment');
+});

@@ -39,6 +39,9 @@ function childApp(a, g) {
     cover: g.cover || a.cover, hero: g.hero || a.hero, logo: g.logo || a.logo, icon: g.icon || a.icon,
     menuPick: !(Array.isArray(g.args) && g.args.length),
   });
+  // The recomp's game info is about one game of them (Red's for all of Gen 1): a game's page asks
+  // for its own instead, unless the catalog gives it one.
+  if (g.about) c.about = g.about; else delete c.about;
   delete c.title; delete c.games; delete c._name; delete c._cov; delete c._hero; delete c._logo; delete c._icon;
   return c;
 }
