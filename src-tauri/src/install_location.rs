@@ -259,9 +259,16 @@ fn owns(dir: &Path, token: &str) -> bool {
     if !dir.symlink_metadata().is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink()) {
         return false;
     }
-    let marker = dir.join(MARKER);
+    marker_matches(&dir.join(MARKER), token) || marker_matches(&update_marker(dir, token), token)
+}
+
+fn marker_matches(marker: &Path, token: &str) -> bool {
     marker.symlink_metadata().map(|m| m.is_file() && !m.file_type().is_symlink()).unwrap_or(false)
         && fs::read_to_string(marker).is_ok_and(|s| s == token)
+}
+
+fn update_marker(dir: &Path, token: &str) -> PathBuf {
+    dir.join(format!("{MARKER}-{token}"))
 }
 
 fn mark(dir: &Path, token: &str) -> Res<()> {
@@ -289,13 +296,20 @@ fn work_dir(request: &Request, app_dir: &Path) -> PathBuf {
 }
 
 pub fn claim(request: &Request, installed: bool, app_dir: &Path) -> Res<PathBuf> {
-    if !request.anchor.is_dir() || request.volume.is_some_and(|v| volume(&request.anchor) != Some(v)) {
+    let changed_volume = request.volume.is_some_and(|v| volume(&request.anchor) != Some(v));
+    // Unix device numbers can change after remounting. The private token still proves this target.
+    if !request.anchor.is_dir() || (changed_volume && !owns(&request.target, &request.token)) {
         return Err(Error::Msg("The selected drive isn't available. Reconnect it before retrying this installation.".into()));
     }
     if normalized(&request.target)? != request.target {
         return Err(Error::Msg("The selected folder points somewhere else now. Choose the game folder again.".into()));
     }
     writable(&request.target)?;
+    if installed && !owns(&request.target, &request.token) {
+        let marker = update_marker(&request.target, &request.token);
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(marker)?;
+        file.write_all(request.token.as_bytes())?;
+    }
     if !installed && !owns(&request.target, &request.token) {
         fs::create_dir_all(&request.target)?;
         if fs::read_dir(&request.target)?.next().is_some() {
@@ -320,10 +334,13 @@ pub fn preview(target: PathBuf) -> Preview {
 
 pub fn finish(request: &Request, keep_downloads: bool, app_dir: &Path) {
     if owns(&request.target, &request.token) {
-        let _ = fs::remove_file(request.target.join(MARKER));
+        for marker in [request.target.join(MARKER), update_marker(&request.target, &request.token)] {
+            if marker_matches(&marker, &request.token) { let _ = fs::remove_file(marker); }
+        }
     }
     let work = work_dir(request, app_dir);
     if !keep_downloads && owns(&work, &request.token) {
+        crate::clear_read_only(&work);
         let _ = fs::remove_dir_all(work);
     }
 }
@@ -366,6 +383,19 @@ pub fn clear_pending(lib: &mut Library, id: &str, app_dir: &Path) {
     }
 }
 
+pub fn forget_pending(lib: &mut Library, id: &str, app_dir: &Path) -> Res<()> {
+    if lib.installed.contains_key(id) {
+        return Err(Error::Msg("It finished installing. Refresh your Library before removing it.".into()));
+    }
+    let Some(request) = lib.pending_installs.remove(id) else { return Ok(()) };
+    if let Err(error) = lib.save(app_dir) {
+        lib.pending_installs.insert(id.into(), request);
+        return Err(error.into());
+    }
+    finish(&request, false, app_dir);
+    Ok(())
+}
+
 pub fn ensure_movable(lib: &Library, id: &str) -> Res<()> {
     if lib.pending_installs.contains_key(id) {
         return Err(Error::Msg("Finish or cancel this game's pending update before moving it.".into()));
@@ -376,7 +406,8 @@ pub fn ensure_movable(lib: &Library, id: &str) -> Res<()> {
 pub fn reserve(lib: &mut Library, id: &str, request: Request, app_dir: &Path) -> Res<()> {
     if let Some(previous) = lib.pending_installs.get(id).filter(|r| !same(&r.target, &request.target)) {
         let available = previous.target.ancestors().find(|path| path.is_dir());
-        if available.is_none() || previous.volume.is_some_and(|v| available.and_then(volume) != Some(v)) {
+        let changed_volume = previous.volume.is_some_and(|v| available.and_then(volume) != Some(v));
+        if available.is_none() || (changed_volume && !owns(&previous.target, &previous.token)) {
             return Err(Error::Msg("Reconnect the previous installation's drive before choosing another folder.".into()));
         }
         previous.target.try_exists()?;
@@ -1263,6 +1294,104 @@ mod tests {
         fs::remove_dir(&anchor).unwrap();
         assert!(claim(&pending, false, &root.join("data")).is_err());
         assert!(!anchor.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn forgetting_a_saved_install_clears_its_persisted_reservation_and_owned_work() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let pending = request(&lib, "saved-game", root.join("game"), None, None, false);
+        let work = claim(&pending, false, &app_dir).unwrap();
+        fs::write(work.join("partial"), b"download").unwrap();
+        let mut permissions = fs::metadata(work.join("partial")).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(work.join("partial"), permissions).unwrap();
+        lib.pending_installs.insert("saved-game".into(), pending.clone());
+        lib.save(&app_dir).unwrap();
+        forget_pending(&mut lib, "saved-game", &app_dir).unwrap();
+        assert!(!work.exists());
+        let loaded = Library::load(&app_dir);
+        assert!(loaded.pending_installs.is_empty());
+        validate(&loaded, &app_dir, "different-game", &pending.target).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_saved_install_removal_keeps_the_persisted_request_and_work() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let pending = request(&lib, "game", root.join("game"), None, None, false);
+        let work = claim(&pending, false, &app_dir).unwrap();
+        lib.pending_installs.insert("game".into(), pending.clone());
+        lib.save(&app_dir).unwrap();
+        fs::create_dir(app_dir.join("library.json.tmp")).unwrap();
+        assert!(forget_pending(&mut lib, "game", &app_dir).is_err());
+        assert!(owns(&pending.target, &pending.token));
+        assert!(work.is_dir());
+        assert!(lib.pending_installs.contains_key("game"));
+        assert!(Library::load(&app_dir).pending_installs.contains_key("game"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn saved_install_removal_never_forgets_a_game_that_finished_installing() {
+        let root = temp();
+        let mut lib = Library::default();
+        lib.installed.insert("game".into(), Installed { id: "game".into(), path: root.join("game"), ..Default::default() });
+        assert!(forget_pending(&mut lib, "game", &root.join("data")).is_err());
+        assert!(lib.installed.contains_key("game"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn owned_partial_install_resumes_after_its_device_number_changes() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let mut pending = request(&lib, "game", root.join("game"), None, None, false);
+        let work = claim(&pending, false, &app_dir).unwrap();
+        fs::write(pending.target.join("partial.dat"), b"game").unwrap();
+        pending.volume = pending.volume.map(|v| v.wrapping_add(1));
+        lib.pending_installs.insert("game".into(), pending.clone());
+        lib.save(&app_dir).unwrap();
+        let loaded = Library::load(&app_dir);
+        validate(&loaded, &app_dir, "game", &pending.target).unwrap();
+        assert_eq!(claim(&loaded.pending_installs["game"], false, &app_dir).unwrap(), work);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_update_can_revalidate_its_owned_folder_after_remounting() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let target = root.join("game");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("save.sav"), b"save").unwrap();
+        let mut pending = request(&Library::default(), "game", target.clone(), None, None, false);
+        let work = claim(&pending, true, &app_dir).unwrap();
+        pending.volume = pending.volume.map(|v| v.wrapping_add(1));
+        assert_eq!(claim(&pending, true, &app_dir).unwrap(), work);
+        assert_eq!(manage::player_files(&target, &[]), vec![PathBuf::from("save.sav")]);
+        finish(&pending, false, &app_dir);
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_replacement_volume_without_the_matching_marker_is_rejected() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut pending = request(&Library::default(), "game", root.join("game"), None, None, false);
+        claim(&pending, false, &app_dir).unwrap();
+        pending.volume = pending.volume.map(|v| v.wrapping_add(1));
+        fs::write(pending.target.join(MARKER), b"different ownership").unwrap();
+        assert!(claim(&pending, false, &app_dir).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 

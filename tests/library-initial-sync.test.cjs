@@ -14,6 +14,7 @@ function fixture() {
     S, setInterval: () => {}, render: () => {}, byId: () => null,
     saveUi: async (patch) => Object.assign(S.settings.ui, patch),
     invoke: async (command, args) => {
+      if (command === 'forget_pending_install') return {};
       if (command === 'library_pull') return { saved: Object.entries(server.saved).map(([id, at]) => ({ id, at })) };
       assert.equal(command, 'library_push');
       server.writes.push([Array.from(args.games), args.on]);

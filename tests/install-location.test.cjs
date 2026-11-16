@@ -381,6 +381,35 @@ test('a launcher restart recovers the pending destination and build from backend
   assert.equal(calls[0].args.file, 'eu.zip');
 });
 
+test('removing a saved custom game releases its reservation before removing the listing', async () => {
+  const { c, calls } = context();
+  c.S.settings.ui.saved = { example: 1 };
+  c.S.pendingInstalls = { example: { target: '/drive/Chosen' } };
+  c.dlArgs('example', { target: '/drive/Chosen', file: 'old.zip' });
+  c.saved = () => c.S.settings.ui.saved;
+  c.byId = () => ({ custom: true });
+  c.libSend = () => {};
+  c.loadCatalog = async () => {};
+  c.saveUi = async (settings) => { calls.push({ command: 'save-ui' }); Object.assign(c.S.settings.ui, settings); };
+  vm.runInContext(fn('removeFromLibrary'), c);
+  await c.removeFromLibrary('example');
+  assert.deepEqual(calls.map((call) => call.command), ['forget_pending_install', 'save-ui', 'remove_github']);
+  assert.equal(c.S.pendingInstalls.example, undefined);
+  assert.equal(c.S.dlArgs.example, undefined);
+  assert.equal(c.S.settings.ui.saved.example, undefined);
+});
+
+test('a refused pending removal keeps the saved entry and custom listing', async () => {
+  const { c, calls } = context();
+  c.S.settings.ui.saved = { example: 1 };
+  c.saved = () => c.S.settings.ui.saved;
+  c.invoke = async (command) => { calls.push({ command }); throw new Error('Still downloading'); };
+  vm.runInContext(fn('removeFromLibrary'), c);
+  await assert.rejects(c.removeFromLibrary('example'), /Still downloading/);
+  assert.deepEqual(calls.map((call) => call.command), ['forget_pending_install']);
+  assert.equal(c.S.settings.ui.saved.example, 1);
+});
+
 test('an update skips the picker and retains the installed game folder', async () => {
   const { c, calls } = context();
   c.S.library.example = { path: '/original/game' };

@@ -236,6 +236,13 @@ async function addToLibrary(id) {
   toast(tf('{name} is in your Library. Install it whenever you like.', { name: a ? a.name : id }));
 }
 async function removeFromLibrary(id) {
+  if (!S.library[id]) {
+    await invoke('forget_pending_install', { id });
+    if (S.dlArgs) delete S.dlArgs[id];
+    if (S.pendingInstalls) delete S.pendingInstalls[id];
+    if (S.paused) delete S.paused[id];
+    if (S.prePicked) delete S.prePicked[id];
+  }
   const s2 = Object.assign({}, saved());
   delete s2[id];
   // A look at the player's games doesn't put it back.

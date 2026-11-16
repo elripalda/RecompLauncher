@@ -8635,6 +8635,14 @@ fn forget_game(st: State<'_, App>, id: String) -> Res<()> {
 }
 
 #[tauri::command(async)]
+fn forget_pending_install(st: State<'_, App>, id: String) -> Res<()> {
+    if st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg(MOVING.into()));
+    }
+    install_location::forget_pending(&mut st.lib.lock().unwrap(), &id, &st.dir)
+}
+
+#[tauri::command(async)]
 fn set_cover(st: State<'_, App>, id: String, path: Option<String>, hero: Option<bool>) -> Res<Installed> {
     let dir = st.dir.join("covers");
     let hero = hero.unwrap_or(false);
@@ -9679,6 +9687,7 @@ pub fn run() {
             plugins::plugin_game_files,
             locate_game,
             forget_game,
+            forget_pending_install,
             remove_github,
             take_setup_asked,
             take_options_asked,

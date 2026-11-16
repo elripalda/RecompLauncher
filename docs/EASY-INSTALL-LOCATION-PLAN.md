@@ -182,6 +182,19 @@ The third automated review found three additional P2 issues:
   delay a library response while typing, verify the exact chosen target reaches installation, and
   retain an alias spelling while it is edited.
 
+The fourth automated review found two more P2 issues:
+
+- [x] **Saved-game removal releases reservations.** Before removing a saved/custom listing, the
+  frontend asks the backend to durably forget its pending installation. Active operations and
+  games that finished installing are rejected. Failed persistence preserves the request and owned
+  work; success removes only owned work and markers. Tests cover removal/restart, persistence
+  failure, stale frontend state and ordering before the custom listing disappears.
+- [x] **Remounts can revalidate owned targets.** A changed Unix device number no longer rejects a
+  target with the matching private marker. Updates create token-specific markers inside their
+  granted game folder too. Completion/cancellation remove only matching markers, and backups/cloud
+  saves exclude them. Tests simulate remounted partial installs and updates, reject replacement
+  volumes with mismatched ownership and retain the disconnected-anchor check.
+
 ## Original implementation baseline
 
 - `ui/app.js`: `startInstall` already opens `locationModal` on the first install, when additional
