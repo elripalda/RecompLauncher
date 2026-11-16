@@ -265,6 +265,17 @@ Without it, the launcher watches which files the game writes while it runs, and 
 That works for most games, but saying where is better. Only list saves and small settings: game
 files, programs and archives are never copied, and nothing over 64 MB.
 
+You can move them in a later release. Keep the same number of entries in the same order, and change
+the path in place: a copy made from the old place goes into the new one when the player restores it,
+or when the launcher brings back their cloud save because the new place is empty. From
+`"saves": ["{home}/Games/MyGame/user"]` to this, a copy from before restores into the new folder:
+
+```json
+"saves": ["{install}/Game/user"]
+```
+
+This only follows places your file or the catalog names, not ones the launcher noticed on its own.
+
 ### `games`: several games in one release
 
 A release that carries a whole series lists its games. Each one gets its own tile in the Library
