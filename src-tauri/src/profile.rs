@@ -22,7 +22,8 @@ pub struct Profile {
     #[serde(skip)]
     pub input_paths: BTreeMap<String, PathBuf>,
     /// Optional inputs this launcher skipped (a shared type or role it doesn't know, or DLSS on a PC
-    /// it doesn't apply to): their {input:...} arguments are left out instead of failing.
+    /// it doesn't apply to), and the other games' inputs when one game of several is played: their
+    /// {input:...} arguments are left out instead of failing.
     #[serde(skip)]
     pub skipped_inputs: Vec<String>,
     /// The installed build's platform preference, supplied by the launcher, never a manifest.

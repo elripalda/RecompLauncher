@@ -124,7 +124,12 @@ pub fn inputs_for(game: &Game, all: &[Game], inputs: &[crate::inputs::Input]) ->
 /// A profile for playing one game: only its inputs, and its saves in place of the shared ones
 /// when it has its own.
 pub fn scope(p: &mut crate::profile::Profile, game: &Game, all: &[Game]) {
-    p.inputs = inputs_for(game, all, &p.inputs);
+    let kept = inputs_for(game, all, &p.inputs);
+    // The other games' inputs are still declared, only not asked for here: their {input:...}
+    // arguments are left out of this game's command line instead of failing it as unknown.
+    let dropped = p.inputs.iter().filter(|i| !kept.iter().any(|k| k.id == i.id)).map(|i| i.id.clone());
+    p.skipped_inputs.extend(dropped);
+    p.inputs = kept;
     p.input_paths.retain(|k, _| p.inputs.iter().any(|i| &i.id == k));
     if !game.saves.is_empty() {
         p.saves = game.saves.clone();
@@ -132,9 +137,10 @@ pub fn scope(p: &mut crate::profile::Profile, game: &Game, all: &[Game]) {
 }
 
 /// What a game adds to the command line: its own options after the recomp's (its `start.args`
-/// and settings). The player's own launch options still come last.
-pub fn add_args(args: &mut Vec<String>, game: &Game) {
-    args.extend(game.args.iter().cloned());
+/// and settings). The player's own launch options still come last. Its {input:...} placeholders
+/// are filled from the player's files as in `start.args`; one with no file is left out.
+pub fn add_args(args: &mut Vec<String>, game: &Game, paths: &BTreeMap<String, std::path::PathBuf>, wine: bool) {
+    args.extend(crate::inputs::arguments(&game.args, paths, wine));
 }
 
 /// Play time and the last session of one game in a recomp, kept on its install.
@@ -244,6 +250,61 @@ mod tests {
         assert_eq!(p.saves, ["{install}/gow3/save"]);
     }
 
+    // Gen1Recomp's shape: every game's ROM argument in the recomp's start.args.
+    fn rom_per_game() -> crate::profile::Profile {
+        serde_json::from_value(json!({
+            "format": 1,
+            "inputs": [
+                { "id": "rom-red", "label": "Red", "optional": true, "formats": [{ "type": "file", "extensions": ["gb"] }] },
+                { "id": "rom-blue", "label": "Blue", "optional": true, "formats": [{ "type": "file", "extensions": ["gb"] }] }
+            ],
+            "games": [
+                { "id": "red", "name": "Red", "args": ["--game=red"], "inputs": ["rom-red"] },
+                { "id": "blue", "name": "Blue", "args": ["--game=blue"], "inputs": ["rom-blue"] }
+            ],
+            "start": { "program": ["g.exe"], "args": ["--rom={input:rom-red}", "--rom={input:rom-blue}"] }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn another_games_input_in_start_args_is_not_unknown() {
+        let mut p = rom_per_game();
+        let all = of(p.games.as_ref(), &Value::Null);
+        scope(&mut p, &all[1], &all);
+        assert_eq!(crate::inputs::validate(&p), Ok(()));
+    }
+
+    #[test]
+    fn only_the_played_games_input_reaches_its_command_line() {
+        let mut p = rom_per_game();
+        p.input_paths.insert("rom-red".into(), "/r.gb".into());
+        p.input_paths.insert("rom-blue".into(), "/b.gb".into());
+        let all = of(p.games.as_ref(), &Value::Null);
+        scope(&mut p, &all[1], &all);
+        let args = crate::inputs::arguments(&p.start.as_ref().unwrap().args, &p.input_paths, false);
+        assert_eq!(args, ["--rom=/b.gb"]);
+    }
+
+    #[test]
+    fn a_misspelled_input_in_a_games_args_fails() {
+        let mut p = rom_per_game();
+        p.games = Some(json!([
+            { "id": "red", "name": "Red", "args": ["--rom={input:rom-red}"], "inputs": ["rom-red"] },
+            { "id": "blue", "name": "Blue", "args": ["--rom={input:rom-bleu}"], "inputs": ["rom-blue"] }
+        ]));
+        assert!(crate::inputs::validate(&p).is_err());
+    }
+
+    #[test]
+    fn a_misspelled_input_still_fails_after_scoping() {
+        let mut p = rom_per_game();
+        p.start.as_mut().unwrap().args.push("--x={input:rom-gren}".into());
+        let all = of(p.games.as_ref(), &Value::Null);
+        scope(&mut p, &all[1], &all);
+        assert!(crate::inputs::validate(&p).is_err());
+    }
+
     #[test]
     fn a_games_options_come_after_the_recomps_start_args() {
         let p: crate::profile::Profile = serde_json::from_value(json!({
@@ -253,12 +314,39 @@ mod tests {
         })).unwrap();
         let all = of(p.games.as_ref(), &Value::Null);
         let mut args = p.start.as_ref().unwrap().args.clone();
-        add_args(&mut args, &all[1]);
+        add_args(&mut args, &all[1], &BTreeMap::new(), false);
         assert_eq!(args, ["--fullscreen", "--game=gow3"]);
         // No options of its own: Play opens the recomp's menu, as it starts.
         let mut plain = p.start.as_ref().unwrap().args.clone();
-        add_args(&mut plain, &Game { id: "gowj".into(), name: "Judgment".into(), ..Default::default() });
+        add_args(&mut plain, &Game { id: "gowj".into(), name: "Judgment".into(), ..Default::default() }, &BTreeMap::new(), false);
         assert_eq!(plain, ["--fullscreen"]);
+    }
+
+    fn with_rom_arg() -> Game {
+        Game { id: "blue".into(), name: "Blue".into(), args: vec!["--game=blue".into(), "--rom={input:rom-blue}".into()], ..Default::default() }
+    }
+
+    #[test]
+    fn a_games_own_args_get_its_files() {
+        let paths = BTreeMap::from([("rom-blue".to_string(), std::path::PathBuf::from("/roms/blue.gb"))]);
+        let mut args = vec![];
+        add_args(&mut args, &with_rom_arg(), &paths, false);
+        assert_eq!(args, ["--game=blue", "--rom=/roms/blue.gb"]);
+    }
+
+    #[test]
+    fn a_games_arg_without_its_file_is_left_out() {
+        let mut args = vec![];
+        add_args(&mut args, &with_rom_arg(), &BTreeMap::new(), false);
+        assert_eq!(args, ["--game=blue"]);
+    }
+
+    #[test]
+    fn a_games_file_is_given_as_a_windows_path_under_proton() {
+        let paths = BTreeMap::from([("rom-blue".to_string(), std::path::PathBuf::from("/roms/blue.gb"))]);
+        let mut args = vec![];
+        add_args(&mut args, &with_rom_arg(), &paths, true);
+        assert_eq!(args[1], "--rom=Z:\\roms\\blue.gb");
     }
 
     #[test]

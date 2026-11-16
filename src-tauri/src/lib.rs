@@ -2860,7 +2860,11 @@ fn start_game_with_monitor_context(
     };
     // The game picked in a recomp that carries several: its options come after the recomp's own.
     if let Some(pk) = pick.as_ref().filter(|_| !picked_once) {
-        games::add_args(&mut args, &pk.game);
+        let no_files = BTreeMap::new();
+        let paths = prof.as_ref().map_or(&no_files, |p| &p.input_paths);
+        // A Windows program under Proton is given its files as Windows paths, as start.args are.
+        let wine = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
+        games::add_args(&mut args, &pk.game, paths, wine);
     }
     if !clean {
         args.extend(join_paths(split_args(&g.args)));

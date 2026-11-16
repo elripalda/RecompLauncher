@@ -80,13 +80,16 @@ See [the complete example](examples/multidisc-inputs.json). Declare one input fo
 extensions without a leading dot; an empty list accepts any regular file. A `folder` format accepts
 a selected existing folder and cannot declare extensions or an installation destination.
 
-You can pass every selected path to `prepare.args`, `start.args`, or `start.env` using `{input:id}`.
+You can pass every selected path to `prepare.args`, `start.args`, `start.env`, or a game's
+`games[].args` using `{input:id}`.
 Paths remain separate command arguments (no shell string concatenation). For optional or
 conditional arguments, **put the flag and token in the same argument**, e.g.
 `"--dlc={input:dlc-one}"`. An entire argument/environment value containing an unavailable input
 token is omitted. Do not use separate `"--dlc", "{input:dlc-one}"` arguments for optional inputs;
 the dangling flag could consume another argument. Required inputs can use separate flag/value
-arguments. Unknown placeholder IDs are configuration errors.
+arguments. Unknown placeholder IDs are configuration errors. When one game of several is played,
+the other games' inputs aren't unknown: their arguments are left out, so only that game's
+`"--rom={input:rom-blue}"` reaches the command line.
 
 ## File placement
 
