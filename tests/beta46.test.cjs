@@ -84,8 +84,10 @@ test('a better version of a game is suggested only when the catalog says so, and
   S.settings.ui.better_off = {};
   S.library.new = { id: 'new' };
   assert.equal(betterOf(ids.old), null);
-  // Switching never uninstalls by itself: the old one is offered once the new one is in.
-  assert.match(app, /if \(S\.library\[from\] && S\.library\[to\] && !S\.running\.has\(from\)\) confirmUninstall\(from\);/);
+  // Switching uninstalls the old one only when the player chose Switch Completely while installing,
+  // and only on the new one's first start, once its saves came along.
+  assert.match(app, /function betterGo\(from, to\) \{[^}]*return startInstall\(to\);/);
+  assert.match(read('account.js'), /if \(offer && !\(await carryNow\(offer, id\)\)\) return false;[\s\S]*await uninstallNow\(from, ownFolder\(old\), !!old\.installer\);/);
 });
 
 test("a setup step's options show as ticks, a license one off until the player ticks it", () => {

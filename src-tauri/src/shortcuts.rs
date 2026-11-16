@@ -84,6 +84,124 @@ pub fn desktop_shortcut(id: &str, name: &str, icon: Option<&Path>, direct: Optio
     }
 }
 
+// ---------- shortcuts that are already there ----------
+
+/// Where the launcher puts a game's shortcuts, each with whether it's the app menu (the Start menu
+/// on Windows) rather than the desktop.
+fn shortcut_places() -> Vec<(PathBuf, bool)> {
+    let mut out = vec![];
+    #[cfg(windows)]
+    {
+        if let Some(d) = dirs::data_dir() {
+            out.push((d.join(r"Microsoft\Windows\Start Menu\Programs"), true));
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let data = if crate::flatpak::sandboxed() { dirs::home_dir().map(|h| h.join(".local/share")) } else { dirs::data_dir() };
+        if let Some(d) = data {
+            out.push((d.join("applications"), true));
+        }
+    }
+    if let Some(d) = dirs::desktop_dir().or_else(|| dirs::home_dir().map(|h| h.join("Desktop"))) {
+        out.push((d, false));
+    }
+    out
+}
+
+/// A shortcut that starts a game. `plays`: through the launcher, by the game's id. `ours`: the
+/// launcher made it (through the launcher, or straight to the game with the launcher's icon); a
+/// game's own installer makes shortcuts too.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    pub file: PathBuf,
+    pub menu: bool,
+    pub plays: bool,
+    pub ours: bool,
+}
+
+/// The shortcuts in the app menu and on the desktop that start this game: by its id, or with a
+/// program inside its folder. Told apart by what they run, never by their name, so a shortcut to
+/// something else called the same stays.
+pub fn shortcuts_for(id: &str, folder: &Path, data: &Path) -> Vec<Found> {
+    let mut out = vec![];
+    for (dir, menu) in shortcut_places() {
+        for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let file = e.path();
+            let Some((plays, ours)) = starts_game(&file, id, folder, data) else { continue };
+            out.push(Found { file, menu, plays, ours });
+        }
+    }
+    out
+}
+
+/// Takes away the shortcuts that can't start this game anymore once it's uninstalled: the ones
+/// through the launcher, and, when its folder is gone, the ones into it. -> how many.
+pub fn remove_for(id: &str, folder: &Path, data: &Path) -> usize {
+    let gone = !folder.exists();
+    shortcuts_for(id, folder, data).into_iter().filter(|f| f.plays || gone).filter(|f| fs::remove_file(&f.file).is_ok()).count()
+}
+
+/// (plays, ours) when this shortcut file starts the game.
+fn starts_game(file: &Path, id: &str, folder: &Path, data: &Path) -> Option<(bool, bool)> {
+    let ext = file.extension()?.to_str()?.to_ascii_lowercase();
+    if ext == "lnk" {
+        return lnk_plays(&fs::read(file).ok()?, id).then_some((true, true));
+    }
+    if ext != "desktop" {
+        return None;
+    }
+    desktop_starts(&fs::read_to_string(file).ok()?, id, folder, data)
+}
+
+/// A .desktop entry's (plays, ours) when it starts this game.
+fn desktop_starts(body: &str, id: &str, folder: &Path, data: &Path) -> Option<(bool, bool)> {
+    let key = |k: &str| body.lines().find_map(|l| l.strip_prefix(k));
+    let words = exec_words(key("Exec=")?);
+    let plays = words.windows(2).any(|w| w[0] == "--play" && w[1] == id);
+    // An empty or relative folder would take in every program.
+    let inside = folder.is_absolute() && words.first().is_some_and(|p| Path::new(p).starts_with(folder));
+    if !plays && !inside {
+        return None;
+    }
+    let icon = key("Icon=").unwrap_or_default();
+    let launchers_icon = icon == "applications-games" || Path::new(icon).starts_with(data);
+    Some((plays, plays || launchers_icon))
+}
+
+/// The words of a .desktop entry's Exec line, without their quotes.
+fn exec_words(exec: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut word = String::new();
+    let mut quoted = false;
+    let mut started = false;
+    for c in exec.chars() {
+        let gap = (c == ' ' || c == '\t') && !quoted;
+        if c == '"' {
+            quoted = !quoted;
+            started = true;
+        } else if gap && started {
+            out.push(std::mem::take(&mut word));
+            started = false;
+        } else if !gap {
+            word.push(c);
+            started = true;
+        }
+    }
+    if started {
+        out.push(word);
+    }
+    out
+}
+
+/// A Windows shortcut that plays this game through the launcher: its arguments are kept as UTF-16
+/// text, `--play <id>` among them, and no longer id starts with this one.
+fn lnk_plays(bytes: &[u8], id: &str) -> bool {
+    let needle: Vec<u8> = format!("--play {id}").encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let more_of_the_id = |rest: &[u8]| matches!(rest, [c, 0, ..] if c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_');
+    bytes.windows(needle.len()).enumerate().any(|(i, w)| w == needle.as_slice() && !more_of_the_id(&bytes[i + needle.len()..]))
+}
+
 /// One argument as it goes on a shortcut's command line: in quotes when it has spaces.
 fn quote_arg(a: &str) -> String {
     if a.is_empty() || a.contains([' ', '\t']) {
@@ -802,6 +920,60 @@ pub fn remove_art(cfg: &Path, app_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const DATA: &str = "/home/p/.local/share/com.recomplauncher.app";
+
+    #[test]
+    fn a_menu_entry_through_the_launcher_is_found_by_the_games_id() {
+        let body = "[Desktop Entry]\nName=The Legend of Zelda: Ocarina of Time\nExec=\"/usr/bin/recomplauncher\" --play hookshot\nIcon=/home/p/.local/share/com.recomplauncher.app/covers/hookshot-icon-list.png\n";
+        assert_eq!(desktop_starts(body, "hookshot", Path::new("/games/Hookshot"), Path::new(DATA)), Some((true, true)));
+    }
+
+    #[test]
+    fn a_longer_id_is_another_game() {
+        let body = "[Desktop Entry]\nExec=\"/usr/bin/recomplauncher\" --play hookshot-2\n";
+        assert_eq!(desktop_starts(body, "hookshot", Path::new("/games/Hookshot"), Path::new(DATA)), None);
+    }
+
+    #[test]
+    fn the_games_own_entry_into_its_folder_is_found_but_not_ours() {
+        let body = "[Desktop Entry]\nName=Hookshot\nExec=\"/games/Recomp Library/Hookshot/hookshot\"\nIcon=/games/Recomp Library/Hookshot/hookshot.png\n";
+        let folder = Path::new("/games/Recomp Library/Hookshot");
+        assert_eq!(desktop_starts(body, "hookshot", folder, Path::new(DATA)), Some((false, false)));
+    }
+
+    #[test]
+    fn a_direct_entry_with_the_launchers_icon_is_ours() {
+        let body = "[Desktop Entry]\nExec=\"/games/dkb/game/dkb\" \nIcon=/home/p/.local/share/com.recomplauncher.app/covers/dkb-icon-list.png\n";
+        assert_eq!(desktop_starts(body, "dkb", Path::new("/games/dkb"), Path::new(DATA)), Some((false, true)));
+    }
+
+    #[test]
+    fn an_entry_for_something_else_is_left_alone() {
+        let body = "[Desktop Entry]\nName=The Legend of Zelda: Ocarina of Time\nExec=\"/usr/bin/ship\"\n";
+        assert_eq!(desktop_starts(body, "hookshot", Path::new("/games/Hookshot"), Path::new(DATA)), None);
+    }
+
+    #[test]
+    fn no_folder_takes_in_no_program() {
+        let body = "[Desktop Entry]\nExec=/usr/bin/anything\n";
+        assert_eq!(desktop_starts(body, "hookshot", Path::new(""), Path::new(DATA)), None);
+    }
+
+    #[test]
+    fn exec_words_lose_their_quotes() {
+        assert_eq!(exec_words("\"/a b/c\" --play x"), ["/a b/c", "--play", "x"]);
+    }
+
+    #[test]
+    fn a_windows_shortcut_plays_the_game_by_its_id() {
+        let utf16 = |s: &str| s.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<u8>>();
+        let mut lnk = vec![0x4c, 0, 0, 0];
+        lnk.extend(utf16("--play hookshot"));
+        lnk.extend([0x10, 0x00]);
+        assert!(lnk_plays(&lnk, "hookshot"));
+        assert!(!lnk_plays(&lnk, "hook"));
+    }
 
     #[cfg(not(windows))]
     #[test]

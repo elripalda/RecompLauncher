@@ -276,6 +276,14 @@ or when the launcher brings back their cloud save because the new place is empty
 
 This only follows places your file or the catalog names, not ones the launcher noticed on its own.
 
+Saying where also helps players who switch to your recomp from another one of the same game: on
+your game's first start, the launcher offers to bring the other version's saves over, file by file
+into the matching places (the same spot in each list, or the one starting from the same folder,
+like `{local}`). A folder the player picked inside the other recomp's place goes to the same folder
+inside yours: `{local}/hookshot/save` to `{local}/longshot/save`. It can't before the first start
+without `saves`, since it doesn't know yet where your game looks. Players see that it only works
+when both recomps read the same kind of save.
+
 ### `games`: several games in one release
 
 A release that carries a whole series lists its games. Each one gets its own tile in the Library

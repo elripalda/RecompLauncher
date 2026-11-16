@@ -1130,6 +1130,210 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
     Ok(())
 }
 
+// ---------- bringing saves over from another version ----------
+
+/// One save file of another version of the game, and where it goes in this one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Carry {
+    pub from: PathBuf,
+    pub to: PathBuf,
+    pub size: u64,
+}
+
+const CARRY_LAYOUT: &str = "The other version's saves are laid out differently from this one's, so they can't be brought over.";
+const CARRY_SHARED: &str = "Both versions keep their saves in the same place, so they share them already.";
+/// Nothing to bring over: switching completely can still go ahead.
+pub const CARRY_NONE: &str = "The other version has no saves yet.";
+
+/// A save place that is one file (`{install}/save.dat`), not a folder. One that isn't there yet
+/// counts as a file only when the one file coming in has the same extension: a folder's name can
+/// have a dot in it too (`{local}/Ship.Of.Harkinian`).
+fn file_place(spot: &Spot, place: &Path, incoming: &[&Entry]) -> bool {
+    if spot.from == "player" || place.is_dir() {
+        return false;
+    }
+    if place.is_file() {
+        return true;
+    }
+    let ext = |p: &Path| p.extension().map(|e| e.to_string_lossy().to_lowercase());
+    let [one] = incoming else { return false };
+    ext(place).is_some() && ext(place) == ext(&one.abs)
+}
+
+/// Where a version keeps its saves: the places used now (the player's own, when they picked some),
+/// and the ones its developer or the catalog named.
+pub struct Places<'a> {
+    pub now: &'a [Spot],
+    pub named: &'a [Spot],
+    pub g: &'a Installed,
+}
+
+impl Places<'_> {
+    fn picked(&self) -> bool {
+        !self.now.is_empty() && self.now.iter().all(|s| s.from == "player")
+    }
+}
+
+/// A folder the player picked inside a place someone named, as that place's index and the path
+/// inside it: `{local}/hookshot/save` is `{local}/hookshot` and `save`.
+fn inside_named(pick: &Spot, p: &Places) -> Option<(usize, PathBuf)> {
+    let path = resolve_for(&pick.template, p.g);
+    p.named.iter().enumerate().find_map(|(k, named)| {
+        let sub = path.strip_prefix(resolve_for(&named.template, p.g)).ok()?;
+        Some((k, sub.to_path_buf()))
+    })
+}
+
+/// The same folder inside another version's named place.
+fn same_inside(named: &Spot, sub: &Path) -> Spot {
+    let base = named.template.trim_end_matches(['/', '\\']);
+    let sub = sub.to_string_lossy().replace('\\', "/");
+    let template = if sub.is_empty() { base.to_string() } else { format!("{base}/{sub}") };
+    Spot { template, from: "player" }
+}
+
+/// The folder a template starts from: `{local}`, `{install}`, `{documents}`…
+fn base_of(template: &str) -> &str {
+    template.split(['/', '\\']).next().unwrap_or_default()
+}
+
+/// The other version's named place that matches the k-th of this one: the one in the same spot
+/// in its list when it starts from the same folder, else the only one that does.
+fn counterpart<'a>(named: &Spot, k: usize, other: &'a [Spot]) -> Option<&'a Spot> {
+    let base = base_of(&named.template);
+    if let Some(same) = other.get(k).filter(|s| base_of(&s.template) == base) {
+        return Some(same);
+    }
+    let mut alike = other.iter().filter(|s| base_of(&s.template) == base);
+    let one = alike.next()?;
+    alike.next().is_none().then_some(one)
+}
+
+/// The places the player picked on one side, each matched to the same folder inside the other
+/// side's matching named place. None when one of them can't be matched.
+fn through_named(from: &Places, to: &Places) -> Option<Vec<(Spot, Spot)>> {
+    let from_picked = from.picked();
+    let (side, other) = if from_picked { (from, to) } else { (to, from) };
+    side.now
+        .iter()
+        .map(|pick| {
+            let (k, sub) = inside_named(pick, side)?;
+            let there = same_inside(counterpart(&side.named[k], k, other.named)?, &sub);
+            Some(if from_picked { (pick.clone(), there) } else { (there, pick.clone()) })
+        })
+        .collect()
+}
+
+/// Which place of the other version goes to which place of this one. Versions of one game often
+/// name their places alike (`{local}/hookshot`, `{local}/longshot`). When the player narrowed one
+/// side down to a folder inside them (the saves, away from a toolchain next to them), the other
+/// side gets the same folder: `{local}/hookshot/save` goes to `{local}/longshot/save`. Otherwise
+/// place by place, in the order each lists them.
+pub fn carry_pairs(from: &Places, to: &Places) -> Result<Vec<(Spot, Spot)>, String> {
+    let one_side = from.picked() != to.picked();
+    let alike = !from.named.is_empty() && !to.named.is_empty();
+    if let Some(pairs) = (one_side && alike).then(|| through_named(from, to)).flatten() {
+        return Ok(pairs);
+    }
+    if from.now.len() != to.now.len() {
+        return Err("The two versions keep their saves in a different number of folders, so the launcher can't tell which goes where. Pick the same number of save folders on both Saves tabs, in the same order.".into());
+    }
+    Ok(from.now.iter().cloned().zip(to.now.iter().cloned()).collect())
+}
+
+/// Where each of another version's save files goes in this one: each pair of places (see
+/// `carry_pairs`), each file at the same path inside its place. Err: why they can't be brought over.
+pub fn carry_plan(pairs: &[(Spot, Spot)], from: &Installed, to: &Installed) -> Result<Vec<Carry>, String> {
+    let (from_spots, to_spots): (Vec<Spot>, Vec<Spot>) = pairs.iter().cloned().unzip();
+    // A guess at the whole game folder holds the player's settings and mods too, and would put
+    // them in the other version's folder: only places someone named, or the launcher saw it save in.
+    if from_spots.iter().any(|s| s.from == "game") {
+        return Err("The launcher doesn't know where the other version keeps its saves. Pick its save folder on its Saves tab, then try again.".into());
+    }
+    if to_spots.iter().any(|s| s.from == "game") {
+        return Err("The launcher doesn't know where this version keeps its saves yet. Play it once, or pick its save folder on its Saves tab, then try again.".into());
+    }
+    let entries = collect(&from_spots, from);
+    if entries.is_empty() {
+        return Err(CARRY_NONE.into());
+    }
+    let mut plan = vec![];
+    for (i, spot) in to_spots.iter().enumerate() {
+        let source = resolve_for(&from_spots[i].template, from);
+        let place = resolve_for(&spot.template, to);
+        // One place inside the other: its files would be copied onto themselves.
+        let (a, b) = (PathBuf::from(lower(&source)), PathBuf::from(lower(&place)));
+        if a.starts_with(&b) || b.starts_with(&a) {
+            return Err(CARRY_SHARED.into());
+        }
+        let incoming: Vec<&Entry> = entries.iter().filter(|e| e.spot == i).collect();
+        let last = place.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        if last.contains('*') {
+            // Only names the pattern takes, side by side: the game wouldn't read the others.
+            let dir = place.parent().map(Path::to_path_buf).unwrap_or_default();
+            if incoming.iter().any(|e| e.rel.contains('/') || !wild(&last, &e.rel)) {
+                return Err(CARRY_LAYOUT.into());
+            }
+            plan.extend(incoming.iter().map(|e| Carry { from: e.abs.clone(), to: dir.join(&e.rel), size: e.size }));
+            continue;
+        }
+        if file_place(spot, &place, &incoming) {
+            // One file under this version's own name for it.
+            match incoming.as_slice() {
+                [] => {}
+                [e] => plan.push(Carry { from: e.abs.clone(), to: place.clone(), size: e.size }),
+                _ => return Err(CARRY_LAYOUT.into()),
+            }
+            continue;
+        }
+        plan.extend(incoming.iter().map(|e| Carry { from: e.abs.clone(), to: place.join(&e.rel), size: e.size }));
+    }
+    // Never over one of this version's game files, and never a key file the launcher manages.
+    let release: HashSet<String> = to.files.iter().map(|f| lower(&to.path.join(f))).collect();
+    plan.retain(|c| !release.contains(&lower(&c.to)) && !crate::inputs::excluded(to, &c.to));
+    if plan.is_empty() {
+        return Err(CARRY_LAYOUT.into());
+    }
+    Ok(plan)
+}
+
+/// Copies another version's saves into this one (see `carry_plan`). What this one has now is kept
+/// as a copy first, so Put back on its Saves tab undoes it. The other version's saves stay as they
+/// are, and so do this one's files the other doesn't have. -> how many files came over.
+pub fn carry(app_dir: &Path, id: &str, to_spots: &[Spot], to: &Installed, plan: &[Carry]) -> Result<usize, Error> {
+    let (_, _, before, _) = current(to_spots, to);
+    backup(app_dir, id, to_spots, to)?;
+    let kept = before.is_empty() || list(app_dir, id).first().is_some_and(|c| c.hash == before);
+    if !kept {
+        return Err(Error::Msg("The existing save could not be backed up. It was kept in place.".into()));
+    }
+    for c in plan {
+        if let Some(d) = c.to.parent() {
+            fs::create_dir_all(d)?;
+        }
+        let tmp = c.to.with_extension("rl-part");
+        let copied = copy_keeping_time(&c.from, &tmp).and_then(|_| fs::rename(&tmp, &c.to));
+        if copied.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        copied?;
+    }
+    // A copy still waiting to go up is this version's old save: the one brought over goes up
+    // after the next session instead.
+    let mut st = state(app_dir, id);
+    st.pending = None;
+    set_state(app_dir, id, &st);
+    Ok(plan.len())
+}
+
+/// Keeps when the file was last saved, so the "newer save" check between versions sees the same
+/// time on both.
+fn copy_keeping_time(from: &Path, to: &Path) -> io::Result<()> {
+    fs::copy(from, to)?;
+    let when = fs::metadata(from)?.modified()?;
+    fs::File::options().write(true).open(to)?.set_modified(when)
+}
+
 // ---------- noticing where a game saves ----------
 
 /// The files in the likely save places when a game started.
@@ -1392,6 +1596,132 @@ mod tests {
         let copy = dir_of(&d, "target").join(&list(&d, "target")[0].name);
         restore(&d, "target", &copy, &[spot], &target).unwrap();
         assert_eq!(fs::read(&to.path).unwrap(), b"old");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    fn put(path: &Path, data: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, data).unwrap();
+    }
+
+    fn pair(from: &[Spot], to: &[Spot]) -> Vec<(Spot, Spot)> {
+        from.iter().cloned().zip(to.iter().cloned()).collect()
+    }
+
+    fn named(t: &str) -> Spot {
+        Spot { template: t.into(), from: "developer" }
+    }
+
+    #[test]
+    fn a_folder_picked_inside_a_named_place_goes_to_the_same_folder_in_the_other_version() {
+        let d = tmp("carry-picked");
+        let from = game(&d.join("hookshot"));
+        let to = game(&d.join("longshot"));
+        let from_named = [named("{install}/local"), named("{install}/user")];
+        let to_named = [named("{install}/local"), named("{install}/user")];
+        let picked = [Spot { template: "{install}/local/save".into(), from: "player" }];
+        let a = Places { now: &picked, named: &from_named, g: &from };
+        let b = Places { now: &to_named, named: &to_named, g: &to };
+        let pairs = carry_pairs(&a, &b).unwrap();
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].1.template, "{install}/local/save");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_picked_folder_finds_its_place_when_the_other_version_lists_them_in_another_order() {
+        let d = tmp("carry-order");
+        let from = game(&d.join("hookshot"));
+        let to = game(&d.join("longshot"));
+        let from_named = [named("{local}/hookshot"), named("{install}/user")];
+        let to_named = [named("{install}/user"), named("{local}/longshot")];
+        let picked = [Spot { template: "{local}/hookshot/save".into(), from: "player" }];
+        let a = Places { now: &picked, named: &from_named, g: &from };
+        let b = Places { now: &to_named, named: &to_named, g: &to };
+        let pairs = carry_pairs(&a, &b).unwrap();
+        assert_eq!(pairs[0].1.template, "{local}/longshot/save");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn places_that_do_not_line_up_are_refused() {
+        let d = tmp("carry-count");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        let one = [named("{install}/saves")];
+        let two = [named("{install}/a"), named("{install}/b")];
+        let a = Places { now: &one, named: &one, g: &from };
+        let b = Places { now: &two, named: &two, g: &to };
+        assert!(carry_pairs(&a, &b).is_err());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn bringing_saves_over_copies_them_and_put_back_undoes_it() {
+        let d = tmp("carry-copy");
+        let app = d.join("app");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        let from_spots = [Spot { template: "{install}/saves".into(), from: "developer" }];
+        let to_spots = [Spot { template: "{install}/save".into(), from: "developer" }];
+        put(&from.path.join("saves/slot1.sav"), "theirs");
+        put(&to.path.join("save/slot1.sav"), "mine");
+        let plan = carry_plan(&pair(&from_spots, &to_spots), &from, &to).unwrap();
+        assert_eq!(carry(&app, "to", &to_spots, &to, &plan).unwrap(), 1);
+        assert_eq!(fs::read_to_string(to.path.join("save/slot1.sav")).unwrap(), "theirs");
+        assert_eq!(fs::read_to_string(from.path.join("saves/slot1.sav")).unwrap(), "theirs");
+        let kept = dir_of(&app, "to").join(&list(&app, "to")[0].name);
+        restore(&app, "to", &kept, &to_spots, &to).unwrap();
+        assert_eq!(fs::read_to_string(to.path.join("save/slot1.sav")).unwrap(), "mine");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn bringing_saves_over_needs_to_know_where_this_version_saves() {
+        let d = tmp("carry-unknown");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        put(&from.path.join("saves/slot1.sav"), "theirs");
+        let from_spots = [Spot { template: "{install}/saves".into(), from: "developer" }];
+        let to_spots = [Spot { template: "{install}".into(), from: "game" }];
+        assert!(carry_plan(&pair(&from_spots, &to_spots), &from, &to).is_err());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn bringing_saves_over_refuses_a_place_both_versions_share() {
+        let d = tmp("carry-shared");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        let shared = d.join("shared").to_string_lossy().replace('\\', "/");
+        put(&d.join("shared/slot1.sav"), "both");
+        let spots = [Spot { template: shared, from: "catalog" }];
+        assert_eq!(carry_plan(&pair(&spots, &spots), &from, &to), Err(CARRY_SHARED.to_string()));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn bringing_one_save_file_over_takes_this_versions_name_for_it() {
+        let d = tmp("carry-file");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        put(&from.path.join("saves/oot.sav"), "theirs");
+        let from_spots = [Spot { template: "{install}/saves".into(), from: "developer" }];
+        let to_spots = [Spot { template: "{install}/slot.sav".into(), from: "developer" }];
+        let plan = carry_plan(&pair(&from_spots, &to_spots), &from, &to).unwrap();
+        assert_eq!(plan[0].to, to.path.join("slot.sav"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn bringing_saves_over_refuses_names_this_version_does_not_read() {
+        let d = tmp("carry-pattern");
+        let from = game(&d.join("from"));
+        let to = game(&d.join("to"));
+        put(&from.path.join("saves/profile.json"), "theirs");
+        let from_spots = [Spot { template: "{install}/saves".into(), from: "developer" }];
+        let to_spots = [Spot { template: "{install}/save/*.sav".into(), from: "developer" }];
+        assert_eq!(carry_plan(&pair(&from_spots, &to_spots), &from, &to), Err(CARRY_LAYOUT.to_string()));
         let _ = fs::remove_dir_all(&d);
     }
 

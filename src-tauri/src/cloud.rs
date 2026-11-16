@@ -1216,6 +1216,130 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
     }).await?
 }
 
+/// Nothing is happening to the game right now: not running, no download, move, setup or mod work.
+/// (Starting is checked apart: reserving it takes that lock.)
+fn idle(st: &App, id: &str) -> bool {
+    let downloading = st.jobs.lock().unwrap().contains_key(id);
+    let moving = st.moving.lock().unwrap().contains(id);
+    let running = st.running.lock().unwrap().contains_key(id) || st.pids.lock().unwrap().contains_key(id);
+    !downloading && !moving && !running && !crate::setup_busy(id) && !crate::mods_busy(id)
+}
+
+/// The catalog title a recomp is a version of ("" when it has none).
+fn title_of(cat: &Value, id: &str) -> String {
+    catalog::app(cat, id).map(|a| crate::str_of(a, "title").to_string()).unwrap_or_default()
+}
+
+/// The places a game's developer or the catalog named, whatever the player picked since.
+fn named_spots(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
+    let mut plain = g.clone();
+    plain.save_place = None;
+    plain.more_save_places.clear();
+    plain.found_saves.clear();
+    spots_of(st, id, &plain).into_iter().filter(|s| matches!(s.from, "developer" | "catalog")).collect()
+}
+
+/// Which save place of `from` goes to which of `to`, and what comes over (see saves::carry_pairs).
+/// -> the files, and `to`'s places they go to.
+fn carry_plan(st: &App, from: &Installed, to: &Installed) -> Result<(Vec<saves::Carry>, Vec<Spot>), String> {
+    let (from_now, to_now) = (spots_of(st, &from.id, from), spots_of(st, &to.id, to));
+    let (from_named, to_named) = (named_spots(st, &from.id, from), named_spots(st, &to.id, to));
+    let a = saves::Places { now: &from_now, named: &from_named, g: from };
+    let b = saves::Places { now: &to_now, named: &to_named, g: to };
+    let pairs = saves::carry_pairs(&a, &b)?;
+    let plan = saves::carry_plan(&pairs, from, to)?;
+    Ok((plan, pairs.into_iter().map(|(_, there)| there).collect()))
+}
+
+/// The player narrowed the other version down to a folder inside the place its developer named,
+/// and the saves went into the same folder here: this one keeps to that folder from now on, so its
+/// backups and cloud saves are its saves, not what sits beside them (a toolchain). Its Saves tab
+/// can still go back to the usual place.
+fn keep_places(st: &App, id: &str, g: &Installed, spots: &[Spot]) -> Installed {
+    let narrowed = g.save_place.is_none() && !spots.is_empty() && spots.iter().all(|s| s.from == "player");
+    let mut l = st.lib.lock().unwrap();
+    let Some(x) = l.installed.get_mut(id) else { return g.clone() };
+    if narrowed {
+        x.save_place = spots.first().map(|s| s.template.clone());
+        x.more_save_places = spots.iter().skip(1).map(|s| s.template.clone()).collect();
+    }
+    let x = x.clone();
+    if narrowed {
+        let _ = l.save(&st.dir);
+    }
+    x
+}
+
+/// Switching from one recomp of a game to another: the other installed versions of the same game,
+/// each with what would come over (`offers`, newest saves first) or why nothing can (`blocked`).
+#[tauri::command]
+pub async fn saves_carry_from(app: AppHandle, to: String) -> Res<Value> {
+    let _busy = busy().await?;
+    blocking(move || {
+        let st = app.state::<App>();
+        let cat = crate::cached_catalog(&st);
+        let title = title_of(&cat, &to);
+        let (target, others) = {
+            let lib = st.lib.lock().unwrap();
+            let target = lib.installed.get(&to).cloned();
+            let others: Vec<Installed> = lib.installed.values().filter(|g| g.id != to && !title.is_empty() && title_of(&cat, &g.id) == title).cloned().collect();
+            (target, others)
+        };
+        let target = target.ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        let (mut offers, mut blocked) = (vec![], vec![]);
+        for g in others {
+            match carry_plan(&st, &g, &target) {
+                Ok((plan, to_spots)) => {
+                    let has = !saves::collect(&to_spots, &target).is_empty();
+                    let when = plan.iter().filter_map(|c| std::fs::metadata(&c.from).and_then(|m| m.modified()).ok()).max();
+                    let when = when.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+                    let size: u64 = plan.iter().map(|c| c.size).sum();
+                    offers.push(json!({ "id": g.id, "name": g.name, "files": plan.len(), "size": size, "when": when, "has": has }));
+                }
+                Err(why) => blocked.push(json!({ "id": g.id, "name": g.name, "empty": why == saves::CARRY_NONE, "why": why })),
+            }
+        }
+        offers.sort_by_key(|o| std::cmp::Reverse(o["when"].as_u64().unwrap_or(0)));
+        Ok(json!({ "offers": offers, "blocked": blocked }))
+    }).await?
+}
+
+/// Brings the saves of another installed version of the same game into this one (the player said
+/// yes to an offer from `saves_carry_from`). -> this version as it is now.
+#[tauri::command]
+pub async fn saves_carry(app: AppHandle, from: String, to: String) -> Res<Installed> {
+    let _busy = busy().await?;
+    blocking(move || {
+        let st = app.state::<App>();
+        let cat = crate::cached_catalog(&st);
+        let title = title_of(&cat, &to);
+        if from == to || title.is_empty() || title_of(&cat, &from) != title {
+            return Err(Error::Msg("Saves only come over from another version of the same game.".into()));
+        }
+        let (source, target) = {
+            let lib = st.lib.lock().unwrap();
+            (lib.installed.get(&from).cloned(), lib.installed.get(&to).cloned())
+        };
+        let (Some(source), Some(target)) = (source, target) else {
+            return Err(Error::Msg("Both versions need to be installed.".into()));
+        };
+        // Neither one starts while its saves are being copied.
+        let _reserved = {
+            let mut starting = crate::STARTING.lock().unwrap();
+            let busy = [&from, &to].into_iter().any(|id| starting.contains(id) || !idle(&st, id));
+            if busy {
+                return Err(Error::Msg("Close both versions and wait for their downloads and setup first.".into()));
+            }
+            starting.extend([from.clone(), to.clone()]);
+            (crate::Starting(from.clone()), crate::Starting(to.clone()))
+        };
+        let (plan, to_spots) = carry_plan(&st, &source, &target).map_err(Error::Msg)?;
+        let n = saves::carry(&st.dir, &to, &to_spots, &target, &plan)?;
+        crate::trail::note(format!("Saves: brought {n} files over from {from} to {to}"));
+        Ok(keep_places(&st, &to, &target, &to_spots))
+    }).await?
+}
+
 /// Puts a copy back: one of this PC's (`name`) or a cloud one (`v`).
 #[tauri::command]
 pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: Option<String>) -> Res<usize> {

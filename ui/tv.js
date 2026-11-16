@@ -1320,6 +1320,7 @@
       const shareTitle = saveShareTitle(id);
       body = `<div class="tv-list">
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
+        ${otherVersions(id).length ? `<button type="button" class="tv-item" data-f data-key="gs:carry" data-tvact="gs-carry" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('layers')}<span class="k">${esc(t(CARRY))}<small>${esc(t(CARRY_HELP))}</small></span></button>` : ''}
         ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
@@ -1839,7 +1840,7 @@
     const a = byId(id), g = verGroup(a);
     if (!g) return;
     const items = g.list.map((v) => ({
-      label: v.name,
+      label: ownName(v),
       // Why the site recommends it, on the Recommended line.
       sub: [v.id === g.pick ? (g.why ? `${t('Recommended')}: ${g.why}` : t('Recommended')) : '', S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
       icon: v.id === id ? 'check' : 'layers',
@@ -2087,7 +2088,7 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'inputs') tsDraw(); }), 0);
     } else if (TS.stage === 'pick') {
-      const own = S.owned[id];
+      const own = S.owned[id], kin = !su.copy && kinCopy(id);
       // Its setup step's options, one item each: A turns it on or off, kept for the game at once.
       const toggle = (o) => () => {
         o.on = !o.on;
@@ -2116,7 +2117,7 @@
         }, 'main') : ''}${su.own_build && !su.prebuilt ? it(t('Use a Build You Already Have'), t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), async () => {
           try { if (!(await useOwnBuild(id))) return; } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           TS.stage = 'ready'; TS.result = { text: t('Your own build') }; tsDraw();
-        }, 'main') : ''}${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
+        }, 'main') : ''}${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${!own && kin ? it(tf('Your copy from {name}', { name: kin.name }), kin.path, () => tsBegin(kin.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
     } else if (TS.stage === 'run') {
       const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
@@ -2251,6 +2252,8 @@
   }
   T.event.listen('setup', ({ payload: p }) => { if (TV.on && TS.id && p.id === TS.id && TS.stage === 'run') { TS.q.push(p); tsPump(); } });
   window.tvSetup = tvSetup;
+  // A copy picked (or brought along from another version) before the download: setup starts with it.
+  window.tvBeginWith = (id, path) => { if (TS.id === id && TS.stage === 'pick') tsBegin(path); };
   window.tvSetupBusy = () => !!(TV.on && TS.id);
 
   async function versionsSheet(id) {
@@ -2872,6 +2875,11 @@
         const title = saveShareTitle(id);
         if (title) await toggleSaveShare(title);
         return draw(true);
+      }
+      case 'gs-carry': {
+        sfx('select');
+        await bringSaves(id);
+        return loadGameSaves(id);
       }
       case 'gs-backup': {
         sfx('select');
