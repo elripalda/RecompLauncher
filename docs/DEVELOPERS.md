@@ -300,8 +300,6 @@ removing stay one thing for the whole release.
   ```json
   { "id": "blue", "name": "Pokémon Blue", "args": ["--game=blue", "--rom={input:rom-blue}"], "inputs": ["rom-blue"] }
   ```
-
-  Launchers older than 0.90 Beta 58 pass `{input:...}` in a game's `args` through as text.
 - `title_id` (Xbox 360): this game's title id. Only its own unlock file, `<title_id>.toml`, is read.
 - `inputs`: the ids of the setup inputs this game needs. Inputs no game lists are shared by all.
   Easy Setup for a game asks only for its own and the shared ones.
