@@ -131,6 +131,9 @@ pub fn guesses(cat: &Value, hints: &[&str], n: usize) -> Vec<String> {
 fn steam_games() -> Vec<(String, PathBuf, PathBuf)> {
     let Some(steam) = shortcuts::steam_dir() else { return vec![] };
     let me = shortcuts::launcher_exe();
+    // The launcher's own shortcuts start it by start_path (an AppImage, or a package's wrapper
+    // such as the Nix one), which can be another file than the program running now.
+    let started_as = shortcuts::start_path();
     let mut out = vec![];
     for user in shortcuts::steam_users(&steam) {
         let Ok(b) = std::fs::read(user.join("config/shortcuts.vdf")) else { continue };
@@ -142,7 +145,7 @@ fn steam_games() -> Vec<(String, PathBuf, PathBuf)> {
                 let exe = PathBuf::from(it.str("Exe").trim().trim_matches('"'));
                 let start = PathBuf::from(it.str("StartDir").trim().trim_matches('"'));
                 // Ours (they start RecompLauncher) and anything that isn't a program on this PC.
-                if exe.as_os_str().is_empty() || exe == me || !exe.is_file() {
+                if exe.as_os_str().is_empty() || exe == me || exe == started_as || !exe.is_file() {
                     continue;
                 }
                 if !out.iter().any(|(_, e, _): &(String, PathBuf, PathBuf)| e == &exe) {

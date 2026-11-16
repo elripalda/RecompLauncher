@@ -604,7 +604,7 @@ fn icon_in(info: &str, id: &str) -> Option<String> {
 /// A package that wraps the launcher (the Nix one runs it inside Steam's runtime environment)
 /// sets RL_START_PATH to its wrapper. Started directly, this program would run outside the
 /// wrapper, from a store path that is gone after the next update.
-fn start_path() -> PathBuf {
+pub fn start_path() -> PathBuf {
     let set = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file());
     set("APPIMAGE").or_else(|| set("RL_START_PATH")).unwrap_or_else(launcher_exe)
 }
