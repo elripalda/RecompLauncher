@@ -5,8 +5,8 @@ const path = require('node:path');
 const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
 const tvCss = read('tv.css'), tvJs = read('tv.js'), appCss = read('app.css');
 
-test('TV mode centres the island that holds the messages', () => {
-  assert.match(appCss, /body\.tv-on \.island\{left:50%\}/);
+test('the island that holds the messages is centred on the whole window, in TV mode too', () => {
+  assert.match(appCss, /\.island\{position:fixed;left:50%;/);
 });
 
 test('TV mode does not shift the messages again inside the centred island', () => {
