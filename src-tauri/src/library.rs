@@ -76,6 +76,11 @@ pub struct Installed {
     /// The player's copy of the game (disc image or folder), for recomps the launcher sets up.
     #[serde(default)]
     pub game_copy: Option<PathBuf>,
+    /// The `prepare.version` the launcher last built `game_copy` with. A manifest that changes it
+    /// asks the player to build again. Empty also for setups from before it was kept, which is
+    /// the same as a manifest with no version, so nobody rebuilds just for a launcher update.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prepare_version: String,
     /// Brought into the Library from a folder where it already plays: its game files are there, so
     /// Easy Setup doesn't ask for the player's copy.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

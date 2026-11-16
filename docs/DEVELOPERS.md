@@ -265,6 +265,17 @@ Without it, the launcher watches which files the game writes while it runs, and 
 That works for most games, but saying where is better. Only list saves and small settings: game
 files, programs and archives are never copied, and nothing over 64 MB.
 
+You can move them in a later release. Keep the same number of entries in the same order, and change
+the path in place: a copy made from the old place goes into the new one when the player restores it,
+or when the launcher brings back their cloud save because the new place is empty. From
+`"saves": ["{home}/Games/MyGame/user"]` to this, a copy from before restores into the new folder:
+
+```json
+"saves": ["{install}/Game/user"]
+```
+
+This only follows places your file or the catalog names, not ones the launcher noticed on its own.
+
 ### `games`: several games in one release
 
 A release that carries a whole series lists its games. Each one gets its own tile in the Library
@@ -523,7 +534,14 @@ settings are written. It runs again whenever the player changes their copy.
 - Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
 - Write what you make to the same place your launcher would, so both stay in step.
 - `"version"` (optional): change it only when players who already set up must run the step again,
-  like when your output format changes. Nothing else in this file makes them set up again.
+  like when your output format changes. Nothing else in this file makes them set up again. Their
+  next Play opens Easy Setup with a note that the game is built again, whether it's set up from
+  named `inputs` or from a single `game` copy. A build the player pointed the launcher at
+  themselves ("Use a Build You Already Have") isn't asked.
+- To build into the player's install folder instead of their home folder, pass it to your builder
+  (`"args": ["--cli", "--prepare", "--game", "{game}", "--out", "{install}/YourGame"]`) and start
+  from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
+  When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like
   `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
   when your own launcher built it, and plays without asking for the copy (unless `start` uses
@@ -564,6 +582,10 @@ when it's on its `args` are added after the step's own:
   the SDK in your builder's own folder and put runtime files where the game looks.
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
   player sees "Its setup step stopped with code N", so put the reason in your own log.
+- An option you add in a later release reaches players who already set the game up: Set Up
+  Again, beside Play, gets a New mark, and the next time they press Play they're asked once to turn
+  it on (the setup runs again with the copy they set up with) or play as it is. Their answer is
+  kept, so make the step cheap to run again: reuse what the last run made.
 
 ### `game.dumps`: known good copies
 

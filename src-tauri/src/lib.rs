@@ -707,6 +707,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         prepare_opts: prev.as_ref().map(|p| p.prepare_opts.clone()).unwrap_or_default(),
         from_backup,
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
+        // (an update keeps the build it was set up with, and so the version it was built with)
+        prepare_version: prev.as_ref().map(|p| p.prepare_version.clone()).unwrap_or_default(),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
         // A finished setup stays through an update: its fingerprint leaves the release out, and
@@ -2745,6 +2747,32 @@ fn start_game_with_monitor_context(
                 }
                 other => other?,
             };
+            // Both checks below come before its settings are written: the settings file often
+            // lives in the folder it built (hookshot_options.ini), and writing it would make a
+            // missing build folder look present again.
+            // Built by the launcher from the copy, but the manifest's prepare.version changed since:
+            // its developer needs the step run again (a new output folder, a new format), so it's
+            // built again through Easy Setup. Not a build the player chose themselves.
+            let launcher_built = copy.is_some() && !g.prebuilt && g.build_dir.is_none();
+            if launcher_built && p.prepare_version_changed(&g.prepare_version) {
+                let now = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or_default();
+                trail::note(format!("Play {id}: its setup step changed (version '{}' -> '{now}'); it's built again", g.prepare_version));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg("NEED_REBUILD|".into()));
+            }
+            // Built from the copy into a folder of its own, and that folder is gone (moved or
+            // deleted): built again, through Easy Setup, rather than starting into nothing.
+            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
+                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
+            }
             p.prepare(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
             p.place(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't put your copy of the game where it reads it: {e}")))?;
             // Everything the game reads has to be there now; if not, the copy picked isn't the
@@ -2782,16 +2810,6 @@ fn start_game_with_monitor_context(
                     None if up.optional || up.in_place(&g.path).is_some() || (built && copy.is_none()) => {}
                     None => return Err(Error::Msg(format!("NEED_UPDATE|{}", up.label))),
                 }
-            }
-            // Built from the copy into a folder of its own, and that folder is gone (moved or
-            // deleted): built again, through Easy Setup, rather than starting into nothing.
-            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
-                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
-                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
             }
             game_env = p.env_vars(&g.path, copy.as_deref());
             // Its program under another name than the profile's (a Linux build): the one the game
@@ -3543,6 +3561,9 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
     }
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
+    if let Some(pr) = &p.prepare {
+        settle_prepare_opts(&st, &id, pr);
+    }
     let copy = PathBuf::from(&path);
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -3692,6 +3713,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
             x.game_copy = Some(copy.clone());
             x.prebuilt = false;
+            x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
         }
         st.save();
         if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
@@ -3757,8 +3779,42 @@ fn prepare_options_here(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<Str
     let (rtx, amd) = dlss::gpu_brands(dir);
     pr.options_here(assets::os_now(), rtx, amd)
         .into_iter()
-        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked) }))
+        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked), "new": !picked.contains_key(&o.id) }))
         .collect()
+}
+
+/// Starting a setup answers every option its screen showed: one the player left as it was counts
+/// as answered too, so it isn't offered again as new after the next update.
+fn settle_prepare_opts(st: &App, id: &str, pr: &profile::Prepare) {
+    let (rtx, amd) = dlss::gpu_brands(&st.dir);
+    let mut l = st.lib.lock().unwrap();
+    let Some(g) = l.installed.get_mut(id) else { return };
+    let answers: Vec<(String, bool)> = pr.unanswered(assets::os_now(), rtx, amd, &g.prepare_opts).into_iter().map(|o| (o.id.clone(), o.on(&g.prepare_opts))).collect();
+    if answers.is_empty() {
+        return;
+    }
+    g.prepare_opts.extend(answers);
+    drop(l);
+    st.save();
+}
+
+/// The setup step options this PC is offered that the player hasn't answered yet, on a game that's
+/// already set up: what its project added after the player's setup (NVIDIA DLSS in an update).
+fn new_prepare_options(st: &App, id: &str) -> Vec<String> {
+    // Skip Easy Setup: the player sets this game up their own way, so nothing is asked.
+    if easy_skipped(&st.lib.lock().unwrap().settings.ui, id) {
+        return vec![];
+    }
+    let Some(g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return vec![] };
+    let Some(p) = profile_of(st, id, &g) else { return vec![] };
+    let Some(pr) = p.prepare.as_ref().filter(|pr| !pr.options.is_empty()) else { return vec![] };
+    let has_copy = g.game_copy.as_ref().is_some_and(|c| c.exists()) || p.already_in_place(&g.path).is_some();
+    let set_up = has_copy || (!p.inputs.is_empty() && inputs::ready(&p, &g, &st.dir));
+    if !set_up {
+        return vec![];
+    }
+    let (rtx, amd) = dlss::gpu_brands(&st.dir);
+    pr.unanswered(assets::os_now(), rtx, amd, &g.prepare_opts).into_iter().map(|o| o.id.clone()).collect()
 }
 
 // ---------- plain copies of compressed images ----------
@@ -3813,12 +3869,13 @@ fn convert_cancel() {
 }
 
 /// The ticks the player set for a game's setup step options, kept for its next setup or rebuild.
+/// Added to the ones kept: an answer to one new option (Not now) leaves the others as they were.
 #[tauri::command(async)]
 fn set_prepare_opts(st: State<'_, App>, id: String, opts: BTreeMap<String, bool>) -> Res<()> {
     let ok = |k: &str| !k.is_empty() && k.len() <= 40 && k.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
     let mut l = st.lib.lock().unwrap();
     let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    g.prepare_opts = opts.into_iter().filter(|(k, _)| ok(k)).collect();
+    g.prepare_opts.extend(opts.into_iter().filter(|(k, _)| ok(k)));
     drop(l);
     st.save();
     Ok(())
@@ -4654,6 +4711,10 @@ struct Setup {
     /// Built from the copy into a folder of its own: a build the player already has, anywhere,
     /// can be picked instead (Use a Build You Already Have). The setup's own folder, for the hint.
     own_build: Option<PathBuf>,
+    /// That folder, for the hint ("The game's own setup builds it into ..."), only when it's
+    /// outside the game's own folder. One inside it is where Easy Setup builds, so there's
+    /// nothing for the player to go and find.
+    build_where: Option<PathBuf>,
     /// The player's own build in use, and where.
     build_dir: Option<PathBuf>,
     /// The player's copy is asked for, and how.
@@ -4753,6 +4814,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         prebuilt: if set_up { None } else { p.build_folder_here(&g.path) },
         prebuilt_on: g.prebuilt && built,
         own_build: if set_up { None } else { whole.build_home(&g.path) },
+        build_where: if set_up { None } else { whole.build_home(&g.path).filter(|h| !h.starts_with(&g.path)) },
         build_dir: g.build_dir.clone().filter(|d| d.is_dir()),
         needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
@@ -4973,7 +5035,7 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
     // A build the player has somewhere else (theirs, from the game's own launcher, or an older
     // install): that folder stands in for the one the setup builds into.
     let mine = match folder.map(PathBuf::from) {
-        Some(f) => Some(own_build_folder(&st, &id, &g, &f)?),
+        Some(f) => own_build_folder(&st, &id, &g, &f)?,
         None => None,
     };
     if mine.is_some() {
@@ -4999,9 +5061,22 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
 /// A folder the player picked as their own build of a game built from their copy: a real folder
 /// with something in it, not the game's own folder, and holding a program (anything that runs).
 /// The folder the build is in when they pick its program or its bin folder: the one above.
-fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf> {
+/// None when they picked the setup's own folder: the build already on this PC.
+fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<Option<PathBuf>> {
     let p = profile_of(st, id, &Installed { build_dir: None, ..g.clone() }).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     let home = p.build_home(&g.path).ok_or_else(|| Error::Msg("This game isn't built into a folder of its own, so there's no build to point to.".into()))?;
+    let picked = check_own_build(&home, &g.path, f)?;
+    match &picked {
+        Some(dir) => trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display())),
+        None => trail::note(format!("Setup {id}: the folder picked is the setup's own, {}", home.display())),
+    }
+    Ok(picked)
+}
+
+/// The checks behind own_build_folder, on the folders alone. None when the folder picked is the
+/// setup's own folder inside the game's: that's the build already on this PC, not one from
+/// somewhere else, so nothing has to stand in for it.
+fn check_own_build(home: &Path, install: &Path, f: &Path) -> Res<Option<PathBuf>> {
     let mut dir = if f.is_file() { f.parent().map(Path::to_path_buf).unwrap_or_default() } else { f.to_path_buf() };
     if dir.file_name().map(|n| n.eq_ignore_ascii_case("bin")).unwrap_or(false) {
         if let Some(up) = dir.parent() {
@@ -5011,7 +5086,10 @@ fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf>
     if !dir.is_dir() || std::fs::read_dir(&dir).map(|mut r| r.next().is_none()).unwrap_or(true) {
         return Err(Error::Msg("That folder is empty. Pick the folder your build is in.".into()));
     }
-    if dir == g.path || dir.starts_with(&g.path) {
+    // (Games that build into a folder inside their own, with --out {install}/...: the setup
+    // window names that folder, so picking it has to work.)
+    let setups_own = dir == home && home.starts_with(install);
+    if dir.starts_with(install) && !setups_own {
         return Err(Error::Msg("That's the launcher's own folder for this game. Pick the folder your build is in.".into()));
     }
     let runs = |d: &Path| std::fs::read_dir(d).map(|r| r.flatten().any(|e| {
@@ -5021,8 +5099,7 @@ fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf>
     if !runs(&dir) && !runs(&dir.join("bin")) {
         return Err(Error::Msg("There's no program in that folder or its bin folder. Pick the folder your build is in.".into()));
     }
-    trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display()));
-    Ok(dir)
+    Ok((!setups_own).then_some(dir))
 }
 
 #[cfg(unix)]
@@ -5156,6 +5233,9 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     p.input_paths = inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
     if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
     let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
+    if let Some(pr) = &p.prepare {
+        settle_prepare_opts(&st, &rid, pr);
+    }
     INPUT_WORKERS.lock().unwrap().push(id.clone());
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -8659,6 +8739,27 @@ fn take_setup_asked() -> Option<String> {
     SETUP_ASKED.lock().unwrap().take()
 }
 
+/// A shortcut asking to play a game whose project added setup options since its setup: the window
+/// opens on the game with the question (turn it on, or Not now and play as it is) instead.
+pub(crate) fn options_first(app: &AppHandle, id: &str) -> bool {
+    if new_prepare_options(&app.state::<App>(), id).is_empty() {
+        return false;
+    }
+    *OPTIONS_ASKED.lock().unwrap() = Some(id.to_string());
+    show_main(app);
+    let _ = app.emit("options-new", id.to_string());
+    true
+}
+
+/// The game a shortcut wanted to play while it had new options, for a window that opened after the
+/// news went out.
+static OPTIONS_ASKED: Mutex<Option<String>> = Mutex::new(None);
+
+#[tauri::command(async)]
+fn take_options_asked() -> Option<String> {
+    OPTIONS_ASKED.lock().unwrap().take()
+}
+
 // ---------- the window's size and place, kept for next time ----------
 
 static WINDOW_GEN: AtomicU64 = AtomicU64::new(0);
@@ -9058,6 +9159,9 @@ pub fn run() {
                     if setup_first(&app, &rid) {
                         return;
                     }
+                    if options_first(&app, &rid) {
+                        return;
+                    }
                     ready_look(&app, &rid).await;
                     let sync = cloud::sync_quiet(&app, &id).await;
                     if let Err(e) = sync.and_then(|()| start_game_with_steam(&app, &id, steam.as_ref())) {
@@ -9445,6 +9549,9 @@ pub fn run() {
                         if setup_first(&handle, &rid) {
                             return;
                         }
+                        if options_first(&handle, &rid) {
+                            return;
+                        }
                         ready_look(&handle, &rid).await;
                         let sync = cloud::sync_quiet(&handle, &id).await;
                         if let Err(e) = sync.and_then(|()| start_game(&handle, &id)) {
@@ -9531,6 +9638,7 @@ pub fn run() {
             forget_game,
             remove_github,
             take_setup_asked,
+            take_options_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
@@ -10468,5 +10576,51 @@ mod beta54_tests {
         assert!(!holds_same_game(&g, &to));
         assert!(!holds_same_game(&g, &from), "its own folder isn't another place");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod own_build_pick_tests {
+    use super::*;
+
+    /// A game folder with a build in `inside` (a program in its bin folder), and the setup's own
+    /// folder at `home`, both under a fresh temporary folder.
+    fn game_with_build(name: &str, inside: &str) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let install = root.join("library").join("hopper");
+        let build = install.join(inside);
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join("bin").join("hopper.exe"), b"").unwrap();
+        (root, install)
+    }
+
+    #[test]
+    fn picking_the_setups_own_folder_inside_the_game_folder_is_the_build_already_there() {
+        let (root, install) = game_with_build("rl-own-pick-home", "Hopper");
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &home).unwrap(), None);
+        assert_eq!(check_own_build(&home, &install, &home.join("bin")).unwrap(), None, "its bin folder counts as the folder above");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn another_folder_inside_the_game_folder_is_still_refused() {
+        let (root, install) = game_with_build("rl-own-pick-other", "Older");
+        let home = install.join("Hopper");
+        let err = check_own_build(&home, &install, &install.join("Older")).unwrap_err().to_string();
+        assert!(err.contains("launcher's own folder"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_build_outside_the_game_folder_stands_in_for_the_setups_own() {
+        let (root, install) = game_with_build("rl-own-pick-mine", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(mine.join("bin")).unwrap();
+        std::fs::write(mine.join("bin").join("hopper.exe"), b"").unwrap();
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &mine).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -2,6 +2,19 @@ name: Something broke
 description: A problem with RecompLauncher itself.
 labels: [bug]
 body:
+  - type: dropdown
+    id: about
+    attributes:
+      label: What's it about?
+      description: A game that crashes, runs slowly or looks wrong is up to its developer. Those reports are sent to the game's own page and closed here.
+      options: [The launcher itself, A game crashes or runs badly]
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Which game?
+      description: Only if it happens with one game.
   - type: input
     id: version
     attributes:

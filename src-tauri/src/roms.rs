@@ -218,12 +218,13 @@ pub fn id_key(s: &str) -> String {
 
 /// The game's own ID, read off the player's copy: an N64 cartridge's game code ("NZSE"), a
 /// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a PlayStation or
-/// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"). None when the file doesn't carry one this
-/// reads (a CHD, a folder, another console).
+/// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"), a Switch game's title ID
+/// ("0100F2C0115B6000"). None when the file doesn't carry one this reads (a CHD, another console).
 pub fn copy_id(p: &Path) -> Option<String> {
-    // An extracted Xbox 360 disc: its default.xex says the title.
+    // An extracted game: an Xbox 360 disc's default.xex says the title, a Switch game's main.npdm.
     if p.is_dir() {
-        return xex_title(&mut fs::File::open(p.join("default.xex")).ok()?, 0);
+        let xex = fs::File::open(p.join("default.xex")).ok().and_then(|mut f| xex_title(&mut f, 0));
+        return xex.or_else(|| switch_folder_id(p));
     }
     if !p.is_file() {
         return None;
@@ -247,6 +248,14 @@ pub fn copy_id(p: &Path) -> Option<String> {
         return wua_title_id(p);
     }
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    // A Switch dump: its ticket's name, or else the title ID its own name carries. An XCI's header
+    // has no plain title ID, and a Switch 2 .nup isn't read, so only their names can say.
+    if ext == "nsp" {
+        return nsp_title_id(&mut f).or_else(|| name_title_id(p));
+    }
+    if ext == "xci" || ext == "nup" {
+        return name_title_id(p);
+    }
     if N64.contains(&ext.as_str()) || matches!([head[0], head[1], head[2], head[3]], [0x80, 0x37, 0x12, 0x40] | [0x37, 0x80, 0x40, 0x12] | [0x40, 0x12, 0x37, 0x80]) {
         let mut h = [0u8; 0x40];
         h.copy_from_slice(&head[..0x40]);
@@ -1130,6 +1139,68 @@ fn identify_playstation(folder: &Path) -> Option<RomFile> {
     None
 }
 
+/// An extracted Switch game's title ID: the program ID in its exefs/main.npdm (under base/ when the
+/// game is kept with its update and DLC). The part of the file that holds it, ACI0, is plain, so no
+/// keys are needed.
+fn switch_folder_id(folder: &Path) -> Option<String> {
+    let npdm = ["base/exefs/main.npdm", "exefs/main.npdm"].iter().find_map(|r| game_path(folder, r))?;
+    npdm_program_id(&mut fs::File::open(npdm).ok()?)
+}
+
+fn npdm_program_id(f: &mut fs::File) -> Option<String> {
+    let mut meta = [0u8; 0x80];
+    read_at(f, 0, &mut meta).ok()?;
+    if &meta[..4] != b"META" {
+        return None;
+    }
+    let aci0_at = u32::from_le_bytes(meta[0x70..0x74].try_into().ok()?);
+    let mut aci0 = [0u8; 0x18];
+    read_at(f, aci0_at.into(), &mut aci0).ok()?;
+    if &aci0[..4] != b"ACI0" {
+        return None;
+    }
+    let id = u64::from_le_bytes(aci0[0x10..0x18].try_into().ok()?);
+    (id != 0).then(|| format!("{id:016X}"))
+}
+
+/// An NSP's title ID, from its ticket's name. An NSP is a PFS0, whose list of files is plain, and a
+/// ticket is named for its rights ID, which starts with the title ID
+/// ("01007300020FA0000000000000000008.tik"). None when it has no ticket: then only its encrypted
+/// files say.
+fn nsp_title_id(f: &mut fs::File) -> Option<String> {
+    let mut head = [0u8; 0x10];
+    read_at(f, 0, &mut head).ok()?;
+    if &head[..4] != b"PFS0" {
+        return None;
+    }
+    let count = u32::from_le_bytes(head[4..8].try_into().ok()?) as u64;
+    let names_len = u32::from_le_bytes(head[8..12].try_into().ok()?) as usize;
+    // A real NSP lists a handful of files; anything far bigger isn't one.
+    if count == 0 || count > 1000 || names_len > 0x10000 {
+        return None;
+    }
+    let mut names = vec![0u8; names_len];
+    read_at(f, 0x10 + count * 0x18, &mut names).ok()?;
+    names.split(|&b| b == 0).filter_map(|n| std::str::from_utf8(n).ok()).find_map(|name| {
+        let lower = name.to_ascii_lowercase();
+        let rights = lower.strip_suffix(".tik")?;
+        switch_title_id(rights.get(..16)?)
+    })
+}
+
+/// The title ID a Switch dump's own name carries, the way dumps are usually named
+/// ("ASTRAL CHAIN [01007300020FA800][v65536].nsp").
+fn name_title_id(p: &Path) -> Option<String> {
+    let name = p.file_name()?.to_str()?;
+    name.split(|c: char| !c.is_ascii_hexdigit()).find_map(switch_title_id)
+}
+
+/// A Switch title ID: 16 hex digits starting 01, or 04 for a Switch 2 game, upper case.
+fn switch_title_id(s: &str) -> Option<String> {
+    let is_id = s.len() == 16 && (s.starts_with("01") || s.starts_with("04")) && s.chars().all(|c| c.is_ascii_hexdigit());
+    is_id.then(|| s.to_ascii_uppercase())
+}
+
 fn identify_switch(folder: &Path) -> Option<RomFile> {
     // Switch and Switch 2 share these file signatures. Use the library's platform
     // folder as the platform hint, and require the extracted base game layout.
@@ -1272,11 +1343,8 @@ pub struct Part {
 pub fn part_of(name: &str) -> Part {
     let low = name.to_lowercase();
     let word = |w: &str| low.split(|c: char| !c.is_ascii_alphanumeric()).any(|x| x == w);
-    // A Switch title ID: 16 hex digits starting 01. Base games end in 000, updates in 800.
-    let tid = low
-        .split(|c: char| !c.is_ascii_hexdigit())
-        .find(|x| x.len() == 16 && x.starts_with("01"))
-        .map(|x| x[13..].to_string());
+    // A Switch title ID: 16 hex digits starting 01 (04 for Switch 2). Base games end in 000, updates in 800.
+    let tid = low.split(|c: char| !c.is_ascii_hexdigit()).find_map(switch_title_id).map(|x| x[13..].to_string());
     let kind = match tid.as_deref() {
         Some("800") => "update",
         Some(e) if e != "000" => "dlc",
@@ -1848,6 +1916,98 @@ mod tests {
         fs::write(exefs.join("main.npdm"), b"bad!").unwrap();
         assert!(scan(&[root.clone()]).iter().any(|r| r.path == exefs.join("nested.gba")));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A tiny main.npdm: its META header pointing at an ACI0 that holds this program ID.
+    fn npdm(id: u64) -> Vec<u8> {
+        let mut b = vec![0u8; 0x100];
+        b[..4].copy_from_slice(b"META");
+        b[0x70..0x74].copy_from_slice(&0x80u32.to_le_bytes());
+        b[0x80..0x84].copy_from_slice(b"ACI0");
+        b[0x90..0x98].copy_from_slice(&id.to_le_bytes());
+        b
+    }
+
+    /// A tiny NSP: a PFS0 header listing these files, padded like a real one's start.
+    fn pfs0(files: &[&str]) -> Vec<u8> {
+        let names: Vec<u8> = files.iter().flat_map(|n| n.bytes().chain([0])).collect();
+        let mut b = b"PFS0".to_vec();
+        b.extend((files.len() as u32).to_le_bytes());
+        b.extend((names.len() as u32).to_le_bytes());
+        b.extend([0u8; 4]);
+        b.extend(vec![0u8; files.len() * 0x18]);
+        b.extend(names);
+        b.resize(0x400, 0);
+        b
+    }
+
+    #[test]
+    fn an_extracted_switch_game_says_its_title_id() {
+        let d = tmp("switch-npdm");
+        let game = d.join("Astral Chain");
+        fs::create_dir_all(game.join("base/exefs")).unwrap();
+        fs::write(game.join("base/exefs/main.npdm"), npdm(0x0100_7300_020F_A000)).unwrap();
+        assert_eq!(copy_id(&game).as_deref(), Some("01007300020FA000"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_flat_extracted_switch_game_says_its_title_id() {
+        let d = tmp("switch-flat");
+        let game = d.join("Game");
+        fs::create_dir_all(game.join("ExeFS")).unwrap();
+        fs::write(game.join("ExeFS/MAIN.NPDM"), npdm(0x0100_1520_0002_2000)).unwrap();
+        assert_eq!(copy_id(&game).as_deref(), Some("0100152000022000"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_nsp_ticket_says_its_title_id() {
+        let d = tmp("switch-tik");
+        let p = d.join("ASTRAL CHAIN.nsp");
+        fs::write(&p, pfs0(&["f37d68f25842223eaf7bcca5ffea058b.cnmt.nca", "01007300020fa0000000000000000008.tik"])).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("01007300020FA000"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_nsp_without_a_ticket_goes_by_its_name() {
+        let d = tmp("switch-name");
+        let p = d.join("ASTRAL CHAIN [01007300020FA800][v65536].nsp");
+        fs::write(&p, pfs0(&["edf3faff382e616118adb122a78d9a9f.cnmt.nca"])).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("01007300020FA800"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_switch_2_dump_goes_by_its_name() {
+        let d = tmp("switch2-name");
+        let p = d.join("Mario Kart World [0400C3F00006E000].nup");
+        fs::write(&p, [0u8; 0x400]).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("0400C3F00006E000"));
+        assert_eq!(part_of("Pokemon Pokopia [0400A3A01EE4C800][v655360].nup").kind, "update");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_nsp_that_says_nothing_has_no_id() {
+        let d = tmp("switch-none");
+        let p = d.join("Metroid Dread.nsp");
+        fs::write(&p, pfs0(&["1163c288acb2ca356cf083a314e469c5.nca"])).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_listed_switch_id_turns_away_another_games_copy() {
+        let d = tmp("switch-fits");
+        let p = d.join("Mario Kart 8 Deluxe.nsp");
+        fs::write(&p, pfs0(&["01001520000220000000000000000000.tik"])).unwrap();
+        let mk8 = serde_json::json!({ "copy_ids": ["0100152000022000"] });
+        let other = serde_json::json!({ "copy_ids": ["01007300020FA000"] });
+        assert!(fits_copy_ids(&mk8, &p).is_ok());
+        assert_eq!(fits_copy_ids(&other, &p), Err("0100152000022000".to_string()));
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[cfg(unix)]

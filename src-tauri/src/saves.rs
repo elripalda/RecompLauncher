@@ -750,6 +750,35 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
     Ok(Some(Copy { name: format!("{when}.zip"), when, size, files: infos.len(), hash, device: man.device, played: man.played }))
 }
 
+/// The game's save folders now, when its developer or the catalog moved them since the copy was
+/// made (Hookshot's saves going from {home}/Games into its library folder): the copy's folder N
+/// goes into folder N now. Only for folders someone named, never ones the launcher noticed or
+/// guessed, so a wrong guess can't pull saves somewhere else. Not when the count differs, when a
+/// folder only changed places in the list, or when a folder is the game's whole folder.
+fn moved_places(copy: &[String], now: &[Spot]) -> Option<Vec<Spot>> {
+    if now.is_empty() || now.len() != copy.len() {
+        return None;
+    }
+    if !now.iter().all(|s| matches!(s.from, "developer" | "catalog")) {
+        return None;
+    }
+    if now.iter().any(|s| s.template.trim_end_matches(['/', '\\']) == "{install}") {
+        return None;
+    }
+    let moved = copy.iter().zip(now).any(|(t, s)| *t != s.template);
+    if !moved {
+        return None;
+    }
+    let reordered = copy.iter().enumerate().any(|(i, t)| now.iter().enumerate().any(|(j, s)| i != j && s.template == *t));
+    if reordered {
+        return None;
+    }
+    // A pattern's files sit beside it and a folder's files inside it: the two don't map onto
+    // each other.
+    let same_kind = copy.iter().zip(now).all(|(t, s)| t.contains('*') == s.template.contains('*'));
+    same_kind.then(|| now.to_vec())
+}
+
 /// Puts a copy's files back where the game reads them, on this PC. Saves that are there now and
 /// aren't in the copy are taken away, so the game sees exactly what was copied; what was there is
 /// kept as a copy first, so this can be undone.
@@ -768,6 +797,9 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             return Err(Error::Msg("These save folders are in a different order from the copy. Pick them in the same order as on the PC that made the copy, then try again.".into()));
         }
         spots_now.to_vec()
+    } else if let Some(now) = moved_places(&man.spots, spots_now) {
+        crate::trail::note(format!("Saves {id}: the copy's save folders moved ({} -> {}), restored into the new ones", man.spots.join(", "), now.iter().map(|s| s.template.as_str()).collect::<Vec<_>>().join(", ")));
+        now
     } else {
         man.spots.iter().map(|t| Spot { template: t.clone(), from: "copy" }).collect()
     };
@@ -1896,6 +1928,69 @@ mod tests {
         assert_eq!(current(&target_spots, &to).2, copy.hash);
         assert!(!to.path.join("one").exists());
         assert!(!to.path.join("two").exists());
+    }
+
+    /// A copy of `{install}/old/progress.sav`, made while the developer's file named that folder.
+    fn copy_from_old_folder(d: &Path) -> (Installed, PathBuf) {
+        let g = game(&d.join("game"));
+        fs::create_dir_all(g.path.join("old")).unwrap();
+        fs::write(g.path.join("old/progress.sav"), "progress").unwrap();
+        let old = spots(&["{install}/old".into()], &[], &g);
+        let copy = backup(&d.join("app"), "g", &old, &g).unwrap().unwrap();
+        fs::remove_dir_all(g.path.join("old")).unwrap();
+        (g, dir_of(&d.join("app"), "g").join(copy.name))
+    }
+
+    #[test]
+    fn restore_follows_a_save_folder_the_developer_moved() {
+        let d = tmp("restore-moved");
+        let (g, archive) = copy_from_old_folder(&d);
+        let now = spots(&["{install}/new".into()], &[], &g);
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("new/progress.sav")).unwrap(), "progress");
+        assert!(!g.path.join("old").exists());
+    }
+
+    #[test]
+    fn restore_keeps_the_copys_folder_when_the_new_one_was_only_noticed() {
+        let d = tmp("restore-moved-found");
+        let (g, archive) = copy_from_old_folder(&d);
+        let now = vec![Spot { template: "{install}/new".into(), from: "found" }];
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("old/progress.sav")).unwrap(), "progress");
+        assert!(!g.path.join("new").exists());
+    }
+
+    #[test]
+    fn restore_keeps_the_copys_folder_when_the_folder_count_changed() {
+        let d = tmp("restore-moved-count");
+        let (g, archive) = copy_from_old_folder(&d);
+        let now = spots(&["{install}/new".into(), "{install}/more".into()], &[], &g);
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("old/progress.sav")).unwrap(), "progress");
+        assert!(!g.path.join("new").exists());
+    }
+
+    #[test]
+    fn restore_keeps_the_copys_folders_when_they_were_only_reordered() {
+        let d = tmp("restore-moved-order");
+        let g = game(&d.join("game"));
+        fs::create_dir_all(g.path.join("one")).unwrap();
+        fs::create_dir_all(g.path.join("two")).unwrap();
+        fs::write(g.path.join("one/progress.sav"), "one").unwrap();
+        fs::write(g.path.join("two/progress.sav"), "two").unwrap();
+        let before = spots(&["{install}/one".into(), "{install}/two".into()], &[], &g);
+        let copy = backup(&d.join("app"), "g", &before, &g).unwrap().unwrap();
+        let archive = dir_of(&d.join("app"), "g").join(copy.name);
+        fs::write(g.path.join("one/progress.sav"), "new one").unwrap();
+        let now = spots(&["{install}/two".into(), "{install}/one".into()], &[], &g);
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 2);
+        assert_eq!(fs::read_to_string(g.path.join("one/progress.sav")).unwrap(), "one");
+        assert_eq!(fs::read_to_string(g.path.join("two/progress.sav")).unwrap(), "two");
     }
 
     #[test]

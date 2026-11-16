@@ -1163,7 +1163,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 20;
+pub const EXE_RULES: u8 = 21;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1236,12 +1236,14 @@ pub fn looks_like_tool(rel: &Path, names: &[&str]) -> bool {
     if tokens(stem).iter().any(|t| !want.contains(t) && (TOOL_WORDS.contains(&t.as_str()) || t == "tool" || t == "tools" || t.ends_with("bktr") || (t.len() > 4 && (t.ends_with("tool") || t.ends_with("tools"))))) {
         return true;
     }
-    // In a tools folder, or a hidden one (.tools, .sdk): leftovers from building, not the game.
+    // In a tools folder, a dedicated server's, or a hidden one (.tools, .sdk): leftovers from
+    // building, or something that isn't the game (server/start.sh starts the server).
     rel.parent()
         .map(|d| {
             d.components().any(|c| {
                 let n = c.as_os_str().to_string_lossy().to_lowercase();
-                (n.starts_with('.') && n != "." && n != "..") || TOOL_DIRS.contains(&n.as_str())
+                let hidden_or_tool = (n.starts_with('.') && n != "." && n != "..") || TOOL_DIRS.contains(&n.as_str());
+                hidden_or_tool || n == "server" || n == "dedicated"
             })
         })
         .unwrap_or(false)
@@ -1270,6 +1272,12 @@ pub fn program_choice(path: &Path, os: &str) -> Option<PathBuf> {
 pub fn is_script(p: &Path) -> bool {
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     n.ends_with(".bat") || n.ends_with(".cmd")
+}
+
+/// A Linux start script ("run.sh", "launcher.sh", "Play.sh"): the release's own way in, which sets
+/// what the program needs before starting it (DOTNET_ROOT for a .NET app, LD_LIBRARY_PATH, ...).
+fn is_linux_script(p: &Path) -> bool {
+    p.extension().map(|e| e.eq_ignore_ascii_case("sh")).unwrap_or(false)
 }
 
 /// Words in the name of a program that has to run once before the game: its installer, or the
@@ -1443,8 +1451,8 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
                 }
                 continue;
             }
-            let script = os == "windows" && is_script(&p);
-            if !script && !is_program(&p, os) {
+            let windows_script = os == "windows" && is_script(&p);
+            if !windows_script && !is_program(&p, os) {
                 continue;
             }
             let stem = bundle_name.as_deref().unwrap_or_else(|| p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
@@ -1458,14 +1466,28 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             let squashed: String = stem.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
             let named = want.iter().filter(|w| t.iter().any(|x| x == *w || (x.len() > 3 && w.starts_with(x.as_str())) || (w.len() > 3 && x.starts_with(w.as_str()))) || (w.len() >= 4 && squashed.contains(w.as_str()))).count() as i64;
             let launch = t.iter().any(|x| LAUNCH_WORDS.contains(&x.as_str()));
+            // A Linux start script ("run.sh") is the release's way in, like a Windows launch script.
+            let linux_script = os == "linux" && is_linux_script(&p) && launch;
+            let script = windows_script || linux_script;
             let mut s;
             if script {
                 // A script the release starts the game with, named for it ("Launch Madden NFL
                 // 08.bat"): it passes the options the game needs, so it goes ahead of the program.
-                if named == 0 || !launch || t.iter().any(|x| NOT_A_LAUNCH.contains(&x.as_str())) {
+                if !launch || t.iter().any(|x| NOT_A_LAUNCH.contains(&x.as_str())) {
                     continue;
                 }
-                s = 44 - depth as i64 * 12 + named * 30 + 40;
+                // A Windows launch script has to be named for the game; a Linux one doesn't:
+                // "run.sh" and "start.sh" set the runtime (.NET's DOTNET_ROOT) or the libraries the
+                // program needs before starting it, so they go ahead of the program they start.
+                let generic_linux = os == "linux";
+                if !generic_linux && named == 0 {
+                    continue;
+                }
+                s = if generic_linux {
+                    130 - depth as i64 * 12 + named * 30
+                } else {
+                    44 - depth as i64 * 12 + named * 30 + 40
+                };
             } else {
                 let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
                 s = (size.max(1) as f64).log2() as i64 * 2 - depth as i64 * 12 + named * 30;
@@ -1528,6 +1550,41 @@ mod tests {
         let got = find_exe(&d, "windows", &["Harbor"]).map(|p| p.to_string_lossy().to_string());
         assert_eq!(got.as_deref(), Some("NightWatch.exe"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linux_start_script_goes_ahead_of_the_program_it_sets_up() {
+        use std::os::unix::fs::PermissionsExt;
+
+        fn program(p: &Path, bytes: &[u8]) {
+            fs::write(p, bytes).unwrap();
+            fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let d = tmp("linux-dotnet");
+        // A .NET app host and its managed program, beside the release's run.sh: the script finds
+        // the player's .NET runtime (DOTNET_ROOT) and then starts the app host.
+        let mut elf = vec![0u8; 78_192];
+        elf[..4].copy_from_slice(b"\x7fELF");
+        elf[18] = if crate::assets::arch_now() == "arm64" { 0xb7 } else { 0x3e };
+        program(&d.join("sotn"), &elf);
+        sparse(&d.join("sotn.dll"), 80_000_000);
+        program(&d.join("run.sh"), b"#!/usr/bin/env bash\nexec \"$DIR/sotn\"\n");
+        assert_eq!(find_exe(&d, "linux", &["Symphony Recomp", "symphonyrecomp"]).unwrap(), PathBuf::from("run.sh"));
+
+        // A diagnostic script isn't how the game starts; the program still wins.
+        let d = tmp("linux-diagnostic");
+        program(&d.join("Game"), &elf);
+        program(&d.join("run debug.sh"), b"#!/bin/sh\nexec ./Game\n");
+        assert_eq!(find_exe(&d, "linux", &["Game"]).unwrap(), PathBuf::from("Game"));
+
+        // A dedicated server's start script starts the server, not the game.
+        let d = tmp("linux-server");
+        program(&d.join("Game"), &elf);
+        fs::create_dir_all(d.join("server")).unwrap();
+        program(&d.join("server/start.sh"), b"#!/bin/sh\nexec ./game-server\n");
+        assert_eq!(find_exe(&d, "linux", &["Game"]).unwrap(), PathBuf::from("Game"));
     }
 
     #[test]
