@@ -795,7 +795,7 @@ fn moved_places(copy: &[String], now: &[Spot]) -> Option<Vec<Spot>> {
 
 /// Drive files can be edited outside the launcher. Check every byte before changing live saves,
 /// and only allow destinations this PC already knows belong to the game.
-pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) -> Result<(), Error> {
+pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot], g: &Installed) -> Result<(), Error> {
     let invalid = || Error::Msg("That cloud save is damaged or doesn't match this game's save folders. Nothing was restored.".into());
     let mut zip = zip::ZipArchive::new(fs::File::open(path)?).map_err(|_| invalid())?;
     let max_entries = spots.len().saturating_mul(MAX_FILES).saturating_add(1);
@@ -815,10 +815,20 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) ->
         return Err(invalid());
     }
     if !cloud_files_within_limits(&man.files, spots.len()) { return Err(invalid()); }
+    let release = crate::inputs::release_files(g);
+    let manual_exe = g.manual.as_ref().and_then(|m| m.exe.as_ref());
+    let mut protected = HashSet::new();
+    for file in release.iter().chain(g.exe.iter()).chain(manual_exe) {
+        let path = g.path.join(file);
+        protected.insert(lower(&path));
+        if let Ok(real) = path.canonicalize() { protected.insert(lower(&real)); }
+    }
     let mut expected = HashMap::new();
     for file in &man.files {
-        let unsafe_name = file.rel.split('/').any(|p| p.is_empty() || p == "." || p == ".." || p.contains(['\\', ':']));
-        if unsafe_name { return Err(invalid()); }
+        let (dest, base) = cloud_destination(file, &spots[file.spot], g).ok_or_else(invalid)?;
+        if !cloud_destination_allowed(&dest, &base, g, &protected) { return Err(invalid()); }
+        // Restore stages beside the destination; that write must not replace a protected file either.
+        if !cloud_destination_allowed(&dest.with_extension("rl-part"), &base, g, &protected) { return Err(invalid()); }
         let name = format!("{}/{}", file.spot, file.rel);
         if expected.insert(name, file).is_some() { return Err(invalid()); }
     }
@@ -845,6 +855,52 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot]) ->
         if count != file.size || hex::encode(sha.finalize()) != file.sha256 { return Err(invalid()); }
     }
     Ok(())
+}
+
+pub fn restore_cloud_copy(app_dir: &Path, id: &str, path: &Path, hash: &str, spots: &[Spot], g: &Installed) -> Result<usize, Error> {
+    validate_cloud_copy(path, id, hash, spots, g)?;
+    restore(app_dir, id, path, spots, g)
+}
+
+fn cloud_destination(file: &FileInfo, spot: &Spot, g: &Installed) -> Option<(PathBuf, PathBuf)> {
+    if !plain_save_path(&file.rel) { return None; }
+    // Windows strips these suffixes, which could disguise an installed program's filename.
+    if file.rel.split('/').any(|p| p.ends_with(['.', ' '])) { return None; }
+    let relative = Path::new(&file.rel);
+    let name = relative.file_name()?.to_str()?;
+    if !is_save_file(name, file.size) { return None; }
+    if relative.parent()?.components().any(|c| skip_dir(&c.as_os_str().to_string_lossy())) { return None; }
+    let root = resolve_for(&spot.template, g);
+    let last = root.file_name()?.to_str()?;
+    if spot.from == "player" { return Some((root.join(relative), root)); }
+    if last.contains('*') {
+        if file.rel.contains('/') || !wild(last, &file.rel) { return None; }
+        let base = root.parent()?.to_path_buf();
+        return Some((base.join(relative), base));
+    }
+    if root.is_file() && file.rel != last { return None; }
+    if file.rel == last && !root.is_dir() {
+        let base = root.parent()?.to_path_buf();
+        return Some((root, base));
+    }
+    Some((root.join(relative), root))
+}
+
+fn cloud_destination_allowed(path: &Path, base: &Path, g: &Installed, protected: &HashSet<String>) -> bool {
+    if protected.contains(&lower(path)) || crate::inputs::excluded(g, path) { return false; }
+    if path.canonicalize().is_ok_and(|p| protected.contains(&lower(&p))) { return false; }
+    // A save subfolder or staging path may be a link to a program outside the named location.
+    for parent in path.ancestors() {
+        match fs::symlink_metadata(parent) {
+            Ok(m) if is_save_link(&m) => return false,
+            Ok(m) if parent == path && !m.is_file() => return false,
+            Ok(m) if parent != path && !m.is_dir() => return false,
+            Err(e) if e.kind() != io::ErrorKind::NotFound => return false,
+            _ => {},
+        }
+        if parent == base { break; }
+    }
+    true
 }
 
 fn cloud_files_within_limits(files: &[FileInfo], spots: usize) -> bool {
@@ -1374,7 +1430,11 @@ pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
 #[cfg(test)]
 mod tests {
     fn cloud_archive(dir: &Path, template: &str, data: &[u8], actual: &[u8]) -> (PathBuf, String) {
-        let files = vec![FileInfo { spot: 0, rel: "slot.sav".into(), size: data.len() as u64, sha256: hex::encode(Sha256::digest(data)) }];
+        cloud_archive_named(dir, template, "slot.sav", data, actual)
+    }
+
+    fn cloud_archive_named(dir: &Path, template: &str, rel: &str, data: &[u8], actual: &[u8]) -> (PathBuf, String) {
+        let files = vec![FileInfo { spot: 0, rel: rel.into(), size: data.len() as u64, sha256: hex::encode(Sha256::digest(data)) }];
         let hash = set_hash(&files);
         let manifest = Manifest { format: 1, game: "g".into(), hash: hash.clone(), spots: vec![template.into()], files, ..Default::default() };
         let path = dir.join("cloud.zip");
@@ -1382,7 +1442,7 @@ mod tests {
         let options = zip::write::SimpleFileOptions::default();
         zip.start_file("rlsave.json", options).unwrap();
         zip.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
-        zip.start_file("0/slot.sav", options).unwrap();
+        zip.start_file(format!("0/{rel}"), options).unwrap();
         zip.write_all(actual).unwrap();
         zip.finish().unwrap();
         (path, hash)
@@ -1393,7 +1453,206 @@ mod tests {
         let dir = tmp("cloud-valid");
         let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
         let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
-        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_ok());
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots, &game(&dir)).is_ok());
+    }
+
+    #[test]
+    fn cloud_restore_rejects_an_executable_with_matching_hashes() {
+        let dir = tmp("cloud-executable");
+        fs::write(dir.join("game.exe"), b"installed program").unwrap();
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive_named(&dir, "{install}", "game.exe", b"replacement", b"replacement");
+        let app = dir.join("app");
+        assert!(restore_cloud_copy(&app, "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("game.exe")).unwrap(), b"installed program");
+        assert!(!app.exists(), "validation must finish before backups or live save changes");
+    }
+
+    #[test]
+    fn cloud_restore_validates_every_entry_before_changing_live_saves() {
+        let dir = tmp("cloud-all-entries");
+        fs::write(dir.join("slot.sav"), b"local save").unwrap();
+        fs::write(dir.join("game.exe"), b"installed program").unwrap();
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let data = b"replacement";
+        let files = ["slot.sav", "game.exe"].map(|rel| FileInfo {
+            spot: 0, rel: rel.into(), size: data.len() as u64, sha256: hex::encode(Sha256::digest(data)),
+        });
+        let hash = set_hash(&files);
+        let manifest = Manifest {
+            format: 1, game: "g".into(), hash: hash.clone(), spots: vec!["{install}".into()], files: files.to_vec(), ..Default::default()
+        };
+        let path = dir.join("cloud.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("rlsave.json", options).unwrap();
+        zip.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        for file in &files {
+            zip.start_file(format!("0/{}", file.rel), options).unwrap();
+            zip.write_all(data).unwrap();
+        }
+        zip.finish().unwrap();
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("slot.sav")).unwrap(), b"local save");
+        assert_eq!(fs::read(dir.join("game.exe")).unwrap(), b"installed program");
+        assert!(!dir.join("app").exists());
+    }
+
+    #[test]
+    fn cloud_restore_rejects_an_installed_data_file_in_a_named_folder() {
+        let dir = tmp("cloud-release-data");
+        fs::create_dir(dir.join("data")).unwrap();
+        fs::write(dir.join("data/a.bin"), b"installed data").unwrap();
+        let spots = vec![Spot { template: "{install}/data".into(), from: "developer" }];
+        let (path, hash) = cloud_archive_named(&dir, &spots[0].template, "a.bin", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("data/a.bin")).unwrap(), b"installed data");
+    }
+
+    #[test]
+    fn cloud_restore_rejects_an_imported_extensionless_program() {
+        let dir = tmp("cloud-imported-program");
+        fs::write(dir.join("launch-game"), b"installed program").unwrap();
+        let g = Installed { exe: Some("launch-game".into()), files: vec![], ..game(&dir) };
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive_named(&dir, "{install}", "launch-game", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &g).is_err());
+        assert_eq!(fs::read(dir.join("launch-game")).unwrap(), b"installed program");
+    }
+
+    #[test]
+    fn cloud_restore_rejects_a_program_named_by_manual_setup() {
+        let dir = tmp("cloud-manual-program");
+        let program = dir.join("launch-game");
+        fs::write(&program, b"manual program").unwrap();
+        let manual = crate::library::ManualSetup { exe: Some(program.clone()), ..Default::default() };
+        let g = Installed { manual: Some(manual), files: vec![], ..game(&dir) };
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive_named(&dir, "{install}", "launch-game", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &g).is_err());
+        assert_eq!(fs::read(program).unwrap(), b"manual program");
+    }
+
+    #[test]
+    fn cloud_restore_rejects_a_filename_outside_the_save_glob() {
+        let dir = tmp("cloud-glob-mismatch");
+        fs::write(dir.join("settings.toml"), b"local settings").unwrap();
+        let spots = vec![Spot { template: "{install}/*.sav".into(), from: "developer" }];
+        let (path, hash) = cloud_archive_named(&dir, &spots[0].template, "settings.toml", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("settings.toml")).unwrap(), b"local settings");
+    }
+
+    #[test]
+    fn cloud_restore_rejects_nested_paths_in_a_save_glob() {
+        let dir = tmp("cloud-glob-nested");
+        let spots = vec![Spot { template: "{install}/*.sav".into(), from: "developer" }];
+        let (path, hash) = cloud_archive_named(&dir, &spots[0].template, "nested/slot.sav", b"save", b"save");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert!(!dir.join("nested").exists());
+    }
+
+    #[test]
+    fn cloud_restore_rejects_a_different_name_for_a_single_save_file() {
+        let dir = tmp("cloud-file-mismatch");
+        fs::write(dir.join("only.sav"), b"local save").unwrap();
+        let spots = vec![Spot { template: "{install}/only.sav".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("only.sav")).unwrap(), b"local save");
+    }
+
+    #[test]
+    fn cloud_restore_accepts_a_matching_glob_file() {
+        let dir = tmp("cloud-glob-valid");
+        let spots = vec![Spot { template: "{install}/*.sav".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
+        assert_eq!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).unwrap(), 1);
+        assert_eq!(fs::read(dir.join("slot.sav")).unwrap(), b"save");
+    }
+
+    #[test]
+    fn cloud_restore_accepts_a_missing_single_save_file() {
+        let dir = tmp("cloud-file-valid");
+        let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
+        let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
+        assert_eq!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).unwrap(), 1);
+        assert_eq!(fs::read(dir.join("slot.sav")).unwrap(), b"save");
+    }
+
+    #[test]
+    fn cloud_restore_accepts_nested_saves_in_a_missing_folder() {
+        let dir = tmp("cloud-folder-valid");
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive_named(&dir, &spots[0].template, "profile/slot.sav", b"save", b"save");
+        assert_eq!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).unwrap(), 1);
+        assert_eq!(fs::read(dir.join("saves/profile/slot.sav")).unwrap(), b"save");
+    }
+
+    #[test]
+    fn cloud_restore_rejects_files_from_excluded_subfolders() {
+        let dir = tmp("cloud-excluded-folder");
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive_named(&dir, "{install}", "mods/slot.sav", b"save", b"save");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert!(!dir.join("mods").exists());
+    }
+
+    #[test]
+    fn cloud_restore_rejects_a_managed_input_with_a_custom_name() {
+        let dir = tmp("cloud-managed-input");
+        fs::write(dir.join("secret.dat"), b"managed input").unwrap();
+        let mut g = game(&dir);
+        g.input_staged.insert("keys".into(), "secret.dat".into());
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive_named(&dir, "{install}", "secret.dat", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &g).is_err());
+        assert_eq!(fs::read(dir.join("secret.dat")).unwrap(), b"managed input");
+    }
+
+    #[test]
+    fn cloud_restore_rejects_windows_filename_suffix_aliases() {
+        let dir = tmp("cloud-filename-alias");
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive_named(&dir, "{install}", "game.exe. ", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+    }
+
+    #[test]
+    fn cloud_restore_cannot_stage_over_an_installed_release_file() {
+        let dir = tmp("cloud-stage-release");
+        fs::write(dir.join("slot.rl-part"), b"installed data").unwrap();
+        let g = Installed { files: vec!["slot.rl-part".into()], ..game(&dir) };
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive(&dir, "{install}", b"save", b"save");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &g).is_err());
+        assert_eq!(fs::read(dir.join("slot.rl-part")).unwrap(), b"installed data");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cloud_restore_rejects_a_link_in_the_destination_path() {
+        let dir = tmp("cloud-folder-link");
+        fs::create_dir(dir.join("saves")).unwrap();
+        fs::create_dir(dir.join("outside")).unwrap();
+        fs::write(dir.join("outside/slot.sav"), b"outside data").unwrap();
+        std::os::unix::fs::symlink(dir.join("outside"), dir.join("saves/profile")).unwrap();
+        let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
+        let (path, hash) = cloud_archive_named(&dir, &spots[0].template, "profile/slot.sav", b"replacement", b"replacement");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("outside/slot.sav")).unwrap(), b"outside data");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cloud_restore_rejects_a_link_at_the_staging_path() {
+        let dir = tmp("cloud-stage-link");
+        fs::write(dir.join("outside.dat"), b"outside data").unwrap();
+        std::os::unix::fs::symlink(dir.join("outside.dat"), dir.join("slot.rl-part")).unwrap();
+        let spots = vec![Spot { template: "{install}".into(), from: "game" }];
+        let (path, hash) = cloud_archive(&dir, "{install}", b"save", b"save");
+        assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &game(&dir)).is_err());
+        assert_eq!(fs::read(dir.join("outside.dat")).unwrap(), b"outside data");
     }
 
     #[test]
@@ -1414,7 +1673,7 @@ mod tests {
         let copy = backup(&dir, "g", &spots, &g).unwrap().unwrap();
         assert_eq!(copy.files, count);
         let archive = dir_of(&dir, "g").join(copy.name);
-        assert!(validate_cloud_copy(&archive, "g", &copy.hash, &spots).is_ok());
+        assert!(validate_cloud_copy(&archive, "g", &copy.hash, &spots, &g).is_ok());
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1459,7 +1718,7 @@ mod tests {
         let dir = tmp("cloud-changed");
         let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
         let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"evil");
-        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_err());
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots, &game(&dir)).is_err());
     }
 
     #[test]
@@ -1467,7 +1726,7 @@ mod tests {
         let dir = tmp("cloud-redirect");
         let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
         let (path, hash) = cloud_archive(&dir, "{home}/Documents", b"save", b"save");
-        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_err());
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots, &game(&dir)).is_err());
     }
 
     #[test]
@@ -1475,7 +1734,7 @@ mod tests {
         let dir = tmp("cloud-player-folder");
         let spots = vec![Spot { template: "{home}/my-saves".into(), from: "player" }];
         let (path, hash) = cloud_archive(&dir, "{home}/other-pc-saves", b"save", b"save");
-        assert!(validate_cloud_copy(&path, "g", &hash, &spots).is_ok());
+        assert!(validate_cloud_copy(&path, "g", &hash, &spots, &game(&dir)).is_ok());
     }
 
     #[test]
@@ -1483,7 +1742,7 @@ mod tests {
         let dir = tmp("cloud-game");
         let spots = vec![Spot { template: "{install}/saves".into(), from: "developer" }];
         let (path, hash) = cloud_archive(&dir, &spots[0].template, b"save", b"save");
-        assert!(validate_cloud_copy(&path, "another-game", &hash, &spots).is_err());
+        assert!(validate_cloud_copy(&path, "another-game", &hash, &spots, &game(&dir)).is_err());
     }
 
     #[test]

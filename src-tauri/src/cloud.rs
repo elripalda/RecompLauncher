@@ -834,7 +834,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let hash = c.hash.clone();
     let drive = using_drive(&st.dir);
     let n = blocking(move || {
-        if drive { saves::validate_cloud_copy(&t2, &id2, &hash, &spots)?; }
+        if drive { return saves::restore_cloud_copy(&dir, &id2, &t2, &hash, &spots, &g); }
         saves::restore(&dir, &id2, &t2, &spots, &g)
     }).await;
     let _ = tokio::fs::remove_file(&tmp).await;

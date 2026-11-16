@@ -148,11 +148,17 @@ and recorded native/live results establish that saves survive the release scenar
 
 - The three review findings are fixed: archive limits apply per save location, upload 4xx
   responses invalidate persisted sessions, and Drive/OAuth use the launcher's dynamic proxy.
+- Drive restores also reject non-save entries, installed release files, selected launch programs,
+  managed inputs, mismatched file/glob destinations and links in destination or staging paths.
+  The complete archive is validated before any backup or live restore begins.
 - Regression tests include a launcher-generated backup with 10,001 files in each of two
   locations, independent size budgets, rejected uploads, retained sessions after server errors,
   and proxy changes on the existing Drive client.
+- Restore regressions reject forged executable replacements with matching hashes and confirm
+  that a later invalid archive entry leaves earlier saves untouched. Valid file, glob and nested
+  folder restores still pass; release files, managed inputs and linked staging paths stay intact.
 - JavaScript suite: all 271 tests passed after the fixes.
-- Rust suite: 667 passed, one ignored. The full suite ran outside the filesystem sandbox
+- Rust suite: 684 passed, one ignored. The full suite ran outside the filesystem sandbox
   because an existing profile test creates and removes a temporary home-directory folder.
 - Browser smoke check: desktop, connected account and Big Picture checks passed with no
   reported errors. Artifacts from this run: `/tmp/rl-drive-ui-CgbXpt`.

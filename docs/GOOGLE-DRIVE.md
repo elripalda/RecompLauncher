@@ -90,6 +90,9 @@ No `recomplauncher.json` changes are needed. Existing `saves` paths and managed-
 apply to Drive backups too. Downloads are checked against the archive manifest and individual
 file hashes before restoration, and archive destinations must match this PC's known save folders
 (or the folders the player explicitly picked).
+Each entry must also pass the save-file exclusions and match its local file or wildcard template.
+Installed release files, selected launch programs and managed inputs are protected from replacement.
+Links in restore destinations or staging paths are rejected before any live saves are changed.
 File-count and total-size limits are checked separately for each save location, matching backup
 discovery when a game saves in several folders.
 
