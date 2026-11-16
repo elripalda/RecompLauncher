@@ -7452,14 +7452,21 @@ async fn news(st: State<'_, App>) -> Res<Vec<News>> {
 #[tauri::command]
 async fn game_info(st: State<'_, App>, id: String) -> Res<Option<info::Info>> {
     let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
-    let Some(a) = catalog::app(&cat, &id) else { return Ok(None) };
+    // One game of several: about that game, not the one its recomp's entry names.
+    let pack = games::split(&id).filter(|_| catalog::app(&cat, &id).is_none());
+    let Some(a) = catalog::app(&cat, pack.map_or(id.as_str(), |(r, _)| r)) else { return Ok(None) };
+    let game = match pack {
+        Some((_, sub)) => game_of(&st, &id).map(|p| p.game.name).or_else(|| games::of(None, a).into_iter().find(|g| g.id == sub).map(|g| g.name)),
+        None => None,
+    };
+    let game = game.unwrap_or_else(|| str_of(a, "game").to_string());
     let console = cat
         .get("origins")
         .and_then(Value::as_array)
         .and_then(|o| o.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(str_of(a, "origin"))))
         .map(|o| str_of(o, "name").to_string())
         .unwrap_or_default();
-    Ok(info::game_info(&st.http, &st.dir, str_of(a, "game"), &console).await)
+    Ok(info::game_info(&st.http, &st.dir, &game, &console).await)
 }
 
 // ---------- mods ----------
