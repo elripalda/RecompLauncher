@@ -1,5 +1,8 @@
 # Nix and NixOS
 
+The Nix package is community-maintained and not officially supported. If you report a problem,
+say you use the Nix package.
+
 The repository is a flake (x86_64 Linux). Run the launcher straight from GitHub:
 
 ```
