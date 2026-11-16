@@ -183,3 +183,18 @@ test('a game of a recomp Easy Setup does is set up as its recomp is', () => {
   assert.equal(vm.runInContext("turnkey(byId('cogbox--gow1'))", c), true);
   assert.equal(vm.runInContext("turnkey(byId('solo'))", c), false);
 });
+
+test('a game inside a recomp of several joins its game\'s versions, by full id or by name', () => {
+  const idx = fn(app, 'index');
+  assert.match(idx, /const named = packGames\.filter\(\(c\) => !\(ti\.pc \|\| \[\]\)\.includes\(c\.id\) && sfold\(c\.name\) === sfold\(ti\.name\)\);/);
+  assert.match(idx, /for \(const c of \[\.\.\.listed, \.\.\.named\]\) c\.title = ti\.id;/);
+});
+
+test('in the versions menu, a version from a recomp of several says which and how many games it holds', () => {
+  const c = discoverCtx();
+  vm.runInContext(fn(app, 'packLine'), c);
+  assert.equal(vm.runInContext("packLine(byId('cogbox--gow2'))", c), 'Part of COGBox · 4 games');
+  assert.equal(vm.runInContext("packLine(byId('solo'))", c), '');
+  assert.match(fn(app, 'verRow'), /packTag\(v\)/);
+  assert.match(tv, /packLine\(v\), S\.library\[v\.id\]/);
+});

@@ -608,8 +608,14 @@ function index() {
     // Each game of a recomp that carries several, by its full id (not in Discover's list).
     addGameApps(ids);
     const titles = new Map();
+    const packGames = [...ids.values()].filter((a) => a.parent);
     for (const ti of (S.cat && S.cat.titles) || []) {
-      const every = (ti.pc || []).map((id) => ids.get(id)).filter((a) => a && a.title === ti.id);
+      // A game inside a multi-game recomp is one more version of its game: listed by its full id,
+      // or found by its name, as the website's "Also in" finds it.
+      const named = packGames.filter((c) => !(ti.pc || []).includes(c.id) && sfold(c.name) === sfold(ti.name));
+      const listed = (ti.pc || []).map((id) => ids.get(id)).filter((a) => a && a.parent);
+      for (const c of [...listed, ...named]) c.title = ti.id;
+      const every = [...(ti.pc || []).map((id) => ids.get(id)), ...named].filter((a) => a && a.title === ti.id);
       if (every.length < 2) continue;
       const pick = String(ti.pick || '').replace(/^pc:/, '');
       every.sort((x, y) => (y.id === pick) - (x.id === pick) || (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || byDl(x, y));
@@ -2108,11 +2114,19 @@ const OS_SHORT = (a) => (a.systems || []).filter((k) => OS_NAME[k]);
 // Each version keeps its own store icon in the versions list, even when Show Game Media or the
 // player's pictures for every version make them all look alike: it's how they're told apart.
 const verIcon = (v) => catalogArt(v, 'icon') || catalogArt(v, 'cover');
+// A version that comes inside a multi-game recomp: installing it brings that recomp's other games too.
+function packLine(v) {
+  if (!v || !v.parent) return '';
+  const n = gamesOf(v.parent, byId(v.parent)).length;
+  const name = v.parentName || (byId(v.parent) || {}).name || '';
+  return [tf('Part of {name}', { name }), n ? tn(n, '1 game', '{n} games') : ''].filter(Boolean).join(' · ');
+}
+const packTag = (v) => (v && v.parent ? `<span class="vtag pack">${esc(packLine(v))}</span>` : '');
 function verRow(v, cur, g, cls) {
   const inst = S.library[v.id], here = v.id === cur;
   const rec = v.id === g.pick, dev = devOf(v);
   const STAR = '<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
-  const tags = [rec ? `<span class="vtag rec">${STAR}${esc(t('Recommended'))}</span>` : '', inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
+  const tags = [rec ? `<span class="vtag rec">${STAR}${esc(t('Recommended'))}</span>` : '', packTag(v), inst ? `<span class="vtag inst">${esc(S.running.has(v.id) ? t('Playing') : t('Installed'))}</span>` : '', v.soon ? `<span class="vtag">${esc(t('Soon'))}</span>` : ''].join('');
   const who = (dev || {}).name || v.author || '';
   const line = [who ? `<span class="v-dev${dev && dev.verified ? ' ver' : ''}">${esc(who)}${dev && dev.verified ? TICK(12) : ''}</span>` : '', esc(v.adds || '')].filter(Boolean).join(' · ');
   const os = OS_SHORT(v);

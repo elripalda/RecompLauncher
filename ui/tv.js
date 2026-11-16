@@ -1843,7 +1843,7 @@
     const items = g.list.map((v) => ({
       label: v.name,
       // Why the site recommends it, on the Recommended line.
-      sub: [v.id === g.pick ? (g.why ? `${t('Recommended')}: ${g.why}` : t('Recommended')) : '', S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
+      sub: [v.id === g.pick ? (g.why ? `${t('Recommended')}: ${g.why}` : t('Recommended')) : '', packLine(v), S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
       icon: v.id === id ? 'check' : 'layers',
       run: () => {
         if (v.id === TV.arg) return;
