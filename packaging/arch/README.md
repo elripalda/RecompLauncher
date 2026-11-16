@@ -4,6 +4,9 @@ The native x86_64 package is built from source on Arch Linux with makepkg. It us
 the system's GTK 3 and WebKitGTK 4.1, with SDL's controller support linked statically.
 It is a downloadable package, not an AUR submission or a pacman repository.
 
+The Arch package is community-maintained and not officially supported. If you report a problem,
+say you use the Arch package.
+
 ## Build locally
 
 On an up-to-date Arch Linux system, install the build tools and libraries:
