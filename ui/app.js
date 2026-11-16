@@ -7012,7 +7012,7 @@ async function crashModal(p) {
   const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST/i.test(said);
   // .NET it needs isn't on this PC (the .NET host says which, with a link).
   const net = /To install missing framework, download:\s*(https:\/\/\S+)/i.exec(said);
-  const dotnet = !!net || [-2147450730, -2147450749].includes(Number(p.code)) || /You must install or update \.NET|Failed to resolve hostfxr|hostfxr\.dll \[not found\]/i.test(said);
+  const dotnet = !!net || [-2147450730, -2147450749].includes(Number(p.code)) || /You must install (?:or update )?\.NET|Failed to resolve hostfxr|hostfxr\.dll \[not found\]/i.test(said);
   const dotnetUrl = net && /^https:\/\/(?:aka\.ms|dotnet\.microsoft\.com)\//i.test(net[1]) ? net[1] : 'https://dotnet.microsoft.com/download';
   // It can't write to its own folder (installed somewhere protected, like Program Files).
   const noWrite = /can't write to its folder|cannot write to (?:its|the game) folder|access (?:is|was) denied|permission denied|read-only file system/i.test(said);
@@ -7110,7 +7110,7 @@ async function crashModal(p) {
   if (miss && gotFlag) { rootFlag = gotFlag[1]; need = [miss[1]]; }
   // It started without the player's game files (they aren't where it reads them): the launcher's
   // own setup puts them there, when it knows this game.
-  const noFiles = !rootFlag && !setupExe && /entrypoint xex not found|game files (?:are )?not (?:found|installed)|game data was not found|no game in .{0,160}asking for it|no executable found \(probed|game files not found at|cannot load [^\n]{0,200}default\.xbe|the \.dat file is missing|the game is not set up yet/i.test(said);
+  const noFiles = !rootFlag && !setupExe && /entrypoint xex not found|game files (?:are )?not (?:found|installed)|game data was not found|no game in .{0,160}asking for it|no executable found \(probed|game files not found at|cannot load [^\n]{0,200}default\.xbe|the \.dat file is missing|the game is not set up yet|the game is not built yet/i.test(said);
   const copySetup = noFiles && !!(S.easy && S.easy.has(p.id));
   // A laptop with two graphics cards, the game not set to the faster one yet.
   let gpuc = null;
