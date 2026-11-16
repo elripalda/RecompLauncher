@@ -36,6 +36,9 @@ impl Request {
     }
 
     pub fn remember_release(&mut self, tag: &str, file: Option<&str>, backup: Option<&crate::catalog::Release>) {
+        if self.tag.is_some() {
+            self.tag = Some(tag.into());
+        }
         self.selected_tag = Some(tag.into());
         if let Some(file) = file {
             self.file = Some(file.into());
@@ -325,6 +328,20 @@ pub fn finish(request: &Request, keep_downloads: bool, app_dir: &Path) {
     }
 }
 
+pub fn complete(lib: &mut Library, id: &str, game: crate::library::Installed, request: &Request, keep_downloads: bool, app_dir: &Path) -> Res<()> {
+    let before = lib.clone();
+    lib.put(id, game);
+    lib.settings.asked_location = true;
+    lib.pending_installs.remove(id);
+    if let Err(error) = lib.save(app_dir) {
+        // A populated first-install folder stays recoverable until the installed record is durable.
+        *lib = before;
+        return Err(error.into());
+    }
+    finish(request, keep_downloads, app_dir);
+    Ok(())
+}
+
 pub fn discard_empty(request: &Request, app_dir: &Path) -> bool {
     if request.target.exists() {
         let Ok(mut entries) = fs::read_dir(&request.target) else { return false };
@@ -426,6 +443,71 @@ mod tests {
         assert!(!actual.join("game").exists());
         assert_eq!(fs::read(kept_copy).unwrap(), b"original");
         assert_eq!(fs::read(kept_update).unwrap(), b"update");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_final_save_preserves_owned_files_and_retry_state_across_restart() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let target = root.join("game");
+        let mut lib = Library::default();
+        let pending = request(&lib, "game", target.clone(), None, None, false);
+        let work = claim(&pending, false, &app_dir).unwrap();
+        fs::write(target.join("game.exe"), b"game").unwrap();
+        fs::write(work.join("download"), b"archive").unwrap();
+        lib.pending_installs.insert("game".into(), pending.clone());
+        lib.save(&app_dir).unwrap();
+        fs::create_dir(app_dir.join("library.json.tmp")).unwrap();
+        let game = Installed { id: "game".into(), path: target.clone(), managed_install: true, ..Default::default() };
+        assert!(complete(&mut lib, "game", game.clone(), &pending, false, &app_dir).is_err());
+        assert!(!lib.installed.contains_key("game"));
+        assert_eq!(lib.pending_installs["game"].token, pending.token);
+        assert!(owns(&target, &pending.token));
+        assert_eq!(fs::read(work.join("download")).unwrap(), b"archive");
+        let mut restarted = Library::load(&app_dir);
+        validate(&restarted, &app_dir, "game", &target).unwrap();
+        claim(&restarted.pending_installs["game"], false, &app_dir).unwrap();
+        fs::remove_dir(app_dir.join("library.json.tmp")).unwrap();
+        complete(&mut restarted, "game", game, &pending, false, &app_dir).unwrap();
+        assert!(!target.join(MARKER).exists());
+        assert!(!work.exists());
+        let saved = Library::load(&app_dir);
+        assert_eq!(saved.installed["game"].path, target);
+        assert!(saved.pending_installs.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refreshed_asset_is_saved_before_an_interrupted_replacement_download_resumes() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let mut pending = request(&lib, "game", root.join("game"), None, None, false);
+        pending.remember_release("v1", Some("removed.zip"), None);
+        pending.remember_release("v1", Some("renamed.zip"), None);
+        lib.pending_installs.insert("game".into(), pending);
+        lib.save(&app_dir).unwrap();
+        let restarted = Library::load(&app_dir);
+        let resumed = request(&restarted, "game", root.join("game"), None, None, false);
+        assert_eq!(resumed.release_tag().as_deref(), Some("v1"));
+        assert_eq!(resumed.file.as_deref(), Some("renamed.zip"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_replacement_release_updates_an_explicit_tag_before_resuming() {
+        let root = temp();
+        let app_dir = root.join("data");
+        let mut lib = Library::default();
+        let mut pending = request(&lib, "game", root.join("game"), Some("v1".into()), Some("v1.zip".into()), false);
+        pending.remember_release("v2", Some("v2.zip"), None);
+        lib.pending_installs.insert("game".into(), pending);
+        lib.save(&app_dir).unwrap();
+        let restarted = Library::load(&app_dir);
+        let resumed = request(&restarted, "game", root.join("game"), None, None, false);
+        assert_eq!(resumed.release_tag().as_deref(), Some("v2"));
+        assert_eq!(resumed.file.as_deref(), Some("v2.zip"));
         fs::remove_dir_all(root).unwrap();
     }
 

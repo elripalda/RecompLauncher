@@ -77,6 +77,29 @@ test('a build choice preserves the selected destination and release', async () =
   assert.equal(request.file, 'eu.zip');
 });
 
+test('a refreshed asset updates cached arguments before an immediate resume', () => {
+  const { c, calls } = context();
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: null, file: 'removed.zip' });
+  vm.runInContext(fn('rememberInstallRequest'), c);
+  c.rememberInstallRequest('example', { target: '/drive/Chosen', tag: null, selected_tag: 'v2', file: 'renamed.zip' });
+  c.resumeDl('example');
+  assert.equal(calls.at(-1).args.tag, null);
+  assert.equal(calls.at(-1).args.file, 'renamed.zip');
+  assert.equal(c.S.pendingInstalls.example.selected_tag, 'v2');
+  assert.match(app, /T\.event\.listen\('install-request', \(\{ payload: p \}\) => rememberInstallRequest\(p.id, p.request\)\)/);
+});
+
+test('a replacement release updates explicit cached arguments before retrying', async () => {
+  const { c, calls } = context();
+  c.dlArgs('example', { id: 'example', target: '/drive/Chosen', tag: 'v1', file: 'old.zip' });
+  vm.runInContext(fn('rememberInstallRequest'), c);
+  c.rememberInstallRequest('example', { target: '/drive/Chosen', tag: 'v2', selected_tag: 'v2', file: 'new.zip' });
+  await c.startInstall('example', undefined, undefined, false, '/drive/Chosen');
+  assert.equal(calls.at(-1).args.tag, 'v2');
+  assert.equal(calls.at(-1).args.file, 'new.zip');
+  assert.equal(calls.at(-1).args.resetRelease, false);
+});
+
 test('desktop Change Build submits the release whose assets were displayed', async () => {
   const { c, calls } = context();
   c.S.library.example = { path: '/drive/Chosen', tag: 'v2' };
@@ -402,6 +425,7 @@ async function desktopPreviewContext() {
     return invoke(command, args);
   };
   c.libChoices = () => '';
+  c.$$ = () => [];
   c.$ = (selector) => {
     if (selector === '[data-install-path]') return pathField;
     if (selector === '[data-x="yes"]') return confirm;
@@ -474,6 +498,27 @@ test('desktop confirmation preserves the exact folder and older release without 
   assert.equal(starts[0][2], 'v1');
   assert.deepEqual(JSON.parse(JSON.stringify(saved)), [{ asked_location: true }]);
   assert.equal(calls.some((x) => x.command === 'install'), false);
+});
+
+test('typing an exact path supersedes a delayed library preview without waiting for blur', async () => {
+  const { starts, pending, modal, listeners, pathField, confirm } = await desktopPreviewContext();
+  const library = listeners.change({ target: { name: 'lib', value: '/slow-drive' } });
+  pathField.value = '/custom/Typed Path';
+  await listeners.input({ target: { value: pathField.value, hasAttribute: () => true } });
+  pending[0].resolve({ target: '/slow-drive/example' });
+  await library;
+  assert.equal(pathField.value, '/custom/Typed Path');
+  assert.equal(confirm.disabled, false);
+  await modal.click({ dataset: { x: 'yes' } }, () => {});
+  assert.equal(starts[0][4], '/custom/Typed Path');
+});
+
+test('input previews leave the spelling of a path being edited unchanged', async () => {
+  const { c, listeners, pathField } = await desktopPreviewContext();
+  c.invoke = async () => ({ target: '/canonical/Game' });
+  pathField.value = '/alias/Game';
+  await listeners.input({ target: { value: pathField.value, hasAttribute: () => true } });
+  assert.equal(pathField.value, '/alias/Game');
 });
 
 test('controller selection previews a library game folder before starting it', async () => {

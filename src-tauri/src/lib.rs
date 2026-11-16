@@ -314,7 +314,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         None => newest,
     };
     let pinned = picked_tag && rel.tag_name != newest.tag_name && !fell_back;
-    remember_install_release(st, id, &rel.tag_name, None, from_backup.then_some(rel))?;
+    remember_install_release(app, st, id, &rel.tag_name, None, from_backup.then_some(rel))?;
     let (mut os, arch) = (os_for(st, &entry, id), assets::arch_now());
     // On Linux with Proton, a release with a Linux build and a Windows one: the player picks the
     // first time (the Linux one is the usual pick), and updates keep the system they picked. A
@@ -383,7 +383,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         _ => {}
     }
 
-    remember_install_release(st, id, &rel.tag_name, Some(&asset.name), from_backup.then_some(rel))?;
+    remember_install_release(app, st, id, &rel.tag_name, Some(&asset.name), from_backup.then_some(rel))?;
     let (keep, backup_first, prev) = {
         let l = st.lib.lock().unwrap();
         install_location::validate(&l, &st.dir, id, &request.target)?;
@@ -494,6 +494,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
             match again {
                 Some(a) => {
                     asset = a;
+                    remember_install_release(app, st, id, &tag_got, Some(&asset.name), None)?;
                     install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await.map_err(|e| match e {
                         Error::Msg(m) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => Error::Msg(format!("{m} Its developer took that file down or renamed it. Try again in a few minutes, or pick another version on the game's page.")),
                         e => e,
@@ -517,7 +518,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
             asset = a;
             tag_got = bk.tag_name.clone();
             from_backup = true;
-            remember_install_release(st, id, &tag_got, Some(&asset.name), Some(&bk))?;
+            remember_install_release(app, st, id, &tag_got, Some(&asset.name), Some(&bk))?;
             install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await?
         }
         Err(e) => return Err(e),
@@ -525,7 +526,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     if from_backup {
         trail::note(format!("Install {id}: {} came from the RecompLauncher backup", asset.name));
     }
-    remember_install_release(st, id, &tag_got, Some(&asset.name), None)?;
+    remember_install_release(app, st, id, &tag_got, Some(&asset.name), None)?;
     drop(permit);
     // A pause that came just as the download finished: there's nothing left to pause, so the
     // install carries on.
@@ -553,44 +554,27 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
         let (file, sdir) = (got.file.clone(), installer::staging(&st.dir, id));
         let setup = tokio::task::spawn_blocking(move || installer::stage(&file, &sdir)).await.map_err(|e| Error::Msg(e.to_string()))??;
         let _ = std::fs::remove_file(&got.file);
-        {
-            let mut l = st.lib.lock().unwrap();
-            match l.installed.get_mut(id) {
-                Some(g) => {
-                    g.installer_setup = setup.to_string_lossy().to_string();
-                    g.installer_tag = tag_got.clone();
-                    g.asset = asset.name.clone();
-                    g.from_backup = from_backup;
-                }
-                None => {
-                    let rec = Installed {
-                        id: id.into(),
-                        name: str_of(&entry, "name").into(),
-                        repo: repo.clone(),
-                        version: str_of(&entry, "version").into(),
-                        path: target.clone(),
-                        managed_install: true,
-                        asset: asset.name.clone(),
-                        size: asset.size,
-                        installed_at: now(),
-                        updated_at: now(),
-                        setup_checked: true,
-                        exe_rules: u8::MAX,
-                        look_amount: 50,
-                        installer: true,
-                        installer_setup: setup.to_string_lossy().to_string(),
-                        installer_tag: tag_got.clone(),
-                        from_backup,
-                        ..Default::default()
-                    };
-                    l.put(id, rec);
-                }
-            }
-            l.settings.asked_location = true;
-            l.pending_installs.remove(id);
-        }
-        st.save();
-        install_location::finish(&request, keep, &st.dir);
+        let mut rec = prev.clone().unwrap_or_else(|| Installed {
+            id: id.into(),
+            name: str_of(&entry, "name").into(),
+            repo: repo.clone(),
+            version: str_of(&entry, "version").into(),
+            path: target.clone(),
+            managed_install: true,
+            size: asset.size,
+            installed_at: now(),
+            updated_at: now(),
+            setup_checked: true,
+            exe_rules: u8::MAX,
+            look_amount: 50,
+            installer: true,
+            ..Default::default()
+        });
+        rec.installer_setup = setup.to_string_lossy().to_string();
+        rec.installer_tag = tag_got.clone();
+        rec.asset = asset.name.clone();
+        rec.from_backup = from_backup;
+        install_location::complete(&mut st.lib.lock().unwrap(), id, rec, &request, keep, &st.dir)?;
         trail::note(format!("Install {id}: its installer {} is ready for Set Up", setup.file_name().unwrap_or_default().to_string_lossy()));
         note_download(&st.dir, json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}));
         st.jobs.lock().unwrap().remove(id);
@@ -750,12 +734,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_locati
     };
     {
         let mut l = st.lib.lock().unwrap();
-        l.put(id, rec);
-        l.settings.asked_location = true;
-        l.pending_installs.remove(id);
+        install_location::complete(&mut l, id, rec, &request, keep, &st.dir)?;
     }
-    st.save();
-    install_location::finish(&request, keep, &st.dir);
     note_download(
         &st.dir,
         json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
@@ -969,12 +949,17 @@ fn install_location(st: State<'_, App>, id: String, dir: Option<String>, target:
     Ok(install_location::preview(target))
 }
 
-fn remember_install_release(st: &App, id: &str, tag: &str, file: Option<&str>, backup: Option<&Release>) -> Res<()> {
-    let mut l = st.lib.lock().unwrap();
-    if let Some(request) = l.pending_installs.get_mut(id) {
+fn remember_install_release(app: &AppHandle, st: &App, id: &str, tag: &str, file: Option<&str>, backup: Option<&Release>) -> Res<()> {
+    let request = {
+        let mut l = st.lib.lock().unwrap();
+        let Some(request) = l.pending_installs.get_mut(id) else { return Ok(()) };
         request.remember_release(tag, file, backup);
+        let request = request.clone();
         l.save(&st.dir)?;
-    }
+        request
+    };
+    // Resume in this window must use the same checked release and asset as a launcher restart.
+    let _ = app.emit("install-request", json!({"id": id, "request": request}));
     Ok(())
 }
 

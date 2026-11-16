@@ -5857,6 +5857,12 @@ function installArgs(id) {
   const args = (S.dlArgs || {})[id] || { id, dir: null, target: pending.target || null, tag: pending.tag || null, file: pending.file || null, source: pending.source || null };
   return { ...args, resetRelease: false };
 }
+function rememberInstallRequest(id, request) {
+  (S.pendingInstalls = S.pendingInstalls || {})[id] = request;
+  if ((S.dlArgs || {})[id]) {
+    dlArgs(id, { ...S.dlArgs[id], target: request.target, tag: request.tag || null, file: request.file || null, source: request.source || null, resetRelease: false });
+  }
+}
 function pendingInstallItems(id) {
   id = parentId(id);
   const request = (S.pendingInstalls || {})[id] || (S.dlArgs || {})[id];
@@ -6364,7 +6370,7 @@ async function locationModal(id, tag) {
     } catch (e) { fail(e); }
     finally { delete m.dataset.busy; }
   }, t('Choose where to install'));
-  const preview = async (args) => {
+  const preview = async (args, updatePath = true) => {
     const version = ++previewVersion;
     previewPending = true;
     previewValid = false;
@@ -6375,7 +6381,7 @@ async function locationModal(id, tag) {
       if (version !== previewVersion) return;
       location = checked;
       previewValid = true;
-      $('[data-install-path]', m).value = location.target;
+      if (updatePath) $('[data-install-path]', m).value = location.target;
       $('[data-install-free]', m).textContent = location.free == null ? t('Free space unknown') : tf('{free} free', { free: fmtB(location.free) });
     } catch (e) { if (version === previewVersion) fail(e); }
     finally {
@@ -6385,6 +6391,12 @@ async function locationModal(id, tag) {
       }
     }
   };
+  m.addEventListener('input', (e) => {
+    if (!e.target.hasAttribute('data-install-path')) return;
+    $$('input[name=lib]', m).forEach((r) => { r.checked = false; });
+    // Typing supersedes an older library preview, without rewriting a field still being edited.
+    return preview({ dir: null, target: e.target.value.trim() }, false);
+  });
   m.addEventListener('change', (e) => {
     if (e.target.name === 'lib') return preview({ dir: e.target.value, target: null });
     if (!e.target.hasAttribute('data-install-path')) return;
@@ -8784,6 +8796,7 @@ try { W.onResized(() => paintMaxButton()); } catch (e) { /* older runtime */ }
 paintMaxButton();
 $('#w-close').addEventListener('click', () => W.close());
 
+T.event.listen('install-request', ({ payload: p }) => rememberInstallRequest(p.id, p.request));
 T.event.listen('install', ({ payload: p }) => {
   const id = p.id;
   // Paused: stopped where it got to, shown with Resume until the player carries on or cancels.

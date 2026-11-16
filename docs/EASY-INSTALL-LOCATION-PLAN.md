@@ -166,6 +166,22 @@ Windows/macOS CI also identified two pending-operation fixtures that passed unno
 paths into `claim`. Both now normalize their temporary roots just like production; the ownership
 and destination checks remain unchanged.
 
+The third automated review found three additional P2 issues:
+
+- [x] **Replacement downloads retain their new choices before transfer.** A 404/410 refresh saves
+  the replacement release and asset before downloading. Explicit tags follow a replacement release
+  too. The backend sends each saved request to the window so immediate retries and resumes use
+  the same metadata as retries after restart.
+- [x] **Finalization waits for durable installation state.** Archive and installer-only paths use
+  one completion helper. Saving the installed record and removing its pending request must succeed
+  before ownership markers and work files are released. Failure restores the in-memory library and
+  leaves the pending request, marker and work available for recovery. A forced-save-failure test
+  restarts, validates the populated target and successfully retries completion.
+- [x] **Typing invalidates old folder previews.** Input events start a new preview immediately and
+  discard older library responses. Previewing typed input does not rewrite the active field. Tests
+  delay a library response while typing, verify the exact chosen target reaches installation, and
+  retain an alias spelling while it is edited.
+
 ## Original implementation baseline
 
 - `ui/app.js`: `startInstall` already opens `locationModal` on the first install, when additional
