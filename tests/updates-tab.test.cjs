@@ -1,0 +1,54 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+
+const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
+const fn = (name) => app.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
+
+// Mario Kart World with v0.1.11 installed. The release list on disk is from before v0.1.12 came
+// out, so what the Updates tab was told first only knows v0.1.11; the list fetched in the
+// background then brings v0.1.12, whose x86_64 AppImage is a build for this PC.
+const repo = 'adriadam10/mkw-recomp';
+const id = 'mkw-recomp';
+const installed = { tag: 'v0.1.11' };
+const newer = [{ tag_name: 'v0.1.12' }, { tag_name: 'v0.1.11' }];
+const fromOlderList = { offered: null, checked: 'v0.1.12', builds: ['v0.1.11'] };
+
+// The production loadRels and relState (and what relState uses), with the backend's answers
+// given by the test: get_releases brings the newer list, update_info answers with `info`.
+function updatesTab(info) {
+  const c = vm.createContext({
+    S: { rels: {}, updInfo: {}, jobs: {}, running: new Set(), view: 'game', arg: id, tab: 'updates' },
+    t: (x) => x,
+    esc: (x) => String(x),
+    $$: () => [],
+    refreshGame: () => {},
+    showTab: () => {},
+    window: {},
+    document: { body: { classList: { contains: () => false } } },
+    invoke: async (cmd) => (cmd === 'get_releases' ? { data: newer } : info()),
+  });
+  for (const name of ['loadRels', 'askUpdInfo', 'relState']) {
+    if (app.includes(`function ${name}(`)) vm.runInContext(fn(name), c);
+  }
+  return c;
+}
+
+test('a release that comes in with a newer list is not marked as having no build', async () => {
+  const c = updatesTab(() => new Promise(() => {}));
+  c.S.updInfo[id] = fromOlderList;
+  await c.loadRels(repo);
+  assert.doesNotMatch(c.relState(id, installed, newer, newer[0], 0), /No build for your system/);
+});
+
+test('an answer worked out from the older list is dropped when it comes back late', async () => {
+  let answer;
+  const c = updatesTab(() => new Promise((resolve) => { answer = resolve; }));
+  c.relState(id, installed, newer, newer[0], 0);
+  await c.loadRels(repo);
+  answer(fromOlderList);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.doesNotMatch(c.relState(id, installed, newer, newer[0], 0), /No build for your system/);
+});

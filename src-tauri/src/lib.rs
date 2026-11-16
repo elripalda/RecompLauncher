@@ -7089,6 +7089,19 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
     (r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && builds(r)).then(|| r.tag_name.clone())
 }
 
+/// The project whose releases a game's Updates tab lists, which is also where installing takes
+/// them from: the one the catalog names, or the game's own when the catalog doesn't list it. The
+/// two differ once a project moves (Hookshot, from GitHub to its own Forgejo server): the installed
+/// game still names the old one, and judged by the old one's releases, none of the listed releases
+/// would have a build for this system.
+fn listed_repo(g: &Installed, entry: Option<&Value>) -> String {
+    let listed = entry.map(|e| str_of(e, "repo")).unwrap_or_default();
+    if listed.is_empty() {
+        return g.repo.clone();
+    }
+    listed.to_string()
+}
+
 /// What the Updates tab shows for each release, by the same rule as the badge: the update on offer,
 /// the release the store has checked, and which releases have a build for this system.
 #[tauri::command]
@@ -7096,9 +7109,10 @@ async fn update_info(st: State<'_, App>, id: String) -> Res<Value> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
     let entry = catalog::app(&cat, &id);
-    let f = match catalog::releases_on_disk(&st.dir, &g.repo) {
+    let repo = listed_repo(&g, entry);
+    let f = match catalog::releases_on_disk(&st.dir, &repo) {
         Some(f) => f,
-        None => catalog::releases(&st.http, &st.dir, &g.repo, false).await?,
+        None => catalog::releases(&st.http, &st.dir, &repo, false).await?,
     };
     let rels: Vec<Release> = serde_json::from_value(f.data).unwrap_or_default();
     let os_g = if g.proton { "windows" } else { assets::os_now() };
@@ -9684,6 +9698,23 @@ mod tests {
         // A mistyped one doesn't hide a good disc id; none at all is none.
         assert_eq!(e(serde_json::json!({"title_id": "4D53-07E6", "boot": {"files": {"id": "454108D2"}}})).as_deref(), Some("454108D2"));
         assert_eq!(e(serde_json::json!({"id": "a"})), None);
+    }
+
+    #[test]
+    fn the_updates_tab_reads_the_releases_of_the_project_the_catalog_lists() {
+        use super::{listed_repo, Installed};
+        // Hookshot moved from GitHub to its own Forgejo server after it was installed. The tab lists
+        // the Forgejo releases (v2.3.2 and on), so their builds are looked for there too.
+        let g = Installed { id: "hookshot".into(), repo: "NotRexed/Hookshot".into(), tag: "v2.1.0".into(), ..Default::default() };
+        let entry = serde_json::json!({ "id": "hookshot", "repo": "forgejo:git.notrexed.dev/Hookshot/Hookshot" });
+        assert_eq!(listed_repo(&g, Some(&entry)), "forgejo:git.notrexed.dev/Hookshot/Hookshot");
+    }
+
+    #[test]
+    fn the_updates_tab_reads_a_games_own_project_when_the_catalog_has_none() {
+        use super::{listed_repo, Installed};
+        let g = Installed { id: "mine".into(), repo: "someone/own-recomp".into(), ..Default::default() };
+        assert_eq!(listed_repo(&g, None), "someone/own-recomp");
     }
 
     #[test]
