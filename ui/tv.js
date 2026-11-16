@@ -558,7 +558,7 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
-      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
+      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelInstall(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
       case 'installed': {
@@ -1737,6 +1737,7 @@
     const m = mainItem(a);
     const items = [
       ...(m ? [m] : []),
+      ...pendingInstallItems(id).map((item) => ({ ...item, run: async () => { await cancelInstall(item.id); draw(true); } })),
       ...(TV.view !== 'game' || !onPage ? [{ label: t('Game page'), sub: a.game ? tf('Based on {game}', { game: a.game }) : '', icon: 'page', run: () => go('game', id) }] : []),
       { label: pinned ? t('Unpin from Home') : t('Pin to Home'), sub: pinned ? t('It comes off your Home row') : t('Keep it on Home, in the order you like'), icon: 'pin', run: () => togglePin(id) },
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),
@@ -2173,6 +2174,10 @@
     } else {
       items = [{ run: () => { TS.stage = S.setup[id]?.inputs?.length ? 'inputs' : 'pick'; TS.named = {}; setTimeout(tsDraw, 0); } }];
       body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
+    }
+    if (TS.stage === 'pick') {
+      const location = setupLocationHtml(id, su, true);
+      body += `${location}${it(t('Open its folder'), (S.library[parentId(id)] || {}).path || '', () => invoke('open_folder', { id: parentId(id) }).catch(fail))}`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
@@ -2773,7 +2778,7 @@
     switch (act) {
       case 'play': sfx('select'); return playGame(id);
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
-      case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
+      case 'cancel': await cancelInstall(id); return draw(true);
       case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'selfupdate': sfx('select'); return selfUpdate();
       case 'install': sfx('select'); return startInstall(id).then(() => draw(true));

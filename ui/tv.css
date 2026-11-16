@@ -989,3 +989,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-rail.box{right:auto;bottom:auto}
 .tv-rail i{position:absolute;left:0;top:0;width:100%;border-radius:6px;background:var(--acc,#34F2E8);opacity:.75;transition:transform .35s cubic-bezier(.2,.8,.2,1),height .2s}
 .tv-rail[hidden]{display:none}
+
+.tv-setup .setup-location{position:relative;max-width:100%;font-size:18px;color:var(--tvmuted,#A9B4C4)}

@@ -236,6 +236,13 @@ async function addToLibrary(id) {
   toast(tf('{name} is in your Library. Install it whenever you like.', { name: a ? a.name : id }));
 }
 async function removeFromLibrary(id) {
+  if (!S.library[id]) {
+    await invoke('forget_pending_install', { id });
+    if (S.dlArgs) delete S.dlArgs[id];
+    if (S.pendingInstalls) delete S.pendingInstalls[id];
+    if (S.paused) delete S.paused[id];
+    if (S.prePicked) delete S.prePicked[id];
+  }
   const s2 = Object.assign({}, saved());
   delete s2[id];
   // A look at the player's games doesn't put it back.
@@ -2461,7 +2468,7 @@ function gameBody(a) {
     const shots = S.shots[id];
     if (!shots) loadShots(id);
     body = `<div class="stack"><div class="card">
-      <div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>
+      <div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(parentId(id))}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>
       <div class="set-row"><div class="k"><b>${esc(t('Shortcuts'))}</b><span>${esc(S.steam ? t('Start it from your desktop or from Steam, with its art. Play time still counts here.') : t('Start it from your desktop. Play time still counts here.'))}</span></div><div class="acts"><button type="button" class="btn" data-act="desktop" data-id="${esc(id)}">${esc(t('Add to desktop'))}</button>${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(id)}">${esc(t('Add to Steam'))}</button>` : ''}</div></div>
       <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
@@ -2642,6 +2649,14 @@ async function pickUpdate(id, folder) {
 // ---------- setting a game up with the player's copy ----------
 const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
 const suDrive = createSetupDriveLight();
+function setupLocationHtml(id, su, tv = false) {
+  const game = S.library[parentId(id)];
+  if (!game) return '';
+  const folder = su.build_dir || su.build_where;
+  const output = folder ? `<p>${esc(su.build_dir ? tf('Using the build in {folder}.', { folder }) : tf("The game's own setup builds it into {folder}.", { folder }))}</p>` : '';
+  const open = tv ? '' : `<button type="button" class="btn sm" data-act="folder" data-id="${esc(parentId(id))}">${esc(t('Open its folder'))}</button>`;
+  return `<div class="setup-location"><p>${esc(tf('Installed in {folder}.', { folder: game.path }))}</p>${output}${open}</div>`;
+}
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
   if (SU.el && SU.id === id) {
@@ -3017,7 +3032,7 @@ function suDraw() {
     const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso">${DISC_L}<b>${esc(copyName(fm))}</b><span class="fmts">${fm.exts.length ? fmtTags(fm.exts) : esc(t('The file you made from your own copy'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
     right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
       ${SU.note ? `<p class="su-note" role="alert">${esc(SU.note)}</p>` : ''}
-      ${su.build_where ? `<p class="su-where">${esc(tf('The game\'s own setup builds it into {folder}.', { folder: su.build_where }))}</p>` : ''}
+      ${setupLocationHtml(id, su)}
       ${prepOptsHtml(su)}
       ${relinkCards(su, 'data-su')}
       ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
@@ -4089,7 +4104,7 @@ function pageSettings() {
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
         ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 game', '{n} games'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
-        + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Install too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
+        + group(t('Installing'), row(t('Ask Where to Install'), t('Ask for a folder for ordinary installs too. Easy Install always lets you choose its game folder.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
           + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
         + group(t('Your games'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
@@ -4111,7 +4126,7 @@ function pageSettings() {
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
-        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
+        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: downloaded archives are deleted after installation. On: they are kept in the launcher\'s data folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
         + networkGroup(group, row, st);
@@ -4781,7 +4796,14 @@ function paintSetupProgress(id) {
 // ---------- talking to the core ----------
 async function refreshState() {
   const st = await invoke('get_state');
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
+  const previousLibrary = S.library || {};
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, pendingInstalls: st.pendingInstalls || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
+  for (const id of Object.keys(previousLibrary)) {
+    if (S.library[id] || S.pendingInstalls[id]) continue;
+    if (S.dlArgs) delete S.dlArgs[id];
+    if (S.paused) delete S.paused[id];
+    if (S.prePicked) delete S.prePicked[id];
+  }
   setClock((S.settings.ui || {}).clock);
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
@@ -5553,6 +5575,7 @@ function gameMenu(id) {
   const pinned = pins().includes(id);
   return [
     ...(first ? [first] : []),
+    ...pendingInstallItems(id),
     ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
     ...(g && S.updates[id] ? [{ act: 'install', id, label: t('Update'), icon: 'down' }] : []),
     ...(S.view !== 'game' || S.arg !== id ? [{ act: 'open', id, label: t('Game page'), icon: 'page' }] : []),
@@ -5605,10 +5628,10 @@ function gameMenu(id) {
   ];
 }
 
-// The game's folder is its own, right inside one of the libraries (so the launcher may delete it).
-// A game brought over from elsewhere, or a local build, keeps its folder.
+// Dedicated installs belong to the launcher; adopted folders keep their existing ownership.
 function ownFolder(g) {
-  if (!g || g.local || !g.path) return false;
+  if (!g || g.local || g.preserve_folder || !g.path) return false;
+  if (g.managed_install) return true;
   const norm = (p) => String(p || '').replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
   const parent = norm(g.path).replace(/\/[^/]*$/, '');
   if ([S.settings.library_dir, ...(S.settings.library_dirs || [])].some((l) => l && norm(l) === parent)) return true;
@@ -5697,15 +5720,14 @@ async function addLibrary() {
   return path;
 }
 
-// The first install asks where games go; after that, only when there's more than one library.
 // What a recomp's catalog entry says it needs from the PC ("requires": {avx2, vulkan, disk_gb}) that
 // this PC doesn't have. Room on the drive is checked on the library it's going into.
-function pcLacks(a, dir) {
+function pcLacks(a, dir, location) {
   const r = (a && a.requires) || {}, pc = S.pc || {}, out = [];
   if (r.avx2 && S.os !== 'macos' && pc.avx2 === false) out.push(t('A processor with AVX2 (most from 2013 or later)'));
   if (r.vulkan && pc.vulkan === false) out.push(t('Vulkan graphics (a graphics driver update usually adds it)'));
   const gb = Number(r.disk_gb) || 0;
-  const lib = (S.libs || []).find((l) => (dir ? l.path === dir : l.default));
+  const lib = location || (S.libs || []).find((l) => (dir ? l.path === dir : l.default));
   if (gb > 0 && lib && lib.free != null && lib.free < gb * 1073741824) out.push(tf('{size} free on the drive ({free} free there now)', { size: fmtB(gb * 1073741824), free: fmtB(lib.free) }));
   return out;
 }
@@ -5767,20 +5789,19 @@ function wineTools() {
     } catch (e) { fail(e); }
   }, t('Wine Tools'));
 }
-async function startInstall(id, dir, tag, anyway) {
+async function startInstall(id, dir, tag, anyway, target) {
   // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
   id = parentId(id);
   // An update of a recomp with several games: all of them get it.
   if (S.library[id] && hasGames(id) && S.updates[id] && !tag) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
-  // Asked where it goes: the first time, with more than one library, or always when the player
-  // turned on Ask Where to Install (Easy Install too).
-  if (dir === undefined && !S.library[id] && (!S.settings.asked_location || (S.settings.library_dirs || []).length || (S.settings.ui || {}).ask_where)) {
+  // Easy Install always confirms its game folder. Ordinary installs follow the library preference.
+  if (dir === undefined && target === undefined && !S.library[id] && (turnkey(byId(id)) || !S.settings.asked_location || (S.settings.library_dirs || []).length || (S.settings.ui || {}).ask_where)) {
     await loadLibs();
-    // Big Picture asks too, as a sheet the controller can answer.
-    if (document.body.classList.contains('tv-on') && window.tvLocation) return window.tvLocation(id);
-    return locationModal(id);
+    return locationModal(id, tag);
   }
   if (S.running.has(id)) return toast(t('Close the game first.'), true);
+  let location;
+  try { location = await invoke('install_location', { id, dir: target ? null : dir || null, target: target || null }); } catch (e) { return fail(e); }
   // Easy Install with no copy found in the player's folders: pick it first, and it's checked against
   // what the game needs before anything downloads. Once it's in, setup goes straight on with it.
   // With Auto-Install off nothing sets up by itself after the download, so there's nothing to pick it for.
@@ -5820,7 +5841,7 @@ async function startInstall(id, dir, tag, anyway) {
   if (!S.library[id] && !anyway && byId(id) && byId(id).requires) {
     if (!S.pc) { try { S.pc = await invoke('pc_check'); } catch (e) { /* not known: nothing to warn about */ } }
     if (!S.libs) await loadLibs();
-    const lacks = pcLacks(byId(id), dir);
+    const lacks = pcLacks(byId(id), dir, location);
     if (lacks.length) {
       const v = await ask(t('This PC May Not Run It'), `<p>${esc(t('It needs something this PC doesn\'t seem to have:'))}</p><ul class="lacks">${lacks.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`,
         [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Install Anyway'), sub: lacks.join(' · '), icon: 'down', v: 'go', main: true }]);
@@ -5829,14 +5850,44 @@ async function startInstall(id, dir, tag, anyway) {
   }
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
-  dlArgs(id, { id, dir: dir || null, tag: tag || null });
-  try { await invoke('install', { id, dir: dir || null, tag: tag || null }); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
+  const previous = installArgs(id);
+  const resetRelease = tag !== undefined;
+  const file = resetRelease ? null : previous.file || null;
+  const args = { ...previous, id, dir: null, target: location.target, tag: resetRelease ? tag : previous.tag || null, file, resetRelease, source: S.library[id] ? null : (S.prePicked || {})[id] || (S.owned[id] || {}).path || null };
+  dlArgs(id, args);
+  try { await invoke('install', args); } catch (err) { dlArgs(id, previous); delete S.jobs[id]; fail(err); render(true); }
 }
 // What each download was started with, so Resume carries on with the same version and folder.
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
+function installArgs(id) {
+  const pending = (S.pendingInstalls || {})[id] || {};
+  const args = (S.dlArgs || {})[id] || { id, dir: null, target: pending.target || null, tag: pending.tag || null, file: pending.file || null, source: pending.source || null };
+  return { ...args, resetRelease: false };
+}
+function rememberInstallRequest(id, request) {
+  (S.pendingInstalls = S.pendingInstalls || {})[id] = request;
+  if ((S.dlArgs || {})[id]) {
+    dlArgs(id, { ...S.dlArgs[id], target: request.target, tag: request.tag || null, file: request.file || null, source: request.source || null, resetRelease: false });
+  }
+}
+function pendingInstallItems(id) {
+  id = parentId(id);
+  const request = (S.pendingInstalls || {})[id] || (S.dlArgs || {})[id];
+  if (!request?.target || S.jobs[id] || (S.paused || {})[id]) return [];
+  return [{ act: 'cancel', id, label: t('Cancel the download'), icon: 'stop' }];
+}
+async function cancelInstall(id) {
+  id = parentId(id);
+  await invoke('cancel', { id });
+  if (S.paused) delete S.paused[id];
+  if (S.dlArgs) delete S.dlArgs[id];
+  if (S.pendingInstalls) delete S.pendingInstalls[id];
+  if (S.prePicked) delete S.prePicked[id];
+  render(true);
+}
 // Carries on a paused download from where it stopped (the part file is still there).
 function resumeDl(id) {
-  const args = (S.dlArgs || {})[id] || { id, dir: null, tag: null };
+  const args = installArgs(id);
   delete S.paused[id];
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
@@ -5852,9 +5903,18 @@ const STARTING = new Set();
 const BUILD_KINDS = [N_('Flatpak'), N_('AppImage'), N_('Linux Folder'), N_('Installer'), N_('32-Bit Installer'), N_('Program'), N_('32-Bit Program'), N_('Portable'), N_('32-Bit Portable'), N_('Build'), N_('Windows Build')];
 // "PICK_BUILD|*name<tab>kind|name<tab>kind" from an install: the usual pick has the *.
 const buildList = (msg) => String(msg).split('|').slice(1).map((s) => { const best = s.startsWith('*'); const [name, label] = s.replace(/^\*/, '').split('\t'); return { name, label: label || '', best }; });
-function pickBuild(id, builds, current) {
+function pickBuild(id, builds, current, tag) {
   const a = byId(id) || { name: id };
-  const go = (file) => { S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() }; render(true); dlArgs(id, { id, dir: null, tag: null, file }); invoke('install', { id, dir: null, tag: null, file }).catch((e) => { delete S.jobs[id]; fail(e); render(true); }); };
+  const go = (file) => {
+    S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
+    render(true);
+    const previous = installArgs(id);
+    const args = { ...previous, file };
+    // Change Build lists a particular release; an install-time chooser resumes its saved request.
+    if (tag !== undefined) Object.assign(args, { tag, resetRelease: true });
+    dlArgs(id, args);
+    invoke('install', args).catch((e) => { dlArgs(id, previous); delete S.jobs[id]; fail(e); render(true); });
+  };
   if (window.tvPickBuild && window.tvPickBuild(id, builds, current, go)) return;
   // Kinds of build to choose from (a portable zip, an installer): each shows its kind, and the usual
   // one is marked. Builds of one kind (one per region): just their names, none suggested.
@@ -5870,7 +5930,7 @@ async function changeBuild(id) {
   try {
     const r = await invoke('release_builds', { id });
     if (!r || (r.builds || []).length < 2) return toast(t('Its release has one build for your PC.'));
-    pickBuild(id, r.builds, r.current);
+    pickBuild(id, r.builds, r.current, r.tag);
   } catch (e) { fail(e); }
 }
 
@@ -5938,10 +5998,10 @@ function installerModal(id) {
     else if (st.stage === 'find') {
       const c = st.check;
       const exes = c && c.exes && c.exes.length ? c.exes : (c && c.exe ? [c.exe] : []);
-      html = `${head(2, t('Find the Game'))}${st.early ? `<p class="set-note">${esc(t('The installer closed right away and the game wasn\'t changed. If it\'s still open in another window, finish it there first, then pick the game here.'))}</p>` : ''}<p>${esc(t('Where did it install? Pick the folder with the game in it.'))}</p>
+      html = `${head(2, t('Find the Game'))}${st.different ? `<p class="set-note">${esc(t('The installer used a different folder. Choose it below to accept that location, or run the installer again with your chosen folder.'))}</p>` : ''}${st.early ? `<p class="set-note">${esc(t('The installer closed right away and the game wasn\'t changed. If it\'s still open in another window, finish it there first, then pick the game here.'))}</p>` : ''}<p>${esc(t('Where did it install? Pick the folder with the game in it.'))}</p>
         ${(st.found || []).map((f, i) => `<button type="button" class="btn inst-found" data-x="found" data-i="${i}"><b>${esc(f.exe)}</b><span class="muted">${esc(f.path)}</span></button>`).join('')}
         ${c ? `<p class="muted mono">${esc(c.path)}</p>${exes.length ? `<label class="inst-exe"><span>${esc(t('The game\'s program'))}</span><select class="sel" id="inst-exe">${exes.map((e) => `<option value="${esc(e)}"${e === c.exe ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select></label>` : `<p class="err">${esc(t('No program found in that folder.'))}</p>`}` : ''}
-        <div class="acts grid2"><button type="button" class="btn" data-x="pick">${esc(t('Pick a Folder'))}</button><button type="button" class="btn main" data-x="use"${c && exes.length ? '' : ' disabled'}>${esc(t('Use This Folder'))}</button></div>`;
+        <div class="acts grid2">${st.different ? `<button type="button" class="btn" data-x="retry">${esc(t('Run Installer'))}</button>` : ''}<button type="button" class="btn" data-x="pick">${esc(t('Pick a Folder'))}</button><button type="button" class="btn main" data-x="use"${c && exes.length ? '' : ' disabled'}>${esc(t('Use This Folder'))}</button></div>`;
     } else if (st.stage === 'done') html = `${head(3, t('All Set'))}<p>${esc(tf('{name} is in your Library and ready to play.', { name: a.name }))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Close'))}</button><button type="button" class="btn main" data-x="play">${esc(t('Play'))}</button></div>`;
     if (box) box.innerHTML = html;
@@ -5963,9 +6023,10 @@ function installerModal(id) {
       delete m.s.dataset.busy;
       if (r.stopped) { st = { stage: 'run' }; paint(); return; }
       if (r.done) return finished(r.game);
-      st = { stage: 'find', found: r.found || [], early: !!r.early }; paint(); return;
+      st = { stage: 'find', found: r.found || [], early: !!r.early, different: !!r.different }; paint(); return;
     }
     if (k === 'stop') return invoke('installer_cancel', { id });
+    if (k === 'retry') { st = { stage: 'run' }; return paint(); }
     if (k === 'found') { const f = (st.found || [])[Number(x.dataset.i)]; if (!f) return; try { return finished(await invoke('installer_done', { id, path: f.path, exe: f.exe })); } catch (e) { return fail(e); } }
     if (k === 'pick') {
       const p = await pickFile({ title: t('Where did it install? Pick the folder with the game in it.'), directory: true }).catch(() => null);
@@ -6235,23 +6296,120 @@ function libChoices(libs, sel) {
   return `<div class="choices">${libs.map((l, i) => `<label class="choice"><input type="radio" name="lib" value="${esc(l.path)}"${(sel ? l.path === sel : l.default) ? ' checked' : ''}><span><b>${esc(l.path)}</b><small>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) : ''}${l.games ? ' · ' + esc(tn(l.games, '1 game', '{n} games')) : ''}${l.default ? ' · ' + esc(t('default')) : ''}</small></span></label>`).join('')}</div>`;
 }
 
-function locationModal(id) {
+async function locationModal(id, tag) {
   const a = byId(id) || { name: id };
-  const draw = () => `<h2>${esc(tf('Where should {name} go?', { name: a.name }))}</h2>
-    <p>${esc(t('Each game gets its own folder in your Recomp Library. Updates always go to the same place, and you can move a game to another drive later.'))}</p>
-    ${libChoices(S.libs)}
-    <label class="loc-ask"><input type="checkbox" data-ask-where${(S.settings.ui || {}).ask_where ? ' checked' : ''}><span>${esc(t('Ask Every Time'))}</span></label>
-    <div class="acts" style="justify-content:space-between"><button type="button" class="btn" data-x="add">${esc(t('Add a folder on another drive…'))}</button>
-      <span style="display:flex;gap:10px"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Install here'))}</button></span></div>`;
-  const m = modal(draw(), async (x, close) => {
-    if (x.dataset.x === 'add') { const p = await addLibrary(); if (p) { await loadLibs(); $('.modal', m).innerHTML = draw(); const r = $(`input[value="${CSS.escape(p)}"]`, m); if (r) r.checked = true; } return; }
-    if (x.dataset.x === 'yes') {
-      const dir = ($('input[name=lib]:checked', m) || {}).value, every = !!($('[data-ask-where]', m) || {}).checked;
-      close(); await saveSettings({ asked_location: true });
-      if (every !== !!(S.settings.ui || {}).ask_where) await saveUi({ ask_where: every }, true);
-      startInstall(id, dir || S.settings.library_dir);
+  let location;
+  try { location = await invoke('install_location', { id, dir: null, target: null }); } catch (e) { fail(e); }
+  // A previously occupied default must not prevent choosing a different folder.
+  let path = location ? location.target : '';
+  const title = tf('Where should {name} go?', { name: a.name });
+  const begin = async (chosen) => {
+    const checked = await invoke('install_location', { id, dir: null, target: chosen });
+    await saveSettings({ asked_location: true });
+    return startInstall(id, undefined, tag, false, checked.target);
+  };
+  if (document.body.classList.contains('tv-on') && window.tvAsk) {
+    for (;;) {
+      const libs = S.libs || [];
+      const items = [
+        { label: t('Install here'), sub: path || t('Choose game folder…'), icon: 'down' },
+        ...libs.map((l) => ({ label: l.path, sub: l.free == null ? t('Free space unknown') : tf('{free} free', { free: fmtB(l.free) }), icon: 'folder' })),
+        { label: t('Choose game folder…'), icon: 'folder' },
+        { label: t('New game folder…'), icon: 'folder' },
+        { label: t('Cancel'), icon: 'chevL' },
+      ];
+      const choice = await window.tvAsk(title, items);
+      if (choice == null || choice < 0 || choice === items.length - 1) return;
+      try {
+        if (choice === 0) { if (path) return await begin(path); continue; }
+        if (choice <= libs.length) {
+          location = await invoke('install_location', { id, dir: libs[choice - 1].path, target: null });
+          path = location.target;
+          continue;
+        }
+        const picked = await pickFile({ title: t('Choose game folder…'), directory: true }).catch(fail);
+        if (!picked) continue;
+        let chosen = typeof picked === 'string' ? picked : picked.path;
+        if (choice === libs.length + 2) {
+          const name = await window.tvType({ title: t('New game folder…'), hint: t('Folder name'), min: 1, max: 100, keys: '-_.' });
+          if (!name) continue;
+          if (/[\\/]/.test(name) || name === '.' || name === '..') { toast(t('Choose a folder name without slashes.'), true); continue; }
+          chosen = chosen.replace(/[\\/]+$/, '') + (S.os === 'windows' ? '\\' : '/') + name;
+        }
+        location = await invoke('install_location', { id, dir: null, target: chosen });
+        path = location.target;
+      } catch (e) { fail(e); }
     }
+  }
+  const draw = () => `<h2>${esc(title)}</h2>
+    <p>${esc(t('Choose the game folder. Updates return here. Your original game files stay where they are.'))}</p>
+    ${libChoices(S.libs, (S.pendingInstalls || {})[id] ? 'exact' : undefined)}
+    <label class="loc-target"><span>${esc(t('Game folder'))}</span><input class="input" data-install-path dir="ltr" value="${esc(path)}" aria-label="${esc(t('Game folder'))}"></label>
+    <p class="muted" data-install-free>${location && location.free != null ? esc(tf('{free} free', { free: fmtB(location.free) })) : esc(t('Free space unknown'))}</p>
+    <label class="loc-ask"><input type="checkbox" data-ask-where${(S.settings.ui || {}).ask_where ? ' checked' : ''}><span>${esc(t('Ask for ordinary installs too'))}</span></label>
+    <div class="acts"><button type="button" class="btn" data-x="browse">${esc(t('Choose game folder…'))}</button><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Install here'))}</button></div>`;
+  let previewVersion = 0;
+  let previewPending = false;
+  let previewValid = true;
+  const m = modal(draw(), async (x, close) => {
+    if (x.dataset.x === 'browse') {
+      const picked = await pickFile({ title: t('Choose game folder…'), directory: true }).catch(fail);
+      if (picked) {
+        const target = typeof picked === 'string' ? picked : picked.path;
+        $('[data-install-path]', m).value = target;
+        $$('input[name=lib]', m).forEach((r) => { r.checked = false; });
+        await preview({ dir: null, target });
+      }
+      $('[data-install-path]', m).focus();
+      return;
+    }
+    if (x.dataset.x !== 'yes' || m.dataset.busy || previewPending || !previewValid) return;
+    previewVersion++;
+    m.dataset.busy = '1';
+    try {
+      const chosen = $('[data-install-path]', m).value.trim();
+      if (!chosen) return;
+      const checked = await invoke('install_location', { id, dir: null, target: chosen });
+      const every = !!$('[data-ask-where]', m).checked;
+      if (every !== !!(S.settings.ui || {}).ask_where) await saveUi({ ask_where: every }, true);
+      close();
+      await begin(checked.target);
+    } catch (e) { fail(e); }
+    finally { delete m.dataset.busy; }
   }, t('Choose where to install'));
+  const preview = async (args, updatePath = true) => {
+    const version = ++previewVersion;
+    previewPending = true;
+    previewValid = false;
+    $('[data-x="yes"]', m).disabled = true;
+    $('[data-install-free]', m).textContent = t('Free space unknown');
+    try {
+      const checked = await invoke('install_location', { id, ...args });
+      if (version !== previewVersion) return;
+      location = checked;
+      previewValid = true;
+      if (updatePath) $('[data-install-path]', m).value = location.target;
+      $('[data-install-free]', m).textContent = location.free == null ? t('Free space unknown') : tf('{free} free', { free: fmtB(location.free) });
+    } catch (e) { if (version === previewVersion) fail(e); }
+    finally {
+      if (version === previewVersion) {
+        previewPending = false;
+        $('[data-x="yes"]', m).disabled = !previewValid;
+      }
+    }
+  };
+  m.addEventListener('input', (e) => {
+    if (!e.target.hasAttribute('data-install-path')) return;
+    $$('input[name=lib]', m).forEach((r) => { r.checked = false; });
+    // Typing supersedes an older library preview, without rewriting a field still being edited.
+    return preview({ dir: null, target: e.target.value.trim() }, false);
+  });
+  m.addEventListener('change', (e) => {
+    if (e.target.name === 'lib') return preview({ dir: e.target.value, target: null });
+    if (!e.target.hasAttribute('data-install-path')) return;
+    $$('input[name=lib]', m).forEach((r) => { r.checked = false; });
+    preview({ dir: null, target: e.target.value.trim() });
+  });
 }
 
 // Moves a game to another library. When the place it would go already has its files (the player
@@ -7961,6 +8119,8 @@ async function act(el, e) {
     case 'skip-ver': {
       const id = el.dataset.id, tag = S.updates[id];
       if (!tag) return;
+      // Skipping abandons that release, including any failed request waiting to retry it.
+      await cancelInstall(id);
       await saveUi({ skip_ver: Object.assign({}, (S.settings.ui || {}).skip_ver, { [id]: tag }) }, true);
       delete S.updates[id];
       S.recent = S.recent.filter((r) => r.id !== id);
@@ -8015,7 +8175,7 @@ async function act(el, e) {
     case 'wine-tools': return wineTools();
     case 'have-it': return haveIt(id);
     case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) startInstall(u); return;
-    case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; render(true); } return invoke('cancel', { id });
+    case 'cancel': return cancelInstall(id);
     case 'dl-pause': return invoke('pause', { id });
     case 'dl-resume': return resumeDl(id);
     case 'play': return playGame(id);
@@ -8643,6 +8803,7 @@ try { W.onResized(() => paintMaxButton()); } catch (e) { /* older runtime */ }
 paintMaxButton();
 $('#w-close').addEventListener('click', () => W.close());
 
+T.event.listen('install-request', ({ payload: p }) => rememberInstallRequest(p.id, p.request));
 T.event.listen('install', ({ payload: p }) => {
   const id = p.id;
   // Paused: stopped where it got to, shown with Resume until the player carries on or cancels.
@@ -8660,6 +8821,7 @@ T.event.listen('install', ({ payload: p }) => {
     ENDED[id] = Date.now();
     S.recent = [p].concat(S.recent.filter((r) => r.id !== id)).slice(0, 20);
     if (p.phase === 'done') S.dlHist = null;
+    if (p.phase === 'done' || p.phase === 'cancelled') { if (S.dlArgs) delete S.dlArgs[id]; if (S.pendingInstalls) delete S.pendingInstalls[id]; }
     const name = byId(id)?.name || id;
     // The library isn't refreshed yet, so this still says whether it was here before this download.
     const wasInstalled = !!S.library[id];

@@ -808,6 +808,9 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
     if new != old && l.installed.contains_key(&new) {
         return Err(Error::Msg("That project is already in your Library. Its installation won't be replaced.".into()));
     }
+    if [old, new.as_str()].iter().any(|id| l.pending_installs.contains_key(*id)) {
+        return Err(Error::Msg("Finish or cancel the pending installation before changing its project.".into()));
+    }
     if [old, new.as_str()].iter().any(|id| st.running.lock().unwrap().contains_key(*id)
         || st.jobs.lock().unwrap().contains_key(*id) || st.moving.lock().unwrap().contains(*id)
         || crate::STARTING.lock().unwrap().iter().any(|starting| starting == *id)
@@ -824,6 +827,7 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         (crate::saves::dir_of(&st.dir, old), crate::saves::dir_of(&st.dir, &new)),
         (st.dir.join("saves").join(old), st.dir.join("saves").join(&new)),
         (st.dir.join("looks").join(old), st.dir.join("looks").join(&new)),
+        (crate::backup_store::directory_for(&st.dir, old), crate::backup_store::directory_for(&st.dir, &new)),
     ];
     dirs.dedup();
     dirs.retain(|(from, to)| from != to && from.exists());

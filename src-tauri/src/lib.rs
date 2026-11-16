@@ -14,6 +14,7 @@ mod appimage_update;
 pub mod art;
 pub mod assets;
 pub mod boot;
+mod backup_store;
 pub mod catalog;
 pub mod cloud;
 pub mod devtools;
@@ -31,6 +32,7 @@ pub mod info;
 pub mod inputs;
 pub mod ingame;
 pub mod install;
+mod install_location;
 pub mod library;
 pub mod looks;
 pub mod mac_update;
@@ -173,11 +175,6 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(Value::as_str).unwrap_or("")
 }
 
-/// Where a game's backups go: beside it, in its library's .backups folder.
-fn backups_dir(g: &Installed) -> PathBuf {
-    g.path.parent().unwrap_or(Path::new(".")).join(".backups").join(g.path.file_name().unwrap_or_default())
-}
-
 // ---------- installing ----------
 
 /// "Getting ready": asking the website for the list and the recomp's releases. Cancel works while it
@@ -246,8 +243,9 @@ fn same_tag(a: &str, b: &str) -> bool {
     !a.trim().is_empty() && n(a) == n(b)
 }
 
-async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
-    let picked_tag = tag.is_some();
+async fn do_install(app: &AppHandle, st: &App, id: &str, request: install_location::Request, cancel: Arc<AtomicBool>) -> Res<()> {
+    let (tag, file) = (request.release_tag(), request.file.clone());
+    let picked_tag = request.tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
     };
@@ -263,30 +261,18 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // Its project is down and the list says so: the release from the RecompLauncher backup (each
     // file checked against its SHA-256). When the backup can't help, its own releases as usual.
     let backup_ok = catalog::backup_on(&entry);
-    let mut from_backup = false;
-    let from_bk = if backup_ok && tag.is_none() {
-        match getting_ready(catalog::backup_release(&st.http, id, os_for(st, &entry, id)), &cancel).await {
-            Ok(r) => Some(r),
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(e) => {
-                trail::note(format!("Install {id}: the backup couldn't help ({e}), so its own releases"));
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let rels: Vec<Release> = match from_bk {
-        Some(r) => {
-            trail::note(format!("Install {id}: {} from the RecompLauncher backup", r.tag_name));
-            from_backup = true;
-            vec![r]
-        }
-        None => {
+    let (rels, mut from_backup) = request.releases(
+        backup_ok,
+        || getting_ready(catalog::backup_release(&st.http, id, os_for(st, &entry, id)), &cancel),
+        || async {
             trail::note(format!("Install {id}: list read, asking {repo} for its releases"));
-            serde_json::from_value(getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?
-        }
-    };
+            let fetched = getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?;
+            Ok(serde_json::from_value::<Vec<Release>>(fetched.data)?)
+        },
+    ).await?;
+    if from_backup {
+        trail::note(format!("Install {id}: using the checked RecompLauncher backup release"));
+    }
     trail::note(format!("Install {id}: {} releases", rels.len()));
     let have = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
     let newest = catalog::latest_for(&rels, &have).ok_or_else(|| Error::Msg("This recomp hasn't put out a release yet.".into()))?;
@@ -327,7 +313,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         },
         None => newest,
     };
-    let pinned = rel.tag_name != newest.tag_name && !fell_back;
+    let pinned = picked_tag && rel.tag_name != newest.tag_name && !fell_back;
+    remember_install_release(app, st, id, &rel.tag_name, None, from_backup.then_some(rel))?;
     let (mut os, arch) = (os_for(st, &entry, id), assets::arch_now());
     // On Linux with Proton, a release with a Linux build and a Windows one: the player picks the
     // first time (the Linux one is the usual pick), and updates keep the system they picked. A
@@ -396,27 +383,26 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         _ => {}
     }
 
-    let (lib_dir, keep, backup_first, prev) = {
+    remember_install_release(app, st, id, &rel.tag_name, Some(&asset.name), from_backup.then_some(rel))?;
+    let (keep, backup_first, prev) = {
         let l = st.lib.lock().unwrap();
-        let lib_dir = dir.clone().unwrap_or_else(|| l.settings.library_dir.clone());
-        (lib_dir, l.settings.keep_downloads, l.settings.backup_before_update, l.installed.get(id).cloned())
+        install_location::validate(&l, &st.dir, id, &request.target)?;
+        (l.settings.keep_downloads, l.settings.backup_before_update, l.installed.get(id).cloned())
     };
     if prev.as_ref().map(|p| p.local).unwrap_or(false) {
         return Err(Error::Msg("That's your local build. Take it out of the Library first to install the release.".into()));
     }
-    let target = prev.as_ref().map(|p| p.path.clone()).unwrap_or_else(|| lib_dir.join(folder_name(id)));
-    let home = target.parent().map(Path::to_path_buf).unwrap_or(lib_dir.clone());
-    std::fs::create_dir_all(&home).map_err(|e| {
-        // The drive it's on isn't there (unplugged, or a letter that changed): said plainly.
-        let drive = home.ancestors().last().filter(|r| !r.as_os_str().is_empty() && !r.exists());
-        match drive {
-            Some(r) => Error::Msg(format!("The drive your library is on ({}) isn't connected. Connect it, or pick another library folder in Settings → Games and folders.", r.display())),
-            None => Error::Msg(format!("Couldn't use the library folder {}: {e}", home.display())),
-        }
-    })?;
-    if let Some(free) = manage::free_space(&home) {
+    let target = request.target.clone();
+    let home = install_location::claim(&request, prev.is_some(), &st.dir)?;
+    if let Some(free) = manage::free_space(&target) {
         if free < asset.size.saturating_mul(3) {
             return Err(Error::Msg(format!("There isn't enough space on that drive ({} free).", human(free))));
+        }
+    }
+
+    if let Some(free) = manage::free_space(&home) {
+        if free < asset.size.saturating_mul(3) {
+            return Err(Error::Msg(format!("There isn't enough space for temporary installation files in the launcher's data folder ({} free).", human(free))));
         }
     }
 
@@ -464,16 +450,17 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if cancel.load(Ordering::Relaxed) {
         return Err(Error::Cancelled);
     }
+    install_location::claim(&request, prev.is_some(), &st.dir)?;
     // The release it ends up from: the one picked, or a newer one when that was taken down.
     let mut tag_got = rel.tag_name.clone();
-    let got = match install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await {
+    let got = match install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await {
         // The file isn't there anymore (the release was changed after its list was read): the
         // release asked for straight from GitHub, and its file for this PC tried once more.
         Err(Error::Msg(m)) if sf && m.contains("checksum doesn't match") => {
             trail::note(format!("Install {id}: {} didn't match its checked SHA-256", asset.name));
             return Err(Error::Msg("The download didn't match the checked file, so it wasn't installed. Try again.".into()));
         }
-        Err(Error::Msg(m)) if !sf && (m.contains("anymore (error 404)") || m.contains("anymore (error 410)")) => {
+        Err(Error::Msg(m)) if !sf && !from_backup && (m.contains("anymore (error 404)") || m.contains("anymore (error 410)")) => {
             trail::note(format!("Install {id}: {} is gone, asking GitHub for {} again", asset.name, rel.tag_name));
             // A developer swapping a release's files: give it a moment to finish.
             tokio::time::sleep(std::time::Duration::from_secs(4)).await;
@@ -507,7 +494,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             match again {
                 Some(a) => {
                     asset = a;
-                    install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await.map_err(|e| match e {
+                    remember_install_release(app, st, id, &tag_got, Some(&asset.name), None)?;
+                    install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await.map_err(|e| match e {
                         Error::Msg(m) if m.contains("anymore (error 404)") || m.contains("anymore (error 410)") => Error::Msg(format!("{m} Its developer took that file down or renamed it. Try again in a few minutes, or pick another version on the game's page.")),
                         e => e,
                     })?
@@ -530,13 +518,15 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             asset = a;
             tag_got = bk.tag_name.clone();
             from_backup = true;
-            install::download(&st.http, &asset, &home.join(".downloads"), id, cancel.clone(), &report).await?
+            remember_install_release(app, st, id, &tag_got, Some(&asset.name), Some(&bk))?;
+            install::download(&st.http, &asset, &home.join("downloads"), id, cancel.clone(), &report).await?
         }
         Err(e) => return Err(e),
     };
     if from_backup {
         trail::note(format!("Install {id}: {} came from the RecompLauncher backup", asset.name));
     }
+    remember_install_release(app, st, id, &tag_got, Some(&asset.name), None)?;
     drop(permit);
     // A pause that came just as the download finished: there's nothing left to pause, so the
     // install carries on.
@@ -551,8 +541,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // An update: keep a copy of the player's saves and settings first.
     if let (Some(p), true) = (&prev, backup_first) {
         report(Progress::new(id, "backup", 0, 0));
-        let (dir, files, bdir) = (p.path.clone(), inputs::release_files(p), backups_dir(p));
-        let _ = tokio::task::spawn_blocking(move || manage::backup(&dir, &files, &bdir, 5)).await;
+        let (game, app_dir) = (p.clone(), st.dir.clone());
+        tokio::task::spawn_blocking(move || backup_store::create(&game, &app_dir)).await.map_err(|e| Error::Msg(e.to_string()))?
+            .map_err(|e| Error::Msg(format!("The game wasn't updated because its backup couldn't be saved: {e}")))?;
     }
 
     // Only an installer: it waits in the launcher's staging folder for Set Up, which runs it when
@@ -563,41 +554,27 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         let (file, sdir) = (got.file.clone(), installer::staging(&st.dir, id));
         let setup = tokio::task::spawn_blocking(move || installer::stage(&file, &sdir)).await.map_err(|e| Error::Msg(e.to_string()))??;
         let _ = std::fs::remove_file(&got.file);
-        {
-            let mut l = st.lib.lock().unwrap();
-            match l.installed.get_mut(id) {
-                Some(g) => {
-                    g.installer_setup = setup.to_string_lossy().to_string();
-                    g.installer_tag = tag_got.clone();
-                    g.asset = asset.name.clone();
-                    g.from_backup = from_backup;
-                }
-                None => {
-                    let rec = Installed {
-                        id: id.into(),
-                        name: str_of(&entry, "name").into(),
-                        repo: repo.clone(),
-                        version: str_of(&entry, "version").into(),
-                        path: target.clone(),
-                        asset: asset.name.clone(),
-                        size: asset.size,
-                        installed_at: now(),
-                        updated_at: now(),
-                        setup_checked: true,
-                        exe_rules: u8::MAX,
-                        look_amount: 50,
-                        installer: true,
-                        installer_setup: setup.to_string_lossy().to_string(),
-                        installer_tag: tag_got.clone(),
-                        from_backup,
-                        ..Default::default()
-                    };
-                    l.put(id, rec);
-                }
-            }
-            l.settings.asked_location = true;
-        }
-        st.save();
+        let mut rec = prev.clone().unwrap_or_else(|| Installed {
+            id: id.into(),
+            name: str_of(&entry, "name").into(),
+            repo: repo.clone(),
+            version: str_of(&entry, "version").into(),
+            path: target.clone(),
+            managed_install: true,
+            size: asset.size,
+            installed_at: now(),
+            updated_at: now(),
+            setup_checked: true,
+            exe_rules: u8::MAX,
+            look_amount: 50,
+            installer: true,
+            ..Default::default()
+        });
+        rec.installer_setup = setup.to_string_lossy().to_string();
+        rec.installer_tag = tag_got.clone();
+        rec.asset = asset.name.clone();
+        rec.from_backup = from_backup;
+        install_location::complete(&mut st.lib.lock().unwrap(), id, rec, &request, keep, &st.dir)?;
         trail::note(format!("Install {id}: its installer {} is ready for Set Up", setup.file_name().unwrap_or_default().to_string_lossy()));
         note_download(&st.dir, json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}));
         st.jobs.lock().unwrap().remove(id);
@@ -605,6 +582,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         return Ok(());
     }
 
+    install_location::claim(&request, prev.is_some(), &st.dir)?;
     // The settings the player picked on the game's page, put back after the update's files.
     let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.repo, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
@@ -617,7 +595,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
     report(Progress::new(id, "unpack", 0, 0));
-    let (file, t2, staging) = (got.file.clone(), target.clone(), home.join(".staging").join(folder_name(id)));
+    let (file, t2, staging) = (got.file.clone(), target.clone(), home.join("staging"));
     let what = asset.name.clone();
     let files = tokio::task::spawn_blocking(move || install::unpack(&file, &t2, &staging)).await.map_err(|e| Error::Msg(e.to_string()))?.map_err(|e| match e {
         Error::Io(e) => defender_msg(e, &what),
@@ -626,8 +604,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if !keep {
         let _ = std::fs::remove_file(&got.file);
     }
-    if let Some(p) = prev.as_ref().filter(|p| p.path == target) {
-        let removed = install::remove_dropped(&target, &p.files, &files, p.updated_at, p.exe.as_deref());
+    if let Some(p) = prev.as_ref() {
+        let removed = install::remove_dropped_for(p, &target, &files);
         if !removed.is_empty() {
             trail::note(format!("Install {id}: {} files of {} that {tag_got} no longer has, removed", removed.len(), p.tag));
         }
@@ -635,7 +613,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // A game whose own setup works from a clone of its repo gets one, around the release's files.
     if boot::Boot::from_entry(&entry).map(|b| b.clone).unwrap_or(false) {
         report(Progress::new(id, "clone", 0, 0));
-        let (r2, t3, scratch) = (repo.clone(), target.clone(), home.join(".staging").join(format!("{}-repo", folder_name(id))));
+        let (r2, t3, scratch) = (repo.clone(), target.clone(), home.join("repo"));
         tokio::task::spawn_blocking(move || manage::clone_repo(&r2, &t3, &scratch)).await.map_err(|e| Error::Msg(e.to_string()))??;
     }
     if !kept.is_empty() {
@@ -688,7 +666,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         repo,
         tag: tag_got.clone(),
         version: str_of(&entry, "version").into(),
-        path: target,
+        path: request.installed_path(prev.as_ref()),
+        managed_install: prev.as_ref().map(|p| p.managed_install).unwrap_or(true),
+        preserve_folder: prev.as_ref().map(|p| p.preserve_folder).unwrap_or(false),
         exe,
         asset: asset.name.clone(),
         size: asset.size,
@@ -754,10 +734,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
-        l.put(id, rec);
-        l.settings.asked_location = true;
+        install_location::complete(&mut l, id, rec, &request, keep, &st.dir)?;
     }
-    st.save();
     note_download(
         &st.dir,
         json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
@@ -961,26 +939,79 @@ fn human(b: u64) -> String {
     }
 }
 
+#[tauri::command(async)]
+fn install_location(st: State<'_, App>, id: String, dir: Option<String>, target: Option<String>) -> Res<install_location::Preview> {
+    let l = st.lib.lock().unwrap();
+    let dir = dir.map(PathBuf::from);
+    let target = target.map(PathBuf::from);
+    let target = install_location::resolve(&l, &id, dir.as_deref(), target.as_deref())?;
+    install_location::validate(&l, &st.dir, &id, &target)?;
+    Ok(install_location::preview(target))
+}
+
+fn remember_install_release(app: &AppHandle, st: &App, id: &str, tag: &str, file: Option<&str>, backup: Option<&Release>) -> Res<()> {
+    let request = {
+        let mut l = st.lib.lock().unwrap();
+        let Some(request) = l.pending_installs.get_mut(id) else { return Ok(()) };
+        request.remember_release(tag, file, backup);
+        let request = request.clone();
+        l.save(&st.dir)?;
+        request
+    };
+    // Resume in this window must use the same checked release and asset as a launcher restart.
+    let _ = app.emit("install-request", json!({"id": id, "request": request}));
+    Ok(())
+}
+
+fn discard_empty_install(st: &App, id: &str, token: Option<&str>) {
+    let mut l = st.lib.lock().unwrap();
+    let Some(request) = l.pending_installs.get(id) else { return };
+    if token.is_some_and(|t| request.token != t) {
+        return;
+    }
+    if l.installed.contains_key(id) {
+        install_location::finish(request, false, &st.dir);
+    } else if !install_location::discard_empty(request, &st.dir) {
+        return;
+    }
+    l.pending_installs.remove(id);
+    if let Err(e) = l.save(&st.dir) {
+        trail::note(format!("Install {id}: couldn't save the cancelled destination: {e}"));
+    }
+}
+
 #[tauri::command]
-async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, tag: Option<String>, file: Option<String>) -> Res<()> {
+async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, target: Option<String>, tag: Option<String>, file: Option<String>, source: Option<String>, reset_release: Option<bool>) -> Res<()> {
     if st.moving.lock().unwrap().contains(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
     let cancel = Arc::new(AtomicBool::new(false));
-    {
+    let request = {
+        // Hold the library lock while reserving a destination so concurrent requests cannot overlap.
+        let mut l = st.lib.lock().unwrap();
         let mut jobs = st.jobs.lock().unwrap();
         if jobs.contains_key(&id) {
             return Ok(());
         }
+        let dir = dir.filter(|d| !d.is_empty()).map(PathBuf::from);
+        let target = target.filter(|d| !d.is_empty()).map(PathBuf::from);
+        let target = install_location::resolve(&l, &id, dir.as_deref(), target.as_deref())?;
+        install_location::validate(&l, &st.dir, &id, &target)?;
+        let mut request = install_location::request(&l, &id, target, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), reset_release.unwrap_or(false));
+        request.source = source.map(PathBuf::from).or(request.source);
+        install_location::validate_source(&request.target, request.source.as_deref())?;
+        install_location::reserve(&mut l, &id, request.clone(), &st.dir)?;
+        l.save(&st.dir)?;
         install::unpause(&id);
         install::resumed(&id);
         jobs.insert(id.clone(), cancel.clone());
-    }
-    let dir = dir.filter(|d| !d.is_empty()).map(PathBuf::from);
+        request
+    };
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let st = app2.state::<App>();
-        let r = do_install(&app2, &st, &id, dir, tag.filter(|t| !t.is_empty()), file.filter(|f| !f.is_empty()), cancel).await;
+        let token = request.token.clone();
+        let r = do_install(&app2, &st, &id, request, cancel).await;
         // Windows refusing a file (access denied) says only that: what it usually means, and what
         // to do about it.
         let r = r.map_err(|e| match e {
@@ -1028,6 +1059,7 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
                 let _ = app2.emit("install", Progress::new(&id, "paused", 0, 0));
             }
             Err(Error::Cancelled) => {
+                discard_empty_install(&st, &id, Some(&token));
                 trail::note(format!("Install {id}: cancelled"));
                 let _ = app2.emit("install", Progress::new(&id, "cancelled", 0, 0));
             }
@@ -1069,13 +1101,15 @@ async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
 
 #[tauri::command(async)]
 fn cancel(st: State<'_, App>, id: String) {
-    if let Some(c) = st.jobs.lock().unwrap().get(&id) {
+    let job = st.jobs.lock().unwrap().get(&id).cloned();
+    if let Some(c) = job {
         // Cancelled, even if Pause was pressed a moment before: the part file goes too.
         install::unpause(&id);
         c.store(true, Ordering::Relaxed);
     } else {
         // Paused, so nothing's running: what it had downloaded goes.
         install::discard(&id);
+        discard_empty_install(&st, &id, None);
     }
 }
 
@@ -1104,7 +1138,12 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         return Err(Error::Msg(MOVING.into()));
     }
     let libs = st.lib.lock().unwrap().settings.all_libraries();
-    let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { return Ok(json!({})) };
+    let game = st.lib.lock().unwrap().installed.get(&id).cloned();
+    let Some(g) = game else {
+        install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
+        st.save();
+        return Ok(json!({}));
+    };
     // Its AppImage unpacked for the Flatpak: a copy in the launcher's cache, never the player's.
     flatpak::forget_unpacked(&id);
     // Still open outside the launcher (or still closing): Windows won't let its files go.
@@ -1117,7 +1156,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         let _ = std::fs::remove_dir_all(installer::staging(&st.dir, &id));
         let ran = run_uninstaller == Some(true) && g.installer && g.path.is_dir() && installer::run_uninstaller(&g.path);
         trail::note(format!("Uninstall {id}: an installed game{}", if ran { ", its uninstaller ran" } else { "" }));
-        st.lib.lock().unwrap().forget(&id);
+        install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
         st.save();
         return Ok(json!({"left": 0, "path": g.path, "kept": g.path.is_dir() && !ran, "uninstaller": ran, "installer": true}));
     }
@@ -1136,12 +1175,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
                 flatpak::remove(&app_id);
             }
         }
-        // Only ever a game's own folder right inside a library. A game the player brought over
-        // from somewhere else keeps its folder, and so does anything shared like Downloads.
-        // Or a folder the launcher made for it (named after it) in a library folder since removed.
-        let in_lib = g.path.parent().map(|p| libs.iter().any(|l| library::same_path(l, p))).unwrap_or(false);
-        let made_here = !g.asset.is_empty() && g.path.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&library::folder_name(&id))).unwrap_or(false);
-        let ok = (in_lib || made_here) && !library::shared_folder(&g.path, &libs) && g.path.is_dir();
+        let ok = g.owns_folder(&libs) && g.path.is_dir();
         // The player's own files (their copy of the game, its update) kept inside the game's
         // folder are theirs: moved out to "Game Copies" beside it first, and if one can't be, the
         // folder stays. Only files: a folder there is the launcher's unpack of their disc.
@@ -1174,7 +1208,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
             }
         }
     }
-    st.lib.lock().unwrap().forget(&id);
+    install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
     st.save();
     Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck}))
 }
@@ -1334,6 +1368,7 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     if library::shared_folder(&g.path, &st.lib.lock().unwrap().settings.all_libraries()) {
         return Err(Error::Msg("Its folder holds more than the game, so it stays where it is. Install it into a library to be able to move it.".into()));
     }
+    install_location::ensure_movable(&st.lib.lock().unwrap(), &id)?;
     let dest = PathBuf::from(&to).join(g.path.file_name().unwrap_or_default());
     if dest == g.path {
         return Ok(g);
@@ -1344,17 +1379,15 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
         if use_there != Some(true) {
             return Err(Error::Msg(format!("SAME_THERE|{}", dest.display())));
         }
-        let old_b = backups_dir(&g);
+        backup_store::preserve_before_move(&g, &st.dir)?;
         let mut out = g.clone();
         out.path = dest;
-        if old_b.is_dir() && !backups_dir(&out).exists() {
-            let _ = manage::move_dir(&old_b, &backups_dir(&out), &|_, _| {});
-        }
         st.lib.lock().unwrap().installed.insert(id.clone(), out.clone());
         st.save();
         trail::note(format!("{id}: uses the copy already at {} (the old folder stays at {})", out.path.display(), g.path.display()));
         return Ok(out);
     }
+    backup_store::preserve_before_move(&g, &st.dir)?;
     looks::tidy(&st.dir, &id);
     st.moving.lock().unwrap().insert(id.clone());
     let (from, d2, app2, id2) = (g.path.clone(), dest.clone(), app.clone(), id.clone());
@@ -1371,13 +1404,9 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     .map_err(|e| Error::Msg(e.to_string()))?;
     st.moving.lock().unwrap().remove(&id);
     r?;
-    // Its backups go with it.
-    let old_b = backups_dir(&g);
+    // Private backups are keyed by game ID and remain available after the path changes.
     let mut out = g.clone();
     out.path = dest;
-    if old_b.is_dir() {
-        let _ = manage::move_dir(&old_b, &backups_dir(&out), &|_, _| {});
-    }
     st.lib.lock().unwrap().installed.insert(id.clone(), out.clone());
     st.save();
     let _ = app.emit("move", json!({"id": id, "done": 1, "total": 1, "finished": true}));
@@ -1400,7 +1429,7 @@ fn holds_same_game(g: &Installed, dest: &Path) -> bool {
 #[tauri::command(async)]
 fn backups(st: State<'_, App>, id: String) -> Res<Vec<manage::Backup>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    Ok(manage::list_backups(&backups_dir(&g)))
+    Ok(backup_store::list(&g, &st.dir))
 }
 
 #[tauri::command]
@@ -1409,7 +1438,8 @@ async fn backup_now(st: State<'_, App>, id: String) -> Res<Option<manage::Backup
     if g.local {
         return Ok(None);
     }
-    tokio::task::spawn_blocking(move || manage::backup(&g.path, &inputs::release_files(&g), &backups_dir(&g), 5)).await.map_err(|e| Error::Msg(e.to_string()))?
+    let app_dir = st.dir.clone();
+    tokio::task::spawn_blocking(move || backup_store::create(&g, &app_dir)).await.map_err(|e| Error::Msg(e.to_string()))?
 }
 
 #[tauri::command]
@@ -1421,8 +1451,8 @@ async fn restore_backup(st: State<'_, App>, id: String, name: String) -> Res<usi
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
         return Err(Error::Msg("That isn't one of its backups.".into()));
     }
-    let file = backups_dir(&g).join(&name);
-    tokio::task::spawn_blocking(move || manage::restore(&file, &g.path)).await.map_err(|e| Error::Msg(e.to_string()))?
+    let app_dir = st.dir.clone();
+    tokio::task::spawn_blocking(move || backup_store::restore(&g, &app_dir, &name)).await.map_err(|e| Error::Msg(e.to_string()))?
 }
 
 /// Text Size: the launcher's window zoomed (0.9 to 1.5).
@@ -1803,32 +1833,47 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
         let had = {
             let mut l = st.lib.lock().unwrap();
             let had = l.installed.contains_key(&old);
-            if busy || (had && l.installed.contains_key(&new)) {
-                None
-            } else {
-                if let Some(a) = l.arts.remove(&old) {
-                    l.arts.entry(new.clone()).or_insert(a);
-                }
-                if let Some(mut g) = l.installed.remove(&old) {
-                    g.id = new.clone();
-                    l.put(&new, g);
-                }
-                for target in l.project_aliases.values_mut() {
-                    if target == &old { *target = new.clone(); }
-                }
-                if let Some(m) = l.mods.remove(&old) {
-                    l.mods.entry(new.clone()).or_insert(m);
-                }
-                if let Some(v) = l.seen_versions.remove(&old) {
-                    l.seen_versions.entry(new.clone()).or_insert(v);
-                }
-                rename_id(&mut l.settings.ui, &old, &new);
-                Some(had)
+            let pending = [&old, &new].iter().any(|id| l.pending_installs.contains_key(*id));
+            if busy || pending || (had && l.installed.contains_key(&new)) {
+                keep.push(e);
+                continue;
             }
-        };
-        let Some(had) = had else {
-            keep.push(e);
-            continue;
+            // Private update history must move before the ID does. A collision or unavailable
+            // history defers reconciliation; saving failure rolls both changes back together.
+            let history = match backup_store::rename_project(&st.dir, &old, &new) {
+                Ok(moved) => moved,
+                Err(err) => {
+                    trail::note(format!("{old}: couldn't move its update backups to {new} ({err})"));
+                    keep.push(e);
+                    continue;
+                }
+            };
+            let before = l.clone();
+            if let Some(a) = l.arts.remove(&old) {
+                l.arts.entry(new.clone()).or_insert(a);
+            }
+            if let Some(mut g) = l.installed.remove(&old) {
+                g.id = new.clone();
+                l.put(&new, g);
+            }
+            for target in l.project_aliases.values_mut() {
+                if target == &old { *target = new.clone(); }
+            }
+            if let Some(m) = l.mods.remove(&old) {
+                l.mods.entry(new.clone()).or_insert(m);
+            }
+            if let Some(v) = l.seen_versions.remove(&old) {
+                l.seen_versions.entry(new.clone()).or_insert(v);
+            }
+            rename_id(&mut l.settings.ui, &old, &new);
+            if let Err(err) = l.save(&st.dir) {
+                *l = before;
+                if let Some((from, to)) = history { let _ = std::fs::rename(to, from); }
+                trail::note(format!("{old}: couldn't save its change to {new} ({err})"));
+                keep.push(e);
+                continue;
+            }
+            had
         };
         // Its save backups and this PC's notes about them, and its Look. What the official one
         // already has stays as it is.
@@ -8170,6 +8215,7 @@ fn get_state(st: State<'_, App>) -> Value {
         "site": catalog::base(),
         "thumbs": net::THUMBS,
         "library": l.installed,
+        "pendingInstalls": l.pending_installs,
         "arts": l.arts,
         "settings": l.settings,
         "roms": l.roms,
@@ -8564,20 +8610,14 @@ pub static HANDHELD: AtomicBool = AtomicBool::new(false);
 /// The folder has to hold the game's program, when the launcher knows which one it is.
 #[tauri::command(async)]
 fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
-    let to = PathBuf::from(&path);
-    if !to.is_dir() {
-        return Err(Error::Msg("Pick the game's folder.".into()));
+    if st.running.lock().unwrap().contains_key(&id) || st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg(MOVING.into()));
     }
     let g = {
-        let mut l = st.lib.lock().unwrap();
-        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't in your Library.".into()))?;
-        if let Some(exe) = g.exe.as_ref().filter(|e| !e.as_os_str().is_empty() && e.is_relative()) {
-            if !to.join(exe).is_file() {
-                return Err(Error::Msg(format!("That folder doesn't have {}. Pick the folder {} is in.", exe.display(), g.name)));
-            }
-        }
-        g.path = to;
-        g.clone()
+        let mut library = st.lib.lock().unwrap();
+        let game = library.relink(&id, Path::new(&path))?;
+        install_location::clear_pending(&mut library, &id, &st.dir);
+        game
     };
     st.save();
     Ok(g)
@@ -8586,9 +8626,20 @@ fn locate_game(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
 /// Takes a game out of the Library without touching any files (its folder is gone anyway).
 #[tauri::command(async)]
 fn forget_game(st: State<'_, App>, id: String) -> Res<()> {
-    st.lib.lock().unwrap().forget(&id);
+    if st.running.lock().unwrap().contains_key(&id) || st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg(MOVING.into()));
+    }
+    install_location::forget(&mut st.lib.lock().unwrap(), &id, &st.dir);
     st.save();
     Ok(())
+}
+
+#[tauri::command(async)]
+fn forget_pending_install(st: State<'_, App>, id: String) -> Res<()> {
+    if st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg(MOVING.into()));
+    }
+    install_location::forget_pending(&mut st.lib.lock().unwrap(), &id, &st.dir)
 }
 
 #[tauri::command(async)]
@@ -9636,10 +9687,11 @@ pub fn run() {
             plugins::plugin_game_files,
             locate_game,
             forget_game,
+            forget_pending_install,
             remove_github,
             take_setup_asked,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, install_location, cancel, uninstall, play, stop, set_exe, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
@@ -10082,6 +10134,58 @@ mod tests {
     }
 
     #[test]
+    fn changing_project_keeps_private_update_backups_restorable() {
+        let d = std::env::temp_dir().join(format!("rl-project-private-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        std::fs::write(d.join("game/save.sav"), b"save").unwrap();
+        let game = Installed { id: "old".into(), path: d.join("game"), ..Default::default() };
+        let backup = backup_store::create(&game, &d).unwrap().unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("old".into(), game);
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "new", "repo": "Owner/New" }] });
+        let next = adopt::change_project(&app, "old", "new", &cat).unwrap();
+        std::fs::write(next.path.join("save.sav"), b"changed").unwrap();
+        backup_store::restore(&next, &d, &backup.name).unwrap();
+        assert_eq!(std::fs::read(next.path.join("save.sav")).unwrap(), b"save");
+        assert!(!backup_store::directory_for(&d, "old").exists());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn pending_installs_block_project_changes_and_listing_moves_until_cancelled() {
+        let d = std::env::temp_dir().join(format!("rl-project-pending-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        let d = install_location::normalized(&d).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("old".into(), Installed { id: "old".into(), path: d.join("game"), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "replaced": { "old": "new" }, "apps": [{ "id": "new", "repo": "Owner/New" }] });
+        for id in ["old", "new"] {
+            let mut l = app.lib.lock().unwrap();
+            let target = if id == "old" { d.join("game") } else { d.join("new-game") };
+            let pending = install_location::request(&l, id, target, Some("v1".into()), Some("build.zip".into()), false);
+            let work = install_location::claim(&pending, id == "old", &d).unwrap();
+            std::fs::write(work.join("download.part"), b"download").unwrap();
+            l.pending_installs.insert(id.into(), pending.clone());
+            drop(l);
+            assert!(adopt::change_project(&app, "old", "new", &cat).is_err());
+            assert!(adopt::move_listing_in(&app, &cat, "old", "new").is_err());
+            let mut l = app.lib.lock().unwrap();
+            assert!(l.installed.contains_key("old") && !l.installed.contains_key("new"));
+            assert_eq!(l.pending_installs[id].token, pending.token);
+            assert_eq!(l.pending_installs[id].file, pending.file);
+            assert_eq!(std::fs::read(work.join("download.part")).unwrap(), b"download");
+            install_location::clear_pending(&mut l, id, &d);
+            assert!(!work.exists());
+        }
+        adopt::change_project(&app, "old", "new", &cat).unwrap();
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
     fn project_changes_reject_conflicts_busy_games_and_missing_projects() {
         let d = std::env::temp_dir().join(format!("rl-project-conflict-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -10128,6 +10232,9 @@ mod tests {
         lib.installed.insert("old-recomp".into(), Installed { id: "old-recomp".into(), name: "Old Listing".into(), repo: "someone/old-recomp".into(), tag: "v0.1.1".into(), path: d.join("games/old"), played_secs: 7200, game_copy: Some(copy.clone()), ..Default::default() });
         std::fs::create_dir_all(saves::dir_of(&d, "old-recomp")).unwrap();
         std::fs::write(saves::dir_of(&d, "old-recomp").join("1.zip"), b"save").unwrap();
+        std::fs::create_dir_all(d.join("games/old")).unwrap();
+        std::fs::write(d.join("games/old/save.sav"), b"private save").unwrap();
+        let private_backup = backup_store::create(&lib.installed["old-recomp"], &d).unwrap().unwrap();
         let app = app_in(&d, lib);
         let cat = json!({ "replaced": { "old-recomp": "new-recomp" }, "apps": [{ "id": "new-recomp", "repo": "another/new-recomp", "name": "New Listing" }, { "id": "other", "repo": "x/y" }] });
         // Only to the listing the catalog says.
@@ -10144,6 +10251,10 @@ mod tests {
         assert_eq!(g.name, "New Listing");
         assert_eq!(l.project_aliases.get("old-recomp").map(String::as_str), Some("new-recomp"), "old links still open it");
         assert!(saves::dir_of(&d, "new-recomp").join("1.zip").is_file());
+        std::fs::write(g.path.join("save.sav"), b"changed").unwrap();
+        backup_store::restore(g, &d, &private_backup.name).unwrap();
+        assert_eq!(std::fs::read(g.path.join("save.sav")).unwrap(), b"private save");
+        assert!(!backup_store::directory_for(&d, "old-recomp").exists());
         drop(l);
         // The same project under a new id keeps its version and files.
         let mut lib = Library::default();
@@ -10165,6 +10276,9 @@ mod tests {
         let backup = saves::dir_of(&d, "old");
         std::fs::create_dir_all(&backup).unwrap();
         std::fs::write(backup.join("save.zip"), b"save").unwrap();
+        let private = backup_store::directory_for(&d, "old");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("1.zip"), b"private history").unwrap();
         // A directory at the temporary-file path forces Library::save to fail.
         std::fs::create_dir_all(d.join("library.json.tmp")).unwrap();
         let app = app_in(&d, lib);
@@ -10175,6 +10289,8 @@ mod tests {
         assert!(!l.installed.contains_key("new") && l.project_aliases.is_empty());
         assert_eq!(std::fs::read(backup.join("save.zip")).unwrap(), b"save");
         assert!(!saves::dir_of(&d, "new").exists());
+        assert_eq!(std::fs::read(private.join("1.zip")).unwrap(), b"private history");
+        assert!(!backup_store::directory_for(&d, "new").exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -10222,6 +10338,107 @@ mod tests {
         // Nothing more to do the next time.
         assert!(merge_mine(&st, &catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game" }] }))).is_empty());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_keeps_private_update_backups_restorable() {
+        let d = std::env::temp_dir().join(format!("rl-merge-private-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        std::fs::write(d.join("game/save.sav"), b"save").unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        let game = Installed { id: "mine".into(), path: d.join("game"), ..Default::default() };
+        let backup = backup_store::create(&game, &d).unwrap().unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), game);
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        assert_eq!(merge_mine(&app, &cat).len(), 1);
+        let saved = Library::load(&d);
+        let next = &saved.installed["official"];
+        std::fs::write(next.path.join("save.sav"), b"changed").unwrap();
+        backup_store::restore(next, &d, &backup.name).unwrap();
+        assert_eq!(std::fs::read(next.path.join("save.sav")).unwrap(), b"save");
+        assert!(!backup_store::directory_for(&d, "mine").exists());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_rolls_back_private_history_when_saving_fails() {
+        let d = std::env::temp_dir().join(format!("rl-merge-private-rollback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("library.json.tmp")).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        let private = backup_store::directory_for(&d, "mine");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("1.zip"), b"history").unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), Installed { id: "mine".into(), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        assert!(merge_mine(&app, &cat).is_empty());
+        let l = app.lib.lock().unwrap();
+        assert!(l.installed.contains_key("mine") && !l.installed.contains_key("official"));
+        assert_eq!(std::fs::read(private.join("1.zip")).unwrap(), b"history");
+        assert!(!backup_store::directory_for(&d, "official").exists());
+        assert_eq!(catalog::mine(&d).len(), 1);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_defers_when_private_histories_conflict() {
+        let d = std::env::temp_dir().join(format!("rl-merge-private-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        for id in ["mine", "official"] {
+            let private = backup_store::directory_for(&d, id);
+            std::fs::create_dir_all(&private).unwrap();
+            std::fs::write(private.join("1.zip"), id.as_bytes()).unwrap();
+        }
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), Installed { id: "mine".into(), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        assert!(merge_mine(&app, &cat).is_empty());
+        assert!(app.lib.lock().unwrap().installed.contains_key("mine"));
+        for id in ["mine", "official"] {
+            assert_eq!(std::fs::read(backup_store::directory_for(&d, id).join("1.zip")).unwrap(), id.as_bytes());
+        }
+        assert_eq!(catalog::mine(&d).len(), 1);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn automatic_listing_reconciliation_waits_until_pending_installs_are_cancelled() {
+        let d = std::env::temp_dir().join(format!("rl-merge-pending-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("game")).unwrap();
+        let d = install_location::normalized(&d).unwrap();
+        catalog::save_mine(&d, json!([{ "id": "mine", "repo": "Owner/Game", "custom": true }]).as_array().unwrap()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("mine".into(), Installed { id: "mine".into(), path: d.join("game"), ..Default::default() });
+        let app = app_in(&d, lib);
+        let cat = json!({ "apps": [{ "id": "official", "repo": "Owner/Game" }] });
+        for id in ["mine", "official"] {
+            let mut l = app.lib.lock().unwrap();
+            let target = if id == "mine" { d.join("game") } else { d.join("new-game") };
+            let pending = install_location::request(&l, id, target, Some("v1".into()), Some("build.zip".into()), false);
+            let work = install_location::claim(&pending, id == "mine", &d).unwrap();
+            l.pending_installs.insert(id.into(), pending.clone());
+            drop(l);
+            assert!(merge_mine(&app, &cat).is_empty());
+            let mut l = app.lib.lock().unwrap();
+            assert!(l.installed.contains_key("mine") && !l.installed.contains_key("official"));
+            assert_eq!(l.pending_installs[id].token, pending.token);
+            assert_eq!(l.pending_installs[id].file, pending.file);
+            assert!(work.is_dir());
+            assert_eq!(catalog::mine(&d).len(), 1);
+            install_location::clear_pending(&mut l, id, &d);
+            assert!(!work.exists());
+        }
+        assert_eq!(merge_mine(&app, &cat).len(), 1);
+        std::fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -10378,6 +10595,49 @@ mod tests {
         let got = copies_for(&cat, &found, &HashMap::new());
         assert_eq!(got.get("streetball").map(|r| r.path.clone()), Some(iso));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exact_install_folder_is_used_for_unpack_prepare_launch_and_move() {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("recomp-exact-flow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        // macOS temp paths may traverse /var's symlink; production destinations are normalized too.
+        let root = install_location::normalized(&root).unwrap();
+        let target = root.join("Chosen récomp 日本");
+        let source = root.join("original.dat");
+        std::fs::write(&source, b"original game").unwrap();
+        let archive = root.join("release.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        let options = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+        zip.start_file("builder.sh", options).unwrap();
+        zip.write_all(b"#!/bin/sh\ncp \"$1\" \"$2\"\n").unwrap();
+        zip.start_file("game.sh", options).unwrap();
+        zip.write_all(b"#!/bin/sh\nexit 0\n").unwrap();
+        zip.finish().unwrap();
+        let lib = Library::default();
+        let request = install_location::request(&lib, "game", target.clone(), None, None, false);
+        let work = install_location::claim(&request, false, &root.join("data")).unwrap();
+        install::unpack(&archive, &target, &work.join("staging")).unwrap();
+        let profile: profile::Profile = serde_json::from_value(json!({
+            "format": 1,
+            "prepare": {"program": ["builder.sh"], "args": ["{game}", "{install}/generated.dat"], "done": ["{install}/generated.dat"]},
+            "start": {"program": ["game.sh"], "args": ["{install}/generated.dat"]}
+        })).unwrap();
+        run_prepare(profile.prepare.as_ref().unwrap(), &target, &source, &[], &|_, _| {}, &|| false).unwrap();
+        assert_eq!(profile.build_done(&target), Some(true));
+        let (exe, args) = profile.command_for(&target, Some(&source), &BTreeMap::new(), false).unwrap();
+        assert_eq!(exe, target.join("game.sh"));
+        assert_eq!(args, vec![target.join("generated.dat").to_string_lossy().to_string()]);
+        install_location::finish(&request, false, &root.join("data"));
+        let moved = root.join("Moved game");
+        manage::move_dir(&target, &moved, &|_, _| {}).unwrap();
+        assert_eq!(profile.build_done(&moved), Some(true));
+        assert_eq!(std::fs::read(moved.join("generated.dat")).unwrap(), b"original game");
+        assert_eq!(std::fs::read(&source).unwrap(), b"original game");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

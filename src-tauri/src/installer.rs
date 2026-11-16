@@ -169,11 +169,21 @@ pub async fn installer_run(st: State<'_, App>, id: String) -> Res<Value> {
     if early {
         crate::trail::note(format!("Installer {id}: closed right away and the game's program wasn't changed, so the update isn't counted yet"));
     }
-    if let ([(root, exe)], false) = (found.as_slice(), early) {
+    let different = found.iter().any(|(root, _)| !same_destination(root, &suggest));
+    if let ([(root, exe)], false, false) = (found.as_slice(), early, different) {
         let g = finish(&st, &id, root.clone(), exe.clone())?;
         return Ok(json!({ "done": true, "game": g }));
     }
-    Ok(json!({ "done": false, "early": early, "code": code, "found": found.iter().map(|(p, e)| json!({"path": p, "exe": e})).collect::<Vec<_>>() }))
+    Ok(json!({ "done": false, "early": early, "different": different, "code": code, "found": found.iter().map(|(p, e)| json!({"path": p, "exe": e})).collect::<Vec<_>>() }))
+}
+
+fn same_destination(actual: &Path, suggested: &Path) -> bool {
+    let actual = crate::install_location::normalized(actual);
+    let suggested = crate::install_location::normalized(suggested);
+    match (actual, suggested) {
+        (Ok(actual), Ok(suggested)) => crate::install_location::same(&actual, &suggested),
+        _ => false,
+    }
 }
 
 #[cfg(windows)]

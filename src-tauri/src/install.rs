@@ -755,11 +755,48 @@ fn overlay(from: &Path, to: &Path) -> io::Result<()> {
                     std::os::unix::fs::symlink(fs::read_link(&src)?, &dest)?;
                     continue;
                 }
-                patient(|| fs::copy(&src, &dest)).map_err(|e| denied(e, &dest))?;
+                replace_file(&src, &dest).map_err(|e| denied(e, &dest))?;
             }
         }
     }
     Ok(())
+}
+
+fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+    // Copying over the destination fails for read-only files and can truncate a working file on
+    // failure. Finish the copy on its volume first, then replace it with a rename.
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let work = to.parent().unwrap().join(format!(".recomplauncher-file-{}-{time}", std::process::id()));
+    fs::create_dir(&work)?;
+    let staged = work.join("new");
+    let backup = work.join("previous");
+    let result = (|| {
+        fs::copy(from, &staged)?;
+        if patient(|| fs::rename(&staged, to)).is_ok() {
+            return Ok(());
+        }
+        // Windows cannot rename over every existing file. Keep it until the swap succeeds.
+        fs::rename(to, &backup)?;
+        if let Err(error) = fs::rename(&staged, to) {
+            fs::rename(&backup, to)?;
+            return Err(error);
+        }
+        Ok(())
+    })();
+    if result.is_ok() || !backup.exists() {
+        #[cfg(windows)]
+        for path in [&staged, &backup] {
+            if let Ok(metadata) = fs::symlink_metadata(path) {
+                if metadata.is_file() && metadata.permissions().readonly() {
+                    let mut permissions = metadata.permissions();
+                    permissions.set_readonly(false);
+                    let _ = fs::set_permissions(path, permissions);
+                }
+            }
+        }
+        let _ = fs::remove_dir_all(work);
+    }
+    result
 }
 
 /// After an update: the files the previous release put in the game's folder that this release no
@@ -768,6 +805,13 @@ fn overlay(from: &Path, to: &Path) -> io::Result<()> {
 /// 0.2.0's runtime/gfx_present.c broke 0.3.0's link with duplicate symbols). A file changed since
 /// that install (settings the game rewrote, a file the player edited) and `keep` (the program the
 /// player starts) stay. Returns what it removed.
+pub fn remove_dropped_for(previous: &crate::library::Installed, target: &Path, new: &[PathBuf]) -> Vec<PathBuf> {
+    if !crate::install_location::same_location(&previous.path, target) {
+        return vec![];
+    }
+    remove_dropped(target, &previous.files, new, previous.updated_at, previous.exe.as_deref())
+}
+
 pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u64, keep: Option<&Path>) -> Vec<PathBuf> {
     // Case doesn't tell files apart on Windows and Mac: a file only renamed in case is still there.
     let fold = |p: &Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
@@ -851,21 +895,38 @@ fn remove_empty_parents(top: &Path, file: &Path) {
 }
 
 fn replace_bundle(from: &Path, to: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(to).is_err() {
-        return fs::rename(from, to);
+    if fs::symlink_metadata(to).is_err() && fs::rename(from, to).is_ok() {
+        return Ok(());
     }
-    // Staging is on the library's drive. Keep the old bundle until the new one is in place;
-    // on a failed rename restore it. A pre-existing backup name is never overwritten.
-    let backup_dir = from.with_extension("app.previous");
-    fs::create_dir(&backup_dir)?;
-    let backup = backup_dir.join("previous");
-    fs::rename(to, &backup)?;
-    if let Err(error) = fs::rename(from, to) {
-        fs::rename(&backup, to)?;
-        let _ = fs::remove_dir(&backup_dir);
+    // Downloads may be on another drive. Complete the new bundle on the target drive before
+    // swapping it, so a failed copy never removes the working app or merges old and new files.
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let work = to.parent().unwrap().join(format!(".recomplauncher-bundle-{}-{time}", std::process::id()));
+    fs::create_dir(&work)?;
+    let backup = work.join("previous");
+    let result = replace_staged_bundle(from, to, &work, &backup);
+    // If restoring the old app also failed, retain it for recovery.
+    if result.is_ok() || !backup.exists() {
+        let _ = fs::remove_dir_all(work);
+    }
+    result
+}
+
+fn replace_staged_bundle(from: &Path, to: &Path, work: &Path, backup: &Path) -> io::Result<()> {
+    let staged = work.join("new");
+    if fs::rename(from, &staged).is_err() {
+        overlay(from, &staged)?;
+    }
+    let had_bundle = fs::symlink_metadata(to).is_ok();
+    if had_bundle {
+        fs::rename(to, backup)?;
+    }
+    if let Err(error) = fs::rename(&staged, to) {
+        if had_bundle {
+            fs::rename(backup, to)?;
+        }
         return Err(error);
     }
-    let _ = fs::remove_dir_all(backup_dir);
     Ok(())
 }
 
@@ -1529,6 +1590,24 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn staged_file_replacement_handles_read_only_destinations() {
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("recomp-file-replace-{}-{time}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let source = root.join("source");
+        let destination = root.join("destination");
+        std::fs::write(&source, b"new").unwrap();
+        std::fs::write(&destination, b"old").unwrap();
+        let mut permissions = std::fs::metadata(&destination).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&destination, permissions).unwrap();
+        super::replace_file(&source, &destination).unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"new");
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn programs_from_windows_or_other_apps_are_told_apart() {
         assert!(super::system_program(std::path::Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_layout.exe")));
@@ -2291,6 +2370,86 @@ mod mac_archive_tests {
         assert!(!target.join("Game.app/Contents/Resources/obsolete").exists());
         assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"player progress");
         assert!(fs::read_link(target.join("Game.app/Contents/Frameworks/Engine.framework/Versions/Current")).is_ok());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cross_volume_tar_update_replaces_read_only_files_and_keeps_user_files() {
+        use std::os::unix::fs::MetadataExt;
+        let d = temp("readonly-other-volume");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let target = Path::new("/dev/shm").join(format!("recomp-readonly-{}-{time}", std::process::id()));
+        fs::create_dir(&target).unwrap();
+        assert_ne!(fs::metadata(&d).unwrap().dev(), fs::metadata(&target).unwrap().dev());
+        for content in [b"first".as_slice(), b"updated".as_slice()] {
+            let archive = d.join("game.tar.gz");
+            let file = fs::File::create(&archive).unwrap();
+            let gzip = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            let mut tar = tar::Builder::new(gzip);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o444);
+            header.set_cksum();
+            tar.append_data(&mut header, "data.bin", content).unwrap();
+            tar.into_inner().unwrap().finish().unwrap();
+            unpack(&archive, &target, &d.join("staging")).unwrap();
+            assert_eq!(fs::read(target.join("data.bin")).unwrap(), content);
+            assert_eq!(fs::metadata(target.join("data.bin")).unwrap().permissions().mode() & 0o777, 0o444);
+            fs::write(target.join("save.sav"), b"save").unwrap();
+        }
+        assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"save");
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 2);
+        fs::remove_dir_all(target).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn failed_cross_volume_copy_does_not_truncate_the_destination() {
+        let d = temp("file-copy-failure");
+        fs::write(d.join("data.bin"), b"working data").unwrap();
+        assert!(replace_file(&d.join("missing"), &d.join("data.bin")).is_err());
+        assert_eq!(fs::read(d.join("data.bin")).unwrap(), b"working data");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mac_app_can_install_and_update_from_another_volume() {
+        use std::os::unix::fs::MetadataExt;
+        if !Path::new("/dev/shm").is_dir() {
+            return;
+        }
+        let d = temp("bundle-other-volume");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let other = Path::new("/dev/shm").join(format!("recomp-bundle-{}-{time}", std::process::id()));
+        fs::create_dir(&other).unwrap();
+        assert_ne!(fs::metadata(&d).unwrap().dev(), fs::metadata(&other).unwrap().dev());
+        let target = other.join("installed");
+        fs::write(d.join("game.zip"), app_zip(&[("Game.app/Contents/Resources/obsolete", b"old", 0o644)])).unwrap();
+        unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        fs::write(target.join("save.sav"), b"player progress").unwrap();
+        fs::write(d.join("game.zip"), app_zip(&[])).unwrap();
+        unpack(&d.join("game.zip"), &target, &d.join("stage")).unwrap();
+        assert!(!target.join("Game.app/Contents/Resources/obsolete").exists());
+        assert_eq!(fs::read(target.join("save.sav")).unwrap(), b"player progress");
+        assert_eq!(fs::read(target.join("Game.app/Contents/MacOS/Game")).unwrap(), b"program");
+        assert_eq!(fs::read(target.join("Game.app/Contents/Frameworks/Engine.framework/Engine")).unwrap(), b"library");
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 2);
+        fs::remove_dir_all(other).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn failed_bundle_staging_keeps_the_previous_app() {
+        let d = temp("bundle-copy-failure");
+        let target = d.join("Game.app");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("old"), b"working app").unwrap();
+        assert!(replace_bundle(&d.join("missing-source"), &target).is_err());
+        assert_eq!(fs::read(target.join("old")).unwrap(), b"working app");
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]

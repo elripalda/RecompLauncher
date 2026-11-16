@@ -34,9 +34,57 @@ No. Everything works without one. A free account adds cloud saves, so the same s
 
 The Windows default is a short folder near the top of the drive because some games break in long or OneDrive-synced paths.
 
+**Easy Install asks where each new game should go**, on desktop and in Big Picture. Choosing a
+library such as `D:\Recomp Library` creates the game's own folder inside it. **Choose game folder…**
+uses the exact folder you select, such as `E:\Games\My Recomp`, without adding another folder name.
+On desktop, you can edit the full path to create a new folder; in Big Picture, choose **New game
+folder…**, pick its parent and enter a name. Choose an empty folder for a new install. To add a
+build that already contains files, use **I Already Have It** instead.
+
+The choice applies to this game and does not change your default library. Updates and interrupted
+installs return to the same folder, including after restarting the launcher. Use **Move** to change
+an installed game's location. Settings → **Ask Where to Install** also enables the prompt for
+ordinary installs; Easy Install always offers it.
+
+Finish or cancel a pending update before moving its game or changing its project. Automatic
+listing changes also wait until pending installs have finished or been cancelled. If an update
+failed or you closed its build chooser, use **Cancel the download** from the game's menu
+(**Options** in Big Picture). This remains available after restarting the launcher.
+
+A failed download can be retried in another empty folder once its old download work is cleaned up. If extraction has already started,
+retry in the original folder or remove that partial folder before selecting another destination;
+the launcher keeps its recovery record until then. **Skip This Version** discards the failed
+update request so a later update can install the next version into the same game folder.
+
+If a game's folder is missing, **Find Its Folder…** can link an existing folder again. This does
+not make that folder launcher-owned: uninstall keeps its contents, including unrelated files.
+Uninstalling or removing a game also clears unfinished update requests, so a later reinstall starts
+with a fresh release selection. Choosing the newest version explicitly replaces an older failed
+download's version choice.
+
+Temporary downloads and extraction use the launcher's private data folder, so a folder-only grant
+or a writable game folder beneath a read-only parent can be used. Leave room on that drive as well
+as the game's drive. With **Keep downloaded files** enabled, archives remain under
+`cache/install-work/` in the launcher's data folder; otherwise each install's work files are removed.
+
+The release and content installed inside its folder use that location. Original ROMs, discs and
+named source files stay where you selected them. Shared keys and launcher metadata stay in the
+launcher's data folder, and saves/settings may live in the game's usual system folders. Some
+builders use a separate output folder; Easy Setup shows that folder too. Their developer needs to
+support choosing an output path to keep generated content with the installation. External installers
+can also choose another location; the launcher asks you to accept it before finishing setup.
+
 ## Will it touch my saves?
 
 It backs up a game's saves before every update. You can also back up, restore and turn on cloud saves per game from the game's **Saves** tab.
+
+Update backups and **Back Up Now** use `backups/<game-id>/` in the launcher's data folder, so the
+game folder's parent need not be writable. The history stays available when you move the game.
+Readable backups from the older library `.backups` location remain listed and restorable, and are
+copied into private storage before Move changes their location. If an enabled update backup fails,
+the update stops and reports the failure. Private update backups also follow **Change Project**
+and **Move to It**. Automatic listing changes wait if both project IDs already have private backup
+histories, so neither history is overwritten.
 
 ## Does it collect data?
 

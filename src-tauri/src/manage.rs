@@ -135,7 +135,7 @@ fn player_files_within(dir: &Path, release: &[PathBuf]) -> Option<Vec<PathBuf>> 
             }
             let p = e.path();
             let Ok(m) = e.metadata() else { continue };
-            if p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(".recomplauncher-input-") || ["prod.keys", "title.keys", "common.key"].iter().any(|s| n.eq_ignore_ascii_case(s))) { continue; }
+            if p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(".recomplauncher-input-") || n.starts_with(".recomplauncher-install") || ["prod.keys", "title.keys", "common.key"].iter().any(|s| n.eq_ignore_ascii_case(s))) { continue; }
             if m.is_dir() {
                 let name = e.file_name().to_string_lossy().to_lowercase();
                 if !DATA_DIRS.contains(&name.as_str()) {
@@ -359,6 +359,107 @@ mod tests {
         copy_tree(&d.join("b/game"), &d.join("c/game"), &mut done, 5, &|_, _| {}).unwrap();
         assert_eq!(done, 5);
     }
+
+    #[test]
+    fn repository_files_do_not_replace_release_files() {
+        let d = tmp("repo-release");
+        let scratch = d.join("clone");
+        let into = d.join("game");
+        fs::create_dir_all(scratch.join("src")).unwrap();
+        fs::create_dir_all(&into).unwrap();
+        fs::write(scratch.join("game.exe"), b"repo version").unwrap();
+        fs::write(scratch.join("src/game.c"), b"source").unwrap();
+        fs::write(into.join("game.exe"), b"release version").unwrap();
+        install_clone(&scratch, &into).unwrap();
+        assert_eq!(fs::read(into.join("game.exe")).unwrap(), b"release version");
+        assert_eq!(fs::read(into.join("src/game.c")).unwrap(), b"source");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn failed_repository_file_copy_is_not_published_and_retry_copies_the_whole_file() {
+        let d = tmp("repo-file-retry");
+        let source = d.join("source");
+        let target = d.join("target");
+        let data = vec![7u8; 4096];
+        fs::write(&source, &data).unwrap();
+        let result = stage_repo_entry(&source, &target, |_, staged| {
+            fs::write(staged, &data[..1024])?;
+            Err(io::Error::other("copy interrupted"))
+        });
+        assert!(result.is_err());
+        assert!(!target.exists());
+        assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
+        stage_repo_entry(&source, &target, copy_repo_entry).unwrap();
+        assert_eq!(fs::read(target).unwrap(), data);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn incomplete_repository_metadata_does_not_report_a_successful_update() {
+        let d = tmp("repo-invalid-git");
+        let target = d.join("game");
+        fs::create_dir_all(target.join(".git")).unwrap();
+        assert!(clone_repo("unused/project", &target, &d.join("scratch")).is_err());
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_repository_directory_copy_stays_retryable_across_filesystems() {
+        let d = tmp("repo-directory-retry");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let target = Path::new("/dev/shm").join(format!("recomp-repo-retry-{}-{time}", std::process::id()));
+        let scratch = d.join("clone");
+        fs::create_dir_all(scratch.join(".git")).unwrap();
+        fs::write(scratch.join(".git/HEAD"), b"metadata").unwrap();
+        fs::create_dir_all(scratch.join("src")).unwrap();
+        fs::write(scratch.join("src/source.c"), b"complete source").unwrap();
+        let socket = scratch.join("src/unreadable");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        assert!(install_clone(&scratch, &target).is_err());
+        assert!(!target.join("src").exists());
+        assert!(!target.join(".git").exists());
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 0);
+        drop(listener);
+        fs::remove_file(&socket).unwrap();
+        fs::write(&socket, b"recovered").unwrap();
+        install_clone(&scratch, &target).unwrap();
+        assert_eq!(fs::read(target.join("src/source.c")).unwrap(), b"complete source");
+        assert_eq!(fs::read(target.join("src/unreadable")).unwrap(), b"recovered");
+        assert_eq!(fs::read(target.join(".git/HEAD")).unwrap(), b"metadata");
+        fs::remove_dir_all(target).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cloned_repository_entries_transfer_across_filesystems() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let d = tmp("repo-other-volume");
+        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let into = Path::new("/dev/shm").join(format!("recomp-repo-{}-{time}", std::process::id()));
+        fs::create_dir(&into).unwrap();
+        assert_ne!(fs::metadata(&d).unwrap().dev(), fs::metadata(&into).unwrap().dev());
+        let scratch = d.join("clone");
+        fs::create_dir_all(scratch.join(".git/objects")).unwrap();
+        fs::create_dir_all(scratch.join("src/nested")).unwrap();
+        fs::write(scratch.join(".git/HEAD"), b"ref: refs/heads/main").unwrap();
+        fs::write(scratch.join("src/nested/game.c"), b"source").unwrap();
+        fs::write(scratch.join("build.sh"), b"#!/bin/sh\n").unwrap();
+        fs::set_permissions(scratch.join("build.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink("nested/game.c", scratch.join("src/current.c")).unwrap();
+        fs::write(scratch.join("release.exe"), b"repo version").unwrap();
+        fs::write(into.join("release.exe"), b"downloaded release").unwrap();
+        install_clone(&scratch, &into).unwrap();
+        assert_eq!(fs::read(into.join(".git/HEAD")).unwrap(), b"ref: refs/heads/main");
+        assert_eq!(fs::read(into.join("src/nested/game.c")).unwrap(), b"source");
+        assert_eq!(fs::read_link(into.join("src/current.c")).unwrap(), PathBuf::from("nested/game.c"));
+        assert_eq!(fs::metadata(into.join("build.sh")).unwrap().permissions().mode() & 0o777, 0o755);
+        assert_eq!(fs::read(into.join("release.exe")).unwrap(), b"downloaded release");
+        fs::remove_dir_all(into).unwrap();
+        fs::remove_dir_all(d).unwrap();
+    }
 }
 
 /// For a game whose own setup works from a clone of its repo: clone it (shallow) and put it in
@@ -377,7 +478,11 @@ pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> 
     };
     let no_git = || Error::Msg("This game builds itself from its project files, which need Git. Install Git for Windows from git-scm.com, then press Install again.".into());
     if into.join(".git").exists() {
-        let _ = git(&["-C".as_ref(), into.as_os_str(), "pull".as_ref(), "--ff-only".as_ref()]);
+        let out = git(&["-C".as_ref(), into.as_os_str(), "pull".as_ref(), "--ff-only".as_ref()])
+            .map_err(|e| if e.kind() == io::ErrorKind::NotFound { no_git() } else { Error::Io(e) })?;
+        if !out.status.success() {
+            return Err(Error::Msg(format!("Couldn't update its project files. {}", String::from_utf8_lossy(&out.stderr).trim())));
+        }
         return Ok(());
     }
     let _ = fs::remove_dir_all(scratch);
@@ -395,13 +500,62 @@ pub fn clone_repo(repo: &str, into: &Path, scratch: &Path) -> Result<(), Error> 
         let why = String::from_utf8_lossy(&out.stderr).lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("").to_string();
         return Err(Error::Msg(format!("Couldn't get its project files from GitHub. {why}")));
     }
-    fs::create_dir_all(into)?;
-    for e in fs::read_dir(scratch)?.flatten() {
-        let to = into.join(e.file_name());
-        if !to.exists() {
-            fs::rename(e.path(), &to)?;
-        }
-    }
+    install_clone(scratch, into)?;
     let _ = fs::remove_dir_all(scratch);
     Ok(())
+}
+
+fn install_clone(scratch: &Path, into: &Path) -> io::Result<()> {
+    fs::create_dir_all(into)?;
+    let mut entries = fs::read_dir(scratch)?.collect::<io::Result<Vec<_>>>()?;
+    // A retry must finish the working tree before clone_repo can recognize a complete repository.
+    entries.sort_by_key(|e| (e.file_name() == ".git", e.file_name()));
+    for e in entries {
+        let to = into.join(e.file_name());
+        // Release files win, including a link whose target is currently unavailable.
+        if fs::symlink_metadata(&to).is_ok() {
+            continue;
+        }
+        if fs::rename(e.path(), &to).is_ok() {
+            continue;
+        }
+        stage_repo_entry(&e.path(), &to, copy_repo_entry)?;
+    }
+    Ok(())
+}
+
+fn stage_repo_entry(from: &Path, to: &Path, copy: impl FnOnce(&Path, &Path) -> io::Result<()>) -> io::Result<()> {
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let work = to.parent().unwrap().join(format!(".recomplauncher-repo-{}-{time}", std::process::id()));
+    fs::create_dir(&work)?;
+    let staged = work.join("entry");
+    let result = copy(from, &staged).and_then(|_| fs::rename(&staged, to));
+    // Only complete entries are published. Failed copies cannot masquerade as release files on retry.
+    crate::clear_read_only(&work);
+    let _ = fs::remove_dir_all(work);
+    result
+}
+
+fn copy_repo_entry(from: &Path, to: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(from)?;
+    if metadata.is_symlink() {
+        #[cfg(unix)]
+        return std::os::unix::fs::symlink(fs::read_link(from)?, to);
+        #[cfg(windows)]
+        return if from.is_dir() {
+            std::os::windows::fs::symlink_dir(fs::read_link(from)?, to)
+        } else {
+            std::os::windows::fs::symlink_file(fs::read_link(from)?, to)
+        };
+    }
+    if !metadata.is_dir() {
+        fs::copy(from, to)?;
+        return Ok(());
+    }
+    fs::create_dir(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        copy_repo_entry(&entry.path(), &to.join(entry.file_name()))?;
+    }
+    fs::set_permissions(to, metadata.permissions())
 }

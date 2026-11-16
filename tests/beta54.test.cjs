@@ -24,8 +24,11 @@ test('Big Picture and installs sent from the website ask where the game goes', (
   assert.doesNotMatch(tv, /startInstall\(id, S\.settings\.library_dir\)/);
   assert.doesNotMatch(more, /startInstall\(id, S\.settings\.library_dir\)/);
   assert.match(more, /startInstall\(id, S\.library\[id\] \? null : undefined, tag\)/);
-  assert.match(fn(app, 'startInstall'), /if \(document\.body\.classList\.contains\('tv-on'\) && window\.tvLocation\) return window\.tvLocation\(id\);\n    return locationModal\(id\);/);
-  assert.match(tv, /window\.tvLocation = \(id\) => \{[^]*?saveSettings\(\{ asked_location: true \}\)[^]*?startInstall\(id, dir \|\| S\.settings\.library_dir\)/);
+  assert.match(fn(app, 'startInstall'), /return locationModal\(id, tag\);/);
+  const location = fn(app, 'locationModal');
+  assert.match(location, /document\.body\.classList\.contains\('tv-on'\) && window\.tvAsk/);
+  assert.match(location, /window\.tvAsk\(title, items\)/);
+  assert.match(location, /startInstall\(id, undefined, tag, false, checked\.target\)/);
 });
 
 test('Pause Updates keeps a game on its version: out of Update, Update All and automatic updates', () => {

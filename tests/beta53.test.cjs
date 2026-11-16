@@ -56,9 +56,9 @@ test('Use a Build You Already Have: a card in Easy Setup, a menu item, and the s
   assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
   assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
   assert.match(tv, /su\.own_build && !su\.prebuilt \? it\(t\('Use a Build You Already Have'\)/);
-  // The setup screen says where the game's own setup builds it, when that's outside the
-  // launcher's folder for the game (build_where).
-  assert.match(app, /su\.build_where \? `<p class="su-where">\$\{esc\(tf\('The game\\'s own setup builds it into \{folder\}\.'/);
+  // The setup screen names external build output while retaining the install location.
+  assert.match(fn(app, 'setupLocationHtml'), /su\.build_dir \|\| su\.build_where/);
+  assert.match(fn(app, 'setupLocationHtml'), /The game's own setup builds it into \{folder\}\./);
 });
 
 test('the launcher building it again goes back to the setup\'s own folder; an update keeps the player\'s', () => {

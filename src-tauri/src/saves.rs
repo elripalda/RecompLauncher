@@ -210,7 +210,7 @@ pub fn holds_programs(dir: &Path) -> bool {
 
 fn is_save_file(name: &str, size: u64) -> bool {
     let n = name.to_lowercase();
-    if n.starts_with(".recomplauncher-input-") { return false; }
+    if n.starts_with(".recomplauncher-input-") || n.starts_with(".recomplauncher-install") { return false; }
     if n.ends_with(".bin") && size > BIN_SAVE_MAX {
         return false;
     }
@@ -1563,6 +1563,8 @@ mod tests {
         fs::write(d.join("mods/big.pak"), "m").unwrap();
         fs::write(d.join("game.iso"), "disc").unwrap();
         fs::write(d.join("run.log"), "log").unwrap();
+        fs::write(d.join(".recomplauncher-install"), "token").unwrap();
+        fs::write(d.join(".recomplauncher-install-update-token"), "token").unwrap();
         let g = game(&d);
         let s = spots(&[], &[], &g);
         assert_eq!(s[0].from, "game");

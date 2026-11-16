@@ -371,7 +371,7 @@
         "done": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the game counts as set up and plays without the copy unless start uses {game}."
+          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). {install} is the game's installation folder, including an exact player-selected Easy Install folder; choosing it does not redirect external builder output. All there: the game counts as set up and plays without the copy unless start uses {game}."
         },
         "version": {
           "type": "string",

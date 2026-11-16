@@ -44,6 +44,12 @@ pub struct Installed {
     pub version: String,
     /// The game's folder.
     pub path: PathBuf,
+    /// An installation created in a dedicated folder, including an exact player-selected target.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub managed_install: bool,
+    /// Relinking finds an existing folder; it does not grant permission to delete that folder.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub preserve_folder: bool,
     /// The program to start, relative to `path`.
     #[serde(default)]
     pub exe: Option<PathBuf>,
@@ -398,6 +404,9 @@ impl Default for Settings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Library {
+    /// Unfinished downloads retain their exact destination and release across launcher restarts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pending_installs: BTreeMap<String, crate::install_location::Request>,
     /// Old ids retained for Steam and desktop shortcuts after correcting a project match.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub project_aliases: BTreeMap<String, String>,
@@ -475,12 +484,47 @@ impl Library {
 
     /// A game out of the Library: its own pictures stay for it.
     pub fn forget(&mut self, id: &str) -> Option<Installed> {
+        self.pending_installs.remove(id);
         let g = self.installed.remove(id)?;
         let a = ArtSet::of(&g);
         if !a.is_empty() {
             self.arts.insert(id.to_string(), a);
         }
         Some(g)
+    }
+
+    pub fn relink(&mut self, id: &str, path: &Path) -> crate::Res<Installed> {
+        let to = crate::install_location::normalized(path)?;
+        if !to.is_dir() {
+            return Err(crate::Error::Msg("Pick the game's folder.".into()));
+        }
+        for (other, game) in &self.installed {
+            if other == id { continue; }
+            if crate::install_location::conflicts(&to, &game.path) {
+                return Err(crate::Error::Msg(format!("That folder overlaps {}. Choose a separate game folder.", game.name)));
+            }
+        }
+        let g = self.installed.get_mut(id).ok_or_else(|| crate::Error::Msg("It isn't in your Library.".into()))?;
+        if let Some(exe) = g.exe.as_ref().filter(|e| !e.as_os_str().is_empty() && e.is_relative()) {
+            if !to.join(exe).is_file() {
+                return Err(crate::Error::Msg(format!("That folder doesn't have {}. Pick the folder {} is in.", exe.display(), g.name)));
+            }
+        }
+        g.path = to;
+        g.managed_install = false;
+        g.preserve_folder = true;
+        Ok(g.clone())
+    }
+}
+
+impl Installed {
+    pub fn owns_folder(&self, libraries: &[PathBuf]) -> bool {
+        if self.local || self.preserve_folder || shared_folder(&self.path, libraries) {
+            return false;
+        }
+        let in_library = self.path.parent().is_some_and(|p| libraries.iter().any(|l| same_path(l, p)));
+        let made_here = !self.asset.is_empty() && self.path.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(&folder_name(&self.id)));
+        self.managed_install || in_library || made_here
     }
 }
 
@@ -595,6 +639,7 @@ impl Library {
         l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
         l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
         l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
+        l.pending_installs = serde_json::from_value(field("pending_installs")).unwrap_or_default();
         l
     }
 

@@ -15,6 +15,7 @@ function fixture(ui = {}, remote = {}) {
     saveUi: async (patch) => Object.assign(S.settings.ui, patch),
     setInterval: () => {}, render: () => {}, toast: () => {}, tf: (text) => text,
     invoke: async (command, args) => {
+      if (command === 'forget_pending_install') return {};
       if (command === 'library_pull') return { saved: Object.entries(remote).map(([id, at]) => ({ id, at })) };
       assert.equal(command, 'library_push');
       for (const id of args.games) { if (args.on) remote[id] = 100; else delete remote[id]; }
