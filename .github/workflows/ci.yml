@@ -97,6 +97,17 @@ jobs:
           # Let AppImage tooling run on hosted runners without FUSE mounts.
           APPIMAGE_EXTRACT_AND_RUN: "1"
 
+      # The .deb is what the Update button sends Linux players to: make sure apt can install it
+      # (its Depends exist on Ubuntu) and that it puts the launcher where the desktop file expects.
+      - name: Install the .deb
+        if: runner.os == 'Linux'
+        run: |
+          deb=$(ls src-tauri/target/release/bundle/deb/*.deb)
+          sudo apt-get install -y "./$deb"
+          pkg=$(dpkg-deb -f "$deb" Package)
+          dpkg -L "$pkg" | grep -qx /usr/bin/recomplauncher
+          dpkg -L "$pkg" | grep -q '^/usr/share/applications/.*\.desktop$'
+
       - name: Package Mac app without losing permissions or links
         if: runner.os == 'macOS'
         run: |
