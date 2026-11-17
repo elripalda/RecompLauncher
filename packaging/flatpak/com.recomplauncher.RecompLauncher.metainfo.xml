@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.59" date="2026-11-17">
+      <description>
+        <p>Easy Setup can be switched on and off from a game's Manage tab, and a game's page shows its latest version before you install it.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.58" date="2026-11-16">
       <description>
         <p>Playtime by game across recomps, kept through reinstalls and synced with your account, and each game of a multi-game release gets its own place in the store.</p>
