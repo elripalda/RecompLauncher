@@ -444,6 +444,11 @@
               "default": {
                 "type": "boolean",
                 "description": "Whether it starts ticked (on when left out). Ignored with a license."
+              },
+              "required": {
+                "type": "boolean",
+                "default": false,
+                "description": "Setup can't start until it's ticked, on the PCs it's shown on (os and gpu still decide that). For terms the build can't run without, like a compiler's license: with a license it still starts off, and the player accepts it by ticking it. Launchers older than 0.90.0-beta.64 ignore it, so keep your builder's own check too until your min is that version."
               }
             },
             "additionalProperties": false

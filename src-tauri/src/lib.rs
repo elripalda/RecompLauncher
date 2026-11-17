@@ -3567,6 +3567,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
     if let Some(pr) = &p.prepare {
+        required_ticked(&st.dir, pr, &g.prepare_opts)?;
         settle_prepare_opts(&st, &id, pr);
     }
     let copy = PathBuf::from(&path);
@@ -3784,8 +3785,20 @@ fn prepare_options_here(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<Str
     let (rtx, amd) = dlss::gpu_brands(dir);
     pr.options_here(assets::os_now(), rtx, amd)
         .into_iter()
-        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked), "new": !picked.contains_key(&o.id) }))
+        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked), "new": !picked.contains_key(&o.id), "required": o.required }))
         .collect()
+}
+
+/// The setup step doesn't start while a required option this PC is offered is unticked. The
+/// screen holds its button too; this is for anything that asks without it.
+fn required_ticked(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<String, bool>) -> Res<()> {
+    if !pr.options.iter().any(|o| o.required) {
+        return Ok(());
+    }
+    let (rtx, amd) = dlss::gpu_brands(dir);
+    let missing = pr.unticked_required(assets::os_now(), rtx, amd, picked);
+    let Some(first) = missing.first() else { return Ok(()) };
+    Err(Error::Msg(format!("Turn on \"{}\" on the setup screen to set this game up.", first.label)))
 }
 
 /// Starting a setup answers every option its screen showed: one the player left as it was counts
@@ -5273,6 +5286,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
     let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
     if let Some(pr) = &p.prepare {
+        required_ticked(&st.dir, pr, &g.prepare_opts)?;
         settle_prepare_opts(&st, &rid, pr);
     }
     INPUT_WORKERS.lock().unwrap().push(id.clone());

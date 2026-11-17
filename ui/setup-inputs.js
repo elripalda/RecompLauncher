@@ -56,7 +56,7 @@ function namedInputsView(id, su, ns = {}, game = {}) {
     ${ns.confirm ? `<div class="ni-notice"><p>${esc(t('Removing shared keys affects every game that uses them. Your original file stays where it is.'))}</p><button type="button" class="btn sm" data-ni="remove-confirm" data-input="${esc(ns.confirm)}">${esc(t('Remove shared keys'))}</button><button type="button" class="btn sm" data-ni="cancel-remove">${esc(t('Keep'))}</button></div>` : ''}
     ${error ? `<p class="su-err" role="alert">${esc(t(error))}</p>` : ''}
     ${typeof prepOptsHtml === 'function' ? prepOptsHtml(su) : ''}
-    <div class="ni-footer"><p>${esc(t('Optional content can be added later.'))}</p><button type="button" class="btn main" data-ni="run" ${!complete || ns.busy ? 'disabled' : ''}>${esc(t(ns.busy ? 'Working…' : 'Set up'))}</button></div>`;
+    <div class="ni-footer"><p>${esc(t('Optional content can be added later.'))}</p><button type="button" class="btn main" data-ni="run"${typeof prepGateAttr === 'function' ? prepGateAttr(su, !complete || ns.busy) : !complete || ns.busy ? ' disabled' : ''}>${esc(t(ns.busy ? 'Working…' : 'Set up'))}</button></div>`;
 }
 // NVIDIA DLSS (a file the launcher fetches itself): nothing to choose. It shows where the file
 // comes from, its download, the game's own file when it ships one, and a switch to turn it off.
@@ -189,7 +189,8 @@ function namedSetup(id) {
     if (result === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; $('.modal', scrim).classList.remove('ni-modal'); return suDraw(); }
     if (result === 'run') {
       SU.stage = 'run'; SU.step = 'read'; SU.steps = {}; SU.q = []; SU.at = Date.now(); SU.path = ''; $('.modal', scrim).classList.remove('ni-modal'); suDraw();
-      try { await invoke('setup_inputs_run', { id }); }
+      // The ticks just changed are kept first: the backend checks the required ones.
+      try { await SU.optsSaving; await invoke('setup_inputs_run', { id }); }
       catch (e) { if (SU.el === scrim) { SU.stage = 'error'; SU.err = String(e?.message || e); suDraw(); } }
     } else {
       draw();

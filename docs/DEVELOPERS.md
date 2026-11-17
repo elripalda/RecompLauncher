@@ -625,6 +625,26 @@ when it's on its `args` are added after the step's own:
 - With a `license` (a `name` and an `https` `url`) the tick starts off, and ticking it is the
   player accepting it. Your args are what pass that on, like `--accept-nvidia-license`: never accept
   for the player yourself. Without one it starts on, or as `default` says.
+- `"required": true` is for something the build can't run without. The setup screen's buttons
+  stay off, with a line saying why, until it's ticked, and the launcher refuses to start the step
+  without it. Only the PCs it's shown on count: an option `os` or `gpu` hides is never required
+  there. With a `license` it still starts off: only the player accepts it. Launchers older than
+  0.90.0-beta.64 don't know `required` and show a plain tick, so keep your builder's own check
+  (exit with a code and say why) until your `min` is that version:
+
+  ```json
+  "options": [
+    {
+      "id": "vs_build_tools",
+      "label": "Microsoft Visual Studio Build Tools",
+      "note": "Needed to build the game on your PC: installed if this PC doesn't have them.",
+      "os": ["windows"],
+      "required": true,
+      "args": ["--accept-vs-license"],
+      "license": { "name": "Microsoft Visual Studio license terms", "url": "https://visualstudio.microsoft.com/license-terms/" }
+    }
+  ]
+  ```
 - Your builder gets only these args. The launcher sets no environment variables for it, so keep
   the SDK in your builder's own folder and put runtime files where the game looks.
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
