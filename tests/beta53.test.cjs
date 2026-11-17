@@ -54,16 +54,19 @@ test('a skipped game starts as its own setup leaves it, after that setup when it
 const named = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 
-test('Use a Build You Already Have: a card in Easy Setup, a menu item, and the skipped-game prompt', () => {
-  assert.match(fn(named, 'relinkCards'), /su\.own_build && !su\.prebuilt \? card\('ownbuild', 'Use a Build You Already Have'/);
+test('Use a Build You Already Have: a line under the copy in Easy Setup, a menu item, and the skipped-game prompt', () => {
+  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
+  // Easy Setup: one quiet line, and the folder shows in the copy's box until Set Up uses it.
+  assert.match(fn(steps, 'ssAlt'), /if \(su\.own_build\) return `<p class="ss-alt">\$\{esc\(tf\('Already built \{name\} from your copy, outside the launcher\? Skip the build:'/);
+  assert.match(fn(steps, 'stepsRun'), /await invoke\('setup_use_build', ns\.own \? \{ id, folder: ns\.own \} : \{ id \}\);/);
   assert.match(fn(named, 'useOwnBuild'), /invoke\('setup_use_build', \{ id, folder: typeof p === 'string' \? p : p\.path \}\)/);
-  assert.match(app, /case 'ownbuild':\n      try \{ if \(!\(await useOwnBuild\(id\)\)\) return; \}/);
   assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
   assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
-  assert.match(tv, /su\.own_build && !su\.prebuilt \? it\(t\('Use a Build You Already Have'\)/);
-  // The setup screen says where the game's own setup builds it, when that's outside the
-  // launcher's folder for the game (build_where).
-  assert.match(app, /su\.build_where \? `<p class="su-where">\$\{esc\(tf\('The game\\'s own setup builds it into \{folder\}\.'/);
+  // Big Picture draws the same steps, so it has the same line.
+  assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
+  // It says where the game's own setup builds it, when that's outside the launcher's folder for
+  // the game (build_where): on the last step, beside what Set Up starts.
+  assert.match(fn(steps, 'ssSummary'), /su\.build_where && !m\.skipBuild \? `<div><span>\$\{esc\(t\('Builds into'\)\)\}/);
 });
 
 test('the launcher building it again goes back to the setup\'s own folder; an update keeps the player\'s', () => {

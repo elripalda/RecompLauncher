@@ -698,40 +698,91 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .su-ok{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 13px;border-radius:15px;background:rgba(52,242,232,.12);color:var(--cyan);font-weight:700;font-size:12.5px;align-self:flex-start}
 .su-ok.plain{background:var(--fill2);color:var(--muted)}
 .su-r .picks .btn{width:100%}
-.modal.ni-modal{width:min(960px,94vw);max-height:90vh;padding:0;overflow:hidden}
-.ni-layout{min-height:520px;max-height:90vh;grid-template-columns:320px minmax(0,1fr)}
-.ni-layout .ni-content{max-height:90vh;padding:34px 30px;overflow:hidden}
-.ni-art .ni-disc-summary{position:absolute;bottom:24px;left:20px;right:20px;text-align:center;font-size:13px;color:var(--muted);margin:0}
 .ni-content,.ni-tv{display:flex;flex-direction:column;min-height:0;gap:18px}
-.ni-heading{padding-right:20px;flex-shrink:0}
-.ni-heading h2{font-size:25px;margin:0 0 6px}
-.ni-heading p,.ni-footer p{color:var(--muted);margin:0;font-size:13px}
-.ni-scroll{overflow-y:auto;min-height:0;padding:0 6px 4px 0;flex:1}
-.ni-group + .ni-group{margin-top:20px}
-.ni-group h3{font-size:13px;color:var(--muted);margin:0 0 8px;font-weight:650}
-.ni-row{display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 0;border-bottom:1px solid var(--line)}
-.ni-status{display:grid;place-items:center;width:22px;flex-shrink:0;color:var(--dim)}
-.ni-row.selected .ni-status{color:var(--cyan)}
-.ni-status svg{width:18px;height:18px}
-.ni-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.ni-name b{font-size:14px;overflow-wrap:anywhere}
-.ni-name span{font-size:12px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.ni-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:52%}
-.ni-actions .btn{min-height:34px}
-.ni-optional{margin-top:16px}
-.ni-optional-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;text-align:left;color:var(--ink);font-size:13px;font-weight:600;border-radius:8px;padding:8px 4px}
-.ni-optional-toggle:hover{background:var(--fill2)}
-.ni-optional-count{color:var(--muted);font-weight:400;margin-left:8px}
-.ni-optional-toggle svg{flex-shrink:0;transition:transform .18s var(--ease)}
-.ni-optional-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
-.ni-optional .ni-group h3{display:none}
-.ni-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-top:4px;flex-shrink:0}
-.ni-footer p{max-width:48ch;line-height:1.5}
-.ni-footer .btn{flex-shrink:0}
 .ni-notice p{margin:0 0 10px;color:var(--muted)}
-@media(max-width:1060px){.ni-modal .ni-layout{grid-template-columns:1fr;grid-template-rows:180px minmax(0,1fr);min-height:0;height:min(760px,90vh)}.ni-layout .ni-art{min-height:0}.ni-art .su-media{width:170px;margin-bottom:30px}.ni-art .drive{bottom:26px;left:20%;right:20%}.ni-art .ni-disc-summary{bottom:5px;font-size:12px}.ni-layout .ni-content{max-height:none;padding:22px 26px}}
-@media(max-width:600px){.ni-layout .ni-content{padding:20px 18px}.ni-row{flex-wrap:wrap}.ni-name{min-width:55%}.ni-actions{margin-left:34px;max-width:100%;justify-content:flex-start}.ni-footer{align-items:stretch;flex-direction:column;gap:10px}}
 .su-err{color:#ffc2c2}
+/* ---------- Easy Setup in steps (setup-steps.js) ----------
+   One height for every step, the list scrolling inside it, so Back, the line by the button and
+   Next/Set Up never move. The copy's box keeps its size and buttons whether it's empty or filled. */
+.modal.su.ss-modal{width:min(960px,94vw);max-height:none}
+.su-in.ss-in{height:min(620px,88vh);min-height:0}
+.ss-in .ni-disc-summary{position:absolute;bottom:24px;left:20px;right:20px;text-align:center;font-size:13px;color:var(--muted);margin:0}
+.su-r.ss{gap:14px;min-height:0;overflow:hidden;padding:30px 32px 26px}
+.ss-head{flex:none;padding-right:34px}
+.ss-head h2{font-size:25px;margin:4px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-head p{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-scroll{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:14px;padding-right:4px}
+.ss-cap{font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 6px}
+.ss-cap i{font-style:normal;letter-spacing:0;text-transform:none;font-weight:600;color:var(--muted);font-size:12px}
+.ss-rail{display:flex;align-items:center;gap:6px;margin:6px 0}
+.ss-rail .s{display:flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 5px;border-radius:99px;font-size:12.5px;font-weight:700;color:var(--dim);background:var(--fill)}
+.ss-rail .s i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;background:var(--fill3);color:var(--muted)}
+.ss-rail .s i svg{width:11px;height:11px}
+.ss-rail .s.now{color:var(--ink);background:var(--card3);box-shadow:inset 0 0 0 1px var(--line2)}
+.ss-rail .s.now i{background:var(--cyan);color:#04161b}
+.ss-rail .s.done{color:var(--muted)}
+.ss-rail .s.done i{background:rgba(52,242,232,.16);color:var(--cyan)}
+/* A required extra still off: an amber dot on the Extras pill, seen from the first step. */
+.ss-rail .s.req::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.ss-rail .bar{flex:0 0 14px;height:1px;background:var(--line2)}
+.ss-box{display:grid;grid-template-columns:46px minmax(0,1fr);grid-template-rows:auto 34px;align-content:center;gap:12px 16px;height:132px;flex:none;padding:0 18px;border-radius:18px;border:1.5px dashed var(--line3);background:var(--fill);transition:border-color .18s,background .18s}
+.ss-box:hover{border-color:rgba(52,242,232,.5)}
+.ss-box.on{border-style:solid;border-color:rgba(52,242,232,.35);background:rgba(52,242,232,.06)}
+.ss-box.warn{border-style:solid;border-color:rgba(245,184,61,.45);background:rgba(245,184,61,.06)}
+.ss-ic{grid-row:1 / 3;align-self:center;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--fill2);color:var(--cyan)}
+.ss-box.on .ss-ic{background:var(--cyan);color:#04161b}
+.ss-box.warn .ss-ic{background:rgba(245,184,61,.16);color:var(--warn)}
+.ss-box .k{min-width:0;display:flex;flex-direction:column;gap:4px}
+.ss-box .k b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-box .k span{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-box .low{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.ss-box .meta{display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden}
+.ss-box .acts{display:flex;gap:5px;flex:none}
+.ss-box .acts .btn{padding:0 9px;min-width:104px}
+.ss-box .fmts,.ss-row .fmts{display:flex;gap:3px;flex-wrap:nowrap}
+.ss-box .fmt,.ss-row .fmt{display:inline-block;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink);background:rgba(52,242,232,.1);border:1px solid rgba(52,242,232,.28);border-radius:5px;padding:4px 5px}
+/* Where a file came from: said on its own row, not in a card of its own. */
+.ss-src{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:7px;font-size:11.5px;font-weight:700;background:rgba(52,242,232,.12);color:var(--cyan);white-space:nowrap;flex:none}
+.ss-src.prev{background:rgba(55,123,182,.2);color:#9fd0ff}
+.ss-src.shared{background:var(--fill2);color:var(--muted)}
+.ss-src.warn{background:rgba(245,184,61,.14);color:var(--warn)}
+body.light .ss-src.prev{color:#1f5f99}
+.ss-rows{display:flex;flex-direction:column;flex:none;border-radius:16px;border:1px solid var(--line);background:var(--fill);overflow:hidden}
+.ss-row{display:flex;align-items:center;gap:12px;min-height:62px;padding:8px 12px 8px 14px}
+.ss-row+.ss-row{border-top:1px solid var(--line)}
+.ss-row .st{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;border:2px dashed var(--line3);color:transparent}
+.ss-row.on .st{border:0;background:rgba(52,242,232,.16);color:var(--cyan)}
+.ss-row.opt:not(.on) .st{border-style:solid;border-color:var(--line2)}
+.ss-row .k{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ss-row .k b{font-size:14px;overflow-wrap:anywhere}
+.ss-row .line{display:flex;align-items:center;gap:8px;min-width:0}
+.ss-row .line>span:not(.ss-src):not(.fmts){font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-row .acts{display:flex;gap:6px;flex:none;align-items:center}
+.ss-row .acts .btn{min-width:84px}
+/* Remove keeps its place while the row is empty, so the buttons beside it stay put. */
+.ss-row .acts .rm{min-width:34px;width:34px;padding:0}
+.ss-row:not(.on) .rm{visibility:hidden}
+.ss-opts{display:flex;flex-direction:column;flex:none}
+.ss-opts .su-opt{padding:10px 0}
+.ss-opts .su-opt.off{opacity:.5;cursor:default}
+.ss-opts .su-opt small a{color:var(--cyan);text-decoration:underline;text-underline-offset:2px}
+.ss-opts .ss-plain.failed small{color:var(--warn)}
+.ss-opts .ss-plain .ni-bar{display:block;height:3px;border-radius:2px;margin-top:6px;background:linear-gradient(90deg,var(--cyan) var(--p,0%),rgba(255,255,255,.12) var(--p,0%))}
+.ss-alt{margin:0;font-size:12.5px;color:var(--dim)}
+.ss-alt button{color:var(--cyan);text-decoration:underline;text-underline-offset:2px;font-weight:600}
+.ss-alt button:hover{color:var(--ink)}
+.ss-sum{display:flex;flex-direction:column;flex:none;border-radius:14px;border:1px solid var(--line);padding:2px 14px}
+.ss-sum div{display:flex;gap:10px;font-size:13px;padding:8px 0;border-top:1px solid var(--line)}
+.ss-sum div:first-child{border-top:0}
+.ss-sum span{color:var(--muted);min-width:110px;flex:none}
+.ss-sum b{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.ss-foot{flex:none;display:flex;align-items:center;gap:16px;padding-top:14px;border-top:1px solid var(--line)}
+.ss-foot .why{flex:1;min-width:0;margin:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-foot .why svg{color:var(--cyan);vertical-align:-2px;margin-right:4px}
+.ss-foot .btn.main{min-width:150px}
+.ss-foot .btn.ghost{visibility:hidden}
+@media(max-width:1060px){.su-in.ss-in{grid-template-columns:1fr;grid-template-rows:180px minmax(0,1fr);height:min(760px,90vh)}.ss-in .su-stage{min-height:0}.ss-in .su-media{width:170px;margin-bottom:30px}.ss-in .su-drop b,.ss-in .su-drop span{display:none}.ss-in .drive{bottom:26px;left:20%;right:20%}.ss-in .ni-disc-summary{bottom:5px;font-size:12px}}
+@media(max-width:600px){.su-r.ss{padding:20px 18px}.ss-box .acts .btn{min-width:0}.ss-row{flex-wrap:wrap}.ss-row .acts{margin-left:38px}}
 
 /* ---------- moving in ---------- */
 @keyframes rise{from{opacity:0;transform:translateY(14px)}}
@@ -2432,9 +2483,6 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .proxy-fields #proxy-url{width:240px}
 .proxy-fields #proxy-user,.proxy-fields #proxy-pass{width:130px}
 /* Easy Setup's NVIDIA DLSS row: no file to choose, a thin bar while it downloads. */
-.ni-runtime .ni-name{position:relative}
-.ni-runtime .ni-bar{display:block;height:3px;border-radius:2px;margin-top:6px;background:linear-gradient(90deg,var(--cyan) var(--p,0%),rgba(255,255,255,.12) var(--p,0%))}
-.ni-runtime.failed .ni-name span{color:var(--warn)}
 /* The scan pill: a plain label. */
 button.scan-pill{font:inherit;cursor:pointer}
 button.scan-pill:hover{filter:brightness(1.15)}
