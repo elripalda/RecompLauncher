@@ -41,7 +41,8 @@ test('the History notes preview long notes with Show All and a way to the game',
 
 test('the versions list marks the recommended and installed versions', () => {
   assert.match(app, /\$\{rec \? ' rec' : ''\}\$\{inst \? ' inst' : ''\}/);
-  assert.match(read('app.css'), /\.vm-row\.rec,\.vc-row\.rec\{background:linear-gradient/);
+  // The cyan highlight marks the version you're on; Recommended is its tag.
+  assert.match(read('app.css'), /\.vm-row\.on\{background:linear-gradient/);
 });
 
 test('a Python game without Python gets a window with Get Python', () => {

@@ -577,7 +577,11 @@ settings are written. It runs again whenever the player changes their copy.
 - `"done"` (optional): the files the step leaves when it has finished, like
   `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
   when your own launcher built it, and plays without asking for the copy (unless `start` uses
-  `{game}`). If one goes missing, the player is asked to set up again.
+  `{game}`). If one goes missing, the player is asked to set up again. It's also what a finished
+  build has: when a player points the launcher at a build of their own, the files of `done` in
+  your build folder must be in theirs, so list one your
+  build always leaves, like `["{install}/YourGame/game.pak"]`. Without `done`, any folder with files
+  in it is taken.
 
 **A second file from the player.** When your step needs more than the copy, like an official patch
 or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{game}`. The

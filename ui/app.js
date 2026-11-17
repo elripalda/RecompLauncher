@@ -85,6 +85,8 @@ const date = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleDa
 const catIcon = (k) => (GENRES[k] ? `<i class="cat-ico" style="--m:url(img/cat/${k}.png)" aria-hidden="true"></i>` : '');
 const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.svg)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
 const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id === id)?.name || id || '';
+// The catalog's consoles A to Z for the pickers: the catalog keeps its own order, which reads as random.
+const originsAZ = () => [...((S.cat && S.cat.origins) || [])].sort((x, y) => x.name.localeCompare(y.name));
 // Each console's own colour (the website's), for its dot in lists.
 const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
   wii: '#4fc3f7', wiiu: '#00a2c7', snes: '#b38cf2', gba: '#6c63ff', gb: '#9bbc0f', ds: '#aab4c2', dc: '#ff8a3d', saturn: '#4f7cff', psp: '#5b6b8c', switch: '#e60012', switch2: '#ff3b47',
@@ -183,7 +185,7 @@ function sideOnce() {
   }
   saveUi({ side_v26: true, side_order: order }, true);
 }
-function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></div>` : ''; }
+function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span></div>` : ''; }
 // A recomp that needs things on the PC first (Python, build tools, a long build): it says so, and
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
@@ -721,9 +723,14 @@ const repoOwner = (a) => ((a && a.repo) || '').replace(/^[a-z]+:/, '').split('/'
 function devLine(a) {
   const d = devOf(a);
   // No developer page: the project's owner, as words.
-  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line plain"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
+  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
   const name = d.name || a.author || '';
-  return `<div class="dev-row"><button type="button" class="dev-line" data-act="url" data-url="${esc(SITE + '/dev/' + encodeURIComponent(d.slug))}" title="${esc(t('See their page'))}">${d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span>${d.verified ? `<span class="vpill">${TICK(14)}${esc(t('Verified developer'))}</span>` : ''}</button>${followBtn(d)}</div>`;
+  const pic = d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+  const by = `<span class="dev-line">${pic}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span></span>`;
+  // The byline is plain words for everyone; only the Verified badge is a pill, and it's the link to their page.
+  const devPage = esc(SITE + '/dev/' + encodeURIComponent(d.slug));
+  const badge = d.verified ? `<button type="button" class="vpill" data-act="url" data-url="${devPage}" title="${esc(t('See their page'))}">${TICK(14)}${esc(t('Verified developer'))}</button>` : '';
+  return `<div class="dev-row">${by}${badge}${followBtn(d)}</div>`;
 }
 const follows = () => ((S.settings.ui || {}).follow || []);
 const followBtn = (d) => { const on = follows().includes(d.slug); return `<button type="button" class="follow-btn${on ? ' on' : ''}" data-act="follow" data-dev="${esc(d.slug)}" aria-pressed="${on}">${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>${esc(t('Following'))}` : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>${esc(t('Follow'))}`}</button>`; };
@@ -1768,7 +1775,7 @@ const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class
 // Discover's controls: on the page, and again in the bar pinned to the top once those scroll away.
 const sortOpts = () => [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
 const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n, ico]) => `<option value="${esc(k)}"${ico ? ` data-ico="${esc(ico)}"` : ''}${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
-const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
+const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...originsAZ().map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
 const genreSel = (f, genres, cls) => pillSel(t('Genre'), 'genre-sel', [['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])], f.genre, cls);
 const showSel = (f) => pillSel(t('Show'), 'show-sel', showsNow(f.show || '').map(([k, n]) => [k, t(n)]), f.show || '');
 const tagSel = (f) => pillSel(t('Tag'), 'tag-sel', [['', t('Any')], ...allTags().map((k) => [k, k])], f.tag || '');
@@ -2174,7 +2181,7 @@ function packLine(v) {
   return [tf('Part of {name}', { name }), n ? tn(n, '1 game', '{n} games') : ''].filter(Boolean).join(' · ');
 }
 const packTag = (v) => (v && v.parent ? `<span class="vtag pack">${esc(packLine(v))}</span>` : '');
-function verRow(v, cur, g, cls) {
+function verRow(v, cur, g) {
   const inst = S.library[v.id], here = v.id === cur;
   const play = recompPlaytime(v.id);
   const rec = v.id === g.pick, dev = devOf(v);
@@ -2184,12 +2191,11 @@ function verRow(v, cur, g, cls) {
   const line = [who ? `<span class="v-dev${dev && dev.verified ? ' ver' : ''}">${esc(who)}${dev && dev.verified ? TICK(12) : ''}</span>` : '', esc(v.adds || '')].filter(Boolean).join(' · ');
   const os = OS_SHORT(v);
   const ic = verIcon(v);
-  return `<button type="button" class="${cls}${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
+  return `<button type="button" class="vm-row${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" role="option" aria-selected="${here}" data-act="ver-go" data-id="${esc(v.id)}">
     <span class="v-ic">${ic ? pic(ic, '', 'loading="lazy"') : ''}</span>
     <span class="v-txt"><span class="v-n"><b>${esc(v.name)}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}${rec && g.why ? `<small class="v-why" title="${esc(g.why)}">${esc(g.why)}</small>` : ''}${play?.last_played ? `<small>${esc(tf('{time} played', { time: playedFor(play) }))}</small>` : ''}</span>
     <span class="v-os">${os.map((k) => `<span title="${esc(OS_NAME[k])}">${osIcon(k)}</span>`).join('')}</span>
-    <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span>
-    <span class="v-go">${here ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>` : CHEV_R}</span></button>`;
+    <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span></button>`;
 }
 // Under the title: which version this is, and a menu to switch.
 function verPill(a) {
@@ -2198,24 +2204,13 @@ function verPill(a) {
   const n = g.list.filter((v) => S.library[v.id]).length;
   return `<button type="button" class="ver-pill" data-act="ver-menu" data-id="${esc(a.id)}" aria-haspopup="listbox" aria-expanded="false">${LAYERS}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${n > 1 ? `<em>${esc(tn(n, '1 installed', '{n} installed'))}</em>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
-// On Overview: every version, like the website's list.
-// Under the versions list: Windows-only versions this Linux PC leaves out until Proton is on.
+// On Overview: Windows-only versions this Linux PC leaves out until Proton is on. The versions
+// themselves are in the menu under the title, so Overview doesn't list them a second time.
 function protonHiddenNote(a, cls) {
   const n = protonHidden(a).length;
   if (!n) return '';
   const say = tn(n, '1 more version is Windows-only and hidden because Proton is off.', '{n} more versions are Windows-only and hidden because Proton is off.');
   return `<p class="${cls} proton-hidden">${esc(say)} <button type="button" class="btn sm" data-act="use-proton" data-id="${esc(a.id)}">${esc(t('Play With Proton'))}</button></p>`;
-}
-function versionsCard(a) {
-  const g = verGroup(a);
-  if (!g) return protonHiddenNote(a, 'vc-solo');
-  const hide = !!(S.settings.ui || {}).verHide;
-  return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
-      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
-      <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
-    ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
-    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>
-    ${protonHiddenNote(a, 'vc-note')}`}</div>`;
 }
 function verMenu(el) {
   const a = byId(el.dataset.id), g = verGroup(a);
@@ -2228,7 +2223,7 @@ function verMenu(el) {
   m.dataset.for = a.id;
   m.setAttribute('role', 'listbox');
   m.setAttribute('aria-label', tf('{n} versions of {game}', { n: g.list.length, game: g.name }));
-  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g, 'vm-row')).join('')}`;
+  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g)).join('')}`;
   document.body.append(m);
   const r = el.getBoundingClientRect();
   const w = Math.min(560, innerWidth - 24);
@@ -2499,7 +2494,7 @@ function gameBody(a) {
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
       ${ownAboutCard(id)}
-      ${versionsCard(a)}
+      ${protonHiddenNote(a, 'vc-solo')}
       ${feats.length ? `<div class="feat">${feats.map((ft) => `<span>${esc(ft)}</span>`).join('')}</div>` : ''}
       ${aboutCard(a)}
       ${shotsCard(a)}
@@ -8327,7 +8322,6 @@ async function act(el, e) {
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
     case 'run-say': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
     case 'ver-go': if (S.view === 'game') return switchVersion(id); closeMenu(); return go('game', id);
-    case 'ver-hide': { const p = saveUi({ verHide: !(S.settings.ui || {}).verHide }, true); refreshGame(); return p; }
     case 'install': return startInstall(id);
     case 'reinstall-new': return startInstall(id, null, null, true);
     case 'goback': return startInstall(id, undefined, el.dataset.tag);
