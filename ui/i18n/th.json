@@ -3357,5 +3357,8 @@
  "Show Versions Under Names": "แสดงเวอร์ชันใต้ชื่อ",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "เวอร์ชันล่าสุดของแต่ละ recomp ในหน้าค้นพบ และเวอร์ชันที่คุณติดตั้งไว้ในคลัง",
  "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher อัปเดตผ่าน Nix อัปเดตอินพุตของ flake (nix flake update) หรือ nixpkgs แล้วบิลด์ใหม่",
- "Game A to Z": "เกม ก ถึง ฮ"
+ "Game A to Z": "เกม ก ถึง ฮ",
+ "Checked by the RecompStore team": "ตรวจสอบโดยทีม RecompStore",
+ "Open the VirusTotal report": "เปิดรายงาน VirusTotal",
+ "Verified Update": "อัปเดตที่ยืนยันแล้ว"
 }

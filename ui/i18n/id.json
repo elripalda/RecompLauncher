@@ -3357,5 +3357,8 @@
  "Show Versions Under Names": "Tampilkan Versi di Bawah Nama",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Versi terbaru setiap recomp di Jelajahi, dan versi yang kamu pasang di Pustaka.",
  "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher diperbarui lewat Nix. Perbarui input flake (nix flake update) atau nixpkgs, lalu bangun ulang.",
- "Game A to Z": "Game A sampai Z"
+ "Game A to Z": "Game A sampai Z",
+ "Checked by the RecompStore team": "Diperiksa oleh tim RecompStore",
+ "Open the VirusTotal report": "Buka laporan VirusTotal",
+ "Verified Update": "Pembaruan terverifikasi"
 }

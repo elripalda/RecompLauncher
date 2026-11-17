@@ -3357,5 +3357,8 @@
  "Show Versions Under Names": "在名称下显示版本",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "在“发现”中显示每个 recomp 的最新版本，在库中显示你已安装的版本。",
  "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher 通过 Nix 更新。请更新 flake 输入（nix flake update）或 nixpkgs，然后重新构建。",
- "Game A to Z": "按游戏名称排序"
+ "Game A to Z": "按游戏名称排序",
+ "Checked by the RecompStore team": "已由 RecompStore 团队检查",
+ "Open the VirusTotal report": "打开 VirusTotal 报告",
+ "Verified Update": "已验证的更新"
 }

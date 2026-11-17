@@ -3357,5 +3357,8 @@
  "Show Versions Under Names": "Mostra le versioni sotto i nomi",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "La versione più recente di ogni recomp in Scopri e la versione installata nella Libreria.",
  "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher si aggiorna tramite Nix. Aggiorna l’input del flake (nix flake update) o nixpkgs, poi ricompila.",
- "Game A to Z": "Gioco dalla A alla Z"
+ "Game A to Z": "Gioco dalla A alla Z",
+ "Checked by the RecompStore team": "Controllato dal team di RecompStore",
+ "Open the VirusTotal report": "Apri il report di VirusTotal",
+ "Verified Update": "Aggiornamento verificato"
 }

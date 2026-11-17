@@ -3797,7 +3797,7 @@ function dlPhase(id) {
   if (!S.jobs[id]) return t('Paused');
   return j.phase === 'download' && j.total ? tf('Downloading · {pct}%', { pct: pct(j) }) : progLabel(j)[0] || t('Getting ready');
 }
-// How the store checked a release's files, as one plain label: Verified (or Verified update),
+// How the store checked a release's files, as one plain label: Verified (or Verified Update),
 // Checking, or Not verified. Which scanner and how many engines stay out of what players see.
 S.scans = S.scans || {};
 const scanAsk = new Map();
@@ -3826,13 +3826,26 @@ function scanInfo(h) {
   }
   const v = scanVerdict(files);
   if (!v) return null;
-  return v === 'ok' ? { cls: 'ok', ic: '✓', text: h.update ? t('Verified update') : t('Verified') }
+  return v === 'ok' ? { cls: 'ok', ic: '✓', text: h.update ? t('Verified Update') : t('Verified') }
     : v === 'wait' ? { cls: 'wait', ic: '…', text: t('Checking') }
       : { cls: 'bad', ic: '✕', text: t('Not verified') };
+}
+// A verified release's report: the file for this system first, else any file, that has one.
+// (A file checked only by the store's own scanner, the last resort, has none.)
+function scanLink(files) {
+  const has = (f) => typeof f.link === 'string' && /^https:\/\//.test(f.link);
+  const all = (files || []).filter(has);
+  const mine = all.find((f) => (f.for || []).includes(S.os));
+  return (mine || all[0] || {}).link || '';
 }
 function scanPill(h) {
   const key = h.id + '@' + h.tag, info = scanInfo(h);
   if (!info) return h.verified ? `<span class="dl-check" data-scan="${esc(key)}">${esc(t('Checksum matched'))}</span>` : `<span data-scan="${esc(key)}"></span>`;
+  if (info.cls === 'ok') {
+    const link = scanLink(S.scans[key]);
+    if (link) return `<button type="button" class="scan-pill ok" data-scan="${esc(key)}" data-act="scan-report" data-url="${esc(link)}" title="${esc(t('Open the VirusTotal report'))}"><i>${info.ic}</i>${esc(info.text)}</button>`;
+    return `<span class="scan-pill ok" data-scan="${esc(key)}" title="${esc(t('Checked by the RecompStore team'))}"><i>${info.ic}</i>${esc(info.text)}</span>`;
+  }
   return `<span class="scan-pill ${info.cls}" data-scan="${esc(key)}" title="${esc(t(SCAN_TIP))}"><i>${info.ic}</i>${esc(info.text)}</span>`;
 }
 function pageDownloads() {
@@ -8130,6 +8143,7 @@ async function act(el, e) {
   if (a === 'adopt' && window.adoptAct) return window.adoptAct(a, el);
   if (/^mig-/.test(a) && window.migrateAct) return window.migrateAct(a, el);
   switch (a) {
+    case 'scan-report': e.preventDefault(); e.stopPropagation(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'open': e.preventDefault(); closeMenu(); return go('game', id, el.closest('.tile') ? el : null);
     case 'back': return back();
     case 'tab': return showTab(el.dataset.tab);
