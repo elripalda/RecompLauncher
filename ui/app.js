@@ -2893,8 +2893,9 @@ function prepOptsHtml(su) {
 }
 // A required option (prepare.options "required") this PC is offered that isn't ticked: setup waits
 // for it. The list only has the options this PC is offered, so one hidden by os or gpu never counts.
-// The backend refuses to start too; this keeps the buttons honest.
-const prepReq = () => t('Tick the required option above to continue');
+// The backend refuses to start too; this keeps the buttons honest. "Turn on", as the options are
+// switches; "marked Required" and not "above", as Big Picture shows this line above them.
+const prepReq = () => t('Turn on the option marked Required to continue');
 function prepBlocked(su) {
   if (!su || su === 'loading') return false;
   return (su.prepare_options || []).some((o) => o.required && !o.on);

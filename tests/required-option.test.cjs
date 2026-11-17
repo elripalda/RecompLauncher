@@ -29,7 +29,7 @@ test('a required option is marked, and says why the buttons are off while it is 
   const off = prepOptsHtml({ prepare_options: [vs(false)] });
   assert.match(off, /<b>Build tools<\/b> <span class="su-req-tag">Required<\/span>/);
   assert.match(off, /data-popt="vs" aria-required="true"><span class="switch"/);
-  assert.match(off, /<p class="su-req" role="status">Tick the required option above to continue<\/p>/);
+  assert.match(off, /<p class="su-req" role="status">Turn on the option marked Required to continue<\/p>/);
   assert.match(prepOptsHtml({ prepare_options: [vs(true)] }), /<p class="su-req" role="status" hidden>/);
 });
 

@@ -3798,7 +3798,7 @@ fn required_ticked(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<String, 
     let (rtx, amd) = dlss::gpu_brands(dir);
     let missing = pr.unticked_required(assets::os_now(), rtx, amd, picked);
     let Some(first) = missing.first() else { return Ok(()) };
-    Err(Error::Msg(format!("Tick \"{}\" on the setup screen to set this game up.", first.label)))
+    Err(Error::Msg(format!("Turn on \"{}\" on the setup screen to set this game up.", first.label)))
 }
 
 /// Starting a setup answers every option its screen showed: one the player left as it was counts
