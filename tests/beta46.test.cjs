@@ -101,7 +101,8 @@ test("a setup step's options show as ticks, a license one off until the player t
   assert.match(out, /data-popt="hd" checked><span class="switch"/);
   // The ticks are kept for the game, and a rebuild can use the copy it was set up with.
   assert.match(app, /invoke\('set_prepare_opts', \{ id, opts \}\)/);
-  assert.match(app, /case 'same': return suBegin\(su\.copy\);/);
+  // (The steps keep it in the copy's box, and Set Up starts with it.)
+  assert.match(read('setup-steps.js'), /return game && game\.path \? \{ copy: game\.path \} : null;/);
   assert.match(read('setup-inputs.js'), /prepOptsHtml\(su\)/);
 });
 

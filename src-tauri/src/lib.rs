@@ -4786,6 +4786,9 @@ struct Setup {
     update_file: bool,
     /// Ticks for its setup step that apply on this PC (prepare.options), each with how it's set.
     prepare_options: Vec<Value>,
+    /// What its setup step does (prepare.label), as the developer wrote it: Easy Setup's last step
+    /// says it, so the player knows what Set Up starts.
+    prepare_label: Option<String>,
     /// The player's copy, when the game plays without it now (Free Up Space).
     spare: Option<SpareCopy>,
     /// Where its build is, for a game built into a folder of its own (Move Build).
@@ -4910,6 +4913,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         update_folder: up.map(|u| u.wants_folder()).unwrap_or(false),
         update_file: up.map(|u| u.wants_file()).unwrap_or(false),
         prepare_options: p.prepare.as_ref().map(|pr| prepare_options_here(&st.dir, pr, &g.prepare_opts)).unwrap_or_default(),
+        prepare_label: p.prepare.as_ref().map(|pr| pr.label.clone()).filter(|l| !l.trim().is_empty()),
         spare: if pick.is_some() || setup_busy(&id) { None } else { spare_copy(&g, &p, &st.lib.lock().unwrap().installed.values().cloned().collect::<Vec<_>>()) },
         build_at: if pick.is_some() { None } else { build_folder_now(&st, &id, &g) },
     })

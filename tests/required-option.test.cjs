@@ -41,11 +41,11 @@ test('the buttons that start setup are off until the required ticks are on', () 
   assert.equal(prepGateAttr({ prepare_options: [vs(true)] }, true), ' data-req-gate="off" disabled');
 });
 
-test('desktop: choosing the copy and Set Up wait for the required ticks', () => {
-  assert.match(app, /data-su="iso"\$\{gate\}>/);
-  assert.match(app, /data-su="found"\$\{gate\}>/);
-  assert.match(app, /if \(prepBlocked\(S\.setup\[SU\.id\]\)\) \{ SU\.stage = 'pick'; return suDraw\(\); \}\n\s+await SU\.optsSaving;/);
+test('desktop: Set Up waits for the required ticks (choosing files starts nothing in the steps)', () => {
+  assert.match(app, /if \(prepBlocked\(S\.setup\[SU\.id\]\)\) \{ SU\.stage = 'steps'; return suDraw\(\); \}\n\s+await SU\.optsSaving;/);
   assert.match(app, /prepGate\(SU\.el, su\);/);
+  // The steps' own rule (setup-steps.js), tested in setup-steps.test.cjs.
+  assert.match(read('setup-steps.js'), /const reqOff = !skipBuild && prepBlocked\(su\);/);
   assert.match(read('setup-inputs.js'), /data-ni="run"\$\{typeof prepGateAttr === 'function' \? prepGateAttr\(su, !complete \|\| ns\.busy\)/);
 });
 

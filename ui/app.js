@@ -2726,7 +2726,7 @@ async function pickUpdate(id, folder) {
   return '';
 }
 // ---------- setting a game up with the player's copy ----------
-const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+const SU = { id: null, el: null, stage: 'steps', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
 const suDrive = createSetupDriveLight();
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
@@ -2772,9 +2772,11 @@ async function setupModal(id) {
   if (S.setup[id] === undefined || S.setup[id] === 'loading') { try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; } }
   const su = S.setup[id];
   if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
-  if (su.inputs?.length || su.inputs_error) return namedSetup(id);
   closeSetup(true);
-  Object.assign(SU, { id, stage: needUpdate(su) && su.copy ? 'update' : 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: S.setupNote && S.setupNote.id === id ? S.setupNote.text : '' });
+  // Every game's files, whatever its profile asks for, are chosen in the same steps (setup-steps.js).
+  // A note (a build that went missing) shows as the window's error line.
+  const note = S.setupNote && S.setupNote.id === id ? S.setupNote.text : '';
+  Object.assign(SU, { id, stage: 'steps', named: { at: 0, error: note }, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: '' });
   S.setupNote = null;
   const s = document.createElement('div');
   s.className = 'scrim';
@@ -2784,14 +2786,58 @@ async function setupModal(id) {
   s.addEventListener('click', (e) => {
     if (e.target === s && SU.stage !== 'run') return closeSetup();
     const b = e.target.closest('[data-su]');
-    if (b) suAct(b);
+    if (b) return suAct(b);
+    const step = e.target.closest('[data-ss]');
+    if (step) ssAct(step);
   });
   s.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); closeSetup(); }
   });
   suDraw();
-  const f = $('.pick, .found .btn', s);
-  if (f) f.focus();
+}
+// Easy Setup's steps (setup-steps.js) in the setup window. Redrawn whole on each change; the
+// focused control and the list's scroll are put back, so keys and the mouse carry on where they were.
+function ssDraw() {
+  if (!SU.el || SU.stage !== 'steps') return;
+  const id = SU.id, box = $('.modal', SU.el);
+  const a = byId(id) || { name: (S.library[id] || {}).name || id };
+  const su = S.setup[id] || {};
+  const was = document.activeElement && SU.el.contains(document.activeElement) ? ssFocusKey(document.activeElement) : '';
+  const scroll = $('.ss-scroll', box)?.scrollTop || 0;
+  const cov = a.cover ? media(a.cover) : '';
+  box.dataset.stage = 'steps';
+  box.dataset.step = '';
+  box.classList.add('ss-modal');
+  box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>${stepsShell(id, su, SU.named, a, false)}`;
+  const list = $('.ss-scroll', box);
+  if (list) list.scrollTop = scroll;
+  const f = (was && $(was, box)) || $('.ss-foot .btn.main:not([disabled])', box) || $('.su-r button:not([disabled])', box) || $('.su-x', box);
+  if (f) f.focus({ preventScroll: true });
+  runtimeFetch(id, SU.named, () => { if (SU.stage === 'steps' && SU.id === id) ssDraw(); });
+}
+// A control's selector, to find it again after a redraw.
+function ssFocusKey(el) {
+  if (el.dataset.ss) return `[data-ss="${el.dataset.ss}"]${el.dataset.input ? `[data-input="${CSS.escape(el.dataset.input)}"]` : ''}`;
+  if (el.dataset.popt) return `[data-popt="${CSS.escape(el.dataset.popt)}"]`;
+  return '';
+}
+async function ssAct(b) {
+  if (b.disabled) return;
+  const id = SU.id, ns = SU.named;
+  const pending = stepsAction(id, b.dataset.ss, b.dataset.input, ns);
+  ssDraw();
+  const r = await pending;
+  if (!SU.el || SU.id !== id || SU.stage !== 'steps') return;
+  if (r === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; return suDraw(); }
+  if (r !== 'run') return ssDraw();
+  const go = await stepsRun(id, ns, SU.optsSaving);
+  if (!SU.el || SU.id !== id) return;
+  if (!go) return ssDraw();
+  if (go.ready) { SU.stage = 'ready'; SU.result = { text: go.ready }; return suDraw(); }
+  if (go.copy) return suBegin(go.copy);
+  Object.assign(SU, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' });
+  suDraw();
+  try { await invoke('setup_inputs_run', { id }); } catch (e) { if (SU.el && SU.id === id) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); } }
 }
 async function closeSetup(quiet) {
   suDrive.stop();
@@ -2832,34 +2878,14 @@ async function closeSetup(quiet) {
   const closingStage = SU.stage;
   SU.el.remove();
   SU.el = null;
-  if (!quiet && closingStage !== 'pick' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
+  if (!quiet && closingStage !== 'steps' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
 async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
   switch (b.dataset.su) {
     case 'close': return closeSetup();
-    case 'found': return suBegin(S.owned[id].path);
-    case 'same': return suBegin(su.copy);
-    case 'relink': {
-      let r;
-      try { r = await relinkSetup(id); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
-      if (r === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; return suDraw(); }
-      if (r === 'build') return su.copy ? suBegin(su.copy) : suDraw();
-      SU.note = tf('{file} isn\'t where it was. Pick it again.', { file: r.label }); return suDraw();
-    }
-    case 'prebuilt':
-      try { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
-      SU.stage = 'ready'; SU.result = { text: t('The build on this PC') }; return suDraw();
-    case 'ownbuild':
-      try { if (!(await useOwnBuild(id))) return; } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
-      SU.stage = 'ready'; SU.result = { text: t('Your own build') }; return suDraw();
-    case 'iso': case 'folder': {
-      const folder = b.dataset.su === 'folder';
-      const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(id)).catch(fail);
-      if (p) suBegin(typeof p === 'string' ? p : p.path);
-      return;
-    }
-    case 'again': if (S.setup[id]?.inputs?.length) return namedSetup(id); SU.stage = 'pick'; SU.err = ''; return suDraw();
+    // Back to the steps, with the copy that didn't work taken out of its box.
+    case 'again': SU.stage = 'steps'; SU.err = ''; SU.named = Object.assign({}, SU.named, { copy: '', busy: false }); return suDraw();
     case 'anyway': return suBegin(SU.path, true);
     case 'convert': return suConvert();
     case 'convert-stop': invoke('convert_cancel').catch(() => {}); return;
@@ -2971,6 +2997,8 @@ document.addEventListener('change', (e) => {
   // Kept before setup starts: the backend checks the required ticks against what it has.
   SU.optsSaving = invoke('set_prepare_opts', { id, opts }).catch(fail);
   prepGate(SU.el, su);
+  // The steps say what Set Up waits for (the Required dot, the line by the button): drawn again.
+  if (SU.stage === 'steps') ssDraw();
 });
 // A compressed image (RVZ, CHD, CSO…) for a recomp that reads plain files: the launcher makes the
 // plain copy beside it, then sets the game up with that. The player's own file stays as it is.
@@ -2990,7 +3018,7 @@ async function suConvert() {
   } catch (e) {
     if (SU.id !== id || !SU.el) return;
     const msg = String(e && e.message ? e.message : e);
-    if (/^Stopped\.?$/.test(msg)) { SU.stage = 'pick'; SU.err = ''; return suDraw(); }
+    if (/^Stopped\.?$/.test(msg)) { SU.stage = 'steps'; SU.err = ''; return suDraw(); }
     SU.stage = 'error'; SU.err = msg; suDraw();
   }
 }
@@ -3005,7 +3033,7 @@ T.event.listen('convert', ({ payload: p }) => {
 async function suBegin(path, anyway) {
   // A copy dropped or found while a required option is unticked waits on the pick screen.
   // Its hint above the buttons already says why.
-  if (prepBlocked(S.setup[SU.id])) { SU.stage = 'pick'; return suDraw(); }
+  if (prepBlocked(S.setup[SU.id])) { SU.stage = 'steps'; return suDraw(); }
   await SU.optsSaving;
   // The catalog lists the discs or cartridges it's made for, and this one reads as another.
   if (!anyway) {
@@ -3119,27 +3147,14 @@ function coverLabelPush(a) {
 function suDraw() {
   if (!SU.el) return;
   if (SU.stage !== 'run') suDrive.stop();
+  if (SU.stage === 'steps') return ssDraw();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
   const box = $('.modal', SU.el);
-  const game = a.game || a.name;
+  box.classList.remove('ss-modal');
   const cov = a.cover ? media(a.cover) : '';
-  const mdState = SU.stage === 'pick' ? 'ghost' : SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
+  const mdState = SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
-  if (SU.stage === 'pick') {
-    const own = S.owned[id];
-    const kind = su.kind || 'iso', fm = copyFormats(id);
-    // Choosing the copy starts setup: it waits for the required ticks.
-    const gate = prepGateAttr(su, false);
-    const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso"${gate}>${DISC_L}<b>${esc(copyName(fm))}</b><span class="fmts">${fm.exts.length ? fmtTags(fm.exts) : esc(t('The file you made from your own copy'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"${gate}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
-      ${SU.note ? `<p class="su-note" role="alert">${esc(SU.note)}</p>` : ''}
-      ${su.build_where ? `<p class="su-where">${esc(tf('The game\'s own setup builds it into {folder}.', { folder: su.build_where }))}</p>` : ''}
-      ${prepOptsHtml(su)}
-      ${relinkCards(su, 'data-su')}
-      ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found"${gate}>${esc(t('Use this'))}</button></div>`
-        : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same"${gate}>${esc(t('Use this'))}</button></div>` : ''}
-      ${pickChoices(picks)}`;
-  } else if (SU.stage === 'run') {
+  if (SU.stage === 'run') {
     const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
     const sub = {
@@ -3196,7 +3211,7 @@ function suDraw() {
       ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
   const keepDisc = $('.su-media .md', box);
-  const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="su-media">${gameMediaHtml(a, 'ghost')}</div><b>${esc(copyDrop(copyFormats(SU.id)))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="su-media">${gameMediaHtml(a, mdState)}</div>`;
+  const stageHtml = `<div class="su-media">${gameMediaHtml(a, mdState)}</div>`;
   if (!box.firstChild || box.dataset.stage !== SU.stage) {
     if (SU.stage !== 'run') box.dataset.step = '';
     box.dataset.stage = SU.stage;
@@ -3213,9 +3228,14 @@ function suDraw() {
 }
 T.event.listen('tauri://drag-drop', ({ payload: p }) => {
   const paths = (p && p.paths) || [];
-  if (SU.el) { $('.su-stage', SU.el)?.classList.remove('hot'); if (SU.stage === 'pick' && paths[0]) suBegin(paths[0]); }
+  if (!SU.el) return;
+  $('.su-stage', SU.el)?.classList.remove('hot');
+  // A file dropped on the window goes into its next empty box; Set Up still starts it.
+  if (SU.stage !== 'steps' || !paths[0]) return;
+  const id = SU.id;
+  stepsDrop(id, paths[0], SU.named).then(() => { if (SU.id === id) ssDraw(); });
 });
-T.event.listen('tauri://drag-enter', () => { if (SU.el && SU.stage === 'pick') $('.su-stage', SU.el)?.classList.add('hot'); });
+T.event.listen('tauri://drag-enter', () => { if (SU.el && SU.stage === 'steps') $('.su-stage', SU.el)?.classList.add('hot'); });
 T.event.listen('tauri://drag-leave', () => { if (SU.el) $('.su-stage', SU.el)?.classList.remove('hot'); });
 function settingsTab(a) {
   const id = a.id, su = S.setup[id];
@@ -9011,7 +9031,7 @@ T.event.listen('install', ({ payload: p }) => {
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
         else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'steps') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
       };
