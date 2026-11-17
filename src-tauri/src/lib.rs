@@ -5081,7 +5081,15 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
         g.build_dir = mine.clone();
     }
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
-    let dir = p.build_folder_here(&g.path).ok_or_else(|| Error::Msg("Its build isn't on this PC anymore.".into()))?;
+    // A finished build: every file its setup step says it leaves (prepare.done, moved with the
+    // player's folder), or, when it lists none, a build folder with files in it.
+    if let Some(missing) = p.done_missing(&g.path) {
+        return Err(Error::Msg(format!("That build isn't finished: {} is missing.", missing.display())));
+    }
+    let dir = match p.build_done(&g.path) {
+        Some(true) => mine.clone().or_else(|| p.build_home(&g.path)).unwrap_or_else(|| g.path.clone()),
+        _ => p.build_folder_here(&g.path).ok_or_else(|| Error::Msg("Its build isn't on this PC anymore.".into()))?,
+    };
     if p.start_uses_game() {
         return Err(Error::Msg("This game still needs your copy each time it starts.".into()));
     }
@@ -5098,13 +5106,16 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
 }
 
 /// A folder the player picked as their own build of a game built from their copy: a real folder
-/// with something in it, not the game's own folder, and holding a program (anything that runs).
-/// The folder the build is in when they pick its program or its bin folder: the one above.
-/// None when they picked the setup's own folder: the build already on this PC.
+/// with something in it, not the game's own folder, and holding what a finished build has (the
+/// files the profile's prepare.done lists in the build folder). The folder the build is in when
+/// they pick its program or its bin folder: the one above. None when they picked the setup's own
+/// folder: the build already on this PC. Nothing here knows a project: only its profile says
+/// what a finished build looks like.
 fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<Option<PathBuf>> {
     let p = profile_of(st, id, &Installed { build_dir: None, ..g.clone() }).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     let home = p.build_home(&g.path).ok_or_else(|| Error::Msg("This game isn't built into a folder of its own, so there's no build to point to.".into()))?;
-    let picked = check_own_build(&home, &g.path, f)?;
+    let done = p.done_in(&g.path, &home);
+    let picked = check_own_build(&home, &g.path, f, &done)?;
     match &picked {
         Some(dir) => trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display())),
         None => trail::note(format!("Setup {id}: the folder picked is the setup's own, {}", home.display())),
@@ -5112,10 +5123,12 @@ fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<Option<P
     Ok(picked)
 }
 
-/// The checks behind own_build_folder, on the folders alone. None when the folder picked is the
+/// The checks behind own_build_folder, on the folders alone. done: the files a finished build
+/// has, relative to the build folder (from prepare.done); none when the profile lists none, and
+/// then a folder with something in it is taken as it is. None when the folder picked is the
 /// setup's own folder inside the game's: that's the build already on this PC, not one from
 /// somewhere else, so nothing has to stand in for it.
-fn check_own_build(home: &Path, install: &Path, f: &Path) -> Res<Option<PathBuf>> {
+fn check_own_build(home: &Path, install: &Path, f: &Path, done: &[PathBuf]) -> Res<Option<PathBuf>> {
     let mut dir = if f.is_file() { f.parent().map(Path::to_path_buf).unwrap_or_default() } else { f.to_path_buf() };
     if dir.file_name().map(|n| n.eq_ignore_ascii_case("bin")).unwrap_or(false) {
         if let Some(up) = dir.parent() {
@@ -5131,24 +5144,12 @@ fn check_own_build(home: &Path, install: &Path, f: &Path) -> Res<Option<PathBuf>
     if dir.starts_with(install) && !setups_own {
         return Err(Error::Msg("That's the launcher's own folder for this game. Pick the folder your build is in.".into()));
     }
-    let runs = |d: &Path| std::fs::read_dir(d).map(|r| r.flatten().any(|e| {
-        let n = e.file_name().to_string_lossy().to_lowercase();
-        e.path().is_file() && (n.ends_with(".exe") || n.ends_with(".appimage") || n.ends_with(".x86_64") || (!n.contains('.') && is_exec(&e.path())))
-    })).unwrap_or(false);
-    if !runs(&dir) && !runs(&dir.join("bin")) {
-        return Err(Error::Msg("There's no program in that folder or its bin folder. Pick the folder your build is in.".into()));
+    // (No "has a program" test: some builds keep their program in the release and only data in
+    // the build folder. What a finished build has is the profile's to say, in prepare.done.)
+    if let Some(missing) = done.iter().find(|d| !dir.join(d).exists()) {
+        return Err(Error::Msg(format!("It has no {}, which a finished build has. Pick the folder your build is in.", missing.display())));
     }
     Ok((!setups_own).then_some(dir))
-}
-
-#[cfg(unix)]
-fn is_exec(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
-}
-#[cfg(not(unix))]
-fn is_exec(_: &Path) -> bool {
-    false
 }
 
 /// Setups an update emptied before Beta 51 (it wrote an empty fingerprint): put back once, at
@@ -10881,8 +10882,8 @@ mod own_build_pick_tests {
     fn picking_the_setups_own_folder_inside_the_game_folder_is_the_build_already_there() {
         let (root, install) = game_with_build("rl-own-pick-home", "Hopper");
         let home = install.join("Hopper");
-        assert_eq!(check_own_build(&home, &install, &home).unwrap(), None);
-        assert_eq!(check_own_build(&home, &install, &home.join("bin")).unwrap(), None, "its bin folder counts as the folder above");
+        assert_eq!(check_own_build(&home, &install, &home, &[]).unwrap(), None);
+        assert_eq!(check_own_build(&home, &install, &home.join("bin"), &[]).unwrap(), None, "its bin folder counts as the folder above");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -10890,7 +10891,7 @@ mod own_build_pick_tests {
     fn another_folder_inside_the_game_folder_is_still_refused() {
         let (root, install) = game_with_build("rl-own-pick-other", "Older");
         let home = install.join("Hopper");
-        let err = check_own_build(&home, &install, &install.join("Older")).unwrap_err().to_string();
+        let err = check_own_build(&home, &install, &install.join("Older"), &[]).unwrap_err().to_string();
         assert!(err.contains("launcher's own folder"), "{err}");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -10902,7 +10903,34 @@ mod own_build_pick_tests {
         std::fs::create_dir_all(mine.join("bin")).unwrap();
         std::fs::write(mine.join("bin").join("hopper.exe"), b"").unwrap();
         let home = install.join("Hopper");
-        assert_eq!(check_own_build(&home, &install, &mine).unwrap(), Some(mine.clone()));
+        assert_eq!(check_own_build(&home, &install, &mine, &[]).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_build_with_only_data_is_taken_when_the_profile_lists_no_done_files() {
+        // Some projects keep their program in the release and build only data: no program test.
+        let (root, install) = game_with_build("rl-own-pick-data", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::write(mine.join("rom.bin"), b"x").unwrap();
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &mine, &[]).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_folder_without_a_done_file_is_refused_and_named() {
+        let (root, install) = game_with_build("rl-own-pick-done", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(mine.join("bin")).unwrap();
+        std::fs::write(mine.join("bin").join("hopper.exe"), b"").unwrap();
+        let home = install.join("Hopper");
+        let done = [PathBuf::from("bin").join("hopper.exe"), PathBuf::from("data.pak")];
+        let err = check_own_build(&home, &install, &mine, &done).unwrap_err().to_string();
+        assert!(err.contains("data.pak") && err.contains("which a finished build has"), "{err}");
+        std::fs::write(mine.join("data.pak"), b"x").unwrap();
+        assert_eq!(check_own_build(&home, &install, &mine, &done).unwrap(), Some(mine.clone()));
         let _ = std::fs::remove_dir_all(&root);
     }
 }
