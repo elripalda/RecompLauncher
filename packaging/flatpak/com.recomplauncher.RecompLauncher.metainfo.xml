@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.61" date="2026-11-17">
+      <description>
+        <p>Games that install with their own setup no longer show as missing before Set Up, and the Library can sort by game name.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.60" date="2026-11-17">
       <description>
         <p>The window opens on the right screen at a size that fits, updates show for games whose project moved, Linux .NET games find .NET, and the launcher starts faster.</p>

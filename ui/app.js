@@ -1983,7 +1983,7 @@ function libList() {
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
   if (q) list = list.filter((x) => sMatch([x.a.name, x.a.game].join(' '), q));
   if (S.lib.sort === 'az') list.sort((x, y) => x.a.name.localeCompare(y.a.name));
-  // By the game each recomp is of (Monado under Xenoblade, not M), then by the recomp's own name.
+  // By the game each recomp is of (a recomp with its own name sorts under its game), then by the recomp's own name.
   else if (S.lib.sort === 'game') list.sort((x, y) => (x.a.game || x.a.name).localeCompare(y.a.game || y.a.name) || x.a.name.localeCompare(y.a.name));
   else if (S.lib.sort === 'time') {
     const seconds = new Map(list.map(({ a }) => [a.id, gamePlaytime(a)?.played_secs || 0]));
