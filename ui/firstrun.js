@@ -42,23 +42,8 @@
   }
   window.firstRun = firstRun;
 
-  // One per game the player has, not per recomp: every recomp of a game matches the same disc image
-  // (and usually shares its catalog title), so two Zeldas would otherwise fill the row with Zeldas.
-  // A recomp joins a game already listed when either its file or its title was seen.
-  const games = () => {
-    const seen = new Set();
-    const out = [];
-    for (const id of Object.keys(S.owned || {})) {
-      const a = byId(id) || { id, name: id };
-      const keys = [S.owned[id].path, a.title && 't:' + a.title].filter(Boolean);
-      const dup = keys.some((k) => seen.has(k));
-      // Kept even for a duplicate, so a third recomp linked only through this one still joins.
-      keys.forEach((k) => seen.add(k));
-      if (dup) continue;
-      out.push(gameShown(a));
-    }
-    return out;
-  };
+  // One per game the player has, not per recomp, or two Zeldas would fill the row with Zeldas.
+  const games = () => ownedGames().map(gameShown);
   // A game's name and cover: those of the version the catalog recommends, when it has several.
   const gameShown = (a) => {
     const g = a.title ? index().titles.get(a.title) : null;
