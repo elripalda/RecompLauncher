@@ -2103,19 +2103,22 @@
       const toggle = (o) => () => {
         o.on = !o.on;
         o.new = false;
-        invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
+        TS.optsSaving = invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
         tsDraw();
       };
+      // The items that start setup wait for the required ticks: dimmed, and A says why.
+      const blocked = prepBlocked(su);
+      const gated = (label, sub, run, cls = '') => (blocked ? it(label, sub, () => toast(prepReq()), `${cls} off`) : it(label, sub, run, cls));
       const optItem = (o) => {
         // Kept to one short line, like the other items: the note is on the desktop setup screen.
         const lic = o.license && o.license.name ? tf('Accepts the {license}', { license: o.license.name }) : '';
-        const sub = [o.on ? t('On') : t('Off'), lic].filter(Boolean).join(' · ');
+        const sub = [o.on ? t('On') : t('Off'), o.required ? t('Required') : '', lic].filter(Boolean).join(' · ');
         const read = o.license && o.license.url ? it(tf('Read the {license}', { license: o.license.name || o.license.url }), '', () => invoke('open_url', { url: o.license.url }).catch(fail)) : '';
         return it(o.label + (o.new && su.copy ? ` · ${t('New option')}` : ''), sub, toggle(o), o.on ? 'on' : '') + read;
       };
       const prepOpts = (su.prepare_options || []).map(optItem).join('');
-      const again = su.copy && !own ? it(t('Use the copy it was set up with'), su.copy, () => tsBegin(su.copy), 'main') : '';
-      body = `${med('ghost')}<div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
+      const again = su.copy && !own ? gated(t('Use the copy it was set up with'), su.copy, () => tsBegin(su.copy), 'main') : '';
+      body = `${med('ghost')}<div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p>${blocked ? `<p class="req" role="status">${esc(prepReq())}</p>` : ''}</div>
         <div class="opts">${prepOpts}${again}${(su.previous || []).length ? it(t('Use My Previous Setup'), su.previous.join(' · '), async () => {
           let r; try { r = await relinkSetup(id); } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
@@ -2127,7 +2130,7 @@
         }, 'main') : ''}${su.own_build && !su.prebuilt ? it(t('Use a Build You Already Have'), t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), async () => {
           try { if (!(await useOwnBuild(id))) return; } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           TS.stage = 'ready'; TS.result = { text: t('Your own build') }; tsDraw();
-        }, 'main') : ''}${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
+        }, 'main') : ''}${own ? gated(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return gated(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? gated(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
     } else if (TS.stage === 'run') {
       const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
@@ -2200,8 +2203,26 @@
           if (result === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
           if (result === 'run') {
             Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' }); tsDraw();
-            try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e?.message || e); tsDraw(); }
+            try { await TS.optsSaving; await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e?.message || e); tsDraw(); }
           } else { tsDraw(); const restore = $(`[data-key="ni:${at}"]`, el); if (restore) focus(restore, true); }
+        } });
+      });
+      // The setup step's ticks, reachable with the controller: A turns one on or off, kept at once.
+      $$('.su-opt', el).forEach((row) => {
+        const box = $('input[data-popt]', row);
+        const o = (su.prepare_options || []).find((x) => x.id === box?.dataset.popt);
+        if (!o) return;
+        const at = items.length;
+        row.dataset.f = ''; row.dataset.key = 'po:' + o.id; row.dataset.sheet = at;
+        // The item turns it on or off; the label's own click would tick the box a second time.
+        row.addEventListener('click', (e) => e.preventDefault());
+        items.push({ run: () => {
+          o.on = !o.on;
+          o.new = false;
+          TS.optsSaving = invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
+          tsDraw();
+          const restore = $(`[data-key="po:${o.id}"]`, el);
+          if (restore) focus(restore, true);
         } });
       });
     }
@@ -2222,6 +2243,8 @@
     if (f) focus(f, true);
   }
   async function tsBegin(path, anyway) {
+    if (prepBlocked(S.setup[TS.id])) { toast(prepReq()); TS.stage = 'pick'; return tsDraw(); }
+    await TS.optsSaving;
     if (!anyway) {
       let w = null;
       try { w = await invoke('copy_check', { id: TS.id, path }); } catch (e) { /* can't tell: go ahead */ }
