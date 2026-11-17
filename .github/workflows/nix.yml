@@ -1,0 +1,45 @@
+name: Nix
+
+# Builds the flake's package (packaging/nix). The Nix package is community-maintained, so this
+# runs apart from the PR checks and isn't one of the required ones, like the Flatpak build.
+on:
+  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - packaging/nix/**
+      - src-tauri/**
+      - ui/**
+      - .github/workflows/nix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix:
+    name: Build Nix package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Check formatting
+        run: nix fmt -- --check flake.nix packaging/nix
+
+      - name: Build the package
+        run: nix build -L
+
+      - name: Check the flake
+        run: nix flake check -L
+
+      - name: The wrapper and the launcher are there
+        run: |
+          test -x result/bin/recomplauncher
+          test -f result/share/applications/recomplauncher.desktop

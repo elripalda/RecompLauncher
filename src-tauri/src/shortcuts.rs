@@ -637,7 +637,21 @@ fn launcher_icon() -> String {
             return icon;
         }
     }
+    if crate::nix_managed() {
+        if let Some(icon) = nix_icon() {
+            return icon;
+        }
+    }
     launcher_exe().to_string_lossy().to_string()
+}
+
+/// The icon beside the Nix wrapper the PC starts (a profile's bin, see start_path): the profile's
+/// share/icons survives updates, where the program's own store path is gone after the next one.
+fn nix_icon() -> Option<String> {
+    let wrapper = PathBuf::from(std::env::var_os("RL_START_PATH")?);
+    let profile = wrapper.parent()?.parent()?;
+    let icon = profile.join("share/icons/hicolor/512x512/apps/recomplauncher.png");
+    icon.is_file().then(|| icon.to_string_lossy().to_string())
 }
 
 fn flatpak_icon() -> Option<String> {
@@ -655,8 +669,12 @@ fn icon_in(info: &str, id: &str) -> Option<String> {
 }
 
 /// The program Steam should start: the AppImage itself on Linux when it's one, else this program.
-fn start_path() -> PathBuf {
-    std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()).unwrap_or_else(launcher_exe)
+/// A package that wraps the launcher (the Nix one runs it inside Steam's runtime environment)
+/// sets RL_START_PATH to its wrapper. Started directly, this program would run outside the
+/// wrapper, from a store path that is gone after the next update.
+pub fn start_path() -> PathBuf {
+    let set = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file());
+    set("APPIMAGE").or_else(|| set("RL_START_PATH")).unwrap_or_else(launcher_exe)
 }
 
 /// Is this a Steam Deck? Its firmware says so (Jupiter is the LCD model, Galileo the OLED).
