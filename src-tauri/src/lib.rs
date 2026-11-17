@@ -9569,6 +9569,9 @@ pub fn run() {
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
+            if art::trim_saved_logos(&dir, &mut lib) {
+                let _ = lib.save(&dir);
+            }
             // Save copies in the player's own folder, when they picked one; any made here while it
             // was away go to it.
             saves::set_root(lib.settings.save_dir.clone());
