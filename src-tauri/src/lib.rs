@@ -7058,11 +7058,15 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
     let (mut asked, mut failed) = (0, 0);
     for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
         asked += 1;
-        let listed = catalog::app(&cat, &g.id).map(|a| str_of(a, "version").to_string()).unwrap_or_default();
-        let on_disk = if !force && same(&listed, &g.tag) { catalog::releases_on_disk(&st.dir, &g.repo) } else { None };
+        let entry = catalog::app(&cat, &g.id);
+        // The project the catalog names, as installing and the Updates tab read it: a project
+        // that moved (Hookshot, to its own Forgejo server) puts new releases there, not in the old.
+        let repo = listed_repo(&g, entry);
+        let listed = entry.map(|a| str_of(a, "version").to_string()).unwrap_or_default();
+        let on_disk = if !force && same(&listed, &g.tag) { catalog::releases_on_disk(&st.dir, &repo) } else { None };
         let got = match on_disk {
             Some(f) => Ok(f),
-            None => catalog::releases(&st.http, &st.dir, &g.repo, force).await,
+            None => catalog::releases(&st.http, &st.dir, &repo, force).await,
         };
         let Ok(f) = got else {
             failed += 1;
@@ -7088,11 +7092,13 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
                 g = done;
             }
         }
-        if let Some(tag) = offered_update(&g, catalog::app(&cat, &g.id), &rels) {
+        if let Some(tag) = offered_update(&g, entry, &rels) {
             out.insert(g.id.clone(), tag);
         }
     }
-    // A project may have been corrected while its network requests were in flight.
+    // A project may have been corrected while its network requests were in flight. The game's own
+    // repo is left as it is when its project moved: it says where the files on disk came from, and
+    // the next install writes the catalog's.
     {
         let l = st.lib.lock().unwrap();
         out.retain(|id, _| l.installed.get(id).is_some_and(|g| !g.local && associations.get(id) == Some(&(g.repo.clone(), g.path.clone()))));
@@ -7137,11 +7143,10 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
     (r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && builds(r)).then(|| r.tag_name.clone())
 }
 
-/// The project whose releases a game's Updates tab lists, which is also where installing takes
-/// them from: the one the catalog names, or the game's own when the catalog doesn't list it. The
-/// two differ once a project moves (Hookshot, from GitHub to its own Forgejo server): the installed
-/// game still names the old one, and judged by the old one's releases, none of the listed releases
-/// would have a build for this system.
+/// The project whose releases a game's Updates tab lists and its update badge and news read, which
+/// is also where installing takes them from: the one the catalog names, or the game's own when the
+/// catalog doesn't list it. The two differ once a project moves (Hookshot, from GitHub to its own
+/// Forgejo server): the installed game still names the old one, which never gets the new releases.
 fn listed_repo(g: &Installed, entry: Option<&Value>) -> String {
     let listed = entry.map(|e| str_of(e, "repo")).unwrap_or_default();
     if listed.is_empty() {
@@ -7479,12 +7484,19 @@ struct News {
 
 #[tauri::command]
 async fn news(st: State<'_, App>) -> Res<Vec<News>> {
+    news_for(&st).await
+}
+
+async fn news_for(st: &App) -> Res<Vec<News>> {
     let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
     let cutoff = chrono::Utc::now() - chrono::Duration::days(60);
     let mut out = vec![];
-    // From the release info on disk only (the update check keeps it current).
+    // From the release info on disk only (the update check keeps it current, for the project the
+    // catalog names).
     for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
-        let Some(f) = catalog::releases_on_disk(&st.dir, &g.repo) else { continue };
+        let repo = listed_repo(&g, catalog::app(&cat, &g.id));
+        let Some(f) = catalog::releases_on_disk(&st.dir, &repo) else { continue };
         let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
         for r in rels.iter().filter(|r| !r.draft).take(3) {
             let date = r.published_at.clone().unwrap_or_default();
