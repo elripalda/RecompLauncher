@@ -203,12 +203,14 @@ pub fn leave_tv_mode(app: &AppHandle) -> Result<(), String> {
         (state.x, state.y)
     };
 
-    window
-        .set_size(PhysicalSize::new(state.width, state.height))
-        .map_err(|e| format!("Couldn't restore the launcher size: {e}"))?;
+    // Place first, size second: moving from the TV onto a screen with another scale makes Windows
+    // rescale the window, which would grow (or shrink) a size set before the move.
     window
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|e| format!("Couldn't restore the launcher position: {e}"))?;
+    window
+        .set_size(PhysicalSize::new(state.width, state.height))
+        .map_err(|e| format!("Couldn't restore the launcher size: {e}"))?;
     if state.maximized {
         window
             .maximize()
