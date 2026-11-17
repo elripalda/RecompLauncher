@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.60" date="2026-11-17">
+      <description>
+        <p>The window opens on the right screen at a size that fits, updates show for games whose project moved, Linux .NET games find .NET, and the launcher starts faster.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.59" date="2026-11-17">
       <description>
         <p>Easy Setup can be switched on and off from a game's Manage tab, and a game's page shows its latest version before you install it.</p>
