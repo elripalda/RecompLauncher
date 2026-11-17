@@ -8245,7 +8245,7 @@ fn get_state(st: State<'_, App>) -> Value {
     let moving = st.moving.lock().unwrap().clone();
     // Games whose folder isn't there right now stay in the Library, marked missing. Their folders
     // are looked at without the lock too: one on a drive that's gone can take seconds to answer.
-    let folders: Vec<(String, PathBuf)> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.path.clone())).collect();
+    let folders: Vec<(String, PathBuf)> = st.lib.lock().unwrap().installed.values().filter(|g| g.installer_setup.is_empty() || g.exe.is_some()).map(|g| (g.id.clone(), g.path.clone())).collect();
     let missing: Vec<String> = folders.into_iter().filter(|(id, p)| !p.is_dir() && !moving.contains(id)).map(|(id, _)| id).collect();
     let l = st.lib.lock().unwrap();
     let mut running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();

@@ -3356,5 +3356,6 @@
  "{name} is installed. Its {n} games are in your Library.": "{name}을(를) 설치했습니다. 게임 {n}개가 라이브러리에 있습니다.",
  "Show Versions Under Names": "이름 아래에 버전 표시",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "탐색에서는 각 리컴프의 최신 버전을, 라이브러리에서는 설치된 버전을 보여 줍니다.",
- "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher는 Nix로 업데이트됩니다. flake 입력(nix flake update)이나 nixpkgs를 업데이트한 뒤 다시 빌드하세요."
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher는 Nix로 업데이트됩니다. flake 입력(nix flake update)이나 nixpkgs를 업데이트한 뒤 다시 빌드하세요.",
+ "Game A to Z": "게임 이름순"
 }

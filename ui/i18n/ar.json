@@ -3356,5 +3356,6 @@
  "{name} is installed. Its {n} games are in your Library.": "تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.|تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.|تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.|تم تثبيت {name}. ألعابه الـ{n} الآن في مكتبتك.",
  "Show Versions Under Names": "إظهار الإصدارات تحت الأسماء",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "أحدث إصدار لكل recomp في «استكشاف»، والإصدار المثبّت لديك في المكتبة.",
- "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "يتم تحديث RecompLauncher عبر Nix. حدّث مدخل flake (nix flake update) أو nixpkgs، ثم أعد البناء."
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "يتم تحديث RecompLauncher عبر Nix. حدّث مدخل flake (nix flake update) أو nixpkgs، ثم أعد البناء.",
+ "Game A to Z": "اللعبة من أ إلى ي"
 }

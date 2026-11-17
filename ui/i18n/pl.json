@@ -3356,5 +3356,6 @@
  "{name} is installed. Its {n} games are in your Library.": "Zainstalowano {name}. {n} jego gra jest w bibliotece.|Zainstalowano {name}. {n} jego gry są w bibliotece.|Zainstalowano {name}. {n} jego gier jest w bibliotece.",
  "Show Versions Under Names": "Pokazuj wersje pod nazwami",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Najnowsza wersja każdego recompa w Odkrywaj i wersja zainstalowana w Bibliotece.",
- "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher aktualizuje się przez Nix. Zaktualizuj wejście flake (nix flake update) lub nixpkgs, a potem przebuduj."
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher aktualizuje się przez Nix. Zaktualizuj wejście flake (nix flake update) lub nixpkgs, a potem przebuduj.",
+ "Game A to Z": "Gra od A do Z"
 }

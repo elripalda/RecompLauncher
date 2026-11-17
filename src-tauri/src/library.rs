@@ -220,6 +220,14 @@ pub struct Installed {
     pub boot_hash: String,
 }
 
+impl Installed {
+    /// Its installer is downloaded and waits for Set Up: its folder is made by that installer, so
+    /// a folder that isn't there yet isn't a missing game.
+    pub fn installer_waits(&self) -> bool {
+        !self.installer_setup.is_empty() && self.exe.is_none() && !self.path.is_dir()
+    }
+}
+
 fn half() -> u8 {
     50
 }
@@ -705,7 +713,7 @@ impl Library {
     /// Games whose folder can't be found right now: deleted, or on a drive that isn't connected.
     /// They stay in the Library, shown as missing, until the player finds them or takes them out.
     pub fn missing(&self) -> Vec<String> {
-        self.installed.values().filter(|g| !g.path.is_dir()).map(|g| g.id.clone()).collect()
+        self.installed.values().filter(|g| !g.path.is_dir() && !g.installer_waits()).map(|g| g.id.clone()).collect()
     }
 }
 
@@ -986,4 +994,25 @@ pub fn unix_path(base: &Path, e: PathBuf) -> PathBuf {
         }
     }
     fixed
+}
+
+#[cfg(test)]
+mod installer_waits_tests {
+    use super::*;
+
+    #[test]
+    fn a_game_whose_installer_waits_for_set_up_is_not_missing() {
+        let mut lib = Library::default();
+        let gone = std::env::temp_dir().join(format!("rl-not-there-{}", std::process::id()));
+        // Downloaded installer, Set Up not run yet: the folder doesn't exist and that's expected.
+        lib.installed.insert("hopper".into(), Installed { id: "hopper".into(), path: gone.clone(), installer: true, installer_setup: "C:/x/HopperSetup.exe".into(), ..Default::default() });
+        // A plain game whose folder is gone is missing.
+        lib.installed.insert("skyracer".into(), Installed { id: "skyracer".into(), path: gone.join("sky"), ..Default::default() });
+        assert_eq!(lib.missing(), vec!["skyracer".to_string()]);
+        // Once its installer ran (no setup waiting) a gone folder is missing again.
+        lib.installed.get_mut("hopper").unwrap().installer_setup.clear();
+        let mut m = lib.missing();
+        m.sort();
+        assert_eq!(m, vec!["hopper".to_string(), "skyracer".to_string()]);
+    }
 }

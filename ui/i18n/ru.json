@@ -3356,5 +3356,6 @@
  "{name} is installed. Its {n} games are in your Library.": "{name}: установлено. {n} игра уже в библиотеке.|{name}: установлено. {n} игры уже в библиотеке.|{name}: установлено. {n} игр уже в библиотеке.",
  "Show Versions Under Names": "Показывать версии под названиями",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Новейшая версия каждого рекомпа в «Обзоре» и установленная версия в Библиотеке.",
- "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher обновляется через Nix. Обновите вход flake (nix flake update) или nixpkgs, затем пересоберите."
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher обновляется через Nix. Обновите вход flake (nix flake update) или nixpkgs, затем пересоберите.",
+ "Game A to Z": "Игра от А до Я"
 }

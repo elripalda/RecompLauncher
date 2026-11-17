@@ -3356,5 +3356,6 @@
  "{name} is installed. Its {n} games are in your Library.": "{name} kuruldu. {n} oyunu kitaplığında.",
  "Show Versions Under Names": "İsimlerin Altında Sürümleri Göster",
  "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Keşfet'te her recomp'un en yeni sürümü, Kitaplık'ta ise yüklü olan sürüm.",
- "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher Nix üzerinden güncellenir. Flake girdisini (nix flake update) ya da nixpkgs'i güncelle, sonra yeniden derle."
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher Nix üzerinden güncellenir. Flake girdisini (nix flake update) ya da nixpkgs'i güncelle, sonra yeniden derle.",
+ "Game A to Z": "Oyun A'dan Z'ye"
 }

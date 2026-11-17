@@ -1983,6 +1983,8 @@ function libList() {
   if (S.lib.origin) list = list.filter((x) => x.a.origin === S.lib.origin);
   if (q) list = list.filter((x) => sMatch([x.a.name, x.a.game].join(' '), q));
   if (S.lib.sort === 'az') list.sort((x, y) => x.a.name.localeCompare(y.a.name));
+  // By the game each recomp is of (Monado under Xenoblade, not M), then by the recomp's own name.
+  else if (S.lib.sort === 'game') list.sort((x, y) => (x.a.game || x.a.name).localeCompare(y.a.game || y.a.name) || x.a.name.localeCompare(y.a.name));
   else if (S.lib.sort === 'time') {
     const seconds = new Map(list.map(({ a }) => [a.id, gamePlaytime(a)?.played_secs || 0]));
     list.sort((x, y) => seconds.get(y.a.id) - seconds.get(x.a.id));
@@ -2014,14 +2016,14 @@ function pageLibrary() {
   const setup = libRecs().filter(needsCopySetup).length;
   const nf = favs().length;
   // Consoles the player's games are from: a filter once there's more than one.
-  const origins = [...new Set(Object.values(S.library).map((g) => (byId(g.id) || {}).origin).filter(Boolean))];
+  const origins = [...new Set(Object.values(S.library).map((g) => (byId(g.id) || {}).origin).filter(Boolean))].sort((x, y) => originName(x).localeCompare(originName(y)));
   const consoleSel = origins.length > 1 ? `<label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="liborigin">${[['', t('Any')], ...origins.map((o) => [o, originName(o)])].map(([k, nm]) => `<option value="${esc(k)}"${k ? ` data-ico="c:${esc(k)}"` : ''}${(S.lib.origin || '') === k ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>` : '';
   return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one for versions, launch options and more.', '{n} games. Right-click one for versions, launch options and more.'))}</p></div>
       <div class="dctl"><label class="smallsearch"><span class="sr">${esc(t('Search your games'))}</span>${SEARCH.replace('width="20" height="20"', 'width="16" height="16"')}<input id="lq" type="search" placeholder="${esc(t('Search your games'))}" value="${esc(S.lq)}" autocomplete="off" spellcheck="false"></label>
       <button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button>
       <button type="button" class="btn" data-act="gh-add">${BRANCH_S}${esc(t('Add a Recomp'))}</button>
       ${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}
-      ${consoleSel}<label class="pill-sel">${esc(t('Sort'))}<select class="sel" data-act="libsort"><option value="played"${S.lib.sort === 'played' ? ' selected' : ''}>${esc(t('Recently played'))}</option><option value="time"${S.lib.sort === 'time' ? ' selected' : ''}>${esc(t('Most played'))}</option><option value="az"${S.lib.sort === 'az' ? ' selected' : ''}>${esc(t('A to Z'))}</option></select></label></div></div>
+      ${consoleSel}<label class="pill-sel">${esc(t('Sort'))}<select class="sel" data-act="libsort"><option value="played"${S.lib.sort === 'played' ? ' selected' : ''}>${esc(t('Recently played'))}</option><option value="time"${S.lib.sort === 'time' ? ' selected' : ''}>${esc(t('Most played'))}</option><option value="az"${S.lib.sort === 'az' ? ' selected' : ''}>${esc(t('A to Z'))}</option><option value="game"${S.lib.sort === 'game' ? ' selected' : ''}>${esc(t('Game A to Z'))}</option></select></label></div></div>
     ${n || setup || nf || nsaved ? `<div class="chips"><button type="button" class="chip${S.lib.filter === 'all' ? ' on' : ''}" data-act="libf" data-f="all">${esc(t('All'))} <b>${fmtNum(total)}</b></button>${nsaved ? `<button type="button" class="chip${S.lib.filter === 'inst' ? ' on' : ''}" data-act="libf" data-f="inst">${esc(t('Installed'))} <b>${fmtNum(libRecs().length)}</b></button>` : ''}${n ? `<button type="button" class="chip${S.lib.filter === 'update' ? ' on' : ''}" data-act="libf" data-f="update">${esc(t('Update ready'))} <b>${fmtNum(n)}</b></button>` : ''}${setup ? `<button type="button" class="chip${S.lib.filter === 'setup' ? ' on' : ''}" data-act="libf" data-f="setup">${esc(t('Needs your copy'))} <b>${fmtNum(setup)}</b></button>` : ''}${nf ? `<button type="button" class="chip${S.lib.filter === 'fav' ? ' on' : ''}" data-act="libf" data-f="fav">${STAR}${esc(t('Favorites'))} <b>${fmtNum(nf)}</b></button>` : ''}${nsaved ? `<button type="button" class="chip${S.lib.filter === 'saved' ? ' on' : ''}" data-act="libf" data-f="saved">${esc(t('Not Installed'))} <b>${fmtNum(nsaved)}</b></button>` : ''}${n > 1 ? `<button type="button" class="chip main" data-act="update-all">${esc(tf('Update All ({n})', { n }))}</button>` : ''}</div>` : ''}
     <div id="llist" class="${libWide() ? 'wide' : ''}" style="--tile:${libTile()}">${libraryGrid()}</div>
   </div>`;
@@ -2484,7 +2486,7 @@ function gameBody(a) {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
     const play = gamePlaytime(a);
     const stats = inst
-      ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
+      ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || (inst.installer_setup ? t('Not set up yet') : t('Not known'))) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
       : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—']];
     // Under the version: how the store checked that release (a player's own game has none). Before
     // installing it's the latest release, so the player sees it was checked before downloading it.
@@ -5047,7 +5049,8 @@ async function checkUpdates(loud) {
     if (revision !== updateCheckRevision) return false;
     // A version the player chose to skip (its download kept failing) stays out until a newer one.
     const skip = (S.settings.ui || {}).skip_ver || {};
-    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => S.library[id] && !S.library[id].local && skip[id] !== tag));
+    // A game whose downloaded installer waits for Set Up has its update already: Set Up runs it.
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => S.library[id] && !S.library[id].local && !S.library[id].installer_setup && skip[id] !== tag));
     holdUpdates();
     S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }
@@ -9197,7 +9200,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if ((S.settings.ui || {}).start_page === 'library' && Object.keys(S.library).length) S.view = 'library';
   else if ((S.settings.ui || {}).start_page === 'discover') S.view = 'discover';
   // The Library's sort, as the player left it.
-  if (['played', 'time', 'az'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
+  if (['played', 'time', 'az', 'game'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
   trayWords();
   await loadCatalog(false, catAsk);
