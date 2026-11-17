@@ -3355,5 +3355,6 @@
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "Одна загрузка устанавливает {n} входящую в неё игру. У каждой своё место в библиотеке.|Одна загрузка устанавливает все {n} входящие в неё игры. У каждой своё место в библиотеке.|Одна загрузка устанавливает все {n} входящих в неё игр. У каждой своё место в библиотеке.",
  "{name} is installed. Its {n} games are in your Library.": "{name}: установлено. {n} игра уже в библиотеке.|{name}: установлено. {n} игры уже в библиотеке.|{name}: установлено. {n} игр уже в библиотеке.",
  "Show Versions Under Names": "Показывать версии под названиями",
- "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Новейшая версия каждого рекомпа в «Обзоре» и установленная версия в Библиотеке."
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Новейшая версия каждого рекомпа в «Обзоре» и установленная версия в Библиотеке.",
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher обновляется через Nix. Обновите вход flake (nix flake update) или nixpkgs, затем пересоберите."
 }

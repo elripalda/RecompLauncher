@@ -4890,9 +4890,9 @@ async function refreshState() {
 }
 const ENDED = {};
 
-async function loadCatalog(force) {
+async function loadCatalog(force, asked) {
   try {
-    const r = await invoke('get_catalog', { force: !!force });
+    const r = await (asked || invoke('get_catalog', { force: !!force }));
     S.cat = Object.assign({ apps: [], origins: [] }, r.data);
     S.offline = !!r.offline;
     S.owned = ownedHere(S.owned);
@@ -9185,6 +9185,9 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
 
 (async function start() {
   let loaded = true;
+  // The list on disk is asked for alongside the state, not after it: the first screen needs both.
+  const catAsk = invoke('get_catalog', { force: false });
+  catAsk.catch(() => {});
   try { await refreshState(); } catch (e) { loaded = false; fail(e); }
   // Settings that didn't load are never saved over (they'd be lost).
   if (loaded) { try { sideOnce(); } catch (e) { /* the sidebar keeps its order */ } sendLimits(); }
@@ -9197,7 +9200,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (['played', 'time', 'az'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
   trayWords();
-  await loadCatalog(false);
+  await loadCatalog(false, catAsk);
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
   loadIg();

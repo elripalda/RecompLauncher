@@ -8237,10 +8237,17 @@ fn reopen_after_update(app: &AppHandle) -> bool {
 
 #[tauri::command(async)]
 fn get_state(st: State<'_, App>) -> Value {
-    let l = st.lib.lock().unwrap();
+    // Looked up before the library is locked: none of it needs it, and a slow drive or the
+    // registry shouldn't hold up everything else that waits on the library.
+    let steam = shortcuts::steam_dir().is_some();
+    let deck = shortcuts::is_steam_deck();
+    let pictures = ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string());
     let moving = st.moving.lock().unwrap().clone();
-    // Games whose folder isn't there right now stay in the Library, marked missing.
-    let missing: Vec<String> = l.missing().into_iter().filter(|id| !moving.contains(id)).collect();
+    // Games whose folder isn't there right now stay in the Library, marked missing. Their folders
+    // are looked at without the lock too: one on a drive that's gone can take seconds to answer.
+    let folders: Vec<(String, PathBuf)> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.path.clone())).collect();
+    let missing: Vec<String> = folders.into_iter().filter(|(id, p)| !p.is_dir() && !moving.contains(id)).map(|(id, _)| id).collect();
+    let l = st.lib.lock().unwrap();
     let mut running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
     // And the game being played in each, when it's one of several (its full id).
     let playing: Vec<String> = PLAYING_GAME.lock().unwrap().as_ref().map(|m| m.iter().filter(|(k, v)| running.contains(k) && k != v).map(|(_, v)| v.clone()).collect()).unwrap_or_default();
@@ -8262,9 +8269,9 @@ fn get_state(st: State<'_, App>) -> Value {
         "running": running,
         "jobs": jobs,
         "setupJobs": SETUP_STATUS.lock().unwrap().clone().unwrap_or_default(),
-        "steam": shortcuts::steam_dir().is_some(),
-        "pictures": ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string()),
-        "deck": shortcuts::is_steam_deck(),
+        "steam": steam,
+        "pictures": pictures,
+        "deck": deck,
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
         "desktopArg": std::env::args().any(|a| a == "--desktop"),
         "missing": missing,

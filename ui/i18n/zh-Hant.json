@@ -3355,5 +3355,6 @@
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "一次下載即可安裝其全部 {n} 款遊戲，每款都會在收藏庫中單獨顯示。",
  "{name} is installed. Its {n} games are in your Library.": "{name} 已安裝。其中的 {n} 款遊戲已在你的收藏庫中。",
  "Show Versions Under Names": "在名稱下顯示版本",
- "The newest version of each recomp in Discover, and the version you have installed in the Library.": "在「探索」中顯示每個 recomp 的最新版本，在收藏庫中顯示你已安裝的版本。"
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "在「探索」中顯示每個 recomp 的最新版本，在收藏庫中顯示你已安裝的版本。",
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher 透過 Nix 更新。請更新 flake 輸入（nix flake update）或 nixpkgs，然後重新建置。"
 }

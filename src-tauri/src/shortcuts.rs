@@ -682,6 +682,12 @@ pub fn is_steam_deck() -> bool {
     if !cfg!(target_os = "linux") {
         return false;
     }
+    // The machine doesn't change while the launcher runs: read once.
+    static DECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DECK.get_or_init(steam_deck_now)
+}
+
+fn steam_deck_now() -> bool {
     let read = |f: &str| fs::read_to_string(format!("/sys/devices/virtual/dmi/id/{f}")).unwrap_or_default().trim().to_lowercase();
     matches!(read("product_name").as_str(), "jupiter" | "galileo") || read("board_vendor") == "valve"
 }

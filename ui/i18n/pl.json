@@ -3355,5 +3355,6 @@
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "Jedno pobranie instaluje {n} jego grę. Każda ma własne miejsce w bibliotece.|Jedno pobranie instaluje wszystkie {n} jego gry. Każda ma własne miejsce w bibliotece.|Jedno pobranie instaluje wszystkie {n} jego gier. Każda ma własne miejsce w bibliotece.",
  "{name} is installed. Its {n} games are in your Library.": "Zainstalowano {name}. {n} jego gra jest w bibliotece.|Zainstalowano {name}. {n} jego gry są w bibliotece.|Zainstalowano {name}. {n} jego gier jest w bibliotece.",
  "Show Versions Under Names": "Pokazuj wersje pod nazwami",
- "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Najnowsza wersja każdego recompa w Odkrywaj i wersja zainstalowana w Bibliotece."
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Najnowsza wersja każdego recompa w Odkrywaj i wersja zainstalowana w Bibliotece.",
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher aktualizuje się przez Nix. Zaktualizuj wejście flake (nix flake update) lub nixpkgs, a potem przebuduj."
 }

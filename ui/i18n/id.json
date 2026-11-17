@@ -3355,5 +3355,6 @@
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "Satu unduhan memasang semua {n} game-nya. Masing-masing punya tempat sendiri di Pustaka-mu.",
  "{name} is installed. Its {n} games are in your Library.": "{name} sudah terpasang. {n} game-nya ada di Pustaka-mu.",
  "Show Versions Under Names": "Tampilkan Versi di Bawah Nama",
- "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Versi terbaru setiap recomp di Jelajahi, dan versi yang kamu pasang di Pustaka."
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Versi terbaru setiap recomp di Jelajahi, dan versi yang kamu pasang di Pustaka.",
+ "RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.": "RecompLauncher diperbarui lewat Nix. Perbarui input flake (nix flake update) atau nixpkgs, lalu bangun ulang."
 }
