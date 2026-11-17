@@ -1419,12 +1419,12 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 
 /* ---------- developers ---------- */
 .vtick{flex:none;color:#34F2E8;vertical-align:-2px;margin-left:4px}
-.dev-line{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 12px 0 5px;border-radius:17px;background:rgba(6,11,21,.45);backdrop-filter:blur(10px);border:1px solid var(--line2);color:var(--muted);font-size:13.5px;font-weight:600;transition:border-color .15s,background-color .15s}
-.dev-line:hover{border-color:var(--line3);background:rgba(6,11,21,.7)}
+.dev-line{display:inline-flex;align-items:center;gap:9px;height:34px;color:var(--muted);font-size:13.5px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.6)}
 .dev-line img,.dev-line .dev-ph{width:24px;height:24px;border-radius:50%;object-fit:cover;flex:none;background:var(--card3)}
 .dev-line .dev-ph{display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--ink)}
 .dev-line b{color:var(--ink);font-weight:700}
-.vpill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px 0 5px;border-radius:11px;background:rgba(52,242,232,.1);box-shadow:inset 0 0 0 1px rgba(52,242,232,.32);color:#34F2E8;font-size:11.5px;font-weight:700}
+.vpill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px 0 7px;border-radius:15px;background:rgba(52,242,232,.1);backdrop-filter:blur(10px);box-shadow:inset 0 0 0 1px rgba(52,242,232,.32);color:#34F2E8;font-size:12.5px;font-weight:700;transition:background-color .15s,box-shadow .15s}
+.vpill:hover{background:rgba(52,242,232,.18);box-shadow:inset 0 0 0 1px rgba(52,242,232,.55)}
 .vpill .vtick{margin:0}
 .gp-title .dev-line+.ver-pill{margin-top:-2px}
 .who{display:inline-flex;align-items:center}
@@ -2500,7 +2500,6 @@ button.scan-pill:hover{filter:brightness(1.15)}
 .tile.ghost .t{display:block;width:70%;height:12px;margin-top:10px;border-radius:6px;background:var(--fill2)}
 @keyframes ghostPulse{50%{opacity:.55}}
 @media (prefers-reduced-motion:reduce){.tile.ghost .poster{animation:none}}
-.dev-line.plain{cursor:default}
 
 /* ---------- where to buy the original game ---------- */
 .ig-slot:empty{display:none}

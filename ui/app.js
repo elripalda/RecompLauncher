@@ -721,9 +721,14 @@ const repoOwner = (a) => ((a && a.repo) || '').replace(/^[a-z]+:/, '').split('/'
 function devLine(a) {
   const d = devOf(a);
   // No developer page: the project's owner, as words.
-  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line plain"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
+  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
   const name = d.name || a.author || '';
-  return `<div class="dev-row"><button type="button" class="dev-line" data-act="url" data-url="${esc(SITE + '/dev/' + encodeURIComponent(d.slug))}" title="${esc(t('See their page'))}">${d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span>${d.verified ? `<span class="vpill">${TICK(14)}${esc(t('Verified developer'))}</span>` : ''}</button>${followBtn(d)}</div>`;
+  const pic = d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+  const by = `<span class="dev-line">${pic}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span></span>`;
+  // The byline is plain words for everyone; only the Verified badge is a pill, and it's the link to their page.
+  const devPage = esc(SITE + '/dev/' + encodeURIComponent(d.slug));
+  const badge = d.verified ? `<button type="button" class="vpill" data-act="url" data-url="${devPage}" title="${esc(t('See their page'))}">${TICK(14)}${esc(t('Verified developer'))}</button>` : '';
+  return `<div class="dev-row">${by}${badge}${followBtn(d)}</div>`;
 }
 const follows = () => ((S.settings.ui || {}).follow || []);
 const followBtn = (d) => { const on = follows().includes(d.slug); return `<button type="button" class="follow-btn${on ? ' on' : ''}" data-act="follow" data-dev="${esc(d.slug)}" aria-pressed="${on}">${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>${esc(t('Following'))}` : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>${esc(t('Follow'))}`}</button>`; };
