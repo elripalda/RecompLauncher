@@ -33,11 +33,48 @@ test('a game Easy Setup does says what picking its own executable does', () => {
 
 const MINE = { own_program: 'F:\\Library\\hookshot\\Hookshot\\bin\\hookshot.exe' };
 
-test('once Play starts the player\'s executable: Self-Managed, and Use Easy Setup Instead to go back', () => {
+test('once Play starts the player\'s executable: Self-Managed, and no second button (the Easy Setup switch is the way back)', () => {
   const html = row(MINE, true);
   assert.match(html, /<span class="own-pill" title="You manage this install\. [^"]+">Self-Managed<\/span>/);
   assert.match(html, /You manage this install, and Easy Setup is skipped\./);
-  assert.match(html, /data-act="easy-again"[^>]*>Use Easy Setup Instead</);
+  assert.doesNotMatch(html, /forget-program|easy-again|easy-skip/);
+});
+
+// The Easy Setup switch on the Manage tab, with what Easy Setup does and Settings say.
+const easyRowHtml = (easyAll, easyOn, ui = {}) => {
+  const run = new Function('S', 't', 'esc', `${fn(app, 'easyRow')}; return easyRow;`);
+  const S = { settings: { ui }, easyAll: new Set(easyAll ? ['g'] : []), easy: new Set(easyOn ? ['g'] : []) };
+  return run(S, (x) => x, (x) => x)('g');
+};
+
+test('the Easy Setup switch sits above Game Executable and shows whether Easy Setup is on', () => {
+  assert.match(app, /\$\{easyRow\(id\)\}\n\s+\$\{programRow\(id, inst\)\}/);
+  const on = easyRowHtml(true, true);
+  assert.match(on, /<div class="set-row" id="easy-row"><div class="k"><b>Easy Setup<\/b><span>The launcher sets this game up with your copy\. Off: you set it up yourself\.<\/span>/);
+  assert.match(on, /class="switch" role="switch" aria-checked="true"[^>]*data-act="easy-skip" data-id="g"/);
+  assert.match(easyRowHtml(true, false), /aria-checked="false"/);
+});
+
+test('no Easy Setup switch on a game Easy Setup can\'t do, or while it\'s skipped for every game', () => {
+  assert.equal(easyRowHtml(false, false), '');
+  assert.equal(easyRowHtml(true, false, { easy_skip_all: true }), '');
+});
+
+test('turning Easy Setup off says it in the switch\'s words once installed, and how it installs before', () => {
+  const sw = app.match(/case 'easy-skip': \{[^]*?\n    \}/)[0];
+  assert.match(sw, /if \(!on\) return toast\(tf\('\{name\} uses Easy Setup again\.', \{ name \}\)\);/);
+  assert.match(sw, /if \(S\.library\[id\]\) return toast\(tf\('Easy Setup is off for \{name\}\. You set it up yourself\.', \{ name \}\)\);/);
+  assert.match(sw, /toast\(tf\('\{name\} skips Easy Setup: it installs as it comes/);
+});
+
+test('the game\'s menu: Skip Easy Setup ticked before install, Easy Setup… (to the switch) once installed', () => {
+  const item = fn(app, 'easySkipItem');
+  assert.match(item, /if \(S\.library\[id\]\) return \[\{ act: 'easy-row', id, label: t\('Easy Setup…'\), icon: 'disc' \}\];/);
+  assert.match(item, /return \[\{ act: 'easy-skip', id, label: t\('Skip Easy Setup'\), icon: 'disc', check: /);
+  assert.match(app, /case 'easy-row': return showEasyRow\(id\);/);
+  const show = fn(app, 'showEasyRow');
+  assert.match(show, /S\.nextTab = 'installed';\n\s+go\('game', id\);/);
+  assert.match(show, /row\.scrollIntoView\(\{ block: 'center'[^\n]*\n\s+row\.classList\.add\('lit'\);/);
 });
 
 test('a game Easy Setup can\'t do goes back with Use Default', () => {
@@ -99,10 +136,12 @@ test('Set Game Executable asks first on a game Easy Setup does, then turns it of
 
 test('turning Easy Setup back on lets go of the picked executable', () => {
   assert.match(fn(app, 'setEasySkip'), /if \(!on && S\.library\[id\]\) S\.library\[id\] = await invoke\('forget_program', \{ id \}\);/);
-  // Every way back on goes through it: the game's menu, Where's Your Build?, and the Game Executable row.
+  // Every way back on goes through it: the Easy Setup switch (and the menu before install), and Where's Your Build?.
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(app, /if \(v === 'easy'\) \{\n\s+try \{ await setEasySkip\(id, false\); \}/);
-  assert.match(app, /case 'easy-again': \{[^]*?await setEasySkip\(id, false\);/);
+  // That link goes on with the Play already starting: a second playGame would be ignored.
+  assert.match(fn(app, 'playGame2'), /if \(v === 'easy'\) \{\n[^\n]*\n[^\n]*\n\s+return playGame2\(id, program\);/);
+  assert.doesNotMatch(app, /easy-again/);
 });
 
 test('executables picked before turn Easy Setup off at start, and keep it off when it comes back on for every game', () => {
