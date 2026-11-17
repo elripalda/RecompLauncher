@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "使用设置时用过的副本",
  "{n} new options": "{n} 个新选项",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "一次下载即可安装其全部 {n} 款游戏，每款都会在游戏库中单独显示。",
- "{name} is installed. Its {n} games are in your Library.": "{name} 已安装。其中的 {n} 款游戏已在你的游戏库中。"
+ "{name} is installed. Its {n} games are in your Library.": "{name} 已安装。其中的 {n} 款游戏已在你的游戏库中。",
+ "Show Versions Under Names": "在名称下显示版本",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "在“发现”中显示每个 recomp 的最新版本，在库中显示你已安装的版本。"
 }

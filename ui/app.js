@@ -1094,8 +1094,10 @@ function tile(a, opts = {}) {
   // Not in the Library yet: add it from the cover; added: install from the cover.
   const qadd = !quick && !opts.mine && !S.library[a.id] && !S.jobs[a.id] && status(a) === 'get';
   const qsaved = qadd && isSaved(a.id);
+  // With the setting on every tile keeps the line, empty when there's no version, so names in a row stay level.
+  const ver = opts.ver != null ? `<span class="s tver"><span>${opts.ver ? esc(verText(opts.ver)) : '&nbsp;'}</span></span>` : '';
   return `<div class="tile${opts.on ? ' on' : ''}" data-id="${esc(a.id)}">${cov ? `<span class="glow" style="background-image:url('${cssUrl(cov)}')"></span>` : ''}
-    <button type="button" class="tile-b" data-act="${opts.act || 'open'}" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${poster(a, opts.mine, opts.inst, opts.wide, opts.w, opts.rank)}${vt ? '<span class="trow">' : ''}<span class="t"${shortName(a.name) !== a.name ? ` data-short="${esc(shortName(a.name))}" data-full="${esc(a.name)}"` : ''} title="${esc(a.name)}">${esc(a.name)}</span>${vt ? `${TICK(15)}</span>` : ''}<span class="s">${sub}${opts.wide ? '' : osMarks(a)}</span></button>
+    <button type="button" class="tile-b" data-act="${opts.act || 'open'}" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${poster(a, opts.mine, opts.inst, opts.wide, opts.w, opts.rank)}${vt ? '<span class="trow">' : ''}<span class="t"${shortName(a.name) !== a.name ? ` data-short="${esc(shortName(a.name))}" data-full="${esc(a.name)}"` : ''} title="${esc(a.name)}">${esc(a.name)}</span>${vt ? `${TICK(15)}</span>` : ''}${ver}<span class="s">${sub}${opts.wide ? '' : osMarks(a)}</span></button>
     ${quick ? `<span class="qpw"><button type="button" class="qp" data-act="${S.running.has(a.id) ? 'resume' : 'play'}" data-id="${esc(a.id)}" aria-label="${esc(tf('Play {name}', { name: a.name }))}" title="${esc(t('Play'))}">${PLAY}</button></span>` : ''}${qadd ? `<span class="qpw"><button type="button" class="qp${qsaved ? '' : ' add'}" data-act="${qsaved ? 'install' : 'addlib'}" data-id="${esc(a.id)}" aria-label="${esc(qsaved ? tf('Install {name}', { name: a.name }) : tf('Add {name} to your Library', { name: a.name }))}" title="${esc(qsaved ? t('Install') : t('Add to Library'))}">${qsaved ? DOWN : PLUS}</button></span>` : ''}</div>`;
 }
 
@@ -1919,8 +1921,14 @@ function discoverGrid() {
   return list.length ? `<div class="count-line">${esc(byGame() ? tn(S.findCount || list.length, '1 game', '{n} games') : tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div>${protonNote}<div class="grid${byGame() ? ' by-game' : ''}" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map(discTile).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
     : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p>${protonNote}</div>${endedBox}`;
 }
+// The optional line under a tile's name: the latest release in Discover, the installed one in the Library.
+const showVer = () => !!(S.settings.ui || {}).show_versions;
 // A Discover tile: by game, the game's name with how many versions it has under it.
-const discTile = (a) => tile(a, a._game ? { quick: true, sub: `${LAYERS}<span>${esc(a._versions > 1 ? tn(a._versions, '1 version', '{n} versions') : a.name === a.game ? originName(a.origin) : byId(a.id).name)}</span>` } : { quick: true });
+const discTile = (a) => {
+  const ver = showVer() ? a.version || '' : null;
+  const sub = a._game ? `${LAYERS}<span>${esc(a._versions > 1 ? tn(a._versions, '1 version', '{n} versions') : a.name === a.game ? originName(a.origin) : byId(a.id).name)}</span>` : undefined;
+  return tile(a, { quick: true, ver, sub });
+};
 // Opening "Ended projects" scrolls the page down with it, so the first row is in view. The box is still
 // growing, so a single smooth scroll would stop at the page's old end: this follows it frame by frame
 // until it has settled, and gives up the moment the player scrolls or presses anything themselves.
@@ -2048,7 +2056,7 @@ function libraryGrid() {
   // copies are 160, 400 and 640 wide: the one that covers the tile's real size on this screen.
   const px = libTile() * (devicePixelRatio || 1);
   const w = px > 420 ? 640 : px > 190 ? 400 : 0;
-  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
+  return list.length ? `<div class="grid compact">${list.map((x) => x.saved ? tile(x.a, { wide, w, ver: showVer() ? x.a.version || '' : null, sub: esc(t('Not installed')) }) : tile(x.a, { wide, w, mine: true, quick: true, inst: x.n, ver: showVer() ? x.g.tag || '' : null, sub: replacedBy(x.g.id) && !S.running.has(x.g.id) ? `<span class="tl-setup">${esc(tf('Replaced by {name}', { name: replacedBy(x.g.id).name }))}</span>` : x.a.parent && !S.running.has(x.g.id) ? gameTileLine(x.a) : esc(S.running.has(x.g.id) ? t('Playing now') : x.g.last_played ? tf('Played {when}', { when: ago(x.g.last_played) }) : t('Not played yet')) })).join('')}</div>` : `<div class="empty"><p>${esc(t('Nothing matches.'))}</p></div>`;
 }
 
 
@@ -2477,9 +2485,12 @@ function gameBody(a) {
     const play = gamePlaytime(a);
     const stats = inst
       ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || t('Not known')) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
-      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—'], [t('Size'), a.size || '—']];
-    // Under the installed version: how the store checked that release (a player's own game has none).
-    const verScan = inst && inst.tag && !inst.local ? scanPill({ id, tag: inst.tag }) : '';
+      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—']];
+    // Under the version: how the store checked that release (a player's own game has none). Before
+    // installing it's the latest release, so the player sees it was checked before downloading it.
+    // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").
+    const verTag = inst ? (inst.local ? '' : inst.tag) : a.tag || a.version;
+    const verScan = verTag ? scanPill({ id, tag: verTag }) : '';
     if (!inst && play?.last_played) stats.unshift(...playtimeRows(a, play));
     body = `<div class="stack"><div class="stats" style="--stat-cols:${stats.length}">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}${inst && k === t('Installed') ? selfManagedPill(id) : ''}</div>`).join('')}</div>
       ${inst ? playCard(inst) : ''}
@@ -4191,6 +4202,7 @@ function pageSettings() {
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
+        + row(t('Show Versions Under Names'), t('The newest version of each recomp in Discover, and the version you have installed in the Library.'), sw('show_versions', ui.show_versions, t('Show Versions Under Names'), 'ui-toggle'))
         + row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cover_labels', ui.cover_labels, t('Console Labels on Covers'), 'ui-toggle'))
         + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'ui-toggle'))
         + row(t('Show Game Media'), t('Every version of a game shows the same cover, background, logo and icon: the recommended version\'s. The versions list keeps each one\'s own icon, and pictures you picked yourself stay.'), sw('game_media', ui.game_media, t('Show Game Media'), 'ui-toggle'))

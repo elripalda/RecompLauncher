@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "セットアップに使ったゲームデータを使う",
  "{n} new options": "新しいオプション {n} 件",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "1 回のダウンロードで {n} 本のゲームがすべてインストールされます。それぞれがライブラリに表示されます。",
- "{name} is installed. Its {n} games are in your Library.": "{name} をインストールしました。{n} 本のゲームがライブラリにあります。"
+ "{name} is installed. Its {n} games are in your Library.": "{name} をインストールしました。{n} 本のゲームがライブラリにあります。",
+ "Show Versions Under Names": "名前の下にバージョンを表示",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "「見つける」では各リコンプの最新バージョン、ライブラリではインストール済みのバージョン。"
 }

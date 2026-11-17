@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "Pakai salinan yang dipakai saat menyiapkannya",
  "{n} new options": "{n} opsi baru",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "Satu unduhan memasang semua {n} game-nya. Masing-masing punya tempat sendiri di Pustaka-mu.",
- "{name} is installed. Its {n} games are in your Library.": "{name} sudah terpasang. {n} game-nya ada di Pustaka-mu."
+ "{name} is installed. Its {n} games are in your Library.": "{name} sudah terpasang. {n} game-nya ada di Pustaka-mu.",
+ "Show Versions Under Names": "Tampilkan Versi di Bawah Nama",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Versi terbaru setiap recomp di Jelajahi, dan versi yang kamu pasang di Pustaka."
 }

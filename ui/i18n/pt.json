@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "Usar a cópia com que foi configurado",
  "{n} new options": "{n} novas opções",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "Uma só transferência instala os seus {n} jogos. Cada um fica no seu próprio lugar na biblioteca.",
- "{name} is installed. Its {n} games are in your Library.": "{name} está instalado. Os seus {n} jogos estão na biblioteca."
+ "{name} is installed. Its {n} games are in your Library.": "{name} está instalado. Os seus {n} jogos estão na biblioteca.",
+ "Show Versions Under Names": "Mostrar versões sob os nomes",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "A versão mais recente de cada recomp em Descobrir e a versão que tens instalada na Biblioteca."
 }

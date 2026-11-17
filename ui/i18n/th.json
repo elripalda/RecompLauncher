@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "ใช้สำเนาที่ใช้ตั้งค่า",
  "{n} new options": "ตัวเลือกใหม่ {n} รายการ",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "ดาวน์โหลดครั้งเดียวติดตั้งครบทั้ง {n} เกม แต่ละเกมมีที่ของตัวเองในคลังของคุณ",
- "{name} is installed. Its {n} games are in your Library.": "ติดตั้ง {name} แล้ว ทั้ง {n} เกมอยู่ในคลังของคุณแล้ว"
+ "{name} is installed. Its {n} games are in your Library.": "ติดตั้ง {name} แล้ว ทั้ง {n} เกมอยู่ในคลังของคุณแล้ว",
+ "Show Versions Under Names": "แสดงเวอร์ชันใต้ชื่อ",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "เวอร์ชันล่าสุดของแต่ละ recomp ในหน้าค้นพบ และเวอร์ชันที่คุณติดตั้งไว้ในคลัง"
 }

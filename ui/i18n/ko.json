@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "설정에 사용한 사본 사용",
  "{n} new options": "새 옵션 {n}개",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "한 번의 다운로드로 게임 {n}개가 모두 설치됩니다. 각각 라이브러리에 따로 표시됩니다.",
- "{name} is installed. Its {n} games are in your Library.": "{name}을(를) 설치했습니다. 게임 {n}개가 라이브러리에 있습니다."
+ "{name} is installed. Its {n} games are in your Library.": "{name}을(를) 설치했습니다. 게임 {n}개가 라이브러리에 있습니다.",
+ "Show Versions Under Names": "이름 아래에 버전 표시",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "탐색에서는 각 리컴프의 최신 버전을, 라이브러리에서는 설치된 버전을 보여 줍니다."
 }

@@ -3353,5 +3353,7 @@
  "Use the copy it was set up with": "Dùng bản sao đã dùng để thiết lập",
  "{n} new options": "{n} tùy chọn mới",
  "One download installs all {n} of its games. Each one gets its own place in your Library.": "Một lần tải sẽ cài cả {n} trò chơi. Mỗi trò có chỗ riêng trong Thư viện của bạn.",
- "{name} is installed. Its {n} games are in your Library.": "Đã cài {name}. {n} trò chơi của nó đã có trong Thư viện."
+ "{name} is installed. Its {n} games are in your Library.": "Đã cài {name}. {n} trò chơi của nó đã có trong Thư viện.",
+ "Show Versions Under Names": "Hiện phiên bản dưới tên",
+ "The newest version of each recomp in Discover, and the version you have installed in the Library.": "Phiên bản mới nhất của mỗi recomp trong Khám phá, và phiên bản bạn đã cài trong Thư viện."
 }
