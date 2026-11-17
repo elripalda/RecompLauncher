@@ -42,7 +42,29 @@
   }
   window.firstRun = firstRun;
 
-  const games = () => Object.keys(S.owned || {}).map((id) => byId(id) || { id, name: id }).filter(Boolean);
+  // One per game the player has, not per recomp: every recomp of a game matches the same disc image
+  // (and usually shares its catalog title), so two Zeldas would otherwise fill the row with Zeldas.
+  // A recomp joins a game already listed when either its file or its title was seen.
+  const games = () => {
+    const seen = new Set();
+    const out = [];
+    for (const id of Object.keys(S.owned || {})) {
+      const a = byId(id) || { id, name: id };
+      const keys = [S.owned[id].path, a.title && 't:' + a.title].filter(Boolean);
+      const dup = keys.some((k) => seen.has(k));
+      // Kept even for a duplicate, so a third recomp linked only through this one still joins.
+      keys.forEach((k) => seen.add(k));
+      if (dup) continue;
+      out.push(gameShown(a));
+    }
+    return out;
+  };
+  // A game's name and cover: those of the version the catalog recommends, when it has several.
+  const gameShown = (a) => {
+    const g = a.title ? index().titles.get(a.title) : null;
+    const lead = (g && byId(g.pick)) || a;
+    return { name: (g && g.name) || a.game || a.name, cover: lead.cover || a.cover };
+  };
   const sw = (k, label, sub) => `<div class="oob-row"><div class="k"><b>${esc(label)}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.settings[k] !== false}" aria-label="${esc(label)}" data-o="sw" data-k="${k}"></button></div>`;
   const covers = (list) => `<div class="oob-covers">${list.slice(0, 6).map((a) => `<div class="oob-cover" title="${esc(a.name)}">${a.cover ? pic(a.cover) : `<span>${esc(a.name)}</span>`}</div>`).join('')}</div>`;
 
