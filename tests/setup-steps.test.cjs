@@ -1,28 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const fs = require('node:fs');
-const path = require('node:path');
-const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
-
-// setup-steps.js with setup-inputs.js (its rows) and the little the page gives them.
-function context(owned = {}) {
-  const tf = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
-  const ctx = vm.createContext({
-    t: (x) => x, tf, tn: (n, one, many) => tf(n === 1 ? one : many, { n }),
-    esc: (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
-    htmlFill: (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m)),
-    baseName: (x) => String(x).split(/[\\/]/).pop(), CHECK: '<svg class="ok"></svg>', XMARK: '<svg></svg>', DISC_L: '<svg></svg>', DISC_S: '<svg></svg>',
-    S: { owned, library: {}, setup: {} },
-    copyFormats: () => ({ type: 'disc', exts: ['iso'], folder: true }), copyDrop: () => 'Drop it', copyPickOpts: () => ({}),
-    prepReq: () => 'Turn on the option marked Required to continue',
-    prepBlocked: (su) => (su.prepare_options || []).some((o) => o.required && !o.on),
-    gameMediaHtml: () => '<div class="md"></div>',
-  });
-  vm.runInContext(read('setup-inputs.js'), ctx);
-  vm.runInContext(read('setup-steps.js'), ctx);
-  return ctx;
-}
+const { stepsContext: context, read } = require('./steps-context.cjs');
 const copy = (x) => Object.assign({ needs: 'Your disc', kind: 'iso_or_folder', copy: null, inputs: [], prepare_options: [] }, x);
 const disc = (n, p = null) => ({ id: 'disc' + n, label: 'Disc ' + n, role: 'disc', file: true, active: true, path: p });
 const dlc = (id, p = null) => ({ id, label: id, role: 'dlc', optional: true, file: true, active: true, path: p });
@@ -130,4 +108,14 @@ test('the desktop window and the change of an option draw the steps', () => {
   assert.match(app, /if \(SU\.stage === 'steps'\) ssDraw\(\);\n\}\);/);
   assert.match(app, /stepsDrop\(id, paths\[0\], SU\.named\)/);
   assert.match(read('index.html'), /<script src="setup-inputs\.js"><\/script>\r?\n<script src="setup-steps\.js"><\/script>/);
+});
+
+test('Big Picture opens the same steps: A presses, B goes back a step before it closes', () => {
+  const tv = read('tv.js');
+  assert.match(tv, /Object\.assign\(TS, \{ id, stage: 'steps', named: \{ at: 0 \}/);
+  assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
+  assert.match(tv, /b\.dataset\.key = `ss:\$\{act\}:\$\{input\}`;/);
+  assert.match(tv, /back: \(\) => \{\n\s+if \(TS\.stage !== 'steps' \|\| !\(TS\.named\.at > 0\)\) return false;\n\s+TS\.named\.at -= 1;/);
+  assert.match(tv, /const go = await stepsRun\(id, ns, TS\.optsSaving\);/);
+  assert.doesNotMatch(tv, /namedInputsShell|TS\.stage === 'pick'/);
 });

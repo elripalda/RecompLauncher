@@ -88,22 +88,19 @@ test('a better version of a game is suggested only when the catalog says so, and
   assert.match(app, /if \(S\.library\[from\] && S\.library\[to\] && !S\.running\.has\(from\)\) confirmUninstall\(from\);/);
 });
 
-test("a setup step's options show as ticks, a license one off until the player ticks it", () => {
-  const start = app.indexOf('function prepOptsHtml(su)');
-  const src = app.slice(start, app.indexOf('document.addEventListener(\'change\'', start));
-  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const htmlFill = (s, v) => esc(s).replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m));
-  const prepOptsHtml = new Function('esc', 't', 'htmlFill', `${src} return prepOptsHtml;`)(esc, (s) => s, htmlFill);
-  assert.equal(prepOptsHtml({ prepare_options: [] }), '');
-  const out = prepOptsHtml({ prepare_options: [{ id: 'dlss', label: 'Upscaler A', note: 'Sharper.', license: { name: 'A license', url: 'https://example.com/a' }, on: false }, { id: 'hd', label: 'HD', on: true }] });
-  assert.match(out, /<h3>Options<\/h3>/);
-  assert.match(out, /<b>Upscaler A<\/b> <em>\(I accept the <a href="#" data-url="https:\/\/example\.com\/a">A license<\/a>\)<\/em><small>Sharper\.<\/small><\/span><input type="checkbox" role="switch" data-popt="dlss"><span class="switch"/);
+test("a setup step's options show as switches on Extras, a license one off until the player turns it on", () => {
+  const { stepsContext } = require('./steps-context.cjs');
+  const c = stepsContext();
+  const su = (opts) => ({ needs: 'x', kind: 'iso', copy: '/g.iso', inputs: [], prepare_options: opts });
+  assert.equal(c.stepsModel('g', su([]), {}).steps.map((s) => s.id).join(), 'game', 'no options, no Extras step');
+  const out = c.stepsView('g', su([{ id: 'dlss', label: 'Upscaler A', note: 'Sharper.', license: { name: 'A license', url: 'https://example.com/a' }, on: false }, { id: 'hd', label: 'HD', on: true }]), { at: 1 }, { name: 'G' });
+  assert.match(out, /<h2>Extras<\/h2>/);
+  assert.match(out, /<b>Upscaler A<\/b><small>Sharper\. Turning it on accepts the <a href="#" data-url="https:\/\/example\.com\/a">A license<\/a>\.<\/small><\/span><input type="checkbox" role="switch" data-popt="dlss"><span class="switch"/);
   assert.match(out, /data-popt="hd" checked><span class="switch"/);
   // The ticks are kept for the game, and a rebuild can use the copy it was set up with.
   assert.match(app, /invoke\('set_prepare_opts', \{ id, opts \}\)/);
   // (The steps keep it in the copy's box, and Set Up starts with it.)
   assert.match(read('setup-steps.js'), /return game && game\.path \? \{ copy: game\.path \} : null;/);
-  assert.match(read('setup-inputs.js'), /prepOptsHtml\(su\)/);
 });
 
 test('coming from another launcher gets one window that brings the games over', () => {

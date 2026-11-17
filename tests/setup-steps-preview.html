@@ -2,7 +2,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Easy Setup steps — fixture preview</title>
+<!-- Every step of each case with the real renderer and CSS. Add ?tv for Big Picture. -->
 <link rel="stylesheet" href="/ui/app.css">
+<link rel="stylesheet" href="/ui/tv.css">
 <link rel="stylesheet" href="/ui/media-art.css">
 <style>
 html,body{overflow:auto;height:auto}
@@ -11,6 +13,8 @@ body{padding:24px;background:var(--bg)}
 .pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(900px,1fr));gap:22px}
 .pv-cell h3{margin:0 0 8px;font-size:13px;color:var(--muted)}
 .pv-cell .modal{width:900px;max-height:none}
+.pv-tv{position:relative;width:900px;height:506px;overflow:hidden;border-radius:16px}
+.pv-tv .tv-stage{transform:translate(-50%,-50%) scale(.46875)}
 </style>
 <body>
 <div id="out"></div>
@@ -57,6 +61,7 @@ const CASES = [
   { title: 'SSX · required extra (Windows)', id: 'ssx', game: { name: 'SSX', game: 'SSX', origin: 'xbox360' }, fm: { exts: ['iso'] },
     su: { needs: 'Your copy of SSX for Xbox 360 (EA-2413): its disc image (.iso), or the extracted folder with default.xex.', kind: 'iso_or_folder', copy: '/r/xbox360/SSX.iso', inputs: [dlc('tu', 'Title update 0.0.3.2 (about 9 MB): the gear for levels 11 to 15', null), dlc('me', 'SSX Mount Eddie (about 250 MB): the Mt. Eddie region and the classic riders', null)], own_build: '/x/SSX', prepare_label: 'Recompiling SSX for your PC from your disc (10 to 30 minutes the first time)', prepare_options: [{ id: 'vs', label: 'Microsoft Visual Studio Build Tools', note: 'Needed to build SSX on your PC (Windows asks for permission).', required: true, license: { name: 'Microsoft Visual Studio license terms', url: 'https://example.com' }, on: false }] } },
 ];
+const TV = new URLSearchParams(location.search).has('tv') || location.hash === '#tv';
 let html = '';
 for (const c of CASES) {
   S.setup[c.id] = c.su;
@@ -67,9 +72,14 @@ for (const c of CASES) {
   for (let i = 0; i < n; i++) {
     const ns = Object.assign({ at: i }, c.ns);
     const step = stepsModel(c.id, c.su, ns).steps[i];
-    html += `<div class="pv-cell"><h3>Step ${i + 1} · ${esc(step.name)}</h3><div class="modal su ss-modal"><button type="button" class="su-x" aria-label="Close">${XMARK}</button>${stepsShell(c.id, c.su, ns, c.game, false)}</div></div>`;
+    // ?tv: Big Picture's sheet at its 1920x1080 size, scaled down to fit the cell.
+    const page = TV ? `<div class="pv-tv"><div class="tv-stage"><div class="tv-sheet tv-setup" data-stage="steps">${stepsShell(c.id, c.su, ns, c.game, true)}</div></div></div>`
+      : `<div class="modal su ss-modal"><button type="button" class="su-x" aria-label="Close">${XMARK}</button>${stepsShell(c.id, c.su, ns, c.game, false)}</div>`;
+    html += `<div class="pv-cell"><h3>Step ${i + 1} · ${esc(step.name)}</h3>${page}</div>`;
   }
   html += '</div>';
 }
 document.getElementById('out').innerHTML = html;
+// Big Picture marks the item the controller is on: the main button of each page, as it opens.
+if (TV) for (const b of document.querySelectorAll('.ss-foot .btn.main:not([disabled])')) { b.dataset.f = ''; b.classList.add('f'); }
 </script>

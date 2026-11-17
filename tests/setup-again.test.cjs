@@ -42,5 +42,5 @@ test('Play asks about new options before the game starts, in both modes', () => 
   assert.match(app, /invoke\('take_options_asked'\)/);
   // Big Picture: Set Up Again beside Play, and the options as items the controller can reach.
   assert.match(tv, /btn\('g-again', 'setup', esc\(t\('Set Up Again'\)\)/);
-  assert.match(tv, /const prepOpts = \(su\.prepare_options \|\| \[\]\)\.map\(optItem\)/);
+  assert.match(tv, /row\.dataset\.f = ''; row\.dataset\.key = 'po:' \+ o\.id; row\.dataset\.sheet = at;/);
 });

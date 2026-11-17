@@ -2676,8 +2676,7 @@ function copyFormats(id) {
 }
 // Those, as small tags (".z64 .n64 .v64"), the same in every language.
 const fmtTags = (exts) => exts.map((e) => `<span class="fmt">.${esc(e)}</span>`).join('');
-// The pick button's name, and the line under the drop area, for that kind of copy.
-const copyName = (f) => (f.type === 'rom' ? t('ROM File') : f.type === 'disc' ? t('Disc Image') : f.type === 'file' ? tf('{console} File', { console: f.console }) : t('Game File'));
+// The line under the drop area, for that kind of copy.
 const copyDrop = (f) => (f.type === 'rom' ? t('Drop your ROM here') : f.type === 'disc' ? t('Drop your disc image here') : t('Drop your game file here'));
 function copyPickOpts(id) {
   const a = byId(id) || { id };
@@ -2903,40 +2902,14 @@ async function suAct(b) {
   }
   void su;
 }
-// The setup step's options (prepare.options) that apply on this PC: one tick each, with its note.
-// One with a license names it as a link and starts off; the player ticks it themselves. Each change
-// is kept for the game at once, so whichever way the setup then starts, and a rebuild later, has it.
-function prepOptsHtml(su) {
-  const list = (su && su.prepare_options) || [];
-  if (!list.length) return '';
-  return `<section class="su-opts" aria-label="${esc(t('Options'))}"><h3>${esc(t('Options'))}</h3>${list.map((o) => {
-    const lic = o.license && o.license.url ? htmlFill(t('I accept the {license}'), { license: `<a href="#" data-url="${esc(o.license.url)}">${esc(o.license.name || o.license.url)}</a>` }) : '';
-    const fresh = o.new && (su.copy || su.inputs_ready) ? ` <span class="su-new">${esc(t('New option'))}</span>` : '';
-    const req = o.required ? ` <span class="su-req-tag">${esc(t('Required'))}</span>` : '';
-    // A switch like the ones in Settings, drawn over the real checkbox so keys and screen readers still work.
-    return `<label class="su-opt"><span class="su-opt-text"><b>${esc(o.label)}</b>${req}${fresh}${lic ? ` <em>(${lic})</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span><input type="checkbox" role="switch" data-popt="${esc(o.id)}"${o.on ? ' checked' : ''}${o.required ? ' aria-required="true"' : ''}><span class="switch" aria-hidden="true"></span></label>`;
-  }).join('')}<p class="su-req" role="status"${prepBlocked(su) ? '' : ' hidden'}>${esc(prepReq())}</p></section>`;
-}
-// A required option (prepare.options "required") this PC is offered that isn't ticked: setup waits
-// for it. The list only has the options this PC is offered, so one hidden by os or gpu never counts.
-// The backend refuses to start too; this keeps the buttons honest. "Turn on", as the options are
-// switches; "marked Required" and not "above", as Big Picture shows this line above them.
+// A required option (prepare.options "required") this PC is offered that isn't on: Set Up waits for
+// it (the steps, setup-steps.js). The list only has the options this PC is offered, so one hidden by
+// os or gpu never counts. The backend refuses to start too; this keeps the button honest. "Turn
+// on", as the options are switches; "marked Required", as the option shows that tag.
 const prepReq = () => t('Turn on the option marked Required to continue');
 function prepBlocked(su) {
   if (!su || su === 'loading') return false;
   return (su.prepare_options || []).some((o) => o.required && !o.on);
-}
-// The buttons that start the setup step, marked data-req-gate, wait for the required ticks. A gate
-// of "off" is disabled for another reason too (files still to choose), and stays disabled.
-function prepGateAttr(su, off) {
-  return ` data-req-gate="${off ? 'off' : ''}"${off || prepBlocked(su) ? ' disabled' : ''}`;
-}
-function prepGate(root, su) {
-  if (!root) return;
-  const blocked = prepBlocked(su);
-  for (const b of $$('[data-req-gate]', root)) b.disabled = blocked || b.dataset.reqGate === 'off';
-  const hint = $('.su-req', root);
-  if (hint) hint.hidden = !blocked;
 }
 // The ways to give the game's copy (a file, a folder): side by side with "or" between them, so
 // they read as one choice and not as two things to fill in.
@@ -2992,11 +2965,10 @@ document.addEventListener('change', (e) => {
   if (!box || !SU.id) return;
   const id = SU.id, su = S.setup[id];
   const opts = {};
-  for (const x of $$('input[data-popt]', box.closest('.su-opts') || document)) opts[x.dataset.popt] = x.checked;
+  for (const x of $$('input[data-popt]:not([disabled])', box.closest('.su-opts') || document)) opts[x.dataset.popt] = x.checked;
   if (su && su.prepare_options) for (const o of su.prepare_options) if (o.id in opts) o.on = opts[o.id];
   // Kept before setup starts: the backend checks the required ticks against what it has.
   SU.optsSaving = invoke('set_prepare_opts', { id, opts }).catch(fail);
-  prepGate(SU.el, su);
   // The steps say what Set Up waits for (the Required dot, the line by the button): drawn again.
   if (SU.stage === 'steps') ssDraw();
 });

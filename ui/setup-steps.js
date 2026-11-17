@@ -94,7 +94,9 @@ function ssRow(r, ns) {
   const fmts = !on && ssFmts(r) ? `<span class="fmts">${ssFmts(r)}</span>` : '';
   const canRemove = r.optional || (r.shared && !r.legacy);
   const rm = canRemove ? `<button type="button" class="btn sm rm" data-ss="${r.shared ? 'remove-key' : 'clear'}" data-input="${esc(r.id)}" aria-label="${esc(t('Remove') + ': ' + r.label)}" title="${esc(t('Remove'))}"${on && !ns.busy ? '' : ' disabled'}>${XMARK}</button>` : '';
-  return `<div class="ss-row${on ? ' on' : ''}${r.optional ? ' opt' : ''}"><span class="st">${CHECK}</span><div class="k"><b>${esc(r.label)}</b><div class="line">${sub ? `<span title="${esc(r.path || '')}">${esc(sub)}</span>` : ''}${fmts}${on ? ssTag(r) : ''}</div></div><div class="acts">${ssPickBtns(r, ns.busy)}${rm}</div></div>`;
+  // A shared key's path is the launcher's private copy: never shown, not even as a tooltip.
+  const tip = r.shared ? '' : ` title="${esc(r.path || '')}"`;
+  return `<div class="ss-row${on ? ' on' : ''}${r.optional ? ' opt' : ''}"><span class="st">${CHECK}</span><div class="k"><b>${esc(r.label)}</b><div class="line">${sub ? `<span${tip}>${esc(sub)}</span>` : ''}${fmts}${on ? ssTag(r) : ''}</div></div><div class="acts">${ssPickBtns(r, ns.busy)}${rm}</div></div>`;
 }
 
 // Extras: the setup step's options (switches; one with a license starts off and the player turns

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
-const app = read('app.js'), tv = read('tv.js'), more = read('more.js'), named = read('setup-inputs.js');
+const app = read('app.js'), tv = read('tv.js'), more = read('more.js');
 const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 const line = (src, name) => src.match(new RegExp(`^const ${name} = .*$`, 'm'))[0];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -60,13 +60,15 @@ test('reports need an account: signed out, the sign-in prompt instead of a quest
   assert.equal(c.needSignIn(new Error('Something else')), null);
 });
 
-test('Use My Previous Setup and the build on this PC come first on the setup screen', () => {
-  const c = vm.createContext({ esc, t: (s) => s });
-  vm.runInContext(fn(named, 'relinkCards'), c);
-  const html = c.relinkCards({ previous: ['Base.nsp', 'Update.nsp'], inputs_ready: false, prebuilt: '/home/p/Games/Hopper' }, 'data-su');
-  assert.match(html, /Use My Previous Setup[^]*Base\.nsp · Update\.nsp[^]*data-su="relink"/);
-  assert.match(html, /Use the Build Already on This PC[^]*\/home\/p\/Games\/Hopper[^]*data-su="prebuilt"/);
-  assert.equal(c.relinkCards({ previous: ['Base.nsp'], inputs_ready: true }, 'data-su'), '');
+test('the files from before and the build on this PC are offered under the game\'s box', () => {
+  const { stepsContext } = require('./steps-context.cjs');
+  const c = stepsContext();
+  const su = (x) => Object.assign({ needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Base', role: 'game', file: true, active: true, path: null }], prepare_options: [] }, x);
+  assert.match(c.stepsView('h', su({ previous: ['Base.nsp', 'Update.nsp'], inputs_ready: false }), {}, { name: 'H' }), /Set up before with Base\.nsp · Update\.nsp\. <button type="button" data-ss="relink">Use Them Again<\/button>/);
+  assert.doesNotMatch(c.stepsView('h', su({ previous: ['Base.nsp'], inputs_ready: true }), {}, { name: 'H' }), /data-ss="relink"/);
+  // The build already in the game's folder comes first: Set Up uses it, unless Build It Again.
+  const built = c.stepsView('h', su({ previous: ['Base.nsp'], prebuilt: '/home/p/Games/Hopper' }), {}, { name: 'H' });
+  assert.match(built, /still here, so setup skips the build\. <button type="button" data-ss="rebuild">Build It Again<\/button>/);
   assert.match(app, /\{ act: 'relink', id, label: t\('Relink Setup'\), icon: 'refresh' \}/);
 });
 

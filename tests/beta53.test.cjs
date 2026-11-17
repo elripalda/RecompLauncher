@@ -62,7 +62,8 @@ test('Use a Build You Already Have: a line under the copy in Easy Setup, a menu 
   assert.match(fn(named, 'useOwnBuild'), /invoke\('setup_use_build', \{ id, folder: typeof p === 'string' \? p : p\.path \}\)/);
   assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
   assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
-  assert.match(tv, /su\.own_build && !su\.prebuilt \? it\(t\('Use a Build You Already Have'\)/);
+  // Big Picture draws the same steps, so it has the same line.
+  assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
   // It says where the game's own setup builds it, when that's outside the launcher's folder for
   // the game (build_where): on the last step, beside what Set Up starts.
   assert.match(fn(steps, 'ssSummary'), /su\.build_where && !m\.skipBuild \? `<div><span>\$\{esc\(t\('Builds into'\)\)\}/);
