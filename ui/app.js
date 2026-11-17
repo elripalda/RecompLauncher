@@ -85,6 +85,8 @@ const date = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleDa
 const catIcon = (k) => (GENRES[k] ? `<i class="cat-ico" style="--m:url(img/cat/${k}.png)" aria-hidden="true"></i>` : '');
 const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.svg)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
 const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id === id)?.name || id || '';
+// The catalog's consoles A to Z for the pickers: the catalog keeps its own order, which reads as random.
+const originsAZ = () => [...((S.cat && S.cat.origins) || [])].sort((x, y) => x.name.localeCompare(y.name));
 // Each console's own colour (the website's), for its dot in lists.
 const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
   wii: '#4fc3f7', wiiu: '#00a2c7', snes: '#b38cf2', gba: '#6c63ff', gb: '#9bbc0f', ds: '#aab4c2', dc: '#ff8a3d', saturn: '#4f7cff', psp: '#5b6b8c', switch: '#e60012', switch2: '#ff3b47',
@@ -1768,7 +1770,7 @@ const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class
 // Discover's controls: on the page, and again in the bar pinned to the top once those scroll away.
 const sortOpts = () => [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
 const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n, ico]) => `<option value="${esc(k)}"${ico ? ` data-ico="${esc(ico)}"` : ''}${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
-const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
+const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...originsAZ().map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
 const genreSel = (f, genres, cls) => pillSel(t('Genre'), 'genre-sel', [['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])], f.genre, cls);
 const showSel = (f) => pillSel(t('Show'), 'show-sel', showsNow(f.show || '').map(([k, n]) => [k, t(n)]), f.show || '');
 const tagSel = (f) => pillSel(t('Tag'), 'tag-sel', [['', t('Any')], ...allTags().map((k) => [k, k])], f.tag || '');
