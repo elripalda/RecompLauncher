@@ -4493,6 +4493,35 @@ fn upgrade_fingerprints(st: &App, only: Option<&str>) {
         trail::note("Setup fingerprints from an older launcher kept as v2".to_string());
         st.save();
     }
+    adopt_kept_copies(st, only);
+}
+
+/// A game built from the player's copy whose copy was moved or deleted since (often right after
+/// the first build), with nothing else changed: the copy the game keeps in its build folder
+/// stands in for it, so an update doesn't send it back through Easy Setup.
+fn adopt_kept_copies(st: &App, only: Option<&str>) {
+    let list: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter()
+        .filter(|(k, g)| only.map_or(true, |o| o == k.as_str()) && g.manual.is_none() && g.game_copy.as_ref().is_some_and(|c| !c.exists()))
+        .map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut changed = false;
+    for (id, g) in list {
+        let Some(p) = profile_of(st, &id, &g) else { continue };
+        if inputs::ready(&p, &g, &st.dir) {
+            continue;
+        }
+        let Some((folder, signature)) = inputs::kept_copy(&p, &g, &st.dir) else { continue };
+        let mut lib = st.lib.lock().unwrap();
+        // Only what was checked: a new pick meanwhile stays.
+        let Some(cur) = lib.installed.get_mut(&id).filter(|c| c.game_copy == g.game_copy && c.inputs_ready == g.inputs_ready) else { continue };
+        cur.game_copy = Some(folder.clone());
+        cur.inputs_ready = signature;
+        drop(lib);
+        trail::note(format!("Set up {id}: your copy moved; using the copy the game kept at {}", folder.display()));
+        changed = true;
+    }
+    if changed {
+        st.save();
+    }
 }
 
 /// Every installed recomp that carries several games, with them: the Library's tiles.

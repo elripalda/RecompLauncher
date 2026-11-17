@@ -1575,6 +1575,22 @@ impl Profile {
         (dir.is_absolute() && dir != install).then_some(dir)
     }
 
+    /// The game's own folders (`folders.game`, filled in for this install), with the folder a
+    /// moved build went to: where a game built from the player's copy keeps what it built from.
+    pub fn game_folders(&self, install: &Path, moved: Option<&Path>) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = moved.map(Path::to_path_buf).into_iter().collect();
+        for place in self.folders.get("game").into_iter().flatten() {
+            if place.path.is_empty() || place.path.contains("{game}") {
+                continue;
+            }
+            let dir = PathBuf::from(fill(&place.path, install, None));
+            if dir.is_absolute() && !out.contains(&dir) {
+                out.push(dir);
+            }
+        }
+        out
+    }
+
     /// The player's build in `to` standing in for the setup's own folder: every path of the
     /// profile in that folder (how it starts, its settings files, its saves, its folders) moves
     /// with it. What the setup step runs stays as it is: the launcher's own build goes to its folder.
@@ -3840,6 +3856,18 @@ mod tests {
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());
+        // The copy a game keeps for rebuilding: a hidden `.name_exefs` beside `romfs`.
+        let kept = d.join("Hopper");
+        std::fs::create_dir_all(kept.join(".hopper_exefs")).unwrap();
+        std::fs::create_dir_all(kept.join("romfs")).unwrap();
+        std::fs::write(kept.join(".hopper_exefs").join("main"), &main).unwrap();
+        assert!(check_copy(&g("e0f3ccfa"), &kept).is_ok());
+        assert!(check_copy(&g("11223344"), &kept).is_err());
+        // Any other hidden folder ending in _exefs without the executable is refused.
+        let other = d.join("Other");
+        std::fs::create_dir_all(other.join(".foo_exefs")).unwrap();
+        std::fs::create_dir_all(other.join("romfs")).unwrap();
+        assert!(check_copy(&g("e0f3ccfa"), &other).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
