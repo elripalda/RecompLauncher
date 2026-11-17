@@ -1423,8 +1423,7 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 .dev-line img,.dev-line .dev-ph{width:24px;height:24px;border-radius:50%;object-fit:cover;flex:none;background:var(--card3)}
 .dev-line .dev-ph{display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--ink)}
 .dev-line b{color:var(--ink);font-weight:700}
-.vpill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px 0 7px;border-radius:15px;background:rgba(52,242,232,.1);backdrop-filter:blur(10px);box-shadow:inset 0 0 0 1px rgba(52,242,232,.32);color:#34F2E8;font-size:12.5px;font-weight:700;transition:background-color .15s,box-shadow .15s}
-.vpill:hover{background:rgba(52,242,232,.18);box-shadow:inset 0 0 0 1px rgba(52,242,232,.55)}
+.vpill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px 0 5px;border-radius:11px;background:rgba(52,242,232,.1);box-shadow:inset 0 0 0 1px rgba(52,242,232,.32);color:#34F2E8;font-size:11.5px;font-weight:700}
 .vpill .vtick{margin:0}
 .gp-title .dev-line+.ver-pill{margin-top:-2px}
 .who{display:inline-flex;align-items:center}
