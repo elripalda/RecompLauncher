@@ -2547,6 +2547,19 @@ function gameBody(a) {
   }
   return body + gameRail(a);
 }
+// Asks once what the Updates tab shows for a game. update_info works it out from the release list
+// on disk, so an answer that comes back after a newer list came in (S.updInfo is a new object by
+// then) is from the old list and is dropped; the tab asks again.
+function askUpdInfo(id) {
+  S.updInfo = S.updInfo || {};
+  const asked = S.updInfo;
+  asked[id] = null;
+  invoke('update_info', { id }).then((v) => {
+    if (asked !== S.updInfo) return;
+    asked[id] = v;
+    if (S.view === 'game' && S.arg === id && S.tab === 'updates') showTab('updates');
+  }).catch(() => { asked[id] = false; });
+}
 // What each release in the Updates tab offers, by the same rule as the Library's badge and
 // Settings > Check (update_info): the update on offer, releases the store is still checking,
 // and releases with no build for this system.
@@ -2554,7 +2567,7 @@ function relState(id, inst, list, x, n) {
   if (!inst) return '';
   if (inst.tag === x.tag_name) return `<span class="ai-tag inst">${esc(t('Installed'))}</span>`;
   const info = (S.updInfo || {})[id];
-  if (info === undefined) { S.updInfo = S.updInfo || {}; S.updInfo[id] = null; invoke('update_info', { id }).then((v) => { S.updInfo[id] = v; if (S.view === 'game' && S.arg === id && S.tab === 'updates') showTab('updates'); }).catch(() => { S.updInfo[id] = false; }); }
+  if (info === undefined) askUpdInfo(id);
   if (info && Array.isArray(info.builds) && !info.builds.includes(x.tag_name)) return `<span class="pre">${esc(t('No build for your system'))}</span>`;
   if (S.jobs[id] || S.running.has(id)) return '';
   const btn = (label, main) => `<button type="button" class="btn sm${main ? ' main' : ''}" data-act="version" data-id="${esc(id)}" data-tag="${esc(x.tag_name)}">${esc(label)}</button>`;
@@ -4927,6 +4940,10 @@ async function loadRels(repo, force) {
     const r = await invoke('get_releases', { repo, force: !!force });
     const archived = typeof r.archived === 'boolean' ? r.archived : previous;
     S.rels[repo] = { list: Array.isArray(r.data) ? r.data : [], archived };
+    // What the Updates tab knows of each release came from the list on disk when it asked. This
+    // list can be newer (fetched in the background after the tab opened, or after Refresh), and a
+    // release only it has would read "No build for your system": the tab asks again.
+    S.updInfo = {};
     statusChanged = archived !== previous;
   } catch (e) {
     S.rels[repo] = { list: [], error: String(e), archived: previous };
