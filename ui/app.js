@@ -368,7 +368,7 @@ const fjPath = (repo) => String(repo).slice(8);
 const fjServer = (repo) => fjPath(repo).split('/')[0];
 const hostName = (repo) => (isSF(repo) ? 'SourceForge' : isLab(repo) ? 'GitLab' : isFJ(repo) ? fjServer(repo) : 'GitHub');
 // Stars are counted by whichever site hosts the project, so the label names that site. SourceForge has none.
-const starsLabel = (repo) => (isLab(repo) ? t('Stars on GitLab') : isFJ(repo) ? tf('Stars on {host}', { host: fjServer(repo) }) : t('Stars on GitHub'));
+const starsLabel = (repo) => (isLab(repo) ? t('Stars on GitLab') : isFJ(repo) || isSF(repo) ? tf('Stars on {host}', { host: hostName(repo) }) : t('Stars on GitHub'));
 const starsText = (a) => (a.stars && !isSF(a.repo) ? fmtN(a.stars) : '');
 const repoHome = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/` : isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : isFJ(repo) ? `https://${fjPath(repo)}` : `https://github.com/${repo}`;
 const repoIssues = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/support` : isLab(repo) ? `${repoHome(repo)}/-/issues/new` : isFJ(repo) ? `${repoHome(repo)}/issues` : `https://github.com/${repo}/issues`;
@@ -2490,7 +2490,7 @@ function gameBody(a) {
     const play = gamePlaytime(a);
     const stats = inst
       ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || (inst.installer_setup ? t('Not set up yet') : t('Not known'))) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
-      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [starsLabel(a.repo), starsText(a) || '—']];
+      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [starsLabel(a.repo), isSF(a.repo) ? t('N/A') : starsText(a) || '—']];
     // Under the version: how the store checked that release (a player's own game has none). Before
     // installing it's the latest release, so the player sees it was checked before downloading it.
     // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").

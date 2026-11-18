@@ -3360,5 +3360,6 @@
  "Game A to Z": "依遊戲名稱排序",
  "Checked by the RecompStore team": "已由 RecompStore 團隊檢查",
  "Open the VirusTotal report": "開啟 VirusTotal 報告",
- "Verified Update": "已驗證的更新"
+ "Verified Update": "已驗證的更新",
+ "N/A": "不適用"
 }
