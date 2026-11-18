@@ -28,6 +28,9 @@ function settingsContext(settings) {
     homePinned: () => false, bgMode: () => '', langName: () => 'English',
     svg: () => '', hints: () => '', HEART: '',
   });
+  c.window = c;
+  c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => ''; c.setClock = () => {};
+  c.applyEasySkip = () => {};
   vm.runInContext(helpers, c);
   return c;
 }
