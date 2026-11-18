@@ -4826,6 +4826,21 @@ fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, inputs_r
     setup_state::of(&setup_state::Facts { profile: p, game: g, inputs_ready, copy, copy_wrong, own_program, skipped })
 }
 
+/// Set up and ready to start as it is, by the same answer Play and the game's page give (one game
+/// of several judged with its own files): for what starts it without the launcher, like Steam.
+pub(crate) fn plays_as_set_up(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[games::Game])>) -> bool {
+    let Some(whole) = profile_of(st, recomp, g) else { return true };
+    let mut p = whole.clone();
+    if let Some((x, all)) = game {
+        games::scope(&mut p, x, all);
+    }
+    let inputs_ready = match game {
+        Some((x, _)) => game_inputs_ready(&p, &whole, g, x, &st.dir),
+        None => inputs::ready(&p, g, &st.dir),
+    };
+    easy_status(st, recomp, g, &p, inputs_ready).ready
+}
+
 /// What Play answers for a game that isn't set up: the page opens Easy Setup (or asks) for it.
 fn not_set_up(s: &setup_state::Status) -> Error {
     let msg = match s.reason {

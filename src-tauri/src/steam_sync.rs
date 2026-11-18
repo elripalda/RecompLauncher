@@ -400,8 +400,8 @@ fn apply(a: &Account, arts: &Arts) -> Result<(), Error> {
 
 // ---------- which games ----------
 
-/// Ready to play from Steam: installed, its own first-time setup run, and its copy of the game and
-/// Easy Setup files picked. Otherwise Steam would open the launcher to set it up, not the game.
+/// Ready to play from Steam: fully set up, by the same answer Play and the game's page give.
+/// Otherwise Steam would open the launcher to set it up, not the game, so it isn't added yet.
 fn ready(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[games::Game])>) -> bool {
     let ui = st.lib.lock().unwrap().settings.ui.clone();
     if crate::catalog::needs_setup_first(&st.dir, recomp, &ui) {
@@ -410,25 +410,18 @@ fn ready(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[ga
     if g.exe.is_none() || !g.installer_setup.is_empty() {
         return false;
     }
-    if g.setup.is_some() && !g.setup_done {
+    // Its own setup program still to run, for any of the reasons Play would run it for (asked
+    // without using up the once-only ones, which are Play's to answer).
+    if crate::own_setup::pending(st, recomp, g).is_some() {
         return false;
     }
     // Set Up By Hand: the player says how it starts and gets its files.
     if g.hand().is_some() {
         return true;
     }
-    let Some(whole) = crate::profile_of(st, recomp, g) else { return true };
-    let has_copy = g.game_copy.as_ref().map(|c| c.exists()).unwrap_or(false) || whole.already_in_place(&g.path).is_some();
-    if whole.game.is_some() && !has_copy {
-        return false;
-    }
-    if whole.inputs.is_empty() {
-        return true;
-    }
-    let Some((game, all)) = game else { return crate::inputs::ready(&whole, g, &st.dir) };
-    let mut scoped = whole.clone();
-    games::scope(&mut scoped, game, all);
-    scoped.inputs.is_empty() || crate::game_inputs_ready(&scoped, &whole, g, game, &st.dir)
+    // A setup step that changed, a build that's gone, an update or files still to pick: not set
+    // up. A game built from a copy that's gone since plays without it: set up.
+    crate::plays_as_set_up(st, recomp, g, game)
 }
 
 /// The games that should be in Steam, and the ones installed but not ready yet (their entries

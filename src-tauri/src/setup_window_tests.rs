@@ -184,3 +184,32 @@ fn a_games_own_setup_asked_for_again_is_never_written_down() {
     assert!(f.game("os-asked-game").setup_done);
     assert!(own_setup::pending_for_play(&f.0, "os-asked-game", &g).is_none());
 }
+
+/// A game built from the player's copy (its manifest in its folder), set up with step version 2.
+fn built_game(f: &Fixture, id: &str) -> Installed {
+    let dir = f.0.dir.join(id);
+    std::fs::create_dir_all(&dir).unwrap();
+    let manifest = r#"{"format":1,"game":{"kind":"file","label":"Your copy"},"prepare":{"program":["builder"],"version":"2","done":["{install}/built.bin"]},"start":{"program":["game"]}}"#;
+    std::fs::write(dir.join("recomplauncher.json"), manifest).unwrap();
+    std::fs::write(dir.join("built.bin"), b"built").unwrap();
+    std::fs::write(dir.join("game"), b"x").unwrap();
+    let copy = f.0.dir.join("copy.bin");
+    std::fs::write(&copy, b"copy").unwrap();
+    Installed { id: id.into(), name: "Hopper".into(), path: dir, exe: Some(PathBuf::from("game")), game_copy: Some(copy), prepare_version: "2".into(), ..Default::default() }
+}
+
+#[test]
+fn what_starts_a_game_without_the_launcher_asks_the_same_answer_as_play() {
+    let f = Fixture::new("steam-ready");
+    let g = built_game(&f, "steam-ready-game");
+    assert!(plays_as_set_up(&f.0, "steam-ready-game", &g, None));
+    // Its setup step changed: built again first, so not ready, with its copy right there.
+    let older = Installed { prepare_version: "1".into(), ..g.clone() };
+    assert!(!plays_as_set_up(&f.0, "steam-ready-game", &older, None));
+    // Built, and its copy gone since: it plays without it.
+    std::fs::remove_file(g.game_copy.as_ref().unwrap()).unwrap();
+    assert!(plays_as_set_up(&f.0, "steam-ready-game", &g, None));
+    // Its build gone too: not ready.
+    std::fs::remove_file(g.path.join("built.bin")).unwrap();
+    assert!(!plays_as_set_up(&f.0, "steam-ready-game", &g, None));
+}
