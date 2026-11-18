@@ -9419,7 +9419,7 @@ pub fn run() {
                                     let name = app.state::<App>().lib.lock().unwrap().installed.get(id.as_str()).map(|g| g.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| id.clone());
                                     format!("{name} is still setting up ({pct}%). RecompLauncher keeps going in the tray.")
                                 } else {
-                                    format!("{count} games are still setting up. RecompLauncher keeps going in the tray.")
+                                    format!("{count} recomps are still setting up. RecompLauncher keeps going in the tray.")
                                 };
                                 let _ = tauri_plugin_notification::NotificationExt::notification(app)
                                     .builder()

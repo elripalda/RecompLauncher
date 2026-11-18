@@ -2013,7 +2013,7 @@ function libList() {
 function pageLibrary() {
   libFilterOk();
   const nsaved = savedItems().length;
-  const total = libRecs().length + nsaved;
+  const total = gameCount([...libRecs().map(libApp), ...savedItems().map((x) => x.a)]);
   if (!total) {
     return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(t('Your recomps, kept up to date from each developer\'s own GitHub.'))}</p></div></div>
       <div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>
@@ -3876,7 +3876,7 @@ function pageDownloads() {
     return a.hero ? pic(thumbOf(a.hero, w), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>'; };
   const total = hist.reduce((n, h) => n + (h.size || 0), 0), secs = hist.reduce((n, h) => n + (h.secs || 0), 0);
   const avg = secs ? total / secs : 0;
-  const nInst = libInstalls().filter((g) => !g.local).length;
+  const nInst = gameCount(libInstalls().filter((g) => !g.local).map(libApp));
   const disk = libInstalls().reduce((n, g) => n + (g.size || 0), 0);
   const stats = [
     [t('Downloaded'), fmtB(total) || '0 MB', tn(hist.length, '1 download', '{n} downloads')],
@@ -4168,7 +4168,7 @@ function pageSettings() {
   const st = S.settings, ui = st.ui || {}, sw = (k, on, label, act = 'toggle') => `<button type="button" class="switch" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}" data-k="${k}"></button>`;
   const libs = S.libs.length ? S.libs : [{ path: st.library_dir, default: true, games: Object.keys(S.library).length }];
   const pc = S.pc, ok = (v) => okMark(!!v);
-  const nOwned = Object.keys(S.owned).length;
+  const nOwned = ownedGames().length;
   const row = (b, s, ctl) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${esc(s)}</span></div>${ctl}</div>`;
   const group = (title, inner, extra = '') => `<section class="set-group"><div class="set-gh"><h3>${esc(title)}</h3>${extra}</div><div class="card">${inner}</div></section>`;
   const shown = (k) => (k !== 'pc' || S.pc) && (k !== 'dev' || devAllowed());
@@ -4203,11 +4203,11 @@ function pageSettings() {
       break;
     case 'library':
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
-        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 game', '{n} games'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
+        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Install too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
           + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
-        + group(t('Your games'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
+        + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
         `<span class="acts"><button type="button" class="btn sm" data-act="rom-scan">${esc(t('Look again'))}</button><button type="button" class="btn sm" data-act="rom-emus">${esc(t('From My Emulators'))}</button><button type="button" class="btn sm main" data-act="rom-add">${esc(t('Add a folder'))}</button></span>`)
@@ -5072,6 +5072,25 @@ async function toggleHold(id) {
 }
 window.holdItem = holdItem;
 window.toggleHold = toggleHold;
+// Update toasts count games, like the rest of the launcher. Several recomps of one game are named
+// by the game; a single recomp keeps its own name.
+function updateName(ids) {
+  if (ids.length === 1) return (S.library[ids[0]] || {}).name || '';
+  const a = libApp(S.library[ids[0]] || { id: ids[0] });
+  return a.game || a.name || '';
+}
+const updateGames = (ids) => gameCount(ids.map((id) => libApp(S.library[id] || { id })));
+function updatingLine(ids) {
+  const n = updateGames(ids);
+  if (n > 1) return tf('Updating {n} games.', { n });
+  return tf('Updating {name}.', { name: updateName(ids) });
+}
+function readyLine(ids) {
+  const n = updateGames(ids);
+  if (n > 1) return tf('Updates are ready for {n} games.', { n });
+  const name = updateName(ids);
+  return name ? tf('An update is ready for {name}.', { name }) : t('An update is ready for a game.');
+}
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
   try {
@@ -5090,12 +5109,9 @@ async function checkUpdates(loud) {
   // Never on its own to a version the site found crashing for a lot of players.
   const auto = Object.keys(S.updates).filter((id) => S.library[id] && S.library[id].auto_update && !S.running.has(id) && !S.jobs[id] && !(S.paused || {})[id] && !badVersion(byId(id), S.updates[id]));
   for (const id of auto) startInstall(id);
-  const n = Object.keys(S.updates).length - auto.length;
-  if (auto.length) toast(auto.length === 1 ? tf('Updating {name}.', { name: S.library[auto[0]].name }) : tf('Updating {n} games.', { n: auto.length }));
-  if (n > 0) {
-    const one = n === 1 && S.library[Object.keys(S.updates).find((k) => !auto.includes(k))]?.name;
-    toast(n === 1 ? (one ? tf('An update is ready for {name}.', { name: one }) : t('An update is ready for a game.')) : tf('Updates are ready for {n} games.', { n }));
-  }
+  if (auto.length) toast(updatingLine(auto));
+  const waiting = Object.keys(S.updates).filter((k) => !auto.includes(k));
+  if (waiting.length) toast(readyLine(waiting));
   if (['home', 'library', 'game'].includes(S.view)) render(true);
   return true;
 }
@@ -6521,7 +6537,7 @@ function cantReplace(err) {
 }
 
 function libChoices(libs, sel) {
-  return `<div class="choices">${libs.map((l, i) => `<label class="choice"><input type="radio" name="lib" value="${esc(l.path)}"${(sel ? l.path === sel : l.default) ? ' checked' : ''}><span><b>${esc(l.path)}</b><small>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) : ''}${l.games ? ' · ' + esc(tn(l.games, '1 game', '{n} games')) : ''}${l.default ? ' · ' + esc(t('default')) : ''}</small></span></label>`).join('')}</div>`;
+  return `<div class="choices">${libs.map((l, i) => `<label class="choice"><input type="radio" name="lib" value="${esc(l.path)}"${(sel ? l.path === sel : l.default) ? ' checked' : ''}><span><b>${esc(l.path)}</b><small>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) : ''}${l.games ? ' · ' + esc(tn(l.games, '1 recomp', '{n} recomps')) : ''}${l.default ? ' · ' + esc(t('default')) : ''}</small></span></label>`).join('')}</div>`;
 }
 
 function locationModal(id) {
@@ -6991,7 +7007,7 @@ async function loadShots(id) {
 async function scanRoms() {
   if (!(S.settings.rom_dirs || []).length) { S.roms = []; S.owned = {}; await addOwned(); render(true); return; }
   toast(t('Looking through your folders…'));
-  try { S.roms = await invoke('scan_roms'); await loadOwned(); const added = await addOwned(); toast(tn(S.roms.length, 'Found 1 game file.', 'Found {n} game files.') + ' ' + (added ? tn(added, '1 recomp went into your Library.', '{n} recomps went into your Library.') : tf('{n} have recomps.', { n: Object.keys(S.owned).length }))); } catch (e) { fail(e); }
+  try { S.roms = await invoke('scan_roms'); await loadOwned(); const added = await addOwned(); toast(tn(S.roms.length, 'Found 1 game file.', 'Found {n} game files.') + ' ' + (added ? tn(added, '1 recomp went into your Library.', '{n} recomps went into your Library.') : tf('{n} have recomps.', { n: ownedGames().length }))); } catch (e) { fail(e); }
   render(true);
 }
 // Recomps for games the scan found go into the Library (not installed yet), ready for Easy Setup.
@@ -7084,6 +7100,27 @@ async function loadOwned() {
   S.copyFiles = {};
   S.owned = ownedHere(S.owned);
 }
+// When the launcher says "games" it means games, not recomps: the versions of one game (one
+// catalog title) count once, however many recomps there are of it.
+function gameCount(apps) {
+  return new Set(apps.filter(Boolean).map((a) => (a.title ? 't:' + a.title : a.id))).size;
+}
+// The player's games that have recomps, one recomp standing for each. Every recomp of a game
+// matches the same file, and usually shares its title, so either one joins it to a game already
+// listed.
+function ownedGames() {
+  const seen = new Set();
+  const out = [];
+  for (const id of Object.keys(S.owned || {})) {
+    const a = byId(id) || { id, name: id };
+    const keys = [S.owned[id].path, a.title && 't:' + a.title].filter(Boolean);
+    const dup = keys.some((k) => seen.has(k));
+    // Kept even for a duplicate, so a third recomp linked only through this one still joins.
+    keys.forEach((k) => seen.add(k));
+    if (!dup) out.push(a);
+  }
+  return out;
+}
 // Whether a file sits inside a folder. A bare prefix match would count D:\Dumps2\a.iso under D:\Dumps.
 function inFolder(file, dir) {
   const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
@@ -7094,7 +7131,9 @@ function inFolder(file, dir) {
 // entry per game. Both numbers are shown so the folder count doesn't read as a game count.
 function folderCounts(dir) {
   const files = S.roms.filter((r) => inFolder(r.path, dir)).length;
-  const recomps = Object.values(S.owned || {}).filter((o) => inFolder(o.path, dir)).length;
+  // Files, not recomps: one file with six recomps is still one file with recomps.
+  const matched = Object.values(S.owned || {}).filter((o) => inFolder(o.path, dir)).map((o) => o.path);
+  const recomps = new Set(matched).size;
   return tf('Files found: {files} · With recomps: {recomps}', { files, recomps });
 }
 // Only recomps this PC can play count as found (a Windows-only one on Linux without Proton doesn't).
@@ -8185,7 +8224,7 @@ async function act(el, e) {
       // Every game with an update, one after another (downloads wait their turn).
       const ids = Object.keys(S.updates).filter((x) => S.library[x] && !S.running.has(x) && !S.jobs[x] && !(S.paused || {})[x]);
       for (const x of ids) startInstall(x);
-      if (ids.length) toast(tf('Updating {n} games.', { n: ids.length }));
+      if (ids.length) toast(updatingLine(ids));
       return;
     }
     case 'ownbuild': try { if (await useOwnBuild(id)) { toast(t('It starts your own build now.')); render(true); } } catch (err) { fail(err); } return;
