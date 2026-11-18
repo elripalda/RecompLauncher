@@ -49,6 +49,7 @@ pub mod push;
 pub mod profile;
 pub mod proton;
 pub mod secret;
+pub mod setup_state;
 pub mod sysenv;
 mod emus;
 pub mod roms;
@@ -2690,7 +2691,7 @@ fn start_game_with_monitor_context(
         if let Some(setup) = own_setup::pending(&st, id, &g) {
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
-                Some(p) => game_copy(&st, id, &g, p)?,
+                Some(p) => copy_for_setup(&g, p)?,
                 None => None,
             };
             return own_setup::run(app, id, &g, &setup, copy.as_deref());
@@ -2738,41 +2739,21 @@ fn start_game_with_monitor_context(
             manual_plan(&g, m)?
         }
         Some(p) if p.start.is_some() => {
-            // Built already (the files its setup leaves are there, or the player chose the build on
-            // this PC) and the game doesn't take the copy when it starts: no copy needed.
-            let built = p.build_done(&g.path) == Some(true) || (g.prebuilt && p.build_folder_here(&g.path).is_some());
-            let copy = match game_copy(&st, id, &g, p) {
-                Err(Error::Msg(m)) if m.starts_with("NEED_COPY|") && built && !p.start_uses_game() => {
-                    trail::note(format!("Play {id}: its build is already on this PC, no copy needed"));
-                    None
-                }
-                other => other?,
-            };
-            // Both checks below come before its settings are written: the settings file often
-            // lives in the folder it built (hookshot_options.ini), and writing it would make a
-            // missing build folder look present again.
-            // Built by the launcher from the copy, but the manifest's prepare.version changed since:
-            // its developer needs the step run again (a new output folder, a new format), so it's
-            // built again through Easy Setup. Not a build the player chose themselves.
-            let launcher_built = copy.is_some() && !g.prebuilt && g.build_dir.is_none();
-            if launcher_built && p.prepare_version_changed(&g.prepare_version) {
-                let now = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or_default();
-                trail::note(format!("Play {id}: its setup step changed (version '{}' -> '{now}'); it's built again", g.prepare_version));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
-                return Err(Error::Msg("NEED_REBUILD|".into()));
+            // Set up, or why not: the answer the game's page shows. It comes before its settings
+            // are written: the settings file often lives in the folder it built
+            // (hookshot_options.ini), and writing it would make a missing build folder look
+            // present again. What the player picked stays as it is: the setup that opens builds
+            // again from their copy.
+            let (copy, copy_wrong) = usable_copy(&g, p);
+            let found = copy.clone().or_else(|| p.already_in_place(&g.path));
+            let facts = setup_state::Facts { profile: p, game: &g, inputs_ready: true, copy: found, copy_wrong, own_program: false, skipped: false };
+            let status = setup_state::of(&facts);
+            if !status.ready {
+                trail::note(format!("Play {id}: not set up ({}) {}", status.reason, status.detail));
+                return Err(not_set_up(&status));
             }
-            // Built from the copy into a folder of its own, and that folder is gone (moved or
-            // deleted): built again, through Easy Setup, rather than starting into nothing.
-            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
-                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
-                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
+            if copy.is_none() && matches!(status.reason, "built" | "own_build") {
+                trail::note(format!("Play {id}: its build is already on this PC, no copy needed"));
             }
             p.prepare(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
             p.place(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't put your copy of the game where it reads it: {e}")))?;
@@ -2796,21 +2777,14 @@ fn start_game_with_monitor_context(
             }
             if copy.is_some() && !missing.is_empty() {
                 trail::note(format!("Play {id}: still missing after placing the copy: {}", missing.join(", ")));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
                 let label = p.game.as_ref().map(|c| c.label.clone()).unwrap_or_default();
                 // What wasn't in it goes along, so the setup can say which files to look for.
                 return Err(Error::Msg(format!("NEED_COPY|{label}|{}", missing.join(", "))));
             }
-            // Its update, when it needs one: put in beside the copy, or asked for.
-            if let Some(up) = p.game.as_ref().and_then(|c| c.update.as_ref()) {
-                match g.update_copy.clone().filter(|c| c.exists()) {
-                    Some(u) => up.place(&g.path, &u).map_err(|e| Error::Msg(format!("Couldn't put the update where the game reads it: {e}")))?,
-                    None if up.optional || up.in_place(&g.path).is_some() || (built && copy.is_none()) => {}
-                    None => return Err(Error::Msg(format!("NEED_UPDATE|{}", up.label))),
-                }
+            // Its update, when it has one (one it needs and doesn't have stopped it above).
+            let update = p.game.as_ref().and_then(|c| c.update.as_ref());
+            if let (Some(up), Some(u)) = (update, g.update_copy.clone().filter(|c| c.exists())) {
+                up.place(&g.path, &u).map_err(|e| Error::Msg(format!("Couldn't put the update where the game reads it: {e}")))?;
             }
             game_env = p.env_vars(&g.path, copy.as_deref());
             // Its program under another name than the profile's (a Linux build): the one the game
@@ -4638,37 +4612,60 @@ fn copy_ok(need: &profile::GameCopy, copy: &Path, install: &Path, fresh: bool) -
     profile::check_copy(need, copy)
 }
 
-/// The player's copy for this game: the one they picked, or the one found in their folders. Err
-/// NEED_COPY when the game needs one and there isn't one yet.
-fn game_copy(st: &App, id: &str, g: &Installed, p: &profile::Profile) -> Res<Option<PathBuf>> {
-    let Some(need) = &p.game else { return Ok(None) };
-    if let Some(c) = g.game_copy.clone().filter(|c| c.exists()) {
-        // A disc image kept for a recomp that reads the disc's files from a folder (picked before the
-        // launcher unpacked those): asked for once more, and this time it's unpacked where it goes.
-        if !need.extract.is_empty() && c.is_file() && p.already_in_place(&g.path).is_none() {
-            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                x.game_copy = None;
-            }
-            st.save();
-            return Err(Error::Msg(format!("NEED_COPY|{}", need.label)));
-        }
-        // Picked before this version of the launcher could check it (a wrong ROM, say): checked
-        // again now, and asked for again when it isn't the right one.
-        if let Err(why) = copy_ok(need, &c, &g.path, false) {
-            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                x.game_copy = None;
-            }
-            st.save();
-            return Err(Error::Msg(format!("{why} Pick your copy again, then press Play.")));
-        }
-        return Ok(Some(c));
+/// The copy the player picked, as Play uses it, without changing what was picked: the copy, or
+/// why it can't be used. A disc image kept for a recomp that reads the disc's files from a folder
+/// (picked before the launcher unpacked those) doesn't count: it's asked for once more, and this
+/// time it's unpacked where it goes.
+fn usable_copy(g: &Installed, p: &profile::Profile) -> (Option<PathBuf>, Option<String>) {
+    let Some(need) = &p.game else { return (None, None) };
+    let Some(c) = g.game_copy.clone().filter(|c| c.exists()) else { return (None, None) };
+    if !need.extract.is_empty() && c.is_file() && p.already_in_place(&g.path).is_none() {
+        return (None, None);
     }
-    // The player put the game's files where it reads them already: nothing to pick.
-    if p.already_in_place(&g.path).is_some() {
-        return Ok(None);
+    // Picked before this version of the launcher could check it (a wrong ROM, say): checked
+    // again now, and asked for again when it isn't the right one.
+    match copy_ok(need, &c, &g.path, false) {
+        Ok(()) => (Some(c), None),
+        Err(why) => (None, Some(why)),
     }
-    // Not set up yet: the setup screen asks for it (and offers one found in the player's folders).
-    Err(Error::Msg(format!("NEED_COPY|{}", need.label)))
+}
+
+/// The copy a game's own setup takes (an ISO dropped on install.bat): the one picked, none when
+/// the game's files are already where it reads them, or asked for.
+fn copy_for_setup(g: &Installed, p: &profile::Profile) -> Res<Option<PathBuf>> {
+    let label = p.game.as_ref().map(|c| c.label.clone()).unwrap_or_default();
+    match usable_copy(g, p) {
+        (Some(c), _) => Ok(Some(c)),
+        (None, Some(why)) => Err(Error::Msg(format!("{why} Pick your copy again, then press Play."))),
+        (None, None) if p.already_in_place(&g.path).is_some() => Ok(None),
+        (None, None) => Err(Error::Msg(format!("NEED_COPY|{label}"))),
+    }
+}
+
+/// Easy Setup's answer for a game (`p` scoped to one game of several when it's that game's):
+/// set up, or why not. The page and Play read the same one.
+fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, inputs_ready: bool) -> setup_state::Status {
+    let (picked, copy_wrong) = usable_copy(g, p);
+    let copy = picked.or_else(|| p.already_in_place(&g.path));
+    let own_program = player_program(st, id, g).is_some();
+    let skipped = easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    setup_state::of(&setup_state::Facts { profile: p, game: g, inputs_ready, copy, copy_wrong, own_program, skipped })
+}
+
+/// What Play answers for a game that isn't set up: the page opens Easy Setup (or asks) for it.
+fn not_set_up(s: &setup_state::Status) -> Error {
+    let msg = match s.reason {
+        "copy" => format!("NEED_COPY|{}", s.detail),
+        "copy_wrong" => format!("{} Pick your copy again, then press Play.", s.detail),
+        "files" => "NEED_COPY|Finish choosing this game's files in Easy Setup.".to_string(),
+        "update" => format!("NEED_UPDATE|{}", s.detail),
+        "rebuild" => "NEED_REBUILD|".to_string(),
+        "build_missing" => format!("NEED_BUILD|{}", s.detail),
+        "own_build_missing" => format!("NEED_OWN_BUILD|{}", s.detail),
+        "way" => "NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".to_string(),
+        _ => format!("NEED_COPY|{}", s.detail),
+    };
+    Error::Msg(msg)
 }
 
 #[derive(Serialize)]
@@ -4777,6 +4774,8 @@ struct Setup {
     spare: Option<SpareCopy>,
     /// Where its build is, for a game built into a folder of its own (Move Build).
     build_at: Option<PathBuf>,
+    /// Set up, or why not: the answer Play gives too (setup_state).
+    status: setup_state::Status,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -4844,6 +4843,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
     let copy = g.game_copy.clone().filter(|c| c.exists()).or_else(|| p.already_in_place(&g.path));
     let built = p.build_done(&g.path) == Some(true) || (g.prebuilt && p.build_folder_here(&g.path).is_some());
     let set_up = if p.inputs.is_empty() { copy.is_some() || built } else { inputs_ready };
+    let status = easy_status(&st, &id, &g, &p, inputs_ready);
     Some(Setup {
         inputs: inputs::rows(&p, &g, &st.dir).unwrap_or_default(),
         inputs_error: inputs::validate(&p).err(),
@@ -4899,6 +4899,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         prepare_options: p.prepare.as_ref().map(|pr| prepare_options_here(&st.dir, pr, &g.prepare_opts)).unwrap_or_default(),
         spare: if pick.is_some() || setup_busy(&id) { None } else { spare_copy(&g, &p, &st.lib.lock().unwrap().installed.values().cloned().collect::<Vec<_>>()) },
         build_at: if pick.is_some() { None } else { build_folder_now(&st, &id, &g) },
+        status,
     })
 }
 
