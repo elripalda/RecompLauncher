@@ -42,7 +42,14 @@
   }
   window.firstRun = firstRun;
 
-  const games = () => Object.keys(S.owned || {}).map((id) => byId(id) || { id, name: id }).filter(Boolean);
+  // One per game the player has, not per recomp, or two Zeldas would fill the row with Zeldas.
+  const games = () => ownedGames().map(gameShown);
+  // A game's name and cover: those of the version the catalog recommends, when it has several.
+  const gameShown = (a) => {
+    const g = a.title ? index().titles.get(a.title) : null;
+    const lead = (g && byId(g.pick)) || a;
+    return { name: (g && g.name) || a.game || a.name, cover: lead.cover || a.cover };
+  };
   const sw = (k, label, sub) => `<div class="oob-row"><div class="k"><b>${esc(label)}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.settings[k] !== false}" aria-label="${esc(label)}" data-o="sw" data-k="${k}"></button></div>`;
   const covers = (list) => `<div class="oob-covers">${list.slice(0, 6).map((a) => `<div class="oob-cover" title="${esc(a.name)}">${a.cover ? pic(a.cover) : `<span>${esc(a.name)}</span>`}</div>`).join('')}</div>`;
 
@@ -82,7 +89,7 @@
         // As a Flatpak: ~/Games/ROMs is read directly, no picker. Offered until it's added.
         const romBtn = S.flatpak && !dirs.some((d) => /\/Games\/ROMs\/?$/.test(d)) ? `<button type="button" class="btn main" data-o="romdir" title="${esc(t('Put your ROMs and disc images here and the launcher finds them on its own.'))}">${ICON.folder}${esc(t('Use Games/ROMs'))}</button>` : '';
         const emuBtn = emus.length ?`<button type="button" class="btn main oob-add" data-o="emus">${ICON.folder}${esc(tf('Add {n} from {emus}', { n: emus.length, emus: [...new Set(emus.map((x) => x.emu))].join(', ') }))}</button>` : '';
-        return `<h1>${esc(t('Where do you keep your games?'))}</h1><p class="oob-lead">${esc(t('Add the folders with your disc images, ROMs and game backups. The launcher finds the games that have recomps. Nothing leaves your PC.'))}</p>
+        return `<h1>${esc(t('Where do you keep your ROMs?'))}</h1><p class="oob-lead">${esc(t('Add the folders with your disc images, ROMs and game backups. The launcher finds the games that have recomps. Nothing leaves your PC.'))}</p>
           <div class="oob-box">${dirs.map((d) => `<div class="oob-dir">${ICON.folder}<span title="${esc(d)}">${esc(d)}</span><button type="button" class="btn sm" data-o="rm" data-path="${esc(d)}">${esc(t('Remove'))}</button></div>`).join('')}
           ${emuBtn}${romBtn
             // The Flatpak: Games/ROMs first and highlighted, the picker beside it.
