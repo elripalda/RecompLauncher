@@ -1337,10 +1337,10 @@
         })() : ''}
         <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
-        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
+        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(window.savesUnknown(sv) ? t(SAVES_UNKNOWN_HELP) : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
         ${on && Array.isArray(sv.cloud) ? `<h3 class="tv-lh">${esc(t('In the cloud'))}</h3>${sv.cloud.length ? sv.cloud.map((c) => copy(c, 'v', c.v, c.hash === sv.synced)).join('') : `<p class="tv-note">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`}` : ''}
         <h3 class="tv-lh">${esc(t('Where it saves'))}</h3>
-        ${window.savesGuessed && window.savesGuessed(sv) ? `<p class="tv-note">${esc(t('No one has said where this game saves yet, so the launcher is going by what it noticed while you played.'))}</p>` : ''}
+        ${window.savesUnknown(sv) ? `<p class="tv-note">${esc(t(SAVES_UNKNOWN))}</p><button type="button" class="tv-item" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${svg('folder')}<span class="k">${esc(t(SAVES_PICK))}<small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span></button>` : ''}
         ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
       </div>`;
     }
@@ -2907,6 +2907,14 @@
         return loadGameSaves(id);
       }
       case 'gs-open': return invoke('saves_open', { id }).catch(fail);
+      case 'gs-place': {
+        // The same pick as the desktop's Where it saves: the player's folder from now on.
+        const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
+        if (!p) return;
+        try { S.library[id] = await invoke('saves_set_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+        toast(t('Saved. Backups and cloud saves use that folder now.'));
+        return loadGameSaves(id);
+      }
       case 'gs-restore': {
         sfx('open');
         const name = el.dataset.name || null, v = el.dataset.v || null;

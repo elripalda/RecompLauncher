@@ -476,7 +476,6 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
-        g.found_saves.clear();
         return saves::spots(&p.game.saves, &[], &g);
     }
     let cat = crate::cached_catalog(st);
@@ -485,6 +484,10 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let from_cat: Vec<String> = entry.get("saves").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
     saves::spots(&dev, &from_cat, g)
 }
+
+/// Nobody (the player, the developer or the catalog) has said where the game saves. A fixed text,
+/// so the window can translate it.
+const SAVES_UNKNOWN: &str = "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.";
 
 /// One game's saves at the same time: two backups of one game never overlap.
 static BUSY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -984,6 +987,14 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     let spots = spots_of(&st, &id, &g);
+    // Not knowing where it saves isn't the same as having no saves: a cloud copy put in place now
+    // could land beside the real ones, or over them. Nothing syncs until the player picks a folder.
+    if spots.is_empty() {
+        if manual {
+            return Err(Error::Msg(SAVES_UNKNOWN.into()));
+        }
+        return Ok(json!({"action": "play"}));
+    }
     let (g2, spots2) = (g.clone(), spots.clone());
     let (entries, infos, local, too_big) = blocking(move || saves::current(&spots2, &g2)).await?;
     if entries.len() != infos.len() {
@@ -1187,6 +1198,8 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
         "syncedAt": s.synced_at, "syncedMade": s.synced_made, "syncedDevice": s.synced_device,
         "waiting": waiting_copies(&local, &s), "retryIn": retry, "full": full_now(), "paused": paused(),
         "problem": s.problem, "conflict": s.conflict.is_some(), "newest": local.first(),
+        // False: nobody has said where it saves, so nothing of it is backed up or synced.
+        "known": !spots_of(&st, id, &g).is_empty(),
         // Where the saves go. Only RecompStore today; named so another cloud can say so later.
         "provider": "recompstore",
     }))
@@ -1293,7 +1306,8 @@ fn overview(app: &AppHandle) -> Value {
     for (id, g) in games {
         let local = saves::list(&st.dir, &id);
         let state = saves::state(&st.dir, &id);
-        let found = spots_of(&st, &id, &g).iter().any(|s| {
+        let spots = spots_of(&st, &id, &g);
+        let found = spots.iter().any(|s| {
             let p = saves::resolve_for(&s.template, &g);
             let shown = if s.template.contains('*') { p.parent().map(Path::to_path_buf).unwrap_or(p.clone()) } else { p };
             shown.exists()
@@ -1302,6 +1316,8 @@ fn overview(app: &AppHandle) -> Value {
         out.push(json!({
             "id": id, "copies": local.len(), "size": size, "newest": local.first(),
             "cloudOn": g.cloud, "synced": state.synced_hash, "pending": state.pending.is_some(), "found": found,
+            // False: nobody has said where it saves, so nothing of it is backed up.
+            "known": !spots.is_empty(),
             "state": state.sync_state(g.cloud == Some(true), signed),
         }));
     }
@@ -1311,8 +1327,14 @@ fn overview(app: &AppHandle) -> Value {
 
 #[tauri::command]
 pub async fn saves_backup(app: AppHandle, id: String) -> Res<Option<saves::Copy>> {
-    if app.state::<App>().running.lock().unwrap().contains_key(&id) {
+    let st = app.state::<App>();
+    if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
+    }
+    // Asked for by hand: "nothing changed" would hide that nothing is looked at.
+    let g = game(&st, &id)?;
+    if spots_of(&st, &id, &g).is_empty() {
+        return Err(Error::Msg(SAVES_UNKNOWN.into()));
     }
     after_session(&app, &id).await
 }
@@ -1407,19 +1429,8 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
 }
 
-/// Forgets where the launcher noticed the game saving (it looks again next time).
-#[tauri::command(async)]
-pub fn saves_forget_found(st: State<'_, App>, id: String) -> Res<Installed> {
-    let mut l = st.lib.lock().unwrap();
-    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    g.found_saves.clear();
-    let g = g.clone();
-    let _ = l.save(&st.dir);
-    Ok(g)
-}
-
 /// The player's own answer to where the game saves (a folder they picked), or None to go back to
-/// what the launcher works out.
+/// the developer's or the catalog's folders (or none: then the launcher says it doesn't know).
 #[tauri::command(async)]
 pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
@@ -1449,7 +1460,7 @@ pub fn saves_add_place(st: State<'_, App>, id: String, path: String) -> Res<Inst
     if !p.is_dir() {
         return Err(Error::Msg("That folder couldn't be found.".into()));
     }
-    let now: Vec<String> = spots_of(&st, &id, &g).into_iter().filter(|s| s.from != "game").map(|s| s.template).collect();
+    let now: Vec<String> = spots_of(&st, &id, &g).into_iter().map(|s| s.template).collect();
     let list = saves::add_place(&now, &p, &g).map_err(Error::Msg)?;
     let mut l = st.lib.lock().unwrap();
     let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
@@ -1478,7 +1489,11 @@ pub fn saves_remove_place(st: State<'_, App>, id: String, template: String) -> R
 pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
     let st = app.state::<App>();
     let g = game(&st, &id)?;
-    let p = spots_of(&st, &id, &g)
+    let spots = spots_of(&st, &id, &g);
+    if spots.is_empty() {
+        return Err(Error::Msg(SAVES_UNKNOWN.into()));
+    }
+    let p = spots
         .iter()
         .map(|s| saves::resolve_for(&s.template, &g))
         .map(|p| if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) })

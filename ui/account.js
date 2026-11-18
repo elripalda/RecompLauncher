@@ -185,7 +185,14 @@ async function loadSaves(id) {
   try { S.saves[id] = await invoke('saves_info', { id }); } catch (e) { S.saves[id] = { error: String(e && e.message ? e.message : e) }; }
   if (S.view === 'game' && S.arg === id && S.tab === 'saves') refreshGame();
 }
-const FROM = { player: N_('You picked this folder'), developer: N_('Its developer says it saves here'), catalog: N_('RecompLauncher knows it saves here'), found: N_('Found while you played'), game: N_('In the game\'s folder') };
+const FROM = { player: N_('You picked this folder'), developer: N_('Its developer says it saves here'), catalog: N_('RecompLauncher knows it saves here') };
+// Nobody (the player, its developer or RecompLauncher) has said where this game saves. Nothing is
+// guessed: the player picks the folder, and until then nothing of it is backed up.
+const SAVES_UNKNOWN = N_('The launcher doesn\'t know where this game saves');
+const SAVES_UNKNOWN_HELP = N_('Nothing is backed up or sent to the cloud until you pick the folder where it keeps its saves.');
+const SAVES_PICK = N_('Pick a Folder');
+const savesUnknown = (s) => !!(s && Array.isArray(s.spots) && !s.spots.length);
+window.savesUnknown = savesUnknown;
 const SHARE_SAVES = N_('Share saves between versions');
 const SHARE_SAVES_HELP = N_('Ask before copying a newer save from another installed version.');
 const saveShareTitle = (id) => !subOf(id) && verGroup(byId(id))?.id;
@@ -203,27 +210,21 @@ function savesTab(a) {
   const shareCard = shareTitle ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t(SHARE_SAVES))}</b><span>${esc(t(SHARE_SAVES_HELP))}</span></div><button type="button" class="switch" role="switch" aria-checked="${saveShareOn(shareTitle)}" aria-label="${esc(t(SHARE_SAVES))}" data-act="saves-share" data-id="${esc(id)}"></button></div></div>` : '';
   // Several folders the player picked (a launcher with more than one game): each can come off the list.
   const many = s.spots.filter((p) => p.from === 'player').length > 1;
-  const where = s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${p.from === 'found' ? `<button type="button" class="btn sm" data-act="saves-forget" data-id="${esc(id)}">${esc(t('Not right?'))}</button>` : ''}${many ? `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>` : `${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`}</span></div>`).join('')
+  const unknown = savesUnknown(s);
+  const pickRow = `<div class="set-row"><div class="k"><b>${esc(t(SAVES_UNKNOWN))}</b><span>${esc(t(SAVES_UNKNOWN_HELP))}</span></div><span class="acts"><button type="button" class="btn sm main" data-act="saves-place" data-id="${esc(id)}">${esc(t(SAVES_PICK))}</button></span></div>`;
+  const where = unknown ? pickRow : s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${many ? `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>` : `${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`}</span></div>`).join('')
     + `<div class="set-row"><div class="k"><b>${esc(t('Saves in more than one folder?'))}</b><span>${esc(t('For a launcher with several games in it, each saving in its own folder. Backups and cloud saves cover every folder.'))}</span></div><span class="acts">${many ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place-add" data-id="${esc(id)}">${esc(t('Add a Folder'))}</button></span></div>`;
   const cloudCard = !signed
     ? `<div class="card acc-cloud"><div class="acc-hero">${CLOUD_ICON}<div><b>${esc(t('Cloud saves'))}</b><span>${esc(t('Sign in to back this game\'s saves up to your account and play on with them on any PC.'))}</span></div></div><div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="acc-create">${esc(t('Create an account'))}</button><button type="button" class="btn main" data-act="acc-signin">${esc(t('Sign in'))}</button></div></div>`
     : `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? (s.offline ? t('On. The website can\'t be reached right now; copies go up when it can.') : s.pending ? t('On. The newest copy goes up next time the launcher can reach the website.') : t('On. After you play, its saves go to your account.')) : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>
       ${on ? cloudStatus(id, s) : ''}
       ${on && Array.isArray(s.cloud) ? (s.cloud.length ? s.cloud.map((c) => copyRow(id, c, 'v', c.v, c.hash === s.synced)).join('') : `<p class="set-empty">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`) : ''}</div>`;
-  const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`;
+  const emptyText = unknown ? t(SAVES_UNKNOWN_HELP) : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.');
+  const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(emptyText)}</p>`;
   return `<div class="stack">${shareCard}${cloudCard}
     <div class="card"><div class="card-h"><h3>${esc(t('On this PC'))}</h3><span class="acts"><button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}" title="${esc(t('Where the game keeps its saves'))}">${esc(t('Open the Game\'s Save Folder'))}</button><button type="button" class="btn sm" data-act="saves-open-backups" data-id="${esc(id)}" title="${esc(t('Where the launcher keeps its copies of them'))}">${esc(t('Open Backups'))}</button><button type="button" class="btn sm main" data-act="saves-now" data-id="${esc(id)}"${s.busy ? ' disabled' : ''}>${esc(t('Back up now'))}</button></span></div>${local}</div>
-    <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${guessNote(s)}${where}</div></div>`;
+    <div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${where}</div></div>`;
 }
-// No one (its developer, RecompLauncher or the player) has said where this game saves: the folder
-// shown was only noticed while it ran, or is its own folder as a guess. Said so, so a wrong folder
-// isn't trusted for backups and cloud saves without a look.
-function guessNote(s) {
-  if (!savesGuessed(s)) return '';
-  return `<p class="save-guess">${esc(t('No one has said where this game saves yet, so the launcher is going by what it noticed while you played.'))} ${esc(t('If your saves are somewhere else, press Change and pick their folder.'))}</p>`;
-}
-const savesGuessed = (s) => !!(s && s.spots && s.spots.length && s.spots.every((p) => p.from === 'found' || p.from === 'game'));
-window.savesGuessed = savesGuessed;
 // Where this game's cloud saves stand and how to sync them now.
 function cloudStatus(id, s) {
   const newest = Array.isArray(s.cloud) && s.cloud[0];
@@ -503,7 +504,6 @@ window.accountAct = async (act, el) => {
       return loadSaves(id);
     }
     case 'saves-place-remove': try { S.library[id] = await invoke('saves_remove_place', { id, template: el.dataset.t || '' }); } catch (e) { return fail(e); } return loadSaves(id);
-    case 'saves-forget': try { S.library[id] = await invoke('saves_forget_found', { id }); } catch (e) { return fail(e); } return loadSaves(id);
     case 'saves-restore': {
       const v = await ask(t('Put this save back?'), `<p>${esc(t('The game goes back to this save. What\'s there now is kept as a copy first, so you can switch back.'))}</p>`,
         [{ label: t('Cancel'), v: null }, { label: t('Put it back'), v: 'yes', main: true }]);

@@ -1,6 +1,6 @@
-//! Save backups. Where each game keeps its saves (the developer's recomplauncher.json says, or the
-//! catalog does, or the launcher noticed while the game ran, or else the player's files in the
-//! game's folder), a copy after every session (the newest ten on this PC), and putting one back.
+//! Save backups. Where each game keeps its saves (the player picked it, or the developer's
+//! recomplauncher.json says, or the catalog does; nothing is guessed), a copy after every session
+//! (the newest ten on this PC), and putting one back.
 //!
 //! A copy is a zip: the files under `<n>/<path>` for the n-th save place, and `rlsave.json` saying
 //! what the places were (as `{local}/Game/saves`, not this PC's own path, so a copy made on one PC
@@ -20,8 +20,6 @@ use std::time::UNIX_EPOCH;
 pub const KEEP: usize = 10;
 /// Nothing bigger than this is a save (it's a disc image, a video, a mod pack).
 const MAX_FILE: u64 = 64 * 1024 * 1024;
-/// The most the game-folder guess may come to.
-const GAME_FOLDER_MAX: u64 = 50 * 1024 * 1024;
 /// No save place is bigger than this.
 const SPOT_MAX: u64 = 1024 * 1024 * 1024;
 /// More files than this in a save place means it isn't one.
@@ -46,12 +44,12 @@ const NOT_SAVE_DIRS: [&str; 16] = [
 pub struct Spot {
     /// As written: `{local}/Zelda64Recompiled/saves`, `{install}/save/*.sav`.
     pub template: String,
-    /// "developer", "catalog", "found" or "game".
+    /// "player", "developer" or "catalog" (and "copy" for the places a copy itself names).
     pub from: &'static str,
 }
 
-/// Where a game's saves are, best first: the developer's file, the catalog, what was noticed while
-/// it ran, else its own folder.
+/// Where a game's saves are: the player's folders, else the developer's file, else the catalog.
+/// Empty when none of them says: the launcher doesn't know where this game saves.
 pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
     // The player's own folders: one, or several (a launcher with more than one game in it).
     let mut mine: Vec<String> = vec![];
@@ -64,16 +62,14 @@ pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
         return mine.into_iter().map(|template| Spot { template, from: "player" }).collect();
     }
     let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
-    // Places the launcher once saw the game write to, without the ones that turned out to hold
-    // programs (a runtime it downloaded on its first start): those are never saves.
-    let found: Vec<String> = g.found_saves.iter().filter(|t| !(t.starts_with("{install}/") && holds_programs(&resolve_for(t, g)))).cloned().collect();
-    for (v, from) in [(dev, "developer"), (catalog, "catalog"), (&found[..], "found")] {
-        let s = list(v, from);
-        if !s.is_empty() {
-            return s;
-        }
+    let named = list(dev, "developer");
+    if !named.is_empty() {
+        return named;
     }
-    vec![Spot { template: "{install}".into(), from: "game" }]
+    // Nothing else: a guess (the whole game folder, or files it was seen writing) backed up caches
+    // and build folders as saves, and could put the wrong files back. The Saves tab says the
+    // launcher doesn't know, and the player picks the folder.
+    list(catalog, "catalog")
 }
 
 /// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
@@ -362,26 +358,15 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
         } else if p.is_dir() {
             // The game's own folder: only what the release didn't put there.
             let rel_of_install = s.template.starts_with("{install}");
-            // A guess (the game's folder, or a place it was seen writing to) gives up as soon as
-            // it's too big to be saves, rather than looking through gigabytes of game data.
-            let guess = s.from == "game" || s.from == "found";
-            let (budget, secs) = if guess { (GAME_FOLDER_MAX, 6) } else { (SPOT_MAX, WALK_SECS) };
             let skip = if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none };
-            if !walk(&p, &mut found, skip, budget, secs, false) {
-                too_big.push(i);
-                found.clear();
-            }
-            // A guess at the whole game folder that comes out big is game data (unpacked from the
-            // player's disc, say), not saves: nothing is copied rather than the game.
-            if s.from == "game" && found.iter().map(|f| f.2).sum::<u64>() > GAME_FOLDER_MAX {
+            if !walk(&p, &mut found, skip, SPOT_MAX, WALK_SECS, false) {
                 too_big.push(i);
                 found.clear();
             }
         }
-        // A place the launcher noticed the game writing to (a guess too) that comes out big is a
-        // cache or game data, not saves; and no save place is ever this big.
+        // No save place is ever this big.
         let total: u64 = found.iter().map(|f| f.2).sum();
-        if (s.from == "found" && total > GAME_FOLDER_MAX) || total > SPOT_MAX {
+        if total > SPOT_MAX {
             too_big.push(i);
             found.clear();
         }
@@ -392,15 +377,8 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
     (out, too_big)
 }
 
-/// The game's whole folder was a guess (nothing says where it saves) and too big to look through.
-/// A fixed text, so the window can translate it, saying what to do: pick the folder in the Saves tab.
-const GAME_FOLDER_TOO_BIG: &str = "The game's folder is too big to look through for saves. Pick its save folder under Where it saves, then try again.";
-
 /// Why nothing could be backed up when every place was too big to look through.
 pub fn too_big_error(g: &Installed, spots: &[Spot], too_big: &[usize]) -> Error {
-    if too_big.iter().any(|&i| spots.get(i).map(|s| s.from == "game").unwrap_or(false)) {
-        return Error::Msg(GAME_FOLDER_TOO_BIG.into());
-    }
     let places: Vec<&str> = too_big.iter().filter_map(|&i| spots.get(i)).map(|s| s.template.as_str()).collect();
     Error::Msg(format!("{}'s save folder is too big to be just saves ({}), so it wasn't backed up.", g.name, places.join(", ")))
 }
@@ -822,8 +800,8 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
 
 /// The game's save folders now, when its developer or the catalog moved them since the copy was
 /// made (Hookshot's saves going from {home}/Games into its library folder): the copy's folder N
-/// goes into folder N now. Only for folders someone named, never ones the launcher noticed or
-/// guessed, so a wrong guess can't pull saves somewhere else. Not when the count differs, when a
+/// goes into folder N now. Only for folders the developer or the catalog named (the player's own
+/// folders are matched before this). Not when the count differs, when a
 /// folder only changed places in the list, or when a folder is the game's whole folder.
 fn moved_places(copy: &[String], now: &[Spot]) -> Option<Vec<Spot>> {
     if now.is_empty() || now.len() != copy.len() {
@@ -1200,156 +1178,6 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
     Ok(())
 }
 
-// ---------- noticing where a game saves ----------
-
-/// The files in the likely save places when a game started.
-pub struct Watch {
-    roots: Vec<PathBuf>,
-    install: PathBuf,
-    before: HashMap<PathBuf, (u64, u64)>,
-    release: HashSet<String>,
-    game: Installed,
-}
-
-const NOT_NAMES: [&str; 14] = ["recomp", "recompiled", "edition", "game", "games", "the", "port", "version", "windows", "release", "remastered", "launcher", "native", "decomp"];
-
-fn tokens(names: &[&str]) -> Vec<String> {
-    let mut out: Vec<String> = vec![];
-    for n in names {
-        let joined: String = n.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
-        if joined.len() >= 4 {
-            out.push(joined);
-        }
-        for w in n.split(|c: char| !c.is_alphanumeric()) {
-            let w = w.to_lowercase();
-            if w.len() >= 4 && !NOT_NAMES.contains(&w.as_str()) {
-                out.push(w);
-            }
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
-}
-
-fn mtime(m: &fs::Metadata) -> u64 {
-    m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0)
-}
-
-fn snap(root: &Path, into: &mut HashMap<PathBuf, (u64, u64)>, budget: &mut usize) {
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
-            if *budget == 0 {
-                return;
-            }
-            let Ok(m) = e.metadata() else { continue };
-            if m.is_dir() {
-                if !skip_dir(&e.file_name().to_string_lossy()) {
-                    stack.push(e.path());
-                }
-            } else {
-                *budget -= 1;
-                into.insert(e.path(), (mtime(&m), m.len()));
-            }
-        }
-    }
-}
-
-/// Before the game starts: the folders it might save in (its own, and ones named like it in
-/// Documents, Saved Games and AppData), and what's in them.
-pub fn watch_start(g: &Installed, names: &[&str]) -> Watch {
-    let toks = tokens(names);
-    // A Windows game on Linux saves in the prefix's Windows folders.
-    let win = windows_user(g);
-    let home = win.clone().or_else(dirs::home_dir);
-    let docs = if win.is_some() { home.as_ref().map(|h| h.join("Documents")) } else { dirs::document_dir().or_else(|| home.as_ref().map(|h| h.join("Documents"))) };
-    let (config, local) = match &win {
-        Some(u) => (Some(u.join("AppData/Roaming")), Some(u.join("AppData/Local"))),
-        None => (dirs::config_dir(), dirs::data_local_dir()),
-    };
-    let mut bases: Vec<PathBuf> = vec![];
-    for b in [
-        docs.clone(),
-        docs.as_ref().map(|d| d.join("My Games")),
-        home.as_ref().map(|h| h.join("Saved Games")),
-        config,
-        local,
-        home.as_ref().map(|h| h.join("AppData").join("LocalLow")),
-        home.as_ref().map(|h| h.join(".local/share")),
-        home.as_ref().map(|h| h.join(".config")),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if !bases.contains(&b) {
-            bases.push(b);
-        }
-    }
-    let mut roots = vec![g.path.clone()];
-    for b in &bases {
-        for e in fs::read_dir(b).into_iter().flatten().flatten() {
-            if !e.metadata().map(|m| m.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            let n: String = e.file_name().to_string_lossy().chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
-            if n.len() >= 4 && n != "recomplauncher" && toks.iter().any(|t| n.contains(t.as_str()) || (n.len() >= 6 && t.contains(n.as_str()))) {
-                roots.push(e.path());
-            }
-        }
-    }
-    let mut before = HashMap::new();
-    let mut budget = MAX_FILES;
-    for r in &roots {
-        snap(r, &mut before, &mut budget);
-    }
-    let release = g.files.iter().map(|f| f.to_string_lossy().replace('\\', "/").to_lowercase()).collect();
-    Watch { roots, install: g.path.clone(), before, release, game: g.clone() }
-}
-
-/// After it closed: the places where it wrote something that looks like a save, as templates.
-pub fn watch_end(w: Watch) -> Vec<String> {
-    let mut after = HashMap::new();
-    let mut budget = MAX_FILES;
-    for r in &w.roots {
-        snap(r, &mut after, &mut budget);
-    }
-    let mut out: Vec<String> = vec![];
-    for (p, (t, size)) in &after {
-        if w.before.get(p) == Some(&(*t, *size)) {
-            continue;
-        }
-        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        if !is_save_file(&name, *size) || name.to_lowercase().contains("crash") {
-            continue;
-        }
-        let Some(root) = w.roots.iter().filter(|r| p.starts_with(r)).max_by_key(|r| r.as_os_str().len()) else { continue };
-        let t = if *root == w.install {
-            let Ok(rel) = p.strip_prefix(&w.install) else { continue };
-            let rel_s = rel.to_string_lossy().replace('\\', "/");
-            if w.release.contains(&rel_s.to_lowercase()) {
-                continue;
-            }
-            match rel_s.split_once('/') {
-                // Not a folder of programs: a runtime the game fetched (Java, Python) writes small
-                // files too.
-                Some((first, _)) if holds_programs(&w.install.join(first)) => continue,
-                Some((first, _)) => format!("{{install}}/{first}"),
-                None => format!("{{install}}/{rel_s}"),
-            }
-        } else if holds_programs(root) {
-            continue;
-        } else {
-            templatize_for(root, &w.game)
-        };
-        if !out.contains(&t) {
-            out.push(t);
-        }
-    }
-    out.sort();
-    out
-}
-
 /// The size of each game's copies on this PC.
 pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
     let mut out = BTreeMap::new();
@@ -1389,33 +1217,6 @@ mod tests {
     }
 
     #[test]
-    fn a_downloaded_runtime_is_never_a_save_place() {
-        use crate::library::Installed;
-        use std::path::PathBuf;
-        let d = std::env::temp_dir().join("rl-watch-jdk");
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("launch.bat"), "x").unwrap();
-        let g = Installed { id: "sc".into(), name: "Severed Chains".into(), path: d.clone(), files: vec![PathBuf::from("launch.bat")], ..Default::default() };
-        let w = super::watch_start(&g, &["Severed Chains"]);
-        // The first start: Java arrives, and the game saves.
-        std::fs::create_dir_all(d.join("jdk25/lib")).unwrap();
-        std::fs::create_dir_all(d.join("jdk25/bin")).unwrap();
-        std::fs::write(d.join("jdk25/lib/jvm.cfg"), "-server KNOWN").unwrap();
-        std::fs::write(d.join("jdk25/bin/java.dll"), "MZ").unwrap();
-        std::fs::create_dir_all(d.join("saves")).unwrap();
-        std::fs::write(d.join("saves/slot1.dat"), "save").unwrap();
-        let found = super::watch_end(w);
-        assert_eq!(found, vec!["{install}/saves".to_string()]);
-        // One an older version recorded is dropped.
-        let g2 = Installed { found_saves: vec!["{install}/jdk25".into(), "{install}/saves".into()], ..g.clone() };
-        let spots = super::spots(&[], &[], &g2);
-        assert_eq!(spots.iter().map(|s| s.template.as_str()).collect::<Vec<_>>(), vec!["{install}/saves"]);
-        let _ = std::fs::remove_dir_all(&d);
-    }
-
-
-    #[test]
     fn small_bin_files_are_saves() {
         assert!(super::is_save_file("SaveData.bin", 300_000));
         assert!(super::is_save_file("profile.BIN", 64));
@@ -1434,6 +1235,26 @@ mod tests {
 
     fn game(dir: &Path) -> Installed {
         Installed { id: "g".into(), name: "Test Game".into(), path: dir.to_path_buf(), files: vec![PathBuf::from("game.exe"), PathBuf::from("data/a.bin")], played_secs: 60, ..Default::default() }
+    }
+
+    #[test]
+    fn nothing_known_means_no_save_places() {
+        let g = game(Path::new("/games/test"));
+        assert!(spots(&[], &[], &g).is_empty());
+    }
+
+    #[test]
+    fn the_catalog_says_when_the_developer_does_not() {
+        let g = game(Path::new("/games/test"));
+        let s = spots(&[], &["{local}/Test/saves".into()], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{local}/Test/saves", "catalog")]);
+    }
+
+    #[test]
+    fn the_developer_comes_before_the_catalog() {
+        let g = game(Path::new("/games/test"));
+        let s = spots(&["{install}/save".into()], &["{local}/Test/saves".into()], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
     }
 
     #[test]
@@ -1621,57 +1442,6 @@ mod tests {
     }
 
     #[test]
-    fn game_folder_keeps_only_the_players_files() {
-        let d = tmp("folder");
-        fs::create_dir_all(d.join("data")).unwrap();
-        fs::create_dir_all(d.join("save")).unwrap();
-        fs::create_dir_all(d.join("mods")).unwrap();
-        fs::write(d.join("game.exe"), "x").unwrap();
-        fs::write(d.join("data/a.bin"), "x").unwrap();
-        fs::write(d.join("save/slot1.sav"), "one").unwrap();
-        fs::write(d.join("settings.toml"), "a=1").unwrap();
-        fs::write(d.join("mods/big.pak"), "m").unwrap();
-        fs::write(d.join("game.iso"), "disc").unwrap();
-        fs::write(d.join("run.log"), "log").unwrap();
-        let g = game(&d);
-        let s = spots(&[], &[], &g);
-        assert_eq!(s[0].from, "game");
-        let rels: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
-        assert_eq!(rels, vec!["save/slot1.sav", "settings.toml"]);
-    }
-
-    /// A game folder with more than GAME_FOLDER_MAX of files the release didn't ship (a shader
-    /// cache, a build folder), next to a real save. Sparse, so it takes no room on the disk.
-    fn big_game_folder(n: &str) -> PathBuf {
-        let d = tmp(n);
-        fs::create_dir_all(d.join("save")).unwrap();
-        fs::write(d.join("save/slot1.sav"), "one").unwrap();
-        for name in ["cache-a.dat", "cache-b.dat"] {
-            fs::File::create(d.join(name)).unwrap().set_len(30 * 1024 * 1024).unwrap();
-        }
-        d
-    }
-
-    #[test]
-    fn a_game_folder_too_big_to_look_through_is_reported() {
-        let d = big_game_folder("big-look");
-        let g = game(&d);
-        let s = spots(&[], &[], &g);
-        let (entries, too_big) = look(&s, &g);
-        assert!(entries.is_empty());
-        assert_eq!(too_big, vec![0]);
-    }
-
-    #[test]
-    fn backing_up_a_game_folder_too_big_to_look_through_says_so() {
-        let d = big_game_folder("big-backup");
-        let g = game(&d);
-        let s = spots(&[], &[], &g);
-        let e = backup(&d.join("app"), "g", &s, &g).unwrap_err();
-        assert_eq!(e.to_string(), GAME_FOLDER_TOO_BIG);
-    }
-
-    #[test]
     fn a_named_save_folder_too_big_is_named_in_the_error() {
         let g = game(Path::new("/games/test"));
         let s = vec![Spot { template: "{install}/save".into(), from: "developer" }];
@@ -1686,12 +1456,14 @@ mod tests {
         let d = tmp("big-next-to-saves");
         fs::create_dir_all(d.join("saves")).unwrap();
         fs::write(d.join("saves/slot1.sav"), "one").unwrap();
-        fs::create_dir_all(d.join("cache")).unwrap();
-        for name in ["cache-a.dat", "cache-b.dat"] {
-            fs::File::create(d.join("cache").join(name)).unwrap().set_len(30 * 1024 * 1024).unwrap();
+        // More than any save place holds, in files each small enough to be a save. Sparse, so
+        // they take no room on the disk.
+        fs::create_dir_all(d.join("extra")).unwrap();
+        for n in 0..20 {
+            fs::File::create(d.join("extra").join(format!("part-{n}.dat"))).unwrap().set_len(60 * 1024 * 1024).unwrap();
         }
-        let g = Installed { found_saves: vec!["{install}/cache".into(), "{install}/saves".into()], ..game(&d) };
-        let s = spots(&[], &[], &g);
+        let g = game(&d);
+        let s = spots(&["{install}/extra".into(), "{install}/saves".into()], &[], &g);
         let (entries, too_big) = look(&s, &g);
         assert_eq!(entries.len(), 1);
         assert_eq!(too_big, vec![0]);
@@ -2023,17 +1795,6 @@ mod tests {
     }
 
     #[test]
-    fn restore_keeps_the_copys_folder_when_the_new_one_was_only_noticed() {
-        let d = tmp("restore-moved-found");
-        let (g, archive) = copy_from_old_folder(&d);
-        let now = vec![Spot { template: "{install}/new".into(), from: "found" }];
-
-        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
-        assert_eq!(fs::read_to_string(g.path.join("old/progress.sav")).unwrap(), "progress");
-        assert!(!g.path.join("new").exists());
-    }
-
-    #[test]
     fn restore_keeps_the_copys_folder_when_the_folder_count_changed() {
         let d = tmp("restore-moved-count");
         let (g, archive) = copy_from_old_folder(&d);
@@ -2078,21 +1839,6 @@ mod tests {
         assert_eq!(list(&app, "g").len(), KEEP);
         restore(&app, "g", &dir_of(&app, "g").join(&list(&app, "g").last().unwrap().name), &s, &g).unwrap();
         assert_eq!(fs::read_to_string(inst.join("s.sav")).unwrap(), "v3");
-    }
-
-    #[test]
-    fn notices_where_it_saves() {
-        let d = tmp("watch");
-        let inst = d.join("inst");
-        fs::create_dir_all(inst.join("saves")).unwrap();
-        fs::write(inst.join("game.exe"), "x").unwrap();
-        let g = game(&inst);
-        let w = watch_start(&g, &["Test Game"]);
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        fs::write(inst.join("saves/file1.dat"), "s").unwrap();
-        fs::write(inst.join("game.exe"), "patched").unwrap();
-        fs::write(inst.join("crash.log"), "x").unwrap();
-        assert_eq!(watch_end(w), vec!["{install}/saves"]);
     }
 
     #[test]

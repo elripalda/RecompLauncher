@@ -729,7 +729,6 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         look: prev.as_ref().map(|p| p.look.clone()).unwrap_or_default(),
         look_amount: prev.as_ref().map(|p| p.look_amount).unwrap_or(50),
         cloud: prev.as_ref().and_then(|p| p.cloud),
-        found_saves: prev.as_ref().map(|p| p.found_saves.clone()).unwrap_or_default(),
         save_place: prev.as_ref().and_then(|p| p.save_place.clone()),
         more_save_places: prev.as_ref().map(|p| p.more_save_places.clone()).unwrap_or_default(),
         cover_file: prev.as_ref().and_then(|p| p.cover_file.clone()),
@@ -2928,16 +2927,6 @@ fn start_game_with_monitor_context(
     };
     // A game of several with its own saves: its own copies (by its full id), else the recomp's.
     let save_id = pick.as_ref().filter(|p| !p.game.saves.is_empty()).map(|_| full_id.clone()).unwrap_or_else(|| id.to_string());
-    let watch = {
-        let spots = cloud::spots_of(&st, &save_id, &g);
-        if matches!(spots.first().map(|s| s.from), Some("game") | Some("found")) {
-            let exe_name = exe.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let repo_name = g.repo.rsplit(['/', ':']).next().unwrap_or("").to_string();
-            Some(saves::watch_start(&g, &[&g.name, &exe_name, &repo_name]))
-        } else {
-            None
-        }
-    };
     // The same program already open outside the launcher (started by hand, or still closing):
     // a second copy fights the first over its files (a first-run build fails to link, saves clash).
     if already_open(&exe) {
@@ -3366,22 +3355,6 @@ fn start_game_with_monitor_context(
         if mine {
             let _ = app2.emit("game", json!({"id": id, "game": game_full, "state": "stopped", "secs": secs, "code": code, "started": started, "said": said}));
             ping::game_stop(&app2, &id, secs);
-        }
-        // Where it saved (when it didn't say), then a copy of its saves, and up to the cloud.
-        if let Some(w) = watch {
-            if let Ok(found) = tokio::task::spawn_blocking(move || saves::watch_end(w)).await {
-                if !found.is_empty() {
-                    let mut l = st.lib.lock().unwrap();
-                    if let Some(g) = l.installed.get_mut(&id) {
-                        for f in found {
-                            if !g.found_saves.contains(&f) {
-                                g.found_saves.push(f);
-                            }
-                        }
-                    }
-                    let _ = l.save(&st.dir);
-                }
-            }
         }
         // Usage: the session, and a game that closed with an error right after starting.
         {
@@ -9871,7 +9844,7 @@ pub fn run() {
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())

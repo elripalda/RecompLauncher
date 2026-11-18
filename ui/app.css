@@ -1087,7 +1087,6 @@ body.isl-on .set-nav{max-height:calc(100vh - 248px)}
 .set-group>.card{padding:6px 22px}
 .set-group>.card>.set-row:first-child{padding-top:16px}.set-group>.card>.set-row:last-child{padding-bottom:16px}
 .set-note{margin:16px 0 4px;color:var(--muted);font-size:14px}
-.save-guess{margin:0 0 6px;padding:10px 14px;border-radius:12px;background:rgba(245,184,61,.08);border:1px solid rgba(245,184,61,.34);color:var(--ink);font-size:13.5px}
 .set-empty{margin:16px 0;color:var(--muted)}
 .set-foot{margin:4px 0 16px}
 .set-tip{margin:0;color:var(--dim);font-size:13.5px}
