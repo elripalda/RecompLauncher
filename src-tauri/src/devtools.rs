@@ -83,12 +83,74 @@ pub fn dev_add(st: State<'_, App>, path: String) -> Res<Installed> {
 #[tauri::command(async)]
 pub fn add_any(st: State<'_, App>, path: String) -> Res<Installed> {
     let p = PathBuf::from(&path);
+    #[cfg(target_os = "linux")]
+    if p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
+        return add_appimage(&st, &p);
+    }
     if p.is_file() {
         let dir = p.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
         let rel = p.file_name().map(PathBuf::from);
         return add_folder(&st, dir.to_string_lossy().to_string(), rel, "own");
     }
     add_folder(&st, path, None, "own")
+}
+
+/// The player's own AppImage, on Linux: unpacked into the Recomp Library (see plain::bring_in) as
+/// a game of its own, or as the newer version of one brought in the same way before (the launcher
+/// doesn't update games it doesn't know, so this is how they update). Not added when it won't unpack.
+#[cfg(target_os = "linux")]
+fn add_appimage(st: &App, image: &Path) -> Res<Installed> {
+    let key = crate::plain::image_key(image);
+    let earlier = st.lib.lock().unwrap().installed.values().find(|g| g.local && g.unpacked && g.from_appimage == key).map(|g| g.id.clone());
+    let id = match &earlier {
+        Some(id) => id.clone(),
+        None => add_image_record(st, image)?,
+    };
+    match crate::plain::bring_in(st, &id, image) {
+        Ok(b) => crate::plain::tell(&b),
+        Err(e) => {
+            if earlier.is_none() {
+                st.lib.lock().unwrap().forget(&id);
+                st.save();
+            }
+            return Err(e);
+        }
+    }
+    st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
+}
+
+/// A new game of the player's own for their AppImage, before it's unpacked: named by its embedded
+/// recomplauncher.json, else by the AppImage's own name. Never another game the player added from
+/// the same folder (Downloads holds many).
+#[cfg(target_os = "linux")]
+fn add_image_record(st: &App, image: &Path) -> Res<String> {
+    let dir = image.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
+    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    let said = |k: &str| raw.as_ref().and_then(|v| v.get(k)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    let name = said("name").unwrap_or_else(|| crate::plain::image_title(image));
+    let mut l = st.lib.lock().unwrap();
+    let base = format!("own-{}", slug(&name));
+    let mut id = base.clone();
+    let mut n = 2;
+    while l.installed.contains_key(&id) {
+        id = format!("{base}-{n}");
+        n += 1;
+    }
+    let g = Installed {
+        id: id.clone(),
+        name,
+        game: said("game").unwrap_or_default(),
+        repo: said("repo").unwrap_or_default(),
+        tag: "own".into(),
+        path: dir,
+        exe: image.file_name().map(PathBuf::from),
+        installed_at: now(),
+        updated_at: now(),
+        local: true,
+        ..Default::default()
+    };
+    l.put(&id, g);
+    Ok(id)
 }
 
 /// `tag`: "local" for a developer's build, "own" for a game the player added themselves.

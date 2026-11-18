@@ -149,6 +149,14 @@ pub struct Installed {
     /// A developer's own build, added from a folder on this PC: never updated, moved or deleted.
     #[serde(default)]
     pub local: bool,
+    /// Its folder is one the launcher unpacked the player's AppImage into (plain.rs), so it's the
+    /// launcher's own: uninstalling can delete it, even for a game the player added.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unpacked: bool,
+    /// The player's AppImage it came from, by its name without the version
+    /// (game-x86-64.appimage): a newer one they bring in updates it. Its path isn't kept.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_appimage: String,
     /// The look the game starts with (looks.rs), empty for the game's own picture.
     #[serde(default)]
     pub look: String,

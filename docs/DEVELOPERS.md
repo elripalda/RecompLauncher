@@ -87,9 +87,27 @@ It does not execute or mount the image to inspect it, and writes no extracted JS
 Settings, save and folder paths still start from the installation directory (`{install}`),
 not from the internal filesystem.
 
-The Flatpak build of the launcher unpacks your AppImage at install and starts its `AppRun`. See
-[Your recomp in the RecompLauncher Flatpak](FLATPAK.md) for that and the sandbox's other
-differences.
+**On Linux the launcher never runs an AppImage.** Every game plays from a plain folder: your
+AppImage is unpacked at install with the launcher's own SquashFS reader (no FUSE, and nothing of
+the image runs), the AppImage file is deleted, and the game starts from its `AppRun`. This is the
+same in the AppImage, .deb and Flatpak builds of the launcher (the sandbox's other differences are
+in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
+
+- The AppImage's contents (`AppRun`, `usr/`, the `.desktop` file, an embedded
+  `recomplauncher.json`) become the game's folder.
+- The game starts from `AppRun`, with `APPDIR` set to the game's folder and `ARGV0` to `AppRun`,
+  as the AppImage runtime would set them. **`APPIMAGE` is not set**, since there's no AppImage file.
+  Find your files from `APPDIR` or your own program's path (`/proc/self/exe`), never from
+  `APPIMAGE` or a mount point, and don't update yourself through `APPIMAGE`: updates come from
+  your releases through the launcher.
+- If your AppImage won't unpack (an old type-1 image, or one packed with DwarFS instead of
+  SquashFS), the launcher installs your release's tarball instead, when it has one. Without one,
+  the install stops and tells the player why. It never falls back to running the AppImage.
+- A release with several AppImages unpacks each into a folder named after it
+  (`MyGame-Editor-x86_64.AppImage` into `MyGame-Editor-x86_64/`, started from its `AppRun`). Ship
+  one when you can.
+- An AppImage a player already has comes in the same way: Bring Your Recomps unpacks it into their
+  Recomp Library and leaves their file where it is.
 
 Use the AppImage's filename in `start.program`, for example:
 
@@ -101,8 +119,9 @@ Use the AppImage's filename in `start.program`, for example:
 ```
 
 Program entries ending in `.AppImage` in `start` and `prepare` are rebound to the actual
-installed filename, so renaming the download does not break launch. An internal path such
-as `usr/bin/game` cannot be started by the launcher outside the image.
+installed filename, so renaming the download does not break launch. Once the AppImage is
+unpacked, the same entry starts its `AppRun`, so you never need to name `AppRun` or an internal
+path such as `usr/bin/game` yourself.
 
 Embedded lookup applies when the install folder contains exactly one regular `.AppImage`
 file at its top level (case-insensitive extension). With multiple AppImages it does not

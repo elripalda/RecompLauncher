@@ -1,4 +1,5 @@
-//! Read a type-2 AppImage's root manifest without executing, mounting or extracting it.
+//! Read a type-2 AppImage without executing or mounting it: its root manifest, or (on Linux, where
+//! every game plays from a plain folder) all of its files.
 
 use backhand::{FilesystemReader, InnerNode};
 use std::fs::{self, File};
@@ -217,6 +218,101 @@ fn read_manifest(path: &Path) -> io::Result<Vec<u8>> {
     .unwrap_or_else(|_| Err(invalid("Invalid AppImage filesystem")))
 }
 
+/// Unpack a type-2 AppImage's files into `to` with the launcher's own SquashFS reader: the
+/// AppImage is never run or mounted, so it works without FUSE and inside the Flatpak. Programs keep
+/// their run permission. Links that would point outside `to` are left out. Err when it isn't a
+/// type-2 SquashFS AppImage (an old type-1 image, or one packed with DwarFS), when it's damaged, or
+/// when the drive hasn't room for it.
+#[cfg(unix)]
+pub(crate) fn unpack(image: &Path, to: &Path) -> io::Result<()> {
+    let mut file = File::open(image)?;
+    let offset = payload_offset(&mut file)?;
+    let to = to.to_path_buf();
+    // A damaged third-party image must not take the launcher down with it (as in read_manifest).
+    std::panic::catch_unwind(move || unpack_payload(file, offset, &to)).unwrap_or_else(|_| Err(invalid("The AppImage's files are damaged")))
+}
+
+#[cfg(unix)]
+fn unpack_payload(file: File, offset: u64, to: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let filesystem = FilesystemReader::from_reader_with_offset(BufReader::new(file), offset).map_err(|e| invalid(&format!("Cannot read AppImage filesystem: {e}")))?;
+    fs::create_dir_all(to)?;
+    let need: u64 = filesystem.files().filter_map(|n| if let InnerNode::File(f) = &n.inner { Some(f.file_len() as u64) } else { None }).sum();
+    if crate::manage::free_space(to).is_some_and(|free| free < need) {
+        return Err(io::Error::new(io::ErrorKind::StorageFull, "The drive hasn't room for the unpacked game"));
+    }
+    let mut links = vec![];
+    let mut folders = vec![];
+    for node in filesystem.files() {
+        let Some(rel) = inside_image(&node.fullpath) else { continue };
+        let dest = to.join(&rel);
+        // Never setuid, setgid or sticky: only the read, write and run bits come along.
+        let mode = u32::from(node.header.permissions) & 0o777;
+        match &node.inner {
+            InnerNode::Dir(_) => {
+                fs::create_dir_all(&dest)?;
+                folders.push((dest, mode | 0o700));
+            }
+            InnerNode::File(f) => {
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut out = io::BufWriter::new(File::create(&dest)?);
+                io::copy(&mut filesystem.file(f).reader(), &mut out)?;
+                io::Write::flush(&mut out)?;
+                fs::set_permissions(&dest, fs::Permissions::from_mode(mode | 0o600))?;
+            }
+            InnerNode::Symlink(l) => links.push((rel, l.link.clone())),
+            // Devices, pipes and sockets aren't a game's files.
+            _ => {}
+        }
+    }
+    let mut left_out = 0;
+    for (rel, target) in links {
+        if !link_stays_inside(&rel, &target) {
+            left_out += 1;
+            continue;
+        }
+        let dest = to.join(&rel);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        std::os::unix::fs::symlink(&target, &dest)?;
+    }
+    if left_out > 0 {
+        crate::trail::note(format!("AppImage: {left_out} links pointing outside the game's folder were left out"));
+    }
+    // Folders' own permissions last: a read-only folder in the image would stop its files going in.
+    for (dir, mode) in folders.into_iter().rev() {
+        fs::set_permissions(&dir, fs::Permissions::from_mode(mode))?;
+    }
+    Ok(())
+}
+
+/// A path in the image (`/usr/bin/game`) as one inside the folder it unpacks to, or None for the
+/// image's root and anything that would leave the folder.
+fn inside_image(full: &Path) -> Option<PathBuf> {
+    let rel = full.strip_prefix("/").unwrap_or(full);
+    let plain = rel.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    (plain && !rel.as_os_str().is_empty()).then(|| rel.to_path_buf())
+}
+
+/// A link at `rel` whose `target` stays inside the folder, read without following any link: never
+/// absolute, and no `..` past the top.
+fn link_stays_inside(rel: &Path, target: &Path) -> bool {
+    use std::path::Component;
+    let mut depth = rel.parent().map(|p| p.components().count()).unwrap_or(0);
+    for part in target.components() {
+        match part {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {}
+            Component::ParentDir if depth > 0 => depth -= 1,
+            _ => return false,
+        }
+    }
+    !target.as_os_str().is_empty()
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -276,6 +372,74 @@ pub(crate) mod tests {
         bytes[60..62].copy_from_slice(&1u16.to_le_bytes());
         bytes.extend(squashfs.into_inner());
         bytes
+    }
+
+    /// A small AppImage of a game: AppRun linked to its program, a data file, a folder, and links
+    /// that try to leave the folder.
+    #[cfg(unix)]
+    pub(crate) fn game_image() -> Vec<u8> {
+        let mode = |permissions| NodeHeader { permissions, ..NodeHeader::default() };
+        let mut fs = FilesystemWriter::default();
+        fs.push_dir("/usr", mode(0o755)).unwrap();
+        fs.push_dir("/usr/bin", mode(0o755)).unwrap();
+        fs.push_file(Cursor::new(b"#!/bin/sh\necho game\n".to_vec()), "/usr/bin/game", mode(0o4755)).unwrap();
+        fs.push_file(Cursor::new(b"data".to_vec()), "/usr/data.bin", mode(0o644)).unwrap();
+        fs.push_symlink("usr/bin/game", "/AppRun", mode(0o777)).unwrap();
+        fs.push_symlink("/etc/passwd", "/absolute", mode(0o777)).unwrap();
+        fs.push_symlink("../../outside", "/usr/escape", mode(0o777)).unwrap();
+        fs.push_file(Cursor::new(br#"{"format":1}"#.to_vec()), "/recomplauncher.json", mode(0o644)).unwrap();
+        let mut squashfs = Cursor::new(Vec::new());
+        fs.write(&mut squashfs).unwrap();
+        let mut bytes = image(None, Compressor::Gzip)[..128].to_vec();
+        bytes.extend(squashfs.into_inner());
+        bytes
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_appimage_unpacks_into_a_plain_folder_without_running() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new();
+        let image = dir.0.join("Game-x86_64.AppImage");
+        fs::write(&image, game_image()).unwrap();
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert_eq!(fs::read(to.join("usr/data.bin")).unwrap(), b"data");
+        assert_eq!(fs::read_link(to.join("AppRun")).unwrap(), Path::new("usr/bin/game"));
+        assert_eq!(fs::read(to.join("recomplauncher.json")).unwrap(), br#"{"format":1}"#);
+        // Its program still runs, but never as another user.
+        let mode = fs::metadata(to.join("usr/bin/game")).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o755);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_out_of_the_unpacked_folder_are_left_out() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Game.AppImage");
+        fs::write(&image, game_image()).unwrap();
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert!(fs::symlink_metadata(to.join("absolute")).is_err());
+        assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_that_isnt_an_appimage_doesnt_unpack() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Game.AppImage");
+        fs::write(&image, b"#!/bin/sh\necho not an AppImage\n").unwrap();
+        assert!(unpack(&image, &dir.0.join("game")).is_err());
+    }
+
+    #[test]
+    fn a_link_stays_inside_only_without_leaving_the_top() {
+        assert!(link_stays_inside(Path::new("AppRun"), Path::new("usr/bin/game")));
+        assert!(link_stays_inside(Path::new("usr/lib/a.so"), Path::new("../share/./b")));
+        assert!(!link_stays_inside(Path::new("usr/a"), Path::new("../../b")));
+        assert!(!link_stays_inside(Path::new("a"), Path::new("/etc/passwd")));
+        assert!(!link_stays_inside(Path::new("a"), Path::new("")));
     }
 
     #[test]

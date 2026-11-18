@@ -13,7 +13,7 @@ Packaging notes for the launcher itself are in
 
 | Where | In the Flatpak |
 |---|---|
-| The game's own folder (`{install}`) | Real and writable. Your game can write next to its program, unlike inside a mounted AppImage. |
+| The game's own folder (`{install}`) | Real and writable. Your game can write next to its program, as on every Linux build (the launcher unpacks AppImages). |
 | `~/Games` and other drives (`/run/media`, `/media`, `/mnt`) | Real, read and write. The default install folder is `~/Games/Recomp Library`. |
 | `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_STATE_HOME` | Point into `~/.var/app/com.recomplauncher.RecompLauncher/` (`data`, `config`, `cache`, `.local/state`). Kept between runs. |
 | Anything else in the home folder | Not there. The sandbox's home is in memory: what your game writes to `~/.mygame` or a hard-coded `~/.local/share/...` is **lost when it closes**. |
@@ -26,35 +26,18 @@ runs in the Flatpak.
 
 ## AppImages are unpacked at install
 
-There's no FUSE in the sandbox, so an AppImage can't mount itself. When the Flatpak launcher
-installs or updates a release with one AppImage at its top (on its own, or inside a zip), it unpacks
-it like an archive:
+On Linux the launcher never runs an AppImage, in the Flatpak or out of it: every game plays from a
+plain folder. Your AppImage is unpacked at install with the launcher's own SquashFS reader (it
+needs no FUSE, and nothing of the image runs), and the game starts from its `AppRun`. What that
+means for your AppImage is in [AppImages](DEVELOPERS.md#appimages) in the developer guide.
 
-- The AppImage's contents (`AppRun`, `usr/`, the `.desktop` file, an embedded
-  `recomplauncher.json`) become the game's folder, and the AppImage file is removed.
-- The game starts from `AppRun`, with `APPDIR` set to the game's folder and `ARGV0` to `AppRun`,
-  as the AppImage runtime would set them. **`APPIMAGE` is not set**, since there's no AppImage file.
-- `"program": ["MyGame.AppImage"]` in your `recomplauncher.json` keeps working: when the AppImage
-  isn't there and an `AppRun` is, the launcher starts the `AppRun`. The same goes for `prepare`.
-- An embedded `recomplauncher.json` ends up next to `AppRun`, where the launcher reads it.
-
-So in your AppImage:
-
-- **Find your files from `APPDIR` or from your own program's path** (`/proc/self/exe`), never from
-  `APPIMAGE` or a mount point.
-- **Don't update yourself through `APPIMAGE`.** Updates come from your GitHub releases through the
-  launcher.
-- A release with two or more AppImages isn't unpacked at install. Each unpacks the first time it's
-  played instead, which is slower, so ship one.
-
-Games the player brought in themselves (Bring Your Recomps, Set Up By Hand) aren't installed by
-the launcher. If one is an AppImage, it's unpacked the first time it's played, into the launcher's
-cache, and reused after that.
+Inside the Flatpak this is also why it works at all: there's no FUSE in the sandbox, so an
+AppImage couldn't mount itself there.
 
 ## Libraries
 
 Inside the Flatpak, "the system" is the GNOME 51 runtime (freedesktop SDK 26.08), not the player's
-distro. A `.tar.gz` that relies on libraries from the PC gets the runtime's versions, and anything
+distro. A tarball that relies on libraries from the PC gets the runtime's versions, and anything
 the runtime lacks is missing. An AppImage brings its own libraries, which is why it's the safer
 choice for the Flatpak. Either way, bundle what your game needs beyond the basics (glibc, Vulkan
 and OpenGL loaders, X11/Wayland, PulseAudio/PipeWire).
@@ -65,7 +48,7 @@ Graphics drivers come from the runtime's GL extension. Controllers and other dev
 ## Other differences
 
 - **`.flatpak` releases** need the PC's own Flatpak, which the sandbox can't reach unless the player
-  allows it. Players get a message with the command to allow it. Prefer an AppImage or a `.tar.gz`.
+  allows it. Players get a message with the command to allow it. Prefer an AppImage or a tarball.
 - **Telling where you run:** `FLATPAK_ID` is set to `com.recomplauncher.RecompLauncher` (and
   `/.flatpak-info` exists). The usual `RECOMPLAUNCHER`, `RECOMPLAUNCHER_VERSION`,
   `RECOMPLAUNCHER_MODE` and `RECOMPLAUNCHER_PAD` variables are set as on every build.

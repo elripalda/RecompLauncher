@@ -924,7 +924,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Paths inside your release, tried in order. An .AppImage entry finds the AppImage installed under any name; on a Mac a .app runs the program its Info.plist names (Beta 55 and newer; before that, name the program inside it, like MyGame.app/Contents/MacOS/MyGame)."
+      "description": "Paths inside your release, tried in order. An .AppImage entry finds the AppImage installed under any name, and on Linux, where the launcher unpacks every AppImage into a plain folder, starts its AppRun; on a Mac a .app runs the program its Info.plist names (Beta 55 and newer; before that, name the program inside it, like MyGame.app/Contents/MacOS/MyGame)."
     },
     "args": {
       "type": "array",

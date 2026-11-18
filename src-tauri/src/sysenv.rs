@@ -626,6 +626,8 @@ mod tests {
 }
 
 /// Whether this Linux has FUSE 2 (libfuse.so.2), which most AppImages need to mount themselves.
+/// Only the launcher's own AppImage asks now (its update restarts it): games are never run as
+/// AppImages (see plain.rs).
 #[cfg(target_os = "linux")]
 pub fn has_fuse2() -> bool {
     let dirs = ["/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/run/host/usr/lib", "/run/host/usr/lib64"];

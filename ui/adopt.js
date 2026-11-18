@@ -169,7 +169,8 @@ async function adoptAdd(close) {
   close();
   await saveUi({ adopt_asked: true });
   await refreshState();
-  const moving = ADOPT.move ? pick.filter((f) => f.from === 'launcher' && added.some((g) => g.id === f.id)) : [];
+  // One unpacked from its AppImage (Linux) is in the Recomp Library already.
+  const moving = ADOPT.move ? pick.filter((f) => f.from === 'launcher' && added.some((g) => g.id === f.id && !g.unpacked)) : [];
   for (const f of moving) {
     toast(tf('Moving {name} into your Recomp Library…', { name: adoptName(f) }));
     try { await moveGame(f.id, S.settings.library_dir); } catch (e) { fail(e); }
