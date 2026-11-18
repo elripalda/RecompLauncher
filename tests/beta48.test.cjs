@@ -25,8 +25,12 @@ test('a profile input named "game" is set like any other input, not as the old s
   assert.deepEqual(calls[0], ['set_game_copy', 'game']);
 });
 
-test('a picked profile input named "game" can be removed', () => {
-  assert.match(named, /\$\{r\.path && !r\.legacy \? button\(/);
+test('a picked profile input named "game" is changed by choosing again, with the same buttons', () => {
+  // The steps never take a needed file's buttons away (choosing again changes it); optional ones
+  // and shared keys can be removed, with their × kept in place while empty.
+  const steps = read('setup-steps.js');
+  assert.match(fn(steps, 'ssRow'), /const canRemove = r\.optional \|\| \(r\.shared && !r\.legacy\);/);
+  assert.match(fn(steps, 'ssRow'), /<div class="acts">\$\{ssPickBtns\(r, ns\.busy\)\}\$\{rm\}<\/div>/);
 });
 
 test("a pointed-at cover isn't cut off where the clip can't be widened", () => {

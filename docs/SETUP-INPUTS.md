@@ -1,12 +1,14 @@
 # Named Easy Setup inputs and shared keys
 
 This extension to format 1 lets a project ask for multiple discs, required updates and optional
-DLC as separate named inputs. Easy Setup displays compact rows grouped into required files,
-shared keys, and optional content. Four discs and three DLC files use seven rows, not seven
-wizard pages. The original disc artwork and two-column setup layout are preserved. Optional DLC
-starts collapsed with an added-file count; expanding it exposes the individual slots. On smaller
-windows the artwork sits above the scrolling file list. Preparation starts explicitly after every
-required input is selected.
+DLC as separate named inputs. Easy Setup shows them in steps: **Game** (**Discs** when there are
+several) with the required files and shared keys, **Add-ons** with the optional ones, and
+**Extras** with `prepare.options` and NVIDIA DLSS. A step with nothing in it isn't shown, so four
+discs and three DLC files are two pages, and a game that needs one file is one. Each file is a row
+(or, when the game needs just one, a box) with its buttons on it; a file found or kept from before
+shows there with a tag saying so. The disc artwork and two-column layout are kept; on smaller
+windows the artwork sits above. Preparation starts only from Set Up, once every required input is
+selected. Desktop and Big Picture draw the same steps (`ui/setup-steps.js`).
 
 Existing `game`, `game.update`, `start`, and `prepare` profiles remain supported. Named inputs
 may accompany a legacy `game` declaration, or replace it entirely. When replacing it, use
@@ -129,8 +131,8 @@ recomp asks for it once; the player provides nothing:
   `raw.githubusercontent.com/NVIDIA/` or `github.com/NVIDIA/`, checked for its size and signature
   (NVIDIA Corporation), and kept once in `shared-runtime/nvidia.dlss/<version>/`. Each game gets
   its own managed copy. A file the game's release ships itself is never replaced.
-- Easy Setup shows a compact optional row ("Downloaded from NVIDIA") the player can turn off per
-  game. A failed download never stops setup: the game plays without DLSS.
+- Easy Setup shows it on the Extras step ("Downloaded from NVIDIA"), with a switch the player can
+  turn off per game. A failed download never stops setup: the game plays without DLSS.
 - First in RecompLauncher 0.90 Beta 37. From that version, an **optional** input with a shared
   type or role the launcher doesn't know is skipped (its `{input:...}` arguments left out) instead
   of failing, so future shared types don't break launchers. A required one still fails.
@@ -163,9 +165,10 @@ application sandbox or trust certification.
 ## Validation
 
 Run `cargo test --manifest-path src-tauri/Cargo.toml --lib inputs::tests` for the named-input backend
-and `node --test tests/setup-inputs.test.cjs` for UI requirements, disclosure, and escaping checks.
-For visual review, run `node tests/preview-server.cjs` and open
-`http://127.0.0.1:4783/tests/setup-inputs-preview.html` (add `?tv` for Big Picture). The preview uses
+and `node --test tests/setup-inputs.test.cjs tests/setup-steps.test.cjs` for UI requirements,
+disclosure, and escaping checks. For visual review, run `node tests/preview-server.cjs` and open
+`http://127.0.0.1:4783/tests/setup-steps-preview.html` (add `?tv` for Big Picture): every step of
+several cases, from one file to four discs with DLC, keys and a required option. The preview uses
 simulated selections and never imports files or runs preparation. Its game/DLC labels are fixtures,
 not a supported integration manifest.
 

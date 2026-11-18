@@ -521,8 +521,9 @@ fn option_items(opts: &[profile::PrepareOption]) -> Vec<Item> {
         }
         if bad.is_empty() {
             let when = [(!o.os.is_empty()).then(|| o.os.join(", ")), (!o.gpu.is_empty()).then(|| format!("{} cards", o.gpu))].into_iter().flatten().collect::<Vec<_>>().join(", ");
-            let lic = if o.license.is_some() { ", starts off: the player accepts its license" } else { ", starts on" };
-            items.push(ok(format!("Setup option: {name}{}{lic}", if when.is_empty() { String::new() } else { format!(" (only on {when})") })));
+            let lic = if o.license.is_some() { ", starts off: the player accepts its license" } else if o.start_on == Some(false) { ", starts off" } else { ", starts on" };
+            let req = if o.required { ", required: setup waits until it's ticked" } else { "" };
+            items.push(ok(format!("Setup option: {name}{}{lic}{req}", if when.is_empty() { String::new() } else { format!(" (only on {when})") })));
         } else {
             items.push(err(format!("Setup option \"{name}\": {}", bad.join("; ")), "See prepare.options in the developer guide."));
         }
@@ -577,6 +578,14 @@ mod tests {
             assert!(bad.contains(w), "{w}: {bad}");
         }
         assert!(items[2].text.contains("already has the id"));
+    }
+
+    #[test]
+    fn a_required_setup_option_is_named_as_required() {
+        let p: crate::profile::Prepare = serde_json::from_str(r#"{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}"#).unwrap();
+        let items = super::option_items(&p.options);
+        assert!(items[0].text.contains("starts off") && items[0].text.contains("required"), "{}", items[0].text);
     }
 
     #[test]

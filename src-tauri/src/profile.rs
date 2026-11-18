@@ -144,6 +144,10 @@ pub struct PrepareOption {
     /// Whether it starts ticked (on when not given). Ignored with a license.
     #[serde(default, rename = "default")]
     pub start_on: Option<bool>,
+    /// Setup can't run until it's ticked (a license the build can't do without). It still starts
+    /// off with a license: only the player accepts one.
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -183,6 +187,10 @@ impl Prepare {
     /// The arguments the ticked options add, in their order.
     pub fn option_args(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<String> {
         self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.on(picked)).flat_map(|o| o.args.iter().cloned()).collect()
+    }
+    /// The required options this PC is offered that aren't ticked: setup waits for them.
+    pub fn unticked_required(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<&PrepareOption> {
+        self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.required && !o.on(picked)).collect()
     }
 }
 
@@ -1592,8 +1600,9 @@ impl Profile {
     }
 
     /// The player's build in `to` standing in for the setup's own folder: every path of the
-    /// profile in that folder (how it starts, its settings files, its saves, its folders) moves
-    /// with it. What the setup step runs stays as it is: the launcher's own build goes to its folder.
+    /// profile in that folder (how it starts, its settings files, its saves, its folders, and the
+    /// files a finished build has, prepare.done) moves with it. What the setup step runs stays as
+    /// it is: the launcher's own build goes to its folder.
     pub fn rebase_build(&mut self, install: &Path, to: &Path) {
         let Some(from) = self.build_home(install) else { return };
         let moved = |t: &mut String| {
@@ -1622,6 +1631,27 @@ impl Profile {
                 moved(&mut f.when);
             }
         }
+        if let Some(pr) = self.prepare.as_mut() {
+            pr.done.iter_mut().for_each(moved);
+        }
+    }
+
+    /// The first file its setup step says it leaves (prepare.done, filled in) that isn't there.
+    /// None when they're all there, or it lists none.
+    pub fn done_missing(&self, install: &Path) -> Option<PathBuf> {
+        let done = &self.prepare.as_ref()?.done;
+        done.iter().map(|d| PathBuf::from(fill(d, install, None))).find(|p| !p.exists())
+    }
+
+    /// The files of prepare.done that are in the build folder `home`, relative to it: what a
+    /// finished build has, to look for in a folder the player says holds their own build.
+    pub fn done_in(&self, install: &Path, home: &Path) -> Vec<PathBuf> {
+        let Some(pr) = self.prepare.as_ref() else { return Vec::new() };
+        pr.done
+            .iter()
+            .filter_map(|d| PathBuf::from(fill(d, install, None)).strip_prefix(home).ok().map(Path::to_path_buf))
+            .filter(|rest| !rest.as_os_str().is_empty())
+            .collect()
     }
 
     pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
@@ -2621,6 +2651,42 @@ mod tests {
         assert_eq!(pr.option_args("linux", false, false, &std::collections::BTreeMap::new()), ["--hd"]);
         // Not on this PC: never added, whatever was ticked.
         assert!(pr.option_args("windows", false, true, &picked).is_empty());
+    }
+
+    #[test]
+    fn a_required_option_with_a_license_starts_unticked_and_holds_setup_until_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--accept-vs-license"],"required":true,"default":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        // "default": true doesn't accept a license for the player.
+        let ids = |picked: &std::collections::BTreeMap<String, bool>| pr.unticked_required("windows", false, false, picked).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&picked), ["vs"]);
+        assert!(pr.option_args("windows", false, false, &picked).is_empty());
+        picked.insert("vs".to_string(), true);
+        assert!(ids(&picked).is_empty());
+        assert_eq!(pr.option_args("windows", false, false, &picked), ["--accept-vs-license"]);
+    }
+
+    #[test]
+    fn a_required_option_without_a_license_can_start_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"tools","label":"Tools","args":["--tools"],"required":true}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        assert!(pr.unticked_required("linux", false, false, &picked).is_empty());
+        picked.insert("tools".to_string(), false);
+        assert_eq!(pr.unticked_required("linux", false, false, &picked).len(), 1);
+    }
+
+    #[test]
+    fn a_required_option_this_pc_isnt_offered_doesnt_hold_setup() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"os":["windows"],"license":{"name":"VS","url":"https://example.com/vs"}},
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"required":true,"gpu":"nvidia","default":false}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        // A Steam Deck: neither applies.
+        assert!(pr.unticked_required("linux", false, true, &std::collections::BTreeMap::new()).is_empty());
     }
 
     #[test]
@@ -3986,5 +4052,29 @@ mod own_build_tests {
         let before = serde_json::to_string(&p).unwrap();
         p.rebase_build(&install, Path::new("/elsewhere"));
         assert_eq!(serde_json::to_string(&p).unwrap(), before, "nothing moves without a folder of its own");
+    }
+
+    #[test]
+    fn what_a_finished_build_has_moves_with_the_players_build() {
+        let install = std::env::temp_dir().join("rl-own-build-done");
+        let mine = std::env::temp_dir().join("rl-own-build-done-mine");
+        let _ = std::fs::remove_dir_all(&mine);
+        let mut p = builder();
+        p.prepare.as_mut().unwrap().done = vec!["{home}/Games/Hopper/bin/hopper.exe".into(), "{local}/hopper/cache.bin".into()];
+        let home = p.build_home(&install).unwrap();
+        // Only the done files in the build folder are what to look for in the player's folder.
+        assert_eq!(p.done_in(&install, &home), vec![PathBuf::from("bin").join("hopper.exe")]);
+        p.rebase_build(&install, &mine);
+        let done = &p.prepare.as_ref().unwrap().done;
+        assert_eq!(PathBuf::from(&done[0]), mine.join("bin").join("hopper.exe"));
+        assert_eq!(done[1], "{local}/hopper/cache.bin", "one outside that folder stays as it is");
+        assert_eq!(p.done_missing(&install), Some(mine.join("bin").join("hopper.exe")));
+    }
+
+    #[test]
+    fn nothing_is_missing_when_the_profile_lists_no_done_files() {
+        let install = std::env::temp_dir().join("rl-own-build-nodone");
+        assert_eq!(builder().done_missing(&install), None);
+        assert!(builder().done_in(&install, &install.join("Games")).is_empty());
     }
 }

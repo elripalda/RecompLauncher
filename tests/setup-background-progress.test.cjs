@@ -6,7 +6,6 @@ const vm = require('node:vm');
 
 const appSrc = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tvSrc = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
-const inputsSrc = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 
 test('status returns settingup when setupJobs has an active setup', () => {
   const c = vm.createContext({
@@ -45,17 +44,13 @@ test('actions renders clickable reopen-setup button with stage and percentage an
   assert.match(html, /Checking/);
 });
 
-test('namedSetup delegates to setupModal when job is active in background', () => {
-  let reopened = null;
-  const c = vm.createContext({
-    S: { setupJobs: { 'hopper': { step: 'extras', pct: 0.8 } } },
-    parentId: (id) => id.split('@')[0],
-    setupModal: (id) => { reopened = id; },
-    closeSetup: () => {},
-  });
-  vm.runInContext(inputsSrc, c);
-  c.namedSetup('hopper');
-  assert.equal(reopened, 'hopper');
+test('the setup window shows a setup running in the background before it shows the steps', () => {
+  // Every profile opens the same window now (setupModal): a running job is shown as its progress.
+  const fn = appSrc.slice(appSrc.indexOf('async function setupModal(id)'), appSrc.indexOf('\nfunction ssDraw()'));
+  const job = fn.indexOf('const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);');
+  assert.ok(job > 0);
+  assert.ok(fn.indexOf("stage: 'run',", job) > job);
+  assert.ok(fn.indexOf("stage: 'steps'") > fn.indexOf("stage: 'run',", job));
 });
 
 test('onSetupFinished auto-adds to library and sets setup_ok', async () => {

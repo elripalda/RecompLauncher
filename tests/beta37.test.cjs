@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
-const app = read('app.js'), tv = read('tv.js'), setup = read('setup-inputs.js');
+const app = read('app.js'), tv = read('tv.js');
 const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 const base = () => ({
   t: (x) => x, tf: (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]), tn: (n, one, many) => (n === 1 ? one : many).replace('{n}', n),
@@ -12,40 +12,41 @@ const base = () => ({
   baseName: (x) => x.split(/[\\/]/).pop(), CHECK: '<svg class="ok"></svg>', DISC_S: '<svg class="no"></svg>',
 });
 
-// ---- NVIDIA DLSS row (desktop and Big Picture share namedInputsView) ----
-function setupCtx() { const c = vm.createContext(base()); vm.runInContext(setup, c); return c; }
+// ---- NVIDIA DLSS row (on the Extras step, desktop and Big Picture alike) ----
+const { stepsContext } = require('./steps-context.cjs');
 const disc = { id: 'disc', label: 'Disc', role: 'disc', path: '/d.iso', active: true, file: true };
 const dlss = (o = {}) => Object.assign({ id: 'dlss', label: 'NVIDIA DLSS', role: 'runtime', shared: 'nvidia.dlss', optional: true, active: true, runtime: true, file: false, path: null, off: false, ships: false }, o);
+const extras = (c, inputs, ns = {}) => c.stepsView('g', { needs: 'x', kind: '', inputs, prepare_options: [] }, Object.assign({ at: 1 }, ns), { name: 'G' });
 
 test('the DLSS row has nothing to choose and never holds setup back', () => {
-  const c = setupCtx();
-  const html = c.namedInputsView('g', { inputs: [disc, dlss()] }, { extras: true });
+  const c = stepsContext();
+  const html = extras(c, [disc, dlss()]);
   assert.match(html, /NVIDIA DLSS/);
   assert.match(html, /Downloaded from NVIDIA/);
-  assert.doesNotMatch(html, /data-ni="file" data-input="dlss"/);
-  assert.doesNotMatch(html, /data-ni="run" disabled/, 'setup can run without it');
-  assert.match(html, /data-ni="dlss-off"/);
+  assert.doesNotMatch(html, /data-ss="file" data-input="dlss"/);
+  assert.doesNotMatch(html, /data-ss="run" disabled/, 'setup can run without it');
+  assert.match(html, /role="switch" aria-checked="true" aria-label="NVIDIA DLSS" data-ss="dlss-off"/);
   // Even when a profile marks it required.
-  assert.doesNotMatch(c.namedInputsView('g', { inputs: [disc, dlss({ optional: false })] }), /data-ni="run" disabled/);
+  assert.doesNotMatch(extras(c, [disc, dlss({ optional: false })]), /data-ss="run" disabled/);
 });
 test('the DLSS row shows its download, a failure with Try Again, off, and a shipped file', () => {
-  const c = setupCtx();
-  const downloading = c.namedInputsView('g', { inputs: [disc, dlss()] }, { extras: true, dlss: { done: 29, total: 58 } });
+  const c = stepsContext();
+  const downloading = extras(c, [disc, dlss()], { dlss: { done: 29, total: 58 } });
   assert.match(downloading, /Downloading from NVIDIA 50%/);
   assert.match(downloading, /ni-bar/);
-  const failed = c.namedInputsView('g', { inputs: [disc, dlss()] }, { extras: true, dlss: { failed: true } });
+  const failed = extras(c, [disc, dlss()], { dlss: { failed: true } });
   assert.match(failed, /Couldn&#39;t get NVIDIA&#39;s DLSS file\. The game runs without it\./);
-  assert.match(failed, /data-ni="dlss-retry"/);
-  assert.doesNotMatch(failed, /data-ni="run" disabled/);
-  const off = c.namedInputsView('g', { inputs: [disc, dlss({ off: true })] }, { extras: true });
+  assert.match(failed, /data-ss="dlss-retry"/);
+  assert.doesNotMatch(failed, /data-ss="run" disabled/);
+  const off = extras(c, [disc, dlss({ off: true })]);
   assert.match(off, /Off for this game/);
-  assert.match(off, /data-ni="dlss-on"/);
-  const ships = c.namedInputsView('g', { inputs: [disc, dlss({ ships: true })] }, { extras: true });
+  assert.match(off, /data-ss="dlss-on"/);
+  const ships = extras(c, [disc, dlss({ ships: true })]);
   assert.match(ships, /Using the DLSS file this game ships/);
-  assert.doesNotMatch(ships, /data-ni="dlss-(on|off|retry)"/);
+  assert.doesNotMatch(ships, /data-ss="dlss-(on|off|retry)"/);
 });
-test('Big Picture draws the same rows and fetches DLSS the same way', () => {
-  assert.match(tv, /namedInputsShell\(id, su, TS\.named, a, true\)/);
+test('Big Picture draws the same steps and fetches DLSS the same way', () => {
+  assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
   assert.match(tv, /runtimeFetch\(id, TS\.named/);
 });
 

@@ -85,6 +85,8 @@ const date = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleDa
 const catIcon = (k) => (GENRES[k] ? `<i class="cat-ico" style="--m:url(img/cat/${k}.png)" aria-hidden="true"></i>` : '');
 const osIcon = (k) => `<i class="os-ico" style="--m:url(img/${k}.svg)" title="${OS_NAME[k] || k}" aria-hidden="true"></i>`;
 const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id === id)?.name || id || '';
+// The catalog's consoles A to Z for the pickers: the catalog keeps its own order, which reads as random.
+const originsAZ = () => [...((S.cat && S.cat.origins) || [])].sort((x, y) => x.name.localeCompare(y.name));
 // Each console's own colour (the website's), for its dot in lists.
 const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
   wii: '#4fc3f7', wiiu: '#00a2c7', snes: '#b38cf2', gba: '#6c63ff', gb: '#9bbc0f', ds: '#aab4c2', dc: '#ff8a3d', saturn: '#4f7cff', psp: '#5b6b8c', switch: '#e60012', switch2: '#ff3b47',
@@ -183,7 +185,7 @@ function sideOnce() {
   }
   saveUi({ side_v26: true, side_order: order }, true);
 }
-function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></div>` : ''; }
+function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span></div>` : ''; }
 // A recomp that needs things on the PC first (Python, build tools, a long build): it says so, and
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
 const WRENCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L9 2l3 3-2 2-3-3L5.3 5.7"/></svg>';
@@ -727,9 +729,14 @@ const repoOwner = (a) => ((a && a.repo) || '').replace(/^[a-z]+:/, '').split('/'
 function devLine(a) {
   const d = devOf(a);
   // No developer page: the project's owner, as words.
-  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line plain"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
+  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
   const name = d.name || a.author || '';
-  return `<div class="dev-row"><button type="button" class="dev-line" data-act="url" data-url="${esc(SITE + '/dev/' + encodeURIComponent(d.slug))}" title="${esc(t('See their page'))}">${d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span>${d.verified ? `<span class="vpill">${TICK(14)}${esc(t('Verified developer'))}</span>` : ''}</button>${followBtn(d)}</div>`;
+  const pic = d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+  const by = `<span class="dev-line">${pic}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span></span>`;
+  // The byline is plain words for everyone; only the Verified badge is a pill, and it's the link to their page.
+  const devPage = esc(SITE + '/dev/' + encodeURIComponent(d.slug));
+  const badge = d.verified ? `<button type="button" class="vpill" data-act="url" data-url="${devPage}" title="${esc(t('See their page'))}">${TICK(14)}${esc(t('Verified developer'))}</button>` : '';
+  return `<div class="dev-row">${by}${badge}${followBtn(d)}</div>`;
 }
 const follows = () => ((S.settings.ui || {}).follow || []);
 const followBtn = (d) => { const on = follows().includes(d.slug); return `<button type="button" class="follow-btn${on ? ' on' : ''}" data-act="follow" data-dev="${esc(d.slug)}" aria-pressed="${on}">${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>${esc(t('Following'))}` : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>${esc(t('Follow'))}`}</button>`; };
@@ -1778,7 +1785,7 @@ const runsSel = () => `<label class="pill-sel">${esc(t('Runs On'))}<select class
 // Discover's controls: on the page, and again in the bar pinned to the top once those scroll away.
 const sortOpts = () => [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
 const pillSel = (label, act, opts, cur, cls = '') => `<label class="pill-sel${cls ? ' ' + cls : ''}">${esc(label)}<select class="sel" data-act="${act}">${opts.map(([k, n, ico]) => `<option value="${esc(k)}"${ico ? ` data-ico="${esc(ico)}"` : ''}${cur === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
-const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...(S.cat.origins || []).map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
+const originSel = (f, cls) => pillSel(t('Console'), 'origin', [['', t('Any')], ...originsAZ().map((o) => [o.id, o.name, 'c:' + o.id])], f.origin, cls);
 const genreSel = (f, genres, cls) => pillSel(t('Genre'), 'genre-sel', [['', t('Any')], ...genres.map((k) => [k, t(GENRES[k])])], f.genre, cls);
 const showSel = (f) => pillSel(t('Show'), 'show-sel', showsNow(f.show || '').map(([k, n]) => [k, t(n)]), f.show || '');
 const tagSel = (f) => pillSel(t('Tag'), 'tag-sel', [['', t('Any')], ...allTags().map((k) => [k, k])], f.tag || '');
@@ -2184,7 +2191,7 @@ function packLine(v) {
   return [tf('Part of {name}', { name }), n ? tn(n, '1 game', '{n} games') : ''].filter(Boolean).join(' · ');
 }
 const packTag = (v) => (v && v.parent ? `<span class="vtag pack">${esc(packLine(v))}</span>` : '');
-function verRow(v, cur, g, cls) {
+function verRow(v, cur, g) {
   const inst = S.library[v.id], here = v.id === cur;
   const play = recompPlaytime(v.id);
   const rec = v.id === g.pick, dev = devOf(v);
@@ -2194,12 +2201,11 @@ function verRow(v, cur, g, cls) {
   const line = [who ? `<span class="v-dev${dev && dev.verified ? ' ver' : ''}">${esc(who)}${dev && dev.verified ? TICK(12) : ''}</span>` : '', esc(v.adds || '')].filter(Boolean).join(' · ');
   const os = OS_SHORT(v);
   const ic = verIcon(v);
-  return `<button type="button" class="${cls}${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" ${cls === 'vm-row' ? 'role="option" ' : ''}aria-${cls === 'vm-row' ? 'selected' : 'current'}="${here}" data-act="ver-go" data-id="${esc(v.id)}">
+  return `<button type="button" class="vm-row${here ? ' on' : ''}${rec ? ' rec' : ''}${inst ? ' inst' : ''}" role="option" aria-selected="${here}" data-act="ver-go" data-id="${esc(v.id)}">
     <span class="v-ic">${ic ? pic(ic, '', 'loading="lazy"') : ''}</span>
     <span class="v-txt"><span class="v-n"><b>${esc(v.name)}</b>${runScore(v.id)}${tags}</span>${line ? `<small>${line}</small>` : ''}${rec && g.why ? `<small class="v-why" title="${esc(g.why)}">${esc(g.why)}</small>` : ''}${play?.last_played ? `<small>${esc(tf('{time} played', { time: playedFor(play) }))}</small>` : ''}</span>
     <span class="v-os">${os.map((k) => `<span title="${esc(OS_NAME[k])}">${osIcon(k)}</span>`).join('')}</span>
-    <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span>
-    <span class="v-go">${here ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>` : CHEV_R}</span></button>`;
+    <span class="v-dl"><b>${esc(v.downloads ? fmtN(v.downloads) : '—')}</b><small>${esc(t('downloads'))}</small></span></button>`;
 }
 // Under the title: which version this is, and a menu to switch.
 function verPill(a) {
@@ -2208,24 +2214,13 @@ function verPill(a) {
   const n = g.list.filter((v) => S.library[v.id]).length;
   return `<button type="button" class="ver-pill" data-act="ver-menu" data-id="${esc(a.id)}" aria-haspopup="listbox" aria-expanded="false">${LAYERS}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${n > 1 ? `<em>${esc(tn(n, '1 installed', '{n} installed'))}</em>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
-// On Overview: every version, like the website's list.
-// Under the versions list: Windows-only versions this Linux PC leaves out until Proton is on.
+// On Overview: Windows-only versions this Linux PC leaves out until Proton is on. The versions
+// themselves are in the menu under the title, so Overview doesn't list them a second time.
 function protonHiddenNote(a, cls) {
   const n = protonHidden(a).length;
   if (!n) return '';
   const say = tn(n, '1 more version is Windows-only and hidden because Proton is off.', '{n} more versions are Windows-only and hidden because Proton is off.');
   return `<p class="${cls} proton-hidden">${esc(say)} <button type="button" class="btn sm" data-act="use-proton" data-id="${esc(a.id)}">${esc(t('Play With Proton'))}</button></p>`;
-}
-function versionsCard(a) {
-  const g = verGroup(a);
-  if (!g) return protonHiddenNote(a, 'vc-solo');
-  const hide = !!(S.settings.ui || {}).verHide;
-  return `<div class="card vcard${hide ? ' shut' : ''}"><div class="vc-h"><span class="vc-stack">${g.list.slice(0, 4).map((v) => `<i>${verIcon(v) ? pic(thumbOf(verIcon(v), 160), '', 'loading="lazy"') : ''}</i>`).join('')}</span>
-      <div><h3>${esc(tf('{n} versions of {game}', { n: g.list.length, game: g.name }))}</h3><span>${esc(tf('You\'re on {name}', { name: a.name }))}</span></div>
-      <button type="button" class="btn sm" data-act="ver-hide" aria-expanded="${!hide}">${esc(hide ? t('Show') : t('Hide'))}</button></div>
-    ${hide ? '' : `<div class="vc-list">${g.list.map((v) => verRow(v, a.id, g, 'vc-row')).join('')}</div>
-    <p class="vc-note">${esc(t('Each version installs on its own, so you can keep more than one and try them side by side.'))}</p>
-    ${protonHiddenNote(a, 'vc-note')}`}</div>`;
 }
 function verMenu(el) {
   const a = byId(el.dataset.id), g = verGroup(a);
@@ -2238,7 +2233,7 @@ function verMenu(el) {
   m.dataset.for = a.id;
   m.setAttribute('role', 'listbox');
   m.setAttribute('aria-label', tf('{n} versions of {game}', { n: g.list.length, game: g.name }));
-  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g, 'vm-row')).join('')}`;
+  m.innerHTML = `<div class="vm-h"><b>${g.list.length}</b>${esc(tf('Versions of {game}', { game: g.name }))}</div>${g.list.map((v) => verRow(v, a.id, g)).join('')}`;
   document.body.append(m);
   const r = el.getBoundingClientRect();
   const w = Math.min(560, innerWidth - 24);
@@ -2509,7 +2504,7 @@ function gameBody(a) {
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
       ${ownAboutCard(id)}
-      ${versionsCard(a)}
+      ${protonHiddenNote(a, 'vc-solo')}
       ${feats.length ? `<div class="feat">${feats.map((ft) => `<span>${esc(ft)}</span>`).join('')}</div>` : ''}
       ${aboutCard(a)}
       ${shotsCard(a)}
@@ -2686,8 +2681,7 @@ function copyFormats(id) {
 }
 // Those, as small tags (".z64 .n64 .v64"), the same in every language.
 const fmtTags = (exts) => exts.map((e) => `<span class="fmt">.${esc(e)}</span>`).join('');
-// The pick button's name, and the line under the drop area, for that kind of copy.
-const copyName = (f) => (f.type === 'rom' ? t('ROM File') : f.type === 'disc' ? t('Disc Image') : f.type === 'file' ? tf('{console} File', { console: f.console }) : t('Game File'));
+// The line under the drop area, for that kind of copy.
 const copyDrop = (f) => (f.type === 'rom' ? t('Drop your ROM here') : f.type === 'disc' ? t('Drop your disc image here') : t('Drop your game file here'));
 function copyPickOpts(id) {
   const a = byId(id) || { id };
@@ -2736,7 +2730,7 @@ async function pickUpdate(id, folder) {
   return '';
 }
 // ---------- setting a game up with the player's copy ----------
-const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+const SU = { id: null, el: null, stage: 'steps', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
 const suDrive = createSetupDriveLight();
 // Easy Setup's window opened or closed: while it's open the core keeps how the game was set up, and
 // puts that back when it closes without a setup that worked (picks made in it, a run that failed).
@@ -2789,9 +2783,11 @@ async function setupModal(id) {
   if (S.setup[id] === undefined || S.setup[id] === 'loading') { try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; } }
   const su = S.setup[id];
   if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
-  if (su.inputs?.length || su.inputs_error) return namedSetup(id);
   closeSetup(true);
-  Object.assign(SU, { id, stage: needUpdate(su) && su.copy ? 'update' : 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: S.setupNote && S.setupNote.id === id ? S.setupNote.text : '' });
+  // Every game's files, whatever its profile asks for, are chosen in the same steps (setup-steps.js).
+  // A note (a build that went missing) shows as the window's error line.
+  const note = S.setupNote && S.setupNote.id === id ? S.setupNote.text : '';
+  Object.assign(SU, { id, stage: 'steps', named: { at: 0, error: note }, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: '' });
   S.setupNote = null;
   const s = document.createElement('div');
   s.className = 'scrim';
@@ -2802,14 +2798,58 @@ async function setupModal(id) {
   s.addEventListener('click', (e) => {
     if (e.target === s && SU.stage !== 'run') return closeSetup();
     const b = e.target.closest('[data-su]');
-    if (b) suAct(b);
+    if (b) return suAct(b);
+    const step = e.target.closest('[data-ss]');
+    if (step) ssAct(step);
   });
   s.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); closeSetup(); }
   });
   suDraw();
-  const f = $('.pick, .found .btn', s);
-  if (f) f.focus();
+}
+// Easy Setup's steps (setup-steps.js) in the setup window. Redrawn whole on each change; the
+// focused control and the list's scroll are put back, so keys and the mouse carry on where they were.
+function ssDraw() {
+  if (!SU.el || SU.stage !== 'steps') return;
+  const id = SU.id, box = $('.modal', SU.el);
+  const a = byId(id) || { name: (S.library[id] || {}).name || id };
+  const su = S.setup[id] || {};
+  const was = document.activeElement && SU.el.contains(document.activeElement) ? ssFocusKey(document.activeElement) : '';
+  const scroll = $('.ss-scroll', box)?.scrollTop || 0;
+  const cov = a.cover ? media(a.cover) : '';
+  box.dataset.stage = 'steps';
+  box.dataset.step = '';
+  box.classList.add('ss-modal');
+  box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>${stepsShell(id, su, SU.named, a, false)}`;
+  const list = $('.ss-scroll', box);
+  if (list) list.scrollTop = scroll;
+  const f = (was && $(was, box)) || $('.ss-foot .btn.main:not([disabled])', box) || $('.su-r button:not([disabled])', box) || $('.su-x', box);
+  if (f) f.focus({ preventScroll: true });
+  runtimeFetch(id, SU.named, () => { if (SU.stage === 'steps' && SU.id === id) ssDraw(); });
+}
+// A control's selector, to find it again after a redraw.
+function ssFocusKey(el) {
+  if (el.dataset.ss) return `[data-ss="${el.dataset.ss}"]${el.dataset.input ? `[data-input="${CSS.escape(el.dataset.input)}"]` : ''}`;
+  if (el.dataset.popt) return `[data-popt="${CSS.escape(el.dataset.popt)}"]`;
+  return '';
+}
+async function ssAct(b) {
+  if (b.disabled) return;
+  const id = SU.id, ns = SU.named;
+  const pending = stepsAction(id, b.dataset.ss, b.dataset.input, ns);
+  ssDraw();
+  const r = await pending;
+  if (!SU.el || SU.id !== id || SU.stage !== 'steps') return;
+  if (r === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; return suDraw(); }
+  if (r !== 'run') return ssDraw();
+  const go = await stepsRun(id, ns, SU.optsSaving);
+  if (!SU.el || SU.id !== id) return;
+  if (!go) return ssDraw();
+  if (go.ready) { SU.stage = 'ready'; SU.result = { text: go.ready }; return suDraw(); }
+  if (go.copy) return suBegin(go.copy);
+  Object.assign(SU, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' });
+  suDraw();
+  try { await invoke('setup_inputs_run', { id }); } catch (e) { if (SU.el && SU.id === id) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); } }
 }
 async function closeSetup(quiet) {
   suDrive.stop();
@@ -2853,34 +2893,14 @@ async function closeSetup(quiet) {
   SU.el.remove();
   SU.el = null;
   setupClosed(closingId);
-  if (!quiet && closingStage !== 'pick' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
+  if (!quiet && closingStage !== 'steps' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
 async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
   switch (b.dataset.su) {
     case 'close': return closeSetup();
-    case 'found': return suBegin(S.owned[id].path);
-    case 'same': return suBegin(su.copy);
-    case 'relink': {
-      let r;
-      try { r = await relinkSetup(id); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
-      if (r === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; return suDraw(); }
-      if (r === 'build') return su.copy ? suBegin(su.copy) : suDraw();
-      SU.note = tf('{file} isn\'t where it was. Pick it again.', { file: r.label }); return suDraw();
-    }
-    case 'prebuilt':
-      try { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
-      SU.stage = 'ready'; SU.result = { text: t('The build on this PC') }; return suDraw();
-    case 'ownbuild':
-      try { if (!(await useOwnBuild(id))) return; } catch (e) { SU.note = String(e && e.message ? e.message : e); return suDraw(); }
-      SU.stage = 'ready'; SU.result = { text: t('Your own build') }; return suDraw();
-    case 'iso': case 'folder': {
-      const folder = b.dataset.su === 'folder';
-      const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(id)).catch(fail);
-      if (p) suBegin(typeof p === 'string' ? p : p.path);
-      return;
-    }
-    case 'again': if (S.setup[id]?.inputs?.length) return namedSetup(id); SU.stage = 'pick'; SU.err = ''; return suDraw();
+    // Back to the steps, with the copy that didn't work taken out of its box.
+    case 'again': SU.stage = 'steps'; SU.err = ''; SU.named = Object.assign({}, SU.named, { copy: '', busy: false }); return suDraw();
     case 'anyway': return suBegin(SU.path, true);
     case 'convert': return suConvert();
     case 'convert-stop': invoke('convert_cancel').catch(() => {}); return;
@@ -2898,18 +2918,14 @@ async function suAct(b) {
   }
   void su;
 }
-// The setup step's options (prepare.options) that apply on this PC: one tick each, with its note.
-// One with a license names it as a link and starts off; the player ticks it themselves. Each change
-// is kept for the game at once, so whichever way the setup then starts, and a rebuild later, has it.
-function prepOptsHtml(su) {
-  const list = (su && su.prepare_options) || [];
-  if (!list.length) return '';
-  return `<section class="su-opts" aria-label="${esc(t('Options'))}"><h3>${esc(t('Options'))}</h3>${list.map((o) => {
-    const lic = o.license && o.license.url ? htmlFill(t('I accept the {license}'), { license: `<a href="#" data-url="${esc(o.license.url)}">${esc(o.license.name || o.license.url)}</a>` }) : '';
-    const fresh = o.new && (su.copy || su.inputs_ready) ? ` <span class="su-new">${esc(t('New option'))}</span>` : '';
-    // A switch like the ones in Settings, drawn over the real checkbox so keys and screen readers still work.
-    return `<label class="su-opt"><span class="su-opt-text"><b>${esc(o.label)}</b>${fresh}${lic ? ` <em>(${lic})</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span><input type="checkbox" role="switch" data-popt="${esc(o.id)}"${o.on ? ' checked' : ''}><span class="switch" aria-hidden="true"></span></label>`;
-  }).join('')}</section>`;
+// A required option (prepare.options "required") this PC is offered that isn't on: Set Up waits for
+// it (the steps, setup-steps.js). The list only has the options this PC is offered, so one hidden by
+// os or gpu never counts. The backend refuses to start too; this keeps the button honest. "Turn
+// on", as the options are switches; "marked Required", as the option shows that tag.
+const prepReq = () => t('Turn on the option marked Required to continue');
+function prepBlocked(su) {
+  if (!su || su === 'loading') return false;
+  return (su.prepare_options || []).some((o) => o.required && !o.on);
 }
 // The ways to give the game's copy (a file, a folder): side by side with "or" between them, so
 // they read as one choice and not as two things to fill in.
@@ -2965,9 +2981,12 @@ document.addEventListener('change', (e) => {
   if (!box || !SU.id) return;
   const id = SU.id, su = S.setup[id];
   const opts = {};
-  for (const x of $$('input[data-popt]', box.closest('.su-opts') || document)) opts[x.dataset.popt] = x.checked;
+  for (const x of $$('input[data-popt]:not([disabled])', box.closest('.su-opts') || document)) opts[x.dataset.popt] = x.checked;
   if (su && su.prepare_options) for (const o of su.prepare_options) if (o.id in opts) o.on = opts[o.id];
-  invoke('set_prepare_opts', { id, opts }).catch(fail);
+  // Kept before setup starts: the backend checks the required ticks against what it has.
+  SU.optsSaving = invoke('set_prepare_opts', { id, opts }).catch(fail);
+  // The steps say what Set Up waits for (the Required dot, the line by the button): drawn again.
+  if (SU.stage === 'steps') ssDraw();
 });
 // A compressed image (RVZ, CHD, CSO…) for a recomp that reads plain files: the launcher makes the
 // plain copy beside it, then sets the game up with that. The player's own file stays as it is.
@@ -2987,7 +3006,7 @@ async function suConvert() {
   } catch (e) {
     if (SU.id !== id || !SU.el) return;
     const msg = String(e && e.message ? e.message : e);
-    if (/^Stopped\.?$/.test(msg)) { SU.stage = 'pick'; SU.err = ''; return suDraw(); }
+    if (/^Stopped\.?$/.test(msg)) { SU.stage = 'steps'; SU.err = ''; return suDraw(); }
     SU.stage = 'error'; SU.err = msg; suDraw();
   }
 }
@@ -3000,6 +3019,10 @@ T.event.listen('convert', ({ payload: p }) => {
   if (txt) txt.textContent = tf('{done} of {total}', { done: fmtB(SU.conv.done), total: fmtB(SU.conv.total) });
 });
 async function suBegin(path, anyway) {
+  // A copy dropped or found while a required option is unticked waits on the pick screen.
+  // Its hint above the buttons already says why.
+  if (prepBlocked(S.setup[SU.id])) { SU.stage = 'steps'; return suDraw(); }
+  await SU.optsSaving;
   // The catalog lists the discs or cartridges it's made for, and this one reads as another.
   if (!anyway) {
     let w = null;
@@ -3112,25 +3135,14 @@ function coverLabelPush(a) {
 function suDraw() {
   if (!SU.el) return;
   if (SU.stage !== 'run') suDrive.stop();
+  if (SU.stage === 'steps') return ssDraw();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
   const box = $('.modal', SU.el);
-  const game = a.game || a.name;
+  box.classList.remove('ss-modal');
   const cov = a.cover ? media(a.cover) : '';
-  const mdState = SU.stage === 'pick' ? 'ghost' : SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
+  const mdState = SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
-  if (SU.stage === 'pick') {
-    const own = S.owned[id];
-    const kind = su.kind || 'iso', fm = copyFormats(id);
-    const picks = [kind !== 'folder' ? `<button type="button" class="pick" data-su="iso">${DISC_L}<b>${esc(copyName(fm))}</b><span class="fmts">${fm.exts.length ? fmtTags(fm.exts) : esc(t('The file you made from your own copy'))}</span></button>` : '', kind === 'iso_or_folder' || kind === 'folder' ? `<button type="button" class="pick" data-su="folder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Game folder'))}</b><span>${esc(t('A folder you copied from the disc'))}</span></button>` : ''].filter(Boolean);
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(tf('Insert your copy of {game}', { game }))}</h2><p>${esc(su.needs || '')} ${esc(t('It\'s checked and set up once. After that, you just press Play.'))}</p>
-      ${SU.note ? `<p class="su-note" role="alert">${esc(SU.note)}</p>` : ''}
-      ${su.build_where ? `<p class="su-where">${esc(tf('The game\'s own setup builds it into {folder}.', { folder: su.build_where }))}</p>` : ''}
-      ${prepOptsHtml(su)}
-      ${relinkCards(su, 'data-su')}
-      ${own ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('Found in your folders'))}</b><span>${esc(own.path)}</span></div><button type="button" class="btn sm main" data-su="found">${esc(t('Use this'))}</button></div>`
-        : su.copy ? `<div class="found">${DISC_L}<div class="k"><b>${esc(t('The copy it was set up with'))}</b><span>${esc(su.copy)}</span></div><button type="button" class="btn sm main" data-su="same">${esc(t('Use this'))}</button></div>` : ''}
-      ${pickChoices(picks)}`;
-  } else if (SU.stage === 'run') {
+  if (SU.stage === 'run') {
     const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
     const sub = {
@@ -3187,7 +3199,7 @@ function suDraw() {
       ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
   const keepDisc = $('.su-media .md', box);
-  const stageHtml = SU.stage === 'pick' ? `<div class="su-drop"><div class="su-media">${gameMediaHtml(a, 'ghost')}</div><b>${esc(copyDrop(copyFormats(SU.id)))}</b><span>${esc(t('or choose it on the right'))}</span></div>` : `<div class="su-media">${gameMediaHtml(a, mdState)}</div>`;
+  const stageHtml = `<div class="su-media">${gameMediaHtml(a, mdState)}</div>`;
   if (!box.firstChild || box.dataset.stage !== SU.stage) {
     if (SU.stage !== 'run') box.dataset.step = '';
     box.dataset.stage = SU.stage;
@@ -3204,9 +3216,14 @@ function suDraw() {
 }
 T.event.listen('tauri://drag-drop', ({ payload: p }) => {
   const paths = (p && p.paths) || [];
-  if (SU.el) { $('.su-stage', SU.el)?.classList.remove('hot'); if (SU.stage === 'pick' && paths[0]) suBegin(paths[0]); }
+  if (!SU.el) return;
+  $('.su-stage', SU.el)?.classList.remove('hot');
+  // A file dropped on the window goes into its next empty box; Set Up still starts it.
+  if (SU.stage !== 'steps' || !paths[0]) return;
+  const id = SU.id;
+  stepsDrop(id, paths[0], SU.named).then(() => { if (SU.id === id) ssDraw(); });
 });
-T.event.listen('tauri://drag-enter', () => { if (SU.el && SU.stage === 'pick') $('.su-stage', SU.el)?.classList.add('hot'); });
+T.event.listen('tauri://drag-enter', () => { if (SU.el && SU.stage === 'steps') $('.su-stage', SU.el)?.classList.add('hot'); });
 T.event.listen('tauri://drag-leave', () => { if (SU.el) $('.su-stage', SU.el)?.classList.remove('hot'); });
 function settingsTab(a) {
   const id = a.id, su = S.setup[id];
@@ -8326,7 +8343,6 @@ async function act(el, e) {
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
     case 'run-say': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
     case 'ver-go': if (S.view === 'game') return switchVersion(id); closeMenu(); return go('game', id);
-    case 'ver-hide': { const p = saveUi({ verHide: !(S.settings.ui || {}).verHide }, true); refreshGame(); return p; }
     case 'install': return startInstall(id);
     case 'reinstall-new': return startInstall(id, null, null, true);
     case 'goback': return startInstall(id, undefined, el.dataset.tag);
@@ -9002,7 +9018,7 @@ T.event.listen('install', ({ payload: p }) => {
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
         else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'pick') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'steps') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
       };

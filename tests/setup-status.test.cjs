@@ -38,12 +38,10 @@ test('the game page and Big Picture both ask the core', () => {
 });
 
 test('Easy Setup tells the core when its window opens and closes, in both modes', () => {
-  const inputs = read('setup-inputs.js');
   assert.match(app, /const setupOpened = \(id\) => \{ if \(id\) setupClosing = setupClosing\.then\(\(\) => invoke\('setup_begin', \{ id \}\)\)/);
   assert.match(app, /const setupClosed = \(id\) => \{ if \(id\) setupClosing = setupClosing\.then\(\(\) => invoke\('setup_end', \{ id \}\)\)/);
-  // Opened: the window for a copy, the window for named files, Big Picture's sheet.
+  // Opened: the window with a run going, the setup steps (every game's files), Big Picture's sheet.
   assert.equal((app.match(/SU\.el = s;\r?\n\s*setupOpened\(id\);/g) || []).length, 2);
-  assert.match(inputs, /SU\.el = scrim;\r?\n\s*setupOpened\(id\);/);
   assert.match(tv, /if \(TS\.id !== id\) setupOpened\(id\);/);
   // Closed: as it closes, sent to the background, or cancelled.
   assert.match(app, /SU\.el = null;\r?\n\s*setupClosed\(closingId\);/);
