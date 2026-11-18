@@ -42,9 +42,9 @@ the workflow:
 3. runs upstream's tests and the fork's own (`node --test tests/*.test.cjs`, `cargo test`);
 4. only if everything passed, moves fork `main` there. The previous tip is kept as the
    `sync-backup` branch, so nothing is ever lost;
-5. builds the Windows installer with their own version (`tools/fork-version.cjs`: upstream
+5. builds the Windows installer with its own version (`tools/fork-version.cjs`: upstream
    `0.90.0-beta.64` becomes `0.90.0-beta.64.<run number>`, so every fork build is newer than the
-   last) and publishes them as the repository's **Latest** release, tagged `hoarder-v<version>`,
+   last) and publishes it as the repository's **Latest** release, tagged `hoarder-v<version>`,
    with a `version.json` the installed launchers read.
 
 If upstream hasn't moved, it does nothing.

@@ -21,11 +21,14 @@ const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
 const upstream = pkg.version;
 const version = upstream.includes('-') ? `${upstream}.${build}` : `${upstream}-fork.${build}`;
 
+// Line endings may be Windows ones (a Windows checkout), so "\n" in `from` matches either.
 function replaceOnce(file, from, to) {
   const full = path.join(root, file);
   const text = fs.readFileSync(full, 'utf8');
-  if (!text.includes(from)) throw new Error(`${file}: "${from}" not found`);
-  fs.writeFileSync(full, text.replace(from, to));
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const [want, put] = [from, to].map((s) => s.split('\n').join(eol));
+  if (!text.includes(want)) throw new Error(`${file}: "${from}" not found`);
+  fs.writeFileSync(full, text.replace(want, put));
 }
 
 replaceOnce('package.json', `"version": "${upstream}"`, `"version": "${version}"`);
