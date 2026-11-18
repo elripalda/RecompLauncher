@@ -414,7 +414,7 @@ fn ready(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[ga
         return false;
     }
     // Set Up By Hand: the player says how it starts and gets its files.
-    if g.manual.is_some() {
+    if g.hand().is_some() {
         return true;
     }
     let Some(whole) = crate::profile_of(st, recomp, g) else { return true };

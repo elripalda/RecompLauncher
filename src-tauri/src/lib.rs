@@ -32,6 +32,7 @@ pub mod inputs;
 pub mod ingame;
 pub mod install;
 pub mod library;
+pub mod library_convert;
 pub mod looks;
 pub mod mac_update;
 pub mod manage;
@@ -683,7 +684,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         trail::note(format!("Install {id}: a new version of its installer, it runs again on the next Play"));
     }
 
-    let rec = Installed {
+    let mut rec = Installed {
         id: id.into(),
         name: str_of(&entry, "name").into(),
         game: prev.as_ref().map(|p| p.game.clone()).unwrap_or_default(),
@@ -745,6 +746,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         setup_checked: true,
         exe_rules: if prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false) { u8::MAX } else { install::EXE_RULES },
         manual: prev.as_ref().and_then(|p| p.manual.clone()),
+        mode: prev.as_ref().map(|p| p.mode).unwrap_or_default(),
         // An update remembers the version it came from; installing the same version again keeps
         // what was remembered before.
         // The version it came from, for "go back" after a bad update. A version the player picked
@@ -758,6 +760,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
+        // Skip Easy Setup ticked before it was installed: from now on it's the game's own mode.
+        if prev.is_none() && take_skip_choice(&mut l.settings.ui, id) {
+            rec.mode = library::SetupMode::Own;
+        }
         l.put(id, rec);
         l.settings.asked_location = true;
     }
@@ -2598,7 +2604,7 @@ fn start_game_with_monitor_context(
     };
     let g = st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     // Set Up By Hand: the player's own way, instead of the launcher's.
-    let mut manual = g.manual.clone();
+    let mut manual = g.hand().cloned();
     // A game whose release is its installer, with a new version to build: its setup runs even when
     // it's set up by hand (that only says how it starts). A program picked by hand in what the
     // setup leaves behind while it builds (a temp folder) is let go: the setup finds the new one.
@@ -2611,6 +2617,7 @@ fn start_game_with_monitor_context(
             trail::note(format!("Play {id}: set up by hand on a program in its setup's leftovers; the setup builds the new version and the launcher finds it"));
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
                 x.manual = None;
+                x.leave_hand();
             }
             st.save();
             manual = None;
@@ -2633,7 +2640,7 @@ fn start_game_with_monitor_context(
     }
     // Easy Setup skipped: started like a game set up by hand, with nothing of the player's copy,
     // after its own installer or first-time setup when it has one.
-    let mut skipped = manual.is_none() && easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    let mut skipped = manual.is_none() && player_sets_up(&st, id);
     // Built from the copy into a folder of its own: its own program only builds it, so skipping
     // Easy Setup starts the player's build (picked once) the way the setup file says.
     if skipped {
@@ -3699,6 +3706,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
                 x.build_dir = None;
                 x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
                 x.setup_before = None;
+                x.mode = library::SetupMode::Easy;
             }
             st.save();
             if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
@@ -3896,7 +3904,7 @@ fn settle_prepare_opts(st: &App, id: &str, pr: &profile::Prepare) {
 /// already set up: what its project added after the player's setup (NVIDIA DLSS in an update).
 fn new_prepare_options(st: &App, id: &str) -> Vec<String> {
     // Skip Easy Setup: the player sets this game up their own way, so nothing is asked.
-    if easy_skipped(&st.lib.lock().unwrap().settings.ui, id) {
+    if player_sets_up(&st, id) {
         return vec![];
     }
     let Some(g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return vec![] };
@@ -4054,10 +4062,36 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[Stri
     }
 }
 
-/// Skip Easy Setup (a game's ⋯ menu, or Settings for every game): the game is set up the way it
-/// comes, by its own installer or launcher, and starts as that leaves it, wherever the player put it.
+/// Skip Easy Setup for every game (the Settings switch). Each game keeps its own mode under it, so
+/// turning it off again leaves every game as it was.
+fn easy_skipped_for_all(ui: &Value) -> bool {
+    ui.get("easy_skip_all").and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// Skip Easy Setup ticked in the menu of a game that isn't installed yet (the list in Settings).
 fn easy_skipped(ui: &Value, id: &str) -> bool {
-    ui.get("easy_skip_all").and_then(Value::as_bool).unwrap_or(false) || ui.get("easy_skip").and_then(Value::as_array).is_some_and(|a| a.iter().any(|x| x.as_str() == Some(id)))
+    easy_skipped_for_all(ui) || ui.get("easy_skip").and_then(Value::as_array).is_some_and(|a| a.iter().any(|x| x.as_str() == Some(id)))
+}
+
+/// A Skip Easy Setup tick made before the game was installed, taken off the list: true when there
+/// was one. The installed game keeps it as its own mode.
+fn take_skip_choice(ui: &mut Value, id: &str) -> bool {
+    let Some(list) = ui.get_mut("easy_skip").and_then(Value::as_array_mut) else { return false };
+    let before = list.len();
+    list.retain(|x| x.as_str() != Some(id));
+    list.len() != before
+}
+
+/// The player sets this game up their own way (Skip Easy Setup): its own mode once installed, or
+/// the tick in its menu before. A game of several in one recomp follows its recomp.
+fn player_sets_up(st: &App, id: &str) -> bool {
+    let rid = setup_record_id(st, id);
+    let l = st.lib.lock().unwrap();
+    let all = easy_skipped_for_all(&l.settings.ui);
+    match l.installed.get(&rid) {
+        Some(g) => g.player_sets_up(all),
+        None => easy_skipped(&l.settings.ui, id),
+    }
 }
 
 /// Catalog games the launcher can set up itself (copy and settings): the "Easy setup" ones.
@@ -4590,7 +4624,7 @@ fn upgrade_fingerprints(st: &App, only: Option<&str>) {
 /// stands in for it, so an update doesn't send it back through Easy Setup.
 fn adopt_kept_copies(st: &App, only: Option<&str>) {
     let list: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter()
-        .filter(|(k, g)| only.map_or(true, |o| o == k.as_str()) && g.manual.is_none() && g.game_copy.as_ref().is_some_and(|c| !c.exists()))
+        .filter(|(k, g)| only.map_or(true, |o| o == k.as_str()) && g.hand().is_none() && g.game_copy.as_ref().is_some_and(|c| !c.exists()))
         .map(|(k, v)| (k.clone(), v.clone())).collect();
     let mut changed = false;
     for (id, g) in list {
@@ -4763,7 +4797,7 @@ fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, inputs_r
     let (picked, copy_wrong) = usable_copy(g, p);
     let copy = picked.or_else(|| p.already_in_place(&g.path));
     let own_program = player_program(st, id, g).is_some();
-    let skipped = easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    let skipped = player_sets_up(&st, id);
     setup_state::of(&setup_state::Facts { profile: p, game: g, inputs_ready, copy, copy_wrong, own_program, skipped })
 }
 
@@ -5179,6 +5213,7 @@ fn setup_relink(st: State<'_, App>, id: String) -> Res<Value> {
     let _ = p.prepare(&g.path, g.game_copy.as_deref().filter(|c| c.exists()));
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
         x.setup_before = None;
+        x.mode = library::SetupMode::Easy;
         if theirs.is_some() {
             x.build_dir = None;
         }
@@ -5442,6 +5477,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                 }
                 if p.game.is_none() && (sub.is_none() || x.game_copy.as_ref().map_or(true, |c| !c.exists())) { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
                 x.setup_before = None;
+                x.mode = library::SetupMode::Easy;
             }
             st.save();
             Ok(())
@@ -6036,9 +6072,8 @@ fn clean_start_next(id: String) {
 /// libraries it links to on Linux): for the crash window, when Windows said one was missing.
 /// The program that starts the game: the player's own pick, the profile's, or the one installed.
 fn started_exe(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
-    let prof = if g.manual.is_some() { None } else { profile_of(st, id, g) };
-    g.manual
-        .as_ref()
+    let prof = if g.hand().is_some() { None } else { profile_of(st, id, g) };
+    g.hand()
         .and_then(|m| m.exe.clone())
         .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
         .or_else(|| prof.as_ref().and_then(|p| p.command_for(&g.path, g.game_copy.as_deref(), &g.picks, is_windows_build(g)).map(|(e, _)| e)))
@@ -6191,16 +6226,15 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         }
     }
     // The program it starts (set up by hand: the one the player picked).
-    let prof = if g.manual.is_some() { None } else { profile_of(&st, &id, &g) };
+    let prof = if g.hand().is_some() { None } else { profile_of(&st, &id, &g) };
     let exe = g
-        .manual
-        .as_ref()
+        .hand()
         .and_then(|m| m.exe.clone())
         .map(|e| if e.is_absolute() { e } else { g.path.join(e) })
         .or_else(|| prof.as_ref().and_then(|p| p.command_for(&g.path, g.game_copy.as_deref(), &g.picks, is_windows_build(&g)).map(|(e, _)| e)))
         .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
     let Some(exe) = exe.filter(|e| e.is_file()) else {
-        if g.manual.is_some() {
+        if g.hand().is_some() {
             out.push(check("bad", "The program you picked isn't there", "An update may have renamed it. Pick it again in Set Up By Hand.", "manual"));
             return Ok(out);
         }
@@ -6208,7 +6242,7 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         out.push(check("info", "You can set it up by hand", "Point the launcher at its program and your game files yourself.", "manual"));
         return Ok(out);
     };
-    if let Some(m) = &g.manual {
+    if let Some(m) = g.hand() {
         // A game its setup builds from the copy: set up by hand skips the build, so there's
         // nothing to start. The launcher's way builds it.
         if profile_of(&st, &id, &g).map(|p| p.prepare.is_some() && p.start.is_some()).unwrap_or(false) {
@@ -6412,7 +6446,7 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
     // Something's wrong and it isn't set up by hand yet: that's the way out when nothing else works.
     // Not for a game its setup builds: by hand, nothing builds it.
     let builds = prof.as_ref().map(|p| p.prepare.is_some()).unwrap_or(false);
-    if g.manual.is_none() && !builds && out.iter().any(|c| c.level == "bad") && !out.iter().any(|c| c.fix == "manual") {
+    if g.hand().is_none() && !builds && out.iter().any(|c| c.level == "bad") && !out.iter().any(|c| c.fix == "manual") {
         out.push(check("info", "You can set it up by hand", "Point the launcher at its program and your game files yourself.", "manual"));
     }
     Ok(out)
@@ -6526,16 +6560,26 @@ fn picked_program(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, profile
 /// the game's page and Play can't disagree (picking the program turns it off, in the UI).
 fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     let (exe, p) = picked_program(st, id, g)?;
-    let easy_on = p.easy_setup() && !easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    let easy_on = p.easy_setup() && !player_sets_up(&st, id);
     (!easy_on).then_some(exe)
 }
 
-/// The games whose program the player picked, so the UI turns Easy Setup off for them: once for
-/// picks made before Skip Easy Setup was the switch, and when Easy Setup is turned on for every game.
+/// The Easy Setup switch of an installed game (its Manage tab, Skip Easy Setup in its menu, Use
+/// Easy Setup Instead): who sets it up, "easy" or "own". Only the mode changes; the program or
+/// build the player picked stays recorded, and Play uses it again when the switch goes back.
 #[tauri::command(async)]
-fn own_program_games(st: State<'_, App>) -> Vec<String> {
-    let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
-    games.iter().filter(|g| picked_program(&st, &g.id, g).is_some()).map(|g| g.id.clone()).collect()
+fn set_setup_mode(st: State<'_, App>, id: String, mode: library::SetupMode) -> Res<Installed> {
+    let rid = setup_record_id(&st, &id);
+    let out = {
+        let mut l = st.lib.lock().unwrap();
+        let g = l.installed.get_mut(&rid).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        g.mode = mode;
+        settle_outside_setup(g);
+        g.clone()
+    };
+    st.save();
+    trail::note(format!("{rid}: set up by {}", match mode { library::SetupMode::Easy => "Easy Setup", library::SetupMode::Own => "the player", library::SetupMode::ByHand => "hand" }));
+    Ok(out)
 }
 
 /// Set Up By Hand: the program and its command line, with the player's game files put where they
@@ -6662,11 +6706,19 @@ fn set_manual(st: State<'_, App>, id: String, manual: Option<library::ManualSetu
             *e = rel.to_path_buf();
         }
     }
-    g.manual = manual;
+    // Turned off, the hand setup stays recorded: Set Up By Hand opens with it again.
+    match manual {
+        Some(m) => {
+            g.manual = Some(m);
+            g.mode = library::SetupMode::ByHand;
+        }
+        None => g.leave_hand(),
+    }
+    settle_outside_setup(g);
     let out = g.clone();
     drop(l);
     st.save();
-    trail::note(format!("{id}: set up by hand {}", if out.manual.is_some() { "on" } else { "off" }));
+    trail::note(format!("{id}: set up by hand {}", if out.hand().is_some() { "on" } else { "off" }));
     Ok(out)
 }
 
@@ -9974,7 +10026,7 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, own_program_games, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,

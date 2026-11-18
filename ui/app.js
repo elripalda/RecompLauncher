@@ -4922,6 +4922,8 @@ async function refreshState() {
   S.removedPlayHistory = st.removedPlayHistory || {};
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
+  // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
+  applyEasySkip();
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
@@ -5175,11 +5177,17 @@ function setSection(k, fade = true) {
 let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
 // Skip Easy Setup (a game's ⋯ menu, or Settings for every game): those games install as they come
-// and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the ones it does.
+// and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the ones it does. An
+// installed game says it in its own mode ('own': the player sets it up); one not installed yet
+// by the tick in its menu (ui.easy_skip).
 function applyEasySkip() {
-  const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []);
-  S.easy = new Set(ui.easy_skip_all ? [] : [...(S.easyAll || [])].filter((id) => !skip.has(id)));
+  const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []), lib = S.library || {};
+  const record = (id) => lib[id] || (typeof parentId === 'function' ? lib[parentId(id)] : undefined);
+  const own = (id) => { const g = record(id); return g ? g.mode === 'own' : skip.has(id); };
+  S.easy = new Set(ui.easy_skip_all ? [] : [...(S.easyAll || [])].filter((id) => !own(id)));
 }
+// Set Up By Hand is how the game is set up now. Turned off, its setup stays recorded for next time.
+const byHand = (g) => !!(g && g.manual && g.mode === 'by_hand');
 function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   applyEasySkip();
@@ -5719,7 +5727,7 @@ function exePath(inst) {
   return String(inst.path || '').replace(/[\\/]+$/, '') + sep + e;
 }
 // Easy Setup on the game's Manage tab: the one switch for who sets the game up, the same as Skip
-// Easy Setup. Turning it back on lets go of an executable the player picked (setEasySkip). Only on
+// Easy Setup. Turning it back on keeps an executable the player picked, for switching back. Only on
 // games Easy Setup can do, and not while it's skipped for every game in Settings.
 function easyRow(id) {
   const ui = S.settings.ui || {};
@@ -5744,14 +5752,20 @@ function programRow(id, inst) {
   return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
 }
-// Skip Easy Setup for one game, or Easy Setup on for it again. Turning it back on lets go of an
-// executable the player picked, so the launcher starts the game its own way again.
+// Skip Easy Setup for one game, or Easy Setup on for it again. Installed, it's the game's mode:
+// only that changes, and an executable or build the player picked stays for switching back. Not
+// installed yet, it's a tick in Settings that the game takes as its mode when it's installed.
 async function setEasySkip(id, on) {
-  const skip = new Set((S.settings.ui || {}).easy_skip || []);
-  if (!on && S.library[id]) S.library[id] = await invoke('forget_program', { id });
-  if (on) skip.add(id);
-  else skip.delete(id);
-  await saveUi({ easy_skip: [...skip] }, true);
+  const rid = parentId(id);
+  if (S.library[rid]) {
+    S.library[rid] = await invoke('set_setup_mode', { id, mode: on ? 'own' : 'easy' });
+    applyEasySkip();
+  } else {
+    const skip = new Set((S.settings.ui || {}).easy_skip || []);
+    if (on) skip.add(id);
+    else skip.delete(id);
+    await saveUi({ easy_skip: [...skip] }, true);
+  }
   if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
 }
 // Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
@@ -5850,7 +5864,7 @@ function gameMenu(id) {
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
         { act: 'setexe', id, label: selfManaged(id) ? t('Set Game Executable (On)…') : t('Set Game Executable…'), icon: 'exe' },
-        { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
+        { act: 'manual', id, label: byHand(g) ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...easySkipItem(id),
         ...(S.setup[id] && S.setup[id] !== 'loading' && S.setup[id].build_at ? [{ act: 'move-build', id, label: t('Move Build…'), icon: 'move' }] : []),
         ...(S.setup[id] && S.setup[id] !== 'loading' && (S.setup[id].own_build || S.setup[id].build_dir) ? [{ act: 'ownbuild', id, label: S.setup[id].build_dir ? t('Use a Build You Already Have (On)…') : t('Use a Build You Already Have…'), icon: 'folder' }] : []),
@@ -6375,7 +6389,7 @@ async function playGame2(id, program) {
         const v = await ask(t('Use the Launcher\'s Way?'), `<p>${esc(t('This game is built from your copy before it starts, and only the launcher\'s way does that. Your hand setup is skipped, and the game is built and started the usual way.'))}</p>`,
           [{ label: t('Use the Launcher\'s Way'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
         if (v !== 'yes') return;
-        try { S.library[id] = await invoke('set_manual', { id, manual: null }); } catch (e) { return fail(e); }
+        try { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); } catch (e) { return fail(e); }
         return playGame(id);
       }
       // Easy Setup skipped on a game built from the copy, with no build yet: where it is, asked
@@ -7095,26 +7109,7 @@ window.keepOut = keepOut;
 async function loadEasy(quiet) {
   try { S.easyAll = new Set(await invoke('easy_setup')); } catch (e) { S.easyAll = new Set(); }
   applyEasySkip();
-  await skipOwnPrograms();
   if (!quiet) render(true);
-}
-// A game whose executable the player picked has Easy Setup off: Skip Easy Setup is the one switch
-// for who sets a game up. For picks made before it was (Beta 57 and earlier, when the pick took
-// over on its own), it's turned off here to match: those games already started the pick as it is.
-async function skipOwnPrograms() {
-  const ui = S.settings.ui || {};
-  if (ui.easy_skip_all) return;
-  const own = await invoke('own_program_games').catch(() => []);
-  const add = own.filter((id) => S.easy.has(id));
-  if (!add.length) return;
-  await saveUi({ easy_skip: [...(ui.easy_skip || []), ...add] }, true);
-}
-// Easy Setup on for every game again: a game whose executable the player picked keeps it off (its
-// own menu turns it back on), so the pick still starts.
-async function easyForEveryGame() {
-  const skip = new Set((S.settings.ui || {}).easy_skip || []);
-  for (const id of await invoke('own_program_games').catch(() => [])) skip.add(id);
-  return saveUi({ easy_skip_all: false, easy_skip: [...skip] });
 }
 async function loadOwned() {
   try { S.owned = await invoke('rom_matches'); S.ownedOk = true; } catch (e) { S.owned = {}; S.ownedOk = false; }
@@ -7824,7 +7819,7 @@ const TS_FIX = {
   move: [N_('Move…'), (id) => moveModal(id)],
   files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
   manual: [N_('Set Up By Hand…'), (id) => manualModal(id)],
-  byhandoff: [N_('Use the Launcher\'s Way'), async (id) => { S.library[id] = await invoke('set_manual', { id, manual: null }); toast(t('It uses the launcher\'s own setup again.')); render(true); }],
+  byhandoff: [N_('Use the Launcher\'s Way'), async (id) => { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); toast(t('It uses the launcher\'s own setup again.')); render(true); }],
   dxruntime: [N_('Get It'), () => invoke('open_url', { url: 'https://www.microsoft.com/en-us/download/details.aspx?id=35' })],
   lookroute: [N_('Try Both Ways'), async (id) => { await invoke('look_reset_route', { id }); toast(t('Done. Press Play to try the Look again.')); }],
   clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
@@ -8026,7 +8021,7 @@ async function manualModal(id) {
   let m;
   try { m = await invoke('manual_defaults', { id }); } catch (e) { return fail(e); }
   m = Object.assign({ exe: null, copy: null, how: 'none', into: '', name: '', arg: '' }, m);
-  const on = !!g.manual;
+  const on = byHand(g);
   const name = (libApp(g) || {}).name || g.name;
   const show = (p) => (p ? String(p) : '');
   const HOW = [['folder', t('Put Them in Its Folder')], ['arg', t('Give Them to the Program')], ['none', t('It Asks for Them')]];
@@ -8059,12 +8054,12 @@ async function manualModal(id) {
       case 'copy-dir': { const p = await pickFile({ title: t('Your game files'), directory: true }).catch(() => null); if (p) { m.copy = typeof p === 'string' ? p : p.path; redraw(); } return; }
       case 'how': m.how = x.dataset.k; return redraw();
       case 'off':
-        try { S.library[id] = await invoke('set_manual', { id, manual: null }); close(); toast(t('It uses the launcher\'s own setup again.')); render(true); } catch (e) { err(e); }
+        try { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); close(); toast(t('It uses the launcher\'s own setup again.')); render(true); } catch (e) { err(e); }
         return;
       case 'save':
         if (!m.exe) return err(t('Pick the program that starts the game.'));
         if (m.how !== 'none' && !m.copy) return err(t('Pick your game files, or choose It Asks for Them.'));
-        try { S.library[id] = await invoke('set_manual', { id, manual: m }); close(); toast(t('Saved. Press Play to start it your way.')); render(true); } catch (e) { err(e); }
+        try { S.library[id] = await invoke('set_manual', { id, manual: m }); applyEasySkip(); close(); toast(t('Saved. Press Play to start it your way.')); render(true); } catch (e) { err(e); }
     }
   }, tf('Set Up {name} By Hand', { name }));
 }
@@ -8250,7 +8245,8 @@ async function act(el, e) {
     }
     case 'ownbuild': try { if (await useOwnBuild(id)) { toast(t('It starts your own build now.')); render(true); } } catch (err) { fail(err); } return;
     case 'easy-skip': {
-      const on = !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
+      // Installed: its switch says what it is now (S.easy, from its mode). Not yet: the tick.
+      const on = S.library[parentId(id)] ? S.easy.has(id) : !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
       try { await setEasySkip(id, on); } catch (err) { return fail(err); }
       render(true);
       if (!on) return toast(tf('{name} uses Easy Setup again.', { name }));
@@ -8341,7 +8337,8 @@ async function act(el, e) {
       return render(true);
     }
     case 'ui-toggle':
-      if (el.dataset.k === 'easy_skip_all' && (S.settings.ui || {}).easy_skip_all) return easyForEveryGame();
+      // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
+      // leaves every game as it was, a game whose program the player picked included.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }

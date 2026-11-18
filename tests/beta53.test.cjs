@@ -41,7 +41,7 @@ test('the menu item and the Settings switch', () => {
 });
 
 test('a skipped game starts as its own setup leaves it, after that setup when it has one', () => {
-  assert.match(rust, /let mut skipped = manual\.is_none\(\) && easy_skipped\(&st\.lib\.lock\(\)\.unwrap\(\)\.settings\.ui, id\);/);
+  assert.match(rust, /let mut skipped = manual\.is_none\(\) && player_sets_up\(&st, id\);/);
   assert.match(rust, /manual = Some\(library::ManualSetup \{ how: "none"\.into\(\), \.\.Default::default\(\) \}\);/);
   assert.match(rust, /if \(manual\.is_none\(\) \|\| rebuild \|\| skipped\) && !prof/);
   // After the "built from your copy" refusal of Set Up By Hand, so skipping isn't refused.
@@ -76,7 +76,8 @@ test('the launcher building it again goes back to the setup\'s own folder once t
   assert.doesNotMatch(rust, /if g\.build_dir\.take\(\)\.is_some\(\) \{/);
   // Let go of only where a setup is done: setup_copy, and Use My Previous Setup.
   assert.match(rust, /x\.build_dir = None;\n\s+x\.prepare_version = [^\n]*\n\s+x\.setup_before = None;/);
-  assert.match(rust, /x\.setup_before = None;\n\s+if theirs\.is_some\(\) \{\n\s+x\.build_dir = None;/);
+  // (Use My Previous Setup: a setup that worked, so the launcher sets the game up again.)
+  assert.match(rust, /x\.setup_before = None;\n\s+x\.mode = library::SetupMode::Easy;\n\s+if theirs\.is_some\(\) \{\n\s+x\.build_dir = None;/);
   assert.match(rust, /build_dir: prev\.as_ref\(\)\.and_then\(\|p\| p\.build_dir\.clone\(\)\),/);
   assert.match(rust, /if let Some\(dir\) = g\.build_dir\.as_ref\(\)\.filter\(\|d\| d\.is_dir\(\)\) \{\n\s+p\.rebase_build\(&g\.path, dir\);/);
 });

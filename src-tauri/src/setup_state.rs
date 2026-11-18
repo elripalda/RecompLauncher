@@ -58,7 +58,7 @@ pub fn of(f: &Facts) -> Status {
     let (p, g) = (f.profile, f.game);
     // Built from the copy before it starts: only the launcher's way does that.
     let built_from_copy = p.prepare.is_some() && p.start.is_some();
-    if g.manual.is_some() {
+    if g.hand().is_some() {
         if built_from_copy {
             return needs("way", "");
         }
@@ -271,6 +271,7 @@ mod tests {
         let d = dir("by-hand");
         let mut g = set_up(&d);
         g.manual = Some(Default::default());
+        g.mode = crate::library::SetupMode::ByHand;
         let p = built_from_copy();
         assert_eq!(of(&facts(&p, &g)), needs("way", ""));
         let plain = profile(serde_json::json!({ "game": { "kind": "iso", "label": "Your disc" }, "start": { "program": ["game.exe"], "args": ["{game}"] } }));
