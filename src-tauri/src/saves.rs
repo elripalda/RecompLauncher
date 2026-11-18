@@ -630,9 +630,8 @@ pub struct State {
     pub synced_made: u64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub synced_device: String,
-    /// The cloud copy that changed while this PC's save changed too (its version; empty when the
-    /// cloud only said so in an error). Kept until the player picks one, because the toast that
-    /// says so is gone after a few seconds.
+    /// The cloud copy that changed while this PC's save changed too. Kept until the player
+    /// picks one, because the toast that says so is gone after a few seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conflict: Option<String>,
     /// Why the last sync didn't go through. Kept until one does.

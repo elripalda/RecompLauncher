@@ -114,19 +114,6 @@ pub fn signed_in(dir: &Path) -> bool {
     load(dir).is_some()
 }
 
-/// Where a game's saves go: only RecompStore today. Another cloud (Google Drive is proposed in
-/// elripalda/RecompLauncher#228) answers these two instead, and the save status follows it.
-const RECOMPSTORE: &str = "recompstore";
-
-fn provider_name(_dir: &Path) -> &'static str {
-    RECOMPSTORE
-}
-
-/// Whether this PC can sync saves with that cloud at all (for RecompStore: signed in).
-fn cloud_ready(dir: &Path) -> bool {
-    signed_in(dir)
-}
-
 /// The website said this PC's token is no good any more (signed out from the website).
 fn forget(app: &AppHandle) {
     let st = app.state::<App>();
@@ -603,18 +590,12 @@ fn problem_kind(e: &Error) -> &'static str {
 }
 
 /// Remembers why this game's saves didn't go up, so its page can still say so after the toast is
-/// gone. A conflict is kept on its own, not as a problem: upload sets it with the cloud copy's
-/// version, and a cloud that only says so in its error (no version) is kept as one too.
+/// gone. A conflict is kept on its own (upload sets it), not as a problem.
 fn note_failure(dir: &Path, id: &str, e: &Error) {
-    let mut s = saves::state(dir, id);
     if e.to_string() == SYNC_CONFLICT {
-        if s.conflict.is_some() {
-            return;
-        }
-        s.conflict = Some(String::new());
-        saves::set_state(dir, id, &s);
         return;
     }
+    let mut s = saves::state(dir, id);
     s.problem = Some(saves::Problem { kind: problem_kind(e).into(), text: e.to_string(), at: crate::library::now() });
     saves::set_state(dir, id, &s);
 }
@@ -721,20 +702,16 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
         }
         return Err(e);
     }
-    went_up(&st.dir, id, name, &man.hash, made_at, &man.device);
-    Ok(())
-}
-
-/// A copy reached the cloud, whichever cloud it is: its retry clock stops, this PC and the cloud
-/// agree on it, and a queued copy no newer than it doesn't go up after it.
-fn went_up(dir: &Path, id: &str, name: &str, hash: &str, made: u64, device: &str) {
     copy_went_up(id, name);
-    let mut s = saves::state(dir, id);
-    s.mark_synced(hash, made, device);
+    let mut s = saves::state(&st.dir, id);
+    s.mark_synced(&man.hash, made_at, &man.device);
+    // The copy waiting is this one or an older one: what's in the cloud now is newer, so it
+    // doesn't go up after it.
     if s.pending.as_deref().map(|p| p == name || copy_time(p) <= copy_time(name)).unwrap_or(false) {
         s.pending = None;
     }
-    saves::set_state(dir, id, &s);
+    saves::set_state(&st.dir, id, &s);
+    Ok(())
 }
 
 /// When a local copy was made, from its name ("<time>.zip").
@@ -1201,19 +1178,17 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
     let st = app.state::<App>();
     let g = game(&st, id)?;
     let s = saves::state(&st.dir, id);
-    let ready = cloud_ready(&st.dir);
-    let provider = provider_name(&st.dir);
-    // Full and paused are what the RecompStore website said; another cloud says its own in `problem`.
-    let website = provider == RECOMPSTORE;
+    let signed = signed_in(&st.dir);
     let local = saves::list(&st.dir, id);
     let retry = s.pending.as_deref().and_then(|p| copy_wait_left(id, p));
     Ok(json!({
-        "state": s.sync_state(g.cloud == Some(true), ready),
-        "cloudOn": g.cloud, "signedIn": ready, "provider": provider,
+        "state": s.sync_state(g.cloud == Some(true), signed),
+        "cloudOn": g.cloud, "signedIn": signed,
         "syncedAt": s.synced_at, "syncedMade": s.synced_made, "syncedDevice": s.synced_device,
-        "waiting": waiting_copies(&local, &s), "retryIn": retry,
-        "full": website && full_now(), "paused": website && paused(),
+        "waiting": waiting_copies(&local, &s), "retryIn": retry, "full": full_now(), "paused": paused(),
         "problem": s.problem, "conflict": s.conflict.is_some(), "newest": local.first(),
+        // Where the saves go. Only RecompStore today; named so another cloud can say so later.
+        "provider": "recompstore",
     }))
 }
 
@@ -1314,7 +1289,6 @@ fn overview(app: &AppHandle) -> Value {
     saves::gather(&st.dir);
     let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let signed = signed_in(&st.dir);
-    let ready = cloud_ready(&st.dir);
     let mut out = Vec::new();
     for (id, g) in games {
         let local = saves::list(&st.dir, &id);
@@ -1328,7 +1302,7 @@ fn overview(app: &AppHandle) -> Value {
         out.push(json!({
             "id": id, "copies": local.len(), "size": size, "newest": local.first(),
             "cloudOn": g.cloud, "synced": state.synced_hash, "pending": state.pending.is_some(), "found": found,
-            "state": state.sync_state(g.cloud == Some(true), ready),
+            "state": state.sync_state(g.cloud == Some(true), signed),
         }));
     }
     let chosen = saves::chosen_root();
@@ -1993,46 +1967,5 @@ mod status_tests {
         let local = vec![saves::Copy { name: "200.zip".into(), when: 200, size: 1, files: 1, hash: "b".into(), device: String::new(), played: 0 }];
         let s = saves::State { synced_hash: "a".into(), ..Default::default() };
         assert_eq!(waiting_copies(&local, &s), 0);
-    }
-
-    #[test]
-    fn a_conflict_a_cloud_reports_as_an_error_is_kept() {
-        let d = tmp("conflict-error");
-        note_failure(&d, "g", &Error::Msg(SYNC_CONFLICT.into()));
-        assert_eq!(saves::state(&d, "g").sync_state(true, true), "conflict");
-        std::fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn a_conflict_with_a_known_version_keeps_it() {
-        let d = tmp("conflict-version");
-        saves::set_state(&d, "g", &saves::State { conflict: Some("v7".into()), ..Default::default() });
-        note_failure(&d, "g", &Error::Msg(SYNC_CONFLICT.into()));
-        assert_eq!(saves::state(&d, "g").conflict.as_deref(), Some("v7"));
-        std::fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn a_copy_that_went_up_is_synced_and_leaves_the_queue() {
-        let d = tmp("went-up");
-        saves::set_state(&d, "g", &saves::State { last_hash: "b".into(), synced_hash: "a".into(), pending: Some("200.zip".into()), ..Default::default() });
-        went_up(&d, "g", "200.zip", "b", 200, "Desk PC");
-        let s = saves::state(&d, "g");
-        assert_eq!((s.synced_hash.as_str(), s.pending, s.synced_device.as_str()), ("b", None, "Desk PC"));
-        std::fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn a_newer_queued_copy_still_goes_up_after_an_older_one() {
-        let d = tmp("went-up-older");
-        saves::set_state(&d, "g", &saves::State { pending: Some("300.zip".into()), ..Default::default() });
-        went_up(&d, "g", "200.zip", "b", 200, "Desk PC");
-        assert_eq!(saves::state(&d, "g").pending.as_deref(), Some("300.zip"));
-        std::fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn saves_go_to_recompstore_for_now() {
-        assert_eq!(provider_name(Path::new(".")), RECOMPSTORE);
     }
 }
