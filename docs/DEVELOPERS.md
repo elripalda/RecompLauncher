@@ -42,7 +42,9 @@ through us, and every release you publish reaches players the next time the laun
   `MyRecomp-v1.2.0-Windows-x64.zip`, `MyRecomp-v1.2.0-Linux-x64.AppImage`. The launcher picks the
   file for the player's PC from those words. Builds for ARM say `arm64`.
 - **Zips on Windows.** A `.zip` (or `.7z`) of your folder is best. An installer `.exe` works, but
-  it's the last choice, because it wants to be run as setup. On Linux, an AppImage or a `.tar.gz`.
+  it's the last choice, because it wants to be run as setup. On Linux, an AppImage or a tarball
+  (`.tar.gz`, `.tar.xz` or `.tar.zst`), for example `MyRecomp-v1.2.0-Linux-x64.tar.xz`. Either way
+  the game plays from a plain folder (see [AppImages](#appimages)).
 - **One folder on top is fine.** A zip with everything inside `MyRecomp-v1.2.0/` is unwrapped, so
   your program lands in the game's folder either way.
 - **Keep extras out of the way.** Files with `debug`, `symbols`, `pdb` or `source` in the name, and

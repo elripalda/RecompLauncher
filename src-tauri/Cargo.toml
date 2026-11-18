@@ -40,6 +40,8 @@ lz4_flex = { version = "0.11", default-features = false, features = ["std", "saf
 unrar = "0.5"
 flate2 = "1"
 zstd = "0.13"
+# .tar.xz releases. Already built in for backhand's xz AppImages; named here since install.rs uses it.
+xz2 = "0.1"
 tar = "0.4"
 backhand = { version = "0.21", default-features = false, features = ["gzip", "xz", "xz-static", "zstd", "lz4"] }
 dirs = "5"

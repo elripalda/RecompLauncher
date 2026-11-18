@@ -669,14 +669,17 @@ fn un7z(file: &Path, to: &Path) -> Result<(), Error> {
     .map_err(|e| Error::Msg(format!("Couldn't open the 7z: {e}")))
 }
 
-fn untar(file: &Path, to: &Path, xz: bool) -> Result<(), Error> {
-    let f = fs::File::open(file)?;
-    if xz {
-        return Err(Error::Msg(".tar.xz isn't supported yet".into()));
-    }
-    let mut t = tar::Archive::new(flate2::read::GzDecoder::new(f));
+/// A tarball, compressed with gzip, xz or zstd. tar skips entries that would land outside the folder.
+fn untar(file: &Path, to: &Path, k: &str) -> Result<(), Error> {
+    let f = io::BufReader::new(fs::File::open(file)?);
+    let read: Box<dyn io::Read> = match k {
+        // Several xz streams one after another (parallel compressors write them) are one file.
+        "tar.xz" => Box::new(xz2::read::XzDecoder::new_multi_decoder(f)),
+        "tar.zst" => Box::new(zstd::stream::read::Decoder::with_buffer(f)?),
+        _ => Box::new(flate2::read::GzDecoder::new(f)),
+    };
+    let mut t = tar::Archive::new(read);
     t.set_preserve_permissions(true);
-    // tar skips entries that would land outside the folder.
     t.unpack(to)?;
     Ok(())
 }
@@ -939,8 +942,7 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
         "zip" => unzip(file, staging)?,
         "7z" => un7z(file, staging)?,
         "rar" => crate::gamebanana::extract(file, staging)?,
-        "tar.gz" => untar(file, staging, false)?,
-        "tar.xz" => untar(file, staging, true)?,
+        "tar.gz" | "tar.xz" | "tar.zst" => untar(file, staging, k)?,
         #[cfg(target_os = "macos")]
         "dmg" => undmg(file, staging)?,
         "appimage" | "exe" | "msi" => {
@@ -2019,6 +2021,40 @@ mod tests {
         }
         #[cfg(unix)]
         assert!(!is_program(&target.join("LICENSE"), "linux"));
+    }
+
+    /// A tarball with one program in a folder, run permission and all.
+    fn tarball_into(w: impl io::Write) {
+        let mut t = tar::Builder::new(w);
+        let mut h = tar::Header::new_gnu();
+        h.set_size(10);
+        h.set_mode(0o755);
+        h.set_cksum();
+        t.append_data(&mut h, "Game/run.sh", &b"#!/bin/sh\n"[..]).unwrap();
+        t.finish().unwrap();
+    }
+
+    #[test]
+    fn tar_xz_unpacks() {
+        let d = tmp("txz");
+        let tpath = d.join("Game-Linux.tar.xz");
+        let mut xz = xz2::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
+        tarball_into(&mut xz);
+        xz.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+        assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");
+    }
+
+    #[test]
+    fn tar_zst_unpacks() {
+        let d = tmp("tzst");
+        let tpath = d.join("Game-Linux.tar.zst");
+        let mut zst = zstd::stream::write::Encoder::new(fs::File::create(&tpath).unwrap(), 1).unwrap();
+        tarball_into(&mut zst);
+        zst.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
     }
 
     #[test]

@@ -4620,6 +4620,7 @@ dependencies = [
  "windows",
  "windows-core",
  "xcap",
+ "xz2",
  "zip",
  "zstd",
 ]
