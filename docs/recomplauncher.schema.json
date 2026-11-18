@@ -371,7 +371,7 @@
         "done": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the game counts as set up and plays without the copy unless start uses {game}."
+          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the game counts as set up and plays without the copy unless start uses {game}. The ones in the build folder are also what a player's own build must have for the launcher to use it."
         },
         "version": {
           "type": "string",
@@ -444,6 +444,11 @@
               "default": {
                 "type": "boolean",
                 "description": "Whether it starts ticked (on when left out). Ignored with a license."
+              },
+              "required": {
+                "type": "boolean",
+                "default": false,
+                "description": "Setup can't start until it's ticked, on the PCs it's shown on (os and gpu still decide that). For terms the build can't run without, like a compiler's license: with a license it still starts off, and the player accepts it by ticking it. Launchers older than 0.90.0-beta.64 ignore it, so keep your builder's own check too until your min is that version."
               }
             },
             "additionalProperties": false
@@ -743,7 +748,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Added after start.args when this game is played. None: Play opens your own menu, and the tile says to pick the game there."
+            "description": "Added after start.args when this game is played. {input:id} is filled with this game's file; an argument whose file isn't chosen is left out. None: Play opens your own menu, and the tile says to pick the game there."
           },
           "title_id": {
             "type": "string",
@@ -919,7 +924,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Paths inside your release, tried in order."
+      "description": "Paths inside your release, tried in order. An .AppImage entry finds the AppImage installed under any name; on a Mac a .app runs the program its Info.plist names (Beta 55 and newer; before that, name the program inside it, like MyGame.app/Contents/MacOS/MyGame)."
     },
     "args": {
       "type": "array",

@@ -8,11 +8,15 @@ const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([
 
 test('Skip Easy Setup: per game or for every game, and the page treats those games as plain installs', () => {
   const run = new Function('S', 't', `${fn(app, 'applyEasySkip')}; ${fn(app, 'easySkipItem')}; return { applyEasySkip, easySkipItem };`);
-  const S = { settings: { ui: {} }, easyAll: new Set(['hopper', 'skyracer']) };
+  const S = { settings: { ui: {} }, library: {}, easyAll: new Set(['hopper', 'skyracer']) };
   const { applyEasySkip, easySkipItem } = run(S, (x) => x);
   applyEasySkip();
   assert.deepEqual([...S.easy], ['hopper', 'skyracer']);
   assert.equal(easySkipItem('hopper')[0].check, false);
+  // Installed, the menu opens the Easy Setup switch on its Manage tab instead.
+  S.library.skyracer = {};
+  assert.deepEqual(easySkipItem('skyracer'), [{ act: 'easy-row', id: 'skyracer', label: 'Easy Setup…', icon: 'disc' }]);
+  delete S.library.skyracer;
   assert.deepEqual(easySkipItem('plain'), [], 'only games Easy Setup can do get the item');
   S.settings.ui.easy_skip = ['hopper'];
   applyEasySkip();
@@ -31,7 +35,8 @@ test('the menu item and the Settings switch', () => {
   const menu = fn(app, 'gameMenu');
   assert.match(menu, /\.\.\.\(!g \? easySkipItem\(id\) : \[\]\)/);
   assert.match(menu, /act: 'manual'[^\n]*\n\s+\.\.\.easySkipItem\(id\),/);
-  assert.match(app, /case 'easy-skip': \{[^]*?saveUi\(\{ easy_skip: \[\.\.\.skip\] \}\)/);
+  assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
+  assert.match(fn(app, 'setEasySkip'), /saveUi\(\{ easy_skip: \[\.\.\.skip\] \}, true\)/);
   assert.match(app, /sw\('easy_skip_all', ui\.easy_skip_all, t\('Skip Easy Setup'\), 'ui-toggle'\)/);
 });
 
@@ -56,8 +61,9 @@ test('Use a Build You Already Have: a card in Easy Setup, a menu item, and the s
   assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
   assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
   assert.match(tv, /su\.own_build && !su\.prebuilt \? it\(t\('Use a Build You Already Have'\)/);
-  // The setup screen says where the game's own setup builds it.
-  assert.match(app, /su\.own_build \? `<p class="su-where">\$\{esc\(tf\('The game\\'s own setup builds it into \{folder\}\.'/);
+  // The setup screen says where the game's own setup builds it, when that's outside the
+  // launcher's folder for the game (build_where).
+  assert.match(app, /su\.build_where \? `<p class="su-where">\$\{esc\(tf\('The game\\'s own setup builds it into \{folder\}\.'/);
 });
 
 test('the launcher building it again goes back to the setup\'s own folder; an update keeps the player\'s', () => {

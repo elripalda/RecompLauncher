@@ -7,7 +7,9 @@ const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 test("setup's fingerprint is made from the player's files, never the serialized profile", () => {
   const src = read('src-tauri/src/inputs.rs');
-  const body = src.match(/^pub fn signature\([^]*?^}/m)[0];
+  // signature() fills in the copies; signature_of() makes the fingerprint.
+  assert.match(src.match(/^pub fn signature\([^]*?^}/m)[0], /signature_of\(p, g, dir, copies\(p, g\)\?\)/);
+  const body = src.match(/^fn signature_of\([^]*?^}/m)[0];
   assert.doesNotMatch(body, /serde_json::to_vec/);
   assert.doesNotMatch(body, /format!\("\{:\?\}"/);
   assert.match(body, /Ok\(format!\("v2:\{\}"/);

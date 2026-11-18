@@ -727,6 +727,8 @@ body.light .tv-stage .tv-flow-row .tv-fcase{opacity:1!important}
 .tv-sreq-p.dim{opacity:.7}
 .tv-sreq-steps{margin:6px 0 14px;padding-left:30px;display:grid;gap:10px;font-size:21px;line-height:1.45}
 .tv-sreq-steps li::marker{color:#f5c518;font-weight:800}
+/* Before a recomp of several games installs: the games it adds, two to a row. */
+.tv-sreq-steps.tv-pack{grid-template-columns:1fr 1fr;gap:6px 28px;max-height:46vh;overflow:auto}
 .tv-sheet .tv-item.warn{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.45)}
 .tv-sheet .tv-item.warn svg{color:#f5c518}
 body.light .tv-btn.warn-o{color:#7a5a00;border-color:#d9a900;background:rgba(245,197,24,.16)}
@@ -905,6 +907,7 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+.tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
 .tb-in{grid-template-rows:minmax(0,1fr)}

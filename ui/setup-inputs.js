@@ -56,7 +56,7 @@ function namedInputsView(id, su, ns = {}, game = {}) {
     ${ns.confirm ? `<div class="ni-notice"><p>${esc(t('Removing shared keys affects every game that uses them. Your original file stays where it is.'))}</p><button type="button" class="btn sm" data-ni="remove-confirm" data-input="${esc(ns.confirm)}">${esc(t('Remove shared keys'))}</button><button type="button" class="btn sm" data-ni="cancel-remove">${esc(t('Keep'))}</button></div>` : ''}
     ${error ? `<p class="su-err" role="alert">${esc(t(error))}</p>` : ''}
     ${typeof prepOptsHtml === 'function' ? prepOptsHtml(su) : ''}
-    <div class="ni-footer"><p>${esc(t('Optional content can be added later.'))}</p><button type="button" class="btn main" data-ni="run" ${!complete || ns.busy ? 'disabled' : ''}>${esc(t(ns.busy ? 'Working…' : 'Set up'))}</button></div>`;
+    <div class="ni-footer"><p>${esc(t('Optional content can be added later.'))}</p><button type="button" class="btn main" data-ni="run"${typeof prepGateAttr === 'function' ? prepGateAttr(su, !complete || ns.busy) : !complete || ns.busy ? ' disabled' : ''}>${esc(t(ns.busy ? 'Working…' : 'Set up'))}</button></div>`;
 }
 // NVIDIA DLSS (a file the launcher fetches itself): nothing to choose. It shows where the file
 // comes from, its download, the game's own file when it ships one, and a switch to turn it off.
@@ -105,7 +105,7 @@ function relinkCards(su, attr) {
   const card = (act, title, sub, button) => `<div class="found su-relink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg><div class="k"><b>${esc(t(title))}</b><span title="${esc(sub)}">${esc(sub)}</span></div><button type="button" class="btn sm main" ${attr}="${act}">${esc(t(button))}</button></div>`;
   return (prev.length && !su.inputs_ready ? card('relink', 'Use My Previous Setup', prev.join(' · '), 'Use It') : '')
     + (su.prebuilt ? card('prebuilt', 'Use the Build Already on This PC', su.prebuilt, 'Use It') : '')
-    + (su.own_build && !su.prebuilt ? card('ownbuild', 'Use a Build You Already Have', t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), 'Choose Folder') : '');
+    + (su.own_build && !su.prebuilt ? card('ownbuild', 'Use a Build You Already Have', t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), N_('Choose Folder')) : '');
 }
 // A build the player already has, anywhere (Use a Build You Already Have): its folder picked, and
 // used in place of building it again. True when it's set.
@@ -189,7 +189,8 @@ function namedSetup(id) {
     if (result === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; $('.modal', scrim).classList.remove('ni-modal'); return suDraw(); }
     if (result === 'run') {
       SU.stage = 'run'; SU.step = 'read'; SU.steps = {}; SU.q = []; SU.at = Date.now(); SU.path = ''; $('.modal', scrim).classList.remove('ni-modal'); suDraw();
-      try { await invoke('setup_inputs_run', { id }); }
+      // The ticks just changed are kept first: the backend checks the required ones.
+      try { await SU.optsSaving; await invoke('setup_inputs_run', { id }); }
       catch (e) { if (SU.el === scrim) { SU.stage = 'error'; SU.err = String(e?.message || e); suDraw(); } }
     } else {
       draw();

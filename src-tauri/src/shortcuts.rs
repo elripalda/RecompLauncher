@@ -411,12 +411,20 @@ fn started_by_steam() -> bool {
 /// Flatpak, or failing both its steam:// link. The link alone can land in another program (a
 /// software center) on some desktops, and then Steam never closes.
 #[cfg(not(windows))]
-fn steam_cmd(steam: &Path, args: &[&str], link: &str) -> std::process::Command {
+fn steam_cmd(steam: &Path, args: &[&str], link: &str, scoped: bool) -> std::process::Command {
     let flatpak = steam.to_string_lossy().contains("/.var/app/com.valvesoftware.Steam");
     let on_path = |name: &str| std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file())).unwrap_or(false);
     let mut c = if flatpak && on_path("flatpak") {
         let mut c = std::process::Command::new("flatpak");
         c.args(["run", "com.valvesoftware.Steam"]).args(args);
+        c
+    } else if scoped && on_path("steam") && on_path("systemd-run") && user_systemd() {
+        // Steam started as our child would stay in the launcher's systemd scope, and desktop
+        // portals name an app after its scope: Steam's own screen-capture request (Remote Play,
+        // recording) then asked players to share their screen "with RecompLauncher". Its own
+        // app-steam scope, as the desktop's menu would give it, names Steam instead.
+        let mut c = std::process::Command::new("systemd-run");
+        c.args(["--user", "--scope", "--quiet", "--collect"]).arg(format!("--unit={}", steam_scope_name())).arg("steam").args(args);
         c
     } else if on_path("steam") {
         let mut c = std::process::Command::new("steam");
@@ -435,6 +443,52 @@ fn steam_cmd(steam: &Path, args: &[&str], link: &str) -> std::process::Command {
     c
 }
 
+/// Whether this session has a systemd user manager to ask for a scope. Without one (some
+/// containers, non-systemd distros) systemd-run fails and Steam would never start.
+#[cfg(not(windows))]
+fn user_systemd() -> bool {
+    let Some(run) = std::env::var_os("XDG_RUNTIME_DIR") else { return false };
+    Path::new(&run).join("systemd").join("private").exists()
+}
+
+/// A scope name in the freedesktop form (app-<app id>-<random>.scope) that portals read the app
+/// id "steam" from, matching Steam's steam.desktop.
+#[cfg(not(windows))]
+fn steam_scope_name() -> String {
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    format!("app-steam-{:x}{:x}.scope", std::process::id(), nanos)
+}
+
+/// Run a Steam command (steam_cmd) without waiting for it. When systemd-run can't make Steam's
+/// scope it fails at once and Steam never runs, so a quick failure there runs the plain command.
+#[cfg(not(windows))]
+fn spawn_steam(steam: &Path, args: &[&str], link: &str) {
+    let mut c = steam_cmd(steam, args, link, true);
+    let scoped = c.get_program() == "systemd-run";
+    let Ok(mut ch) = c.spawn() else { return };
+    let steam = steam.to_path_buf();
+    let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+    let link = link.to_string();
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let failed = ch.wait().map(|s| !s.success()).unwrap_or(true);
+        if !scoped || !failed || !failed_at_once(started.elapsed()) {
+            return;
+        }
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        if let Ok(mut ch) = steam_cmd(&steam, &args, &link, false).spawn() {
+            let _ = ch.wait();
+        }
+    });
+}
+
+/// Whether a scoped Steam command that failed did so before Steam could have been running: a
+/// later failure is Steam's own, and running it again would not help.
+#[cfg(not(windows))]
+fn failed_at_once(after: std::time::Duration) -> bool {
+    after < std::time::Duration::from_secs(5)
+}
+
 pub async fn close_steam(steam: &Path) -> Result<(), Error> {
     if !steam_running() {
         return Ok(());
@@ -447,7 +501,8 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
         c
     };
     #[cfg(not(windows))]
-    let mut c = steam_cmd(steam, &["-shutdown"], "steam://exit");
+    spawn_steam(steam, &["-shutdown"], "steam://exit");
+    #[cfg(windows)]
     if let Ok(mut ch) = c.spawn() {
         std::thread::spawn(move || {
             let _ = ch.wait();
@@ -466,18 +521,17 @@ pub async fn close_steam(steam: &Path) -> Result<(), Error> {
 
 pub fn start_steam(steam: &Path) {
     #[cfg(windows)]
-    let mut c = {
+    {
         let mut c = std::process::Command::new(steam_exe(steam));
         crate::sysenv::clean_std(&mut c);
-        c
-    };
-    #[cfg(not(windows))]
-    let mut c = steam_cmd(steam, &[], "steam://open/main");
-    if let Ok(mut ch) = c.spawn() {
-        std::thread::spawn(move || {
-            let _ = ch.wait();
-        });
+        if let Ok(mut ch) = c.spawn() {
+            std::thread::spawn(move || {
+                let _ = ch.wait();
+            });
+        }
     }
+    #[cfg(not(windows))]
+    spawn_steam(steam, &[], "steam://open/main");
 }
 
 /// The AppImage a game's launch script starts, when Steam starts games through one.
@@ -583,7 +637,21 @@ fn launcher_icon() -> String {
             return icon;
         }
     }
+    if crate::nix_managed() {
+        if let Some(icon) = nix_icon() {
+            return icon;
+        }
+    }
     launcher_exe().to_string_lossy().to_string()
+}
+
+/// The icon beside the Nix wrapper the PC starts (a profile's bin, see start_path): the profile's
+/// share/icons survives updates, where the program's own store path is gone after the next one.
+fn nix_icon() -> Option<String> {
+    let wrapper = PathBuf::from(std::env::var_os("RL_START_PATH")?);
+    let profile = wrapper.parent()?.parent()?;
+    let icon = profile.join("share/icons/hicolor/512x512/apps/recomplauncher.png");
+    icon.is_file().then(|| icon.to_string_lossy().to_string())
 }
 
 fn flatpak_icon() -> Option<String> {
@@ -601,8 +669,12 @@ fn icon_in(info: &str, id: &str) -> Option<String> {
 }
 
 /// The program Steam should start: the AppImage itself on Linux when it's one, else this program.
-fn start_path() -> PathBuf {
-    std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()).unwrap_or_else(launcher_exe)
+/// A package that wraps the launcher (the Nix one runs it inside Steam's runtime environment)
+/// sets RL_START_PATH to its wrapper. Started directly, this program would run outside the
+/// wrapper, from a store path that is gone after the next update.
+pub fn start_path() -> PathBuf {
+    let set = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file());
+    set("APPIMAGE").or_else(|| set("RL_START_PATH")).unwrap_or_else(launcher_exe)
 }
 
 /// Is this a Steam Deck? Its firmware says so (Jupiter is the LCD model, Galileo the OLED).
@@ -610,6 +682,12 @@ pub fn is_steam_deck() -> bool {
     if !cfg!(target_os = "linux") {
         return false;
     }
+    // The machine doesn't change while the launcher runs: read once.
+    static DECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DECK.get_or_init(steam_deck_now)
+}
+
+fn steam_deck_now() -> bool {
     let read = |f: &str| fs::read_to_string(format!("/sys/devices/virtual/dmi/id/{f}")).unwrap_or_default().trim().to_lowercase();
     matches!(read("product_name").as_str(), "jupiter" | "galileo") || read("board_vendor") == "valve"
 }
@@ -748,6 +826,26 @@ pub fn remove_art(cfg: &Path, app_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_quick_failure_runs_steam_again_unscoped() {
+        assert!(failed_at_once(std::time::Duration::from_millis(300)));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_failure_after_steam_ran_is_left_alone() {
+        assert!(!failed_at_once(std::time::Duration::from_secs(60)));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn steam_scope_name_is_an_app_steam_scope() {
+        let name = steam_scope_name();
+        let random = name.strip_prefix("app-steam-").and_then(|r| r.strip_suffix(".scope")).unwrap();
+        assert!(!random.is_empty() && random.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 
     #[test]
     fn a_flatpak_starts_with_flatpak_run() {

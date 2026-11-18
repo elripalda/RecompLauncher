@@ -64,7 +64,7 @@ test('an update-ready row shows how the new version was checked', () => {
   c.S.library = { prime: { tag: 'v0.0.10' } };
   c.S.updates = { prime: 'v0.0.11' };
   const asked = [];
-  c.scanInfo = (h) => { asked.push(h.tag + (h.update ? ' update' : '')); return { cls: 'ok', ic: '✓', text: 'Verified update' }; };
+  c.scanInfo = (h) => { asked.push(h.tag + (h.update ? ' update' : '')); return { cls: 'ok', ic: '✓', text: 'Verified Update' }; };
   const html = c.pageDownloads();
   assert.deepEqual(asked, ['v0.0.11 update']);
   assert.match(html, /Update ready: v0\.0\.10 → v0\.0\.11<\/small><\/span><span class="scan-pill ok" title="[^"]+">/);

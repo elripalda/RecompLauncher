@@ -61,6 +61,46 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.63" date="2026-11-17">
+      <description>
+        <p>Fixes games built from your copy asking to set up again after an update.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.62" date="2026-11-17">
+      <description>
+        <p>The Verified label on a download opens its scan report.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.61" date="2026-11-17">
+      <description>
+        <p>Games that install with their own setup no longer show as missing before Set Up, and the Library can sort by game name.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.60" date="2026-11-17">
+      <description>
+        <p>The window opens on the right screen at a size that fits, updates show for games whose project moved, Linux .NET games find .NET, and the launcher starts faster.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.59" date="2026-11-17">
+      <description>
+        <p>Easy Setup can be switched on and off from a game's Manage tab, and a game's page shows its latest version before you install it.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.58" date="2026-11-16">
+      <description>
+        <p>Playtime by game across recomps, kept through reinstalls and synced with your account, and each game of a multi-game release gets its own place in the store.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.57" date="2026-11-16">
+      <description>
+        <p>Linux .NET games start through their own start script, controller A waits for the D-pad on the desktop, and setups that build inside the game's folder are recognized.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.56" date="2026-11-16">
+      <description>
+        <p>Games built from your copy are built again when their setup changes or their build is missing, and Steam names itself when it asks to share the screen.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.55" date="2026-11-16">
       <description>
         <p>Saves restore into the folder a game uses now, Switch copies are recognized by their title ID, and setups run more reliably in the Flatpak.</p>

@@ -709,6 +709,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         prepare_opts: prev.as_ref().map(|p| p.prepare_opts.clone()).unwrap_or_default(),
         from_backup,
         game_copy: prev.as_ref().and_then(|p| p.game_copy.clone()),
+        // (an update keeps the build it was set up with, and so the version it was built with)
+        prepare_version: prev.as_ref().map(|p| p.prepare_version.clone()).unwrap_or_default(),
         update_copy: prev.as_ref().and_then(|p| p.update_copy.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
         // A finished setup stays through an update: its fingerprint leaves the release out, and
@@ -1809,6 +1811,7 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
                 if let Some(a) = l.arts.remove(&old) {
                     l.arts.entry(new.clone()).or_insert(a);
                 }
+                l.move_play_history(&old, &new);
                 if let Some(mut g) = l.installed.remove(&old) {
                     g.id = new.clone();
                     l.put(&new, g);
@@ -2617,9 +2620,9 @@ fn start_game_with_monitor_context(
         trail::note(format!("Play {id}: set up by hand, but it's built from the copy first; asking to use the launcher's way"));
         return Err(Error::Msg("NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".into()));
     }
-    // "Program it starts" picked by the player, and not the program the game's setup file starts
-    // (the game they moved somewhere else, or a build of their own): theirs starts, as it is. The
-    // setup file's command line is for its own program, and its own folder may be gone.
+    // The executable the player picked (Set Game Executable), not the program the game's setup
+    // file starts (the game they moved somewhere else, or a build of their own): theirs starts, as
+    // it is. The setup file's command line is for its own program, and its own folder may be gone.
     if manual.is_none() {
         if let Some(mine) = player_program(&st, id, &g) {
             trail::note(format!("Play {id}: the program the player picked ({}), not its setup file's", mine.display()));
@@ -2697,7 +2700,7 @@ fn start_game_with_monitor_context(
     }
     let g = st.lib.lock().unwrap().installed.get(id).cloned().unwrap_or(g);
     if skipped && g.exe.is_none() {
-        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Choose Program in its Manage menu.".into()));
+        return Err(Error::Msg("Easy Setup is skipped for this game, and it doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.".into()));
     }
     // Settings on Match My Screen: the monitor's size now, when the monitor changed since it was
     // last written (a size picked in the game's own menu stays otherwise).
@@ -2747,6 +2750,32 @@ fn start_game_with_monitor_context(
                 }
                 other => other?,
             };
+            // Both checks below come before its settings are written: the settings file often
+            // lives in the folder it built (hookshot_options.ini), and writing it would make a
+            // missing build folder look present again.
+            // Built by the launcher from the copy, but the manifest's prepare.version changed since:
+            // its developer needs the step run again (a new output folder, a new format), so it's
+            // built again through Easy Setup. Not a build the player chose themselves.
+            let launcher_built = copy.is_some() && !g.prebuilt && g.build_dir.is_none();
+            if launcher_built && p.prepare_version_changed(&g.prepare_version) {
+                let now = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or_default();
+                trail::note(format!("Play {id}: its setup step changed (version '{}' -> '{now}'); it's built again", g.prepare_version));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg("NEED_REBUILD|".into()));
+            }
+            // Built from the copy into a folder of its own, and that folder is gone (moved or
+            // deleted): built again, through Easy Setup, rather than starting into nothing.
+            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
+                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
+                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    x.game_copy = None;
+                }
+                st.save();
+                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
+            }
             p.prepare(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't write its settings: {e}")))?;
             p.place(&g.path, copy.as_deref()).map_err(|e| Error::Msg(format!("Couldn't put your copy of the game where it reads it: {e}")))?;
             // Everything the game reads has to be there now; if not, the copy picked isn't the
@@ -2784,16 +2813,6 @@ fn start_game_with_monitor_context(
                     None if up.optional || up.in_place(&g.path).is_some() || (built && copy.is_none()) => {}
                     None => return Err(Error::Msg(format!("NEED_UPDATE|{}", up.label))),
                 }
-            }
-            // Built from the copy into a folder of its own, and that folder is gone (moved or
-            // deleted): built again, through Easy Setup, rather than starting into nothing.
-            if let (Some(gone), true) = (p.built_folder_missing(&g.path), copy.is_some()) {
-                trail::note(format!("Play {id}: the game built from the copy isn't in {} anymore; it's built again", gone.display()));
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
-                    x.game_copy = None;
-                }
-                st.save();
-                return Err(Error::Msg(format!("NEED_BUILD|{}", gone.display())));
             }
             game_env = p.env_vars(&g.path, copy.as_deref());
             // Its program under another name than the profile's (a Linux build): the one the game
@@ -2844,7 +2863,11 @@ fn start_game_with_monitor_context(
     };
     // The game picked in a recomp that carries several: its options come after the recomp's own.
     if let Some(pk) = pick.as_ref().filter(|_| !picked_once) {
-        games::add_args(&mut args, &pk.game);
+        let no_files = BTreeMap::new();
+        let paths = prof.as_ref().map_or(&no_files, |p| &p.input_paths);
+        // A Windows program under Proton is given its files as Windows paths, as start.args are.
+        let wine = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
+        games::add_args(&mut args, &pk.game, paths, wine);
     }
     if !clean {
         args.extend(join_paths(split_args(&g.args)));
@@ -3546,6 +3569,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
     if let Some(pr) = &p.prepare {
+        required_ticked(&st.dir, pr, &g.prepare_opts)?;
         settle_prepare_opts(&st, &id, pr);
     }
     let copy = PathBuf::from(&path);
@@ -3697,6 +3721,7 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
         if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
             x.game_copy = Some(copy.clone());
             x.prebuilt = false;
+            x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
         }
         st.save();
         if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
@@ -3762,8 +3787,20 @@ fn prepare_options_here(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<Str
     let (rtx, amd) = dlss::gpu_brands(dir);
     pr.options_here(assets::os_now(), rtx, amd)
         .into_iter()
-        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked), "new": !picked.contains_key(&o.id) }))
+        .map(|o| serde_json::json!({ "id": o.id, "label": o.label, "note": o.note, "license": o.license.as_ref().map(|l| serde_json::json!({ "name": l.name, "url": l.url })), "on": o.on(picked), "new": !picked.contains_key(&o.id), "required": o.required }))
         .collect()
+}
+
+/// The setup step doesn't start while a required option this PC is offered is unticked. The
+/// screen holds its button too; this is for anything that asks without it.
+fn required_ticked(dir: &Path, pr: &profile::Prepare, picked: &BTreeMap<String, bool>) -> Res<()> {
+    if !pr.options.iter().any(|o| o.required) {
+        return Ok(());
+    }
+    let (rtx, amd) = dlss::gpu_brands(dir);
+    let missing = pr.unticked_required(assets::os_now(), rtx, amd, picked);
+    let Some(first) = missing.first() else { return Ok(()) };
+    Err(Error::Msg(format!("Turn on \"{}\" on the setup screen to set this game up.", first.label)))
 }
 
 /// Starting a setup answers every option its screen showed: one the player left as it was counts
@@ -4471,6 +4508,35 @@ fn upgrade_fingerprints(st: &App, only: Option<&str>) {
         trail::note("Setup fingerprints from an older launcher kept as v2".to_string());
         st.save();
     }
+    adopt_kept_copies(st, only);
+}
+
+/// A game built from the player's copy whose copy was moved or deleted since (often right after
+/// the first build), with nothing else changed: the copy the game keeps in its build folder
+/// stands in for it, so an update doesn't send it back through Easy Setup.
+fn adopt_kept_copies(st: &App, only: Option<&str>) {
+    let list: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter()
+        .filter(|(k, g)| only.map_or(true, |o| o == k.as_str()) && g.manual.is_none() && g.game_copy.as_ref().is_some_and(|c| !c.exists()))
+        .map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut changed = false;
+    for (id, g) in list {
+        let Some(p) = profile_of(st, &id, &g) else { continue };
+        if inputs::ready(&p, &g, &st.dir) {
+            continue;
+        }
+        let Some((folder, signature)) = inputs::kept_copy(&p, &g, &st.dir) else { continue };
+        let mut lib = st.lib.lock().unwrap();
+        // Only what was checked: a new pick meanwhile stays.
+        let Some(cur) = lib.installed.get_mut(&id).filter(|c| c.game_copy == g.game_copy && c.inputs_ready == g.inputs_ready) else { continue };
+        cur.game_copy = Some(folder.clone());
+        cur.inputs_ready = signature;
+        drop(lib);
+        trail::note(format!("Set up {id}: your copy moved; using the copy the game kept at {}", folder.display()));
+        changed = true;
+    }
+    if changed {
+        st.save();
+    }
 }
 
 /// Every installed recomp that carries several games, with them: the Library's tiles.
@@ -4694,8 +4760,16 @@ struct Setup {
     /// Built from the copy into a folder of its own: a build the player already has, anywhere,
     /// can be picked instead (Use a Build You Already Have). The setup's own folder, for the hint.
     own_build: Option<PathBuf>,
+    /// That folder, for the hint ("The game's own setup builds it into ..."), only when it's
+    /// outside the game's own folder. One inside it is where Easy Setup builds, so there's
+    /// nothing for the player to go and find.
+    build_where: Option<PathBuf>,
     /// The player's own build in use, and where.
     build_dir: Option<PathBuf>,
+    /// The program the player picked with Set Game Executable, when Play starts it as it is instead of
+    /// the way the setup file says (player_program). Shown, so the player can tell Easy Setup is
+    /// out of the way, and undo it.
+    own_program: Option<PathBuf>,
     /// The player's copy is asked for, and how.
     needs: Option<String>,
     kind: String,
@@ -4793,7 +4867,9 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         prebuilt: if set_up { None } else { p.build_folder_here(&g.path) },
         prebuilt_on: g.prebuilt && built,
         own_build: if set_up { None } else { whole.build_home(&g.path) },
+        build_where: if set_up { None } else { whole.build_home(&g.path).filter(|h| !h.starts_with(&g.path)) },
         build_dir: g.build_dir.clone().filter(|d| d.is_dir()),
+        own_program: player_program(&st, &id, &g),
         needs: p.game.as_ref().map(|x| x.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: p.game.as_ref().map(|x| x.kind.clone()).unwrap_or_default(),
         copy,
@@ -5013,14 +5089,22 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
     // A build the player has somewhere else (theirs, from the game's own launcher, or an older
     // install): that folder stands in for the one the setup builds into.
     let mine = match folder.map(PathBuf::from) {
-        Some(f) => Some(own_build_folder(&st, &id, &g, &f)?),
+        Some(f) => own_build_folder(&st, &id, &g, &f)?,
         None => None,
     };
     if mine.is_some() {
         g.build_dir = mine.clone();
     }
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
-    let dir = p.build_folder_here(&g.path).ok_or_else(|| Error::Msg("Its build isn't on this PC anymore.".into()))?;
+    // A finished build: every file its setup step says it leaves (prepare.done, moved with the
+    // player's folder), or, when it lists none, a build folder with files in it.
+    if let Some(missing) = p.done_missing(&g.path) {
+        return Err(Error::Msg(format!("That build isn't finished: {} is missing.", missing.display())));
+    }
+    let dir = match p.build_done(&g.path) {
+        Some(true) => mine.clone().or_else(|| p.build_home(&g.path)).unwrap_or_else(|| g.path.clone()),
+        _ => p.build_folder_here(&g.path).ok_or_else(|| Error::Msg("Its build isn't on this PC anymore.".into()))?,
+    };
     if p.start_uses_game() {
         return Err(Error::Msg("This game still needs your copy each time it starts.".into()));
     }
@@ -5037,11 +5121,29 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
 }
 
 /// A folder the player picked as their own build of a game built from their copy: a real folder
-/// with something in it, not the game's own folder, and holding a program (anything that runs).
-/// The folder the build is in when they pick its program or its bin folder: the one above.
-fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf> {
+/// with something in it, not the game's own folder, and holding what a finished build has (the
+/// files the profile's prepare.done lists in the build folder). The folder the build is in when
+/// they pick its program or its bin folder: the one above. None when they picked the setup's own
+/// folder: the build already on this PC. Nothing here knows a project: only its profile says
+/// what a finished build looks like.
+fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<Option<PathBuf>> {
     let p = profile_of(st, id, &Installed { build_dir: None, ..g.clone() }).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     let home = p.build_home(&g.path).ok_or_else(|| Error::Msg("This game isn't built into a folder of its own, so there's no build to point to.".into()))?;
+    let done = p.done_in(&g.path, &home);
+    let picked = check_own_build(&home, &g.path, f, &done)?;
+    match &picked {
+        Some(dir) => trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display())),
+        None => trail::note(format!("Setup {id}: the folder picked is the setup's own, {}", home.display())),
+    }
+    Ok(picked)
+}
+
+/// The checks behind own_build_folder, on the folders alone. done: the files a finished build
+/// has, relative to the build folder (from prepare.done); none when the profile lists none, and
+/// then a folder with something in it is taken as it is. None when the folder picked is the
+/// setup's own folder inside the game's: that's the build already on this PC, not one from
+/// somewhere else, so nothing has to stand in for it.
+fn check_own_build(home: &Path, install: &Path, f: &Path, done: &[PathBuf]) -> Res<Option<PathBuf>> {
     let mut dir = if f.is_file() { f.parent().map(Path::to_path_buf).unwrap_or_default() } else { f.to_path_buf() };
     if dir.file_name().map(|n| n.eq_ignore_ascii_case("bin")).unwrap_or(false) {
         if let Some(up) = dir.parent() {
@@ -5051,28 +5153,18 @@ fn own_build_folder(st: &App, id: &str, g: &Installed, f: &Path) -> Res<PathBuf>
     if !dir.is_dir() || std::fs::read_dir(&dir).map(|mut r| r.next().is_none()).unwrap_or(true) {
         return Err(Error::Msg("That folder is empty. Pick the folder your build is in.".into()));
     }
-    if dir == g.path || dir.starts_with(&g.path) {
+    // (Games that build into a folder inside their own, with --out {install}/...: the setup
+    // window names that folder, so picking it has to work.)
+    let setups_own = dir == home && home.starts_with(install);
+    if dir.starts_with(install) && !setups_own {
         return Err(Error::Msg("That's the launcher's own folder for this game. Pick the folder your build is in.".into()));
     }
-    let runs = |d: &Path| std::fs::read_dir(d).map(|r| r.flatten().any(|e| {
-        let n = e.file_name().to_string_lossy().to_lowercase();
-        e.path().is_file() && (n.ends_with(".exe") || n.ends_with(".appimage") || n.ends_with(".x86_64") || (!n.contains('.') && is_exec(&e.path())))
-    })).unwrap_or(false);
-    if !runs(&dir) && !runs(&dir.join("bin")) {
-        return Err(Error::Msg("There's no program in that folder or its bin folder. Pick the folder your build is in.".into()));
+    // (No "has a program" test: some builds keep their program in the release and only data in
+    // the build folder. What a finished build has is the profile's to say, in prepare.done.)
+    if let Some(missing) = done.iter().find(|d| !dir.join(d).exists()) {
+        return Err(Error::Msg(format!("It has no {}, which a finished build has. Pick the folder your build is in.", missing.display())));
     }
-    trail::note(format!("Setup {id}: the player's own build in {} stands in for {}", dir.display(), home.display()));
-    Ok(dir)
-}
-
-#[cfg(unix)]
-fn is_exec(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
-}
-#[cfg(not(unix))]
-fn is_exec(_: &Path) -> bool {
-    false
+    Ok((!setups_own).then_some(dir))
 }
 
 /// Setups an update emptied before Beta 51 (it wrote an empty fingerprint): put back once, at
@@ -5197,6 +5289,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
     let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
     if let Some(pr) = &p.prepare {
+        required_ticked(&st.dir, pr, &g.prepare_opts)?;
         settle_prepare_opts(&st, &rid, pr);
     }
     INPUT_WORKERS.lock().unwrap().push(id.clone());
@@ -6304,13 +6397,30 @@ fn python_here() -> Option<(PathBuf, Vec<&'static str>)> {
 
 /// The program the player picked in the game's settings, when the game's setup file starts another
 /// one: a moved game, or a program of their own. None when they didn't pick, or picked the same.
-fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+fn picked_program(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, profile::Profile)> {
     if g.exe_rules != u8::MAX {
         return None;
     }
     let exe = g.exe.as_ref().map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) }).filter(|e| e.is_file())?;
     let p = profile_of(st, id, g)?;
-    (p.start.is_some() && !p.starts_program(&exe)).then_some(exe)
+    (p.start.is_some() && !p.starts_program(&exe)).then_some((exe, p))
+}
+
+/// The player's picked program, when Play starts it as it is. On a game Easy Setup can do, only
+/// while Easy Setup is off for it: Skip Easy Setup is the one switch for who sets a game up, so
+/// the game's page and Play can't disagree (picking the program turns it off, in the UI).
+fn player_program(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    let (exe, p) = picked_program(st, id, g)?;
+    let easy_on = p.easy_setup() && !easy_skipped(&st.lib.lock().unwrap().settings.ui, id);
+    (!easy_on).then_some(exe)
+}
+
+/// The games whose program the player picked, so the UI turns Easy Setup off for them: once for
+/// picks made before Skip Easy Setup was the switch, and when Easy Setup is turned on for every game.
+#[tauri::command(async)]
+fn own_program_games(st: State<'_, App>) -> Vec<String> {
+    let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    games.iter().filter(|g| picked_program(&st, &g.id, g).is_some()).map(|g| g.id.clone()).collect()
 }
 
 /// Set Up By Hand: the program and its command line, with the player's game files put where they
@@ -6797,6 +6907,27 @@ fn set_exe(st: State<'_, App>, id: String, path: String) -> Res<Installed> {
     Ok(out)
 }
 
+/// Set Game Executable undone (Use Default): the player's pick goes, and the launcher
+/// picks the program again by its own rules, so Play starts the game its setup file's way.
+#[tauri::command]
+fn forget_program(st: State<'_, App>, id: String) -> Res<Installed> {
+    let g = {
+        let mut l = st.lib.lock().unwrap();
+        let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+        if g.exe_rules == u8::MAX {
+            g.exe = None;
+            g.exe_rules = 0;
+        }
+        g.clone()
+    };
+    st.save();
+    // The same pick Play makes when the launcher's rules change, made now so the game's page
+    // shows the program again straight away.
+    let _ = own_setup::pending(&st, &id, &g);
+    trail::note(format!("{id}: the program the player picked is let go; the launcher starts it its own way again"));
+    st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
+}
+
 #[tauri::command(async)]
 fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Option<String>) -> Res<()> {
     #[cfg(not(target_os = "linux"))]
@@ -6973,11 +7104,15 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
     let (mut asked, mut failed) = (0, 0);
     for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
         asked += 1;
-        let listed = catalog::app(&cat, &g.id).map(|a| str_of(a, "version").to_string()).unwrap_or_default();
-        let on_disk = if !force && same(&listed, &g.tag) { catalog::releases_on_disk(&st.dir, &g.repo) } else { None };
+        let entry = catalog::app(&cat, &g.id);
+        // The project the catalog names, as installing and the Updates tab read it: a project
+        // that moved (Hookshot, to its own Forgejo server) puts new releases there, not in the old.
+        let repo = listed_repo(&g, entry);
+        let listed = entry.map(|a| str_of(a, "version").to_string()).unwrap_or_default();
+        let on_disk = if !force && same(&listed, &g.tag) { catalog::releases_on_disk(&st.dir, &repo) } else { None };
         let got = match on_disk {
             Some(f) => Ok(f),
-            None => catalog::releases(&st.http, &st.dir, &g.repo, force).await,
+            None => catalog::releases(&st.http, &st.dir, &repo, force).await,
         };
         let Ok(f) = got else {
             failed += 1;
@@ -7003,11 +7138,13 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
                 g = done;
             }
         }
-        if let Some(tag) = offered_update(&g, catalog::app(&cat, &g.id), &rels) {
+        if let Some(tag) = offered_update(&g, entry, &rels) {
             out.insert(g.id.clone(), tag);
         }
     }
-    // A project may have been corrected while its network requests were in flight.
+    // A project may have been corrected while its network requests were in flight. The game's own
+    // repo is left as it is when its project moved: it says where the files on disk came from, and
+    // the next install writes the catalog's.
     {
         let l = st.lib.lock().unwrap();
         out.retain(|id, _| l.installed.get(id).is_some_and(|g| !g.local && associations.get(id) == Some(&(g.repo.clone(), g.path.clone()))));
@@ -7052,6 +7189,18 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
     (r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && builds(r)).then(|| r.tag_name.clone())
 }
 
+/// The project whose releases a game's Updates tab lists and its update badge and news read, which
+/// is also where installing takes them from: the one the catalog names, or the game's own when the
+/// catalog doesn't list it. The two differ once a project moves (Hookshot, from GitHub to its own
+/// Forgejo server): the installed game still names the old one, which never gets the new releases.
+fn listed_repo(g: &Installed, entry: Option<&Value>) -> String {
+    let listed = entry.map(|e| str_of(e, "repo")).unwrap_or_default();
+    if listed.is_empty() {
+        return g.repo.clone();
+    }
+    listed.to_string()
+}
+
 /// What the Updates tab shows for each release, by the same rule as the badge: the update on offer,
 /// the release the store has checked, and which releases have a build for this system.
 #[tauri::command]
@@ -7059,9 +7208,10 @@ async fn update_info(st: State<'_, App>, id: String) -> Res<Value> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
     let entry = catalog::app(&cat, &id);
-    let f = match catalog::releases_on_disk(&st.dir, &g.repo) {
+    let repo = listed_repo(&g, entry);
+    let f = match catalog::releases_on_disk(&st.dir, &repo) {
         Some(f) => f,
-        None => catalog::releases(&st.http, &st.dir, &g.repo, false).await?,
+        None => catalog::releases(&st.http, &st.dir, &repo, false).await?,
     };
     let rels: Vec<Release> = serde_json::from_value(f.data).unwrap_or_default();
     let os_g = if g.proton { "windows" } else { assets::os_now() };
@@ -7127,8 +7277,9 @@ async fn launcher_notes(st: State<'_, App>) -> Res<Value> {
 /// A newer RecompLauncher, if there is one. Read from the copy on disk when it's younger than
 /// `max_age` seconds.
 pub(crate) async fn newer_launcher(st: &App, max_age: u64, player: bool) -> Option<Value> {
-    // A Flatpak is updated by Flatpak (from wherever it was installed), never by the launcher itself.
-    if flatpak::sandboxed() {
+    // A Flatpak is updated by Flatpak (from wherever it was installed), and a Nix install by Nix,
+    // never by the launcher itself.
+    if flatpak::sandboxed() || nix_managed() {
         return None;
     }
     let v = version_json(st, max_age, player).await?;
@@ -7380,12 +7531,19 @@ struct News {
 
 #[tauri::command]
 async fn news(st: State<'_, App>) -> Res<Vec<News>> {
+    news_for(&st).await
+}
+
+async fn news_for(st: &App) -> Res<Vec<News>> {
     let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
     let cutoff = chrono::Utc::now() - chrono::Duration::days(60);
     let mut out = vec![];
-    // From the release info on disk only (the update check keeps it current).
+    // From the release info on disk only (the update check keeps it current, for the project the
+    // catalog names).
     for g in games.into_iter().filter(|g| !g.repo.is_empty() && !g.local) {
-        let Some(f) = catalog::releases_on_disk(&st.dir, &g.repo) else { continue };
+        let repo = listed_repo(&g, catalog::app(&cat, &g.id));
+        let Some(f) = catalog::releases_on_disk(&st.dir, &repo) else { continue };
         let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
         for r in rels.iter().filter(|r| !r.draft).take(3) {
             let date = r.published_at.clone().unwrap_or_default();
@@ -7415,14 +7573,21 @@ async fn news(st: State<'_, App>) -> Res<Vec<News>> {
 #[tauri::command]
 async fn game_info(st: State<'_, App>, id: String) -> Res<Option<info::Info>> {
     let cat = catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or(Value::Null);
-    let Some(a) = catalog::app(&cat, &id) else { return Ok(None) };
+    // One game of several: about that game, not the one its recomp's entry names.
+    let pack = games::split(&id).filter(|_| catalog::app(&cat, &id).is_none());
+    let Some(a) = catalog::app(&cat, pack.map_or(id.as_str(), |(r, _)| r)) else { return Ok(None) };
+    let game = match pack {
+        Some((_, sub)) => game_of(&st, &id).map(|p| p.game.name).or_else(|| games::of(None, a).into_iter().find(|g| g.id == sub).map(|g| g.name)),
+        None => None,
+    };
+    let game = game.unwrap_or_else(|| str_of(a, "game").to_string());
     let console = cat
         .get("origins")
         .and_then(Value::as_array)
         .and_then(|o| o.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(str_of(a, "origin"))))
         .map(|o| str_of(o, "name").to_string())
         .unwrap_or_default();
-    Ok(info::game_info(&st.http, &st.dir, str_of(a, "game"), &console).await)
+    Ok(info::game_info(&st.http, &st.dir, &game, &console).await)
 }
 
 // ---------- mods ----------
@@ -7994,6 +8159,9 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     if flatpak::sandboxed() {
         return Err(Error::Msg("RecompLauncher updates through Flatpak. Update it from your software center, or run: flatpak update".into()));
     }
+    if nix_managed() {
+        return Err(Error::Msg("RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.".into()));
+    }
     let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
     let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.
@@ -8115,10 +8283,17 @@ fn reopen_after_update(app: &AppHandle) -> bool {
 
 #[tauri::command(async)]
 fn get_state(st: State<'_, App>) -> Value {
-    let l = st.lib.lock().unwrap();
+    // Looked up before the library is locked: none of it needs it, and a slow drive or the
+    // registry shouldn't hold up everything else that waits on the library.
+    let steam = shortcuts::steam_dir().is_some();
+    let deck = shortcuts::is_steam_deck();
+    let pictures = ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string());
     let moving = st.moving.lock().unwrap().clone();
-    // Games whose folder isn't there right now stay in the Library, marked missing.
-    let missing: Vec<String> = l.missing().into_iter().filter(|id| !moving.contains(id)).collect();
+    // Games whose folder isn't there right now stay in the Library, marked missing. Their folders
+    // are looked at without the lock too: one on a drive that's gone can take seconds to answer.
+    let folders: Vec<(String, PathBuf)> = st.lib.lock().unwrap().installed.values().filter(|g| g.installer_setup.is_empty() || g.exe.is_some()).map(|g| (g.id.clone(), g.path.clone())).collect();
+    let missing: Vec<String> = folders.into_iter().filter(|(id, p)| !p.is_dir() && !moving.contains(id)).map(|(id, _)| id).collect();
+    let l = st.lib.lock().unwrap();
     let mut running: Vec<String> = st.running.lock().unwrap().keys().cloned().collect();
     // And the game being played in each, when it's one of several (its full id).
     let playing: Vec<String> = PLAYING_GAME.lock().unwrap().as_ref().map(|m| m.iter().filter(|(k, v)| running.contains(k) && k != v).map(|(_, v)| v.clone()).collect()).unwrap_or_default();
@@ -8133,15 +8308,16 @@ fn get_state(st: State<'_, App>) -> Value {
         "site": catalog::base(),
         "thumbs": net::THUMBS,
         "library": l.installed,
+        "removedPlayHistory": l.removed_play_history,
         "arts": l.arts,
         "settings": l.settings,
         "roms": l.roms,
         "running": running,
         "jobs": jobs,
         "setupJobs": SETUP_STATUS.lock().unwrap().clone().unwrap_or_default(),
-        "steam": shortcuts::steam_dir().is_some(),
-        "pictures": ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string()),
-        "deck": shortcuts::is_steam_deck(),
+        "steam": steam,
+        "pictures": pictures,
+        "deck": deck,
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
         "desktopArg": std::env::args().any(|a| a == "--desktop"),
         "missing": missing,
@@ -8727,7 +8903,7 @@ fn take_options_asked() -> Option<String> {
 
 static WINDOW_GEN: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
 struct WindowPlace {
     x: i32,
     y: i32,
@@ -8753,6 +8929,13 @@ fn keep_window_place(w: &tauri::Window, now: bool) {
         // Maximized: the size it goes back to stays the one kept before.
         let mut place: WindowPlace = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         place.maximized = maximized;
+        // But it moves to the screen the window is maximized on: moved there while maximized
+        // (Win+Shift+arrow, or dragged), it opens on that screen next time, like any window.
+        if maximized {
+            if let Ok(Some(screen)) = w.current_monitor() {
+                place = normal_place_on(place, &monitor_rect(&screen), screen.work_area());
+            }
+        }
         if !maximized {
             if let (Ok(p), Ok(sz)) = (w.outer_position(), w.outer_size()) {
                 place = WindowPlace { x: p.x, y: p.y, w: sz.width, h: sz.height, maximized: false };
@@ -8772,25 +8955,89 @@ fn keep_window_place(w: &tauri::Window, now: bool) {
     }
 }
 
-/// Put the window back where it was last time, if that's still on a screen.
+/// Put the window back where it was last time, if that's still on a screen. Otherwise (the first
+/// start, or that screen is gone) it stays where it opened, made smaller if it doesn't fit there.
 fn restore_window_place(w: &tauri::WebviewWindow, dir: &Path) {
-    let Some(place) = std::fs::read(dir.join("window.json")).ok().and_then(|b| serde_json::from_slice::<WindowPlace>(&b).ok()) else { return };
-    if place.w < 400 || place.h < 300 {
-        return;
-    }
-    let on_screen = w.available_monitors().unwrap_or_default().iter().any(|m| {
-        let (mp, ms) = (m.position(), m.size());
-        // Its top middle (where the title bar is) on a screen, so it can always be grabbed.
-        let (cx, cy) = (place.x + place.w as i32 / 2, place.y + 20);
-        cx >= mp.x && cx < mp.x + ms.width as i32 && cy >= mp.y && cy < mp.y + ms.height as i32
-    });
-    if on_screen {
-        let _ = w.set_size(tauri::PhysicalSize::new(place.w, place.h));
+    let kept = std::fs::read(dir.join("window.json")).ok().and_then(|b| serde_json::from_slice::<WindowPlace>(&b).ok());
+    let kept = kept.filter(|p| p.w >= 400 && p.h >= 300);
+    let place = kept.as_ref().and_then(|p| kept_place_on_a_screen(w, p)).or_else(|| first_place(w));
+    if let Some(place) = place {
+        // Place first, size second. The window starts on the main screen, and moving it onto a
+        // screen with another scale (100% and 150%, say) makes Windows rescale it: a size set
+        // before the move grew with it, past the screen, and was kept that way for next time.
         let _ = w.set_position(tauri::PhysicalPosition::new(place.x, place.y));
+        let _ = w.set_size(tauri::PhysicalSize::new(place.w, place.h));
     }
-    if place.maximized {
+    if kept.is_some_and(|p| p.maximized) {
         let _ = w.maximize();
     }
+}
+
+/// The kept place fitted to the screen its title bar is on, so it can always be grabbed. None
+/// when no screen has it any more.
+fn kept_place_on_a_screen(w: &tauri::WebviewWindow, place: &WindowPlace) -> Option<WindowPlace> {
+    let monitors = w.available_monitors().ok()?;
+    let screen = monitors.iter().find(|m| title_bar_within(place, &monitor_rect(m)))?;
+    Some(fit_on_screen(place, screen.work_area()))
+}
+
+/// The window as it first opens (the size in tauri.conf.json, centred on the main screen), made
+/// to fit when that screen is smaller: 1360x860 at 150% is more than a 1080p laptop shows. None
+/// when it fits, so it stays exactly as it opened.
+fn first_place(w: &tauri::WebviewWindow) -> Option<WindowPlace> {
+    let screen = w.current_monitor().ok().flatten()?;
+    let size = w.outer_size().ok()?;
+    let area = screen.work_area();
+    let fits = size.width <= area.size.width && size.height <= area.size.height;
+    if fits {
+        return None;
+    }
+    Some(centred_on_screen(size.width, size.height, area))
+}
+
+fn monitor_rect(m: &tauri::Monitor) -> tauri::PhysicalRect<i32, u32> {
+    tauri::PhysicalRect { position: *m.position(), size: *m.size() }
+}
+
+/// Whether the window's top middle, where the title bar is, is inside the rect.
+fn title_bar_within(place: &WindowPlace, rect: &tauri::PhysicalRect<i32, u32>) -> bool {
+    let (x, y) = (place.x + place.w as i32 / 2, place.y + 20);
+    let (left, top) = (rect.position.x, rect.position.y);
+    let right = left + rect.size.width as i32;
+    let bottom = top + rect.size.height as i32;
+    x >= left && x < right && y >= top && y < bottom
+}
+
+/// A window centred on a screen's free area, at most nine tenths of it each way, so it still
+/// looks like a window and not like a maximized one.
+fn centred_on_screen(w: u32, h: u32, area: &tauri::PhysicalRect<i32, u32>) -> WindowPlace {
+    let w = w.min(area.size.width / 10 * 9);
+    let h = h.min(area.size.height / 10 * 9);
+    let x = area.position.x + ((area.size.width - w) / 2) as i32;
+    let y = area.position.y + ((area.size.height - h) / 2) as i32;
+    WindowPlace { x, y, w, h, maximized: false }
+}
+
+/// The size a maximized window goes back to, kept on the screen it's maximized on: where it was
+/// if that's this screen, otherwise centred on it.
+fn normal_place_on(place: WindowPlace, screen: &tauri::PhysicalRect<i32, u32>, area: &tauri::PhysicalRect<i32, u32>) -> WindowPlace {
+    if title_bar_within(&place, screen) {
+        return place;
+    }
+    WindowPlace { maximized: place.maximized, ..centred_on_screen(place.w, place.h, area) }
+}
+
+/// The kept place made to fit a screen's free area (the screen without its taskbar): never
+/// bigger than it, and moved in only as far as needed for all of it to show. A size kept by an
+/// older launcher can be wider than both screens together, and would come back that way forever.
+fn fit_on_screen(place: &WindowPlace, area: &tauri::PhysicalRect<i32, u32>) -> WindowPlace {
+    let w = place.w.min(area.size.width);
+    let h = place.h.min(area.size.height);
+    let right_most = area.position.x + (area.size.width - w) as i32;
+    let bottom_most = area.position.y + (area.size.height - h) as i32;
+    let x = place.x.clamp(area.position.x, right_most);
+    let y = place.y.clamp(area.position.y, bottom_most);
+    WindowPlace { x, y, w, h, maximized: place.maximized }
 }
 
 fn show_main(app: &AppHandle) {
@@ -8909,6 +9156,12 @@ fn data_dir_early() -> Option<PathBuf> {
 /// The folder RecompLauncher's program is in.
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+}
+
+/// Installed from the Nix store (the repo's flake, or nixpkgs): the store is read-only and Nix
+/// updates it, so the launcher never offers or runs an update itself, like a Flatpak.
+pub(crate) fn nix_managed() -> bool {
+    cfg!(target_os = "linux") && exe_dir().is_some_and(|d| d.starts_with("/nix/store"))
 }
 
 /// Portable mode: a file named `portable` (or `portable.txt`) beside RecompLauncher.exe keeps
@@ -9333,6 +9586,9 @@ pub fn run() {
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
+            if art::trim_saved_logos(&dir, &mut lib) {
+                let _ = lib.save(&dir);
+            }
             // Save copies in the player's own folder, when they picked one; any made here while it
             // was away go to it.
             saves::set_root(lib.settings.save_dir.clone());
@@ -9602,18 +9858,18 @@ pub fn run() {
             remove_github,
             take_setup_asked,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, own_program_games, open_folder,
             save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, save_provider::save_provider_state, save_provider::save_provider_set, drive::drive_connect_start, drive::drive_connect_poll, drive::drive_connect_cancel, drive::drive_disconnect, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_share, cloud::saves_forget_found, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -9647,6 +9903,23 @@ mod tests {
         // A mistyped one doesn't hide a good disc id; none at all is none.
         assert_eq!(e(serde_json::json!({"title_id": "4D53-07E6", "boot": {"files": {"id": "454108D2"}}})).as_deref(), Some("454108D2"));
         assert_eq!(e(serde_json::json!({"id": "a"})), None);
+    }
+
+    #[test]
+    fn the_updates_tab_reads_the_releases_of_the_project_the_catalog_lists() {
+        use super::{listed_repo, Installed};
+        // Hookshot moved from GitHub to its own Forgejo server after it was installed. The tab lists
+        // the Forgejo releases (v2.3.2 and on), so their builds are looked for there too.
+        let g = Installed { id: "hookshot".into(), repo: "NotRexed/Hookshot".into(), tag: "v2.1.0".into(), ..Default::default() };
+        let entry = serde_json::json!({ "id": "hookshot", "repo": "forgejo:git.notrexed.dev/Hookshot/Hookshot" });
+        assert_eq!(listed_repo(&g, Some(&entry)), "forgejo:git.notrexed.dev/Hookshot/Hookshot");
+    }
+
+    #[test]
+    fn the_updates_tab_reads_a_games_own_project_when_the_catalog_has_none() {
+        use super::{listed_repo, Installed};
+        let g = Installed { id: "mine".into(), repo: "someone/own-recomp".into(), ..Default::default() };
+        assert_eq!(listed_repo(&g, None), "someone/own-recomp");
     }
 
     #[test]
@@ -9748,6 +10021,72 @@ mod tests {
         assert_eq!(update_strike(&d, "0.90.0-beta.33", u, "bbb", 1), 1);
         std::fs::remove_dir_all(&d).unwrap();
     }
+
+    /// A 1920x1080 screen whose bottom 40 pixels are the taskbar.
+    fn screen_area() -> tauri::PhysicalRect<i32, u32> {
+        tauri::PhysicalRect { position: tauri::PhysicalPosition::new(0, 0), size: tauri::PhysicalSize::new(1920, 1040) }
+    }
+
+    #[test]
+    fn a_kept_window_that_fits_comes_back_unchanged() {
+        let place = super::WindowPlace { x: 100, y: 50, w: 1360, h: 860, maximized: false };
+        let fit = super::fit_on_screen(&place, &screen_area());
+        assert_eq!(fit, place);
+    }
+
+    #[test]
+    fn a_kept_window_wider_than_both_screens_shrinks_to_one() {
+        let place = super::WindowPlace { x: -200, y: 120, w: 4600, h: 1500, maximized: false };
+        let fit = super::fit_on_screen(&place, &screen_area());
+        assert_eq!(fit, super::WindowPlace { x: 0, y: 0, w: 1920, h: 1040, maximized: false });
+    }
+
+    #[test]
+    fn a_kept_window_hanging_off_the_edge_moves_back_on() {
+        let place = super::WindowPlace { x: 1000, y: 600, w: 1360, h: 860, maximized: true };
+        let fit = super::fit_on_screen(&place, &screen_area());
+        assert_eq!(fit, super::WindowPlace { x: 560, y: 180, w: 1360, h: 860, maximized: true });
+    }
+
+    #[test]
+    fn a_kept_window_on_a_second_screen_stays_there() {
+        let right_screen = tauri::PhysicalRect { position: tauri::PhysicalPosition::new(1920, 0), size: tauri::PhysicalSize::new(2560, 1400) };
+        let place = super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: false };
+        let fit = super::fit_on_screen(&place, &right_screen);
+        assert_eq!(fit, place);
+    }
+
+    #[test]
+    fn a_first_window_too_big_for_the_screen_shrinks_and_centres() {
+        // 1360x860 at 150% on a 1080p laptop.
+        let place = super::centred_on_screen(2040, 1290, &screen_area());
+        assert_eq!(place, super::WindowPlace { x: 96, y: 52, w: 1728, h: 936, maximized: false });
+    }
+
+    /// A 2560x1440 screen right of the 1920x1080 one, its bottom 40 pixels the taskbar.
+    fn right_screen() -> (tauri::PhysicalRect<i32, u32>, tauri::PhysicalRect<i32, u32>) {
+        let position = tauri::PhysicalPosition::new(1920, 0);
+        let whole = tauri::PhysicalRect { position, size: tauri::PhysicalSize::new(2560, 1440) };
+        let free = tauri::PhysicalRect { position, size: tauri::PhysicalSize::new(2560, 1400) };
+        (whole, free)
+    }
+
+    #[test]
+    fn a_window_maximized_on_its_own_screen_keeps_its_normal_place() {
+        let (whole, free) = right_screen();
+        let place = super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: true };
+        let kept = super::normal_place_on(place, &whole, &free);
+        assert_eq!(kept, super::WindowPlace { x: 2200, y: 100, w: 1360, h: 860, maximized: true });
+    }
+
+    #[test]
+    fn a_window_maximized_on_another_screen_moves_its_normal_place_there() {
+        let (whole, free) = right_screen();
+        let place = super::WindowPlace { x: 200, y: 100, w: 1360, h: 860, maximized: true };
+        let kept = super::normal_place_on(place, &whole, &free);
+        assert_eq!(kept, super::WindowPlace { x: 2520, y: 270, w: 1360, h: 860, maximized: true });
+    }
+
     #[test]
     fn only_plain_game_links_open_anything() {
         assert_eq!(super::link_game("recomplauncher://game/recompia").as_deref(), Some("recompia"));
@@ -10539,5 +10878,78 @@ mod beta54_tests {
         assert!(!holds_same_game(&g, &to));
         assert!(!holds_same_game(&g, &from), "its own folder isn't another place");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod own_build_pick_tests {
+    use super::*;
+
+    /// A game folder with a build in `inside` (a program in its bin folder), and the setup's own
+    /// folder at `home`, both under a fresh temporary folder.
+    fn game_with_build(name: &str, inside: &str) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let install = root.join("library").join("hopper");
+        let build = install.join(inside);
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join("bin").join("hopper.exe"), b"").unwrap();
+        (root, install)
+    }
+
+    #[test]
+    fn picking_the_setups_own_folder_inside_the_game_folder_is_the_build_already_there() {
+        let (root, install) = game_with_build("rl-own-pick-home", "Hopper");
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &home, &[]).unwrap(), None);
+        assert_eq!(check_own_build(&home, &install, &home.join("bin"), &[]).unwrap(), None, "its bin folder counts as the folder above");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn another_folder_inside_the_game_folder_is_still_refused() {
+        let (root, install) = game_with_build("rl-own-pick-other", "Older");
+        let home = install.join("Hopper");
+        let err = check_own_build(&home, &install, &install.join("Older"), &[]).unwrap_err().to_string();
+        assert!(err.contains("launcher's own folder"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_build_outside_the_game_folder_stands_in_for_the_setups_own() {
+        let (root, install) = game_with_build("rl-own-pick-mine", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(mine.join("bin")).unwrap();
+        std::fs::write(mine.join("bin").join("hopper.exe"), b"").unwrap();
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &mine, &[]).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_build_with_only_data_is_taken_when_the_profile_lists_no_done_files() {
+        // Some projects keep their program in the release and build only data: no program test.
+        let (root, install) = game_with_build("rl-own-pick-data", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::write(mine.join("rom.bin"), b"x").unwrap();
+        let home = install.join("Hopper");
+        assert_eq!(check_own_build(&home, &install, &mine, &[]).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_folder_without_a_done_file_is_refused_and_named() {
+        let (root, install) = game_with_build("rl-own-pick-done", "Hopper");
+        let mine = root.join("Games").join("Hopper");
+        std::fs::create_dir_all(mine.join("bin")).unwrap();
+        std::fs::write(mine.join("bin").join("hopper.exe"), b"").unwrap();
+        let home = install.join("Hopper");
+        let done = [PathBuf::from("bin").join("hopper.exe"), PathBuf::from("data.pak")];
+        let err = check_own_build(&home, &install, &mine, &done).unwrap_err().to_string();
+        assert!(err.contains("data.pak") && err.contains("which a finished build has"), "{err}");
+        std::fs::write(mine.join("data.pak"), b"x").unwrap();
+        assert_eq!(check_own_build(&home, &install, &mine, &done).unwrap(), Some(mine.clone()));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

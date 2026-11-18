@@ -336,8 +336,14 @@
   const pins = () => ((S.settings.ui || {}).tv_pins || []).filter((id) => byId(id) || S.library[id]);
   const homePinned = () => (S.settings.ui || {}).tv_home === 'pinned';
   const installed = () => libRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
+  // The dock and Continue playing: a recomp of several games brings only its played ones (jumpRecs).
+  const recent = () => jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => ({ g, a: libApp(g) }));
   const pool = () => visible().filter((a) => forOS(a) && !a.soon);
-  const timeLine = (g) => (!g ? '' : !g.last_played ? t('Not played yet') : `${ago(g.last_played).replace(/^./, (c) => c.toUpperCase())} · ${playedFor(g)}`);
+  const timeLine = (g) => {
+    if (!g) return '';
+    const play = gamePlaytime(byId(g.id)) || g;
+    return !play.last_played ? t('Not played yet') : `${ago(play.last_played).replace(/^./, (c) => c.toUpperCase())} · ${playedFor(play)}`;
+  };
 
   const htmlIn = (text, v) => esc(text).replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
   // A wide card (Continue playing, What's new).
@@ -496,7 +502,7 @@
   const HOME_ROW = 14;
   function dockList() {
     if (homePinned()) { const p = pins().map(libAppOf); if (p.length) return { list: p, kind: 'pinned' }; }
-    const mine = installed().map((x) => x.a);
+    const mine = recent().map((x) => x.a);
     if (mine.length) return { list: mine.slice(0, DOCK_MAX), kind: 'mine' };
     // Nothing installed yet: the games picked for the top of Home, in their order.
     const picked = window.bannerApps && bannerApps();
@@ -516,18 +522,20 @@
     TV.hero = sel ? sel.id : null;
     const rows = [];
     // Below the dock, a press of down away: the rest of Home.
-    if (d.kind === 'pinned') { const mine = installed().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
+    if (d.kind === 'pinned') { const mine = recent().map((x) => x.a); if (mine.length) rows.push(row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join(''))); }
     const owned = foundInFolders();
     if (owned.length) rows.push(row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')));
-    const disc = oneEach(pool().filter((a) => S.easy.has(a.id) && !haveAny(a)));
-    const ready = oneEach(pool().filter(turnkey).sort(byNew), true);
+    // As on the desktop: the rows list a multi-game recomp's games; the dock and the chart keep the recomp.
+    const games = withGames(pool());
+    const disc = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
+    const ready = oneEach(games.filter(turnkey).sort(byNew), true);
     if (ready.length >= 4) rows.push(row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')));
     if (disc.length >= 2) rows.push(row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')));
     const news = (S.news || []).filter((x) => byId(x.id) || S.library[x.id]).slice(0, 8);
     if (news.length) rows.push(row('news', t('What\'s new for your games'), news.map((x) => card(byId(x.id) || { id: x.id, name: x.name }, `w:${x.id}:${x.tag}`, `${x.title.startsWith(x.name) ? x.tag : x.title} · ${date(x.date)}`)).join('')));
-    const upd = recentlyUpdated(pool()).slice(0, 14);
+    const upd = recentlyUpdated(games).slice(0, 14);
     if (upd.length) rows.push(row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')));
-    rows.push(row('new', t('Just added'), turnkeyFirst(oneEach(pool().sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
+    rows.push(row('new', t('Just added'), turnkeyFirst(oneEach([...games].sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')));
     // This week's chart when it's in (each version on its own, with the chart's ranks), else the most played.
     const trend = trendList(pool());
     if (trend.length) rows.push(row('trend', t('Trending This Week'), trend.slice(0, 14).map(({ a, e }) => poster(a, 'tr:' + a.id, trendLine(e, a), Number(e.rank))).join('')));
@@ -598,12 +606,13 @@
   }
   function heroText(a, g, home) {
     const kick = S.running.has(a.id) ? t('Playing now') : S.updates[a.id] ? t('Update ready') : g ? (g.last_played ? tf('Played {when}', { when: ago(g.last_played) }) : t('In your library')) : (window.bannerInfo && bannerInfo(a.id).tag) || (a.featured ? t('Featured') : t('Most played'));
-    const meta = [a.game ? '' : originName(a.origin), g ? (g.played_secs ? tf('{time} played', { time: fmtTime(g.played_secs) }) : '') : a.downloads ? tf('{n} downloads', { n: fmtN(a.downloads) }) : ''].filter(Boolean).join(' · ');
+    const play = gamePlaytime(a);
+    const meta = [a.game ? '' : originName(a.origin), g ? (play?.played_secs ? tf('{time} played', { time: fmtTime(play.played_secs) }) : '') : a.downloads ? tf('{n} downloads', { n: fmtN(a.downloads) }) : ''].filter(Boolean).join(' · ');
     const acts = home
       ? `<span class="tv-btn main tv-fake" data-hact="main" data-id="${esc(a.id)}">${glyph('a', 'tv-keyg')}<span>${esc(mainWords(a))}</span></span><span class="tv-btn tv-fake" data-hact="page" data-id="${esc(a.id)}">${glyph('y', 'tv-keyg')}<span>${esc(t('Game page'))}</span></span>`
       : `${mainButton(a, 'hero-main')}${btn('hero-page', 'page', esc(t('Game page')), { id: a.id, g: 'y' })}`;
     // On Home the time played joins the line over the title, to leave the logo room.
-    return `<span class="tv-kick">${esc(home && meta ? `${kick} · ${g && g.played_secs ? fmtTime(g.played_secs) : meta}` : kick)}</span>${titleOf(a)}${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></p>` : ''}${meta && !home ? `<p class="tv-meta">${esc(meta)}</p>` : ''}
+    return `<span class="tv-kick">${esc(home && meta ? `${kick} · ${g && play?.played_secs ? fmtTime(play.played_secs) : meta}` : kick)}</span>${titleOf(a)}${a.game ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span></p>` : ''}${meta && !home ? `<p class="tv-meta">${esc(meta)}</p>` : ''}
       <div class="tv-acts">${acts}</div>`;
   }
 
@@ -956,7 +965,7 @@
     const runsName = t((runsList().find(([k]) => k === runsNow()) || runsList()[0])[1]);
     const SORTS = [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
     const pickShow = () => sheet(t('Show'), showsNow(TV.dshow || '').map(([k, n]) => ({ label: t(n), icon: (TV.dshow || '') === k ? 'check' : '', run: () => { TV.dshow = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
-    const origins = ((S.cat && S.cat.origins) || []).map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
+    const origins = originsAZ().map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
     const pickSort = () => sheet(t('Sort'), SORTS.map(([k, n]) => ({ label: n, icon: k === srt ? 'check' : '', run: () => { TV.dsort = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const pickConsole = () => sheet(t('Console'), [{ label: t('Any'), icon: org ? '' : 'check', run: () => { TV.dorigin = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } }].concat(origins.map(([o, n]) => ({ label: o.name, sub: tn(n, '1 recomp', '{n} recomps'), icon: o.id === org ? 'check' : '', run: () => { TV.dorigin = o.id; TV.focusKey = 'g:@filter'; discoverRedraw(); } }))));
     const tagN = {};
@@ -1122,7 +1131,7 @@
   function pageDiscover() {
     wantCounts();
     const g = TV.genre || '';
-    const apps = pool();
+    const apps = withGames(pool());
     const genres = Object.keys(GENRES).filter((x) => apps.some((a) => a.genre === x));
     // "Easy Setup" is a chip of its own, before the genres.
     // Search, a console and the order narrow it further (Sort & Filter).
@@ -1133,7 +1142,7 @@
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
-      .filter((a) => !q || window.sMatch(`${a.name} ${a.game || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`, q))
+      .filter((a) => !q || window.sMatch(`${a.name} ${a.game || ''} ${a.parentName || ''} ${a.author || ''} ${tagsOf(a).join(' ')}`, q))
       .filter((a) => (ended ? isEnded(a) : !TV.dended || !isEnded(a)));
     const byOrder = (l) => l.sort((x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0) || order(x, y));
     const each = byOrder(chain(false));
@@ -1452,11 +1461,12 @@
     const checks = readyRows(a);
     // How the store checked the installed version; a game the player brought themselves has no release.
     const installedScan = g && !g.local ? scanTag(id, g.tag) : '';
+    const play = gamePlaytime(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
       [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : (S.held || {})[parentId(id)] ? t('updates paused') : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
       ...(installedScan ? [[esc(t('Safety')), installedScan]] : []),
-      g ? [esc(t('Played')), esc(playedFor(g))] : [esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')],
+      ...(g || play?.last_played ? playtimeRows(a, play).map(([label, value]) => [esc(label), esc(value)]) : [[esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')]]),
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
     const bad = checks.filter((r) => r.v === false).length;
@@ -1493,9 +1503,9 @@
           <div class="tv-g-chips">${chips.map((c) => `<span>${c}</span>`).join('')}${deckChip}${stChip}</div>
           ${titleOf(a)}
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
-          ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
+          ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
-          ${g && g.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(g), when: ago(g.last_played) }))}</p>` : ''}
+          ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
@@ -1847,7 +1857,7 @@
     const items = g.list.map((v) => ({
       label: v.name,
       // Why the site recommends it, on the Recommended line.
-      sub: [v.id === g.pick ? (g.why ? `${t('Recommended')}: ${g.why}` : t('Recommended')) : '', S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
+      sub: [v.id === g.pick ? (g.why ? `${t('Recommended')}: ${g.why}` : t('Recommended')) : '', packLine(v), S.library[v.id] ? t('Installed') : '', v.author, v.adds, v.downloads ? tf('{n} downloads', { n: fmtN(v.downloads) }) : ''].filter(Boolean).join(' · '),
       icon: v.id === id ? 'check' : 'layers',
       run: () => {
         if (v.id === TV.arg) return;
@@ -1868,11 +1878,12 @@
     if (el) focus(el, true);
   }
   // A question as a sheet, for app.js (cloud saves before Play): resolves to the pick, or -1.
-  window.tvAsk = (title, items) => new Promise((res) => {
+  // `head`: text over the choices (escaped already), in the wide sheet that has room for it.
+  window.tvAsk = (title, items, head) => new Promise((res) => {
     if (!TV.on) return res(null);
     let done = false;
     const fin = (v) => { if (!done) { done = true; res(v); } };
-    sheet(title, items.map((x, i) => ({ ...x, run: () => fin(i) })));
+    sheet(title, items.map((x, i) => ({ ...x, run: () => fin(i) })), head ? 'sreq' : '', head);
     TV.sheet.onClose = () => setTimeout(() => fin(-1), 0);
   });
   // Signing in from the couch: a QR code for a phone, and the code to type.
@@ -2098,19 +2109,22 @@
       const toggle = (o) => () => {
         o.on = !o.on;
         o.new = false;
-        invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
+        TS.optsSaving = invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
         tsDraw();
       };
+      // The items that start setup wait for the required ticks: dimmed, and A says why.
+      const blocked = prepBlocked(su);
+      const gated = (label, sub, run, cls = '') => (blocked ? it(label, sub, () => toast(prepReq()), `${cls} off`) : it(label, sub, run, cls));
       const optItem = (o) => {
         // Kept to one short line, like the other items: the note is on the desktop setup screen.
         const lic = o.license && o.license.name ? tf('Accepts the {license}', { license: o.license.name }) : '';
-        const sub = [o.on ? t('On') : t('Off'), lic].filter(Boolean).join(' · ');
+        const sub = [o.on ? t('On') : t('Off'), o.required ? t('Required') : '', lic].filter(Boolean).join(' · ');
         const read = o.license && o.license.url ? it(tf('Read the {license}', { license: o.license.name || o.license.url }), '', () => invoke('open_url', { url: o.license.url }).catch(fail)) : '';
         return it(o.label + (o.new && su.copy ? ` · ${t('New option')}` : ''), sub, toggle(o), o.on ? 'on' : '') + read;
       };
       const prepOpts = (su.prepare_options || []).map(optItem).join('');
-      const again = su.copy && !own ? it(t('Use the copy it was set up with'), su.copy, () => tsBegin(su.copy), 'main') : '';
-      body = `${med('ghost')}<div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
+      const again = su.copy && !own ? gated(t('Use the copy it was set up with'), su.copy, () => tsBegin(su.copy), 'main') : '';
+      body = `${med('ghost')}<div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p>${blocked ? `<p class="req" role="status">${esc(prepReq())}</p>` : ''}</div>
         <div class="opts">${prepOpts}${again}${(su.previous || []).length ? it(t('Use My Previous Setup'), su.previous.join(' · '), async () => {
           let r; try { r = await relinkSetup(id); } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
@@ -2122,7 +2136,7 @@
         }, 'main') : ''}${su.own_build && !su.prebuilt ? it(t('Use a Build You Already Have'), t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), async () => {
           try { if (!(await useOwnBuild(id))) return; } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
           TS.stage = 'ready'; TS.result = { text: t('Your own build') }; tsDraw();
-        }, 'main') : ''}${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
+        }, 'main') : ''}${own ? gated(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return gated(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? gated(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
     } else if (TS.stage === 'run') {
       const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
@@ -2195,8 +2209,26 @@
           if (result === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
           if (result === 'run') {
             Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' }); tsDraw();
-            try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e?.message || e); tsDraw(); }
+            try { await TS.optsSaving; await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e?.message || e); tsDraw(); }
           } else { tsDraw(); const restore = $(`[data-key="ni:${at}"]`, el); if (restore) focus(restore, true); }
+        } });
+      });
+      // The setup step's ticks, reachable with the controller: A turns one on or off, kept at once.
+      $$('.su-opt', el).forEach((row) => {
+        const box = $('input[data-popt]', row);
+        const o = (su.prepare_options || []).find((x) => x.id === box?.dataset.popt);
+        if (!o) return;
+        const at = items.length;
+        row.dataset.f = ''; row.dataset.key = 'po:' + o.id; row.dataset.sheet = at;
+        // The item turns it on or off; the label's own click would tick the box a second time.
+        row.addEventListener('click', (e) => e.preventDefault());
+        items.push({ run: () => {
+          o.on = !o.on;
+          o.new = false;
+          TS.optsSaving = invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
+          tsDraw();
+          const restore = $(`[data-key="po:${o.id}"]`, el);
+          if (restore) focus(restore, true);
         } });
       });
     }
@@ -2217,6 +2249,8 @@
     if (f) focus(f, true);
   }
   async function tsBegin(path, anyway) {
+    if (prepBlocked(S.setup[TS.id])) { toast(prepReq()); TS.stage = 'pick'; return tsDraw(); }
+    await TS.optsSaving;
     if (!anyway) {
       let w = null;
       try { w = await invoke('copy_check', { id: TS.id, path }); } catch (e) { /* can't tell: go ahead */ }

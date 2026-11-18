@@ -622,6 +622,76 @@ pub struct State {
     /// A copy that still has to go up (the upload failed or the PC was offline).
     #[serde(default)]
     pub pending: Option<String>,
+    /// When this PC and the cloud last agreed, and when and where that save was made. Kept here
+    /// so the game page can say "in the cloud since 14:02" without asking the website.
+    #[serde(default)]
+    pub synced_at: u64,
+    #[serde(default)]
+    pub synced_made: u64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub synced_device: String,
+    /// The cloud copy that changed while this PC's save changed too. Kept until the player
+    /// picks one, because the toast that says so is gone after a few seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conflict: Option<String>,
+    /// Why the last sync didn't go through. Kept until one does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<Problem>,
+}
+
+/// Why a game's saves didn't reach the cloud. `kind` is one of: offline, full, paused,
+/// too-big-copy, too-big-folder, error.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct Problem {
+    pub kind: String,
+    pub text: String,
+    pub at: u64,
+}
+
+impl State {
+    /// This PC and the cloud hold the same save now: whatever was in the way is over.
+    pub fn mark_synced(&mut self, hash: &str, made: u64, device: &str) {
+        self.synced_hash = hash.to_string();
+        self.synced_at = crate::library::now();
+        self.synced_made = made;
+        self.synced_device = device.to_string();
+        self.conflict = None;
+        self.problem = None;
+    }
+
+    /// The newest copy on this PC isn't the one in the cloud: it's queued, or it goes up after
+    /// the next session. A copy put back from the cloud sets both hashes, so it isn't behind.
+    pub fn behind(&self) -> bool {
+        self.pending.is_some() || (!self.last_hash.is_empty() && self.last_hash != self.synced_hash)
+    }
+
+    /// One word for where this game's saves stand, from what this PC knows (no website asked):
+    /// signed-out, off, conflict, problem, waiting, none or up-to-date. Live work (checking,
+    /// uploading, downloading) comes from the save-sync event instead.
+    pub fn sync_state(&self, cloud_on: bool, signed_in: bool) -> &'static str {
+        if !signed_in {
+            return "signed-out";
+        }
+        if !cloud_on {
+            return "off";
+        }
+        if self.conflict.is_some() {
+            return "conflict";
+        }
+        let kind = self.problem.as_ref().map(|p| p.kind.as_str()).unwrap_or("");
+        // A folder too big to look through stops every sync, whether or not a copy waits.
+        if kind == "too-big-folder" {
+            return "problem";
+        }
+        if !self.behind() {
+            return if self.synced_hash.is_empty() && self.last_hash.is_empty() { "none" } else { "up-to-date" };
+        }
+        // No connection is only waiting: it goes up by itself once the website answers.
+        if kind.is_empty() || kind == "offline" {
+            return "waiting";
+        }
+        "problem"
+    }
 }
 
 /// This PC's notes about a game's saves stay in the launcher's own folder, even with the copies
@@ -2212,7 +2282,7 @@ mod tests {
         assert!(queued.when > chosen.when);
         let queued_path = dir_of(&app, "g").join(&queued.name);
         let queued_bytes = fs::read(&queued_path).unwrap();
-        set_state(&app, "g", &State { last_hash: queued.hash.clone(), synced_hash: "previous cloud".into(), pending: Some(queued.name.clone()) });
+        set_state(&app, "g", &State { last_hash: queued.hash.clone(), synced_hash: "previous cloud".into(), pending: Some(queued.name.clone()), ..Default::default() });
         set_state(&app, "other", &State { pending: Some("123.zip".into()), ..Default::default() });
 
         restore(&app, "g", &dir_of(&app, "g").join(&chosen.name), &spots, &g).unwrap();
@@ -2599,5 +2669,103 @@ mod tests {
             assert!(t.starts_with('{'), "{t}");
             assert_eq!(resolve(&t, &inst), h.join("Some Game"));
         }
+    }
+}
+
+#[cfg(test)]
+mod sync_state_tests {
+    use super::{Problem, State};
+
+    fn problem(kind: &str) -> Option<Problem> {
+        Some(Problem { kind: kind.into(), text: String::new(), at: 1 })
+    }
+
+    #[test]
+    fn signed_out_comes_first() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), ..Default::default() };
+        assert_eq!(s.sync_state(true, false), "signed-out");
+    }
+
+    #[test]
+    fn cloud_saves_off_is_off() {
+        let s = State { last_hash: "a".into(), ..Default::default() };
+        assert_eq!(s.sync_state(false, true), "off");
+    }
+
+    #[test]
+    fn nothing_backed_up_or_synced_is_none() {
+        assert_eq!(State::default().sync_state(true, true), "none");
+    }
+
+    #[test]
+    fn the_same_save_here_and_in_the_cloud_is_up_to_date() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "up-to-date");
+    }
+
+    #[test]
+    fn a_newer_copy_here_is_waiting() {
+        let s = State { last_hash: "b".into(), synced_hash: "a".into(), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn a_queued_copy_is_waiting() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), pending: Some("1.zip".into()), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn no_connection_is_still_only_waiting() {
+        let s = State { last_hash: "b".into(), synced_hash: "a".into(), problem: problem("offline"), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn a_copy_too_big_to_send_is_a_problem_not_waiting() {
+        // Its upload clears pending without moving synced_hash; without the stored problem the
+        // page would say it's waiting to go up for good.
+        let s = State { last_hash: "big".into(), synced_hash: "a".into(), problem: problem("too-big-copy"), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "problem");
+    }
+
+    #[test]
+    fn a_folder_too_big_to_read_is_a_problem_even_when_nothing_waits() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), problem: problem("too-big-folder"), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "problem");
+    }
+
+    #[test]
+    fn a_problem_left_from_before_an_upload_does_not_show_once_synced() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), problem: problem("full"), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "up-to-date");
+    }
+
+    #[test]
+    fn a_conflict_shows_over_everything_but_off_and_signed_out() {
+        let s = State { last_hash: "b".into(), synced_hash: "a".into(), conflict: Some("v9".into()), problem: problem("full"), ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "conflict");
+    }
+
+    #[test]
+    fn syncing_clears_a_conflict_and_a_problem() {
+        let mut s = State { conflict: Some("v9".into()), problem: problem("full"), ..Default::default() };
+        s.mark_synced("a", 100, "Steam Deck");
+        assert!(s.conflict.is_none());
+        assert!(s.problem.is_none());
+    }
+
+    #[test]
+    fn syncing_remembers_when_and_where_the_save_was_made() {
+        let mut s = State::default();
+        s.mark_synced("a", 100, "Steam Deck");
+        assert_eq!((s.synced_hash.as_str(), s.synced_made, s.synced_device.as_str()), ("a", 100, "Steam Deck"));
+        assert!(s.synced_at > 0);
+    }
+
+    #[test]
+    fn a_state_file_from_before_reads_with_the_new_fields_empty() {
+        let s: State = serde_json::from_str(r#"{"last_hash":"a","synced_hash":"a","pending":null}"#).unwrap();
+        assert_eq!((s.synced_at, s.conflict.is_none(), s.problem.is_none()), (0, true, true));
     }
 }

@@ -52,33 +52,41 @@ test('Big Picture draws the same rows and fetches DLSS the same way', () => {
 // ---- the scan pill, players, Dreamcast ----
 test('the scan pill is one plain label: Verified, Checking or Not verified, with no scanner names', () => {
   const c = vm.createContext(Object.assign(base(), { S: { scans: {}, os: 'windows' }, scanAsk: new Map(), SCAN_TIP: 'Scanned before release and checked by the RecompStore team.', invoke: async () => ({}), document: { querySelectorAll: () => [], body: { classList: { contains: () => false } } }, window: {}, CSS: { escape: (x) => x } }));
-  vm.runInContext(fn(app, 'scanVerdict') + fn(app, 'scanInfo') + fn(app, 'scanPill'), c);
+  vm.runInContext(fn(app, 'scanVerdict') + fn(app, 'scanInfo') + fn(app, 'scanLink') + fn(app, 'scanPill'), c);
   c.S.scans['g@v1'] = [{ verdict: 'green', scanner: 'clamav', for: ['windows'] }];
   c.S.scans['g@v2'] = [{ verdict: 'green', scanner: 'virustotal', for: ['windows'] }];
   for (const tag of ['v1', 'v2']) {
     const pill = c.scanPill({ id: 'g', tag, update: true });
     assert.match(pill, /class="scan-pill ok"/);
-    assert.match(pill, /Verified update/);
+    assert.match(pill, /Verified Update/);
     assert.doesNotMatch(pill, /data-act|ClamAV|VirusTotal|engines/);
   }
   assert.match(c.scanPill({ id: 'g', tag: 'v1' }), />Verified</);
   // A minor flag the team okayed is Verified; one nobody has looked at yet is Checking.
   c.S.scans['g@v3'] = [{ verdict: 'yellow', scanner: 'virustotal', found: 1, engines: 75, reviewed: true, for: ['windows'] }];
-  assert.match(c.scanPill({ id: 'g', tag: 'v3', update: true }), /scan-pill ok.*Verified update/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v3', update: true }), /scan-pill ok.*Verified Update/);
   c.S.scans['g@v4'] = [{ verdict: 'yellow', scanner: 'virustotal', found: 1, engines: 75, for: ['windows'] }];
   const wait = c.scanPill({ id: 'g', tag: 'v4' });
   assert.match(wait, /scan-pill wait.*Checking/);
   assert.doesNotMatch(wait, /1 of 75|engines/);
   c.S.scans['g@v5'] = [{ verdict: 'grey', for: ['windows'] }];
   assert.match(c.scanPill({ id: 'g', tag: 'v5' }), /Checking/);
+  // With a report link: a button that opens it (this system's file first); without one, the plain pill.
+  c.S.scans['g@v7'] = [{ verdict: 'green', for: ['linux'], link: 'https://www.virustotal.com/gui/file/aaa' }, { verdict: 'green', for: ['windows'], link: 'https://www.virustotal.com/gui/file/bbb' }];
+  const linked = c.scanPill({ id: 'g', tag: 'v7' });
+  assert.match(linked, /<button type="button" class="scan-pill ok"[^>]*data-act="scan-report" data-url="https:\/\/www\.virustotal\.com\/gui\/file\/bbb" title="Open the VirusTotal report"/);
+  c.S.scans['g@v8'] = [{ verdict: 'green', for: ['linux'], link: 'https://www.virustotal.com/gui/file/ccc' }];
+  assert.match(c.scanPill({ id: 'g', tag: 'v8' }), /data-url="https:\/\/www\.virustotal\.com\/gui\/file\/ccc"/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), /<span class="scan-pill ok"[^>]*title="Checked by the RecompStore team"/);
   c.S.scans['g@v6'] = [{ verdict: 'red', for: ['windows'] }];
   assert.match(c.scanPill({ id: 'g', tag: 'v6' }), /scan-pill bad.*Not verified/);
   // No scan for that host: the checksum, when it matched.
   c.S.scans['g@v7'] = [];
   assert.match(c.scanPill({ id: 'g', tag: 'v7', verified: true }), /Checksum matched/);
-  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), /title="Scanned before release and checked by the RecompStore team\."/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v4' }), /title="Scanned before release and checked by the RecompStore team\."/);
   // Nothing a player sees names the scanners.
-  for (const src of [app, tv]) assert.doesNotMatch(src, /ClamAV|VirusTotal|engines flagged|Clean ·/);
+  // (VirusTotal is named only on the button that opens its report.)
+  for (const src of [app, tv]) assert.doesNotMatch(src.replace(/Open the VirusTotal report/g, ''), /ClamAV|VirusTotal|engines flagged|Clean ·/);
 });
 test('players show only when the catalog has them', () => {
   const c = vm.createContext(base());

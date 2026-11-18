@@ -22,7 +22,8 @@ pub struct Profile {
     #[serde(skip)]
     pub input_paths: BTreeMap<String, PathBuf>,
     /// Optional inputs this launcher skipped (a shared type or role it doesn't know, or DLSS on a PC
-    /// it doesn't apply to): their {input:...} arguments are left out instead of failing.
+    /// it doesn't apply to), and the other games' inputs when one game of several is played: their
+    /// {input:...} arguments are left out instead of failing.
     #[serde(skip)]
     pub skipped_inputs: Vec<String>,
     /// The installed build's platform preference, supplied by the launcher, never a manifest.
@@ -143,6 +144,10 @@ pub struct PrepareOption {
     /// Whether it starts ticked (on when not given). Ignored with a license.
     #[serde(default, rename = "default")]
     pub start_on: Option<bool>,
+    /// Setup can't run until it's ticked (a license the build can't do without). It still starts
+    /// off with a license: only the player accepts one.
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -183,6 +188,10 @@ impl Prepare {
     pub fn option_args(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<String> {
         self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.on(picked)).flat_map(|o| o.args.iter().cloned()).collect()
     }
+    /// The required options this PC is offered that aren't ticked: setup waits for them.
+    pub fn unticked_required(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<&PrepareOption> {
+        self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.required && !o.on(picked)).collect()
+    }
 }
 
 impl Prepare {
@@ -190,7 +199,7 @@ impl Prepare {
     /// the same name (a release's Game-nightly-4-x86_64.AppImage for "Game.AppImage"), as Play
     /// finds the game's own program.
     pub fn program_in(&self, install: &Path) -> Option<PathBuf> {
-        let named = self.program.iter().map(|p| install.join(p)).find(|p| p.is_file());
+        let named = self.program.iter().find_map(|p| named_program(install.join(p)));
         if named.is_some() || cfg!(windows) {
             return named;
         }
@@ -791,6 +800,20 @@ fn to_apprun(p: &mut Profile, dir: &Path) {
 /// From the catalog's boot profile (crate::boot): the player's copy and how it reaches the game,
 /// when it goes on the command line (`files.how: "flag"`) or into a folder (`"folder"`), and the
 /// game's settings the launcher can show (`settings: {config, settings}`).
+/// A program a profile names (`start.program`, `prepare.program`), as a path in the game's folder:
+/// the file itself, or on a Mac a Game.app, as the program inside it its Info.plist names, the one
+/// Play starts for a bundle anyway.
+pub fn named_program(path: PathBuf) -> Option<PathBuf> {
+    if path.is_file() {
+        return Some(path);
+    }
+    let mac_app = crate::assets::os_now() == "macos" && crate::macos::is_bundle(&path);
+    if !mac_app {
+        return None;
+    }
+    crate::macos::bundle_executable(&path, crate::assets::arch_now())
+}
+
 /// A native build's program for the Windows one a game's setup names: the same name without its
 /// Windows and processor parts. pd.i686.exe is pd.x86_64, not pd.pal.x86_64 (a build for another
 /// region, with a word the Windows name doesn't have).
@@ -840,6 +863,23 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
         }
     }
     best.map(|(_, _, p)| p)
+}
+
+/// A .NET app host on Linux finds the runtime only where .NET put it system-wide. When the
+/// player's runtime lives elsewhere (~/.dotnet, a folder it downloaded) the host stops at once
+/// with "You must install .NET". A release's own start script finds that runtime and sets
+/// DOTNET_ROOT before starting the host, so when a game's profile resolves to such a host, Play
+/// starts the script instead.
+fn through_start_script(host: PathBuf) -> PathBuf {
+    if !cfg!(target_os = "linux") {
+        return host;
+    }
+    let Some(dir) = host.parent() else { return host };
+    let Some(name) = host.file_name().map(|n| n.to_string_lossy().to_string()) else { return host };
+    if !dir.join(format!("{name}.runtimeconfig.json")).is_file() {
+        return host;
+    }
+    crate::linux_twin(&host).unwrap_or(host)
 }
 
 pub fn from_boot(b: &Value) -> Option<Profile> {
@@ -1373,9 +1413,12 @@ impl Profile {
     fn program_for(&self, install: &Path, windows_build: bool) -> Option<PathBuf> {
         let s = self.start.as_ref()?;
         let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
-        (if windows_build { None } else { twin() })
-            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
-            .or_else(twin)
+        let program = (if windows_build { None } else { twin() })
+            .or_else(|| s.program.iter().find_map(|p| named_program(install.join(p))))
+            .or_else(twin)?;
+        // A .NET app host on Linux needs the start script a release ships with it (see
+        // `through_start_script`), whether the profile named the Windows program or the host itself.
+        Some(if cfg!(windows) { program } else { through_start_script(program) })
     }
 
     /// The selected program is a Windows one that plays through Proton here. Leftover Windows
@@ -1540,9 +1583,26 @@ impl Profile {
         (dir.is_absolute() && dir != install).then_some(dir)
     }
 
+    /// The game's own folders (`folders.game`, filled in for this install), with the folder a
+    /// moved build went to: where a game built from the player's copy keeps what it built from.
+    pub fn game_folders(&self, install: &Path, moved: Option<&Path>) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = moved.map(Path::to_path_buf).into_iter().collect();
+        for place in self.folders.get("game").into_iter().flatten() {
+            if place.path.is_empty() || place.path.contains("{game}") {
+                continue;
+            }
+            let dir = PathBuf::from(fill(&place.path, install, None));
+            if dir.is_absolute() && !out.contains(&dir) {
+                out.push(dir);
+            }
+        }
+        out
+    }
+
     /// The player's build in `to` standing in for the setup's own folder: every path of the
-    /// profile in that folder (how it starts, its settings files, its saves, its folders) moves
-    /// with it. What the setup step runs stays as it is: the launcher's own build goes to its folder.
+    /// profile in that folder (how it starts, its settings files, its saves, its folders, and the
+    /// files a finished build has, prepare.done) moves with it. What the setup step runs stays as
+    /// it is: the launcher's own build goes to its folder.
     pub fn rebase_build(&mut self, install: &Path, to: &Path) {
         let Some(from) = self.build_home(install) else { return };
         let moved = |t: &mut String| {
@@ -1571,6 +1631,27 @@ impl Profile {
                 moved(&mut f.when);
             }
         }
+        if let Some(pr) = self.prepare.as_mut() {
+            pr.done.iter_mut().for_each(moved);
+        }
+    }
+
+    /// The first file its setup step says it leaves (prepare.done, filled in) that isn't there.
+    /// None when they're all there, or it lists none.
+    pub fn done_missing(&self, install: &Path) -> Option<PathBuf> {
+        let done = &self.prepare.as_ref()?.done;
+        done.iter().map(|d| PathBuf::from(fill(d, install, None))).find(|p| !p.exists())
+    }
+
+    /// The files of prepare.done that are in the build folder `home`, relative to it: what a
+    /// finished build has, to look for in a folder the player says holds their own build.
+    pub fn done_in(&self, install: &Path, home: &Path) -> Vec<PathBuf> {
+        let Some(pr) = self.prepare.as_ref() else { return Vec::new() };
+        pr.done
+            .iter()
+            .filter_map(|d| PathBuf::from(fill(d, install, None)).strip_prefix(home).ok().map(Path::to_path_buf))
+            .filter(|rest| !rest.as_os_str().is_empty())
+            .collect()
     }
 
     pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
@@ -1615,16 +1696,33 @@ impl Profile {
     /// through Proton), so the profile's Windows program comes first. With a native build, a program
     /// with the same name comes first: an old `.exe` left beside it (a switch from the Windows build)
     /// must not hide the native one.
-    /// A game its setup step builds (`prepare`) and then starts from a folder outside the game's own
-    /// ("--play {home}/Games/Game"): that folder, when it isn't there. Built somewhere the player
-    /// then moved or deleted, it can't start, and building it again puts it back.
+    /// A game its setup step builds (`prepare`) and then starts from the folder it built
+    /// ("--play {home}/Games/Game", or "--play {install}/Game"): that folder, when it isn't there.
+    /// Built somewhere the player then moved or deleted, or a manifest that now builds somewhere
+    /// else (Hookshot moving from {home}/Games into its install folder), it can't start, and
+    /// building it again puts it back.
     pub fn built_folder_missing(&self, install: &Path) -> Option<PathBuf> {
         self.prepare.as_ref()?;
         let s = self.start.as_ref()?;
-        s.args.iter().filter(|a| ["{home}/", "{documents}/", "{local}/", "{config}/", "{appdata}/"].iter().any(|r| a.starts_with(r))).find_map(|a| {
+        // Inside the game's own folder only the folder its setup builds into counts: other
+        // {install} paths in `start` are the release's own files, not something it built.
+        let home_inside = self.build_home(install).filter(|h| h.starts_with(install));
+        let outside = ["{home}/", "{documents}/", "{local}/", "{config}/", "{appdata}/"];
+        s.args.iter().find_map(|a| {
             let p = PathBuf::from(fill(a, install, None));
-            (!p.exists()).then_some(p)
+            let built_outside = outside.iter().any(|r| a.starts_with(r));
+            let built_inside = a.starts_with("{install}/") && home_inside.as_ref().is_some_and(|h| p.starts_with(h));
+            let ours = built_outside || built_inside;
+            (ours && !p.exists()).then_some(p)
         })
+    }
+
+    /// Whether a game the launcher built from the player's copy was built with another
+    /// `prepare.version` than the manifest has now (`built_with`: the one kept at setup). The
+    /// developer changed it because players who already set up have to run the step again.
+    pub fn prepare_version_changed(&self, built_with: &str) -> bool {
+        let Some(pr) = self.prepare.as_ref() else { return false };
+        pr.version != built_with
     }
 
     /// Whether `exe` is the program its start names (in any of its forms: the Windows one, or the
@@ -1639,7 +1737,9 @@ impl Profile {
             // Game.AppImage for Game-nightly-4-x86_64.AppImage, as Play finds it.
             let base = want_name.split('.').next().unwrap_or_default();
             let twin = matches!(low(want, true).as_str(), "appimage" | "");
-            want_name == name || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
+            // The program inside Game.app, for "Game.app", as named_program finds it.
+            let in_bundle = want_name.ends_with(".app") && exe.ancestors().any(|a| low(a, false) == want_name);
+            want_name == name || in_bundle || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
         })
     }
 
@@ -2554,6 +2654,42 @@ mod tests {
     }
 
     #[test]
+    fn a_required_option_with_a_license_starts_unticked_and_holds_setup_until_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--accept-vs-license"],"required":true,"default":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        // "default": true doesn't accept a license for the player.
+        let ids = |picked: &std::collections::BTreeMap<String, bool>| pr.unticked_required("windows", false, false, picked).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&picked), ["vs"]);
+        assert!(pr.option_args("windows", false, false, &picked).is_empty());
+        picked.insert("vs".to_string(), true);
+        assert!(ids(&picked).is_empty());
+        assert_eq!(pr.option_args("windows", false, false, &picked), ["--accept-vs-license"]);
+    }
+
+    #[test]
+    fn a_required_option_without_a_license_can_start_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"tools","label":"Tools","args":["--tools"],"required":true}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        assert!(pr.unticked_required("linux", false, false, &picked).is_empty());
+        picked.insert("tools".to_string(), false);
+        assert_eq!(pr.unticked_required("linux", false, false, &picked).len(), 1);
+    }
+
+    #[test]
+    fn a_required_option_this_pc_isnt_offered_doesnt_hold_setup() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"os":["windows"],"license":{"name":"VS","url":"https://example.com/vs"}},
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"required":true,"gpu":"nvidia","default":false}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        // A Steam Deck: neither applies.
+        assert!(pr.unticked_required("linux", false, true, &std::collections::BTreeMap::new()).is_empty());
+    }
+
+    #[test]
     fn an_option_added_after_setup_is_unanswered_until_the_player_answers_it() {
         let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
             {"id":"hd","label":"HD textures","args":["--hd"]},
@@ -2603,6 +2739,56 @@ mod tests {
         // Without a build step, a folder named on the command line is the game's business.
         let plain: super::Profile = serde_json::from_str(&format!(r#"{{"format":1,"start":{{"program":["Hopper.exe"],"args":["--data","{{home}}/{name}"]}}}}"#)).unwrap();
         assert_eq!(plain.built_folder_missing(&install), None);
+    }
+
+    /// A builder profile that builds into `{install}/Game` and starts with `start_args`.
+    fn builds_into_install(start_args: &str) -> super::Profile {
+        let json = format!(r#"{{"format":1,"start":{{"program":["HopperBuilder.exe"],"args":[{start_args}]}},
+            "prepare":{{"program":["HopperBuilder.exe"],"args":["--prepare","--out","{{install}}/Game"]}},
+            "folders":{{"game":[{{"path":"{{install}}/Game"}}]}}}}"#);
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn a_build_folder_inside_the_install_folder_that_is_missing_is_noticed() {
+        let install = std::env::temp_dir().join(format!("rl-built-inside-{}", std::process::id()));
+        std::fs::create_dir_all(&install).unwrap();
+        let p = builds_into_install(r#""--play","{install}/Game""#);
+        let game = std::path::PathBuf::from(super::fill("{install}/Game", &install, None));
+        assert_eq!(p.built_folder_missing(&install), Some(game));
+        std::fs::create_dir_all(install.join("Game")).unwrap();
+        assert_eq!(p.built_folder_missing(&install), None);
+        let _ = std::fs::remove_dir_all(&install);
+    }
+
+    #[test]
+    fn an_install_path_that_isnt_the_build_folder_is_not_taken_for_a_build() {
+        // A release file named in `start` (its own config) isn't something the setup built.
+        let install = std::env::temp_dir().join(format!("rl-not-built-{}", std::process::id()));
+        std::fs::create_dir_all(&install).unwrap();
+        let p = builds_into_install(r#""--config","{install}/settings.ini""#);
+        assert_eq!(p.built_folder_missing(&install), None);
+        let _ = std::fs::remove_dir_all(&install);
+    }
+
+    #[test]
+    fn a_changed_prepare_version_asks_for_a_new_build() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"],"version":"2"}}"#).unwrap();
+        assert!(p.prepare_version_changed(""));
+        assert!(p.prepare_version_changed("1"));
+        assert!(!p.prepare_version_changed("2"));
+    }
+
+    #[test]
+    fn no_prepare_version_matches_a_setup_from_before_versions_were_kept() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"]}}"#).unwrap();
+        assert!(!p.prepare_version_changed(""));
+    }
+
+    #[test]
+    fn a_game_without_a_setup_step_never_asks_for_a_new_build() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.exe"]}}"#).unwrap();
+        assert!(!p.prepare_version_changed("2"));
     }
 
     #[test]
@@ -2756,6 +2942,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_dotnet_app_host_starts_through_the_releases_script() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dotnet-start");
+        // The layout of Symphony Recomp's Linux release: the app host, the files that say it's a
+        // .NET one, and the run.sh that finds the player's runtime before starting it.
+        let host = d.join("sotn");
+        std::fs::write(&host, b"\x7fELF").unwrap();
+        std::fs::set_permissions(&host, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(d.join("sotn.runtimeconfig.json"), b"{}").unwrap();
+        let script = d.join("run.sh");
+        std::fs::write(&script, b"#!/bin/sh\nexport DOTNET_ROOT=\"$HOME/.dotnet\"\nexec \"$DIR/sotn\" \"$@\"\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["sotn.exe"]}}"#).unwrap();
+        let picks = BTreeMap::new();
+        // The host alone finds no runtime; the release's script finds one and passes the profile's
+        // arguments on, so that's what Play starts.
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, script);
+        // The same when the profile names the Linux host itself rather than its Windows name.
+        let by_host: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["sotn"]}}"#).unwrap();
+        assert_eq!(by_host.command_for(&d, None, &picks, false).unwrap().0, script);
+        // Without a script it's still the host.
+        std::fs::remove_file(&script).unwrap();
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, host);
+        // A native build is itself, even with a run.sh beside it.
+        std::fs::write(&script, b"#!/bin/sh\nexec \"$DIR/sotn\"\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_file(d.join("sotn.runtimeconfig.json")).unwrap();
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, host);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[cfg(unix)]
     #[test]
     fn native_build_arguments_do_not_use_leftover_windows_paths() {
@@ -2836,6 +3055,53 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// Game.app with Info.plist naming Contents/MacOS/Game, a Mach-O program for this processor.
+    #[cfg(target_os = "macos")]
+    fn mac_app(dir: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let contents = dir.join("Game.app/Contents");
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        let plist = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Game</string></dict></plist>"#;
+        std::fs::write(contents.join("Info.plist"), plist).unwrap();
+        let cpu: u32 = if crate::assets::arch_now() == "arm64" { 0x0100000c } else { 0x01000007 };
+        let mut head = vec![0u8; 32];
+        head[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        head[4..8].copy_from_slice(&cpu.to_le_bytes());
+        head[12..16].copy_from_slice(&2u32.to_le_bytes());
+        let exe = contents.join("MacOS/Game");
+        std::fs::write(&exe, head).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_mac_app_named_in_start_and_prepare_runs_its_program() {
+        let d = tmp("mac-app");
+        mac_app(&d);
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.app"]},"prepare":{"program":["Game.app"],"args":["--install"]}}"#).unwrap();
+        let inner = d.join("Game.app/Contents/MacOS/Game");
+        assert_eq!(p.prepare.as_ref().unwrap().program_in(&d), Some(inner.clone()));
+        assert_eq!(p.command_for(&d, None, &BTreeMap::new(), false).map(|c| c.0), Some(inner));
+    }
+
+    #[test]
+    fn a_program_is_a_file_and_a_folder_only_as_a_mac_app() {
+        let d = tmp("named-program");
+        std::fs::write(d.join("game.exe"), b"MZ").unwrap();
+        std::fs::create_dir_all(d.join("Game.app/Contents/MacOS")).unwrap();
+        assert_eq!(named_program(d.join("game.exe")), Some(d.join("game.exe")));
+        assert_eq!(named_program(d.join("missing.exe")), None);
+        // A folder with no Info.plist is no program, on a Mac either.
+        assert_eq!(named_program(d.join("Game.app")), None);
+    }
+
+    #[test]
+    fn the_program_inside_a_named_app_is_the_one_start_names() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Theme Park World.app"]}}"#).unwrap();
+        assert!(p.starts_program(Path::new("/Games/tpw/Theme Park World.app/Contents/MacOS/Theme Park World")));
+        assert!(!p.starts_program(Path::new("/Games/tpw/Other.app/Contents/MacOS/Theme Park World")));
     }
 
     #[test]
@@ -3656,6 +3922,18 @@ mod tests {
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());
+        // The copy a game keeps for rebuilding: a hidden `.name_exefs` beside `romfs`.
+        let kept = d.join("Hopper");
+        std::fs::create_dir_all(kept.join(".hopper_exefs")).unwrap();
+        std::fs::create_dir_all(kept.join("romfs")).unwrap();
+        std::fs::write(kept.join(".hopper_exefs").join("main"), &main).unwrap();
+        assert!(check_copy(&g("e0f3ccfa"), &kept).is_ok());
+        assert!(check_copy(&g("11223344"), &kept).is_err());
+        // Any other hidden folder ending in _exefs without the executable is refused.
+        let other = d.join("Other");
+        std::fs::create_dir_all(other.join(".foo_exefs")).unwrap();
+        std::fs::create_dir_all(other.join("romfs")).unwrap();
+        assert!(check_copy(&g("e0f3ccfa"), &other).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -3774,5 +4052,29 @@ mod own_build_tests {
         let before = serde_json::to_string(&p).unwrap();
         p.rebase_build(&install, Path::new("/elsewhere"));
         assert_eq!(serde_json::to_string(&p).unwrap(), before, "nothing moves without a folder of its own");
+    }
+
+    #[test]
+    fn what_a_finished_build_has_moves_with_the_players_build() {
+        let install = std::env::temp_dir().join("rl-own-build-done");
+        let mine = std::env::temp_dir().join("rl-own-build-done-mine");
+        let _ = std::fs::remove_dir_all(&mine);
+        let mut p = builder();
+        p.prepare.as_mut().unwrap().done = vec!["{home}/Games/Hopper/bin/hopper.exe".into(), "{local}/hopper/cache.bin".into()];
+        let home = p.build_home(&install).unwrap();
+        // Only the done files in the build folder are what to look for in the player's folder.
+        assert_eq!(p.done_in(&install, &home), vec![PathBuf::from("bin").join("hopper.exe")]);
+        p.rebase_build(&install, &mine);
+        let done = &p.prepare.as_ref().unwrap().done;
+        assert_eq!(PathBuf::from(&done[0]), mine.join("bin").join("hopper.exe"));
+        assert_eq!(done[1], "{local}/hopper/cache.bin", "one outside that folder stays as it is");
+        assert_eq!(p.done_missing(&install), Some(mine.join("bin").join("hopper.exe")));
+    }
+
+    #[test]
+    fn nothing_is_missing_when_the_profile_lists_no_done_files() {
+        let install = std::env::temp_dir().join("rl-own-build-nodone");
+        assert_eq!(builder().done_missing(&install), None);
+        assert!(builder().done_in(&install, &install.join("Games")).is_empty());
     }
 }

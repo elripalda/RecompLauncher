@@ -168,6 +168,9 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     let declarations: BTreeSet<_> = p.inputs.iter().map(|i| i.id.as_str()).chain(p.skipped_inputs.iter().map(String::as_str)).collect();
     let mut texts: Vec<&str> = p.start.iter().flat_map(|s| s.args.iter().chain(s.env.values()).map(String::as_str)).collect();
     texts.extend(p.prepare.iter().flat_map(|pr| pr.args.iter().map(String::as_str)));
+    // A game's own args are filled too, so a misspelled id there is caught like one in start.args.
+    let games = crate::games::of(p.games.as_ref(), &serde_json::Value::Null);
+    texts.extend(games.iter().flat_map(|g| g.args.iter().map(String::as_str)));
     for text in texts {
         for suffix in text.split("{input:").skip(1) {
             let id = suffix.split_once('}').map(|(id, _)| id).ok_or("Unclosed input placeholder.")?;
@@ -227,9 +230,14 @@ fn secs(t: std::time::SystemTime) -> i64 {
     }
 }
 fn copies(p: &Profile, g: &Installed) -> Result<Vec<PathBuf>, String> {
+    copies_with(p, g, g.game_copy.clone().filter(|c| c.exists()))
+}
+
+/// The copies with `game` as the player's copy (where it was, for a copy since moved).
+fn copies_with(p: &Profile, g: &Installed, game: Option<PathBuf>) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     if p.game.is_some() {
-        out.push(g.game_copy.clone().filter(|c| c.exists()).ok_or("Choose your copy of the game first.")?);
+        out.push(game.ok_or("Choose your copy of the game first.")?);
         if let Some(update) = p.game.as_ref().and_then(|c| c.update.as_ref()) {
             match g.update_copy.as_ref().filter(|p| p.exists()).cloned().or_else(|| update.in_place(&g.path)) {
                 Some(path) => out.push(path),
@@ -246,10 +254,14 @@ fn copies(p: &Profile, g: &Installed) -> Result<Vec<PathBuf>, String> {
 /// a new launcher or a changed profile never asks anyone to set up again; only their files or
 /// the developer's version can. Disc/DLC checksums are explicitly deferred.
 pub fn signature(p: &Profile, g: &Installed, dir: &Path) -> Result<String, String> {
+    signature_of(p, g, dir, copies(p, g)?)
+}
+
+fn signature_of(p: &Profile, g: &Installed, dir: &Path, copies: Vec<PathBuf>) -> Result<String, String> {
     let paths = resolve(p, g, dir)?;
     let mut h = Sha256::new();
     put(&mut h, "version", p.prepare.as_ref().map_or("", |x| x.version.as_str()).as_bytes());
-    for copy in copies(p, g)? {
+    for copy in copies {
         put(&mut h, "copy", copy.to_string_lossy().as_bytes());
     }
     // Files the launcher fetches itself (DLSS) don't count: one arriving later, or a newer
@@ -311,6 +323,42 @@ pub fn current(p: &Profile, g: &Installed, dir: &Path, stored: &str) -> Option<S
 pub fn ready(p: &Profile, g: &Installed, dir: &Path) -> bool {
     current(p, g, dir, &g.inputs_ready).is_some() && p.build_done(&g.path) != Some(false)
 }
+/// A game built from the player's copy keeps a copy of its own in its build folder (`exefs`, or a
+/// hidden `.name_exefs`, beside `romfs`). When the player's copy was moved or deleted since setup
+/// and nothing else changed (prepare.version, the other files), the kept copy that passes the
+/// game's check stands in for it: the folder, and the fingerprint with it as the copy.
+pub fn kept_copy(p: &Profile, g: &Installed, dir: &Path) -> Option<(PathBuf, String)> {
+    let game = p.game.as_ref().filter(|c| !c.check.nup_build_id.is_empty())?;
+    let was = g.game_copy.clone().filter(|c| !c.exists())?;
+    if !g.inputs_ready.starts_with("v2:") || p.build_done(&g.path) == Some(false) {
+        return None;
+    }
+    // Only the copy moved: the fingerprint is the same with the copy where it was.
+    if signature_of(p, g, dir, copies_with(p, g, Some(was)).ok()?).ok()? != g.inputs_ready {
+        return None;
+    }
+    // Judged as a folder, by the build ID in its executable.
+    let mut check = game.clone();
+    check.kind = "folder".into();
+    check.check.file.clear();
+    let mut places = Vec::new();
+    for home in p.game_folders(&g.path, g.build_dir.as_deref()) {
+        let mut below: Vec<PathBuf> = std::fs::read_dir(&home).into_iter().flatten().flatten().map(|e| e.path()).filter(|d| d.is_dir()).collect();
+        below.sort();
+        places.push(home);
+        places.extend(below);
+    }
+    places.into_iter().find_map(|c| {
+        let kept = crate::nup::main_of(&c).is_some() && c.join("romfs").is_dir() && crate::profile::check_copy(&check, &c).is_ok();
+        if !kept {
+            return None;
+        }
+        let mut moved = g.clone();
+        moved.game_copy = Some(c.clone());
+        signature(p, &moved, dir).ok().map(|s| (c, s))
+    })
+}
+
 /// Every file picked for setup is still there, and the ones placed in the game's folder are the
 /// same as when they were placed (path, size, time). For putting back a setup an update emptied.
 pub fn kept_since_setup(p: &Profile, g: &Installed, dir: &Path) -> bool {
@@ -708,6 +756,49 @@ mod tests {
         assert!(ready(&p, &updated, &dir));
         let (bumped, _, _) = prepared(serde_json::json!({ "prepare": { "program": ["Builder.exe"], "version": "2" } }));
         assert!(!ready(&bumped, &updated, &dir));
+    }
+    #[test]
+    fn a_copy_moved_after_the_build_is_replaced_by_the_one_the_game_kept() {
+        let built = serde_json::json!({
+            "game": { "kind": "file", "label": "Your .nup", "check": { "nup_build_id": "e0f3ccfa" } },
+            "folders": { "game": [{ "path": "{install}/Hopper" }] }
+        });
+        let (p, mut g, dir) = prepared(built.clone());
+        let nup = dir.join("Hopper.nup");
+        fs::write(&nup, b"package").unwrap();
+        g.game_copy = Some(nup.clone());
+        g.inputs_ready = signature(&p, &g, &dir).unwrap();
+        assert!(ready(&p, &g, &dir));
+        // The player deletes their .nup after the first build, then the game updates.
+        fs::remove_file(&nup).unwrap();
+        let updated = Installed { tag: "v0.1.1".into(), updated_at: 99, ..g.clone() };
+        assert!(!ready(&p, &updated, &dir));
+        assert!(kept_copy(&p, &updated, &dir).is_none(), "nothing kept yet");
+        let kept = dir.join("Hopper");
+        fs::create_dir_all(kept.join(".hopper_exefs")).unwrap();
+        fs::write(kept.join(".hopper_exefs").join("main"), crate::nup::tests::nso(&[0xe0, 0xf3, 0xcc, 0xfa, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28])).unwrap();
+        assert!(kept_copy(&p, &updated, &dir).is_none(), "no romfs beside it");
+        fs::create_dir_all(kept.join("romfs")).unwrap();
+        // A new step version still builds again: the kept copy doesn't skip it.
+        let mut bumped = built.clone();
+        bumped["prepare"] = serde_json::json!({ "program": ["Builder.exe"], "version": "2" });
+        let (newer, _, _) = prepared(bumped);
+        assert!(kept_copy(&newer, &updated, &dir).is_none());
+        let (folder, sig) = kept_copy(&p, &updated, &dir).expect("the kept copy");
+        assert_eq!(folder, kept);
+        let mut adopted = updated.clone();
+        adopted.game_copy = Some(folder);
+        adopted.inputs_ready = sig;
+        assert!(ready(&p, &adopted, &dir), "set up, with its copy pointing at the kept folder");
+        // A kept copy of another game isn't taken.
+        let (other, _, _) = prepared(serde_json::json!({
+            "game": { "kind": "file", "label": "Your .nup", "check": { "nup_build_id": "11223344" } },
+            "folders": { "game": [{ "path": "{install}/Hopper" }] }
+        }));
+        let mut theirs = updated.clone();
+        theirs.inputs_ready = signature_of(&other, &theirs, &dir, vec![nup.clone()]).unwrap();
+        assert!(kept_copy(&other, &theirs, &dir).is_none());
+        let _ = fs::remove_dir_all(&dir);
     }
     #[test]
     fn the_build_the_step_leaves_has_to_be_there() {
