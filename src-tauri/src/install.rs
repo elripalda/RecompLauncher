@@ -904,10 +904,17 @@ pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<Pa
     unpack_with(file, target, staging, false)
 }
 
+/// What the marker of a swap that isn't a game's release says instead of a download's SHA-256: no
+/// game's record has it, so a launcher closed in the middle undoes it (see swap::recover).
+const NOT_A_RELEASE: &str = "not-a-release";
+
+/// Unpacked beside `target` first, then put in all at once (see swap): a mod, an installer or a
+/// copy of a game goes in whole, or `target` stays as it was.
 fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
     let staged = stage_with(file, staging, strip_top)?;
-    overlay(&staged.root, target)?;
+    let placed = crate::swap::put_in_place(target, &staged.root, &staged.files, NOT_A_RELEASE, &[]);
     let _ = fs::remove_dir_all(staging);
+    placed?.finish();
     Ok(staged.files)
 }
 
@@ -2055,6 +2062,33 @@ mod tests {
         zst.finish().unwrap();
         let staged = stage(&tpath, &d.join("st")).unwrap();
         assert_eq!(staged.files, paths(&["run.sh"]));
+    }
+
+    #[test]
+    fn a_mod_goes_into_the_game_whole_and_leaves_its_files() {
+        let d = tmp("mod-whole");
+        let target = d.join("game");
+        fs::create_dir_all(target.join("mods")).unwrap();
+        fs::write(target.join("mods/theirs.pak"), b"player's").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("mods/new.pak", b"new mod")])).unwrap();
+        let files = unpack_as_is(&zpath, &target, &d.join("st")).unwrap();
+        assert_eq!(files, paths(&["mods/new.pak"]));
+        assert_eq!(fs::read(target.join("mods/new.pak")).unwrap(), b"new mod");
+        assert_eq!(fs::read(target.join("mods/theirs.pak")).unwrap(), b"player's");
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn a_mod_isnt_put_in_while_an_update_waits_to_be_settled() {
+        let d = tmp("mod-waits");
+        let target = d.join("game");
+        fs::create_dir_all(target.join(crate::swap::FOLDER)).unwrap();
+        fs::write(target.join(crate::swap::FOLDER).join("update.json"), b"{}").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("new.pak", b"new mod")])).unwrap();
+        assert!(unpack_as_is(&zpath, &target, &d.join("st")).is_err());
+        assert!(!target.join("new.pak").exists());
     }
 
     #[test]
