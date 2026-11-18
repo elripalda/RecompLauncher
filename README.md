@@ -1,3 +1,19 @@
+> [!NOTE]
+> ## This is a fork: RecompLauncher with Data Hoarder Mode
+>
+> This repository is a fork of [elripalda/RecompLauncher](https://github.com/elripalda/RecompLauncher). It is the upstream launcher, kept current automatically every day, plus a few features of its own. **[Download the fork's latest Windows build](https://github.com/ProbablyModded/RecompLauncher/releases/latest)**. Builds of the fork update themselves from this repository, not from upstream.
+>
+> **What the fork adds**
+>
+> - **Data Hoarder Mode** (Settings → Data Hoarder): projects get taken down, so this keeps a copy of every release of every game in your Library, old ones included, with each release's notes saved as `RELEASE-NOTES.md`. Releases are stored in `Releases/<game>/<release>/`. Nothing is installed by it; installed games still update the usual way. You can keep all releases, only the latest, or the newest few, limit it to this PC's builds, and choose how often it looks for new ones. [More](docs/DATA-HOARDER.md)
+> - **Downloads at Once / Unpacks at Once** (Settings → Updates → Downloads): how many games download, and how many finished downloads unpack, at the same time.
+> - **Update schedules** (Settings → Updates): *Check Games Every* and *Check RecompLauncher Every*, hourly by default. Games set to Update automatically install on that schedule, and a newer launcher build is downloaded ahead of time so Update Now only has to install it.
+> - **Updates from this fork:** the launcher's own updater reads this repository's releases, so it never swaps the fork for the upstream build.
+>
+> **How it stays current:** a daily GitHub Action replays the fork's changes on top of the newest upstream code, runs the tests, and publishes a new Windows build. If upstream changes clash with the fork, it opens an issue instead of publishing. [How the fork works](docs/FORK.md)
+>
+> Everything below this box is upstream's own README, unchanged.
+
 <p align="center"><img src="docs/images/banner.jpg" alt="RecompLauncher: PC recomps, all in one place." width="100%"></p>
 
 <p align="center">
