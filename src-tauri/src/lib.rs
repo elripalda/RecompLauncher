@@ -7254,7 +7254,7 @@ pub(crate) const LAUNCHER_CHECK_EVERY: u64 = 6 * 3600;
 /// fork's sync workflow sets RECOMP_FORK_REPO to the repository it builds in.
 pub(crate) const FORK_REPO: &str = match option_env!("RECOMP_FORK_REPO") {
     Some(repo) => repo,
-    None => "nickhighland/RecompLauncher",
+    None => "ProbablyModded/RecompLauncher",
 };
 
 /// The fork's version.json: published with every fork release, and GitHub's "latest" address
