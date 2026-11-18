@@ -693,12 +693,12 @@ fn root(dir: &Path) -> PathBuf {
 
 /// A file operation that Windows can refuse for a few seconds (access denied, or in use) while an
 /// antivirus looks at a file that was just unpacked: tried again for up to about ten seconds.
-fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+pub(crate) fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     let mut last = None;
     for i in 0..20 {
         match op() {
             Ok(v) => return Ok(v),
-            Err(e) if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied => {
+            Err(e) if in_use(&e) => {
                 last = Some(e);
                 std::thread::sleep(std::time::Duration::from_millis(if i < 4 { 250 } else { 600 }));
             }
@@ -708,9 +708,14 @@ fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     Err(last.unwrap_or_else(|| io::Error::other("busy")))
 }
 
+/// A file another program has open (a running game, an antivirus), or one the launcher may not change.
+pub(crate) fn in_use(e: &io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied
+}
+
 /// What to tell the player when a file can't be put in place.
 fn denied(e: io::Error, what: &Path) -> io::Error {
-    if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied {
+    if in_use(&e) {
         io::Error::new(
             e.kind(),
             format!(
@@ -840,7 +845,7 @@ pub fn updated_exe(id: &str, target: &Path, mut exe: Option<PathBuf>, files: &[P
 }
 
 /// The folders above a removed file that it leaves empty, up to (not including) `top`.
-fn remove_empty_parents(top: &Path, file: &Path) {
+pub(crate) fn remove_empty_parents(top: &Path, file: &Path) {
     let mut dir = file.parent();
     while let Some(d) = dir.filter(|d| *d != top && d.starts_with(top)) {
         if fs::remove_dir(d).is_err() {

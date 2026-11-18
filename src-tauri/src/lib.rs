@@ -55,6 +55,7 @@ pub mod roms;
 pub mod saves;
 pub mod shortcuts;
 pub mod steam_sync;
+pub mod swap;
 pub mod trail;
 pub mod tray;
 mod update_download;
