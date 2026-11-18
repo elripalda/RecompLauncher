@@ -3519,11 +3519,13 @@ mod tests {
         assert_eq!(backup.files, 2);
         std::fs::remove_file(&card).unwrap();
         std::fs::remove_file(&states).unwrap();
-        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        let archive = crate::saves::dir_of(&app, "dusklight", &game).join(backup.name);
         assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
         assert_eq!(std::fs::read(card).unwrap(), b"card");
         assert_eq!(std::fs::read(states).unwrap(), b"[]");
         let _ = std::fs::remove_dir_all(&install);
+        // The copies sit beside the game, in its library's .backups folder.
+        let _ = std::fs::remove_dir_all(crate::backups_dir(&game));
     }
 
     #[test]

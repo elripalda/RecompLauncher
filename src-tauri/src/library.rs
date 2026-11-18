@@ -159,10 +159,6 @@ pub struct Installed {
     /// signed in), then their answer.
     #[serde(default)]
     pub cloud: Option<bool>,
-    /// Where the launcher noticed the game saving, as templates (`{local}/Game/saves`), for games
-    /// whose developer or catalog doesn't say.
-    #[serde(default)]
-    pub found_saves: Vec<String>,
     /// Where the player says the game saves (Saves, Change): ahead of everything else.
     #[serde(default)]
     pub save_place: Option<String>,
