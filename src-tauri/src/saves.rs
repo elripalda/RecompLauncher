@@ -659,6 +659,18 @@ impl State {
         self.problem = None;
     }
 
+    /// Another cloud or account: nothing it said about the old one holds (what was synced, the
+    /// queue, a conflict, a problem). The copies on this PC stay.
+    pub fn forget_cloud(&mut self) {
+        self.synced_hash.clear();
+        self.pending = None;
+        self.synced_at = 0;
+        self.synced_made = 0;
+        self.synced_device.clear();
+        self.conflict = None;
+        self.problem = None;
+    }
+
     /// The newest copy on this PC isn't the one in the cloud: it's queued, or it goes up after
     /// the next session. A copy put back from the cloud sets both hashes, so it isn't behind.
     pub fn behind(&self) -> bool {
@@ -709,8 +721,7 @@ pub fn state(app_dir: &Path, id: &str) -> State {
     let saved = value["cloud_scope"].as_str();
     let legacy = saved.is_none() && scope.starts_with("recompstore:");
     if saved != Some(scope.as_str()) && !legacy {
-        state.synced_hash.clear();
-        state.pending = None;
+        state.forget_cloud();
     }
     if legacy { set_state(app_dir, id, &state); }
     state
@@ -1870,13 +1881,24 @@ mod tests {
     #[test]
     fn provider_changes_discard_the_sync_baseline_and_queue() {
         let dir = tmp("cloud-provider");
-        let state = State { last_hash: "local".into(), synced_hash: "cloud".into(), pending: Some("123.zip".into()) };
+        let state = State { last_hash: "local".into(), synced_hash: "cloud".into(), pending: Some("123.zip".into()), ..Default::default() };
         set_state(&dir, "g", &state);
         fs::write(dir.join("save-provider.json"), b"\"google_drive\"").unwrap();
         let read = super::state(&dir, "g");
         assert_eq!(read.last_hash, "local");
         assert!(read.synced_hash.is_empty());
         assert!(read.pending.is_none());
+    }
+
+    #[test]
+    fn provider_changes_forget_the_old_clouds_conflict_and_problem() {
+        let dir = tmp("cloud-provider-status");
+        let problem = Some(Problem { kind: "full".into(), text: String::new(), at: 1 });
+        let state = State { synced_hash: "cloud".into(), synced_at: 5, conflict: Some("v1".into()), problem, ..Default::default() };
+        set_state(&dir, "g", &state);
+        fs::write(dir.join("save-provider.json"), b"\"google_drive\"").unwrap();
+        let read = super::state(&dir, "g");
+        assert_eq!((read.synced_at, read.conflict.is_none(), read.problem.is_none()), (0, true, true));
     }
 
     #[test]
