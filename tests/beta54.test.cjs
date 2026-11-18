@@ -78,7 +78,8 @@ test('Move Build moves a build of its own folder and the game starts from there'
 });
 
 test('a setup the game asks for runs, and a setup step that stops says what it said', () => {
-  assert.match(own, /if g\.setup_done && asked_for_setup\(st, id, &g\) \{/);
+  // (Only Play answers it: a shortcut or the page asking doesn't use up the game's request.)
+  assert.match(own, /if g\.setup_done && asked_for_setup\(st, id, &g, play\) \{/);
   assert.match(rust, /format!\("Its setup step stopped with code \{code\}: \{said\}"\)/);
   assert.match(read('src-tauri/src/nup.rs'), /fn wrong_folder\(dir: &Path\) -> String/);
   assert.match(rust, /fn say_why_it_stopped\(\)/);

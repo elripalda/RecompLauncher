@@ -145,3 +145,42 @@ fn a_choice_made_outside_easy_setup_drops_a_leftover() {
     settle_outside_setup(&mut g);
     assert!(g.setup_before.is_none());
 }
+
+/// A game that ships its own setup (HopperSetup.exe beside it), set up and playable, whose last
+/// output asked for that setup again.
+fn own_setup_game(f: &Fixture, id: &str) -> Installed {
+    let dir = f.0.dir.join(id);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("hopper.exe"), b"x").unwrap();
+    std::fs::write(dir.join("HopperSetup.exe"), b"x").unwrap();
+    let g = Installed {
+        id: id.into(),
+        name: "Hopper".into(),
+        path: dir,
+        exe: Some(PathBuf::from("hopper.exe")),
+        exe_rules: install::EXE_RULES,
+        setup: Some(PathBuf::from("HopperSetup.exe")),
+        setup_done: true,
+        setup_checked: true,
+        ..Default::default()
+    };
+    f.0.lib.lock().unwrap().installed.insert(id.into(), g.clone());
+    let out = game_output_path(&f.0.dir, id);
+    std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+    std::fs::write(&out, "Run HopperSetup.exe first.\n").unwrap();
+    g
+}
+
+#[test]
+fn a_games_own_setup_asked_for_again_is_never_written_down() {
+    let f = Fixture::new("os-asked");
+    let g = own_setup_game(&f, "os-asked-game");
+    // A shortcut or the page asking leaves it for Play: asked again, as often as they look.
+    assert!(own_setup::pending(&f.0, "os-asked-game", &g).is_some());
+    assert!(own_setup::pending(&f.0, "os-asked-game", &g).is_some());
+    // Play runs it, once for what the game said.
+    assert!(own_setup::pending_for_play(&f.0, "os-asked-game", &g).is_some());
+    // Closed before it finished: nothing was recorded, so the version that played plays again.
+    assert!(f.game("os-asked-game").setup_done);
+    assert!(own_setup::pending_for_play(&f.0, "os-asked-game", &g).is_none());
+}

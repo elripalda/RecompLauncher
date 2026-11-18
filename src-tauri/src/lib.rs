@@ -2699,7 +2699,7 @@ fn start_game_with_monitor_context(
         if !g.installer_setup.is_empty() && g.exe.is_none() {
             return Err(Error::Msg("Its installer hasn't run yet. Press Set Up on its page.".into()));
         }
-        if let Some(setup) = own_setup::pending(&st, id, &g) {
+        if let Some(setup) = own_setup::pending_for_play(&st, id, &g) {
             // A setup that takes the player's copy (an ISO dropped on install.bat): asked for first.
             let copy = match prof.as_ref().filter(|p| p.game.as_ref().map(|c| c.for_setup).unwrap_or(false)) {
                 Some(p) => copy_for_setup(&g, p)?,
