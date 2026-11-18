@@ -1,0 +1,304 @@
+# Keeps this fork current with upstream RecompLauncher, with the fork's own commits on top.
+#
+# How the fork is laid out (docs/FORK.md has the long version):
+#   upstream main ── A ── B ── C          (elripalda/RecompLauncher)
+#                               \
+#   fork main                    P1 ── P2 ── P3   (Data Hoarder Mode, the limits, this file…)
+#
+# Each run fetches upstream main and replays the fork's own commits (everything on fork main that
+# upstream doesn't have) onto its newest commit. When that works, the tests run, fork main is
+# moved there (its old tip is kept as the `sync-backup` branch), and installers are built and
+# published as a prerelease. When a fork commit no longer applies cleanly, nothing is pushed: an
+# issue labelled `upstream-sync` says which commit and which files need a hand.
+#
+# Needs a repository secret FORK_SYNC_TOKEN: a fine-grained personal access token for this repo
+# with Contents (read and write) and Workflows (read and write). GitHub refuses pushes that carry
+# changes to .github/workflows (upstream changes its own now and then) from the built-in token.
+
+name: Sync with upstream
+
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Build and publish installers even if upstream hasn't moved
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: elripalda/RecompLauncher
+  UPSTREAM_BRANCH: main
+  FORK_BRANCH: main
+
+jobs:
+  sync:
+    name: Replay the fork's commits onto upstream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      changed: ${{ steps.rebase.outputs.changed }}
+      conflict: ${{ steps.rebase.outputs.conflict }}
+      sha: ${{ steps.push.outputs.sha }}
+      version: ${{ steps.push.outputs.version }}
+    steps:
+      - name: Check for the sync token
+        env:
+          HAS_TOKEN: ${{ secrets.FORK_SYNC_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::warning::FORK_SYNC_TOKEN isn't set, so the built-in token is used. Pushes that bring in upstream workflow changes will be refused; see docs/FORK.md."
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        run: |
+          git config user.name "fork-sync[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream "$UPSTREAM_BRANCH"
+
+      - name: Replay the fork's commits onto upstream
+        id: rebase
+        run: |
+          old=$(git rev-parse HEAD)
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "upstream/$UPSTREAM_BRANCH" HEAD; then
+            echo "Fork already has everything upstream has."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base=$(git merge-base HEAD "upstream/$UPSTREAM_BRANCH")
+          echo "Fork commits to replay:"
+          git log --oneline --no-merges "$base..HEAD"
+          if git rebase --onto "upstream/$UPSTREAM_BRANCH" "$base" "$FORK_BRANCH"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Stopped on a fork commit that no longer applies: write down where, then leave it be.
+          {
+            echo "### Upstream sync stopped on a conflict"
+            echo
+            echo "Fork commit that no longer applies: \`$(git log -1 --format='%h %s' REBASE_HEAD)\`"
+            echo
+            echo "Files in conflict:"
+            git diff --name-only --diff-filter=U | sed 's/^/- `/; s/$/`/'
+            echo
+            echo "Upstream is at \`$(git rev-parse --short "upstream/$UPSTREAM_BRANCH")\`; fork main is untouched at \`$(git rev-parse --short "$old")\`."
+          } > conflict.md
+          git rebase --abort
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "conflict=true" >> "$GITHUB_OUTPUT"
+          cat conflict.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the conflict report
+        if: steps.rebase.outputs.conflict == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: conflict-report
+          path: conflict.md
+
+      - uses: actions/setup-node@v6
+        if: steps.rebase.outputs.changed == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.rebase.outputs.changed == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.rebase.outputs.changed == 'true'
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: steps.rebase.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libudev-dev libssl-dev patchelf
+
+      # Nothing is pushed unless the replayed fork still passes upstream's tests and its own.
+      - name: Test the replayed fork
+        if: steps.rebase.outputs.changed == 'true'
+        run: |
+          npm ci
+          node --test tests/*.test.cjs
+          node --check ui/app.js
+          node --check ui/tv.js
+          npm test -- --locked
+
+      - name: Push fork main (old tip kept as sync-backup)
+        id: push
+        if: steps.rebase.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release)
+        env:
+          OLD: ${{ steps.rebase.outputs.old }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$OLD" ]; then
+            git push --force origin "$OLD:refs/heads/sync-backup"
+            git push --force-with-lease="$FORK_BRANCH:$OLD" origin "HEAD:refs/heads/$FORK_BRANCH"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+  report-conflict:
+    name: Open or update the sync issue
+    needs: sync
+    if: needs.sync.outputs.conflict == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: conflict-report
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create upstream-sync --color D93F0B --description "The automatic upstream sync needs a hand" 2>/dev/null || true
+          {
+            cat conflict.md
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "**To fix:** see docs/FORK.md → \"When the sync stops on a conflict\". Once fork main is"
+            echo "replayed onto upstream by hand, run this workflow again (Actions → Sync with upstream →"
+            echo "Run workflow) and it closes this issue."
+          } > body.md
+          open=$(gh issue list --label upstream-sync --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file body.md
+          else
+            gh issue create --title "Upstream sync needs a hand" --label upstream-sync --body-file body.md
+          fi
+
+  build:
+    name: Build installers (${{ matrix.os }})
+    needs: sync
+    if: needs.sync.outputs.sha != ''
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+            artifacts: src-tauri/target/release/bundle/nsis/*.exe
+          - os: ubuntu-24.04
+            bundles: deb,appimage
+            artifacts: |
+              src-tauri/target/release/bundle/deb/*.deb
+              src-tauri/target/release/bundle/appimage/*.AppImage
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libudev-dev libssl-dev patchelf
+
+      - name: Build installers
+        shell: bash
+        # Packaging downloads Tauri's tools from GitHub, which sometimes answers 504: tried again.
+        run: |
+          npm ci
+          for i in 1 2 3 4; do
+            npm run build -- --bundles ${{ matrix.bundles }} -- --locked 2>&1 | tee build.log && exit 0
+            grep -q "http status: 50" build.log || exit 1
+            echo "GitHub download failed, trying again in $((i * 30))s"
+            sleep $((i * 30))
+          done
+          exit 1
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: installers-${{ matrix.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the prerelease
+    needs: [sync, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: out
+          merge-multiple: true
+      # Tagged hoarder-…, not v…, so upstream's own release workflows never pick it up.
+      - name: Create the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ needs.sync.outputs.sha }}
+          VERSION: ${{ needs.sync.outputs.version }}
+        run: |
+          short=${SHA:0:7}
+          tag="hoarder-v${VERSION}-${short}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already published."
+            exit 0
+          fi
+          (cd out && sha256sum * > SHA256SUMS)
+          {
+            echo "Upstream RecompLauncher ${VERSION} with this fork's own commits on top (Data Hoarder Mode,"
+            echo "Downloads at Once / Unpacks at Once, RecompLauncher Updates switch). Built by the upstream"
+            echo "sync from \`${short}\`. Unsigned test build."
+            echo
+            echo "Turn **Settings → Updates → RecompLauncher Updates** off in this build, or the launcher"
+            echo "offers upstream's own build, which doesn't have these features."
+          } > notes.md
+          gh release create "$tag" out/* --target "$SHA" --prerelease --title "Hoarder build ${VERSION} (${short})" --notes-file notes.md
+
+  close-issue:
+    name: Close the sync issue
+    needs: sync
+    if: needs.sync.outputs.conflict == 'false'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Close any open sync issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          open=$(gh issue list --label upstream-sync --state open --json number --jq '.[].number' 2>/dev/null || true)
+          for n in $open; do
+            gh issue close "$n" --comment "The sync went through: fork main is on top of upstream again."
+          done
