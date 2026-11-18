@@ -109,12 +109,33 @@ test('each schedule shows only while its checks are on', () => {
   vm.runInContext(helpers + '\n' + app.match(/^const CHECK_EVERY = .*$/m)[0] + '\n' + ['hoardEveryLabel', 'checkEverySel', 'checkEveryRows'].map((n) => fn(app, n)).join('\n'), c);
   c.tf = (s, v) => s.replace('{n}', v.n);
   const row = (b, s, ctl) => `<row ${b}>${ctl}</row>`;
-  const both = c.checkEveryRows(row, { check_updates: true });
+  c.sw = (k, on) => `<sw ${k}=${on}>`;
+  const both = c.checkEveryRows(row, { check_updates: true }, c.sw);
   assert.match(both, /<row Check Games Every>[^]*data-k="game_check_hours"[^]*<option value="1" selected>Every hour/);
   assert.match(both, /<row Check RecompLauncher Every>[^]*data-k="launcher_check_hours"/);
   c.S.settings.launcher_updates = false;
-  const games = c.checkEveryRows(row, { check_updates: true, game_check_hours: 6 });
+  const games = c.checkEveryRows(row, { check_updates: true, game_check_hours: 6 }, c.sw);
   assert.doesNotMatch(games, /launcher_check_hours/);
   assert.match(games, /<option value="6" selected>Every 6 hours/);
-  assert.equal(c.checkEveryRows(row, { check_updates: false }), '');
+  assert.equal(c.checkEveryRows(row, { check_updates: false }, c.sw), '');
+});
+
+test('update everything by itself is on unless turned off, for games and the launcher', () => {
+  const c = vm.createContext({ S: { settings: {} }, t: (s) => s, esc: String, tf: (s, v) => s.replace('{n}', v.n) });
+  vm.runInContext(helpers + '\n' + app.match(/^const CHECK_EVERY = .*$/m)[0] + '\n' + ['hoardEveryLabel', 'checkEverySel', 'checkEveryRows'].map((n) => fn(app, n)).join('\n'), c);
+  const row = (b, s, ctl) => `<row ${b}>${ctl}</row>`;
+  const sw = (k, on) => `<sw ${k}=${on}>`;
+  const html = c.checkEveryRows(row, { check_updates: true }, sw);
+  assert.match(html, /<sw auto_update_games=true>/);
+  assert.match(html, /<sw launcher_auto_install=true>/);
+  assert.match(c.checkEveryRows(row, { check_updates: true, auto_update_games: false, launcher_auto_install: false }, sw), /<sw auto_update_games=false>[^]*<sw launcher_auto_install=false>/);
+  // Every found update starts, not only games set to Update automatically.
+  assert.match(fn(app, 'checkUpdates'), /const allAuto = S\.settings\.auto_update_games !== false;/);
+  assert.match(fn(app, 'checkUpdates'), /\(allAuto \|\| S\.library\[id\]\.auto_update\)/);
+});
+
+test('the launcher installs its downloaded update by itself only when out of sight and idle', () => {
+  assert.match(lib, /fetch_update\(&st, &v\)\.await;\s*if auto_install_launcher\(&h, &v\)\.await \{\s*return;/);
+  assert.match(lib, /let busy = !st\.running\.lock\(\)\.unwrap\(\)\.is_empty\(\) \|\| !st\.jobs\.lock\(\)\.unwrap\(\)\.is_empty\(\) \|\| hoard::status\(\)\.running;/);
+  assert.match(lib, /let in_tray = std::env::args\(\)\.any\(\|a\| a == update_launch::TRAY_ARG\);/);
 });

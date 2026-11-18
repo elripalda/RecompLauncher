@@ -4,6 +4,33 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Starts the launcher with its window kept in the tray (an update that installed by itself while
+/// the window was out of sight).
+pub const TRAY_ARG: &str = "--tray";
+
+/// An update installing by itself while the launcher sits in the tray: the installer runs with no
+/// window, then the launcher starts again in the tray, so nothing pops up on the player's screen.
+/// A small script does both, since the launcher has closed by the time the installer finishes.
+pub fn installer_then_tray(installer: &Path, portable_dir: Option<&Path>, exe: &Path) -> std::io::Result<Command> {
+    let script = installer.with_extension("cmd");
+    std::fs::write(&script, tray_script(installer, portable_dir, exe))?;
+    let mut command = Command::new("cmd");
+    command.arg("/C").arg(&script);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: no console flashes up either.
+        command.creation_flags(0x0800_0000);
+    }
+    Ok(command)
+}
+
+fn tray_script(installer: &Path, portable_dir: Option<&Path>, exe: &Path) -> String {
+    // /D= must be last and unquoted (see install_dir).
+    let dir = portable_dir.map(|d| format!(" /D={}", d.display())).unwrap_or_default();
+    format!("@echo off\r\n\"{}\" /S /UPDATE{dir}\r\nstart \"\" \"{}\" {TRAY_ARG}\r\n", installer.display(), exe.display())
+}
+
 /// How the installer runs.
 pub enum Install {
     /// No installer window; the launcher opens again after only when `reopen` is set.
@@ -72,6 +99,14 @@ mod tests {
         assert_eq!(command.get_args().collect::<Vec<_>>(), ["/S", "/UPDATE", "/R"]);
         let retry = installer_command(Path::new("installer.exe"), None, Install::Shown);
         assert_eq!(retry.get_args().count(), 0);
+    }
+
+    #[test]
+    fn an_update_from_the_tray_installs_quietly_then_starts_in_the_tray() {
+        let script = tray_script(Path::new(r"C:\Temp\RecompLauncher-1-setup.exe"), None, Path::new(r"C:\Apps\RecompLauncher\RecompLauncher.exe"));
+        assert_eq!(script, "@echo off\r\n\"C:\\Temp\\RecompLauncher-1-setup.exe\" /S /UPDATE\r\nstart \"\" \"C:\\Apps\\RecompLauncher\\RecompLauncher.exe\" --tray\r\n");
+        let portable = tray_script(Path::new("setup.exe"), Some(Path::new(r"D:\My Games\RL")), Path::new("RL.exe"));
+        assert!(portable.contains(r"/S /UPDATE /D=D:\My Games\RL"));
     }
 
     #[test]

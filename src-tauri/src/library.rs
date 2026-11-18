@@ -376,6 +376,17 @@ pub struct Settings {
     /// Now only has to install it.
     #[serde(default = "one")]
     pub launcher_check_hours: u32,
+    /// Settings → Updates → Install RecompLauncher Updates by Itself: a newer build found by the
+    /// clock is installed once the launcher is out of sight (in the tray or minimized) with no game
+    /// running and nothing downloading, and it starts again in the tray. While the window is in
+    /// use it waits for Update Now (already downloaded).
+    #[serde(default = "yes")]
+    pub launcher_auto_install: bool,
+    /// Settings → Updates → Update All Games Automatically: every game's update downloads and
+    /// installs when it's found (saves backed up first), not only the games set to Update
+    /// automatically on their own page.
+    #[serde(default = "yes")]
+    pub auto_update_games: bool,
     /// Settings → Updates → Check Games Every: hours between game update checks while the
     /// launcher runs (1 to 168), with "Look for updates" on. Each check installs the games set to
     /// Update automatically, and Data Hoarder Mode downloads what's new.
@@ -472,6 +483,8 @@ impl Default for Settings {
             hoard_every_hours: one(),
             launcher_updates: true,
             launcher_check_hours: one(),
+            launcher_auto_install: true,
+            auto_update_games: true,
             game_check_hours: one(),
         }
     }
@@ -837,6 +850,8 @@ mod tests {
         let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
         assert_eq!(settings.launcher_check_hours, 1);
         assert_eq!(settings.game_check_hours, 1);
+        assert!(settings.launcher_auto_install);
+        assert!(settings.auto_update_games);
     }
 
     #[test]

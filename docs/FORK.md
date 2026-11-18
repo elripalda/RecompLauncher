@@ -16,8 +16,12 @@ This repository is a fork of [elripalda/RecompLauncher](https://github.com/elrip
 - **Update schedules** (Settings → Updates): **Check Games Every** and **Check RecompLauncher
   Every**, hourly by default (1, 3, 6, 12 hours or a day). Each game check installs the games set to
   Update automatically (and Data Hoarder Mode saves what's new); a newer RecompLauncher found by the
-  clock is downloaded at once, so Update Now only installs it. The **RecompLauncher Updates** switch
-  turns the launcher's own checks off.
+  clock is downloaded at once. **Update All Games Automatically** (on by default) installs every
+  game update found, not only games set to Update automatically. **Install RecompLauncher Updates
+  by Itself** (on by default) installs the downloaded launcher update while the window is in the
+  tray or minimized and no game, download or Data Hoarder sweep is running, then starts it again
+  in the tray (`--tray`); while the window is in use, Update Now installs it. The **RecompLauncher
+  Updates** switch turns the launcher's own checks off.
 - **The upstream sync** (`.github/workflows/fork-sync.yml`) and this page.
 
 Anything upstream already merged (the Auto-Install setting, for one) isn't carried here.

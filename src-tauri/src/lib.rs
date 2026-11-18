@@ -8314,7 +8314,13 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file, "url": file_url, "sha256": want}).to_string());
     let portable = portable_dir().and_then(|_| exe_dir());
     let reopen = reopen_after_update(&app);
-    update_launch::installer_command(&file, portable.as_deref(), update_launch::Install::Quiet { reopen })
+    let me = std::env::current_exe().ok();
+    let command = match me.filter(|_| AUTO_UPDATING.load(Ordering::Relaxed)) {
+        Some(exe) => update_launch::installer_then_tray(&file, portable.as_deref(), &exe)?,
+        None => update_launch::installer_command(&file, portable.as_deref(), update_launch::Install::Quiet { reopen }),
+    };
+    let mut command = command;
+    command
         .spawn()
         .map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
@@ -8378,6 +8384,35 @@ async fn fetch_update(st: &App, v: &Value) {
     if std::fs::write(&file, &bytes).is_ok() {
         trail::note(format!("Launcher update {version}: downloaded, ready for Update Now"));
     }
+}
+
+/// Set when an update installs by itself from the tray: the launcher starts again in the tray.
+static AUTO_UPDATING: AtomicBool = AtomicBool::new(false);
+
+/// Settings → Updates → Install RecompLauncher Updates by Itself. The update already downloaded
+/// (fetch_update) goes in only while the window is out of sight and nothing would be cut short:
+/// no game running, no download or install, no Data Hoarder sweep. True once it's on its way.
+async fn auto_install_launcher(h: &AppHandle, v: &Value) -> bool {
+    let st = h.state::<App>();
+    if !cfg!(windows) || !st.lib.lock().unwrap().settings.launcher_auto_install {
+        return false;
+    }
+    if ready_update(&st.dir, str_of(v, "version"), &str_of(v, "sha256").to_lowercase()).is_none() {
+        return false;
+    }
+    let busy = !st.running.lock().unwrap().is_empty() || !st.jobs.lock().unwrap().is_empty() || hoard::status().running;
+    let in_use = h.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(true) && !w.is_minimized().unwrap_or(false));
+    if busy || in_use {
+        return false;
+    }
+    trail::note(format!("Launcher update {}: installing by itself from the tray", str_of(v, "version")));
+    AUTO_UPDATING.store(true, Ordering::Relaxed);
+    let done = update_launcher_inner(h, &st, None).await;
+    AUTO_UPDATING.store(false, Ordering::Relaxed);
+    if let Err(e) = &done {
+        trail::note(format!("Launcher update: installing by itself didn't work: {e}"));
+    }
+    done.is_ok()
 }
 
 /// Whether the launcher opens again after its own update: only while the player still has its
@@ -9875,6 +9910,9 @@ pub fn run() {
                         }
                         if let Some(v) = newer_launcher(&st, 0, false).await {
                             fetch_update(&st, &v).await;
+                            if auto_install_launcher(&h, &v).await {
+                                return;
+                            }
                             let ver = str_of(&v, "version").to_string();
                             if ver != told {
                                 told = ver.clone();
@@ -9947,7 +9985,9 @@ pub fn run() {
                     let monitor_id = app.state::<App>().lib.lock().unwrap().settings.tv_monitor.clone();
                     // While the window gets ready: a small one in the middle of the screen with the
                     // logo. Big Picture mode has its own start animation, so not there.
-                    let splash = if tv { None } else { open_splash(app.handle()) };
+                    // Started again after an update that installed by itself from the tray: it stays there.
+                    let in_tray = std::env::args().any(|a| a == update_launch::TRAY_ARG);
+                    let splash = if tv || in_tray { None } else { open_splash(app.handle()) };
                     let opened = Instant::now();
                     tauri::async_runtime::spawn(async move {
                         wait_for_ui().await;
@@ -9962,6 +10002,10 @@ pub fn run() {
                                 Ok(_) => {}
                                 Err(e) => trail::note(format!("Big Picture startup aborted: {e}")),
                             }
+                        }
+                        if in_tray {
+                            trail::note("Started in the tray after an update");
+                            return;
                         }
                         // Long enough for the logo to read, never longer than the window takes.
                         if let Some(rest) = splash.as_ref().and_then(|_| SPLASH_MIN.checked_sub(opened.elapsed())) {
