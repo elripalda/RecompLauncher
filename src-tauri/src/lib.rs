@@ -63,6 +63,8 @@ mod update_launch;
 mod update_rollback_tests;
 #[cfg(test)]
 mod update_check_tests;
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
+mod prepare_appimage_tests;
 pub mod usage;
 pub mod win;
 #[cfg(windows)]
@@ -3906,6 +3908,8 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[Stri
     let args: Vec<String> = pr.args.iter().chain(extra.iter()).map(|a| profile::fill(a, install, Some(copy))).collect();
     let mut c = std::process::Command::new(&exe);
     sysenv::clean_std(&mut c);
+    #[cfg(target_os = "linux")]
+    own_setup::unpack_if_appimage(&mut c, &exe);
     // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
     if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
         if let Some(dir) = exe.parent() {

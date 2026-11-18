@@ -53,6 +53,7 @@ an overlay-based configuration or Home Manager's `home.packages`.
 - vkBasalt is in it too: the launcher's Looks (shaders) use it on Linux. The layer only turns on
   for a game given a look.
 - AppImages unpack themselves to run: FUSE can't mount them inside the runtime environment.
+  This applies to both Play and AppImage builders run by Easy Setup.
 - RecompLauncher updates through Nix, not by itself. `nix flake update` (or updating the input in
   your system flake) and a rebuild bring the new version.
 - Game shortcuts and Steam entries start the launcher by the path your system finds it at (for

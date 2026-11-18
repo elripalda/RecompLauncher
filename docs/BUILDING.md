@@ -118,6 +118,23 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 `RL_API=http://127.0.0.1:8120 npm run dev`. It reads `/pc-catalog.json` and
 `/api/gh.php?repo=owner/name` (the same JSON as GitHub's releases API).
 
+### AppImage preparation regression (Linux x86_64)
+
+Linux CI also runs a real Type-2 AppImage through the preparation step. The test creates a
+small builder image, runs it with an isolated Flatpak environment, and checks its generated
+output and extraction to the disk cache. It needs no game, ROM, display or FUSE mount.
+It is ignored by the ordinary offline test suite because the runtime is downloaded separately:
+
+```sh
+runtime="$(mktemp)"
+curl --fail --location --output "$runtime" \
+  https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+echo "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d  $runtime" | sha256sum --check -
+RL_TEST_APPIMAGE_RUNTIME="$runtime" cargo test --manifest-path src-tauri/Cargo.toml --locked --lib \
+  prepare_appimage_tests::appimage_prepare_runs_from_disk_without_fuse -- --ignored --exact --nocapture
+rm "$runtime"
+```
+
 ## Pull request builds
 
 The `PR checks` GitHub Actions workflow runs the Rust and UI tests and builds installers on

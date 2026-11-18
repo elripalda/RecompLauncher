@@ -297,7 +297,7 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
 /// A setup that comes as an AppImage can't mount itself in the Flatpak or on a PC without FUSE 2
 /// (NixOS, a container): it unpacks itself to run, as a game's AppImage does at Play.
 #[cfg(target_os = "linux")]
-fn unpack_if_appimage(c: &mut std::process::Command, p: &Path) {
+pub(crate) fn unpack_if_appimage(c: &mut std::process::Command, p: &Path) {
     if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")) {
         return;
     }

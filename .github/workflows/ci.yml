@@ -82,6 +82,17 @@ jobs:
       - name: Run Rust tests
         run: npm test -- --locked
 
+      - name: Test AppImage preparation without FUSE
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          runtime="$RUNNER_TEMP/appimage-runtime-x86_64"
+          curl --fail --location --output "$runtime" \
+            https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+          echo "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d  $runtime" | sha256sum --check -
+          RL_TEST_APPIMAGE_RUNTIME="$runtime" cargo test --manifest-path src-tauri/Cargo.toml --locked --lib \
+            prepare_appimage_tests::appimage_prepare_runs_from_disk_without_fuse -- --ignored --exact --nocapture
+
       - name: Build installers
         shell: bash
         # Packaging downloads Tauri's tools from GitHub, which sometimes answers 504: tried again.

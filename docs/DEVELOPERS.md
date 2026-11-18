@@ -97,6 +97,19 @@ Program entries ending in `.AppImage` in `start` and `prepare` are rebound to th
 installed filename, so renaming the download does not break launch. An internal path such
 as `usr/bin/game` cannot be started by the launcher outside the image.
 
+On Linux without FUSE 2, AppImages used for both Play and preparation extract themselves
+before running. No extra runtime flag is needed in your profile:
+
+```json
+"prepare": {
+  "program": ["MyGame-x86_64.AppImage"],
+  "args": ["--prepare", "--game", "{game}", "--out", "{install}"]
+}
+```
+
+Keep generated files outside the read-only image. The same profile also works when the
+Flatpak launcher starts the extracted `AppRun`.
+
 Embedded lookup applies when the install folder contains exactly one regular `.AppImage`
 file at its top level (case-insensitive extension). With multiple AppImages it does not
 guess: the adjacent profile and catalog fallback continue to work. The manifest must be
