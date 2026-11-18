@@ -8,7 +8,7 @@ const tv = read('tv.js');
 
 // The core's answer (game_setup's status) is the one rule for Set up against Play.
 const src = app.slice(app.indexOf('// Easy Setup\'s answer for a game, worked out by the core'), app.indexOf('// Turnkey:'));
-const load = (S) => new Function('S', `${src} return { setupStatus, easyNotReady };`)(S);
+const load = (S) => new Function('S', 'tf', 'byId', `${src} return { setupStatus, easyNotReady, copyNotNeeded, copyGoneText };`)(S, (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => v[k]), () => null);
 
 test('a game built from its copy is not asked to set up again when the copy is gone', () => {
   const S = { easy: new Set(['hookshot']), setup: { hookshot: { needs: 'Your copy', copy: null, status: { ready: true, reason: 'built' } } } };
@@ -48,4 +48,28 @@ test('Easy Setup tells the core when its window opens and closes, in both modes'
   assert.match(app, /\/\/ pick === 'bg':\r?\n\s*setupClosed\(id\);/);
   assert.match(app, /invoke\('setup_cancel', \{ id \}\)\.catch\(\(\) => \{\}\);\r?\n\s*setupClosed\(id\);/);
   assert.match(tv, /setupClosed\(id\);\r?\n\s*TS\.id = null;/);
+});
+
+test('a game built from a copy that is gone says it plays without it, instead of asking', () => {
+  const built = { needs: 'Your copy', copy: null, status: { ready: true, reason: 'built' } };
+  const S = { easy: new Set(['hookshot']), library: { hookshot: { name: 'Hookshot' } }, setup: { hookshot: built } };
+  const { copyNotNeeded, copyGoneText } = load(S);
+  assert.equal(copyNotNeeded('hookshot'), true);
+  assert.equal(copyGoneText('hookshot'), "Your copy isn't here anymore. Hookshot doesn't need it: it's already built.");
+  // Its copy still there, a game that isn't set up, or the player's own build: not this case.
+  S.setup.hookshot = Object.assign({}, built, { copy: 'D:/hookshot.nup' });
+  assert.equal(copyNotNeeded('hookshot'), false);
+  S.setup.hookshot = Object.assign({}, built, { status: { ready: false, reason: 'copy' } });
+  assert.equal(copyNotNeeded('hookshot'), false);
+  S.setup.hookshot = Object.assign({}, built, { status: { ready: true, reason: 'own_build' } });
+  assert.equal(copyNotNeeded('hookshot'), false);
+});
+
+test('every copy row uses it: Before You Play, the Manage tab and Big Picture', () => {
+  assert.match(app, /d: st\.reason === 'own_build' \? t\('Your own build'\) : copyGoneText\(id\)/);
+  // Manage tab: said, and picking a copy isn't the main button then.
+  assert.match(app, /const gone = copyNotNeeded\(id\), have = su\.copy \|\| gone;\r?\n\s+const sub = su\.copy \? su\.copy : gone \? copyGoneText\(id\) : su\.needs;/);
+  assert.match(app, /class="btn\$\{have \? '' : ' main'\}" data-act="setup"/);
+  assert.match(tv, /const gone = copyNotNeeded\(id\), have = prof\.copy \|\| gone;/);
+  assert.match(tv, /const gone = copyNotNeeded\(TV\.arg\);/);
 });

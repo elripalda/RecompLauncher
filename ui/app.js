@@ -205,6 +205,10 @@ const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installer
 const setupStatus = (id) => { const su = S.setup[id]; return su && su !== 'loading' && su.status ? su.status : null; };
 // An Easy Setup game that isn't set up: its main button is Set up instead of Play.
 const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready; };
+// Built from the player's copy, which isn't where it was anymore: the core says the game plays
+// without it, so its copy rows say so (desktop and Big Picture) instead of asking for it.
+const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && st.ready && st.reason === 'built'); };
+const copyGoneText = (id) => tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
@@ -1354,7 +1358,7 @@ function readyRows(a) {
   // Set up without a copy to show: built from the copy (it plays without it), or their own build.
   const st = setupStatus(id);
   const builtOnly = !!(cs && !cs.file && st && st.ready && (st.reason === 'built' || st.reason === 'own_build'));
-  if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: st.reason === 'own_build' ? t('Your own build') : t('The game was built from your copy and plays without it.'), fix: '' });
+  if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: st.reason === 'own_build' ? t('Your own build') : copyGoneText(id), fix: '' });
   else if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
     d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
     tags: cs.file || own ? '' : fmtTags(cs.exts),
@@ -3233,7 +3237,14 @@ function settingsTab(a) {
     ? `<div class="seg" role="radiogroup" aria-label="${esc(o.label)}">${o.choices.map((c, i) => `<button type="button" role="radio" aria-checked="${o.own == null && o.current === i}" data-act="gset" data-id="${esc(id)}" data-k="${esc(o.id)}" data-i="${i}"${o.applies ? '' : ' disabled'}>${esc(c)}</button>`).join('')}</div>`
     : `<select class="sel" data-act="gsel" data-id="${esc(id)}" data-k="${esc(o.id)}"${o.applies ? '' : ' disabled'}>${o.own != null ? `<option value="" selected disabled>${esc(o.own)}</option>` : ''}${o.choices.map((c, i) => `<option value="${i}"${o.own == null && o.current === i ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
   return `<div class="stack">
-    ${su.needs ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${su.copy ? esc(su.copy) : esc(su.needs)}</span></div><button type="button" class="btn${su.copy ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(su.copy ? ((su.prepare_options || []).length ? t('Set Up Again') : t('Change')) : t('Insert it'))}</button></div>${spareRow(id, su)}</div>` : ''}
+    ${su.needs ? (() => {
+      // A game built from a copy that's gone since plays without it: said, and picking a copy is
+      // only for building it again (not the main button).
+      const gone = copyNotNeeded(id), have = su.copy || gone;
+      const sub = su.copy ? su.copy : gone ? copyGoneText(id) : su.needs;
+      const label = su.copy ? ((su.prepare_options || []).length ? t('Set Up Again') : t('Change')) : gone ? t('Change') : t('Insert it');
+      return `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${esc(sub)}</span></div><button type="button" class="btn${have ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(label)}</button></div>${spareRow(id, su)}</div>`;
+    })() : ''}
     ${su.update ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('The game\'s update'))}</b><span>${su.update_copy ? esc(su.update_copy) : esc(su.update)}</span></div><button type="button" class="btn${su.update_copy || su.update_optional ? '' : ' main'}" data-act="setupdate" data-id="${esc(id)}">${esc(su.update_copy ? t('Change') : t('Choose It'))}</button></div></div>` : ''}
     ${su.settings.length ? `<div class="card"><div class="card-h"><h3>${esc(t('How it runs'))}</h3><span>${esc(su.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings'))}</span></div>
       ${gameSettingRows(id, su, seg)}</div>` : ''}

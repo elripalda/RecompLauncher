@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "Game-nya Sudah Ada di Sana",
  "The build of {name} is in {path} now.": "Build {name} sekarang ada di {path}.",
  "The game was built from your copy and plays without it.": "Game ini dibangun dari salinanmu dan bisa dimainkan tanpanya.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Salinanmu sudah tidak ada di sini. {name} tidak membutuhkannya: game ini sudah dibangun.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Launcher mengekstrak salinanmu ke folder game, jadi game bisa dimainkan tanpanya.",
  "There's no build to move yet. Set the game up first.": "Belum ada build untuk dipindahkan. Siapkan game-nya dulu.",
  "This PC's Name": "Nama PC Ini",

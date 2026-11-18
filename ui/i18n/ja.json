@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "ゲームはすでにそこにあります",
  "The build of {name} is in {path} now.": "{name} のビルドは現在 {path} にあります。",
  "The game was built from your copy and plays without it.": "ゲームはあなたのコピーからビルドされていて、コピーなしで遊べます。",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "コピーはもうここにありません。{name} はビルド済みなので、コピーは不要です。",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "ランチャーがコピーをゲームのフォルダーに展開したので、コピーなしで遊べます。",
  "There's no build to move yet. Set the game up first.": "移動するビルドはまだありません。先にゲームをセットアップしてください。",
  "This PC's Name": "この PC の名前",

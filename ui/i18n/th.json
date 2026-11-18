@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "มีเกมอยู่ที่นั่นแล้ว",
  "The build of {name} is in {path} now.": "บิลด์ของ {name} อยู่ที่ {path} แล้ว",
  "The game was built from your copy and plays without it.": "เกมถูกบิลด์จากสำเนาของคุณ และเล่นได้โดยไม่ต้องใช้สำเนา",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "สำเนาของคุณไม่อยู่ที่นี่แล้ว {name} ไม่ต้องใช้สำเนา เพราะบิลด์ไว้แล้ว",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "ลันเชอร์แตกสำเนาของคุณลงในโฟลเดอร์ของเกมแล้ว เกมจึงเล่นได้โดยไม่ต้องใช้สำเนา",
  "There's no build to move yet. Set the game up first.": "ยังไม่มีบิลด์ให้ย้าย ตั้งค่าเกมก่อน",
  "This PC's Name": "ชื่อพีซีเครื่องนี้",

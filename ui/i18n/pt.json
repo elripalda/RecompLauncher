@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "O jogo já lá está",
  "The build of {name} is in {path} now.": "A build de {name} está agora em {path}.",
  "The game was built from your copy and plays without it.": "O jogo foi criado a partir da tua cópia e funciona sem ela.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "A tua cópia já não está aqui. {name} não precisa dela: o jogo já foi criado.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "O launcher descompactou a tua cópia na pasta do jogo, por isso o jogo funciona sem ela.",
  "There's no build to move yet. Set the game up first.": "Ainda não há uma build para mover. Configura o jogo primeiro.",
  "This PC's Name": "Nome deste PC",

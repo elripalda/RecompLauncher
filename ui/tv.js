@@ -1647,7 +1647,12 @@
       `<button type="button" class="tv-item${look ? '' : ' off'}" data-f data-key="gs:__amount" data-gset="__amount" data-id="${esc(id)}"${look ? '' : ' disabled'}><span class="k">${esc(t('Amount'))}<small>${esc(t('How strong the shader is.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 22)}</span></button>`,
     ] : [];
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
-      prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
+      prof && prof.needs ? (() => {
+        // Built from a copy that's gone since: it plays without it, as on the desktop.
+        const gone = copyNotNeeded(id), have = prof.copy || gone;
+        const sub = prof.copy ? baseName(prof.copy) : gone ? copyGoneText(id) : prof.needs;
+        return `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(sub)}</small></span><span class="tv-pill${have ? ' on' : ''}">${esc(have ? t('Change') : t('Insert it'))}</span></button>`;
+      })() : '',
       ...lookRows,
       ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
@@ -2472,7 +2477,8 @@
         <div class="val">${svg('chevL', 34)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 34)}</div>
         <div class="dots">${o.choices.map((c, i) => `<i class="${i === o.current ? 'on' : ''}" title="${esc(c)}"></i>`).join('')}</div><p>${esc(o.help)}</p>`;
     } else if (el.dataset.key === 'gs:copy') {
-      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc((su.status ? su.status.ready : su.copy) ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || su.needs || '')}</p>`;
+      const gone = copyNotNeeded(TV.arg);
+      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc((su.status ? su.status.ready : su.copy) ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || (gone ? copyGoneText(TV.arg) : su.needs) || '')}</p>`;
     } else if (el.dataset.key === 's:buttons' && window.buttonGuide) {
       html = `<span class="k">${esc(t('Controller'))}</span><div class="tv-padguide">${window.buttonGuide(glyph).map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b></span></div>`).join('')}</div>`;
     } else if (el.dataset.key === 's:monitor') {

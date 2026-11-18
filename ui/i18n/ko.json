@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "게임이 이미 거기에 있습니다",
  "The build of {name} is in {path} now.": "{name}의 빌드가 이제 {path}에 있습니다.",
  "The game was built from your copy and plays without it.": "게임이 사본으로 빌드되었고, 사본 없이 실행됩니다.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "사본이 더 이상 여기에 없습니다. {name}은(는) 이미 빌드되어 사본이 필요 없습니다.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "런처가 사본을 게임 폴더에 풀었으므로, 게임이 사본 없이 실행됩니다.",
  "There's no build to move yet. Set the game up first.": "아직 옮길 빌드가 없습니다. 먼저 게임을 설정하세요.",
  "This PC's Name": "이 PC의 이름",

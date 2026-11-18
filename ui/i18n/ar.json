@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "اللعبة موجودة هناك بالفعل",
  "The build of {name} is in {path} now.": "النسخة المبنية من {name} موجودة الآن في {path}.",
  "The game was built from your copy and plays without it.": "بُنيت اللعبة من نسختك وتعمل بدونها.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "نسختك لم تعد هنا. لا تحتاجها {name}: فهي مبنية بالفعل.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "فكّ المشغّل ضغط نسختك داخل مجلد اللعبة، لذا تعمل اللعبة بدونها.",
  "There's no build to move yet. Set the game up first.": "لا توجد نسخة مبنية لنقلها بعد. أعدّ اللعبة أولًا.",
  "This PC's Name": "اسم هذا الكمبيوتر",
