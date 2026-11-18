@@ -489,10 +489,12 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
 /// so the window can translate it.
 pub(crate) const SAVES_UNKNOWN: &str = "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.";
 
-/// Where this game's copies are (see saves::dir_of).
-fn copies_dir(st: &App, id: &str) -> Res<PathBuf> {
-    let g = game(st, id)?;
-    Ok(saves::dir_of(&st.dir, id, &g))
+/// Where this game's copies are (see saves::dir_of). A copy still waiting to go up for a game
+/// that isn't installed anymore is looked for where it was kept before: the player's folder, or
+/// the launcher's.
+fn copies_dir(st: &App, id: &str) -> PathBuf {
+    let g = game(st, id).ok();
+    saves::place(&st.dir, id, g.as_ref())
 }
 
 /// The folder the Saves page shows for the copies: the player's, else the library's .backups,
@@ -630,7 +632,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
     let mut state = saves::state(&st.dir, id);
-    let copy = saves::manifest(&copies_dir(&st, id)?.join(name))
+    let copy = saves::manifest(&copies_dir(&st, id).join(name))
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
     let Some(top) = list.first() else { return upload_copy(app, id, name, 0).await };
@@ -652,7 +654,7 @@ async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 
 async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Res<()> {
     let st = app.state::<App>();
-    let path = copies_dir(&st, id)?.join(name);
+    let path = copies_dir(&st, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     if paused() {
         return Err(Error::Msg(PAUSED_TEXT.into()));
@@ -899,7 +901,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
-    let d = copies_dir(&st, id)?;
+    let d = copies_dir(&st, id);
     tokio::fs::create_dir_all(&d).await?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await?;

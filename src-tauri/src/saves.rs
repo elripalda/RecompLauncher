@@ -640,9 +640,11 @@ fn copy_sets(app_dir: &Path, installed: &[Installed]) -> Vec<(String, Option<Ins
     if let Some(root) = chosen_root().filter(|p| p.is_dir()) {
         ids.extend(folder_names(&root));
     }
+    // An empty id would name the folder that holds every game's copies.
+    ids.retain(|id| !id.is_empty());
     ids.sort();
     ids.dedup();
-    let find = |id: &str| installed.iter().find(|g| g.id == id).cloned();
+    let find =|id: &str| installed.iter().find(|g| g.id == id).cloned();
     let owner = |id: &str| find(id).or_else(|| crate::games::split(id).and_then(|(recomp, _)| find(recomp)));
     ids.into_iter().map(|id| {
         let g = owner(&id);
