@@ -828,12 +828,14 @@ fn working(app: &AppHandle, id: &str, what: &str) -> Working {
     Working { app: app.clone(), id: id.to_string() }
 }
 
-/// The kind of trouble behind a failed upload, as saves_status reports it.
-fn problem_kind(e: &Error) -> &'static str {
-    if paused() {
+/// The kind of trouble behind a failed upload, as saves_status reports it. `website`: the saves
+/// go to RecompStore, whose pause applies; with Google Drive it doesn't.
+fn problem_kind(e: &Error, website: bool) -> &'static str {
+    if website && paused() {
         return "paused";
     }
-    if is_full(e) {
+    // RecompStore's 150 MB, or the player's Google Drive storage.
+    if is_full(e) || e.to_string().contains("Drive storage is full") {
         return "full";
     }
     if e.to_string().starts_with("This save is too big") {
@@ -846,13 +848,20 @@ fn problem_kind(e: &Error) -> &'static str {
 }
 
 /// Remembers why this game's saves didn't go up, so its page can still say so after the toast is
-/// gone. A conflict is kept on its own (upload sets it), not as a problem.
+/// gone. A conflict is kept on its own, not as a problem: upload sets it with the cloud copy's
+/// version, and Google Drive, which only says so in its upload error, sets it here.
 fn note_failure(dir: &Path, id: &str, e: &Error) {
+    let mut s = saves::state(dir, id);
     if e.to_string() == SYNC_CONFLICT {
+        if s.conflict.is_some() {
+            return;
+        }
+        s.conflict = Some(String::new());
+        saves::set_state(dir, id, &s);
         return;
     }
-    let mut s = saves::state(dir, id);
-    s.problem = Some(saves::Problem { kind: problem_kind(e).into(), text: e.to_string(), at: crate::library::now() });
+    let kind = problem_kind(e, !using_drive(dir));
+    s.problem = Some(saves::Problem { kind: kind.into(), text: e.to_string(), at: crate::library::now() });
     saves::set_state(dir, id, &s);
 }
 
@@ -882,7 +891,10 @@ async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
     let Some(top) = list.first() else { return upload_copy(app, id, name, 0, None, a.as_ref()).await };
+    // Drive keeps both branches until the player picks.
     if top.conflict {
+        state.conflict = Some(top.v.clone());
+        saves::set_state(&st.dir, id, &state);
         return Err(Error::Msg(SYNC_CONFLICT.into()));
     }
     if top.hash == copy.hash {
@@ -909,13 +921,15 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64, resol
         if !crate::net::forced() && copy_wait_left(id, name).is_some() {
             return Err(Error::Net("Google Drive upload is waiting to retry.".into()));
         }
+        let working = working(app, id, "up");
         if let Err(e) = crate::drive::upload(app, id, &path, resolution).await {
             if matches!(e, Error::Net(_)) { copy_failed(id, name, "Google Drive unavailable"); }
             return Err(e);
         }
+        drop(working);
         copy_went_up(id, name);
         let mut state = saves::state(&st.dir, id);
-        state.synced_hash = man.hash;
+        state.mark_synced(&man.hash, man.made.max(earliest), &man.device);
         state.pending = None;
         saves::set_state(&st.dir, id, &state);
         return Ok(());
@@ -1745,19 +1759,22 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
     let st = app.state::<App>();
     let g = game(&st, id)?;
     let s = saves::state(&st.dir, id);
-    let signed = signed_in(&st.dir);
+    // Connected to whichever cloud the player picked (signed in, for RecompStore).
+    let ready = crate::save_provider::ready(&st.dir);
+    // Full and paused are what the RecompStore website said; Drive says its own in `problem`.
+    let website = !using_drive(&st.dir);
     let local = saves::list(&st.dir, id, &g);
     let retry = s.pending.as_deref().and_then(|p| copy_wait_left(id, p));
     Ok(json!({
-        "state": s.sync_state(g.cloud == Some(true), signed),
-        "cloudOn": g.cloud, "signedIn": signed,
+        "state": s.sync_state(g.cloud == Some(true), ready),
+        "cloudOn": g.cloud, "signedIn": ready,
+        "provider": crate::save_provider::current(&st.dir), "providerName": crate::save_provider::name(&st.dir),
         "syncedAt": s.synced_at, "syncedMade": s.synced_made, "syncedDevice": s.synced_device,
-        "waiting": waiting_copies(&local, &s), "retryIn": retry, "full": full_now(), "paused": paused(),
+        "waiting": waiting_copies(&local, &s), "retryIn": retry,
+        "full": website && full_now(), "paused": website && paused(),
         "problem": s.problem, "conflict": s.conflict.is_some(), "newest": local.first(),
         // False: nobody has said where it saves, so nothing of it is backed up or synced.
         "known": !spots_of(&st, id, &g).is_empty(),
-        // Where the saves go. Only RecompStore today; named so another cloud can say so later.
-        "provider": "recompstore",
     }))
 }
 
@@ -3012,23 +3029,23 @@ mod status_tests {
 
     #[test]
     fn a_full_cloud_is_its_own_problem() {
-        assert_eq!(problem_kind(&Error::Msg(FULL_TEXT.into())), "full");
+        assert_eq!(problem_kind(&Error::Msg(FULL_TEXT.into()), true), "full");
     }
 
     #[test]
     fn a_copy_over_the_limit_is_too_big() {
         let e = Error::Msg("This save is too big for cloud saves (over 95 MB). It's kept on this PC.".into());
-        assert_eq!(problem_kind(&e), "too-big-copy");
+        assert_eq!(problem_kind(&e, true), "too-big-copy");
     }
 
     #[test]
     fn no_connection_is_offline() {
-        assert_eq!(problem_kind(&Error::Net("Can't reach recomplauncher.com right now.".into())), "offline");
+        assert_eq!(problem_kind(&Error::Net("Can't reach recomplauncher.com right now.".into()), true), "offline");
     }
 
     #[test]
     fn any_other_refusal_is_an_error() {
-        assert_eq!(problem_kind(&Error::Msg("That copy is gone.".into())), "error");
+        assert_eq!(problem_kind(&Error::Msg("That copy is gone.".into()), true), "error");
     }
 
     #[test]
@@ -3043,7 +3060,7 @@ mod status_tests {
     }
 
     #[test]
-    fn a_conflict_is_not_recorded_as_a_problem() {
+    fn a_conflict_is_recorded_separately_from_a_problem() {
         let d = tmp("conflict");
         note_failure(&d, "g", &Error::Msg(SYNC_CONFLICT.into()));
         assert!(saves::state(&d, "g").problem.is_none());
@@ -3076,6 +3093,30 @@ mod status_tests {
         let local = vec![saves::Copy { name: "200.zip".into(), when: 200, size: 1, files: 1, hash: "b".into(), device: String::new(), played: 0 }];
         let s = saves::State { synced_hash: "a".into(), ..Default::default() };
         assert_eq!(waiting_copies(&local, &s), 0);
+    }
+    #[test]
+    fn a_full_google_drive_is_full() {
+        let e = Error::Msg("Google Drive storage is full. Free space in Drive, then press Sync Now. Your saves stay on this PC.".into());
+        assert_eq!(problem_kind(&e, false), "full");
+    }
+
+    #[test]
+    fn a_conflict_google_drive_reports_as_an_error_is_kept() {
+        let d = tmp("conflict-error");
+        sign_in_for_tests(&d, "A");
+        note_failure(&d, "g", &Error::Msg(SYNC_CONFLICT.into()));
+        assert_eq!(saves::state(&d, "g").sync_state(true, true), "conflict");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_conflict_with_a_known_version_keeps_it() {
+        let d = tmp("conflict-version");
+        sign_in_for_tests(&d, "A");
+        saves::set_state(&d, "g", &saves::State { conflict: Some("v7".into()), ..Default::default() });
+        note_failure(&d, "g", &Error::Msg(SYNC_CONFLICT.into()));
+        assert_eq!(saves::state(&d, "g").conflict.as_deref(), Some("v7"));
+        std::fs::remove_dir_all(d).unwrap();
     }
 }
 

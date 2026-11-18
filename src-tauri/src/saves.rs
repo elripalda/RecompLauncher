@@ -1993,13 +1993,24 @@ mod tests {
     #[test]
     fn provider_changes_discard_the_sync_baseline_and_queue() {
         let dir = tmp("cloud-provider");
-        let state = State { last_hash: "local".into(), synced_hash: "cloud".into(), pending: Some("123.zip".into()) };
+        let state = State { last_hash: "local".into(), synced_hash: "cloud".into(), pending: Some("123.zip".into()), ..Default::default() };
         set_state(&dir, "g", &state);
         fs::write(dir.join("save-provider.json"), b"\"google_drive\"").unwrap();
         let read = super::state(&dir, "g");
         assert_eq!(read.last_hash, "local");
         assert!(read.synced_hash.is_empty());
         assert!(read.pending.is_none());
+    }
+
+    #[test]
+    fn provider_changes_forget_the_old_clouds_conflict_and_problem() {
+        let dir = tmp("cloud-provider-status");
+        let problem = Some(Problem { kind: "full".into(), text: String::new(), at: 1 });
+        let state = State { synced_hash: "cloud".into(), synced_at: 5, conflict: Some("v1".into()), problem, ..Default::default() };
+        set_state(&dir, "g", &state);
+        fs::write(dir.join("save-provider.json"), b"\"google_drive\"").unwrap();
+        let read = super::state(&dir, "g");
+        assert_eq!((read.synced_at, read.conflict.is_none(), read.problem.is_none()), (0, true, true));
     }
 
     #[test]
