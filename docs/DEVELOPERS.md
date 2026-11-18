@@ -42,11 +42,18 @@ through us, and every release you publish reaches players the next time the laun
   `MyRecomp-v1.2.0-Windows-x64.zip`, `MyRecomp-v1.2.0-Linux-x64.AppImage`. The launcher picks the
   file for the player's PC from those words. Builds for ARM say `arm64`.
 - **Zips on Windows.** A `.zip` (or `.7z`) of your folder is best. An installer `.exe` works, but
-  it's the last choice, because it wants to be run as setup. On Linux, an AppImage or a `.tar.gz`.
+  it's the last choice, because it wants to be run as setup. Never install into Program Files
+  without a proper installer and uninstaller (MSIX) or a package manager: the launcher can't
+  update or remove what lands there.
+- **On Linux, a `.tar.gz` and an AppImage of the same folder.** Build it once, portably, so it runs
+  on older systems too: in a GitHub Actions `ubuntu:22.04` container, or the Steam Runtime's
+  `sniper` SDK. Then pack that one folder both ways. The launcher can run every game from a plain
+  folder, and players who want a single file get the AppImage.
 - **One folder on top is fine.** A zip with everything inside `MyRecomp-v1.2.0/` is unwrapped, so
   your program lands in the game's folder either way.
 - **Keep extras out of the way.** Files with `debug`, `symbols`, `pdb` or `source` in the name, and
-  `.sha256`, `.sig` and `.asc` files, are never taken for the game.
+  `.sha256`, `.sig` and `.asc` files, are never taken for the game. So a source archive you upload
+  yourself says `source` in its name: `MyRecomp-v1.2.0-source.tar.gz`.
 - **Checked on the way in.** GitHub keeps a SHA-256 of every file you upload, and the launcher
   checks the download against it before installing. You don't have to do anything.
 - **Updates keep what the game made.** An update unpacks over the game's folder, so saves,
