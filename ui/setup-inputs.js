@@ -167,6 +167,7 @@ function namedSetup(id) {
   const scrim = document.createElement('div'); scrim.className = 'scrim';
   scrim.innerHTML = `<div class="modal su ni-modal" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}" tabindex="-1"><button type="button" class="su-x" data-ni="close" aria-label="${esc(t('Close'))}">${XMARK}</button><div class="ni-shell"></div></div>`;
   document.body.append(scrim); SU.el = scrim;
+  setupOpened(id);
   const draw = () => {
     if (SU.el !== scrim) return;
     if (SU.stage !== 'inputs') return suDraw();

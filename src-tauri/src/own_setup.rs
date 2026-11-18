@@ -591,12 +591,18 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
     } else {
         "cancelled"
     };
+    // It didn't finish: the game stays as it was (a version that played before still plays, and
+    // the next Play opens its setup when it has to), never left without its program.
+    if state == "cancelled" {
+        crate::trail::note(format!("Setup {id}: its setup closed before it finished; the game is as it was"));
+        return (state, candidates);
+    }
     {
         let mut l = st.lib.lock().unwrap();
         if let Some(r) = l.installed.get_mut(id) {
             r.exe = g.exe.clone();
             r.args = g.args.clone();
-            r.setup_done = state != "cancelled";
+            r.setup_done = true;
         }
     }
     st.save();

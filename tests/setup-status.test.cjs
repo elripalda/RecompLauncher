@@ -36,3 +36,18 @@ test('the game page and Big Picture both ask the core', () => {
   assert.doesNotMatch(app, /S\.setup\[a\.id\]\.needs && \(!S\.setup\[a\.id\]\.copy/);
   assert.doesNotMatch(tv, /su\.needs && !su\.copy\)/);
 });
+
+test('Easy Setup tells the core when its window opens and closes, in both modes', () => {
+  const inputs = read('setup-inputs.js');
+  assert.match(app, /const setupOpened = \(id\) => \{ if \(id\) setupClosing = setupClosing\.then\(\(\) => invoke\('setup_begin', \{ id \}\)\)/);
+  assert.match(app, /const setupClosed = \(id\) => \{ if \(id\) setupClosing = setupClosing\.then\(\(\) => invoke\('setup_end', \{ id \}\)\)/);
+  // Opened: the window for a copy, the window for named files, Big Picture's sheet.
+  assert.equal((app.match(/SU\.el = s;\r?\n\s*setupOpened\(id\);/g) || []).length, 2);
+  assert.match(inputs, /SU\.el = scrim;\r?\n\s*setupOpened\(id\);/);
+  assert.match(tv, /if \(TS\.id !== id\) setupOpened\(id\);/);
+  // Closed: as it closes, sent to the background, or cancelled.
+  assert.match(app, /SU\.el = null;\r?\n\s*setupClosed\(closingId\);/);
+  assert.match(app, /\/\/ pick === 'bg':\r?\n\s*setupClosed\(id\);/);
+  assert.match(app, /invoke\('setup_cancel', \{ id \}\)\.catch\(\(\) => \{\}\);\r?\n\s*setupClosed\(id\);/);
+  assert.match(tv, /setupClosed\(id\);\r?\n\s*TS\.id = null;/);
+});

@@ -2052,6 +2052,7 @@
   const TS = { id: null, stage: 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
   async function tvSetup(id) {
     if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
+    if (TS.id !== id) setupOpened(id);
     const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
     if (activeJob) {
       if (TV.sheet) closeSheet();
@@ -2214,6 +2215,7 @@
           toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
         }
         if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); }
+        setupClosed(id);
         TS.id = null;
       }
     };

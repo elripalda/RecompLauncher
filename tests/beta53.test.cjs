@@ -66,8 +66,14 @@ test('Use a Build You Already Have: a card in Easy Setup, a menu item, and the s
   assert.match(app, /su\.build_where \? `<p class="su-where">\$\{esc\(tf\('The game\\'s own setup builds it into \{folder\}\.'/);
 });
 
-test('the launcher building it again goes back to the setup\'s own folder; an update keeps the player\'s', () => {
-  assert.equal((rust.match(/if g\.build_dir\.take\(\)\.is_some\(\) \{/g) || []).length, 2);
+test('the launcher building it again goes back to the setup\'s own folder once that has worked; an update keeps the player\'s', () => {
+  // Built in the setup's own folder, while the player's build stays in use until the setup works.
+  assert.match(rust, /    g\.build_dir = None;\n    let p = profile_of\(&st, &id, &g\)/);
+  assert.match(rust, /let theirs = g\.build_dir\.take\(\);/);
+  assert.doesNotMatch(rust, /if g\.build_dir\.take\(\)\.is_some\(\) \{/);
+  // Let go of only where a setup is done: setup_copy, and Use My Previous Setup.
+  assert.match(rust, /x\.build_dir = None;\n\s+x\.prepare_version = [^\n]*\n\s+x\.setup_before = None;/);
+  assert.match(rust, /x\.setup_before = None;\n\s+if theirs\.is_some\(\) \{\n\s+x\.build_dir = None;/);
   assert.match(rust, /build_dir: prev\.as_ref\(\)\.and_then\(\|p\| p\.build_dir\.clone\(\)\),/);
   assert.match(rust, /if let Some\(dir\) = g\.build_dir\.as_ref\(\)\.filter\(\|d\| d\.is_dir\(\)\) \{\n\s+p\.rebase_build\(&g\.path, dir\);/);
 });

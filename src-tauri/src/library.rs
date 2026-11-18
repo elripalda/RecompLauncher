@@ -218,6 +218,71 @@ pub struct Installed {
     /// one from the catalog is applied on the next Play.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub boot_hash: String,
+    /// How the game was set up when its Easy Setup window opened: put back when the window closes
+    /// without a setup that worked (or at the next start, after the launcher closed mid-setup), so
+    /// picks made there and a setup that's cancelled or fails never leave it half set up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup_before: Option<Box<SetupChoices>>,
+}
+
+/// What Easy Setup changes about a game, kept while its window is open: see `setup_before`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct SetupChoices {
+    #[serde(default)]
+    pub game_copy: Option<PathBuf>,
+    #[serde(default)]
+    pub update_copy: Option<PathBuf>,
+    #[serde(default)]
+    pub setup_inputs: BTreeMap<String, PathBuf>,
+    #[serde(default)]
+    pub inputs_ready: String,
+    /// Each game's own fingerprint, for a recomp that carries several.
+    #[serde(default)]
+    pub games_ready: BTreeMap<String, String>,
+    #[serde(default)]
+    pub prebuilt: bool,
+    #[serde(default)]
+    pub build_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub prepare_version: String,
+    #[serde(default)]
+    pub prepare_opts: BTreeMap<String, bool>,
+    #[serde(default)]
+    pub runtime_off: std::collections::BTreeSet<String>,
+}
+
+impl SetupChoices {
+    pub fn of(g: &Installed) -> Self {
+        let games_ready = g.games.iter().map(|(k, x)| (k.clone(), x.inputs_ready.clone())).collect();
+        SetupChoices {
+            game_copy: g.game_copy.clone(),
+            update_copy: g.update_copy.clone(),
+            setup_inputs: g.setup_inputs.clone(),
+            inputs_ready: g.inputs_ready.clone(),
+            games_ready,
+            prebuilt: g.prebuilt,
+            build_dir: g.build_dir.clone(),
+            prepare_version: g.prepare_version.clone(),
+            prepare_opts: g.prepare_opts.clone(),
+            runtime_off: g.runtime_off.clone(),
+        }
+    }
+
+    /// Puts them back on `g`. Play time and everything else stay as they are now.
+    pub fn restore(self, g: &mut Installed) {
+        g.game_copy = self.game_copy;
+        g.update_copy = self.update_copy;
+        g.setup_inputs = self.setup_inputs;
+        g.inputs_ready = self.inputs_ready;
+        for (k, x) in g.games.iter_mut() {
+            x.inputs_ready = self.games_ready.get(k).cloned().unwrap_or_default();
+        }
+        g.prebuilt = self.prebuilt;
+        g.build_dir = self.build_dir;
+        g.prepare_version = self.prepare_version;
+        g.prepare_opts = self.prepare_opts;
+        g.runtime_off = self.runtime_off;
+    }
 }
 
 impl Installed {

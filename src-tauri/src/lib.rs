@@ -50,6 +50,8 @@ pub mod profile;
 pub mod proton;
 pub mod secret;
 pub mod setup_state;
+#[cfg(test)]
+mod setup_window_tests;
 pub mod sysenv;
 mod emus;
 pub mod roms;
@@ -752,6 +754,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         installer_setup: String::new(),
         installer_tag: String::new(),
         boot_hash: prev.as_ref().map(|p| p.boot_hash.clone()).unwrap_or_default(),
+        setup_before: prev.as_ref().and_then(|p| p.setup_before.clone()),
     };
     {
         let mut l = st.lib.lock().unwrap();
@@ -3532,12 +3535,9 @@ struct SetupEv {
 fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> Res<()> {
     let mut g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     // Built by the launcher from here on: into the setup's own folder, not a build of the player's.
-    if g.build_dir.take().is_some() {
-        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
-            x.build_dir = None;
-        }
-        st.save();
-    }
+    // Their build stays in use until this setup has worked: a setup that's cancelled or fails
+    // leaves the game as it was.
+    g.build_dir = None;
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("The launcher can't set this game up yet.".into()))?;
     if !p.inputs.is_empty() { return Err(Error::Msg("Set this game up from its Easy Setup screen.".into())); }
     if let Some(pr) = &p.prepare {
@@ -3547,160 +3547,168 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
     std::thread::spawn(move || {
-        let stopped = || setup_stopped(&id, run);
-        // A disc image for a recomp that reads extracted files: the launcher unpacks it.
-        let unpack = p.game.as_ref().map(|x| x.extract.clone()).filter(|x| !x.is_empty() && copy.is_file());
-        let extras = p.prepare.is_some() || unpack.is_some();
-        let emit = |ev: SetupEv| {
-            let ev = SetupEv { id: id.clone(), extras, ..ev };
-            setup_track(&ev);
-            let _ = app.emit("setup", ev);
-        };
-        let fail = |text: String| {
-            if !stopped() {
-                emit(SetupEv { step: "error".into(), text, ..Default::default() })
-            } else {
-                if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() {
-                    m.remove(&id);
+        // The run itself; whatever way it ends, a game it didn't set up goes back to how it was.
+        let work = || {
+            let stopped = || setup_stopped(&id, run);
+            // A disc image for a recomp that reads extracted files: the launcher unpacks it.
+            let unpack = p.game.as_ref().map(|x| x.extract.clone()).filter(|x| !x.is_empty() && copy.is_file());
+            let extras = p.prepare.is_some() || unpack.is_some();
+            let emit = |ev: SetupEv| {
+                let ev = SetupEv { id: id.clone(), extras, ..ev };
+                setup_track(&ev);
+                let _ = app.emit("setup", ev);
+            };
+            let fail = |text: String| {
+                if !stopped() {
+                    emit(SetupEv { step: "error".into(), text, ..Default::default() })
+                } else {
+                    if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() {
+                        m.remove(&id);
+                    }
+                }
+                if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
+                    if m.get(&id) == Some(&run) {
+                        m.remove(&id);
+                    }
+                }
+            };
+            // 1. Is it the right game?
+            emit(SetupEv { step: "read".into(), ..Default::default() });
+            if !copy.exists() {
+                return fail("That file isn't there anymore.".into());
+            }
+            if let Some(need) = &p.game {
+                if let Err(e) = copy_ok(need, &copy, &g.path, true) {
+                    return fail(e);
                 }
             }
+            let name = copy.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            emit(SetupEv { step: "read".into(), pct: 1.0, text: name, ..Default::default() });
+            // 2. All of it there?
+            let (verified, text) = if copy.is_file() {
+                let total = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
+                let Ok(mut f) = std::fs::File::open(&copy) else { return fail("Couldn't open it.".into()) };
+                let mut h = crc32fast::Hasher::new();
+                let mut buf = vec![0u8; 4 << 20];
+                let (mut done, mut last) = (0u64, Instant::now());
+                loop {
+                    if stopped() {
+                        return;
+                    }
+                    let n = match std::io::Read::read(&mut f, &mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => n,
+                        Err(e) => return fail(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
+                    };
+                    h.update(&buf[..n]);
+                    done += n as u64;
+                    if last.elapsed().as_millis() >= 80 {
+                        last = Instant::now();
+                        emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
+                    }
+                }
+                let crc = format!("{:08x}", h.finalize());
+                let dumps = p.game.as_ref().map(|x| x.dumps.clone()).unwrap_or_default();
+                match dumps.iter().find(|d| d.crc32.eq_ignore_ascii_case(&crc) && (d.size == 0 || d.size == total)) {
+                    Some(d) => (d.name.clone(), format!("Matches the verified {} disc", d.name)),
+                    None if dumps.is_empty() => (String::new(), format!("Read all {}, no errors", human_size(total))),
+                    None => (String::new(), "Read it all, no errors. It isn't a known clean dump, but it may still work.".into()),
+                }
+            } else {
+                let mut stack = vec![copy.clone()];
+                let (mut files, mut size) = (0u64, 0u64);
+                while let Some(d) = stack.pop() {
+                    if stopped() {
+                        return;
+                    }
+                    for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                        match e.metadata() {
+                            Ok(m) if m.is_dir() => stack.push(e.path()),
+                            Ok(m) => {
+                                files += 1;
+                                size += m.len();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                (String::new(), format!("Checked {files} files, {}", human_size(size)))
+            };
+            if stopped() {
+                return;
+            }
+            emit(SetupEv { step: "verify".into(), pct: 1.0, text: text.clone(), verified: verified.clone(), ..Default::default() });
+            // 3. Unpacking the disc, where the recomp reads it.
+            let mut copy = copy;
+            if let Some(kind) = &unpack {
+                let into = p.game.as_ref().map(|x| x.into.trim().trim_matches(['/', '\\']).to_string()).unwrap_or_default();
+                let dest = if into == "." { g.path.clone() } else if !into.is_empty() && !into.contains("..") { g.path.join(&into) } else { g.path.join("game-files") };
+                emit(SetupEv { step: "extras".into(), text: "Unpacking your disc".into(), ..Default::default() });
+                let need = match extract::size(&copy, kind) {
+                    Ok(n) => n,
+                    Err(e) => return fail(format!("Couldn't read the disc image: {e}")),
+                };
+                if let Some(free) = manage::free_space(&g.path) {
+                    if free < need + (256 << 20) {
+                        return fail(format!("Unpacking it needs {} free on that drive ({} free).", human_size(need), human_size(free)));
+                    }
+                }
+                let done = extract::unpack(&copy, kind, &dest, &|d, t| emit(SetupEv { step: "extras".into(), pct: d as f32 / t.max(1) as f32, done: d, total: t, text: "Unpacking your disc".into(), ..Default::default() }), &stopped);
+                if let Err(e) = done {
+                    if stopped() {
+                        return;
+                    }
+                    return fail(format!("Couldn't unpack the disc: {e}"));
+                }
+                if let Some(f) = p.game.as_ref().map(|x| x.check.file.clone()).filter(|f| !f.is_empty()) {
+                    // Any case: discs name it default.xex or Default.xex, and Linux tells them apart.
+                    let has = dest.join(&f).is_file() || std::fs::read_dir(&dest).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&f));
+                    if !has {
+                        return fail(format!("The disc unpacked, but it doesn't have {f}. It may be a different game."));
+                    }
+                }
+                copy = dest;
+            }
+            // 4. The recomp's own setup step.
+            if let Some(pr) = &p.prepare {
+                emit(SetupEv { step: "extras".into(), text: pr.label.clone(), ..Default::default() });
+                let extra = prepare_extra(&app.state::<App>().dir, pr, &g.prepare_opts);
+                let handed = p.handed(Some(&copy)).unwrap_or_else(|| copy.clone());
+                if let Err(e) = run_prepare(pr, &g.path, &handed, &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
+                    return fail(e);
+                }
+            }
+            if stopped() {
+                return;
+            }
+            // 4. Its settings, and remembering the copy.
+            emit(SetupEv { step: "setup".into(), ..Default::default() });
+            if stopped() {
+                return;
+            }
+            note_pad();
+            if let Err(e) = p.prepare(&g.path, Some(&copy)) {
+                return fail(format!("Couldn't write its settings: {e}"));
+            }
+            let st = app.state::<App>();
+            // It worked: now it's the launcher's build, from this copy.
+            if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
+                x.game_copy = Some(copy.clone());
+                x.prebuilt = false;
+                x.build_dir = None;
+                x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
+                x.setup_before = None;
+            }
+            st.save();
             if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
                 if m.get(&id) == Some(&run) {
                     m.remove(&id);
                 }
             }
+            emit(SetupEv { step: "done".into(), pct: 1.0, text, verified, ..Default::default() });
         };
-        // 1. Is it the right game?
-        emit(SetupEv { step: "read".into(), ..Default::default() });
-        if !copy.exists() {
-            return fail("That file isn't there anymore.".into());
-        }
-        if let Some(need) = &p.game {
-            if let Err(e) = copy_ok(need, &copy, &g.path, true) {
-                return fail(e);
-            }
-        }
-        let name = copy.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        emit(SetupEv { step: "read".into(), pct: 1.0, text: name, ..Default::default() });
-        // 2. All of it there?
-        let (verified, text) = if copy.is_file() {
-            let total = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
-            let Ok(mut f) = std::fs::File::open(&copy) else { return fail("Couldn't open it.".into()) };
-            let mut h = crc32fast::Hasher::new();
-            let mut buf = vec![0u8; 4 << 20];
-            let (mut done, mut last) = (0u64, Instant::now());
-            loop {
-                if stopped() {
-                    return;
-                }
-                let n = match std::io::Read::read(&mut f, &mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => n,
-                    Err(e) => return fail(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
-                };
-                h.update(&buf[..n]);
-                done += n as u64;
-                if last.elapsed().as_millis() >= 80 {
-                    last = Instant::now();
-                    emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
-                }
-            }
-            let crc = format!("{:08x}", h.finalize());
-            let dumps = p.game.as_ref().map(|x| x.dumps.clone()).unwrap_or_default();
-            match dumps.iter().find(|d| d.crc32.eq_ignore_ascii_case(&crc) && (d.size == 0 || d.size == total)) {
-                Some(d) => (d.name.clone(), format!("Matches the verified {} disc", d.name)),
-                None if dumps.is_empty() => (String::new(), format!("Read all {}, no errors", human_size(total))),
-                None => (String::new(), "Read it all, no errors. It isn't a known clean dump, but it may still work.".into()),
-            }
-        } else {
-            let mut stack = vec![copy.clone()];
-            let (mut files, mut size) = (0u64, 0u64);
-            while let Some(d) = stack.pop() {
-                if stopped() {
-                    return;
-                }
-                for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
-                    match e.metadata() {
-                        Ok(m) if m.is_dir() => stack.push(e.path()),
-                        Ok(m) => {
-                            files += 1;
-                            size += m.len();
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            (String::new(), format!("Checked {files} files, {}", human_size(size)))
-        };
-        if stopped() {
-            return;
-        }
-        emit(SetupEv { step: "verify".into(), pct: 1.0, text: text.clone(), verified: verified.clone(), ..Default::default() });
-        // 3. Unpacking the disc, where the recomp reads it.
-        let mut copy = copy;
-        if let Some(kind) = &unpack {
-            let into = p.game.as_ref().map(|x| x.into.trim().trim_matches(['/', '\\']).to_string()).unwrap_or_default();
-            let dest = if into == "." { g.path.clone() } else if !into.is_empty() && !into.contains("..") { g.path.join(&into) } else { g.path.join("game-files") };
-            emit(SetupEv { step: "extras".into(), text: "Unpacking your disc".into(), ..Default::default() });
-            let need = match extract::size(&copy, kind) {
-                Ok(n) => n,
-                Err(e) => return fail(format!("Couldn't read the disc image: {e}")),
-            };
-            if let Some(free) = manage::free_space(&g.path) {
-                if free < need + (256 << 20) {
-                    return fail(format!("Unpacking it needs {} free on that drive ({} free).", human_size(need), human_size(free)));
-                }
-            }
-            let done = extract::unpack(&copy, kind, &dest, &|d, t| emit(SetupEv { step: "extras".into(), pct: d as f32 / t.max(1) as f32, done: d, total: t, text: "Unpacking your disc".into(), ..Default::default() }), &stopped);
-            if let Err(e) = done {
-                if stopped() {
-                    return;
-                }
-                return fail(format!("Couldn't unpack the disc: {e}"));
-            }
-            if let Some(f) = p.game.as_ref().map(|x| x.check.file.clone()).filter(|f| !f.is_empty()) {
-                // Any case: discs name it default.xex or Default.xex, and Linux tells them apart.
-                let has = dest.join(&f).is_file() || std::fs::read_dir(&dest).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&f));
-                if !has {
-                    return fail(format!("The disc unpacked, but it doesn't have {f}. It may be a different game."));
-                }
-            }
-            copy = dest;
-        }
-        // 4. The recomp's own setup step.
-        if let Some(pr) = &p.prepare {
-            emit(SetupEv { step: "extras".into(), text: pr.label.clone(), ..Default::default() });
-            let extra = prepare_extra(&app.state::<App>().dir, pr, &g.prepare_opts);
-            let handed = p.handed(Some(&copy)).unwrap_or_else(|| copy.clone());
-            if let Err(e) = run_prepare(pr, &g.path, &handed, &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
-                return fail(e);
-            }
-        }
-        if stopped() {
-            return;
-        }
-        // 4. Its settings, and remembering the copy.
-        emit(SetupEv { step: "setup".into(), ..Default::default() });
-        if stopped() {
-            return;
-        }
-        note_pad();
-        if let Err(e) = p.prepare(&g.path, Some(&copy)) {
-            return fail(format!("Couldn't write its settings: {e}"));
-        }
-        let st = app.state::<App>();
-        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
-            x.game_copy = Some(copy.clone());
-            x.prebuilt = false;
-            x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
-        }
-        st.save();
-        if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
-            if m.get(&id) == Some(&run) {
-                m.remove(&id);
-            }
-        }
-        emit(SetupEv { step: "done".into(), pct: 1.0, text, verified, ..Default::default() });
+        work();
+        setup_run_ended(&app.state::<App>(), &id);
     });
     Ok(())
 }
@@ -3720,6 +3728,100 @@ fn setup_cancel(id: String) {
 #[tauri::command]
 fn setup_status() -> HashMap<String, SetupEv> {
     SETUP_STATUS.lock().unwrap().as_ref().cloned().unwrap_or_default()
+}
+
+// Easy Setup windows open now, by the game whose record they change (the recomp, for one game of
+// several). A run that fails after its window closed puts the game back as it was itself.
+static SETUP_WINDOWS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn setup_window_open(rid: &str) -> bool {
+    SETUP_WINDOWS.lock().unwrap().iter().any(|x| x == rid)
+}
+
+/// The game whose library record a setup changes: the recomp, for one game of several.
+fn setup_record_id(st: &App, id: &str) -> String {
+    game_of(st, id).map(|p| p.recomp).unwrap_or_else(|| id.to_string())
+}
+
+/// Easy Setup's window opened: how the game is set up now is kept, to put back if the window
+/// closes without a setup that worked.
+#[tauri::command(async)]
+fn setup_begin(st: State<'_, App>, id: String) {
+    begin_setup(&st, &id);
+}
+
+fn begin_setup(st: &App, id: &str) {
+    let rid = setup_record_id(st, id);
+    // Open already (drawn again): what it kept when it opened stays.
+    if setup_window_open(&rid) {
+        return;
+    }
+    SETUP_WINDOWS.lock().unwrap().push(rid.clone());
+    // A run still going started from what's kept: that stays how it was.
+    if setup_busy(id) || setup_busy(&rid) {
+        return;
+    }
+    let mut l = st.lib.lock().unwrap();
+    let Some(x) = l.installed.get_mut(&rid) else { return };
+    x.setup_before = Some(Box::new(library::SetupChoices::of(x)));
+    drop(l);
+    st.save();
+}
+
+/// Easy Setup's window closed. A setup that worked let go of what was kept already; otherwise the
+/// game goes back to how it was set up when the window opened. A run going on in the background
+/// decides that when it ends.
+#[tauri::command(async)]
+fn setup_end(st: State<'_, App>, id: String) {
+    end_setup(&st, &id);
+}
+
+fn end_setup(st: &App, id: &str) {
+    let rid = setup_record_id(st, id);
+    SETUP_WINDOWS.lock().unwrap().retain(|x| x != &rid);
+    if setup_busy(id) || setup_busy(&rid) {
+        return;
+    }
+    put_back_setup(st, &rid);
+}
+
+/// A setup run ended. One that worked let go of what was kept; one that didn't, with its window
+/// closed, puts the game back as it was.
+fn setup_run_ended(st: &App, rid: &str) {
+    if !setup_window_open(rid) {
+        put_back_setup(st, rid);
+    }
+}
+
+/// The game as it was set up before its Easy Setup window opened, when no setup since worked.
+fn put_back_setup(st: &App, rid: &str) {
+    let mut l = st.lib.lock().unwrap();
+    let Some(x) = l.installed.get_mut(rid) else { return };
+    let Some(before) = x.setup_before.take() else { return };
+    let changed = *before != library::SetupChoices::of(x);
+    before.restore(x);
+    drop(l);
+    st.save();
+    if changed {
+        trail::note(format!("Setup {rid}: closed without a setup that worked; set up as it was before"));
+    }
+}
+
+/// At start: games whose Easy Setup was open, or running, when the launcher last closed go back to
+/// how they were set up before it.
+fn put_back_unfinished_setups(st: &App) {
+    let ids: Vec<String> = st.lib.lock().unwrap().installed.iter().filter(|(_, g)| g.setup_before.is_some()).map(|(k, _)| k.clone()).collect();
+    for id in ids {
+        put_back_setup(st, &id);
+    }
+}
+
+/// A choice made outside Easy Setup's window (Choose Your Copy, Use a Build You Already Have):
+/// what an earlier window kept, if one somehow didn't close, would undo it, so it goes.
+fn settle_outside_setup(x: &mut Installed) {
+    if !setup_window_open(&x.id) {
+        x.setup_before = None;
+    }
 }
 
 fn human_size(b: u64) -> String {
@@ -5019,13 +5121,9 @@ fn setup_relink(st: State<'_, App>, id: String) -> Res<Value> {
         return Err(Error::Msg("Close the game or stop setup first.".into()));
     }
     let mut g = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    // Built by the launcher from here on: into the setup's own folder, not a build of the player's.
-    if g.build_dir.take().is_some() {
-        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
-            x.build_dir = None;
-        }
-        st.save();
-    }
+    // Set up by the launcher from here on: in the setup's own folder, not a build of the player's.
+    // Their build stays in use until this has worked.
+    let theirs = g.build_dir.take();
     let mut p = profile_of(&st, &rid, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     if let Some(pk) = &pick {
         games::scope(&mut p, &pk.game, &pk.all);
@@ -5062,6 +5160,12 @@ fn setup_relink(st: State<'_, App>, id: String) -> Res<Value> {
         }
     }
     let _ = p.prepare(&g.path, g.game_copy.as_deref().filter(|c| c.exists()));
+    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
+        x.setup_before = None;
+        if theirs.is_some() {
+            x.build_dir = None;
+        }
+    }
     trail::note(format!("Setup {id}: relinked to the files it was set up with before"));
     st.save();
     Ok(json!({"ok": true}))
@@ -5088,6 +5192,7 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
     }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
         x.prebuilt = true;
+        x.setup_before = None;
         if mine.is_some() {
             x.build_dir = mine;
         }
@@ -5317,6 +5422,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                     None => x.inputs_ready = signature,
                 }
                 if p.game.is_none() && (sub.is_none() || x.game_copy.as_ref().map_or(true, |c| !c.exists())) { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
+                x.setup_before = None;
             }
             st.save();
             Ok(())
@@ -5329,6 +5435,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
             if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() { m.remove(&id); }
         }
         INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
+        setup_run_ended(&app.state::<App>(), &rid);
     });
     Ok(())
 }
@@ -5343,7 +5450,11 @@ fn set_update_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
     up.check(&file).map_err(Error::Msg)?;
     up.place(&g.path, &file).map_err(|e| Error::Msg(format!("Couldn't put the update where the game reads it: {e}")))?;
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
-        x.update_copy = Some(file);
+        x.update_copy = Some(file.clone());
+        // Picking the update is the whole step: closing Easy Setup afterwards keeps it.
+        if let Some(before) = x.setup_before.as_mut() {
+            before.update_copy = Some(file);
+        }
     }
     st.save();
     Ok(())
@@ -5426,6 +5537,7 @@ fn set_game_copy(st: State<'_, App>, id: String, path: String) -> Res<()> {
     }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
         x.game_copy = Some(copy.clone());
+        settle_outside_setup(x);
     }
     st.save();
     // Written now too, so the recomp's own launcher knows it as well.
@@ -9721,6 +9833,7 @@ pub fn run() {
                 std::thread::spawn(move || {
                     let st = h.state::<App>();
                     upgrade_fingerprints(&st, None);
+                    put_back_unfinished_setups(&st);
                     repair_lost_setups(&st);
                 });
             }
@@ -9844,7 +9957,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,

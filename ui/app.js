@@ -2738,6 +2738,12 @@ async function pickUpdate(id, folder) {
 // ---------- setting a game up with the player's copy ----------
 const SU = { id: null, el: null, stage: 'pick', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
 const suDrive = createSetupDriveLight();
+// Easy Setup's window opened or closed: while it's open the core keeps how the game was set up, and
+// puts that back when it closes without a setup that worked (picks made in it, a run that failed).
+// (In order: a window that replaces another for the same game opens after that one has closed.)
+let setupClosing = Promise.resolve();
+const setupOpened = (id) => { if (id) setupClosing = setupClosing.then(() => invoke('setup_begin', { id })).catch(() => {}); };
+const setupClosed = (id) => { if (id) setupClosing = setupClosing.then(() => invoke('setup_end', { id })).catch(() => {}); };
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
   if (SU.el && SU.id === id) {
@@ -2768,6 +2774,7 @@ async function setupModal(id) {
     s.innerHTML = `<div class="modal su" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}"></div>`;
     document.body.append(s);
     SU.el = s;
+    setupOpened(id);
     s.addEventListener('click', (e) => {
       if (e.target === s && SU.stage !== 'run') return closeSetup();
       const b = e.target.closest('[data-su]');
@@ -2791,6 +2798,7 @@ async function setupModal(id) {
   s.innerHTML = `<div class="modal su" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}"></div>`;
   document.body.append(s);
   SU.el = s;
+  setupOpened(id);
   s.addEventListener('click', (e) => {
     if (e.target === s && SU.stage !== 'run') return closeSetup();
     const b = e.target.closest('[data-su]');
@@ -2821,6 +2829,7 @@ async function closeSetup(quiet) {
     if (pick === 'watch' || pick == null) return;
     if (pick === 'cancel') {
       invoke('setup_cancel', { id }).catch(() => {});
+      setupClosed(id);
       if (S.setupJobs) delete S.setupJobs[id];
       if (SU.el) { SU.el.remove(); SU.el = null; }
       delete S.setup[id];
@@ -2831,6 +2840,7 @@ async function closeSetup(quiet) {
       return;
     }
     // pick === 'bg':
+    setupClosed(id);
     if (SU.el) { SU.el.remove(); SU.el = null; }
     render(true);
     if (S.view === 'game') refreshGame();
@@ -2842,6 +2852,7 @@ async function closeSetup(quiet) {
   const closingStage = SU.stage;
   SU.el.remove();
   SU.el = null;
+  setupClosed(closingId);
   if (!quiet && closingStage !== 'pick' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
 async function suAct(b) {
