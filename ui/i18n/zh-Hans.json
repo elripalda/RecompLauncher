@@ -3359,5 +3359,6 @@
  "Game A to Z": "按游戏名称排序",
  "Checked by the RecompStore team": "已由 RecompStore 团队检查",
  "Open the VirusTotal report": "打开 VirusTotal 报告",
- "Verified Update": "已验证的更新"
+ "Verified Update": "已验证的更新",
+ "N/A": "不适用"
 }
