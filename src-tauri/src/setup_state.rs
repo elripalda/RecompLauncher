@@ -16,7 +16,8 @@ use std::path::PathBuf;
 /// copy), "own_build", "own_program", "by_hand", "skipped".
 ///
 /// Not ready: "copy" (no copy yet; detail: what to pick), "copy_wrong" (detail: why), "files"
-/// (named files to choose), "update" (detail: what to pick), "rebuild" (its setup step changed),
+/// (named files to choose), "update" (detail: what to pick), "rebuild" (its setup step changed;
+/// detail "kept": the copy's gone, and the step runs again from what it kept, prepare.keeps_copy),
 /// "build_missing" (detail: the folder that's gone), "own_build_missing" (detail: where its setup
 /// builds it), "way" (set up by hand, but it has to be built from the copy first).
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -93,16 +94,21 @@ pub fn of(f: &Facts) -> Status {
     // Built, and it doesn't take the copy when it starts: the copy isn't needed to play.
     let plays_built = built && !uses_copy;
     let built_reason = if g.build_dir.is_some() { "own_build" } else { "built" };
+    let launcher_built = !g.prebuilt && g.build_dir.is_none();
+    let changed = launcher_built && p.prepare_version_changed(&g.prepare_version);
+    // Its finished files are listed and one isn't there (one that lists none can't tell).
+    let unfinished = p.build_done(&g.path) == Some(false);
     match (&f.copy_wrong, &f.copy) {
         (Some(_), _) if plays_built => return ready(built_reason),
         (Some(why), _) => return needs("copy_wrong", why.clone()),
+        // The copy's gone, and its setup step kept what it needs: built again from that.
+        (None, None) if (changed || unfinished) && builds_from_kept(p, g) => return needs("rebuild", "kept"),
         (None, None) if plays_built => return ready(built_reason),
         (None, None) => return needs("copy", need.label.clone()),
         (None, Some(_)) => {}
     }
     // Built by the launcher from the copy, but its setup step changed since: built again.
-    let launcher_built = !g.prebuilt && g.build_dir.is_none();
-    if launcher_built && p.prepare_version_changed(&g.prepare_version) {
+    if changed {
         return needs("rebuild", "");
     }
     // Built from the copy into a folder of its own, and that folder is gone.
@@ -116,6 +122,13 @@ pub fn of(f: &Facts) -> Status {
         }
     }
     ready("ready")
+}
+
+/// Its setup step can run again without the copy (`prepare.keeps_copy`): the launcher built it,
+/// what the step kept is still there, and starting it doesn't take the copy either.
+pub fn builds_from_kept(p: &Profile, g: &Installed) -> bool {
+    let launcher_built = !g.prebuilt && g.build_dir.is_none();
+    launcher_built && !p.start_uses_game() && p.kept_from_copy(&g.path).is_some()
 }
 
 #[cfg(test)]
@@ -306,6 +319,84 @@ mod tests {
         assert_eq!(of(&facts(&needed, &g)), needs("update", "The 1.02 update"));
         let optional = p(true);
         assert_eq!(of(&facts(&optional, &g)), ready("ready"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// Hookshot's shape once its builder keeps what it needs from the copy (prepare.keeps_copy):
+    /// one --game={game} argument, and the finished game listed in done.
+    fn keeps_copy() -> Profile {
+        profile(serde_json::json!({
+            "game": { "kind": "iso_or_folder", "label": "Your copy" },
+            "prepare": { "program": ["Hookshot.AppImage"], "args": ["--game={game}", "--out", "{install}/Hookshot"], "version": "2", "done": ["{install}/Hookshot/hookshot"], "keeps_copy": true },
+            "start": { "program": ["Hookshot.AppImage"], "args": ["--play", "{install}/Hookshot"] },
+            "folders": { "game": [{ "path": "{install}/Hookshot" }] }
+        }))
+    }
+
+    /// Set up, built, and the copy deleted since (to save space).
+    fn built_copy_gone(d: &Path) -> Installed {
+        let mut g = set_up(d);
+        fs::write(d.join("Hookshot").join("hookshot"), b"game").unwrap();
+        fs::remove_file(g.game_copy.as_ref().unwrap()).unwrap();
+        g.game_copy = None;
+        g
+    }
+
+    #[test]
+    fn a_changed_step_that_kept_the_copy_builds_again_without_it() {
+        let d = dir("kept-changed");
+        let mut g = built_copy_gone(&d);
+        g.prepare_version = "1".into();
+        assert_eq!(of(&facts(&keeps_copy(), &g)), needs("rebuild", "kept"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_finished_file_gone_on_a_step_that_kept_the_copy_builds_again_without_it() {
+        let d = dir("kept-unfinished");
+        let g = built_copy_gone(&d);
+        fs::remove_file(d.join("Hookshot").join("hookshot")).unwrap();
+        fs::write(d.join("Hookshot").join(".hookshot_exefs"), b"kept").unwrap();
+        assert_eq!(of(&facts(&keeps_copy(), &g)), needs("rebuild", "kept"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_step_that_kept_the_copy_and_is_built_plays_without_it() {
+        let d = dir("kept-built");
+        let g = built_copy_gone(&d);
+        assert_eq!(of(&facts(&keeps_copy(), &g)), ready("built"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_build_folder_that_is_gone_took_what_it_kept_and_asks_for_the_copy() {
+        let d = dir("kept-gone");
+        let mut g = built_copy_gone(&d);
+        g.prepare_version = "1".into();
+        fs::remove_dir_all(d.join("Hookshot")).unwrap();
+        assert_eq!(of(&facts(&keeps_copy(), &g)), needs("copy", "Your copy"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn without_keeps_copy_a_changed_step_with_the_copy_gone_plays_as_built() {
+        let d = dir("not-kept");
+        let mut g = built_copy_gone(&d);
+        g.prepare_version = "1".into();
+        let mut p = keeps_copy();
+        p.prepare.as_mut().unwrap().keeps_copy = false;
+        assert_eq!(of(&facts(&p, &g)), ready("built"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_players_own_build_is_never_built_again_from_what_the_step_kept() {
+        let d = dir("kept-own");
+        let mut g = built_copy_gone(&d);
+        g.prepare_version = "1".into();
+        g.prebuilt = true;
+        assert!(!builds_from_kept(&keeps_copy(), &g));
         let _ = fs::remove_dir_all(&d);
     }
 }

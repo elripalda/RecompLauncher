@@ -103,6 +103,10 @@ pub struct Prepare {
     /// game is set up, even when another launcher built it.
     #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
     pub done: Vec<String>,
+    /// The step keeps what it needs from the copy in the game's build folder (folders.game), and
+    /// runs again from there without the copy: then the arguments with {game} are left out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_copy: bool,
 }
 
 /// A path or a list of them; anything else is nothing.
@@ -1581,6 +1585,17 @@ impl Profile {
         // (A folder inside the game's own counts: a build from before the setup moved there can
         // still stand in for it.)
         (dir.is_absolute() && dir != install).then_some(dir)
+    }
+
+    /// What a step that keeps the copy (`prepare.keeps_copy`) kept from it: its build folder, when
+    /// it's there with files in it. A build folder that's gone took what it kept with it.
+    pub fn kept_from_copy(&self, install: &Path) -> Option<PathBuf> {
+        if !self.prepare.as_ref()?.keeps_copy {
+            return None;
+        }
+        let home = self.build_home(install)?;
+        let has_files = std::fs::read_dir(&home).ok()?.flatten().next().is_some();
+        has_files.then_some(home)
     }
 
     /// The game's own folders (`folders.game`, filled in for this install), with the folder a

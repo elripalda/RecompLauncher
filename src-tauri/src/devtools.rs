@@ -468,8 +468,27 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         }
         items.extend(option_items(&pr.options));
         items.extend(version_item(&pr.version));
+        items.extend(keeps_copy_items(p, dir));
     }
     level
+}
+
+/// prepare.keeps_copy: run again without the copy, leaving out the arguments with {game} in them.
+/// Only what would make that run go wrong, or never happen, is said; nothing stops the game.
+fn keeps_copy_items(p: &profile::Profile, dir: &Path) -> Vec<Item> {
+    let Some(pr) = p.prepare.as_ref().filter(|pr| pr.keeps_copy) else { return vec![] };
+    let mut out = vec![];
+    // "--game", "{game}": leaving out "{game}" alone would hand --game the next argument.
+    if pr.args.iter().any(|a| a == "{game}") {
+        out.push(warn("\"{game}\" is an argument of its own in \"prepare.args\"", "With keeps_copy, the launcher leaves out every argument with {game} in it when it builds again without the copy. Write the copy as one argument, like \"--game={game}\"."));
+    }
+    if p.build_home(dir).is_none() {
+        out.push(warn("\"prepare.keeps_copy\" has no build folder to look in", "List the folder your step keeps the copy's files in as the first \"folders.game\" (not the game's own folder). Without it, players are asked for their copy again."));
+    }
+    if pr.done.is_empty() {
+        out.push(warn("\"prepare.keeps_copy\" without \"prepare.done\"", "List the files a finished build has, so the launcher can tell when it has to build again."));
+    }
+    out
 }
 
 /// prepare.version: changing it is how a json asks players who set up already to run it again.
@@ -564,6 +583,24 @@ pub fn is_local(st: &App, id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn keeps_copy_says_what_would_stop_a_build_without_the_copy() {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "prepare": { "program": ["Builder.exe"], "args": ["--game", "{game}"], "keeps_copy": true },
+            "start": { "program": ["Builder.exe"] }
+        })).unwrap();
+        let items = super::keeps_copy_items(&p, &std::env::temp_dir().join("x"));
+        let said: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(items.len(), 3, "{said:?}");
+        assert!(items.iter().all(|i| i.level == "warn"));
+        let fine: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "prepare": { "program": ["Builder.exe"], "args": ["--game={game}"], "done": ["{install}/Game/game"], "keeps_copy": true },
+            "start": { "program": ["Builder.exe"] },
+            "folders": { "game": [{ "path": "{install}/Game" }] }
+        })).unwrap();
+        assert!(super::keeps_copy_items(&fine, &std::env::temp_dir().join("x")).is_empty());
+    }
+
     #[test]
     fn setup_options_are_checked_in_plain_words() {
         let p: crate::profile::Prepare = serde_json::from_str(r#"{"program":["Builder.exe"],"options":[

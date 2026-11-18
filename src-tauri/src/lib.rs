@@ -3542,6 +3542,11 @@ struct SetupEv {
 #[tauri::command(async)]
 fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> Res<()> {
     let mut g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    // No copy: run again from what its setup step kept (prepare.keeps_copy), when it can.
+    let from_kept = path.is_empty();
+    if from_kept && !profile_of(&st, &id, &g).is_some_and(|p| setup_state::builds_from_kept(&p, &g)) {
+        return Err(Error::Msg("Choose your copy of the game first.".into()));
+    }
     // Built by the launcher from here on: into the setup's own folder, not a build of the player's.
     // Their build stays in use until this setup has worked: a setup that's cancelled or fails
     // leaves the game as it was.
@@ -3581,80 +3586,86 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
                     }
                 }
             };
-            // 1. Is it the right game?
-            emit(SetupEv { step: "read".into(), ..Default::default() });
-            if !copy.exists() {
-                return fail("That file isn't there anymore.".into());
-            }
-            if let Some(need) = &p.game {
-                if let Err(e) = copy_ok(need, &copy, &g.path, true) {
-                    return fail(e);
-                }
-            }
-            let name = copy.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            emit(SetupEv { step: "read".into(), pct: 1.0, text: name, ..Default::default() });
-            // 2. All of it there?
-            let (verified, text) = if copy.is_file() {
-                let total = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
-                // Read whole before, and unchanged since (Set Up Again for a new option, say): its
-                // checksum from then, judged against today's list of known dumps.
-                let known = g.copy_check.as_ref().and_then(|c| c.still(&copy)).map(str::to_string);
-                let crc = match known {
-                    Some(crc) => {
-                        trail::note(format!("Set up {id}: the copy is the one read whole before, unchanged; not read again"));
-                        crc
-                    }
-                    None => {
-                        let Ok(mut f) = std::fs::File::open(&copy) else { return fail("Couldn't open it.".into()) };
-                        let mut h = crc32fast::Hasher::new();
-                        let mut buf = vec![0u8; 4 << 20];
-                        let (mut done, mut last) = (0u64, Instant::now());
-                        loop {
-                            if stopped() {
-                                return;
-                            }
-                            let n = match std::io::Read::read(&mut f, &mut buf) {
-                                Ok(0) => break,
-                                Ok(n) => n,
-                                Err(e) => return fail(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
-                            };
-                            h.update(&buf[..n]);
-                            done += n as u64;
-                            if last.elapsed().as_millis() >= 80 {
-                                last = Instant::now();
-                                emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
-                            }
-                        }
-                        let crc = format!("{:08x}", h.finalize());
-                        remember_copy_check(&app.state::<App>(), &id, &copy, &crc);
-                        crc
-                    }
-                };
-                let dumps = p.game.as_ref().map(|x| x.dumps.clone()).unwrap_or_default();
-                match dumps.iter().find(|d| d.crc32.eq_ignore_ascii_case(&crc) && (d.size == 0 || d.size == total)) {
-                    Some(d) => (d.name.clone(), format!("Matches the verified {} disc", d.name)),
-                    None if dumps.is_empty() => (String::new(), format!("Read all {}, no errors", human_size(total))),
-                    None => (String::new(), "Read it all, no errors. It isn't a known clean dump, but it may still work.".into()),
-                }
+            // Run again from what it kept: the copy isn't read, it isn't there.
+            let (verified, text) = if from_kept {
+                emit(SetupEv { step: "read".into(), pct: 1.0, text: "What it kept from your copy".into(), ..Default::default() });
+                (String::new(), "Built again from what it kept from your copy".to_string())
             } else {
-                let mut stack = vec![copy.clone()];
-                let (mut files, mut size) = (0u64, 0u64);
-                while let Some(d) = stack.pop() {
-                    if stopped() {
-                        return;
-                    }
-                    for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
-                        match e.metadata() {
-                            Ok(m) if m.is_dir() => stack.push(e.path()),
-                            Ok(m) => {
-                                files += 1;
-                                size += m.len();
-                            }
-                            _ => {}
-                        }
+                // 1. Is it the right game?
+                emit(SetupEv { step: "read".into(), ..Default::default() });
+                if !copy.exists() {
+                    return fail("That file isn't there anymore.".into());
+                }
+                if let Some(need) = &p.game {
+                    if let Err(e) = copy_ok(need, &copy, &g.path, true) {
+                        return fail(e);
                     }
                 }
-                (String::new(), format!("Checked {files} files, {}", human_size(size)))
+                let name = copy.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                emit(SetupEv { step: "read".into(), pct: 1.0, text: name, ..Default::default() });
+                // 2. All of it there?
+                if copy.is_file() {
+                    let total = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
+                    // Read whole before, and unchanged since (Set Up Again for a new option, say): its
+                    // checksum from then, judged against today's list of known dumps.
+                    let known = g.copy_check.as_ref().and_then(|c| c.still(&copy)).map(str::to_string);
+                    let crc = match known {
+                        Some(crc) => {
+                            trail::note(format!("Set up {id}: the copy is the one read whole before, unchanged; not read again"));
+                            crc
+                        }
+                        None => {
+                            let Ok(mut f) = std::fs::File::open(&copy) else { return fail("Couldn't open it.".into()) };
+                            let mut h = crc32fast::Hasher::new();
+                            let mut buf = vec![0u8; 4 << 20];
+                            let (mut done, mut last) = (0u64, Instant::now());
+                            loop {
+                                if stopped() {
+                                    return;
+                                }
+                                let n = match std::io::Read::read(&mut f, &mut buf) {
+                                    Ok(0) => break,
+                                    Ok(n) => n,
+                                    Err(e) => return fail(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
+                                };
+                                h.update(&buf[..n]);
+                                done += n as u64;
+                                if last.elapsed().as_millis() >= 80 {
+                                    last = Instant::now();
+                                    emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
+                                }
+                            }
+                            let crc = format!("{:08x}", h.finalize());
+                            remember_copy_check(&app.state::<App>(), &id, &copy, &crc);
+                            crc
+                        }
+                    };
+                    let dumps = p.game.as_ref().map(|x| x.dumps.clone()).unwrap_or_default();
+                    match dumps.iter().find(|d| d.crc32.eq_ignore_ascii_case(&crc) && (d.size == 0 || d.size == total)) {
+                        Some(d) => (d.name.clone(), format!("Matches the verified {} disc", d.name)),
+                        None if dumps.is_empty() => (String::new(), format!("Read all {}, no errors", human_size(total))),
+                        None => (String::new(), "Read it all, no errors. It isn't a known clean dump, but it may still work.".into()),
+                    }
+                } else {
+                    let mut stack = vec![copy.clone()];
+                    let (mut files, mut size) = (0u64, 0u64);
+                    while let Some(d) = stack.pop() {
+                        if stopped() {
+                            return;
+                        }
+                        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                            match e.metadata() {
+                                Ok(m) if m.is_dir() => stack.push(e.path()),
+                                Ok(m) => {
+                                    files += 1;
+                                    size += m.len();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    (String::new(), format!("Checked {files} files, {}", human_size(size)))
+            }
             };
             if stopped() {
                 return;
@@ -3695,9 +3706,10 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
             if let Some(pr) = &p.prepare {
                 emit(SetupEv { step: "extras".into(), text: pr.label.clone(), ..Default::default() });
                 let extra = prepare_extra(&app.state::<App>().dir, pr, &g.prepare_opts);
-                let handed = p.handed(Some(&copy)).unwrap_or_else(|| copy.clone());
-                if let Err(e) = run_prepare(pr, &g.path, &handed, &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
-                    return fail(e);
+                let handed = (!from_kept).then(|| p.handed(Some(&copy)).unwrap_or_else(|| copy.clone()));
+                if let Err(e) = run_prepare(pr, &g.path, handed.as_deref(), &extra, &|pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() }), &stopped) {
+                    // Built from what it kept and that didn't work: the player's copy builds it.
+                    return fail(if from_kept { kept_failed(&e) } else { e });
                 }
             }
             if stopped() {
@@ -3709,13 +3721,17 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
                 return;
             }
             note_pad();
-            if let Err(e) = p.prepare(&g.path, Some(&copy)) {
+            let written = if from_kept { p.prepare(&g.path, g.game_copy.as_deref().filter(|c| c.exists())) } else { p.prepare(&g.path, Some(&copy)) };
+            if let Err(e) = written {
                 return fail(format!("Couldn't write its settings: {e}"));
             }
             let st = app.state::<App>();
             // It worked: now it's the launcher's build, from this copy.
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
-                x.game_copy = Some(copy.clone());
+                // Built from what it kept: the copy picked before stays as it was (gone, or not).
+                if !from_kept {
+                    x.game_copy = Some(copy.clone());
+                }
                 x.prebuilt = false;
                 x.build_dir = None;
                 x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
@@ -4008,11 +4024,27 @@ fn set_prepare_opts(st: State<'_, App>, id: String, opts: BTreeMap<String, bool>
     Ok(())
 }
 
-fn run_prepare(pr: &profile::Prepare, install: &Path, copy: &Path, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
+/// A build from what the setup step kept that didn't work: what it said, then that the player's
+/// copy builds it instead. (What it said last may not end a sentence.)
+fn kept_failed(said: &str) -> String {
+    let said = said.trim_end();
+    let stop = if said.ends_with(['.', '!', '?']) { "" } else { "." };
+    format!("{said}{stop} Choose your copy of the game to build it from that.")
+}
+
+/// What the setup step is run with: its own arguments, then those of the options the player
+/// ticked. Without the copy (run again from what it kept, prepare.keeps_copy), every argument
+/// that names it ({game}) is left out, which is why it has to be one argument (--game={game}).
+fn prepare_args(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String]) -> Vec<String> {
+    let all = pr.args.iter().chain(extra.iter());
+    let named = all.filter(|a| copy.is_some() || !a.contains("{game}"));
+    named.map(|a| profile::fill(a, install, copy)).collect()
+}
+
+fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
-    // Its own arguments, then those of the options the player ticked.
-    let args: Vec<String> = pr.args.iter().chain(extra.iter()).map(|a| profile::fill(a, install, Some(copy))).collect();
+    let args = prepare_args(pr, install, copy, extra);
     let mut c = std::process::Command::new(&exe);
     sysenv::clean_std(&mut c);
     // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
@@ -4848,7 +4880,7 @@ fn not_set_up(s: &setup_state::Status) -> Error {
         "copy_wrong" => format!("{} Pick your copy again, then press Play.", s.detail),
         "files" => "NEED_COPY|Finish choosing this game's files in Easy Setup.".to_string(),
         "update" => format!("NEED_UPDATE|{}", s.detail),
-        "rebuild" => "NEED_REBUILD|".to_string(),
+        "rebuild" => format!("NEED_REBUILD|{}", s.detail),
         "build_missing" => format!("NEED_BUILD|{}", s.detail),
         "own_build_missing" => format!("NEED_OWN_BUILD|{}", s.detail),
         "way" => "NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".to_string(),
@@ -4928,6 +4960,9 @@ struct Setup {
     prebuilt: Option<PathBuf>,
     /// Set up from the build already on this PC.
     prebuilt_on: bool,
+    /// Its setup step can run again without the copy, from what it kept (prepare.keeps_copy):
+    /// with no copy picked, Set Up builds it from that.
+    kept: bool,
     /// Built from the copy into a folder of its own: a build the player already has, anywhere,
     /// can be picked instead (Use a Build You Already Have). The setup's own folder, for the hint.
     own_build: Option<PathBuf>,
@@ -5043,6 +5078,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         previous: if set_up { vec![] } else { previous_files(&p, &g, &st.dir) },
         prebuilt: if set_up { None } else { p.build_folder_here(&g.path) },
         prebuilt_on: g.prebuilt && built,
+        kept: setup_state::builds_from_kept(&p, &g),
         own_build: if set_up { None } else { whole.build_home(&g.path) },
         build_where: if set_up { None } else { whole.build_home(&g.path).filter(|h| !h.starts_with(&g.path)) },
         build_dir: g.build_dir.clone().filter(|d| d.is_dir()),
@@ -5504,7 +5540,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                 let copy = g.game_copy.as_deref().unwrap_or(&g.path);
                 let copy = p.handed(Some(copy)).unwrap_or_else(|| copy.to_path_buf());
                 let extra = prepare_extra(&dir, &pr, &g.prepare_opts);
-                run_prepare(&pr, &g.path, &copy, &extra, &|pct, text| emit("extras", pct, text), &stopped)?;
+                run_prepare(&pr, &g.path, Some(&copy), &extra, &|pct, text| emit("extras", pct, text), &stopped)?;
             }
             if stopped() { return Err("Stopped.".into()); }
             let current = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or("The game was removed during setup.")?;
@@ -10891,6 +10927,27 @@ mod tests {
     }
 
     #[test]
+    fn a_setup_step_run_without_the_copy_leaves_out_the_arguments_that_name_it() {
+        let pr: profile::Prepare = serde_json::from_value(serde_json::json!({
+            "program": ["Builder.exe"], "args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/Game"], "keeps_copy": true
+        })).unwrap();
+        let install = Path::new("/games/hookshot");
+        let extra = vec!["--fetch-ngx-sdk".to_string()];
+        let without = prepare_args(&pr, install, None, &extra);
+        assert_eq!(without, ["--cli", "--prepare", "--out", "/games/hookshot/Game", "--fetch-ngx-sdk"]);
+        let with = prepare_args(&pr, install, Some(Path::new("/roms/game.nup")), &extra);
+        assert_eq!(with[2], "--game=/roms/game.nup");
+        assert_eq!(with.len(), 6);
+    }
+
+    #[test]
+    fn a_build_from_what_was_kept_that_fails_asks_for_the_copy_in_a_sentence_of_its_own() {
+        let said = "Its setup step stopped with code 3: nothing kept";
+        assert_eq!(kept_failed(said), "Its setup step stopped with code 3: nothing kept. Choose your copy of the game to build it from that.");
+        assert_eq!(kept_failed("It stopped. "), "It stopped. Choose your copy of the game to build it from that.");
+    }
+
+    #[test]
     fn run_prepare_cancellation_kills_process_and_preserves_external_files() {
         let dir = std::env::temp_dir().join(format!("rl-prep-cancel-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -10917,6 +10974,7 @@ mod tests {
             options: vec![],
             version: String::new(),
             done: vec![],
+            keeps_copy: false,
         };
 
         let generated_file = dir.join("generated.txt");
@@ -10925,7 +10983,7 @@ mod tests {
         let res = run_prepare(
             &pr,
             &dir,
-            &dir,
+            Some(&dir),
             &[],
             &|_, _| {},
             &|| {
