@@ -900,6 +900,8 @@
  "Open to join": "Open voor iedereen",
  "Open {site} in your browser?": "{site} openen in je browser?",
  "Opens On": "Openen op",
+ "Featured Banner on Home": "Uitgelichte banner op Start",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "De diavoorstelling met recomps bovenaan Start. Zet hem uit en Start begint bij ‘Verder waar je was’.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Opent op volledig scherm, klaar voor een controller. Handig voor een tv of een handheld.",
  "Opens it from the desktop view.": "Opent het vanuit de bureaubladweergave.",
  "Opens, picks and changes things, or goes back.": "Opent, kiest en wijzigt dingen, of gaat terug.",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "Spel A tot Z",
  "Checked by the RecompStore team": "Gecontroleerd door het RecompStore-team",
  "Open the VirusTotal report": "VirusTotal-rapport openen",
- "Verified Update": "Geverifieerde update",
- "Featured Banner on Home": "Uitgelichte banner op Start",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "De diavoorstelling met recomps bovenaan Start. Zet hem uit en Start begint bij ‘Verder waar je was’."
+ "Verified Update": "Geverifieerde update"
 }

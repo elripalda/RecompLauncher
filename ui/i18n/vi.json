@@ -900,6 +900,8 @@
  "Open to join": "Ai cũng tham gia được",
  "Open {site} in your browser?": "Mở {site} trong trình duyệt?",
  "Opens On": "Mở vào",
+ "Featured Banner on Home": "Biểu ngữ nổi bật ở Trang chủ",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Trình chiếu các recomp ở đầu Trang chủ. Tắt đi thì Trang chủ bắt đầu từ \"Chơi tiếp\".",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Mở toàn màn hình, sẵn sàng cho tay cầm. Phù hợp với TV hoặc máy cầm tay.",
  "Opens it from the desktop view.": "Mở từ giao diện máy tính.",
  "Opens, picks and changes things, or goes back.": "Mở, chọn và thay đổi, hoặc quay lại.",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "Trò chơi A đến Z",
  "Checked by the RecompStore team": "Đã được đội ngũ RecompStore kiểm tra",
  "Open the VirusTotal report": "Mở báo cáo VirusTotal",
- "Verified Update": "Bản cập nhật đã xác minh",
- "Featured Banner on Home": "Biểu ngữ nổi bật ở Trang chủ",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Trình chiếu các recomp ở đầu Trang chủ. Tắt đi thì Trang chủ bắt đầu từ \"Chơi tiếp\"."
+ "Verified Update": "Bản cập nhật đã xác minh"
 }

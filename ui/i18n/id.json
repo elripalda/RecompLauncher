@@ -900,6 +900,8 @@
  "Open to join": "Terbuka untuk semua",
  "Open {site} in your browser?": "Buka {site} di browser-mu?",
  "Opens On": "Buka di",
+ "Featured Banner on Home": "Banner Unggulan di Beranda",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Tayangan slide recomp di bagian atas Beranda. Matikan dan Beranda dimulai dari \"Lanjut main\".",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Terbuka layar penuh, siap untuk kontroler. Cocok untuk TV atau perangkat genggam.",
  "Opens it from the desktop view.": "Membukanya dari tampilan desktop.",
  "Opens, picks and changes things, or goes back.": "Membuka, memilih, dan mengubah, atau kembali.",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "Game A sampai Z",
  "Checked by the RecompStore team": "Diperiksa oleh tim RecompStore",
  "Open the VirusTotal report": "Buka laporan VirusTotal",
- "Verified Update": "Pembaruan terverifikasi",
- "Featured Banner on Home": "Banner Unggulan di Beranda",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Tayangan slide recomp di bagian atas Beranda. Matikan dan Beranda dimulai dari \"Lanjut main\"."
+ "Verified Update": "Pembaruan terverifikasi"
 }

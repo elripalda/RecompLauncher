@@ -900,6 +900,8 @@
  "Open to join": "مفتوحة للجميع",
  "Open {site} in your browser?": "هل تريد فتح {site} في متصفحك؟",
  "Opens On": "الفتح على",
+ "Featured Banner on Home": "البانر المميز في الرئيسية",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "عرض الشرائح للريكومبات أعلى الصفحة الرئيسية. أوقفه لتبدأ الرئيسية بقسم «عد إلى اللعب».",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "يفتح بملء الشاشة، جاهزًا لوحدة التحكم. مناسب للتلفزيون أو الجهاز المحمول.",
  "Opens it from the desktop view.": "يفتحه من عرض سطح المكتب.",
  "Opens, picks and changes things, or goes back.": "يفتح ويختار ويغيّر، أو يعود.",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "اللعبة من أ إلى ي",
  "Checked by the RecompStore team": "تم الفحص بواسطة فريق RecompStore",
  "Open the VirusTotal report": "فتح تقرير VirusTotal",
- "Verified Update": "تحديث موثّق",
- "Featured Banner on Home": "البانر المميز في الرئيسية",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "عرض الشرائح للريكومبات أعلى الصفحة الرئيسية. أوقفه لتبدأ الرئيسية بقسم «عد إلى اللعب»."
+ "Verified Update": "تحديث موثّق"
 }

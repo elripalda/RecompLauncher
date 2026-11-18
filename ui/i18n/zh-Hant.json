@@ -900,6 +900,8 @@
  "Open to join": "開放加入",
  "Open {site} in your browser?": "要在瀏覽器中開啟 {site} 嗎？",
  "Opens On": "開啟時顯示",
+ "Featured Banner on Home": "首頁精選橫幅",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "首頁頂部的重製作品輪播。關閉後，首頁從「繼續玩」開始。",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "以全螢幕開啟，適合使用控制器。很適合電視或掌機。",
  "Opens it from the desktop view.": "從桌面檢視開啟它。",
  "Opens, picks and changes things, or goes back.": "開啟、選擇和變更，或返回。",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "依遊戲名稱排序",
  "Checked by the RecompStore team": "已由 RecompStore 團隊檢查",
  "Open the VirusTotal report": "開啟 VirusTotal 報告",
- "Verified Update": "已驗證的更新",
- "Featured Banner on Home": "首頁精選橫幅",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "首頁頂部的重製作品輪播。關閉後，首頁從「繼續玩」開始。"
+ "Verified Update": "已驗證的更新"
 }

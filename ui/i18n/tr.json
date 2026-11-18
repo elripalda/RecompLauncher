@@ -900,6 +900,8 @@
  "Open to join": "Herkese açık",
  "Open {site} in your browser?": "{site} tarayıcınızda açılsın mı?",
  "Opens On": "Açılış Sayfası",
+ "Featured Banner on Home": "Ana sayfada öne çıkan afiş",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Ana sayfanın üstündeki recomp slayt gösterisi. Kapatırsanız ana sayfa “Kaldığınız yerden devam edin” ile başlar.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Tam ekran açılır, oyun kumandasına hazır. TV veya el konsolu için ideal.",
  "Opens it from the desktop view.": "Masaüstü görünümünden açar.",
  "Opens, picks and changes things, or goes back.": "Açar, seçer ve değiştirir ya da geri döner.",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "Oyun A'dan Z'ye",
  "Checked by the RecompStore team": "RecompStore ekibi tarafından kontrol edildi",
  "Open the VirusTotal report": "VirusTotal raporunu aç",
- "Verified Update": "Doğrulanmış güncelleme",
- "Featured Banner on Home": "Ana sayfada öne çıkan afiş",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Ana sayfanın üstündeki recomp slayt gösterisi. Kapatırsanız ana sayfa “Kaldığınız yerden devam edin” ile başlar."
+ "Verified Update": "Doğrulanmış güncelleme"
 }

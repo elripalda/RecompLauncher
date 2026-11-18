@@ -900,6 +900,8 @@
  "Open to join": "เปิดให้ทุกคนเข้าร่วม",
  "Open {site} in your browser?": "เปิด {site} ในเบราว์เซอร์ไหม",
  "Opens On": "เปิดที่",
+ "Featured Banner on Home": "แบนเนอร์แนะนำในหน้าแรก",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "สไลด์โชว์รีคอมป์ที่ด้านบนของหน้าแรก ปิดไว้แล้วหน้าแรกจะเริ่มที่ \"กลับไปเล่นต่อ\"",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "เปิดแบบเต็มจอ พร้อมสำหรับคอนโทรลเลอร์ เหมาะกับทีวีหรือเครื่องพกพา",
  "Opens it from the desktop view.": "เปิดจากมุมมองเดสก์ท็อป",
  "Opens, picks and changes things, or goes back.": "เปิด เลือก และเปลี่ยนสิ่งต่างๆ หรือย้อนกลับ",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "เกม ก ถึง ฮ",
  "Checked by the RecompStore team": "ตรวจสอบโดยทีม RecompStore",
  "Open the VirusTotal report": "เปิดรายงาน VirusTotal",
- "Verified Update": "อัปเดตที่ยืนยันแล้ว",
- "Featured Banner on Home": "แบนเนอร์แนะนำในหน้าแรก",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "สไลด์โชว์รีคอมป์ที่ด้านบนของหน้าแรก ปิดไว้แล้วหน้าแรกจะเริ่มที่ \"กลับไปเล่นต่อ\""
+ "Verified Update": "อัปเดตที่ยืนยันแล้ว"
 }

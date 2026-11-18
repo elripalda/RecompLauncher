@@ -900,6 +900,8 @@
  "Open to join": "Abierta a todos",
  "Open {site} in your browser?": "¿Abrir {site} en tu navegador?",
  "Opens On": "Abrir en",
+ "Featured Banner on Home": "Banner destacado en Inicio",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "La presentación de recomps en la parte superior de Inicio. Desactívala e Inicio empieza por “Vuelve a jugar”.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Se abre a pantalla completa, listo para control. Ideal para una TV o una consola portátil.",
  "Opens it from the desktop view.": "Lo abre desde la vista de escritorio.",
  "Opens, picks and changes things, or goes back.": "Abre, elige y cambia cosas, o vuelve atrás.",
@@ -3360,7 +3362,5 @@
  "Game A to Z": "Juego de la A a la Z",
  "Checked by the RecompStore team": "Revisado por el equipo de RecompStore",
  "Open the VirusTotal report": "Abrir el informe de VirusTotal",
- "Verified Update": "Actualización verificada",
- "Featured Banner on Home": "Banner destacado en Inicio",
- "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "La presentación de recomps en la parte superior de Inicio. Desactívala e Inicio empieza por “Vuelve a jugar”."
+ "Verified Update": "Actualización verificada"
 }
