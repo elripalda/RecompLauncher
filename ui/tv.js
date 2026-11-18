@@ -1238,6 +1238,11 @@
           ${S.account && S.account.signedIn
             ? `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account" data-val="${esc(S.account.user.username)}"><span class="k">${esc(tf('Signed in as {name}', { name: S.account.user.username }))}<small>${esc(t('Cloud saves keep each game\'s saves on your account'))}</small></span><span class="tv-pill on">${esc(t('Account'))}</span></button>`
             : `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account"><span class="k">${esc(t('Sign in'))}<small>${esc(t('Back your saves up to a RecompStore account, and play on with them on any PC'))}</small></span><span class="tv-pill on">${esc(t('Sign in'))}</span></button>`}
+          ${head(t('Save Destination'))}
+          <button type="button" class="tv-item" data-f data-key="s:provider" data-tvact="save-provider"><span class="k">${esc(t('Save Destination'))}<small>${esc(S.saveProvider?.name || 'RecompStore')}</small></span><span class="tv-pill">${esc(t('Change'))}</span></button>
+          <button type="button" class="tv-item" data-f data-key="s:drive" data-tvact="drive-connect"${!S.saveProvider?.google?.configured && !S.saveProvider?.google?.deviceConfigured ? ' disabled' : ''}><span class="k">${esc(t(S.saveProvider?.google?.connected ? 'Reconnect Google Drive' : 'Connect Google Drive'))}<small>${esc(S.saveProvider?.google?.email || t('Save copies go directly to your Google Drive'))}</small></span></button>
+          ${S.saveProvider?.google?.connected ? `<button type="button" class="tv-item" data-f data-key="s:drive-off" data-tvact="drive-disconnect"><span class="k">${esc(t('Disconnect Google Drive'))}<small>${esc(t('Copies already in Drive are kept'))}</small></span></button>` : ''}
+          <button type="button" class="tv-item" data-f data-key="s:cloud-ask" data-tvact="cloud-ask"><span class="k">${esc(t('Ask for Each New Game'))}</span><span class="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}"></span></button>
           ${head(t('Display'))}
           ${(() => {
             const m = window.monitorPicked(S.monitors, S.settings.tv_monitor);
@@ -1329,11 +1334,12 @@
       const shareTitle = saveShareTitle(id);
       body = `<div class="tv-list">
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
-        ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
+        ${!sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:provider" data-tvact="save-provider"><span class="k">${esc(t('Choose save destination'))}</span></button>` : ''}
+        ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(sv.provider || t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
           const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
+          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.cloudError ? t(sv.cloudError) : sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
         })() : ''}
         <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
@@ -1886,7 +1892,7 @@
     TV.sheet = { items: [{ label: t('Cancel') }], prev: (focused() || {}).dataset?.key, onClose: () => s.onClose && s.onClose() };
     const el = document.createElement('div');
     el.className = 'tv-sheet tv-signin';
-    el.innerHTML = `<div class="tv-sheet-in"><h3>${esc(t('Sign in with your phone'))}</h3><div class="tv-signin-two"><div class="tv-qr">${s.qr}</div><div><p>${esc(t('Scan the code with your phone, or go to recomplauncher.com/activate and type:'))}</p><div class="tv-code">${esc(s.code)}</div><p class="tv-wait" data-st>${esc(t('Waiting for you to sign in…'))}</p></div></div>
+    el.innerHTML = `<div class="tv-sheet-in"><h3>${esc(s.title || t('Sign in with your phone'))}</h3><div class="tv-signin-two">${s.qr ? `<div class="tv-qr">${s.qr}</div>` : ''}<div><p>${esc(s.hint || t('Scan the code with your phone, or go to recomplauncher.com/activate and type:'))}</p><div class="tv-code">${esc(s.code)}</div><p class="tv-wait" data-st>${esc(t('Waiting for you to sign in…'))}</p></div></div>
       <button type="button" class="tv-item" data-f data-key="sheet:0" data-sheet="0"><span class="k">${esc(t('Cancel'))}</span></button></div>`;
     stage().append(el);
     focus($('[data-sheet="0"]', el), true);
@@ -2369,6 +2375,7 @@
     const cls = `tv-ambient m-${m}`;
     if (el.className !== cls) { el.className = cls; el.innerHTML = m === 'grid' ? '<i class="sky"></i><i class="sun"></i><i class="floor"></i>' : m === 'drift' ? '<i class="d1"></i><i class="d2"></i><i class="d3"></i>' : '<i class="a1"></i><i class="a2"></i><i class="a3"></i>'; }
   }
+  window.tvSavesReset = () => { TV.saves = {}; TV.savesAll = null; };
   window.tvRefresh = () => soon();
   // A game moved to another id (one added by link, now on the official list): the page on and
   // the pages behind it follow.
@@ -2810,6 +2817,13 @@
       case 'leave': return leave();
       case 'monitor': sfx('open'); return tvMonitorSheet();
       case 'lang': sfx('open'); return pickLang();
+      case 'drive-connect': return window.connectDrive().catch(fail);
+      case 'drive-disconnect': return window.disconnectDrive().catch(fail);
+      case 'cloud-ask': await saveUi({ cloud_ask: (S.settings.ui || {}).cloud_ask === false }); return draw(true);
+      case 'save-provider': return sheet(t('Save Destination'), [
+        { label: 'RecompStore', sub: t('Enable each game again after changing providers'), run: () => window.chooseSaveProvider('recompstore').catch(fail) },
+        { label: 'Google Drive', sub: t('Connect Google Drive first; enable each game again after changing providers'), run: () => S.saveProvider?.google?.connected ? window.chooseSaveProvider('google_drive').catch(fail) : window.connectDrive().catch(fail) },
+      ]);
       case 'account':
         sfx('open');
         if (!(S.account && S.account.signedIn)) return window.signIn && window.signIn(false);

@@ -16,11 +16,109 @@ const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), t
 const avatar = (u, size = 28) => (u && u.avatar ? `<img class="acc-pic" src="${esc(u.avatar)}" alt="" width="${size}" height="${size}">` : `<span class="acc-pic none" style="width:${size}px;height:${size}px">${esc(((u && u.username) || '?').slice(0, 1).toUpperCase())}</span>`);
 const inTV = () => document.body.classList.contains('tv-on');
 
+S.saveProvider = { provider: 'recompstore', name: 'RecompStore', connected: false, google: {} };
+const cloudReady = () => !!S.saveProvider?.connected;
+
+function applySaveProvider(result) {
+  S.saveProvider = result.state || result;
+  if (result.installed) { S.library = result.installed; expandLib(); }
+  S.saves = {}; S.savesAll = null;
+  if (window.tvSavesReset) window.tvSavesReset();
+}
+
+async function loadSaveProvider() {
+  try { applySaveProvider(await invoke('save_provider_state')); } catch (_) { /* The previous state stays until the next refresh. */ }
+}
+
+async function chooseSaveProvider(provider) {
+  if (S.saveProvider.provider === provider) return;
+  const name = provider === 'google_drive' ? 'Google Drive' : 'RecompStore';
+  const count = Object.values(S.library || {}).filter((g) => g.cloud === true).length;
+  const message = tf('Use {name} for cloud saves? Enable each game again on its Saves tab. Existing local backups and cloud copies are kept.', { name });
+  const picked = await ask(t('Change save destination?'), `<p>${esc(message)}</p>`, [
+    { label: t('Cancel'), v: false, focus: true },
+    { label: tf('Use {name}', { name }), sub: message + ' ' + tn(count, '1 game currently syncs', '{n} games currently sync'), v: true },
+  ]);
+  if (!picked) return;
+  applySaveProvider(await invoke('save_provider_set', { provider }));
+  renderAccountBits();
+}
+
+async function connectDrive() {
+  let start;
+  try { start = await invoke('drive_connect_start', { tv: inTV() }); } catch (e) { return fail(e); }
+  const hint = start.device
+    ? tf('Open {url} on your phone and enter this code:', { url: start.url })
+    : t('Finish connecting Google Drive in the browser on this PC. Return here when you have approved access.');
+  let closed = false, timer, box, tv;
+  const cancel = () => { closed = true; clearTimeout(timer); invoke('drive_connect_cancel').catch(() => {}); };
+  if (inTV() && window.tvSignIn) {
+    tv = window.tvSignIn({ title: t('Connect Google Drive'), hint, qr: start.qr || '', code: start.code || '', onClose: cancel });
+  } else {
+    box = modal(`<h2>${esc(t('Connect Google Drive'))}</h2><p>${esc(hint)}</p><p data-drive-status>${esc(t('Waiting for Google…'))}</p><div class="acts grid2"><button type="button" class="btn" data-x="cancel">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="open">${esc(t('Open the browser again'))}</button></div>`, (el, close) => {
+      if (el.dataset.x === 'open') return invoke('open_url', { url: start.url }).catch(fail);
+      cancel(); close();
+    }, t('Connect Google Drive'));
+    new MutationObserver((_m, observer) => { if (!box.isConnected) { observer.disconnect(); if (!closed) cancel(); } }).observe(document.body, { childList: true });
+  }
+  if (!start.device) invoke('open_url', { url: start.url }).catch(fail);
+  const until = Date.now() + start.expires * 1000;
+  const poll = async () => {
+    if (closed) return;
+    let result;
+    try { result = await invoke('drive_connect_poll'); } catch (e) { result = { status: 'error', error: String(e) }; }
+    if (closed) return;
+    if (result.status === 'pending' && Date.now() < until) { schedule(); return; }
+    closed = true;
+    if (tv) tv.close(true);
+    if (box) box.remove();
+    if (result.status !== 'ok') { cancel(); return fail(result.error || t('Google sign-in expired. Try connecting again.')); }
+    // The backend may have cleared consent when a different Google account replaced the old one.
+    applySaveProvider(await invoke('save_provider_state'));
+    renderAccountBits();
+    toast(t('Google Drive connected.'));
+    await chooseSaveProvider('google_drive');
+  };
+  const schedule = () => { timer = setTimeout(() => poll().catch((e) => {
+    cancel();
+    if (tv) tv.close(true);
+    if (box) box.remove();
+    fail(e);
+  }), 1000); };
+  schedule();
+}
+
+async function disconnectDrive() {
+  const message = t('Stop Google Drive sync on this PC? Local saves and copies already in Drive are kept.');
+  const picked = await ask(t('Disconnect Google Drive?'), `<p>${esc(message)}</p>`, [
+    { label: t('Cancel'), v: false, focus: true }, { label: t('Disconnect'), sub: message, v: true },
+  ]);
+  if (!picked) return;
+  applySaveProvider(await invoke('drive_disconnect'));
+  renderAccountBits();
+}
+window.connectDrive = connectDrive;
+window.chooseSaveProvider = chooseSaveProvider;
+window.disconnectDrive = disconnectDrive;
+
+function saveProviderSection(group, row) {
+  const p = S.saveProvider, google = p.google || {};
+  const button = (label, act, disabled = false) => `<button type="button" class="btn sm" data-act="acc-${act}"${disabled ? ' disabled' : ''}>${esc(t(label))}</button>`;
+  const info = tf('Current destination: {name}. Enable cloud saves separately for each game.', { name: p.name });
+  const googleHelp = google.needsReconnect ? t('Google Drive needs you to connect again.') : google.connected ? google.email : google.configured ? t('Connect your Google account. Save copies go directly to your Drive.') : t('Google Drive is not configured in this launcher build.');
+  return group(t('Save Destination'), `<p class="set-note">${esc(info)}</p>`
+    + row('RecompStore', t('Use your RecompStore account for game saves.'), button(p.provider === 'recompstore' ? 'Selected' : 'Use RecompStore', 'provider-recompstore', p.provider === 'recompstore'))
+    + row('Google Drive', googleHelp, `<span class="acts">${google.connected ? button('Reconnect', 'drive-connect') + button('Disconnect', 'drive-disconnect') + button(p.provider === 'google_drive' ? 'Selected' : 'Use Google Drive', 'provider-google', p.provider === 'google_drive') : button('Connect Google Drive', 'drive-connect', !google.configured)}</span>`)
+    + row(t('Ask for Each New Game'), t('Ask before enabling cloud saves for a game.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)
+    + deviceNameRow());
+}
+
 async function loadAccount(fresh) {
   const was = !!(S.account && S.account.signedIn);
   try { S.account = await invoke('account_state', { fresh: !!fresh }); } catch (e) { S.account = S.account || { signedIn: false }; }
   // Signed in (or out) just now: what each game's Saves tab knew is out of date.
   if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; }
+  await loadSaveProvider();
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
   // Notify Me: the games they're waiting on (none when signed out).
@@ -134,6 +232,9 @@ async function signOut() {
 
 // ---------- Settings > Account ----------
 function accountSection(group, row) {
+  return saveProviderSection(group, row) + recompAccountSection(group, row);
+}
+function recompAccountSection(group, row) {
   const a = S.account || {};
   if (!a.signedIn) {
     return group(t('Account'), `<div class="acc-hero">${CLOUD_ICON}<div><b>${esc(t('Keep your saves safe'))}</b><span>${esc(t('With a RecompStore account, your saves go to the cloud after you play and are there on any PC. It\'s free, and the launcher works the same without one.'))}</span></div></div>
@@ -143,10 +244,8 @@ function accountSection(group, row) {
   const used = a.used || 0, quota = a.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
-    + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
-      <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Ask for Each New Game'), t('Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)
-      + deviceNameRow())
+    + group(t('RecompStore cloud storage'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
+      <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`)
     + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
 }
@@ -206,8 +305,8 @@ function savesTab(a) {
   const where = s.spots.map((p) => `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</span></div><span class="acts">${p.from === 'found' ? `<button type="button" class="btn sm" data-act="saves-forget" data-id="${esc(id)}">${esc(t('Not right?'))}</button>` : ''}${many ? `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>` : `${p.from === 'player' ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`}</span></div>`).join('')
     + `<div class="set-row"><div class="k"><b>${esc(t('Saves in more than one folder?'))}</b><span>${esc(t('For a launcher with several games in it, each saving in its own folder. Backups and cloud saves cover every folder.'))}</span></div><span class="acts">${many ? `<button type="button" class="btn sm" data-act="saves-place-reset" data-id="${esc(id)}">${esc(t('Use the Usual Place'))}</button>` : ''}<button type="button" class="btn sm" data-act="saves-place-add" data-id="${esc(id)}">${esc(t('Add a Folder'))}</button></span></div>`;
   const cloudCard = !signed
-    ? `<div class="card acc-cloud"><div class="acc-hero">${CLOUD_ICON}<div><b>${esc(t('Cloud saves'))}</b><span>${esc(t('Sign in to back this game\'s saves up to your account and play on with them on any PC.'))}</span></div></div><div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="acc-create">${esc(t('Create an account'))}</button><button type="button" class="btn main" data-act="acc-signin">${esc(t('Sign in'))}</button></div></div>`
-    : `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? (s.offline ? t('On. The website can\'t be reached right now; copies go up when it can.') : s.pending ? t('On. The newest copy goes up next time the launcher can reach the website.') : t('On. After you play, its saves go to your account.')) : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>
+    ? `<div class="card acc-cloud"><div class="acc-hero">${CLOUD_ICON}<div><b>${esc(t('Cloud saves'))}</b><span>${esc(t('Sign in to back this game\'s saves up to your account and play on with them on any PC.'))}</span></div></div><div class="acts acc-acts"><button type="button" class="btn main" data-act="acc-save-settings">${esc(t('Choose save destination'))}</button></div></div>`
+    : `<div class="card"><div class="set-row"><div class="k"><b>${esc(s.provider || t('Cloud saves'))}</b><span>${esc(on ? (s.offline ? t('On. The cloud provider can\'t be reached right now; copies go up when it can.') : s.pending ? t('On. The newest copy uploads when the cloud provider can be reached.') : t('On. After you play, its saves go to your account.')) : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>
       ${on ? cloudStatus(id, s) : ''}
       ${on && Array.isArray(s.cloud) ? (s.cloud.length ? s.cloud.map((c) => copyRow(id, c, 'v', c.v, c.hash === s.synced)).join('') : `<p class="set-empty">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`) : ''}</div>`;
   const local = s.local.length ? s.local.map((c) => copyRow(id, c, 'name', c.name, false)).join('') : `<p class="set-empty">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`;
@@ -237,7 +336,8 @@ function cloudStatus(id, s) {
   const why = s.waiting && s.full ? t('Your cloud saves are full. Remove old cloud copies to make room; uploads start again by themselves.')
     : s.waiting && s.retryIn ? tf('The last try didn\'t get through. Next try in {when}.', { when: s.retryIn >= 60 ? tf('{n} min', { n: Math.ceil(s.retryIn / 60) }) : tf('{n} s', { n: s.retryIn }) })
     : '';
-  return `<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b>${why ? `<span>${esc(why)}</span>` : ''}</div><span class="acts">${btn}</span></div>${help}`;
+  const error = s.cloudError ? `<p class="set-note">${esc(t(s.cloudError))}</p>` : '';
+  return `${error}<div class="set-row cloud-now"><div class="k"><b>${esc(line)}</b>${why ? `<span>${esc(why)}</span>` : ''}</div><span class="acts">${btn}</span></div>${help}`;
 }
 function copyRow(id, c, k, v, current) {
   const when = c.when || c.made;
@@ -275,7 +375,7 @@ function rootCard(o) {
 function pageSaves() {
   const o = S.savesAll;
   if (!o) { loadSavesAll(); return `<div class="loading">${esc(t('Loading…'))}</div>`; }
-  const acc = S.account || {};
+  const acc = S.saveProvider.provider === 'google_drive' ? { signedIn: cloudReady(), drive: true } : S.account || {};
   const games = (o.games || []).map((x) => ({ ...x, g: S.library[x.id] || {}, a: byId(x.id) })).filter((x) => x.g.name || x.a);
   const withSaves = games.filter((x) => x.copies).sort((a, b) => (b.newest?.when || 0) - (a.newest?.when || 0));
   const none = games.filter((x) => !x.copies).sort((a, b) => (a.g.name || '').localeCompare(b.g.name || ''));
@@ -285,7 +385,9 @@ function pageSaves() {
   const pcCard = `<div class="mc"><div class="mc-top"><span class="mc-ico">${CARD_ICON}</span><div><b>${esc(t('On this PC'))}</b><span>${esc(tn(withSaves.length, '1 game with saves', '{n} games with saves'))}</span></div><strong>${esc(fmtB(size) || '0 KB')}</strong></div>
       ${blocks(withSaves.length ? withSaves.length / Math.max(games.length, 1) : 0)}
       <p>${esc(tn(copies, '1 copy kept', '{n} copies kept'))} · ${esc(t('The newest ten of each game'))}</p></div>`;
-  const cloudCard = acc.signedIn
+  const cloudCard = acc.drive && acc.signedIn
+    ? `<div class="mc cloud"><div class="mc-top">${CLOUD_ICON}<div><b>Google Drive</b><span>${esc(S.saveProvider.google?.email || '')}</span></div></div><p>${esc(tn(cloudGames, '1 game syncs to Drive', '{n} games sync to Drive'))}</p></div>`
+    : acc.signedIn
     ? `<div class="mc cloud"><div class="mc-top"><span class="mc-ico">${CLOUD_ICON}</span><div><b>${esc(t('Cloud saves'))}</b><span>${esc(tn(cloudGames, '1 game backs up to your account', '{n} games back up to your account'))}</span></div><strong>${esc(fmtB(used) || '0 KB')}</strong></div>
       ${blocks(used / quota)}
       <p>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</p></div>`
@@ -361,7 +463,7 @@ async function beforePlay(id) {
 }
 async function beforeCloudPlay(id) {
   const g = S.library[id];
-  if (!g || !(S.account && S.account.signedIn)) return true;
+  if (!g || !cloudReady()) return true;
   // Asked once per game, unless the player said not to ask (Settings, Account).
   if (g.cloud == null && (S.settings.ui || {}).cloud_ask !== false) {
     const v = await ask(tf('Cloud saves for {name}?', { name: g.name }), `<p>${esc(t('After you play, its saves go to your account, so they\'re safe and ready on any PC. You can change this on its Saves tab.'))}</p>`,
@@ -389,7 +491,7 @@ async function pickCloudSave(id, { local, cloud }) {
   const v = await ask(t('Which save do you want?'), `<div class="pick-two">${card(t('This PC'), local.when, local.device, local.played)}${card(t('Cloud'), cloud.made, cloud.device, cloud.played)}</div><p class="muted" style="font-size:13px">${esc(t('The other one is kept as a copy on its Saves tab, so nothing is lost.'))}</p>`,
     [{ label: t('Keep this PC\'s'), sub: `${whenText(local.when)} · ${local.device}`, icon: 'desk', v: 'local' }, { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, icon: 'check', v: 'cloud' }]);
   if (v == null) return false;
-  await invoke('saves_pick', { id, keep: v, localHash: local.hash, cloudVersion: cloud.v });
+  await invoke('saves_pick', { id, keep: v, localHash: local.hash, cloudVersion: cloud.v, ...(cloud.revision ? { cloudRevision: cloud.revision } : {}) });
   toast(t(v === 'cloud' ? 'The cloud save is in place.' : 'Your save is in the cloud.'));
   return true;
 }
@@ -409,6 +511,11 @@ async function syncCloudNow(id) {
 window.accountAct = async (act, el) => {
   const id = el.dataset.id;
   switch (act) {
+    case 'acc-save-settings': S.setTab = 'account'; return go('settings');
+    case 'acc-drive-connect': return connectDrive().catch(fail);
+    case 'acc-drive-disconnect': return disconnectDrive().catch(fail);
+    case 'acc-provider-google': return chooseSaveProvider('google_drive').catch(fail);
+    case 'acc-provider-recompstore': return chooseSaveProvider('recompstore').catch(fail);
     case 'acc-signin': return signIn(false);
     case 'acc-create': return signIn(true);
     case 'acc-signout': return signOut();
@@ -515,7 +622,11 @@ window.accountAct = async (act, el) => {
   return null;
 };
 
-T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
+T.event.listen('save-provider', async ({ payload }) => {
+  applySaveProvider(payload);
+  renderAccountBits();
+});
+T.event.listen('account', async ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; await loadSaveProvider(); renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
 T.event.listen('saves', ({ payload }) => { if (S.view === 'saves') loadSavesAll(); if (payload && payload.id) { delete S.saves[payload.id]; if (S.view === 'game' && S.arg === payload.id && S.tab === 'saves') loadSaves(payload.id); } });
 
 // Who's signed in: what's remembered first, then the website's answer.

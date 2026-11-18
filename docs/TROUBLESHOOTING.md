@@ -64,7 +64,14 @@ It only needs the internet for the game list, updates, accounts and cloud saves.
 
 ## Cloud saves aren't syncing
 
-Make sure you're signed in and cloud saves are on for that game in its **Saves** tab. If a sync fails, the launcher tries again by itself and shows when the next try is.
+Check the selected provider in **Settings → Account → Save destination**, and make sure cloud saves
+are on for that game in its **Saves** tab. If a sync fails, the launcher tries again by itself and
+shows when the next try is.
+
+For Google Drive, reconnect there if Google access expired or was revoked. If Drive is full,
+free space (including its Trash), then press **Sync Now**. Switching providers or Google accounts
+requires enabling games again. A build that says Drive is not configured needs the maintainer's
+Google OAuth configuration. See [Google Drive saves](GOOGLE-DRIVE.md).
 
 ## Resetting the launcher
 

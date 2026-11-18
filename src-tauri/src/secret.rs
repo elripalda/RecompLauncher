@@ -2,6 +2,52 @@
 //! Windows user only; account.json then just says so. Elsewhere the file it's in is readable by
 //! its owner only.
 
+/// Separate providers must never replace or remove each other's credentials.
+pub fn save_named(dir: &std::path::Path, name: &str, plain: &[u8]) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let _ = dir;
+        let text = std::str::from_utf8(plain).map_err(std::io::Error::other)?;
+        if !crate::win::cred_write_named(&format!("RecompLauncher/{name}"), text) {
+            return Err(std::io::Error::other("Couldn't save the Google sign-in in Credential Manager."));
+        }
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let path = dir.join(format!("{name}.json"));
+        let temp = dir.join(format!("{name}.json.tmp"));
+        write_private(&temp, plain)?;
+        std::fs::rename(temp, path)
+    }
+}
+
+pub fn load_named(dir: &std::path::Path, name: &str) -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        let _ = dir;
+        crate::win::cred_read_named(&format!("RecompLauncher/{name}")).map(String::into_bytes)
+    }
+    #[cfg(not(windows))]
+    std::fs::read(dir.join(format!("{name}.json"))).ok()
+}
+
+pub fn forget_named(dir: &std::path::Path, name: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let _ = dir;
+        if !crate::win::cred_delete_named(&format!("RecompLauncher/{name}")) {
+            return Err(std::io::Error::other("Couldn't remove the Google sign-in from Credential Manager."));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    match std::fs::remove_file(dir.join(format!("{name}.json"))) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
 /// Where account.json says the token is kept.
 #[cfg(windows)]
 const IN_WINDOWS: &str = "credential-manager";
