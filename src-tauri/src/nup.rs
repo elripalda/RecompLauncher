@@ -141,24 +141,10 @@ fn read_main<R: Read + Seek>(r: &mut R, len: u64, size: u64, off: u64, stored: u
 
 /// The build ID of a folder with `exefs/main` (an extracted package).
 pub fn build_id_of_folder(dir: &Path) -> Result<String, String> {
-    let main = main_of(dir).ok_or_else(|| wrong_folder(dir))?;
+    let main = dir.join("exefs").join("main");
     let mut f = std::fs::File::open(&main).map_err(|_| wrong_folder(dir))?;
     let h = at(&mut f, 0, NSO_HEAD).ok_or_else(|| "The folder's exefs/main isn't a game executable.".to_string())?;
     id_of_header(&h)
-}
-
-/// A folder's game executable: `exefs/main`, or the copy a game's builder keeps for rebuilds in a
-/// hidden folder named like `.hopper_exefs` (any name that starts with a dot and ends in `_exefs`).
-pub fn main_of(dir: &Path) -> Option<std::path::PathBuf> {
-    let plain = dir.join("exefs").join("main");
-    if plain.is_file() {
-        return Some(plain);
-    }
-    std::fs::read_dir(dir).ok()?.flatten().find_map(|e| {
-        let name = e.file_name().to_string_lossy().to_ascii_lowercase();
-        let main = e.path().join("main");
-        (name.starts_with('.') && name.ends_with("_exefs") && main.is_file()).then_some(main)
-    })
 }
 
 /// Why a folder picked for a package isn't one, and what to pick instead: the package file in it,
@@ -171,7 +157,7 @@ fn wrong_folder(dir: &Path) -> String {
     }
     let mut level = top.iter().filter(|p| p.is_dir()).cloned().collect::<Vec<_>>();
     for _ in 0..2 {
-        if let Some(inner) = level.iter().find(|d| main_of(d).is_some()) {
+        if let Some(inner) = level.iter().find(|d| d.join("exefs").join("main").is_file()) {
             return format!("The game's files are in {}. Pick that folder.", inner.display());
         }
         level = level.iter().flat_map(|d| entries(d)).filter(|p| p.is_dir()).take(400).collect();
@@ -352,26 +338,6 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&e).unwrap();
         std::fs::write(e.join("hopper.exe"), b"x").unwrap();
         assert!(build_id_of_folder(&e).unwrap_err().contains("game's own folder"));
-        let _ = std::fs::remove_dir_all(&d);
-    }
-
-    #[test]
-    fn the_copy_a_game_keeps_in_a_hidden_exefs_folder_is_read() {
-        let d = std::env::temp_dir().join(format!("rl-nup-kept-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        let kept = d.join("Hopper");
-        std::fs::create_dir_all(kept.join(".Hopper_ExeFS")).unwrap();
-        std::fs::write(kept.join(".Hopper_ExeFS").join("main"), nso(&ID)).unwrap();
-        assert_eq!(build_id_of_folder(&kept).unwrap(), id_of_header(&nso(&ID)).unwrap());
-        // Found a level down, so the folder above says to pick it.
-        assert!(build_id_of_folder(&d).unwrap_err().contains("Hopper"));
-        // A hidden folder without the executable isn't one.
-        let other = d.join("other");
-        std::fs::create_dir_all(other.join(".foo_exefs")).unwrap();
-        std::fs::write(other.join(".foo_exefs").join("readme"), b"x").unwrap();
-        std::fs::create_dir_all(other.join("plain_exefs")).unwrap();
-        std::fs::write(other.join("plain_exefs").join("main"), nso(&ID)).unwrap();
-        assert!(build_id_of_folder(&other).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 }
