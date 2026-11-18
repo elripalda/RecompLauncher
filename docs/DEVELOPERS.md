@@ -857,6 +857,8 @@ The launcher has tools for this. In Settings, open Developers and turn on Develo
    and the choice each setting shows right now. Problems are marked in red, things worth a look in
    yellow. JSON mistakes show the line and column. It also sums up how the game is set up
    (launches with the player's copy, or needs a one-time step) and what it can do.
+   It also flags, in yellow, a step that builds from the player's copy without `prepare.done`, and
+   paths your game writes to outside `{install}` and `{data}`. Those never stop your game.
    No file yet? "Make a starter file" writes one next to your program to begin from.
 3. **Try it like a player.** Set it up with your own disc, change a setting, then open your
    settings file: only the keys you listed should have changed. Press Play: your game should start
