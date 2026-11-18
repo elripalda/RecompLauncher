@@ -1296,7 +1296,7 @@
  "That's not a Windows program": "Bu bir Windows programı değil",
  "That's your local build. Take it out of the Library first to install the release.": "Bu sizin yerel derlemeniz. Sürümü yüklemek için önce Kitaplık'tan çıkarın.",
  "The launcher doesn't know where this game saves": "Başlatıcı bu oyunun nereye kaydettiğini bilmiyor",
- "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.": "Başlatıcı bu oyunun nereye kaydettiğini bilmiyor. Kayıt klasörünü Kaydettiği yer bölümünden seç.",
+ "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.": "Başlatıcı bu oyunun nereye kaydettiğini bilmiyor. Kayıt klasörünü Kaydettiği yer bölümünden seçin.",
  "The Visual C++ runtime is installed": "Visual C++ çalışma zamanı kurulu",
  "The Visual C++ runtime isn't installed": "Visual C++ çalışma zamanı kurulu değil",
  "The cloud save is in place.": "Buluttaki kayıt yerine kondu.",
