@@ -767,18 +767,18 @@ fn overlay(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// After an update: the files the previous release put in the game's folder that this release no
-/// longer has, removed. Unpacking only adds and replaces, so a source file or library an old
-/// version had stays behind and can break a build or load in place of the new one (DKB Recomp
-/// 0.2.0's runtime/gfx_present.c broke 0.3.0's link with duplicate symbols). A file changed since
-/// that install (settings the game rewrote, a file the player edited) and `keep` (the program the
-/// player starts) stay. Returns what it removed.
-pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u64, keep: Option<&Path>) -> Vec<PathBuf> {
+/// For an update: the files the previous release put in the game's folder that this release no
+/// longer has, for the update to take away with the rest of the old release (see `swap`). Left
+/// behind, a source file or library an old version had can break a build or load in place of the
+/// new one (DKB Recomp 0.2.0's runtime/gfx_present.c broke 0.3.0's link with duplicate symbols). A
+/// file changed since that install (settings the game rewrote, a file the player edited) and
+/// `keep` (the program the player starts) stay.
+pub fn dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u64, keep: Option<&Path>) -> Vec<PathBuf> {
     // Case doesn't tell files apart on Windows and Mac: a file only renamed in case is still there.
     let fold = |p: &Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
     let still_shipped: std::collections::HashSet<String> = new.iter().map(|p| fold(p)).collect();
     let kept = keep.map(fold);
-    let mut removed = vec![];
+    let mut gone = vec![];
     for rel in old {
         let name = fold(rel);
         if still_shipped.contains(&name) || kept.as_deref() == Some(name.as_str()) {
@@ -794,54 +794,44 @@ pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed
         }
         let since = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
         let changed = since.map(|d| d.as_secs() > installed_at).unwrap_or(true);
-        if changed || fs::remove_file(&path).is_err() {
-            continue;
+        if !changed {
+            gone.push(rel.clone());
         }
-        remove_empty_parents(target, &path);
-        removed.push(rel.clone());
     }
-    removed
+    gone
 }
 
-/// Keep the selected program through an update, following release renames and moves.
-pub fn updated_exe(id: &str, target: &Path, mut exe: Option<PathBuf>, files: &[PathBuf], kept: bool) -> Option<PathBuf> {
-    let old = exe.as_ref()?;
+/// Keep the selected program through an update, following release renames and moves. Run before
+/// the update's files go in. Also returns the old release's AppImage a differently named new one
+/// replaces, for the update to take away.
+pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathBuf], kept: bool) -> (Option<PathBuf>, Option<PathBuf>) {
+    let Some(old) = exe.clone() else { return (None, None) };
     // A player's program outside the install belongs to them. Neither a release's AppImage nor
     // a file with the same name replaces it, including paths through parent folders or links.
     if !old.components().all(|c| matches!(c, Component::Normal(_))) {
-        return exe;
+        return (exe, None);
     }
-    let Ok(root) = fs::canonicalize(target) else { return exe };
-    let Ok(path) = fs::canonicalize(target.join(old)) else { return exe };
+    let Ok(root) = fs::canonicalize(target) else { return (exe, None) };
+    let Ok(path) = fs::canonicalize(target.join(&old)) else { return (exe, None) };
     if !path.starts_with(root) {
-        return exe;
+        return (exe, None);
     }
-    if let Some(old) = exe.clone() {
-        let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-        let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
-        if let (true, Some(n)) = (is_appimage, new_appimage) {
-            if *n != old {
-                let _ = std::fs::remove_file(target.join(&old));
-                exe = Some(n.clone());
-            }
+    let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
+    let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+    if let (true, Some(n)) = (is_appimage, new_appimage) {
+        if *n != old {
+            return (Some(n.clone()), Some(old));
         }
     }
     // The program the player picked isn't one of the new release's files (it was moved inside the
     // release, say): the new release's file of the same name, so Play starts the update.
-    let exe = match exe {
-        Some(e) if kept && !files.iter().any(|f| *f == e) => {
-            let name = e.file_name().map(|n| n.to_ascii_lowercase());
-            match files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) {
-                Some(f) => {
-                    crate::trail::note(format!("Install {id}: the program you picked is at {} in this release now", f.display()));
-                    Some(f.clone())
-                }
-                None => Some(e),
-            }
-        }
-        e => e,
-    };
-    exe
+    if !kept || files.contains(&old) {
+        return (exe, None);
+    }
+    let name = old.file_name().map(|n| n.to_ascii_lowercase());
+    let Some(moved) = files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) else { return (exe, None) };
+    crate::trail::note(format!("Install {id}: the program you picked is at {} in this release now", moved.display()));
+    (Some(moved.clone()), None)
 }
 
 /// The folders above a removed file that it leaves empty, up to (not including) `top`.
@@ -912,6 +902,27 @@ pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<Pa
 }
 
 fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
+    let staged = stage_with(file, staging, strip_top)?;
+    overlay(&staged.root, target)?;
+    let _ = fs::remove_dir_all(staging);
+    Ok(staged.files)
+}
+
+/// A release unpacked in its staging folder, ready to go into the game's folder.
+pub struct Staged {
+    /// Where its files start, inside the staging folder.
+    pub root: PathBuf,
+    /// Its files, relative to `root`.
+    pub files: Vec<PathBuf>,
+}
+
+/// Unpack (or place) the downloaded file into `staging`, the way a game's release is: a single
+/// folder at the top unwrapped. Nothing of the game's is touched (see `swap`).
+pub fn stage(file: &Path, staging: &Path) -> Result<Staged, Error> {
+    stage_with(file, staging, true)
+}
+
+fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Error> {
     let name = file.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
     // A .rar (a plugin's download, a mod): unpacked the way mods are, then put in place below.
     let k = if name.to_lowercase().ends_with(".rar") { "rar" } else { kind(&name).ok_or_else(|| Error::Msg(format!("{name} isn't a kind of file the launcher can install")))? };
@@ -967,9 +978,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     }
     let mut files = vec![];
     list(&from, &from, &mut files);
-    overlay(&from, target)?;
-    let _ = fs::remove_dir_all(staging);
-    Ok(files)
+    Ok(Staged { root: from, files })
 }
 
 /// The one AppImage at the top of a release (on its own, or out of a zip): its contents (AppRun,
@@ -1317,7 +1326,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
             let p = e.path();
-            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
+            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) || e.file_name() == crate::swap::FOLDER {
                 continue;
             }
             if p.is_dir() {
@@ -1441,7 +1450,8 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
             let mut p = e.path();
-            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
+            // The old release's program waits there while an update goes in: never the game.
+            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) || e.file_name() == crate::swap::FOLDER {
                 continue;
             }
             let bundle_name = if os == "macos" && crate::macos::is_bundle(&p) {
@@ -1650,7 +1660,7 @@ mod tests {
         fs::write(&old, b"player's separate program").unwrap();
         fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(fs::read(&old).unwrap(), b"player's separate program");
         assert_eq!(got, Some(old));
@@ -1666,7 +1676,7 @@ mod tests {
         fs::write(&old, b"player's separate program").unwrap();
         fs::write(target.join("bin/Game.exe"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["bin/Game.exe"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["bin/Game.exe"]), true);
 
         assert_eq!(got, Some(old.clone()));
         assert_eq!(fs::read(old).unwrap(), b"player's separate program");
@@ -1682,7 +1692,7 @@ mod tests {
         fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
         let old = PathBuf::from("../My Game.AppImage");
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(fs::read(d.join("My Game.AppImage")).unwrap(), b"player's separate program");
         assert_eq!(got, Some(old));
@@ -1702,7 +1712,7 @@ mod tests {
         std::os::unix::fs::symlink(&external, target.join("linked")).unwrap();
         let old = PathBuf::from("linked/Game.AppImage");
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(fs::read(external.join("Game.AppImage")).unwrap(), b"player's separate program");
         assert_eq!(got, Some(old));
@@ -1715,10 +1725,10 @@ mod tests {
         fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
         fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, replaced) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(got, Some("Game-v2.AppImage".into()));
-        assert!(!target.join("Game-v1.AppImage").exists());
+        assert_eq!(replaced, Some("Game-v1.AppImage".into()));
         assert_eq!(fs::read(target.join("Game-v2.AppImage")).unwrap(), b"new release");
         fs::remove_dir_all(target).unwrap();
     }
@@ -1730,7 +1740,7 @@ mod tests {
         fs::write(target.join("Game.exe"), b"old release").unwrap();
         fs::write(target.join("bin/Game.exe"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some("Game.exe".into()), &paths(&["bin/Game.exe"]), true);
+        let (got, _) = updated_exe("game", &target, Some("Game.exe".into()), &paths(&["bin/Game.exe"]), true);
 
         assert_eq!(got, Some("bin/Game.exe".into()));
         assert_eq!(fs::read(target.join("bin/Game.exe")).unwrap(), b"new release");
@@ -1738,17 +1748,15 @@ mod tests {
     }
 
     #[test]
-    fn an_update_removes_a_file_its_release_dropped() {
+    fn an_update_takes_away_a_file_its_release_dropped() {
         let d = tmp("dropped-gone");
         fs::create_dir_all(d.join("runtime")).unwrap();
         fs::write(d.join("runtime/gfx_present.c"), b"old").unwrap();
         fs::write(d.join("runtime/gfx_window.c"), b"new").unwrap();
         let old = paths(&["runtime/gfx_present.c", "runtime/gfx_window.c"]);
         let new = paths(&["runtime/gfx_window.c"]);
-        let removed = remove_dropped(&d, &old, &new, later(), None);
-        assert_eq!(removed, paths(&["runtime/gfx_present.c"]));
-        assert!(!d.join("runtime/gfx_present.c").exists());
-        assert!(d.join("runtime/gfx_window.c").exists());
+        let gone = dropped(&d, &old, &new, later(), None);
+        assert_eq!(gone, paths(&["runtime/gfx_present.c"]));
     }
 
     #[test]
@@ -1756,8 +1764,8 @@ mod tests {
         let d = tmp("dropped-changed");
         fs::write(d.join("game.ini"), b"edited by the player").unwrap();
         let installed_long_ago = crate::library::now() - 3600;
-        let removed = remove_dropped(&d, &paths(&["game.ini"]), &[], installed_long_ago, None);
-        assert!(removed.is_empty());
+        let gone = dropped(&d, &paths(&["game.ini"]), &[], installed_long_ago, None);
+        assert!(gone.is_empty());
         assert!(d.join("game.ini").exists());
     }
 
@@ -1765,8 +1773,8 @@ mod tests {
     fn an_update_keeps_the_program_the_player_starts() {
         let d = tmp("dropped-exe");
         fs::write(d.join("Game.exe"), b"exe").unwrap();
-        let removed = remove_dropped(&d, &paths(&["Game.exe"]), &[], later(), Some(Path::new("Game.exe")));
-        assert!(removed.is_empty());
+        let gone = dropped(&d, &paths(&["Game.exe"]), &[], later(), Some(Path::new("Game.exe")));
+        assert!(gone.is_empty());
         assert!(d.join("Game.exe").exists());
     }
 
@@ -1774,19 +1782,9 @@ mod tests {
     fn an_update_keeps_a_file_only_renamed_in_case() {
         let d = tmp("dropped-case");
         fs::write(d.join("Engine.dll"), b"dll").unwrap();
-        let removed = remove_dropped(&d, &paths(&["Engine.dll"]), &paths(&["engine.DLL"]), later(), None);
-        assert!(removed.is_empty());
+        let gone = dropped(&d, &paths(&["Engine.dll"]), &paths(&["engine.DLL"]), later(), None);
+        assert!(gone.is_empty());
         assert!(d.join("Engine.dll").exists());
-    }
-
-    #[test]
-    fn an_update_removes_a_folder_its_dropped_files_leave_empty() {
-        let d = tmp("dropped-folder");
-        fs::create_dir_all(d.join("old/deep")).unwrap();
-        fs::write(d.join("old/deep/a.bin"), b"a").unwrap();
-        remove_dropped(&d, &paths(&["old/deep/a.bin"]), &[], later(), None);
-        assert!(!d.join("old").exists());
-        assert!(d.exists());
     }
 
     #[test]
@@ -1794,8 +1792,8 @@ mod tests {
         let d = tmp("dropped-outside");
         fs::create_dir_all(d.join("game")).unwrap();
         fs::write(d.join("other.txt"), b"not the game's").unwrap();
-        let removed = remove_dropped(&d.join("game"), &paths(&["../other.txt"]), &[], later(), None);
-        assert!(removed.is_empty());
+        let gone = dropped(&d.join("game"), &paths(&["../other.txt"]), &[], later(), None);
+        assert!(gone.is_empty());
         assert!(d.join("other.txt").exists());
     }
 
@@ -1950,6 +1948,38 @@ mod tests {
         assert!(!d.join("lib/escape.txt").exists() && !d.join("escape.txt").exists());
         assert_eq!(files.len(), 2);
         assert!(!d.join("staging").exists());
+    }
+
+    #[test]
+    fn a_staged_update_goes_in_whole_and_keeps_saves() {
+        let d = tmp("staged-update");
+        let zpath = d.join("Game-v2.zip");
+        fs::write(&zpath, zip_of(&[("Game-v2/Game.exe", b"new"), ("Game-v2/data/assets.bin", b"data")])).unwrap();
+        let target = d.join("lib/game");
+        fs::create_dir_all(target.join("saves")).unwrap();
+        fs::write(target.join("Game.exe"), b"old").unwrap();
+        fs::write(target.join("old-only.dll"), b"old").unwrap();
+        fs::write(target.join("saves/slot1.sav"), b"save").unwrap();
+        let staging = d.join("lib/.staging/game");
+
+        let staged = stage(&zpath, &staging).unwrap();
+        assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"old", "unpacking alone leaves the game as it is");
+        let gone = dropped(&target, &paths(&["Game.exe", "old-only.dll"]), &staged.files, later(), None);
+        crate::swap::put_in_place(&target, &staged.root, &staged.files, "sha", &gone).unwrap().finish();
+
+        assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"new");
+        assert_eq!(fs::read(target.join("data/assets.bin")).unwrap(), b"data");
+        assert_eq!(fs::read(target.join("saves/slot1.sav")).unwrap(), b"save");
+        assert!(!target.join("old-only.dll").exists());
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn the_old_release_waiting_in_an_update_is_never_the_game() {
+        let target = tmp("swap-folder-not-the-game");
+        put(&target.join(crate::swap::FOLDER).join("old/SkyRacer.exe"), 4096);
+        put(&target.join("Readme.txt"), 10);
+        assert_eq!(find_exe(&target, "windows", &["SkyRacer"]), None);
     }
 
     #[test]

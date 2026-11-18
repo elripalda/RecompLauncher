@@ -165,8 +165,12 @@ pub struct App {
 
 impl App {
     fn save(&self) {
+        let _ = self.try_save();
+    }
+
+    fn try_save(&self) -> std::io::Result<()> {
         let l = self.lib.lock().unwrap().clone();
-        let _ = l.save(&self.dir);
+        l.save(&self.dir)
     }
 }
 
@@ -609,35 +613,65 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // The settings the player picked on the game's page, put back after the update's files.
     let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.repo, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
-    // Another build of it picked (one region for another): a single-file build it had goes, so the
-    // new one is the one that starts.
-    if let Some(p) = prev.as_ref().filter(|p| !p.asset.is_empty() && p.asset != asset.name) {
-        let low = p.asset.to_lowercase();
-        if low.ends_with(".appimage") || low.ends_with(".exe") {
-            let _ = std::fs::remove_file(target.join(&p.asset));
-        }
-    }
+    // Unpacked beside the game's folder first: a full drive or a bad download stops here, with the
+    // game untouched.
     report(Progress::new(id, "unpack", 0, 0));
-    let (file, t2, staging) = (got.file.clone(), target.clone(), home.join(".staging").join(folder_name(id)));
-    let what = asset.name.clone();
-    let files = tokio::task::spawn_blocking(move || install::unpack(&file, &t2, &staging)).await.map_err(|e| Error::Msg(e.to_string()))?.map_err(|e| match e {
+    let (file, staging) = (got.file.clone(), home.join(".staging").join(folder_name(id)));
+    let (what, s2) = (asset.name.clone(), staging.clone());
+    let staged = tokio::task::spawn_blocking(move || install::stage(&file, &s2)).await.map_err(|e| Error::Msg(e.to_string()))?.map_err(|e| match e {
         Error::Io(e) => defender_msg(e, &what),
         e => e,
     })?;
-    if !keep {
-        let _ = std::fs::remove_file(&got.file);
-    }
-    if let Some(p) = prev.as_ref().filter(|p| p.path == target) {
-        let removed = install::remove_dropped(&target, &p.files, &files, p.updated_at, p.exe.as_deref());
-        if !removed.is_empty() {
-            trail::note(format!("Install {id}: {} files of {} that {tag_got} no longer has, removed", removed.len(), p.tag));
+    let files = staged.files.clone();
+
+    // What of the old release goes with it: the files the new one no longer has, and a single-file
+    // build of another one picked (one region for another), so the new one is the one that starts.
+    let mut dropped = vec![];
+    if let Some(p) = prev.as_ref() {
+        dropped = install::dropped(&target, &p.files, &files, p.updated_at, p.exe.as_deref());
+        let low = p.asset.to_lowercase();
+        let single_file = low.ends_with(".appimage") || low.ends_with(".exe");
+        let other_build = PathBuf::from(&p.asset);
+        if single_file && p.asset != asset.name && !files.contains(&other_build) {
+            dropped.push(other_build);
         }
+    }
+
+    // Keep the program the player picked, unless the update replaced it with a differently named one
+    // (an AppImage carries its version in its name). Worked out before the files move, while the old
+    // one is still there to follow.
+    let names = [str_of(&entry, "name"), repo.rsplit(['/', ':']).next().unwrap_or(""), str_of(&entry, "game")];
+    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
+    let picked = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
+    let exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && !dropped.contains(e) && (picked || !install::looks_like_tool(e, &names)));
+    let (exe, replaced) = install::updated_exe(id, &target, exe, &files, picked);
+    dropped.extend(replaced);
+
+    // All of the new release in, or none of it (see swap). An update the launcher was closed in the
+    // middle of is settled first.
+    let gone = dropped.len();
+    let (t2, files2, sha, record) = (target.clone(), files.clone(), got.sha256.clone(), prev.clone());
+    let update = tokio::task::spawn_blocking(move || {
+        if let Some(what) = swap::recover(&t2, record.as_ref()) {
+            trail::note(format!("Install: {what} ({})", t2.display()));
+        }
+        let placed = swap::put_in_place(&t2, &staged.root, &files2, &sha, &dropped);
+        let _ = std::fs::remove_dir_all(&staging);
+        placed
+    })
+    .await
+    .map_err(|e| Error::Msg(e.to_string()))??;
+    if let Some(p) = prev.as_ref().filter(|_| gone > 0) {
+        trail::note(format!("Install {id}: {gone} files of {} that {tag_got} no longer has, taken away", p.tag));
     }
     // A game whose own setup works from a clone of its repo gets one, around the release's files.
     if boot::Boot::from_entry(&entry).map(|b| b.clone).unwrap_or(false) {
         report(Progress::new(id, "clone", 0, 0));
         let (r2, t3, scratch) = (repo.clone(), target.clone(), home.join(".staging").join(format!("{}-repo", folder_name(id))));
-        tokio::task::spawn_blocking(move || manage::clone_repo(&r2, &t3, &scratch)).await.map_err(|e| Error::Msg(e.to_string()))??;
+        let cloned = tokio::task::spawn_blocking(move || manage::clone_repo(&r2, &t3, &scratch)).await.map_err(|e| Error::Msg(e.to_string())).and_then(|r| r);
+        if let Err(e) = cloned {
+            return Err(update.undo_after(e));
+        }
     }
     if !kept.is_empty() {
         if let Some(prof) = profile::find(&target, &repo, &entry) {
@@ -645,17 +679,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
 
-    // Keep the program the player picked, unless the update replaced it with a differently named one
-    // (an AppImage carries its version in its name).
-    let names = [str_of(&entry, "name"), repo.rsplit(['/', ':']).next().unwrap_or(""), str_of(&entry, "game")];
-    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
-    let kept = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
-    let exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && (kept || !install::looks_like_tool(e, &names)));
-    let exe = install::updated_exe(id, &target, exe, &files, kept);
     let exe = exe.or_else(|| install::find_game_exe(&target, os, &names));
     // The catalog's boot profile says which program starts it, unless the player picked one.
     let boot = boot::Boot::from_entry(&entry).map(|b| b.for_build(os == "windows"));
-    let picked = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
     let exe = match boot.as_ref().and_then(|b| b.start_in(&target)) {
         Some(s) if !picked => Some(s),
         _ => exe,
@@ -758,7 +784,20 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         l.put(id, rec);
         l.settings.asked_location = true;
     }
-    st.save();
+    // The update counts once the saved library has its files. Until then both releases' files stay,
+    // and the next start keeps the ones the saved library has.
+    match st.try_save() {
+        Ok(()) => {
+            let _ = tokio::task::spawn_blocking(move || update.finish()).await;
+        }
+        Err(e) => {
+            trail::note(format!("Install {id}: the library couldn't be saved ({e}), so its old files wait for the next start"));
+            update.leave_for_next_start();
+        }
+    }
+    if !keep {
+        let _ = std::fs::remove_file(&got.file);
+    }
     note_download(
         &st.dir,
         json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}),
@@ -9589,6 +9628,13 @@ pub fn run() {
                 .build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
+            // An update the launcher was closed in the middle of: finished, or undone, before
+            // anything can start its game.
+            for g in lib.installed.values() {
+                if let Some(what) = swap::recover(&g.path, Some(g)) {
+                    trail::note(format!("Update {}: {what}", g.id));
+                }
+            }
             if art::trim_saved_logos(&dir, &mut lib) {
                 let _ = lib.save(&dir);
             }
