@@ -334,7 +334,7 @@
         },
         "env": {
           "type": "object",
-          "description": "Environment variables for your game, like SDL hints. Paths such as {install} fill in. RECOMPLAUNCHER_ names and system ones like PATH are left out.",
+          "description": "Environment variables for your game, like SDL hints. Paths such as {install} and {data} fill in. RECOMPLAUNCHER_ names and system ones like PATH are left out.",
           "propertyNames": {
             "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
           },
@@ -371,7 +371,17 @@
         "done": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the game counts as set up and plays without the copy unless start uses {game}. The ones in the build folder are also what a player's own build must have for the launcher to use it."
+          "description": "Files the step leaves when it has finished ({data}, {install}, {home}...). All there: the game counts as set up and plays without the copy unless start uses {game}. The ones in the build folder are also what a player's own build must have for the launcher to use it."
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables for the step, like start.env. Paths such as {data} and {input:<id>} fill in. RECOMPLAUNCHER_ names and system ones like PATH, TEMP and TMP are left out: the step gets a temp folder of its own.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "version": {
           "type": "string",

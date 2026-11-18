@@ -3357,5 +3357,9 @@
  "Game A to Z": "Spiel A bis Z",
  "Checked by the RecompStore team": "Vom RecompStore-Team geprüft",
  "Open the VirusTotal report": "VirusTotal-Bericht öffnen",
- "Verified Update": "Verifiziertes Update"
+ "Verified Update": "Verifiziertes Update",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "Für die Einrichtung braucht das Laufwerk des Spiels mindestens 1 GB freien Platz. Mach etwas Platz frei oder verschieb das Spiel auf ein anderes Laufwerk und versuch es dann noch einmal.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "Im Ordner des Spiels liegt ein Ordner .recomplauncher-tmp, den nicht der Launcher angelegt hat, deshalb nutzt die Einrichtung ihn nicht. Verschieb ihn aus dem Ordner des Spiels und versuch es dann noch einmal.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Im Ordner des Spiels konnte kein temporärer Ordner für die Einrichtung angelegt werden. Prüf, ob das Laufwerk voll oder schreibgeschützt ist, und versuch es dann noch einmal.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Ein Pfad im Ordner des Spiels ist für Windows zu lang. Füg unter Einstellungen → Spiele und Ordner einen Bibliotheksordner mit kürzerem Pfad hinzu und verschieb das Spiel dorthin, oder schalte die Windows-Einstellung für lange Pfade (LongPathsEnabled) ein und versuch es dann noch einmal. Der Launcher ändert diese Einstellung nicht für dich."
 }

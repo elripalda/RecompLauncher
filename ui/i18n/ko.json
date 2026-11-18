@@ -3357,5 +3357,9 @@
  "Game A to Z": "게임 이름순",
  "Checked by the RecompStore team": "RecompStore 팀이 확인함",
  "Open the VirusTotal report": "VirusTotal 보고서 열기",
- "Verified Update": "확인된 업데이트"
+ "Verified Update": "확인된 업데이트",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "셋업하려면 게임 드라이브에 여유 공간이 1GB 이상 있어야 합니다. 공간을 확보하거나 게임을 다른 드라이브로 옮긴 뒤 다시 시도하세요.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "게임 폴더에 런처가 만들지 않은 .recomplauncher-tmp 폴더가 있어 셋업에서 사용하지 않습니다. 게임 폴더 밖으로 옮긴 뒤 다시 시도하세요.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "게임 폴더에 셋업용 임시 폴더를 만들지 못했습니다. 드라이브가 가득 찼거나 읽기 전용이 아닌지 확인한 뒤 다시 시도하세요.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "게임 폴더 안의 경로가 Windows에서 쓰기에 너무 깁니다. 설정 → 게임 및 폴더에서 경로가 더 짧은 라이브러리 폴더를 추가하고 게임을 그곳으로 옮기거나, Windows의 긴 경로 설정(LongPathsEnabled)을 켠 뒤 다시 시도하세요. 런처는 이 설정을 대신 바꾸지 않습니다."
 }

@@ -3357,5 +3357,9 @@
  "Game A to Z": "按游戏名称排序",
  "Checked by the RecompStore team": "已由 RecompStore 团队检查",
  "Open the VirusTotal report": "打开 VirusTotal 报告",
- "Verified Update": "已验证的更新"
+ "Verified Update": "已验证的更新",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "配置需要游戏所在驱动器至少有 1 GB 可用空间。请腾出一些空间，或把游戏移到其他驱动器，然后重试。",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "游戏文件夹里有一个不是启动器创建的 .recomplauncher-tmp 文件夹，所以配置不会使用它。请把它移出游戏文件夹，然后重试。",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "无法在游戏文件夹中为配置创建临时文件夹。请检查驱动器是否已满或为只读，然后重试。",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "游戏文件夹中的某个路径对 Windows 来说太长。请在“设置”→“游戏和文件夹”中添加一个路径更短的游戏库文件夹并把游戏移过去，或打开 Windows 的长路径设置（LongPathsEnabled），然后重试。启动器不会替你更改这个设置。"
 }

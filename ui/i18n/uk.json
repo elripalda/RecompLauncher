@@ -3357,5 +3357,9 @@
  "Game A to Z": "Гра від А до Я",
  "Checked by the RecompStore team": "Перевірено командою RecompStore",
  "Open the VirusTotal report": "Відкрити звіт VirusTotal",
- "Verified Update": "Перевірене оновлення"
+ "Verified Update": "Перевірене оновлення",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "Для налаштування на диску гри має бути вільно щонайменше 1 ГБ. Звільни трохи місця або перенеси гру на інший диск і спробуй ще раз.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "У папці гри є папка .recomplauncher-tmp, яку створив не лаунчер, тому налаштування її не використовує. Прибери її з папки гри і спробуй ще раз.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Не вдалося створити тимчасову папку для налаштування в папці гри. Перевір, що диск не заповнений і не лише для читання, і спробуй ще раз.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Шлях у папці гри задовгий для Windows. Додай папку бібліотеки з коротшим шляхом у Налаштування → Ігри та папки й перенеси туди гру або ввімкни в Windows параметр довгих шляхів (LongPathsEnabled) і спробуй ще раз. Лаунчер сам цей параметр не змінює."
 }

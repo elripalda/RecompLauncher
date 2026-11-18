@@ -153,7 +153,9 @@ pub fn templatize_for(p: &Path, g: &Installed) -> String {
 
 /// This PC's path as a template that works on any PC: `C:\Users\Ruben\AppData\Local\X` -> `{local}/X`.
 pub fn templatize(p: &Path, install: &Path) -> String {
+    // `{data}` before `{install}`: it's inside it, and the narrower name is the one the game uses.
     let bases: Vec<(&str, Option<PathBuf>)> = vec![
+        ("{data}", Some(crate::profile::data_dir(install))),
         ("{install}", Some(install.to_path_buf())),
         ("{local}", dirs::data_local_dir()),
         ("{config}", dirs::config_dir()),
@@ -957,7 +959,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             .map(|(i, s)| {
                 let t = &s.template;
                 let whole = t.trim_end_matches(['/', '\\']) == "{install}";
-                let in_game = t.starts_with("{install}");
+                let in_game = t.starts_with("{install}") || t.starts_with("{data}");
                 !whole && (!in_game || named(t)) && !roots.get(i).map(|r| holds_programs(r)).unwrap_or(true)
             })
             .collect();
@@ -969,7 +971,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         }
     }
     let today: HashSet<&str> = spots_now.iter().map(|s| s.template.as_str()).collect();
-    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| s.template.starts_with("{install}/") && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
+    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| (s.template.starts_with("{install}/") || s.template.starts_with("{data}/")) && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
     let mut n = 0;
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| Error::Msg(e.to_string()))?;

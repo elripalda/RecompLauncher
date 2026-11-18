@@ -3357,5 +3357,9 @@
  "Game A to Z": "Juego de la A a la Z",
  "Checked by the RecompStore team": "Revisado por el equipo de RecompStore",
  "Open the VirusTotal report": "Abrir el informe de VirusTotal",
- "Verified Update": "Actualización verificada"
+ "Verified Update": "Actualización verificada",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "La configuración necesita al menos 1 GB libre en la unidad del juego. Libera un poco o mueve el juego a otra unidad y vuelve a intentarlo.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "La carpeta del juego tiene una carpeta .recomplauncher-tmp que no creó el lanzador, así que la configuración no la usará. Sácala de la carpeta del juego y vuelve a intentarlo.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "No se pudo crear una carpeta temporal para la configuración en la carpeta del juego. Comprueba que la unidad no esté llena ni sea de solo lectura y vuelve a intentarlo.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Una ruta de la carpeta del juego es demasiado larga para Windows. Añade una carpeta de biblioteca con una ruta más corta en Configuración → Juegos y carpetas y mueve el juego allí, o activa el ajuste de rutas largas de Windows (LongPathsEnabled) y vuelve a intentarlo. El lanzador no cambia ese ajuste por ti."
 }

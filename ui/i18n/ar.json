@@ -3357,5 +3357,9 @@
  "Game A to Z": "اللعبة من أ إلى ي",
  "Checked by the RecompStore team": "تم الفحص بواسطة فريق RecompStore",
  "Open the VirusTotal report": "فتح تقرير VirusTotal",
- "Verified Update": "تحديث موثّق"
+ "Verified Update": "تحديث موثّق",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "يحتاج الإعداد إلى 1 غيغابايت فارغة على الأقل على محرك أقراص اللعبة. حرّر بعض المساحة أو انقل اللعبة إلى محرك أقراص آخر، ثم حاول مرة أخرى.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "في مجلد اللعبة مجلد .recomplauncher-tmp لم ينشئه المشغل، لذلك لن يستخدمه الإعداد. انقله خارج مجلد اللعبة، ثم حاول مرة أخرى.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "تعذّر إنشاء مجلد مؤقت للإعداد في مجلد اللعبة. تأكد من أن محرك الأقراص ليس ممتلئًا ولا للقراءة فقط، ثم حاول مرة أخرى.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "أحد المسارات في مجلد اللعبة أطول مما يحتمله Windows. أضف مجلد مكتبة بمسار أقصر من الإعدادات → الألعاب والمجلدات وانقل اللعبة إليه، أو شغّل إعداد المسارات الطويلة في Windows (LongPathsEnabled)، ثم حاول مرة أخرى. لا يغيّر المشغل هذا الإعداد نيابة عنك."
 }

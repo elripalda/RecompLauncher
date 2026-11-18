@@ -3357,5 +3357,9 @@
  "Game A to Z": "Oyun A'dan Z'ye",
  "Checked by the RecompStore team": "RecompStore ekibi tarafından kontrol edildi",
  "Open the VirusTotal report": "VirusTotal raporunu aç",
- "Verified Update": "Doğrulanmış güncelleme"
+ "Verified Update": "Doğrulanmış güncelleme",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "Kurulum için oyunun sürücüsünde en az 1 GB boş alan gerekiyor. Biraz yer açın ya da oyunu başka bir sürücüye taşıyın, sonra yeniden deneyin.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "Oyunun klasöründe başlatıcının oluşturmadığı bir .recomplauncher-tmp klasörü var, bu yüzden kurulum onu kullanmıyor. Onu oyunun klasöründen çıkarın, sonra yeniden deneyin.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Oyunun klasöründe kurulum için geçici bir klasör oluşturulamadı. Sürücünün dolu ya da salt okunur olmadığını kontrol edin, sonra yeniden deneyin.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Oyunun klasöründeki bir yol Windows için fazla uzun. Ayarlar → Oyunlar ve klasörler bölümünden daha kısa yollu bir kitaplık klasörü ekleyip oyunu oraya taşıyın ya da Windows'un uzun yollar ayarını (LongPathsEnabled) açın, sonra yeniden deneyin. Başlatıcı bu ayarı sizin yerinize değiştirmez."
 }

@@ -3357,5 +3357,9 @@
  "Game A to Z": "ゲーム名順",
  "Checked by the RecompStore team": "RecompStore チームが確認済み",
  "Open the VirusTotal report": "VirusTotal のレポートを開く",
- "Verified Update": "確認済みのアップデート"
+ "Verified Update": "確認済みのアップデート",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "セットアップには、ゲームのドライブに 1 GB 以上の空き容量が必要です。空き容量を増やすか、ゲームを別のドライブに移してから、もう一度お試しください。",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "ゲームのフォルダーに、ランチャーが作ったものではない .recomplauncher-tmp フォルダーがあるため、セットアップでは使いません。ゲームのフォルダーの外に移してから、もう一度お試しください。",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "ゲームのフォルダーにセットアップ用の一時フォルダーを作れませんでした。ドライブがいっぱいでないか、読み取り専用でないかを確認してから、もう一度お試しください。",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "ゲームのフォルダー内のパスが Windows には長すぎます。「設定」→「ゲームとフォルダー」でパスの短いライブラリのフォルダーを追加してゲームをそこへ移すか、Windows の長いパスの設定 (LongPathsEnabled) をオンにしてから、もう一度お試しください。ランチャーがこの設定を変更することはありません。"
 }
