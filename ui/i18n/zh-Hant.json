@@ -3360,5 +3360,7 @@
  "Game A to Z": "依遊戲名稱排序",
  "Checked by the RecompStore team": "已由 RecompStore 團隊檢查",
  "Open the VirusTotal report": "開啟 VirusTotal 報告",
- "Verified Update": "已驗證的更新"
+ "Verified Update": "已驗證的更新",
+ "Featured Banner on Home": "首頁精選橫幅",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "首頁頂部的重製作品輪播。關閉後，首頁從「繼續玩」開始。"
 }

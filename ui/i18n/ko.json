@@ -3360,5 +3360,7 @@
  "Game A to Z": "게임 이름순",
  "Checked by the RecompStore team": "RecompStore 팀이 확인함",
  "Open the VirusTotal report": "VirusTotal 보고서 열기",
- "Verified Update": "확인된 업데이트"
+ "Verified Update": "확인된 업데이트",
+ "Featured Banner on Home": "홈의 추천 배너",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "홈 맨 위의 리컴프 슬라이드쇼입니다. 끄면 홈이 \"바로 다시 플레이\"부터 시작합니다."
 }

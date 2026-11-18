@@ -3360,5 +3360,7 @@
  "Game A to Z": "Игра от А до Я",
  "Checked by the RecompStore team": "Проверено командой RecompStore",
  "Open the VirusTotal report": "Открыть отчёт VirusTotal",
- "Verified Update": "Проверенное обновление"
+ "Verified Update": "Проверенное обновление",
+ "Featured Banner on Home": "Баннер с подборкой на главной",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Слайд-шоу рекомпов вверху главной страницы. Выключите его, и главная начнётся с раздела «Вернуться в игру»."
 }

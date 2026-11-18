@@ -3360,5 +3360,7 @@
  "Game A to Z": "ゲーム名順",
  "Checked by the RecompStore team": "RecompStore チームが確認済み",
  "Open the VirusTotal report": "VirusTotal のレポートを開く",
- "Verified Update": "確認済みのアップデート"
+ "Verified Update": "確認済みのアップデート",
+ "Featured Banner on Home": "ホームのおすすめバナー",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "ホーム上部のリコンプのスライドショー。オフにすると、ホームは「すぐに再開」から始まります。"
 }
