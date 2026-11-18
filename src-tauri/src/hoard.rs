@@ -294,26 +294,9 @@ pub fn start(app: AppHandle) {
         tokio::time::sleep(std::time::Duration::from_secs(45)).await;
         loop {
             tick(&app);
-            let since = std::time::Instant::now();
-            let mut hours = every_hours(&app);
-            let mut wait = net::spread(sweep_every(hours), 0.1);
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                let now_hours = every_hours(&app);
-                if now_hours != hours {
-                    hours = now_hours;
-                    wait = net::spread(sweep_every(hours), 0.1);
-                }
-                if since.elapsed() >= wait {
-                    break;
-                }
-            }
+            crate::wait_hours(&app, |s| s.hoard_every_hours).await;
         }
     });
-}
-
-fn every_hours(app: &AppHandle) -> u32 {
-    app.state::<App>().lib.lock().unwrap().settings.hoard_every_hours
 }
 
 fn enabled(app: &AppHandle) -> bool {

@@ -9,8 +9,15 @@ This repository is a fork of [elripalda/RecompLauncher](https://github.com/elrip
 - **Downloads at Once** and **Unpacks at Once** (Settings → Updates → Downloads): how many downloads,
   and how many unpacks of finished downloads, run at the same time. Unset, the launcher behaves as
   upstream does: one download at a time, unpacks unlimited. `src-tauri/src/slots.rs`.
-- **RecompLauncher Updates** switch (Settings → Updates): stops the launcher offering upstream's own
-  build in place of this one.
+- **Updates from this fork.** The launcher's own updater reads this repository's Latest release
+  (`releases/latest/download/version.json`, set by `FORK_REPO` / `RECOMP_FORK_REPO` in
+  `src-tauri/src/lib.rs`), not recomplauncher.com, so an installed fork build only ever updates to
+  the next fork build.
+- **Update schedules** (Settings → Updates): **Check Games Every** and **Check RecompLauncher
+  Every**, hourly by default (1, 3, 6, 12 hours or a day). Each game check installs the games set to
+  Update automatically (and Data Hoarder Mode saves what's new); a newer RecompLauncher found by the
+  clock is downloaded at once, so Update Now only installs it. The **RecompLauncher Updates** switch
+  turns the launcher's own checks off.
 - **The upstream sync** (`.github/workflows/fork-sync.yml`) and this page.
 
 Anything upstream already merged (the Auto-Install setting, for one) isn't carried here.
@@ -35,8 +42,10 @@ the workflow:
 3. runs upstream's tests and the fork's own (`node --test tests/*.test.cjs`, `cargo test`);
 4. only if everything passed, moves fork `main` there. The previous tip is kept as the
    `sync-backup` branch, so nothing is ever lost;
-5. builds Windows and Linux installers and publishes them as a prerelease tagged
-   `hoarder-v<version>-<commit>`.
+5. builds Windows and Linux installers with their own version (`tools/fork-version.cjs`: upstream
+   `0.90.0-beta.64` becomes `0.90.0-beta.64.<run number>`, so every fork build is newer than the
+   last) and publishes them as the repository's **Latest** release, tagged `hoarder-v<version>`,
+   with a `version.json` the installed launchers read.
 
 If upstream hasn't moved, it does nothing.
 
@@ -109,8 +118,9 @@ opened by hand from compare links such as
 3. **Quiet upstream's own automation.** In the Actions tab, disable the workflows that only make
    sense in upstream: *Release*, *Release check* and *Issue triage*. They'd otherwise start on the
    fork's pushes and issues and fail for lack of upstream's secrets.
-4. **In the installed build,** turn Settings → Updates → **RecompLauncher Updates** off, so the
-   launcher doesn't replace this build with upstream's.
+4. **Install a fork build once** (from the Latest release). From then on it updates itself from
+   this fork. Builds older than this change still read recomplauncher.com: keep RecompLauncher
+   Updates off in those until the fork build is installed.
 
 GitHub pauses scheduled workflows in a repository with no activity for 60 days; the sync's own
 pushes count as activity while upstream is active. If it ever pauses, the Actions tab has a button

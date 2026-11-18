@@ -3557,6 +3557,7 @@ document.addEventListener('change', (e) => {
   if (el.matches('[data-act="dl-limit"]')) { saveUi({ dl_limit: Number(el.value) || 0 }).then(sendLimits); return; }
   if (el.matches('[data-act="dl-max"]')) { saveUi({ dl_max: Number(el.value) || 0 }).then(sendLimits); return; }
   if (el.matches('[data-act="unpack-max"]')) { saveUi({ unpack_max: Number(el.value) || 0 }).then(sendLimits); return; }
+  if (el.matches('[data-act="check-every"]')) { saveSettings({ [el.dataset.k]: Math.max(1, Number(el.value) || 1) }); return; }
   if (el.matches('[data-act="hoard-every"]')) { saveSettings({ hoard_every_hours: Math.max(1, Number(el.value) || 1) }); return; }
   if (el.matches('[data-act="proxy-mode"]')) { if (el.value === 'custom') { S.proxyMode = 'custom'; setSection('updates', false); } else saveProxy(el.value); return; }
   if (el.matches('[data-lk-amount]')) {
@@ -4244,7 +4245,8 @@ function pageSettings() {
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install')))
-          + row(t('RecompLauncher Updates'), t('Looks for new versions of RecompLauncher itself and offers them. Off: it never looks or asks on its own; Check for Updates in the side menu still does.'), sw('launcher_updates', launcherUpdates(), t('RecompLauncher Updates'))))
+          + row(t('RecompLauncher Updates'), t('Looks for new versions of RecompLauncher itself and offers them. Off: it never looks or asks on its own; Check for Updates in the side menu still does.'), sw('launcher_updates', launcherUpdates(), t('RecompLauncher Updates')))
+          + (typeof checkEveryRows === 'function' ? checkEveryRows(row, st) : ''))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow'))
@@ -6727,6 +6729,20 @@ function hoarderGroup(group, row, sw, st) {
   return group(t('Data Hoarder'), main + where + which + every + mine + now);
 }
 T.event.listen('hoard', ({ payload }) => { S.hoard = payload; paintHoard(); });
+// Settings → Updates → Check Games Every: the app's clock asks for a game update check.
+T.event.listen('check-game-updates', () => { if (S.settings.check_updates !== false) checkUpdates(); });
+
+// Settings → Updates: how often games, and RecompLauncher itself, are checked for updates while
+// the launcher runs. Each schedule shows only while its checks are on.
+const CHECK_EVERY = [1, 3, 6, 12, 24];
+function checkEverySel(key, cur, label) {
+  return `<select class="sel" data-act="check-every" data-k="${key}" aria-label="${esc(label)}">${CHECK_EVERY.map((h) => `<option value="${h}"${cur === h ? ' selected' : ''}>${esc(hoardEveryLabel(h))}</option>`).join('')}</select>`;
+}
+function checkEveryRows(row, st) {
+  const games = st.check_updates ? row(t('Check Games Every'), t('How often your games are checked for updates while the launcher is open. Games set to Update automatically download and install then; with Data Hoarder Mode on, new releases are saved too.'), checkEverySel('game_check_hours', Number(st.game_check_hours) || 1, t('Check Games Every'))) : '';
+  const app = launcherUpdates() ? row(t('Check RecompLauncher Every'), t('How often this build looks for a newer one of itself. A newer build is downloaded straight away, so Update Now only has to install it.'), checkEverySel('launcher_check_hours', Number(st.launcher_check_hours) || 1, t('Check RecompLauncher Every'))) : '';
+  return games + app;
+}
 
 function steamSyncLine() {
   const st = S.steamSyncState;

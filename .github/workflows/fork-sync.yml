@@ -8,8 +8,9 @@
 # Each run fetches upstream main and replays the fork's own commits (everything on fork main that
 # upstream doesn't have) onto its newest commit. When that works, the tests run, fork main is
 # moved there (its old tip is kept as the `sync-backup` branch), and installers are built and
-# published as a prerelease. When a fork commit no longer applies cleanly, nothing is pushed: an
-# issue labelled `upstream-sync` says which commit and which files need a hand.
+# published as the repository's Latest release, with the version.json fork builds update from.
+# When a fork commit no longer applies cleanly, nothing is pushed: an issue labelled
+# `upstream-sync` says which commit and which files need a hand.
 #
 # Needs a repository secret FORK_SYNC_TOKEN: a fine-grained personal access token for this repo
 # with Contents (read and write) and Workflows (read and write). GitHub refuses pushes that carry
@@ -156,7 +157,9 @@ jobs:
             git push --force-with-lease="$FORK_BRANCH:$OLD" origin "HEAD:refs/heads/$FORK_BRANCH"
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          # The fork build's own version (see tools/fork-version.cjs); the files it touches here are
+          # thrown away with this job, and each build job sets the same version again.
+          echo "version=$(node tools/fork-version.cjs "$GITHUB_RUN_NUMBER")" >> "$GITHUB_OUTPUT"
 
   report-conflict:
     name: Open or update the sync issue
@@ -236,6 +239,7 @@ jobs:
         # Packaging downloads Tauri's tools from GitHub, which sometimes answers 504: tried again.
         run: |
           npm ci
+          node tools/fork-version.cjs "$GITHUB_RUN_NUMBER"
           for i in 1 2 3 4; do
             npm run build -- --bundles ${{ matrix.bundles }} -- --locked 2>&1 | tee build.log && exit 0
             grep -q "http status: 50" build.log || exit 1
@@ -245,6 +249,8 @@ jobs:
           exit 1
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
+          # The launcher's updater reads this repository's releases (FORK_REPO in lib.rs).
+          RECOMP_FORK_REPO: ${{ github.repository }}
 
       - uses: actions/upload-artifact@v6
         with:
@@ -254,7 +260,7 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish the prerelease
+    name: Publish the release
     needs: [sync, build]
     runs-on: ubuntu-24.04
     steps:
@@ -262,30 +268,38 @@ jobs:
         with:
           path: out
           merge-multiple: true
-      # Tagged hoarder-…, not v…, so upstream's own release workflows never pick it up.
-      - name: Create the prerelease
+      # A full release marked Latest, so GitHub's releases/latest/download/version.json (which the
+      # installed fork builds read) points at it. Tagged hoarder-…, not v…, so upstream's own
+      # release workflows never pick it up.
+      - name: Write version.json and publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SHA: ${{ needs.sync.outputs.sha }}
           VERSION: ${{ needs.sync.outputs.version }}
         run: |
-          short=${SHA:0:7}
-          tag="hoarder-v${VERSION}-${short}"
+          tag="hoarder-v${VERSION}"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag is already published."
             exit 0
           fi
+          base="https://github.com/${GH_REPO}/releases/download/${tag}"
+          exe=$(cd out && ls *.exe | head -n1)
+          appimage=$(cd out && ls *.AppImage 2>/dev/null | head -n1)
+          notes="Upstream RecompLauncher with this fork's own features on top: Data Hoarder Mode, Downloads at Once / Unpacks at Once, and update schedules."
+          sha() { sha256sum "out/$1" | cut -d' ' -f1; }
+          jq -n --arg v "$VERSION" --arg url "$base/$exe" --arg sha "$(sha "$exe")" --arg notes "$notes" \
+            --arg lurl "${appimage:+$base/$appimage}" --arg lsha "${appimage:+$(sha "$appimage")}" \
+            '{version: $v, url: $url, sha256: $sha, notes: $notes}
+             + (if $lurl == "" then {} else {linux: {version: $v, url: $lurl, sha256: $lsha}} end)' > out/version.json
+          cat out/version.json
           (cd out && sha256sum * > SHA256SUMS)
           {
-            echo "Upstream RecompLauncher ${VERSION} with this fork's own commits on top (Data Hoarder Mode,"
-            echo "Downloads at Once / Unpacks at Once, RecompLauncher Updates switch). Built by the upstream"
-            echo "sync from \`${short}\`. Unsigned test build."
+            echo "$notes Built by the upstream sync from \`${SHA:0:7}\`. Unsigned build."
             echo
-            echo "Turn **Settings → Updates → RecompLauncher Updates** off in this build, or the launcher"
-            echo "offers upstream's own build, which doesn't have these features."
+            echo "Installed fork builds find this release by themselves (Settings → Updates → RecompLauncher Updates)."
           } > notes.md
-          gh release create "$tag" out/* --target "$SHA" --prerelease --title "Hoarder build ${VERSION} (${short})" --notes-file notes.md
+          gh release create "$tag" out/* --target "$SHA" --latest --title "Hoarder build ${VERSION}" --notes-file notes.md
 
   close-issue:
     name: Close the sync issue

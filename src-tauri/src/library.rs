@@ -371,6 +371,16 @@ pub struct Settings {
     /// or asks by itself; Check for Updates in the side menu still does.
     #[serde(default = "yes")]
     pub launcher_updates: bool,
+    /// Settings → RecompLauncher Updates → Check Every: hours between the launcher's own update
+    /// checks while it runs (1 to 168). A newer build found is downloaded straight away, so Update
+    /// Now only has to install it.
+    #[serde(default = "one")]
+    pub launcher_check_hours: u32,
+    /// Settings → Updates → Check Games Every: hours between game update checks while the
+    /// launcher runs (1 to 168), with "Look for updates" on. Each check installs the games set to
+    /// Update automatically, and Data Hoarder Mode downloads what's new.
+    #[serde(default = "one")]
+    pub game_check_hours: u32,
 }
 
 fn keep_all() -> String {
@@ -461,6 +471,8 @@ impl Default for Settings {
             hoard_count: five(),
             hoard_every_hours: one(),
             launcher_updates: true,
+            launcher_check_hours: one(),
+            game_check_hours: one(),
         }
     }
 }
@@ -817,6 +829,14 @@ mod tests {
         assert!(super::Settings::default().auto_install);
         let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
         assert!(settings.auto_install);
+    }
+
+    #[test]
+    fn the_launcher_looks_for_itself_hourly_by_default() {
+        assert_eq!(super::Settings::default().launcher_check_hours, 1);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert_eq!(settings.launcher_check_hours, 1);
+        assert_eq!(settings.game_check_hours, 1);
     }
 
     #[test]

@@ -7246,8 +7246,42 @@ fn version_from_files(g: &Installed, rels: &[Release]) -> Option<String> {
         .map(|(_, r)| r.tag_name.clone())
 }
 
-/// How often a running launcher looks for a newer RecompLauncher.
+/// How long "What's new" reuses its copy of version.json.
 pub(crate) const LAUNCHER_CHECK_EVERY: u64 = 6 * 3600;
+
+/// This fork's GitHub repository: its releases are where the launcher finds and downloads newer
+/// builds of itself, instead of recomplauncher.com (which only knows upstream's builds). The
+/// fork's sync workflow sets RECOMP_FORK_REPO to the repository it builds in.
+pub(crate) const FORK_REPO: &str = match option_env!("RECOMP_FORK_REPO") {
+    Some(repo) => repo,
+    None => "nickhighland/RecompLauncher",
+};
+
+/// The fork's version.json: published with every fork release, and GitHub's "latest" address
+/// always answers with the newest one.
+pub(crate) fn fork_version_url() -> String {
+    format!("https://github.com/{FORK_REPO}/releases/latest/download/version.json")
+}
+
+/// Sleeps until `hours(settings)` hours (1 to 168) have passed, give or take a tenth. It looks at
+/// the setting each minute, so a shorter gap picked mid-wait counts from when the wait began.
+pub(crate) async fn wait_hours(app: &AppHandle, hours: impl Fn(&Settings) -> u32) {
+    let since = Instant::now();
+    let read = || u64::from(hours(&app.state::<App>().lib.lock().unwrap().settings).clamp(1, 168));
+    let mut picked = read();
+    let mut wait = net::spread(picked * 3600, 0.1);
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        let now_picked = read();
+        if now_picked != picked {
+            picked = now_picked;
+            wait = net::spread(picked * 3600, 0.1);
+        }
+        if since.elapsed() >= wait {
+            return;
+        }
+    }
+}
 
 /// launcher/version.json, kept on disk. A copy younger than `max_age` seconds is used as it is;
 /// otherwise the site is asked, and the copy on disk is used when it can't be reached.
@@ -7260,7 +7294,7 @@ pub(crate) async fn version_json(st: &App, max_age: u64, player: bool) -> Option
             return Some(v);
         }
     }
-    let url = format!("{}/launcher/version.json", catalog::base());
+    let url = fork_version_url();
     match net::send(st.http.get(&url).timeout(net::QUICK), &url, player).await {
         Ok(r) if r.status().is_success() => match r.json::<Value>().await {
             Ok(v) if v.is_object() => {
@@ -8182,7 +8216,7 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     if nix_managed() {
         return Err(Error::Msg("RecompLauncher updates through Nix. Update the flake input (nix flake update) or nixpkgs, then rebuild.".into()));
     }
-    let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach recomplauncher.com right now. Try again in a bit.".into()))?;
+    let v = version_json(&st, 600, true).await.ok_or_else(|| Error::Net("Can't reach GitHub right now. Try again in a bit.".into()))?;
     let page = format!("{}/download", net::SITE);
     // On Linux an AppImage replaces itself; anything else (a .deb) opens the download page.
     let v = launcher_platform_entry(&v, assets::os_now(), assets::arch_now()).unwrap_or(Value::Null);
@@ -8205,23 +8239,18 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     if !(cfg!(windows) || mac_app.is_some()) || file_url.is_empty() || !ok_host {
         return open_thing(&app, &page, true);
     }
-    let mut r = update_download::response(&st.http, &file_url).await?;
-    if !r.status().is_success() {
-        return Err(Error::Msg(format!("The download answered {}", r.status().as_u16())));
-    }
-    // The download, with how far along it is for the window.
-    let total = r.content_length().unwrap_or(0);
-    let mut bytes: Vec<u8> = Vec::with_capacity(total as usize);
-    let mut last = std::time::Instant::now();
-    while let Some(chunk) = r.chunk().await? {
-        bytes.extend_from_slice(&chunk);
-        if last.elapsed().as_millis() > 200 {
-            last = std::time::Instant::now();
-            let _ = app.emit("self-update", json!({"done": bytes.len(), "total": total}));
-        }
-    }
-    let _ = app.emit("self-update", json!({"done": bytes.len(), "total": total, "installing": true}));
     let want = str_of(&v, "sha256").to_lowercase();
+    // Already downloaded in the background by the clock (see fetch_update): installed from there.
+    let bytes = match ready_update(&st.dir, str_of(&v, "version"), &want) {
+        Some(b) => b,
+        None => {
+            let report = |done: usize, total: u64| {
+                let _ = app.emit("self-update", json!({"done": done, "total": total}));
+            };
+            download_update(st, &file_url, &report).await?
+        }
+    };
+    let _ = app.emit("self-update", json!({"done": bytes.len(), "total": bytes.len(), "installing": true}));
     if !want.is_empty() {
         use sha2::{Digest, Sha256};
         if hex::encode(Sha256::digest(&bytes)) != want {
@@ -8290,6 +8319,65 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
         .map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
     Ok(())
+}
+
+/// The newer launcher's installer, with how far along it is.
+async fn download_update(st: &App, file_url: &str, report: &(dyn Fn(usize, u64) + Send + Sync)) -> Res<Vec<u8>> {
+    let mut r = update_download::response(&st.http, file_url).await?;
+    if !r.status().is_success() {
+        return Err(Error::Msg(format!("The download answered {}", r.status().as_u16())));
+    }
+    let total = r.content_length().unwrap_or(0);
+    let mut bytes: Vec<u8> = Vec::with_capacity(total as usize);
+    let mut last = std::time::Instant::now();
+    while let Some(chunk) = r.chunk().await? {
+        bytes.extend_from_slice(&chunk);
+        if last.elapsed().as_millis() > 200 {
+            last = std::time::Instant::now();
+            report(bytes.len(), total);
+        }
+    }
+    Ok(bytes)
+}
+
+/// Where a newer launcher downloaded ahead of time waits for Update Now.
+fn update_ready_file(dir: &Path, version: &str) -> PathBuf {
+    dir.join("cache/launcher-update").join(format!("RecompLauncher-{}-setup.exe", folder_name(version.trim_start_matches('v'))))
+}
+
+/// The installer downloaded ahead of time for `version`, when it's whole (its SHA-256 matches).
+fn ready_update(dir: &Path, version: &str, sha256: &str) -> Option<Vec<u8>> {
+    if sha256.is_empty() {
+        return None;
+    }
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(update_ready_file(dir, version)).ok()?;
+    (hex::encode(Sha256::digest(&bytes)) == sha256.to_lowercase()).then_some(bytes)
+}
+
+/// Downloads a newer launcher ahead of time (Windows: its installer), so Update Now only installs
+/// it. Only a file from a trusted address with a SHA-256 to check is kept; older ones are cleared.
+async fn fetch_update(st: &App, v: &Value) {
+    let (version, url, want) = (str_of(v, "version"), str_of(v, "url"), str_of(v, "sha256").to_lowercase());
+    if !cfg!(windows) || want.is_empty() || !trusted_update_url(url, &catalog::base()) {
+        return;
+    }
+    if ready_update(&st.dir, version, &want).is_some() {
+        return;
+    }
+    let file = update_ready_file(&st.dir, version);
+    let Some(folder) = file.parent() else { return };
+    let _ = std::fs::remove_dir_all(folder);
+    let Ok(bytes) = download_update(st, url, &|_, _| {}).await else { return };
+    use sha2::{Digest, Sha256};
+    if hex::encode(Sha256::digest(&bytes)) != want {
+        trail::note(format!("Launcher update {version}: the download ahead of time didn't match its checksum"));
+        return;
+    }
+    let _ = std::fs::create_dir_all(folder);
+    if std::fs::write(&file, &bytes).is_ok() {
+        trail::note(format!("Launcher update {version}: downloaded, ready for Update Now"));
+    }
 }
 
 /// Whether the launcher opens again after its own update: only while the player still has its
@@ -9758,19 +9846,35 @@ pub fn run() {
             steam_sync::start(app.handle().clone());
             // Settings → Data Hoarder Mode: keeps every release of the games in the Library.
             hoard::start(app.handle().clone());
-            // A new RecompLauncher: the window looks as it opens; after that, every six hours or so
-            // while it runs (it may stay by the clock). A push brings news of a new build sooner.
+            // Game updates: the window looks as it opens; after that, every game_check_hours
+            // (hourly unless the player picks longer) the window is asked to look again, which
+            // also starts the games set to Update automatically.
+            {
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        wait_hours(&h, |s| s.game_check_hours).await;
+                        if h.state::<App>().lib.lock().unwrap().settings.check_updates {
+                            let _ = h.emit("check-game-updates", ());
+                        }
+                    }
+                });
+            }
+            // A new RecompLauncher: the window looks as it opens; after that, every
+            // launcher_check_hours (hourly unless the player picks longer) while it runs. A newer
+            // build is downloaded at once, so Update Now only has to install it.
             {
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     let mut told = String::new();
                     loop {
-                        tokio::time::sleep(net::spread(LAUNCHER_CHECK_EVERY, 0.1)).await;
+                        wait_hours(&h, |s| s.launcher_check_hours).await;
                         let st = h.state::<App>();
                         if !launcher_looks(&st.lib.lock().unwrap().settings, false) {
                             continue;
                         }
                         if let Some(v) = newer_launcher(&st, 0, false).await {
+                            fetch_update(&st, &v).await;
                             let ver = str_of(&v, "version").to_string();
                             if ver != told {
                                 told = ver.clone();
