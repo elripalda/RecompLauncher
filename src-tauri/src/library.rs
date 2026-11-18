@@ -28,6 +28,31 @@ pub struct ManualSetup {
     pub arg: String,
 }
 
+/// A copy read whole, with no errors: which file, as it was then, and its checksum.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct CopyCheck {
+    pub path: PathBuf,
+    pub size: u64,
+    /// Its modified time, in seconds.
+    pub modified: i64,
+    pub crc32: String,
+}
+
+impl CopyCheck {
+    /// The file as it is now: None when it can't be read.
+    pub fn stamp(path: &Path) -> Option<(u64, i64)> {
+        let m = std::fs::metadata(path).ok()?;
+        let t = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64;
+        Some((m.len(), t))
+    }
+
+    /// Its checksum, when `path` is the file it read and it hasn't changed since.
+    pub fn still(&self, path: &Path) -> Option<&str> {
+        let (size, modified) = Self::stamp(path)?;
+        (self.path == path && self.size == size && self.modified == modified).then_some(self.crc32.as_str())
+    }
+}
+
 /// Who sets a game up. Switching only changes this: what the player picked for each way (their
 /// program, their build folder, their hand setup, their copy) stays recorded, so switching back
 /// finds it as it was.
@@ -247,6 +272,10 @@ pub struct Installed {
     /// picks made there and a setup that's cancelled or fails never leave it half set up.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setup_before: Option<Box<SetupChoices>>,
+    /// The last copy Easy Setup read whole, and what it read: Set Up Again with the same file,
+    /// unchanged since, doesn't read it all again (a Switch 2 package is over 20 GB).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_check: Option<CopyCheck>,
 }
 
 /// What Easy Setup changes about a game, kept while its window is open: see `setup_before`.
@@ -1219,5 +1248,33 @@ mod mode_tests {
         assert_eq!(own["mode"], "own");
         let hand = serde_json::to_value(Installed { mode: SetupMode::ByHand, ..Default::default() }).unwrap();
         assert_eq!(hand["mode"], "by_hand");
+    }
+}
+
+#[cfg(test)]
+mod copy_check_tests {
+    use super::*;
+
+    #[test]
+    fn a_copy_read_before_counts_only_while_it_is_the_same_file_unchanged() {
+        let d = std::env::temp_dir().join(format!("rl-copy-check-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let nup = d.join("game.nup");
+        std::fs::write(&nup, b"package").unwrap();
+        let (size, modified) = CopyCheck::stamp(&nup).unwrap();
+        let check = CopyCheck { path: nup.clone(), size, modified, crc32: "e0f3ccfa".into() };
+        assert_eq!(check.still(&nup), Some("e0f3ccfa"));
+        // Another file, even with the same size and time.
+        let other = d.join("other.nup");
+        std::fs::write(&other, b"package").unwrap();
+        assert_eq!(check.still(&other), None);
+        // The same file, changed: read again.
+        std::fs::write(&nup, b"a longer package").unwrap();
+        assert_eq!(check.still(&nup), None);
+        // Gone: nothing to go by.
+        std::fs::remove_file(&nup).unwrap();
+        assert_eq!(check.still(&nup), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

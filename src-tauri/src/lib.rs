@@ -757,6 +757,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         installer_tag: String::new(),
         boot_hash: prev.as_ref().map(|p| p.boot_hash.clone()).unwrap_or_default(),
         setup_before: prev.as_ref().and_then(|p| p.setup_before.clone()),
+        copy_check: prev.as_ref().and_then(|p| p.copy_check.clone()),
     };
     {
         let mut l = st.lib.lock().unwrap();
@@ -3595,27 +3596,40 @@ fn setup_copy(app: AppHandle, st: State<'_, App>, id: String, path: String) -> R
             // 2. All of it there?
             let (verified, text) = if copy.is_file() {
                 let total = std::fs::metadata(&copy).map(|m| m.len()).unwrap_or(0);
-                let Ok(mut f) = std::fs::File::open(&copy) else { return fail("Couldn't open it.".into()) };
-                let mut h = crc32fast::Hasher::new();
-                let mut buf = vec![0u8; 4 << 20];
-                let (mut done, mut last) = (0u64, Instant::now());
-                loop {
-                    if stopped() {
-                        return;
+                // Read whole before, and unchanged since (Set Up Again for a new option, say): its
+                // checksum from then, judged against today's list of known dumps.
+                let known = g.copy_check.as_ref().and_then(|c| c.still(&copy)).map(str::to_string);
+                let crc = match known {
+                    Some(crc) => {
+                        trail::note(format!("Set up {id}: the copy is the one read whole before, unchanged; not read again"));
+                        crc
                     }
-                    let n = match std::io::Read::read(&mut f, &mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => n,
-                        Err(e) => return fail(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
-                    };
-                    h.update(&buf[..n]);
-                    done += n as u64;
-                    if last.elapsed().as_millis() >= 80 {
-                        last = Instant::now();
-                        emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
+                    None => {
+                        let Ok(mut f) = std::fs::File::open(&copy) else { return fail("Couldn't open it.".into()) };
+                        let mut h = crc32fast::Hasher::new();
+                        let mut buf = vec![0u8; 4 << 20];
+                        let (mut done, mut last) = (0u64, Instant::now());
+                        loop {
+                            if stopped() {
+                                return;
+                            }
+                            let n = match std::io::Read::read(&mut f, &mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => n,
+                                Err(e) => return fail(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
+                            };
+                            h.update(&buf[..n]);
+                            done += n as u64;
+                            if last.elapsed().as_millis() >= 80 {
+                                last = Instant::now();
+                                emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
+                            }
+                        }
+                        let crc = format!("{:08x}", h.finalize());
+                        remember_copy_check(&app.state::<App>(), &id, &copy, &crc);
+                        crc
                     }
-                }
-                let crc = format!("{:08x}", h.finalize());
+                };
                 let dumps = p.game.as_ref().map(|x| x.dumps.clone()).unwrap_or_default();
                 match dumps.iter().find(|d| d.crc32.eq_ignore_ascii_case(&crc) && (d.size == 0 || d.size == total)) {
                     Some(d) => (d.name.clone(), format!("Matches the verified {} disc", d.name)),
@@ -3823,6 +3837,17 @@ fn put_back_unfinished_setups(st: &App) {
     for id in ids {
         put_back_setup(st, &id);
     }
+}
+
+/// A copy read whole with no errors: kept straight away, whatever the rest of the setup does,
+/// since it's a fact about the file, not a choice (a later failure doesn't make it unread).
+fn remember_copy_check(st: &App, id: &str, copy: &Path, crc32: &str) {
+    let Some((size, modified)) = library::CopyCheck::stamp(copy) else { return };
+    let check = library::CopyCheck { path: copy.to_path_buf(), size, modified, crc32: crc32.to_string() };
+    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(id) {
+        x.copy_check = Some(check);
+    }
+    st.save();
 }
 
 /// A choice made outside Easy Setup's window (Choose Your Copy, Use a Build You Already Have):
