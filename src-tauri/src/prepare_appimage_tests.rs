@@ -31,7 +31,7 @@ printf '%s\n' "$((value * value))" > "$2"
 }
 
 #[test]
-#[ignore = "Requires RL_TEST_APPIMAGE_RUNTIME; run explicitly by Linux CI with a checksum-pinned runtime"]
+#[ignore = "Manual integration test; provide RL_TEST_APPIMAGE_RUNTIME as described in docs/BUILDING.md"]
 fn appimage_prepare_runs_from_disk_without_fuse() {
     if let Some(directory) = std::env::var_os("RL_APPIMAGE_TEST_DIR") {
         let directory = PathBuf::from(directory);

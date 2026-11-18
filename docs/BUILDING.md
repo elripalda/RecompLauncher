@@ -120,10 +120,10 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 
 ### AppImage preparation regression (Linux x86_64)
 
-Linux CI also runs a real Type-2 AppImage through the preparation step. The test creates a
-small builder image, runs it with an isolated Flatpak environment, and checks its generated
+An optional integration test runs a real Type-2 AppImage through the preparation step. It creates
+a small builder image, runs it with an isolated Flatpak environment, and checks its generated
 output and extraction to the disk cache. It needs no game, ROM, display or FUSE mount.
-It is ignored by the ordinary offline test suite because the runtime is downloaded separately:
+It is run manually, not by the ordinary test suite or CI, because it needs a separately downloaded runtime:
 
 ```sh
 runtime="$(mktemp)"
