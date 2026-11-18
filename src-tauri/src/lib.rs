@@ -1109,7 +1109,7 @@ fn download_limits(mb: f64, slow_playing: bool) {
 }
 
 #[tauri::command(async)]
-fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>) -> Res<Value> {
+fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
@@ -1141,6 +1141,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     let mut uninstaller = false;
     let mut kept_copy: Option<PathBuf> = None;
     let mut copy_stuck = false;
+    let mut saves_kept = false;
+    let mut saves_stuck = false;
     if delete_files {
         // A Flatpak the launcher installed from the game's bundle goes with it.
         if !cfg!(windows) && flatpak::available() {
@@ -1159,7 +1161,20 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         // folder are theirs: moved out to "Game Copies" beside it first, and if one can't be, the
         // folder stays. Only files: a folder there is the launcher's unpack of their disc.
         let mut keep_failed = false;
-        if ok {
+        // Its saves inside the folder ({data}/saves, say): a copy beside the library first, which
+        // uninstalling leaves and the Saves tab puts back after a reinstall. Asked for unless the
+        // player said not to; if it can't be made, the folder stays.
+        if ok && keep_saves != Some(false) {
+            match keep_saves_inside(&st, &g) {
+                Ok(n) => saves_kept = n > 0,
+                Err(e) => {
+                    trail::note(format!("Uninstall {id}: its saves couldn't be copied first ({e}), the folder stays"));
+                    keep_failed = true;
+                    saves_stuck = true;
+                }
+            }
+        }
+        if ok && !keep_failed {
             for c in [g.game_copy.as_ref(), g.update_copy.as_ref()].into_iter().flatten() {
                 if !(library::inside(c, &g.path) && c.is_file() && !c.is_symlink()) {
                     continue;
@@ -1176,7 +1191,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         if ok && !keep_failed {
             left = remove_game_folder(&g.path);
         } else if g.path.is_dir() {
-            copy_stuck = keep_failed;
+            copy_stuck = keep_failed && !saves_stuck;
             kept = true;
         }
         // A game its own installer put somewhere else (Program Files): its own uninstaller, the
@@ -1189,7 +1204,32 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     }
     st.lib.lock().unwrap().forget(&id);
     st.save();
-    Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck}))
+    Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck, "saves_kept": saves_kept, "saves_stuck": saves_stuck}))
+}
+
+/// A copy of the saves a game keeps inside its own folder, for it and each of its games with saves
+/// of their own, made before the folder is deleted. Copies go beside the library (or to the
+/// player's chosen folder), never inside the game's folder. How many games had saves to keep.
+fn keep_saves_inside(st: &App, g: &Installed) -> Result<usize, Error> {
+    let mut ids = vec![g.id.clone()];
+    for game in games_of(st, &g.id, g).iter().filter(|x| !x.saves.is_empty()) {
+        ids.push(games::full(&g.id, &game.id));
+    }
+    let mut kept = 0;
+    for id in ids {
+        let spots = cloud::spots_of(st, &id, g);
+        if saves::files_inside(&spots, g).is_empty() {
+            continue;
+        }
+        let copies = saves::dir_of(&st.dir, &id, g);
+        if library::inside(&copies, &g.path) {
+            return Err(Error::Msg("its copies would be inside the folder being deleted".into()));
+        }
+        // None: nothing changed since the newest copy, which already holds them.
+        saves::backup(&st.dir, &id, &spots, g)?;
+        kept += 1;
+    }
+    Ok(kept)
 }
 
 /// Move the player's copy out of a game folder that's about to go, to "Game Copies/<id>" beside

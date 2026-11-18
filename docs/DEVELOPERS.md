@@ -325,6 +325,11 @@ PC. List folders, single files, or files matching a `*` pattern:
 "saves": ["{local}/My Game/saves", "{install}/settings.toml"]
 ```
 
+A game that keeps everything in `{data}` lists `{data}/saves`. Its `{data}/cache`, and the
+launcher's own work folders, are never copied, even when you list the whole of `{data}`. When a
+player uninstalls the game, a copy of its saves inside its folder is made first, unless they ask
+for the saves to go too, and its Saves tab puts it back after a reinstall.
+
 Without it (and without a catalog entry that says), the launcher doesn't guess: the game's Saves tab
 says it doesn't know where the game saves, and nothing is backed up or synced until the player picks
 the folder. So say where. Only list saves and small settings: game files, programs and archives are

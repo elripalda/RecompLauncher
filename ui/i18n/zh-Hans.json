@@ -3361,5 +3361,10 @@
  "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "配置需要游戏所在驱动器至少有 1 GB 可用空间。请腾出一些空间，或把游戏移到其他驱动器，然后重试。",
  "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "游戏文件夹里有一个不是启动器创建的 .recomplauncher-tmp 文件夹，所以配置不会使用它。请把它移出游戏文件夹，然后重试。",
  "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "无法在游戏文件夹中为配置创建临时文件夹。请检查驱动器是否已满或为只读，然后重试。",
- "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "游戏文件夹中的某个路径对 Windows 来说太长。请在“设置”→“游戏和文件夹”中添加一个路径更短的游戏库文件夹并把游戏移过去，或打开 Windows 的长路径设置（LongPathsEnabled），然后重试。启动器不会替你更改这个设置。"
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "游戏文件夹中的某个路径对 Windows 来说太长。请在“设置”→“游戏和文件夹”中添加一个路径更短的游戏库文件夹并把游戏移过去，或打开 Windows 的长路径设置（LongPathsEnabled），然后重试。启动器不会替你更改这个设置。",
+ "Keep a copy of its saves first, to put back if you install it again": "先保留一份存档副本，重新安装后可以放回",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} 已卸载，但它的文件夹还在：无法先做一份存档副本。它位于 {path}。",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "已保留一份存档副本。重新安装后，可在“存档”选项卡中放回。",
+ "{path}. A copy of its saves is kept first.": "{path}。会先保留一份存档副本。",
+ "Delete its folder and its saves": "删除其文件夹和存档"
 }

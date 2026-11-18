@@ -1824,9 +1824,11 @@
     const g = S.library[id];
     if (!g) return;
     if (S.running.has(id)) return toast(t('Close the game first.'), true);
-    const run = (del) => async () => {
+    // keep: a copy of its saves first, as the desktop's tick does (on unless the player picks the
+    // item that deletes them too).
+    const run = (del, keep = true) => async () => {
       let r = {};
-      try { r = (await invoke('uninstall', { id, deleteFiles: del })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
+      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
       if (window.usageUninstall) window.usageUninstall(id);
       if (window.keepOut) await window.keepOut(id);
       delete S.updates[id];
@@ -1834,15 +1836,18 @@
       await refreshState();
       render(true);
       if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
+      else if (del && r.kept && r.saves_stuck) toast(tf('{name} is uninstalled, but its folder stayed: a copy of its saves couldn\'t be made first. It\'s in {path}.', { name: g.name, path: r.path }), true);
       else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
       else toast(tf('{name} is uninstalled.', { name: g.name }));
+      if (r.saves_kept) toast(t('A copy of its saves is kept. Install it again and put them back from its Saves tab.'));
       draw(true);
     };
     const own = ownFolder(g);
     sheet(tf('Uninstall {name}?', { name: g.name }), [
       { label: t('Keep it'), sub: t('Nothing changes'), icon: 'chevL', run: () => {} },
       ...(own
-        ? [{ label: t('Uninstall and delete its folder'), sub: tf('{path}, with the saves and settings inside it', { path: g.path }), icon: 'bin', cls: 'danger', run: run(true) },
+        ? [{ label: t('Uninstall and delete its folder'), sub: tf('{path}. A copy of its saves is kept first.', { path: g.path }), icon: 'bin', cls: 'danger', run: run(true) },
+          { label: t('Delete its folder and its saves'), sub: tf('{path}, with the saves and settings inside it', { path: g.path }), icon: 'bin', cls: 'danger', run: run(true, false) },
           { label: t('Uninstall, keep its folder'), sub: t('It comes out of your Library and its files stay'), icon: 'folder', run: run(false) }]
         : [{ label: t('Uninstall'), sub: tf('Its folder stays where it is: {path}', { path: g.path }), icon: 'bin', cls: 'danger', run: run(false) }]),
     ]);
