@@ -265,11 +265,12 @@ function blocks(frac, n = 32) {
   const on = frac > 0 ? Math.max(1, Math.round(Math.min(1, frac) * n)) : 0;
   return `<div class="blocks" aria-hidden="true">${Array.from({ length: n }, (_, i) => `<i${i < on ? ' class="on"' : ''}></i>`).join('')}</div>`;
 }
-// Where the copies are kept: the launcher's own folder, or one the player picked (another drive,
-// a NAS, a folder Drive, OneDrive or Dropbox keeps in sync).
+// Where the copies are kept: beside each game in its library (the path shown is the library's
+// .backups folder), or a folder the player picked (another drive, a NAS, a folder Drive, OneDrive
+// or Dropbox keeps in sync).
 function rootCard(o) {
   const mine = !!o.chosen;
-  const note = mine && o.reachable === false ? t('Your folder can\'t be reached right now. Copies stay on this PC until it\'s back, then go to it.') : t('Copies of your saves go here. Pick a folder on another drive, a NAS, or one that Drive, OneDrive or Dropbox keeps in sync, and they go there instead.');
+  const note = mine && o.reachable === false ? t('Your folder can\'t be reached right now. Copies stay beside each game until it\'s back, then go to it.') : mine ? t('Copies of your saves go here.') : t('Copies of your saves are kept with each game, in its library\'s .backups folder. Pick a folder on another drive, a NAS, or one that Drive, OneDrive or Dropbox keeps in sync, and they go there instead.');
   return `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Backup Folder'))}</b><span><span class="path">${esc(mine ? o.chosen : (o.root || ''))}</span><br>${esc(note)}</span></div>
     <span class="acts"><button type="button" class="btn sm" data-act="saves-root-open">${esc(t('Open the folder'))}</button><button type="button" class="btn sm" data-act="saves-root-pick">${esc(t('Change'))}</button>${mine ? `<button type="button" class="btn sm" data-act="saves-root-reset">${esc(t('Use the Usual Place'))}</button>` : ''}</span></div></div>`;
 }
@@ -482,7 +483,7 @@ window.accountAct = async (act, el) => {
       let r;
       try { r = await invoke('saves_set_root', { path }); } catch (e) { el.disabled = false; return fail(e); }
       S.settings.save_dir = r.custom ? r.path : null;
-      toast(!r.custom ? t('Copies of your saves go to the launcher\'s own folder again.') : r.moved ? tn(r.moved, 'One game\'s copies moved there. New ones go there too.', '{n} games\' copies moved there. New ones go there too.') : t('New copies of your saves go there from now on.'));
+      toast(!r.custom ? t('Copies of your saves are kept with each game again.') : r.moved ? tn(r.moved, 'One game\'s copies moved there. New ones go there too.', '{n} games\' copies moved there. New ones go there too.') : t('New copies of your saves go there from now on.'));
       return loadSavesAll();
     }
     case 'saves-open': return invoke('saves_open', { id }).catch(fail);

@@ -489,6 +489,21 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
 /// so the window can translate it.
 pub(crate) const SAVES_UNKNOWN: &str = "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.";
 
+/// Where this game's copies are (see saves::dir_of).
+fn copies_dir(st: &App, id: &str) -> Res<PathBuf> {
+    let g = game(st, id)?;
+    Ok(saves::dir_of(&st.dir, id, &g))
+}
+
+/// The folder the Saves page shows for the copies: the player's, else the library's .backups,
+/// where each game's copies sit beside the backups made before its updates.
+pub fn shown_root(st: &App) -> PathBuf {
+    match saves::chosen_root() {
+        Some(p) if p.is_dir() => p,
+        _ => st.lib.lock().unwrap().settings.library_dir.join(".backups"),
+    }
+}
+
 /// One game's saves at the same time: two backups of one game never overlap.
 static BUSY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -615,7 +630,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
     let mut state = saves::state(&st.dir, id);
-    let copy = saves::manifest(&saves::dir_of(&st.dir, id).join(name))
+    let copy = saves::manifest(&copies_dir(&st, id)?.join(name))
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
     let Some(top) = list.first() else { return upload_copy(app, id, name, 0).await };
@@ -637,7 +652,7 @@ async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 
 async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Res<()> {
     let st = app.state::<App>();
-    let path = saves::dir_of(&st.dir, id).join(name);
+    let path = copies_dir(&st, id)?.join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     if paused() {
         return Err(Error::Msg(PAUSED_TEXT.into()));
@@ -833,7 +848,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         let s = saves::state(&st.dir, id);
-        let latest = saves::list(&st.dir, id).into_iter().next();
+        let latest = saves::list(&st.dir, id, &g).into_iter().next();
         if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
             if let Err(e) = upload(app, id, &l.name).await {
                 let too_big = e.to_string().starts_with("This save is too big");
@@ -884,7 +899,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
-    let d = saves::dir_of(&st.dir, id);
+    let d = copies_dir(&st, id)?;
     tokio::fs::create_dir_all(&d).await?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await?;
@@ -930,7 +945,7 @@ async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot
     let id2 = id.to_string();
     let copy = blocking(move || {
         saves::backup(&dir, &id2, &spots, &g)?;
-        saves::list(&dir, &id2).into_iter().next().filter(|c| c.hash == hash)
+        saves::list(&dir, &id2, &g).into_iter().next().filter(|c| c.hash == hash)
             .ok_or_else(|| Error::Msg("The saves changed. Try syncing again.".into()))
     }).await??;
     // A player can choose a save that was backed up before the current cloud copy.
@@ -1142,7 +1157,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             SpotInfo { exists: shown.exists(), path: p.to_string_lossy().to_string(), template: s.template, from: s.from }
         })
         .collect();
-    let local = saves::list(&st.dir, &id);
+    let local = saves::list(&st.dir, &id, &g);
     let state = saves::state(&st.dir, &id);
     let mut cloud = Value::Null;
     let mut space = Value::Null;
@@ -1190,7 +1205,7 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
     let g = game(&st, id)?;
     let s = saves::state(&st.dir, id);
     let signed = signed_in(&st.dir);
-    let local = saves::list(&st.dir, id);
+    let local = saves::list(&st.dir, id, &g);
     let retry = s.pending.as_deref().and_then(|p| copy_wait_left(id, p));
     Ok(json!({
         "state": s.sync_state(g.cloud == Some(true), signed),
@@ -1205,9 +1220,9 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
     }))
 }
 
-fn upload_candidate(dir: &Path, id: &str, running: bool) -> Res<Option<saves::Copy>> {
+fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<Option<saves::Copy>> {
     let s = saves::state(dir, id);
-    let latest = saves::list(dir, id).into_iter().next();
+    let latest = saves::list(dir, id, g).into_iter().next();
     // The newest local archive can still hold the save from before a restore. During play we
     // cannot replace it with a current backup, so ask the player to close the game first.
     if running && latest.as_ref().map(|l| l.hash != s.last_hash).unwrap_or(false) {
@@ -1236,7 +1251,7 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
                 let (dir, id2, g2) = (st.dir.clone(), id.clone(), g.clone());
                 blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
             }
-            if let Some(l) = upload_candidate(&st.dir, &id, running)? {
+            if let Some(l) = upload_candidate(&st.dir, &id, &g, running)? {
                 if let Err(e) = upload(&app, &id, &l.name).await {
                     // It waits, and goes when the site answers again (once: no more tries now).
                     if !e.to_string().starts_with("This save is too big") {
@@ -1298,13 +1313,14 @@ pub async fn saves_overview(app: AppHandle) -> Res<Value> {
 
 fn overview(app: &AppHandle) -> Value {
     let st = app.state::<App>();
-    // Copies made here while the player's folder was away go to it now that it's back.
-    saves::gather(&st.dir);
     let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    // Copies made beside the games while the player's folder was away go to it now that it's back.
+    let installed: Vec<Installed> = games.iter().map(|(_, g)| g.clone()).collect();
+    saves::gather(&st.dir, &installed);
     let signed = signed_in(&st.dir);
     let mut out = Vec::new();
     for (id, g) in games {
-        let local = saves::list(&st.dir, &id);
+        let local = saves::list(&st.dir, &id, &g);
         let state = saves::state(&st.dir, &id);
         let spots = spots_of(&st, &id, &g);
         let found = spots.iter().any(|s| {
@@ -1322,7 +1338,7 @@ fn overview(app: &AppHandle) -> Value {
         }));
     }
     let chosen = saves::chosen_root();
-    json!({ "signedIn": signed, "games": out, "root": saves::root(&st.dir), "chosen": chosen, "reachable": chosen.as_ref().map(|p| p.is_dir()).unwrap_or(true) })
+    json!({ "signedIn": signed, "games": out, "root": shown_root(&st), "chosen": chosen, "reachable": chosen.as_ref().map(|p| p.is_dir()).unwrap_or(true) })
 }
 
 #[tauri::command]
@@ -1425,7 +1441,7 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     let g = game(&st, &id)?;
     let spots = spots_of(&st, &id, &g);
     let (dir, id2) = (st.dir.clone(), id.clone());
-    let file = saves::dir_of(&st.dir, &id).join(&name);
+    let file = saves::dir_of(&st.dir, &id, &g).join(&name);
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
 }
 
@@ -1502,12 +1518,13 @@ pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
     crate::open_thing(&app, &p.to_string_lossy(), false)
 }
 
-/// Where the launcher keeps this game's save copies (the backups folder the player picked, or the
-/// launcher's own saves/<id>): not where the game itself saves.
+/// Where the launcher keeps this game's save copies (the backups folder the player picked, or
+/// beside the game in its library's .backups folder): not where the game itself saves.
 #[tauri::command]
 pub async fn saves_open_backups(app: AppHandle, id: String) -> Res<()> {
     let st = app.state::<App>();
-    let d = saves::dir_of(&st.dir, &id);
+    let g = game(&st, &id)?;
+    let d = saves::dir_of(&st.dir, &id, &g);
     std::fs::create_dir_all(&d).map_err(|e| Error::Msg(format!("Couldn't open the backups folder: {e}")))?;
     crate::open_thing(&app, &d.to_string_lossy(), false)
 }
@@ -1850,13 +1867,13 @@ mod sync_tests {
         let retry = pending_copy(&app, "g", &library);
         tokio::pin!(retry);
         assert!(futures_util::poll!(&mut retry).is_pending());
-        saves::restore(&app, "g", &saves::dir_of(&app, "g").join(&chosen.name), &spots, &game).unwrap();
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
         drop(restoring);
 
         let (_upload, pending) = retry.await;
         assert!(pending.is_none(), "read the queue after restore completes, not before waiting for it");
         assert_eq!(std::fs::read_to_string(path).unwrap(), "chosen save");
-        assert!(saves::dir_of(&app, "g").join(queued.name).is_file());
+        assert!(saves::dir_of(&app, "g", &game).join(queued.name).is_file());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1898,12 +1915,12 @@ mod sync_tests {
         let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
         std::fs::write(&path, "superseded save").unwrap();
         let previous = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
-        assert_eq!(upload_candidate(&app, "g", true).unwrap().unwrap().hash, previous.hash);
-        saves::restore(&app, "g", &saves::dir_of(&app, "g").join(&chosen.name), &spots, &game).unwrap();
-        assert!(matches!(upload_candidate(&app, "g", true), Err(Error::Msg(_))), "ask the player to close the game rather than upload the superseded save");
+        assert_eq!(upload_candidate(&app, "g", &game, true).unwrap().unwrap().hash, previous.hash);
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
+        assert!(matches!(upload_candidate(&app, "g", &game, true), Err(Error::Msg(_))), "ask the player to close the game rather than upload the superseded save");
         // Closing the game makes a current backup; Upload Now can then send the chosen save.
         saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
-        assert_eq!(upload_candidate(&app, "g", false).unwrap().unwrap().hash, chosen.hash);
+        assert_eq!(upload_candidate(&app, "g", &game, false).unwrap().unwrap().hash, chosen.hash);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

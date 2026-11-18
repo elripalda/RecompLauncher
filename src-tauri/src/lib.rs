@@ -174,7 +174,7 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
 }
 
 /// Where a game's backups go: beside it, in its library's .backups folder.
-fn backups_dir(g: &Installed) -> PathBuf {
+pub(crate) fn backups_dir(g: &Installed) -> PathBuf {
     g.path.parent().unwrap_or(Path::new(".")).join(".backups").join(g.path.file_name().unwrap_or_default())
 }
 
@@ -1846,7 +1846,12 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
         };
         // Its save backups and this PC's notes about them, and its Look. What the official one
         // already has stays as it is.
-        let mut dirs = vec![(saves::dir_of(&st.dir, &old), saves::dir_of(&st.dir, &new)), (st.dir.join("saves").join(&old), st.dir.join("saves").join(&new)), (st.dir.join("looks").join(&old), st.dir.join("looks").join(&new))];
+        // Copies in the player's folder are kept by id. Beside the game they're kept by its
+        // folder, which doesn't change: then both are the same folder and nothing moves.
+        let renamed = st.lib.lock().unwrap().installed.get(&new).cloned();
+        let copies = (saves::place(&st.dir, &old, renamed.as_ref()), saves::place(&st.dir, &new, renamed.as_ref()));
+        let mut dirs = vec![copies, (st.dir.join("saves").join(&old), st.dir.join("saves").join(&new)), (st.dir.join("looks").join(&old), st.dir.join("looks").join(&new))];
+        dirs.retain(|(from, to)| from != to);
         dirs.dedup();
         for (from, to) in dirs {
             if let Err(err) = move_into(&from, &to) {
@@ -8446,8 +8451,8 @@ fn set_proxy(st: State<'_, App>, mode: String, url: String, user: String, pass: 
 }
 
 /// Where the copies of the player's saves go: a folder they pick (another drive, a NAS, a folder
-/// Drive, OneDrive or Dropbox keeps in sync), or none for the launcher's own. The copies already
-/// made move along, each checked before the old one goes.
+/// Drive, OneDrive or Dropbox keeps in sync), or none for beside each game in its library. The
+/// copies already made move along, each checked before the old one goes.
 #[tauri::command(async)]
 fn saves_set_root(st: State<'_, App>, path: Option<String>) -> Res<Value> {
     let to = path.map(PathBuf::from).filter(|p| !p.as_os_str().is_empty());
@@ -8465,27 +8470,22 @@ fn saves_set_root(st: State<'_, App>, path: Option<String>) -> Res<Value> {
         }
         let _ = std::fs::remove_file(&probe);
     }
-    let from = saves::root(&st.dir);
-    let target = to.clone().unwrap_or_else(|| own.clone());
-    let moved = if from != target && from.is_dir() {
-        saves::move_copies(&from, &target).map_err(|e| Error::Msg(format!("Couldn't move the copies there: {e}")))?
-    } else {
-        0
-    };
+    let installed: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
+    let moved = saves::move_all(&st.dir, &installed, to.as_deref()).map_err(|e| Error::Msg(format!("Couldn't move the copies there: {e}")))?;
     saves::set_root(to.clone());
     {
         let mut l = st.lib.lock().unwrap();
         l.settings.save_dir = to.clone();
         l.save(&st.dir)?;
     }
-    trail::note(format!("Saves: copies go to {} now ({moved} games moved)", if to.is_some() { "the player's folder" } else { "the launcher's folder" }));
-    Ok(json!({ "path": saves::root(&st.dir), "custom": to.is_some(), "moved": moved }))
+    trail::note(format!("Saves: copies go to {} now ({moved} folders moved)", if to.is_some() { "the player's folder" } else { "each game's library" }));
+    Ok(json!({ "path": cloud::shown_root(&st), "custom": to.is_some(), "moved": moved }))
 }
 
 /// Opens the folder the copies of the player's saves are in.
 #[tauri::command(async)]
 fn saves_open_root(app: AppHandle, st: State<'_, App>) -> Res<()> {
-    let p = saves::root(&st.dir);
+    let p = cloud::shown_root(&st);
     let _ = std::fs::create_dir_all(&p);
     open_thing(&app, &p.to_string_lossy(), false)
 }
@@ -9578,12 +9578,14 @@ pub fn run() {
             if art::trim_saved_logos(&dir, &mut lib) {
                 let _ = lib.save(&dir);
             }
-            // Save copies in the player's own folder, when they picked one; any made here while it
-            // was away go to it.
+            // Save copies in the player's own folder, when they picked one, else beside each game in
+            // its library. Copies kept in the launcher's folder before go there (once: they're
+            // moved), and any made beside a game while the player's folder was away go to it.
             saves::set_root(lib.settings.save_dir.clone());
             {
                 let d = dir.clone();
-                std::thread::spawn(move || saves::gather(&d));
+                let installed: Vec<Installed> = lib.installed.values().cloned().collect();
+                std::thread::spawn(move || saves::gather(&d, &installed));
             }
             // On Linux, Windows-only recomps play through Proton once Proton is found: turned on
             // for the player the first time (they can turn it off in Settings → General).
@@ -10345,7 +10347,7 @@ mod tests {
             asset: "old.zip".into(), verified: true, cloud: Some(true), ..Default::default()
         });
         lib.settings.ui = json!({ "pins": ["wrong"], "names": { "wrong": "My name" } });
-        let backup = saves::dir_of(&d, "wrong");
+        let backup = d.join("saves").join("wrong");
         std::fs::create_dir_all(&backup).unwrap();
         std::fs::write(backup.join("backup.zip"), b"backup").unwrap();
         let app = app_in(&d, lib);
@@ -10357,7 +10359,7 @@ mod tests {
         assert_eq!(tracked.manual, Some(manual.clone()));
         assert_eq!(tracked.exe, Some(PathBuf::from("game.exe")));
         assert_eq!((tracked.played_secs, tracked.sessions.clone()), (120, vec![[1, 120]]));
-        assert_eq!(std::fs::read(saves::dir_of(&d, "right").join("backup.zip")).unwrap(), b"backup");
+        assert_eq!(std::fs::read(d.join("saves").join("right").join("backup.zip")).unwrap(), b"backup");
         let own = adopt::change_project(&app, "right", "", &cat).unwrap();
         assert!(own.local && own.repo.is_empty() && own.tag == "own");
         assert_eq!(own.manual, Some(manual));
@@ -10367,7 +10369,7 @@ mod tests {
         assert_eq!(saved.resolve_project_id("right"), own.id);
         assert_eq!(saved.settings.ui["pins"][0], own.id);
         assert_eq!(saved.settings.ui["names"][&own.id], "My name");
-        assert!(saves::dir_of(&d, &own.id).join("backup.zip").is_file());
+        assert!(d.join("saves").join(&own.id).join("backup.zip").is_file());
         assert_eq!(std::fs::read(d.join("game/game.exe")).unwrap(), b"player's executable");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -10417,8 +10419,8 @@ mod tests {
         let mut lib = Library::default();
         let copy = d.join("game.iso");
         lib.installed.insert("old-recomp".into(), Installed { id: "old-recomp".into(), name: "Old Listing".into(), repo: "someone/old-recomp".into(), tag: "v0.1.1".into(), path: d.join("games/old"), played_secs: 7200, game_copy: Some(copy.clone()), ..Default::default() });
-        std::fs::create_dir_all(saves::dir_of(&d, "old-recomp")).unwrap();
-        std::fs::write(saves::dir_of(&d, "old-recomp").join("1.zip"), b"save").unwrap();
+        std::fs::create_dir_all(d.join("saves").join("old-recomp")).unwrap();
+        std::fs::write(d.join("saves").join("old-recomp").join("1.zip"), b"save").unwrap();
         let app = app_in(&d, lib);
         let cat = json!({ "replaced": { "old-recomp": "new-recomp" }, "apps": [{ "id": "new-recomp", "repo": "another/new-recomp", "name": "New Listing" }, { "id": "other", "repo": "x/y" }] });
         // Only to the listing the catalog says.
@@ -10434,7 +10436,7 @@ mod tests {
         assert_eq!(g.path, d.join("games/old"));
         assert_eq!(g.name, "New Listing");
         assert_eq!(l.project_aliases.get("old-recomp").map(String::as_str), Some("new-recomp"), "old links still open it");
-        assert!(saves::dir_of(&d, "new-recomp").join("1.zip").is_file());
+        assert!(d.join("saves").join("new-recomp").join("1.zip").is_file());
         drop(l);
         // The same project under a new id keeps its version and files.
         let mut lib = Library::default();
@@ -10453,7 +10455,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         let mut lib = Library::default();
         lib.installed.insert("old".into(), Installed { id: "old".into(), tag: "v1".into(), ..Default::default() });
-        let backup = saves::dir_of(&d, "old");
+        let backup = d.join("saves").join("old");
         std::fs::create_dir_all(&backup).unwrap();
         std::fs::write(backup.join("save.zip"), b"save").unwrap();
         // A directory at the temporary-file path forces Library::save to fail.
@@ -10465,7 +10467,7 @@ mod tests {
         assert_eq!(l.installed["old"].tag, "v1");
         assert!(!l.installed.contains_key("new") && l.project_aliases.is_empty());
         assert_eq!(std::fs::read(backup.join("save.zip")).unwrap(), b"save");
-        assert!(!saves::dir_of(&d, "new").exists());
+        assert!(!d.join("saves").join("new").exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -10479,11 +10481,11 @@ mod tests {
         let mut lib = Library::default();
         lib.installed.insert("gh-me-game".into(), Installed { id: "gh-me-game".into(), name: "My Game".into(), tag: "v1.2".into(), path: d.join("games/game"), played_secs: 3600, ..Default::default() });
         lib.settings.ui = json!({ "favs": ["gh-me-game", "x", "game"], "names": { "gh-me-game": "Mine" }, "lang": "en" });
-        std::fs::create_dir_all(saves::dir_of(&d, "gh-me-game")).unwrap();
-        std::fs::write(saves::dir_of(&d, "gh-me-game").join("1.zip"), b"save").unwrap();
+        std::fs::create_dir_all(d.join("saves").join("gh-me-game")).unwrap();
+        std::fs::write(d.join("saves").join("gh-me-game").join("1.zip"), b"save").unwrap();
         // Backups from the official one, installed once before.
-        std::fs::create_dir_all(saves::dir_of(&d, "game")).unwrap();
-        std::fs::write(saves::dir_of(&d, "game").join("2.zip"), b"save").unwrap();
+        std::fs::create_dir_all(d.join("saves").join("game")).unwrap();
+        std::fs::write(d.join("saves").join("game").join("2.zip"), b"save").unwrap();
         let st = app_in(&d, lib);
         let cat = catalog::with_mine(&d, json!({ "apps": [{ "id": "game", "repo": "me/game", "name": "Game" }] }));
         // Until it moves over, the player's own entry stays beside the list's.
@@ -10504,8 +10506,8 @@ mod tests {
         assert_eq!(l.settings.ui["favs"], json!(["game", "x"]));
         assert_eq!(l.settings.ui["names"]["game"], "Mine");
         assert_eq!(l.settings.ui["lang"], "en");
-        assert!(saves::dir_of(&d, "game").join("1.zip").is_file() && saves::dir_of(&d, "game").join("2.zip").is_file());
-        assert!(!saves::dir_of(&d, "gh-me-game").exists());
+        assert!(d.join("saves").join("game").join("1.zip").is_file() && d.join("saves").join("game").join("2.zip").is_file());
+        assert!(!d.join("saves").join("gh-me-game").exists());
         // The one the list doesn't have stays the player's.
         let left = catalog::mine(&d);
         assert_eq!(left.len(), 1);

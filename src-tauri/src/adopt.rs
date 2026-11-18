@@ -821,10 +821,11 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         return Err(Error::Msg("Connect your save backup drive before changing the project.".into()));
     }
     let next = associated_game(&g, &new, entry);
-    // Library ids also key backups and looks. Rename them before committing the library;
-    // reject collisions, and roll back if moving data or saving the library fails.
+    // Library ids also key this PC's save notes and looks. Rename them before committing the
+    // library; reject collisions, and roll back if moving data or saving the library fails.
+    // The save copies move after (see below).
+    let copies = (crate::saves::dir_of(&st.dir, old, &g), crate::saves::dir_of(&st.dir, &new, &next));
     let mut dirs = vec![
-        (crate::saves::dir_of(&st.dir, old), crate::saves::dir_of(&st.dir, &new)),
         (st.dir.join("saves").join(old), st.dir.join("saves").join(&new)),
         (st.dir.join("looks").join(old), st.dir.join("looks").join(&new)),
     ];
@@ -857,6 +858,16 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         *l = before;
         for (from, to) in moved.iter().rev() { let _ = std::fs::rename(to, from); }
         return Err(err.into());
+    }
+    // The save copies, where they're kept by id (the player's folder) or the game's kind changed
+    // (a library game that's the player's own build now, kept in the launcher's folder). Each is
+    // checked before its original goes, and they join any copies already there; ones that can't
+    // move stay where they were, where nothing is lost.
+    drop(l);
+    if copies.0 != copies.1 {
+        if let Err(err) = crate::saves::move_copies(std::slice::from_ref(&copies)) {
+            crate::trail::note(format!("{new}: its save copies stayed in {} ({err})", copies.0.display()));
+        }
     }
     Ok(next)
 }

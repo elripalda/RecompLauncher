@@ -10,7 +10,7 @@ use crate::library::Installed;
 use crate::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -501,54 +501,81 @@ pub fn chosen_root() -> Option<PathBuf> {
     ROOT.read().unwrap().clone()
 }
 
-/// Where the copies go: the player's folder, or the launcher's own when none is picked or it can't
-/// be reached right now (a drive that's unplugged, a network folder that's offline). Those copies
-/// are kept here meanwhile, and nothing waits on the missing folder.
-pub fn root(app_dir: &Path) -> PathBuf {
+/// Where a game's copies go when the player hasn't picked a folder, or it can't be reached right
+/// now (a drive that's unplugged, a network folder that's offline): in its library, beside the
+/// backups made before its updates (`<library>/.backups/<game>/saves`). Everything of a game stays
+/// in the player's own folders, and the cloud is the copy off the drive. A developer's own build
+/// (a folder of theirs, not the library) and a game that isn't installed anymore keep theirs in
+/// the launcher's folder.
+fn home(app_dir: &Path, id: &str, g: Option<&Installed>) -> PathBuf {
+    let own = app_dir.join("saves").join(id);
+    let Some(g) = g.filter(|g| !g.local) else { return own };
+    let has_parent = g.path.parent().is_some_and(|p| !p.as_os_str().is_empty());
+    if !has_parent || g.path.file_name().is_none() {
+        return own;
+    }
+    let saves = crate::backups_dir(g).join("saves");
+    // One game of several with saves of its own: a folder of its own inside the recomp's.
+    match crate::games::split(id) {
+        Some((recomp, sub)) if recomp == g.id => saves.join(sub),
+        _ => saves,
+    }
+}
+
+/// The player's folder (each game's copies in a folder of their own inside it), else `home`.
+pub(crate) fn place(app_dir: &Path, id: &str, g: Option<&Installed>) -> PathBuf {
     match chosen_root() {
-        Some(p) if p.is_dir() => p,
-        _ => app_dir.join("saves"),
+        Some(p) if p.is_dir() => p.join(id),
+        _ => home(app_dir, id, g),
     }
 }
 
-pub fn dir_of(app_dir: &Path, id: &str) -> PathBuf {
-    root(app_dir).join(id)
+/// Where a game's copies are.
+pub fn dir_of(app_dir: &Path, id: &str, g: &Installed) -> PathBuf {
+    place(app_dir, id, Some(g))
 }
 
-/// Move completed backup archives only after every destination has been verified by checksum.
-/// Conflicting names never overwrite history, and a failed copy leaves all originals in place.
-pub fn move_copies(from: &Path, to: &Path) -> io::Result<usize> {
-    fs::create_dir_all(to)?;
-    let (from, to) = (fs::canonicalize(from)?, fs::canonicalize(to)?);
-    if from == to {
-        return Ok(0);
+/// The completed copies in a folder: the timestamp-named ZIPs `list` reads. Not state.json (this
+/// PC's notes) or a .part a backup may still be writing.
+fn copy_files(dir: &Path) -> io::Result<Vec<fs::DirEntry>> {
+    let mut out = vec![];
+    for f in fs::read_dir(dir)? {
+        let f = f?;
+        let stamp = f.file_name().to_str().and_then(|n| n.strip_suffix(".zip")).is_some_and(|n| n.parse::<u64>().is_ok());
+        if stamp && f.file_type()?.is_file() {
+            out.push(f);
+        }
     }
-    if to.starts_with(&from) {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Pick a backup folder outside the current backup folder."));
-    }
+    Ok(out)
+}
+
+/// Moves games' copies (`pairs`: a game's folder of copies, and where they go), each removed only
+/// after every one has been checked by checksum. Conflicting names never overwrite history, and a
+/// failed copy leaves all originals in place. How many folders it moved copies out of.
+pub fn move_copies(pairs: &[(PathBuf, PathBuf)]) -> io::Result<usize> {
     let mut verified = Vec::new();
     let mut games = Vec::new();
-    for game in fs::read_dir(&from)? {
-        let game = game?;
-        if !game.file_type()?.is_dir() {
+    for (src, dst) in pairs {
+        // Nothing there to move: no folder made for it either.
+        let files = match copy_files(src) {
+            Ok(f) if !f.is_empty() => f,
+            Ok(_) => continue,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        };
+        fs::create_dir_all(dst)?;
+        if fs::symlink_metadata(dst)?.file_type().is_symlink() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "A game's destination folder is a link. Pick another backup folder."));
+        }
+        let (from, to) = (fs::canonicalize(src)?, fs::canonicalize(dst)?);
+        if from == to {
             continue;
         }
-        let src = game.path();
-        let dst = to.join(game.file_name());
-        let before = verified.len();
-        for f in fs::read_dir(&src)? {
-            let f = f?;
-            let name = f.file_name();
-            // state.json belongs to this PC; .part files may still be written by a backup.
-            // Only the timestamp-named ZIPs returned by list() are completed save copies.
-            if !f.file_type()?.is_file() || name.to_str().and_then(|n| n.strip_suffix(".zip")).and_then(|n| n.parse::<u64>().ok()).is_none() {
-                continue;
-            }
-            fs::create_dir_all(&dst)?;
-            if fs::symlink_metadata(&dst)?.file_type().is_symlink() {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "A game's destination folder is a link. Pick another backup folder."));
-            }
-            let (a, b) = (f.path(), dst.join(name));
+        if to.starts_with(&from) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Pick a backup folder outside the current backup folder."));
+        }
+        for f in files {
+            let (a, b) = (f.path(), to.join(f.file_name()));
             let hash = sha_file(&a)?;
             match fs::symlink_metadata(&b) {
                 Ok(m) => {
@@ -578,9 +605,7 @@ pub fn move_copies(from: &Path, to: &Path) -> io::Result<usize> {
             }
             verified.push((a, b, hash));
         }
-        if verified.len() > before {
-            games.push(src);
-        }
+        games.push(from);
     }
     // A later conflict or write failure must not leave an earlier original missing. Check the
     // entire batch again before deleting anything, including sources a sync tool may have changed.
@@ -596,6 +621,51 @@ pub fn move_copies(from: &Path, to: &Path) -> io::Result<usize> {
         let _ = fs::remove_dir(src);
     }
     Ok(games.len())
+}
+
+/// Every game whose copies may have to move, with the installed game they belong to (none for one
+/// that isn't installed anymore: its copies stay put unless the player's folder changes). The
+/// installed games, the games with saves of their own beside them, and the folders of copies in
+/// the launcher's folder and the player's.
+fn copy_sets(app_dir: &Path, installed: &[Installed]) -> Vec<(String, Option<Installed>)> {
+    let folder_names = |d: &Path| -> Vec<String> {
+        fs::read_dir(d).into_iter().flatten().flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.file_name().to_string_lossy().to_string()).collect()
+    };
+    let mut ids: Vec<String> = installed.iter().map(|g| g.id.clone()).collect();
+    for g in installed {
+        let subs = folder_names(&home(app_dir, &g.id, Some(g)));
+        ids.extend(subs.iter().map(|sub| crate::games::full(&g.id, sub)).filter(|id| crate::games::split(id).is_some()));
+    }
+    ids.extend(folder_names(&app_dir.join("saves")));
+    if let Some(root) = chosen_root().filter(|p| p.is_dir()) {
+        ids.extend(folder_names(&root));
+    }
+    ids.sort();
+    ids.dedup();
+    let find = |id: &str| installed.iter().find(|g| g.id == id).cloned();
+    let owner = |id: &str| find(id).or_else(|| crate::games::split(id).and_then(|(recomp, _)| find(recomp)));
+    ids.into_iter().map(|id| {
+        let g = owner(&id);
+        (id, g)
+    }).collect()
+}
+
+/// Moves every game's copies to `to` (the player's folder, a folder per game inside it), or to
+/// each game's own place in its library when None. Copies from before, in the launcher's folder,
+/// go too. How many folders it moved copies out of.
+pub fn move_all(app_dir: &Path, installed: &[Installed], to: Option<&Path>) -> io::Result<usize> {
+    let mut pairs = vec![];
+    for (id, g) in copy_sets(app_dir, installed) {
+        let target = match to {
+            Some(root) => root.join(&id),
+            None => home(app_dir, &id, g.as_ref()),
+        };
+        let mut from = vec![place(app_dir, &id, g.as_ref()), app_dir.join("saves").join(&id), home(app_dir, &id, g.as_ref())];
+        from.sort();
+        from.dedup();
+        pairs.extend(from.into_iter().filter(|f| *f != target).map(|f| (f, target.clone())));
+    }
+    move_copies(&pairs)
 }
 
 /// What the launcher remembers about a game's saves and its cloud copies.
@@ -690,8 +760,9 @@ fn state_file(app_dir: &Path, id: &str) -> PathBuf {
 
 pub fn state(app_dir: &Path, id: &str) -> State {
     let read = |p: PathBuf| fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok());
-    // One from before the copies moved, beside them.
-    read(state_file(app_dir, id)).or_else(|| read(dir_of(app_dir, id).join("state.json"))).unwrap_or_default()
+    // One from before the notes moved, beside the copies in the player's folder.
+    let beside = || chosen_root().and_then(|r| read(r.join(id).join("state.json")));
+    read(state_file(app_dir, id)).or_else(beside).unwrap_or_default()
 }
 
 pub fn set_state(app_dir: &Path, id: &str, s: &State) {
@@ -702,18 +773,15 @@ pub fn set_state(app_dir: &Path, id: &str, s: &State) {
     let _ = fs::write(f, serde_json::to_vec_pretty(s).unwrap_or_default());
 }
 
-/// Copies made in the launcher's own folder while the player's folder couldn't be reached go to
-/// it once it's back. This PC's notes stay.
-pub fn gather(app_dir: &Path) {
-    let Some(to) = chosen_root().filter(|p| p.is_dir()) else { return };
-    let from = app_dir.join("saves");
-    let has_copies = fs::read_dir(&from).into_iter().flatten().flatten().any(|g| fs::read_dir(g.path()).into_iter().flatten().flatten().any(|f| f.file_name() != "state.json"));
-    if has_copies {
-        if let Ok(n) = move_copies(&from, &to) {
-            if n > 0 {
-                crate::trail::note(&format!("Saves: copies made while the backup folder was away went to it ({n} games)"));
-            }
-        }
+/// Copies go where they belong now: from the launcher's own folder (where they were kept before
+/// they moved into each game's library), and the ones made beside each game while the player's
+/// folder couldn't be reached go to it once it's back. This PC's notes stay.
+pub fn gather(app_dir: &Path, installed: &[Installed]) {
+    let to = chosen_root().filter(|p| p.is_dir());
+    match move_all(app_dir, installed, to.as_deref()) {
+        Ok(0) => {}
+        Ok(n) => crate::trail::note(format!("Saves: copies moved to where they're kept now ({n} folders)")),
+        Err(e) => crate::trail::note(format!("Saves: couldn't move copies to where they're kept now ({e})")),
     }
 }
 
@@ -726,8 +794,8 @@ fn read_manifest(zip_file: &Path) -> Option<Manifest> {
 }
 
 /// A game's copies on this PC, newest first.
-pub fn list(app_dir: &Path, id: &str) -> Vec<Copy> {
-    let mut out: Vec<Copy> = fs::read_dir(dir_of(app_dir, id))
+pub fn list(app_dir: &Path, id: &str, g: &Installed) -> Vec<Copy> {
+    let mut out: Vec<Copy> = fs::read_dir(dir_of(app_dir, id, g))
         .into_iter()
         .flatten()
         .flatten()
@@ -760,11 +828,11 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
         return Ok(None);
     }
     let mut st = state(app_dir, id);
-    let all = list(app_dir, id);
+    let all = list(app_dir, id, g);
     if st.last_hash == hash && all.first().map(|c| c.hash == hash).unwrap_or(false) {
         return Ok(None);
     }
-    let d = dir_of(app_dir, id);
+    let d = dir_of(app_dir, id, g);
     fs::create_dir_all(&d)?;
     // Always after the newest, so the names keep their order.
     let when = crate::library::now().max(all.first().map(|c| c.when + 1).unwrap_or(0));
@@ -796,7 +864,7 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
         z.finish().map_err(|e| Error::Msg(e.to_string()))?;
     }
     fs::rename(&part, &file)?;
-    let mut all = list(app_dir, id);
+    let mut all = list(app_dir, id, g);
     while all.len() > KEEP {
         if let Some(old) = all.pop() {
             let _ = fs::remove_file(d.join(old.name));
@@ -1058,8 +1126,8 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
     // Check the contents of the recovery copy before replacing the live save.
     if target.modified.is_some() {
         backup(app_dir, id, std::slice::from_ref(spot), g)?;
-        let saved = list(app_dir, id).into_iter().next().ok_or_else(changed)?;
-        let zip_path = dir_of(app_dir, id).join(saved.name);
+        let saved = list(app_dir, id, g).into_iter().next().ok_or_else(changed)?;
+        let zip_path = dir_of(app_dir, id, g).join(saved.name);
         if !target.is_dir {
             let mut zip = zip::ZipArchive::new(fs::File::open(&zip_path)?)
                 .map_err(|e| Error::Msg(e.to_string()))?;
@@ -1188,16 +1256,6 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
     Ok(())
 }
 
-/// The size of each game's copies on this PC.
-pub fn sizes(app_dir: &Path) -> BTreeMap<String, u64> {
-    let mut out = BTreeMap::new();
-    for e in fs::read_dir(root(app_dir)).into_iter().flatten().flatten() {
-        let id = e.file_name().to_string_lossy().to_string();
-        out.insert(id.clone(), list(app_dir, &id).iter().map(|c| c.size).sum());
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1280,6 +1338,60 @@ mod tests {
     }
 
     #[test]
+    fn copies_go_beside_the_game_in_its_library() {
+        let d = tmp("copies-home");
+        let app = d.join("app");
+        let g = game(&d.join("lib/Game"));
+        assert_eq!(dir_of(&app, "g", &g), d.join("lib/.backups/Game/saves"));
+        let full = crate::games::full("g", "two");
+        assert_eq!(dir_of(&app, &full, &g), d.join("lib/.backups/Game/saves/two"));
+        let own_build = Installed { local: true, ..g.clone() };
+        assert_eq!(dir_of(&app, "g", &own_build), app.join("saves/g"));
+    }
+
+    #[test]
+    fn copies_from_the_launchers_folder_move_beside_the_game_once() {
+        let d = tmp("copies-gather");
+        let app = d.join("app");
+        let g = game(&d.join("lib/Game"));
+        fs::create_dir_all(app.join("saves/g")).unwrap();
+        fs::write(app.join("saves/g/100.zip"), b"old copy").unwrap();
+        fs::write(app.join("saves/g/state.json"), b"{}").unwrap();
+        assert_eq!(move_all(&app, std::slice::from_ref(&g), None).unwrap(), 1);
+        assert_eq!(fs::read(d.join("lib/.backups/Game/saves/100.zip")).unwrap(), b"old copy");
+        assert!(!app.join("saves/g/100.zip").exists());
+        // This PC's notes stay in the launcher's folder.
+        assert!(app.join("saves/g/state.json").is_file());
+        assert_eq!(move_all(&app, std::slice::from_ref(&g), None).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_game_with_saves_of_its_own_moves_into_its_own_folder() {
+        let d = tmp("copies-gather-sub");
+        let app = d.join("app");
+        let g = game(&d.join("lib/Game"));
+        let full = crate::games::full("g", "two");
+        fs::create_dir_all(app.join("saves").join(&full)).unwrap();
+        fs::write(app.join("saves").join(&full).join("100.zip"), b"its copy").unwrap();
+        move_all(&app, std::slice::from_ref(&g), None).unwrap();
+        assert_eq!(fs::read(d.join("lib/.backups/Game/saves/two/100.zip")).unwrap(), b"its copy");
+    }
+
+    #[test]
+    fn copies_go_to_the_players_folder() {
+        let d = tmp("copies-root");
+        let app = d.join("app");
+        let g = game(&d.join("lib/Game"));
+        let home = d.join("lib/.backups/Game/saves");
+        fs::create_dir_all(&home).unwrap();
+        fs::write(home.join("100.zip"), b"copy").unwrap();
+        let mine = d.join("mine");
+        assert_eq!(move_all(&app, std::slice::from_ref(&g), Some(&mine)).unwrap(), 1);
+        assert_eq!(fs::read(mine.join("g/100.zip")).unwrap(), b"copy");
+        assert!(!home.join("100.zip").exists());
+    }
+
+    #[test]
     fn the_developer_comes_before_the_catalog() {
         let g = game(Path::new("/games/test"));
         let s = spots(&["{install}/save".into()], &["{local}/Test/saves".into()], &g);
@@ -1309,7 +1421,7 @@ mod tests {
         assert_eq!(fs::read(&from.path).unwrap(), b"new");
         assert_eq!(fs::read(&to.path).unwrap(), b"new");
         assert_eq!(share_file(&spot, &target, Some(&from)).unwrap().modified, from.modified);
-        let copy = dir_of(&d, "target").join(&list(&d, "target")[0].name);
+        let copy = dir_of(&d, "target", &target).join(&list(&d, "target", &target)[0].name);
         restore(&d, "target", &copy, &[spot], &target).unwrap();
         assert_eq!(fs::read(&to.path).unwrap(), b"old");
         let _ = fs::remove_dir_all(&d);
@@ -1355,7 +1467,7 @@ mod tests {
         assert!(!tgt_dir.join("deleted.sav").exists());
 
         // previous target save was backed up
-        let copy = dir_of(&d, "target").join(&list(&d, "target")[0].name);
+        let copy = dir_of(&d, "target", &target).join(&list(&d, "target", &target)[0].name);
         restore(&d, "target", &copy, &[spot], &target).unwrap();
         assert_eq!(fs::read(tgt_dir.join("account.sav")).unwrap(), b"account-old");
         assert_eq!(fs::read(tgt_dir.join("slot_00/progress.sav")).unwrap(), b"progress-old");
@@ -1427,7 +1539,7 @@ mod tests {
             file.set_modified(UNIX_EPOCH + std::time::Duration::from_secs(time)).unwrap();
         }
         let copy = backup(&d, "target", std::slice::from_ref(&spot), &target).unwrap().unwrap();
-        let path = dir_of(&d, "target").join(copy.name);
+        let path = dir_of(&d, "target", &target).join(copy.name);
         let manifest = read_manifest(&path).unwrap();
         let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
         let options = zip::write::SimpleFileOptions::default();
@@ -1447,13 +1559,15 @@ mod tests {
     #[test]
     fn sharing_rejects_a_save_changed_since_the_prompt() {
         let d = tmp("sharing-stale");
-        let source = game(&d);
-        let target = game(&d);
+        let inst = d.join("game");
+        fs::create_dir_all(&inst).unwrap();
+        let source = game(&inst);
+        let target = game(&inst);
         let from_spot = Spot { template: "{install}/from.sav".into(), from: "developer" };
         let to_spot = Spot { template: "{install}/to.sav".into(), from: "developer" };
-        fs::write(d.join("from.sav"), b"new").unwrap();
-        fs::write(d.join("to.sav"), b"old").unwrap();
-        fs::File::options().write(true).open(d.join("to.sav")).unwrap().set_modified(UNIX_EPOCH).unwrap();
+        fs::write(inst.join("from.sav"), b"new").unwrap();
+        fs::write(inst.join("to.sav"), b"old").unwrap();
+        fs::File::options().write(true).open(inst.join("to.sav")).unwrap().set_modified(UNIX_EPOCH).unwrap();
         let from = share_file(&from_spot, &source, None).unwrap();
         let to = share_file(&to_spot, &target, Some(&from)).unwrap();
         fs::write(&from.path, b"changed").unwrap();
@@ -1515,10 +1629,10 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(1100));
         let b = backup(&app, "g", &s, &g).unwrap().unwrap();
         assert_ne!(a.hash, b.hash);
-        assert_eq!(list(&app, "g").len(), 2);
+        assert_eq!(list(&app, "g", &g).len(), 2);
         // Back to the first: slot2 goes, slot1 is "one" again, and what was there is kept.
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        restore(&app, "g", &dir_of(&app, "g").join(&a.name), &s, &g).unwrap();
+        restore(&app, "g", &dir_of(&app, "g", &g).join(&a.name), &s, &g).unwrap();
         assert_eq!(fs::read_to_string(inst.join("save/slot1.sav")).unwrap(), "one");
         assert!(!inst.join("save/slot2.sav").exists());
         let (_, _, now, _) = current(&s, &g);
@@ -1539,12 +1653,12 @@ mod tests {
         fs::write(&path, "newer local save waiting to upload").unwrap();
         let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
         assert!(queued.when > chosen.when);
-        let queued_path = dir_of(&app, "g").join(&queued.name);
+        let queued_path = dir_of(&app, "g", &g).join(&queued.name);
         let queued_bytes = fs::read(&queued_path).unwrap();
         set_state(&app, "g", &State { last_hash: queued.hash.clone(), synced_hash: "previous cloud".into(), pending: Some(queued.name.clone()), ..Default::default() });
         set_state(&app, "other", &State { pending: Some("123.zip".into()), ..Default::default() });
 
-        restore(&app, "g", &dir_of(&app, "g").join(&chosen.name), &spots, &g).unwrap();
+        restore(&app, "g", &dir_of(&app, "g", &g).join(&chosen.name), &spots, &g).unwrap();
 
         assert_eq!(fs::read_to_string(&path).unwrap(), "chosen save");
         let state = state(&app, "g");
@@ -1577,7 +1691,7 @@ mod tests {
         assert_eq!(state(&app, "g").pending.as_deref(), Some(queued.name.as_str()));
         // Even a valid archive can fail after restore has begun (the destination is unwritable).
         fs::create_dir(inst.join("slot.rl-part")).unwrap();
-        assert!(restore(&app, "g", &dir_of(&app, "g").join(&queued.name), &spots, &g).is_err());
+        assert!(restore(&app, "g", &dir_of(&app, "g", &g).join(&queued.name), &spots, &g).is_err());
         assert_eq!(state(&app, "g").pending.as_deref(), Some(queued.name.as_str()));
         assert_eq!(fs::read_to_string(inst.join("slot.sav")).unwrap(), "local save");
         fs::remove_dir_all(d).unwrap();
@@ -1593,7 +1707,7 @@ mod tests {
             fs::write(from.join("g/123.zip"), b"first save").unwrap();
             fs::write(from.join("g/124.zip"), b"another backup").unwrap();
             fs::write(to.join("g/123.zip"), previous).unwrap();
-            assert!(move_copies(&from, &to).is_err(), "a different backup must not be replaced or mistaken for a duplicate");
+            assert!(move_copies(&[(from.join("g"), to.join("g"))]).is_err(), "a different backup must not be replaced or mistaken for a duplicate");
             assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"first save");
             assert_eq!(fs::read(from.join("g/124.zip")).unwrap(), b"another backup");
             assert_eq!(fs::read(to.join("g/123.zip")).unwrap(), previous);
@@ -1617,7 +1731,7 @@ mod tests {
         }
         fs::write(from.join("g/state.json"), b"local notes").unwrap();
         fs::write(from.join("g/125.part"), b"still being written").unwrap();
-        assert_eq!(move_copies(&from, &to).unwrap(), 1);
+        assert_eq!(move_copies(&[(from.join("g"), to.join("g"))]).unwrap(), 1);
         assert!(!from.join("g/123.zip").exists());
         assert!(!from.join("g/124.zip").exists());
         assert_eq!(fs::read(to.join("g/123.zip")).unwrap(), b"same backup");
@@ -1642,7 +1756,7 @@ mod tests {
         fs::create_dir_all(to.join("g/124.zip")).unwrap();
         fs::write(from.join("g/123.zip"), b"first backup").unwrap();
         fs::write(from.join("g/124.zip"), b"second backup").unwrap();
-        assert!(move_copies(&from, &to).is_err());
+        assert!(move_copies(&[(from.join("g"), to.join("g"))]).is_err());
         assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"first backup");
         assert_eq!(fs::read(from.join("g/124.zip")).unwrap(), b"second backup");
         assert!(to.join("g/124.zip").is_dir());
@@ -1654,7 +1768,7 @@ mod tests {
         let d = tmp("move-same");
         fs::create_dir_all(d.join("g")).unwrap();
         fs::write(d.join("g/123.zip"), b"our only backup").unwrap();
-        assert_eq!(move_copies(&d, &d.join(".")).unwrap(), 0);
+        assert_eq!(move_copies(&[(d.join("g"), d.join(".").join("g"))]).unwrap(), 0);
         assert_eq!(fs::read(d.join("g/123.zip")).unwrap(), b"our only backup");
         fs::remove_dir_all(d).unwrap();
     }
@@ -1664,9 +1778,9 @@ mod tests {
         let d = tmp("move-nested");
         fs::create_dir_all(d.join("g")).unwrap();
         fs::write(d.join("g/123.zip"), b"original backup").unwrap();
-        assert!(move_copies(&d, &d.join("nested")).is_err());
+        assert!(move_copies(&[(d.join("g"), d.join("g").join("nested"))]).is_err());
         assert_eq!(fs::read(d.join("g/123.zip")).unwrap(), b"original backup");
-        assert!(!d.join("nested/g/123.zip").exists());
+        assert!(!d.join("g/nested/123.zip").exists());
         fs::remove_dir_all(d).unwrap();
     }
 
@@ -1679,7 +1793,7 @@ mod tests {
         fs::create_dir_all(&to).unwrap();
         fs::write(from.join("g/123.zip"), b"original backup").unwrap();
         std::os::unix::fs::symlink(from.join("g"), to.join("g")).unwrap();
-        assert!(move_copies(&from, &to).is_err());
+        assert!(move_copies(&[(from.join("g"), to.join("g"))]).is_err());
         assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"original backup");
         assert!(fs::symlink_metadata(to.join("g")).unwrap().file_type().is_symlink());
         fs::remove_dir_all(d).unwrap();
@@ -1703,7 +1817,7 @@ mod tests {
         let source_spots = spots(&[], &[], &from);
         let target_spots = spots(&[], &[], &to);
         let copy = backup(&d.join("source-app"), "g", &source_spots, &from).unwrap().unwrap();
-        let archive = dir_of(&d.join("source-app"), "g").join(copy.name);
+        let archive = dir_of(&d.join("source-app"), "g", &from).join(copy.name);
         let target_app = d.join("target-app");
 
         assert_eq!(restore(&target_app, "g", &archive, &target_spots, &to).unwrap(), 1);
@@ -1711,9 +1825,9 @@ mod tests {
         assert!(!target.join("profile/save/source-id").exists());
         assert!(!target_save.join("previous.sav").exists());
         assert_eq!(current(&target_spots, &to).2, copy.hash);
-        let kept = list(&target_app, "g");
+        let kept = list(&target_app, "g", &to);
         assert_eq!(kept.len(), 1);
-        let mut kept_zip = zip::ZipArchive::new(fs::File::open(dir_of(&target_app, "g").join(&kept[0].name)).unwrap()).unwrap();
+        let mut kept_zip = zip::ZipArchive::new(fs::File::open(dir_of(&target_app, "g", &to).join(&kept[0].name)).unwrap()).unwrap();
         let mut previous = String::new();
         kept_zip.by_name("0/previous.sav").unwrap().read_to_string(&mut previous).unwrap();
         assert_eq!(previous, "local progress");
@@ -1732,7 +1846,7 @@ mod tests {
         fs::write(source.join("new-folder"), "source is left alone").unwrap();
         let to = game(&d.join("target"));
         let target_spots = vec![Spot { template: "{install}/new-folder".into(), from: "player" }];
-        let archive = dir_of(&d.join("source-app"), "g").join(copy.name);
+        let archive = dir_of(&d.join("source-app"), "g", &from).join(copy.name);
 
         assert_eq!(restore(&d.join("target-app"), "g", &archive, &target_spots, &to).unwrap(), 1);
         assert_eq!(fs::read_to_string(to.path.join("new-folder/new-folder")).unwrap(), "progress");
@@ -1751,7 +1865,7 @@ mod tests {
         let copy = backup(&d.join("app"), "g", &source_spots, &g).unwrap().unwrap();
         fs::write(g.path.join("one/progress.sav"), "new one").unwrap();
         fs::write(g.path.join("two/progress.sav"), "new two").unwrap();
-        let archive = dir_of(&d.join("app"), "g").join(copy.name);
+        let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
 
         assert!(restore(&d.join("app"), "g", &archive, &source_spots[..1], &g).is_err());
         assert_eq!(fs::read_to_string(g.path.join("one/progress.sav")).unwrap(), "new one");
@@ -1770,13 +1884,13 @@ mod tests {
         let copy = backup(&d.join("app"), "g", &source_spots, &g).unwrap().unwrap();
         fs::write(g.path.join("one/progress.sav"), "new one").unwrap();
         fs::write(g.path.join("two/progress.sav"), "new two").unwrap();
-        let archive = dir_of(&d.join("app"), "g").join(copy.name);
+        let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
         let target_spots = vec![source_spots[1].clone(), source_spots[0].clone()];
 
         assert!(restore(&d.join("app"), "g", &archive, &target_spots, &g).is_err());
         assert_eq!(fs::read_to_string(g.path.join("one/progress.sav")).unwrap(), "new one");
         assert_eq!(fs::read_to_string(g.path.join("two/progress.sav")).unwrap(), "new two");
-        assert_eq!(list(&d.join("app"), "g").len(), 1);
+        assert_eq!(list(&d.join("app"), "g", &g).len(), 1);
     }
 
     #[test]
@@ -1791,7 +1905,7 @@ mod tests {
         let source_spots = vec![Spot { template: "{install}/one".into(), from: "player" }, Spot { template: "{install}/two".into(), from: "player" }];
         let target_spots = vec![Spot { template: "{install}/first".into(), from: "player" }, Spot { template: "{install}/second".into(), from: "player" }];
         let copy = backup(&d.join("source-app"), "g", &source_spots, &from).unwrap().unwrap();
-        let archive = dir_of(&d.join("source-app"), "g").join(copy.name);
+        let archive = dir_of(&d.join("source-app"), "g", &from).join(copy.name);
 
         assert_eq!(restore(&d.join("target-app"), "g", &archive, &target_spots, &to).unwrap(), 2);
         assert_eq!(fs::read_to_string(to.path.join("first/progress.sav")).unwrap(), "first game");
@@ -1809,7 +1923,8 @@ mod tests {
         let old = spots(&["{install}/old".into()], &[], &g);
         let copy = backup(&d.join("app"), "g", &old, &g).unwrap().unwrap();
         fs::remove_dir_all(g.path.join("old")).unwrap();
-        (g, dir_of(&d.join("app"), "g").join(copy.name))
+        let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
+        (g, archive)
     }
 
     #[test]
@@ -1844,7 +1959,7 @@ mod tests {
         fs::write(g.path.join("two/progress.sav"), "two").unwrap();
         let before = spots(&["{install}/one".into(), "{install}/two".into()], &[], &g);
         let copy = backup(&d.join("app"), "g", &before, &g).unwrap().unwrap();
-        let archive = dir_of(&d.join("app"), "g").join(copy.name);
+        let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
         fs::write(g.path.join("one/progress.sav"), "new one").unwrap();
         let now = spots(&["{install}/two".into(), "{install}/one".into()], &[], &g);
 
@@ -1865,8 +1980,8 @@ mod tests {
             fs::write(inst.join("s.sav"), format!("v{i}")).unwrap();
             backup(&app, "g", &s, &g).unwrap();
         }
-        assert_eq!(list(&app, "g").len(), KEEP);
-        restore(&app, "g", &dir_of(&app, "g").join(&list(&app, "g").last().unwrap().name), &s, &g).unwrap();
+        assert_eq!(list(&app, "g", &g).len(), KEEP);
+        restore(&app, "g", &dir_of(&app, "g", &g).join(&list(&app, "g", &g).last().unwrap().name), &s, &g).unwrap();
         assert_eq!(fs::read_to_string(inst.join("s.sav")).unwrap(), "v3");
     }
 
