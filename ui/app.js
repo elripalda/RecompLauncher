@@ -1519,8 +1519,10 @@ function pageHome() {
   const found = foundInFolders();
   const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
+  // Settings → Appearance can turn the banner off, so Home starts with the player's own games.
+  const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;
   return `<div class="page home">${offlineNote()}
-    ${feats.length ? slider(feats) : ''}
+    ${showBanner ? slider(feats) : ''}
     ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
     ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
     ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
@@ -4247,6 +4249,7 @@ function pageSettings() {
       body = group(t('Appearance'), `<div class="set-row"><div class="k"><b>${esc(t('Theme'))}</b><span>${esc(t('Dark, black for OLED screens, or light.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Theme'))}">${[['dark', t('Dark')], ['oled', t('OLED')], ['light', tc('Light|theme')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.theme === 'light' ? 'light' : ui.oled ? 'oled' : 'dark') === k}" data-act="theme" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Text Size'))}</b><span>${esc(t('Bigger or smaller text, buttons and covers. Ctrl with + or - works too.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Text Size'))}">${UI_SCALES.map((k) => `<button type="button" role="radio" aria-checked="${uiScale() === k}" data-act="ui-scale" data-k="${k}">${Math.round(k * 100)}%</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['discover', t('Discover')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
+        + row(t('Featured Banner on Home'), t('The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.'), sw('hide_hero', !ui.hide_hero, t('Featured Banner on Home'), 'ui-toggle'))
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
