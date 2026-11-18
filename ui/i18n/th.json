@@ -1364,6 +1364,7 @@
  "This game doesn't take mods from the launcher.": "เกมนี้ไม่รองรับม็อดจากตัวเปิดเกม",
  "This game doesn't work with looks.": "เกมนี้ใช้กับสไตล์ภาพไม่ได้",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "การตั้งค่าของเกมนี้เปลี่ยนไปตั้งแต่คุณสร้างไว้ เลือกสำเนาของคุณแล้วระบบจะสร้างใหม่",
+  "Your copy isn't needed: it's built again from what it kept last time.": "ไม่ต้องใช้สำเนาของคุณ: เกมจะถูกสร้างใหม่จากสิ่งที่เก็บไว้ครั้งก่อน",
  "This is how it will look while you play.": "หน้าตาจะเป็นแบบนี้ระหว่างที่คุณเล่น",
  "This looks like {name}, which is already in Discover.": "ดูเหมือนจะเป็น {name} ซึ่งมีอยู่ในหน้าค้นพบแล้ว",
  "This mod can't be installed from here. Its page on GameBanana says how.": "ม็อดนี้ติดตั้งจากที่นี่ไม่ได้ หน้าของม็อดบน GameBanana มีวิธีติดตั้ง",

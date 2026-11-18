@@ -2103,7 +2103,7 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
-      const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
+      const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
       const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
@@ -2236,8 +2236,9 @@
     if (TS.id !== id) return;
     if (!go) { sfx('back'); return tsDraw(); }
     if (go.ready) { TS.stage = 'ready'; TS.result = { text: go.ready }; sfx('select'); return tsDraw(); }
+    if (go.kept) return tsBegin('', true);
     if (go.copy) return tsBegin(go.copy);
-    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' });
+    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '', kept: false });
     tsDraw();
     try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
@@ -2250,7 +2251,8 @@
       if (!TS.id) return;
       if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
     }
-    Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    // No path: built again from what it kept, so there's no copy to read or check.
+    Object.assign(TS, { stage: 'run', path, kept: !path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
     try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }

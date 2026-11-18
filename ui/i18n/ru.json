@@ -1364,6 +1364,7 @@
  "This game doesn't take mods from the launcher.": "Эта игра не поддерживает моды из лаунчера.",
  "This game doesn't work with looks.": "Эта игра не работает со стилями.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "Настройка этой игры изменилась с тех пор, как вы её собрали. Выберите свою копию, и она соберётся снова.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Ваша копия не нужна: игра соберётся заново из того, что сохранила в прошлый раз.",
  "This is how it will look while you play.": "Так это будет выглядеть во время игры.",
  "This looks like {name}, which is already in Discover.": "Похоже, это {name} — он уже есть в «Обзоре».",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Этот мод нельзя установить отсюда. Как это сделать, написано на его странице на GameBanana.",

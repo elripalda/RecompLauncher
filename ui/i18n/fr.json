@@ -1364,6 +1364,7 @@
  "This game doesn't take mods from the launcher.": "Ce jeu n'accepte pas les mods depuis le lanceur.",
  "This game doesn't work with looks.": "Ce jeu ne fonctionne pas avec les styles.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "La configuration de ce jeu a changé depuis que vous l'avez compilé. Choisissez votre copie et il sera recompilé.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Votre copie n'est pas nécessaire : il est recompilé à partir de ce qu'il a gardé la dernière fois.",
  "This is how it will look while you play.": "Voici à quoi ça ressemblera pendant que vous jouez.",
  "This looks like {name}, which is already in Discover.": "On dirait {name}, qui est déjà dans Découvrir.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Ce mod ne peut pas être installé d'ici. Sa page sur GameBanana explique comment faire.",

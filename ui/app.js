@@ -2850,8 +2850,9 @@ async function ssAct(b) {
   if (!SU.el || SU.id !== id) return;
   if (!go) return ssDraw();
   if (go.ready) { SU.stage = 'ready'; SU.result = { text: go.ready }; return suDraw(); }
+  if (go.kept) return suBegin('', true);
   if (go.copy) return suBegin(go.copy);
-  Object.assign(SU, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' });
+  Object.assign(SU, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '', kept: false });
   suDraw();
   try { await invoke('setup_inputs_run', { id }); } catch (e) { if (SU.el && SU.id === id) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); } }
 }
@@ -3034,7 +3035,8 @@ async function suBegin(path, anyway) {
     if (!SU.id) return;
     if (w) { Object.assign(SU, { stage: 'wrong', path, wrong: w }); return suDraw(); }
   }
-  Object.assign(SU, { stage: 'run', path, step: 'read', steps: {}, ev: {}, q: [], at: Date.now(), result: null, err: '' });
+  // No path: built again from what it kept, so there's no copy to read or check.
+  Object.assign(SU, { stage: 'run', path, kept: !path, step: 'read', steps: {}, ev: {}, q: [], at: Date.now(), result: null, err: '' });
   suDraw();
   try { await invoke('setup_copy', { id: SU.id, path }); } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
 }
@@ -3147,7 +3149,7 @@ function suDraw() {
   const mdState = SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
   if (SU.stage === 'run') {
-    const order = ['read', 'verify'].concat(SU.extras ? ['extras'] : [], ['setup']);
+    const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
     const sub = {
       read: st.read && st.read.text ? st.read.text : baseName(SU.path),
@@ -6386,6 +6388,9 @@ async function playGame2(id, program) {
       // Its developer changed how it's built (prepare.version) since it was set up: built again.
       const rebuild = /^NEED_REBUILD\|/.test(String(err && err.message ? err.message : err));
       if (rebuild) S.setupNote = { id, text: t('This game\'s setup changed since you built it. Pick your copy and it\'s built again.') };
+      // Its setup step kept what it needs from the copy (prepare.keeps_copy): no copy to pick, and
+      // Easy Setup's own heading says so.
+      if (/^NEED_REBUILD\|kept$/.test(String(err && err.message ? err.message : err))) S.setupNote = null;
       if (m || gone || rebuild || /^NEED_UPDATE\|/.test(String(err && err.message ? err.message : err))) { delete S.setup[id]; return setupModal(id); }
       // A Python game on a PC without Python: what to install, and where.
       const py = String(err && err.message ? err.message : err).match(/^NEED_PYTHON\|(.*)$/);
