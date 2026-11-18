@@ -178,6 +178,16 @@ fn backups_dir(g: &Installed) -> PathBuf {
     g.path.parent().unwrap_or(Path::new(".")).join(".backups").join(g.path.file_name().unwrap_or_default())
 }
 
+/// Every save place of an installed game: its own, and those of each of its games that keep their
+/// own saves (one recomp with several games in it).
+fn all_save_spots(st: &App, g: &Installed) -> Vec<saves::Spot> {
+    let mut spots = cloud::spots_of(st, &g.id, g);
+    for game in games_of(st, &g.id, g).iter().filter(|x| !x.saves.is_empty()) {
+        spots.extend(cloud::spots_of(st, &games::full(&g.id, &game.id), g));
+    }
+    spots
+}
+
 // ---------- installing ----------
 
 /// "Getting ready": asking the website for the list and the recomp's releases. Cancel works while it
@@ -548,11 +558,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         return Err(Error::Cancelled);
     }
 
-    // An update: keep a copy of the player's saves and settings first.
+    // An update: keep a copy of its saves in its folder first (only the known save folders).
     if let (Some(p), true) = (&prev, backup_first) {
         report(Progress::new(id, "backup", 0, 0));
-        let (dir, files, bdir) = (p.path.clone(), inputs::release_files(p), backups_dir(p));
-        let _ = tokio::task::spawn_blocking(move || manage::backup(&dir, &files, &bdir, 5)).await;
+        let (g, spots, bdir) = (p.clone(), all_save_spots(st, p), backups_dir(p));
+        let _ = tokio::task::spawn_blocking(move || manage::backup(&g.path, &saves::files_inside(&spots, &g), &bdir, 5)).await;
     }
 
     // Only an installer: it waits in the launcher's staging folder for Set Up, which runs it when
@@ -1408,7 +1418,11 @@ async fn backup_now(st: State<'_, App>, id: String) -> Res<Option<manage::Backup
     if g.local {
         return Ok(None);
     }
-    tokio::task::spawn_blocking(move || manage::backup(&g.path, &inputs::release_files(&g), &backups_dir(&g), 5)).await.map_err(|e| Error::Msg(e.to_string()))?
+    let spots = all_save_spots(&st, &g);
+    if spots.is_empty() {
+        return Err(Error::Msg(cloud::SAVES_UNKNOWN.into()));
+    }
+    tokio::task::spawn_blocking(move || manage::backup(&g.path, &saves::files_inside(&spots, &g), &backups_dir(&g), 5)).await.map_err(|e| Error::Msg(e.to_string()))?
 }
 
 #[tauri::command]

@@ -487,7 +487,7 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
 
 /// Nobody (the player, the developer or the catalog) has said where the game saves. A fixed text,
 /// so the window can translate it.
-const SAVES_UNKNOWN: &str = "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.";
+pub(crate) const SAVES_UNKNOWN: &str = "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.";
 
 /// One game's saves at the same time: two backups of one game never overlap.
 static BUSY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

@@ -328,6 +328,16 @@ pub fn collect(spots: &[Spot], g: &Installed) -> Vec<Entry> {
     look(spots, g).0
 }
 
+/// The save files inside the game's own folder, as paths in it: what the backup before an update
+/// keeps. An update only replaces the release's files, so saves elsewhere stay as they are, and
+/// nothing outside the known save places is copied (build caches, work folders, game data).
+pub fn files_inside(spots: &[Spot], g: &Installed) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = collect(spots, g).into_iter().filter_map(|e| e.abs.strip_prefix(&g.path).ok().map(Path::to_path_buf)).collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Every file in the save places, and the places left out for being too big to be just saves
 /// (their indices). Nothing found in a place that was left out doesn't mean it has no saves: they
 /// weren't looked at.
@@ -1248,6 +1258,25 @@ mod tests {
         let g = game(Path::new("/games/test"));
         let s = spots(&[], &["{local}/Test/saves".into()], &g);
         assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{local}/Test/saves", "catalog")]);
+    }
+
+    #[test]
+    fn the_backup_before_an_update_keeps_only_saves_in_the_game_folder() {
+        let d = tmp("files-inside");
+        let inst = d.join("inst");
+        fs::create_dir_all(inst.join("save")).unwrap();
+        fs::create_dir_all(inst.join("build/cache")).unwrap();
+        fs::create_dir_all(d.join("elsewhere")).unwrap();
+        fs::write(inst.join("save/slot1.sav"), "one").unwrap();
+        fs::write(inst.join("build/cache/obj.o"), "not a save").unwrap();
+        fs::write(inst.join("settings.toml"), "a=1").unwrap();
+        fs::write(d.join("elsewhere/slot2.sav"), "two").unwrap();
+        let g = game(&inst);
+        let elsewhere = d.join("elsewhere").to_string_lossy().replace('\\', "/");
+        let s = spots(&["{install}/save".into(), elsewhere], &[], &g);
+        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("save").join("slot1.sav")]);
+        assert!(files_inside(&[], &g).is_empty());
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

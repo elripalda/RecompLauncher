@@ -2535,7 +2535,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       ${easyRow(id)}
       ${programRow(id, inst)}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
+      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update: the saves in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
     </div>
@@ -4225,7 +4225,7 @@ function pageSettings() {
     case 'updates':
       body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
-          + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
+          + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
@@ -6607,10 +6607,10 @@ async function backupsModal(id) {
   let list = [];
   try { list = (await invoke('backups', { id })) || []; } catch (e) { return fail(e); }
   modal(`<h2>${esc(tf('Backups of {name}', { name: g.name }))}</h2>
-    <p>${esc(t('Before every update the launcher keeps a copy of the files that are yours: saves, settings and mods. The newest five are kept.'))}</p>
+    <p>${esc(t('Before every update the launcher keeps a copy of the saves in the game\'s folder. Saves elsewhere stay as they are through an update. The newest five are kept.'))}</p>
     ${list.length ? `<div class="choices">${list.map((b) => `<div class="choice"><span><b>${esc(when(b.when))}</b><small>${esc(tn(b.files, '1 file', '{n} files'))} · ${esc(fmtB(b.size) || tf('{n} B', { n: 0 }))}</small></span><button type="button" class="btn" data-x="restore" data-name="${esc(b.name)}">${esc(t('Restore'))}</button></div>`).join('')}</div>` : `<p class="muted">${esc(t('No backups yet.'))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Close'))}</button><button type="button" class="btn main" data-x="now">${esc(t('Back up now'))}</button></div>`, async (x, close) => {
-    if (x.dataset.x === 'now') { try { const b = await invoke('backup_now', { id }); close(); toast(b ? t('Backed up.') : t('Nothing to back up yet: the folder only has the game\'s own files.')); } catch (e) { fail(e); } }
+    if (x.dataset.x === 'now') { try { const b = await invoke('backup_now', { id }); close(); toast(b ? t('Backed up.') : t('Nothing to back up yet: none of its saves are in the game\'s folder.')); } catch (e) { fail(e); } }
     if (x.dataset.x === 'restore') { try { const n = await invoke('restore_backup', { id, name: x.dataset.name }); close(); toast(tn(n, 'Put back 1 file.', 'Put back {n} files.')); } catch (e) { fail(e); } }
   }, t('Backups'));
 }

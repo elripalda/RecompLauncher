@@ -110,9 +110,6 @@ pub fn excluded(g: &Installed, path: &Path) -> bool {
         target == path || target.canonicalize().ok().zip(path.canonicalize().ok()).is_some_and(|(a, b)| a == b)
     }) || path.file_name().and_then(|s| s.to_str()).is_some_and(|s| ["prod.keys", "title.keys", "common.key"].iter().any(|n| s.eq_ignore_ascii_case(n)))
 }
-pub fn release_files(g: &Installed) -> Vec<PathBuf> {
-    g.files.iter().cloned().chain(g.input_staged.values().filter(|s| relative(s)).map(PathBuf::from)).collect()
-}
 pub fn relative(s: &str) -> bool {
     !s.is_empty() && !s.contains(['\\', ':', '{', '}']) && Path::new(s).components().all(|c| matches!(c, Component::Normal(_)))
         && !s.split('/').any(|c| c.is_empty() || c == "." || c == "..")
