@@ -21,7 +21,8 @@ function context(settings, hoard) {
   c.group = (title, body) => `<h3>${title}</h3>${body}`;
   c.row = (b, s, ctl) => `<div class="set-row"><b>${escape(b)}</b><span>${escape(s)}</span>${ctl}</div>`;
   c.sw = (k, value, label) => `<button aria-checked="${!!value}" aria-label="${label}" data-act="toggle" data-k="${k}"></button>`;
-  vm.runInContext(['hoardRoot', 'hoardLine', 'paintHoard', 'hoarderGroup'].map((n) => fn(app, n)).join('\n'), c);
+  vm.runInContext(app.match(/^const HOARD_EVERY = .*$/m)[0], c);
+  vm.runInContext(['hoardRoot', 'hoardLine', 'paintHoard', 'hoardEveryLabel', 'hoarderGroup'].map((n) => fn(app, n)).join('\n'), c);
   return c;
 }
 
@@ -52,4 +53,11 @@ test('the keep choice shows a number box only for "latest releases, a number"', 
   const out = html(context({ hoarder: true, hoard_keep: 'count', hoard_count: 8 }));
   assert.match(out, /id="hoard-count"[^>]*value="8"/);
   assert.match(out, /<option value="count" selected>/);
+});
+
+test('on, the clock choice shows the hours picked, hourly when unset', () => {
+  assert.match(html(context({ hoarder: true })), /<option value="1" selected>Every hour<\/option>/);
+  const six = html(context({ hoarder: true, hoard_every_hours: 6 }));
+  assert.match(six, /<option value="6" selected>Every 6 hours<\/option>/);
+  assert.match(six, /<option value="168">Every week<\/option>/);
 });

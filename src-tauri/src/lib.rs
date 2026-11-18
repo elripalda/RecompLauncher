@@ -28,6 +28,7 @@ pub mod games;
 pub mod flatpak;
 pub mod gamebanana;
 pub mod hoard;
+mod slots;
 pub mod info;
 pub mod inputs;
 pub mod ingame;
@@ -152,7 +153,9 @@ pub struct App {
     running: Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
     pids: Mutex<HashMap<String, u32>>,
     started: Mutex<HashMap<String, u64>>,
-    /// One download at a time; the rest wait their turn.
+    /// Upstream's one-download-at-a-time gate. This fork waits on slots::DOWNLOADS instead (its
+    /// limit is a setting); the field stays so upstream's code that builds App merges unchanged.
+    #[allow(dead_code)]
     download_slot: Arc<tokio::sync::Semaphore>,
     /// Games being moved to another drive (their folder is briefly in two places).
     moving: Mutex<HashSet<String>>,
@@ -245,6 +248,16 @@ fn catalog_tag(entry: &Value) -> Option<String> {
 fn same_tag(a: &str, b: &str) -> bool {
     let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).trim_start_matches('.').to_ascii_lowercase();
     !a.trim().is_empty() && n(a) == n(b)
+}
+
+/// Waits for an unpack slot (Settings → Downloads → Unpacks at Once), shown as "Waiting to unpack"
+/// meanwhile. The finished download stays where it is, so nothing is lost by waiting.
+async fn unpack_turn(id: &str, cancel: &AtomicBool, report: &impl Fn(Progress)) -> Res<slots::Slot> {
+    if let Some(slot) = slots::UNPACKS.try_take() {
+        return Ok(slot);
+    }
+    report(Progress::new(id, "unpack-wait", 0, 0));
+    slots::UNPACKS.take(cancel).await.ok_or(Error::Cancelled)
 }
 
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
@@ -440,25 +453,13 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         trail::note(format!("Install {id}: {} isn't one of its own project's files, so it wasn't downloaded", asset.name));
         return Err(Error::Msg("That file isn't in this recomp's own releases, so it wasn't downloaded.".into()));
     }
-    // One download at a time; this one waits its turn.
-    let permit = match st.download_slot.clone().try_acquire_owned() {
-        Ok(p) => p,
-        Err(_) => {
+    // As many downloads at once as Settings → Downloads allows (one unless the player picks
+    // more); this one waits its turn. Cancelling (or pausing) a waiting one answers at once.
+    let permit = match slots::DOWNLOADS.try_take() {
+        Some(p) => p,
+        None => {
             report(Progress::new(id, "queued", 0, 0));
-            // Waiting its turn: cancelling (or pausing) answers at once, not when its turn comes.
-            let slot = st.download_slot.clone();
-            let wait = slot.acquire_owned();
-            tokio::pin!(wait);
-            loop {
-                tokio::select! {
-                    p = &mut wait => break p.map_err(|e| Error::Msg(e.to_string()))?,
-                    _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {
-                        if cancel.load(Ordering::Relaxed) {
-                            return Err(Error::Cancelled);
-                        }
-                    }
-                }
-            }
+            slots::DOWNLOADS.take(&cancel).await.ok_or(Error::Cancelled)?
         }
     };
     let started = std::time::Instant::now();
@@ -560,6 +561,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     // the player presses Run Installer. A new game gets its place in the Library (the folder Set
     // Up suggests); an update keeps everything until its installer has run.
     if as_installer {
+        let _unpacking = unpack_turn(id, &cancel, &report).await?;
         report(Progress::new(id, "unpack", 0, 0));
         let (file, sdir) = (got.file.clone(), installer::staging(&st.dir, id));
         let setup = tokio::task::spawn_blocking(move || installer::stage(&file, &sdir)).await.map_err(|e| Error::Msg(e.to_string()))??;
@@ -617,6 +619,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             let _ = std::fs::remove_file(target.join(&p.asset));
         }
     }
+    let _unpacking = unpack_turn(id, &cancel, &report).await?;
     report(Progress::new(id, "unpack", 0, 0));
     let (file, t2, staging) = (got.file.clone(), target.clone(), home.join(".staging").join(folder_name(id)));
     let what = asset.name.clone();
@@ -1089,11 +1092,14 @@ fn pause(st: State<'_, App>, id: String) {
     }
 }
 
-/// The player's download speed limit (MB a second, 0 for none) and whether downloads slow down
-/// while a game is running.
+/// The player's download speed limit (MB a second, 0 for none), whether downloads slow down
+/// while a game is running, and how many downloads and unpacks run at once (0 for no limit; left
+/// out, the launcher's own: one download at a time, unpacks unlimited).
 #[tauri::command(async)]
-fn download_limits(mb: f64, slow_playing: bool) {
+fn download_limits(mb: f64, slow_playing: bool, downloads: Option<usize>, unpacks: Option<usize>) {
     install::set_limits((mb.max(0.0) * 1048576.0) as u64, slow_playing);
+    slots::DOWNLOADS.set_limit(downloads.unwrap_or(1));
+    slots::UNPACKS.set_limit(unpacks.unwrap_or(0));
 }
 
 #[tauri::command(async)]

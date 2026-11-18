@@ -169,9 +169,15 @@ const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings
 // Download speed limits the player can pick (MB a second; 0 is none), sent to the app at start and
 // whenever they change.
 const DL_LIMITS = [0, 1, 2, 5, 10, 25, 50];
+// How many downloads, and how many unpacks, run at the same time (0 is no limit). Unset keeps the
+// launcher's own: one download at a time, unpacks unlimited.
+const DL_AT_ONCE = [1, 2, 3, 4, 6, 8, 0];
+const UNPACK_AT_ONCE = [1, 2, 3, 4, 0];
+const dlAtOnce = (ui) => (ui.dl_max == null ? 1 : Number(ui.dl_max) || 0);
+const unpackAtOnce = (ui) => Number(ui.unpack_max) || 0;
 function sendLimits() {
   const ui = S.settings.ui || {};
-  return invoke('download_limits', { mb: Number(ui.dl_limit) || 0, slowPlaying: ui.dl_slow_play !== false }).catch(() => {});
+  return invoke('download_limits', { mb: Number(ui.dl_limit) || 0, slowPlaying: ui.dl_slow_play !== false, downloads: dlAtOnce(ui), unpacks: unpackAtOnce(ui) }).catch(() => {});
 }
 // Once, for a sidebar saved before Beta 26: Discover goes second (after Home) and Achievements to
 // the bottom, where new players have them. The player can move them again after that.
@@ -1122,6 +1128,7 @@ function progLabel(j) {
   if (j.phase === 'backup') return [t('Backing up your saves'), ''];
   if (j.phase === 'verify') return [t('Checking the download'), ''];
   if (j.phase === 'unpack') return [t('Unpacking'), ''];
+  if (j.phase === 'unpack-wait') return [t('Waiting to unpack'), ''];
   if (j.phase === 'clone') return [t('Getting its project files'), ''];
   return [tf('{done} of {total}', { done: fmtB(j.done), total: fmtB(j.total) }), j.speed ? tf('{speed}/s', { speed: fmtB(j.speed) }) : ''];
 }
@@ -3548,6 +3555,9 @@ document.addEventListener('change', (e) => {
   if (el.matches('[data-act="hoard-keep"]')) { saveSettings({ hoard_keep: el.value }); return; }
   if (el.id === 'hoard-count') { const n = Math.max(1, Math.min(999, Math.floor(Number(el.value)) || 5)); saveSettings({ hoard_count: n }); return; }
   if (el.matches('[data-act="dl-limit"]')) { saveUi({ dl_limit: Number(el.value) || 0 }).then(sendLimits); return; }
+  if (el.matches('[data-act="dl-max"]')) { saveUi({ dl_max: Number(el.value) || 0 }).then(sendLimits); return; }
+  if (el.matches('[data-act="unpack-max"]')) { saveUi({ unpack_max: Number(el.value) || 0 }).then(sendLimits); return; }
+  if (el.matches('[data-act="hoard-every"]')) { saveSettings({ hoard_every_hours: Math.max(1, Number(el.value) || 1) }); return; }
   if (el.matches('[data-act="proxy-mode"]')) { if (el.value === 'custom') { S.proxyMode = 'custom'; setSection('updates', false); } else saveProxy(el.value); return; }
   if (el.matches('[data-lk-amount]')) {
     const id = el.dataset.lkAmount, v = Number(el.value);
@@ -4237,8 +4247,11 @@ function pageSettings() {
           + row(t('RecompLauncher Updates'), t('Looks for new versions of RecompLauncher itself and offers them. Off: it never looks or asks on its own; Check for Updates in the side menu still does.'), sw('launcher_updates', launcherUpdates(), t('RecompLauncher Updates'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
-          + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
-        + hoarderGroup(group, row, sw, st)
+          + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow'))
+          // This fork's own rows are looked up by name, so upstream's page tests (which load
+          // pageSettings on its own) pass unchanged.
+          + (typeof atOnceRows === 'function' ? atOnceRows(row, ui) : ''))
+        + (typeof hoarderGroup === 'function' ? hoarderGroup(group, row, sw, st) : '')
         + networkGroup(group, row, st);
       break;
     case 'playing': {
@@ -6676,9 +6689,27 @@ function paintHoard() {
   const el = $('#hoard-line');
   if (el) el.textContent = hoardLine();
 }
+// A Settings → Downloads choice of how many at once; 0 reads No Limit.
+function atOnceSel(act, choices, cur, label) {
+  return `<select class="sel" data-act="${act}" aria-label="${esc(label)}">${choices.map((n) => `<option value="${n}"${cur === n ? ' selected' : ''}>${esc(n ? String(n) : t('No Limit'))}</option>`).join('')}</select>`;
+}
+// Settings → Downloads: how many downloads, and how many unpacks, run at the same time.
+function atOnceRows(row, ui) {
+  return row(t('Downloads at Once'), t('How many games and updates download at the same time; the rest wait their turn. Data Hoarder Mode\'s saves count too.'), atOnceSel('dl-max', DL_AT_ONCE, dlAtOnce(ui), t('Downloads at Once')))
+    + row(t('Unpacks at Once'), t('How many finished downloads are unpacked into their game folders at the same time. A lower number is kinder to a slow or busy drive.'), atOnceSel('unpack-max', UNPACK_AT_ONCE, unpackAtOnce(ui), t('Unpacks at Once')));
+}
+// Settings → Data Hoarder → Look for New Releases: hours between sweeps by the clock.
+const HOARD_EVERY = [1, 3, 6, 12, 24, 168];
+function hoardEveryLabel(h) {
+  if (h === 1) return t('Every hour');
+  if (h === 24) return t('Every day');
+  if (h === 168) return t('Every week');
+  return tf('Every {n} hours', { n: h });
+}
+
 function hoarderGroup(group, row, sw, st) {
   const on = !!st.hoarder;
-  const main = row(t('Data Hoarder Mode'), t('Projects get taken down. With this on, every release of every game in your Library, installed or not, is downloaded and kept, including old ones, with its notes. Games you add to the Library are saved right away, and every game is checked for new releases each hour. Nothing is installed: installed games update only the usual way.'), sw('hoarder', on, t('Data Hoarder Mode')));
+  const main = row(t('Data Hoarder Mode'), t('Projects get taken down. With this on, every release of every game in your Library, installed or not, is downloaded and kept, including old ones, with its notes. Games you add to the Library are saved right away, and every game is checked for new releases on the schedule below. Nothing is installed: installed games update only the usual way.'), sw('hoarder', on, t('Data Hoarder Mode')));
   if (!on) return group(t('Data Hoarder'), main);
   // row() escapes its description, so rows that need markup in it are written out here.
   const markup = (b, s, ctl) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${s}</span></div>${ctl}</div>`;
@@ -6689,8 +6720,11 @@ function hoarderGroup(group, row, sw, st) {
   const keepSel = `<select class="sel" data-act="hoard-keep" aria-label="${esc(t('Releases to keep'))}">${[['all', t('All releases')], ['latest', t('Latest release only')], ['count', t('Latest releases, a number')]].map(([k, n]) => `<option value="${k}"${keep === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   const countBox = keep === 'count' ? `<input class="field sm" id="hoard-count" type="number" min="1" max="999" value="${Number(st.hoard_count) || 5}" aria-label="${esc(t('How many releases'))}" style="width:5em">` : '';
   const which = row(t('Releases to keep'), t('All keeps every release, old ones too. Latest keeps only the newest. A number keeps that many of the newest. Releases already saved are never deleted.'), `<span class="acts">${keepSel}${countBox}</span>`);
+  const hours = Number(st.hoard_every_hours) || 1;
+  const everySel = `<select class="sel" data-act="hoard-every" aria-label="${esc(t('Look for New Releases'))}">${HOARD_EVERY.map((h) => `<option value="${h}"${hours === h ? ' selected' : ''}>${esc(hoardEveryLabel(h))}</option>`).join('')}</select>`;
+  const every = row(t('Look for New Releases'), t('How often every game in your Library is checked for new releases while the launcher is open. Adding a game, or Check for Updates, still saves at once.'), everySel);
   const now = markup(t('Save Now'), `<span id="hoard-line">${esc(hoardLine())}</span>`, `<button type="button" class="btn sm" data-act="hoard-now">${esc(t('Save Now'))}</button>`);
-  return group(t('Data Hoarder'), main + where + which + mine + now);
+  return group(t('Data Hoarder'), main + where + which + every + mine + now);
 }
 T.event.listen('hoard', ({ payload }) => { S.hoard = payload; paintHoard(); });
 

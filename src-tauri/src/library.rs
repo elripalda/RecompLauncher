@@ -362,6 +362,10 @@ pub struct Settings {
     pub hoard_keep: String,
     #[serde(default = "five")]
     pub hoard_count: u32,
+    /// Settings → Data Hoarder → Look for New Releases: hours between sweeps by the clock (1 to
+    /// 168; hoard.rs). Adding a game or checking for updates still sweeps at once.
+    #[serde(default = "one")]
+    pub hoard_every_hours: u32,
     /// Settings → RecompLauncher Updates: the launcher looks for a new version of itself (when it
     /// opens, every few hours, and when the website pushes one) and offers it. Off: it never looks
     /// or asks by itself; Check for Updates in the side menu still does.
@@ -371,6 +375,10 @@ pub struct Settings {
 
 fn keep_all() -> String {
     "all".into()
+}
+
+fn one() -> u32 {
+    1
 }
 
 fn five() -> u32 {
@@ -451,6 +459,7 @@ impl Default for Settings {
             hoard_this_pc_only: false,
             hoard_keep: keep_all(),
             hoard_count: five(),
+            hoard_every_hours: one(),
             launcher_updates: true,
         }
     }
@@ -808,6 +817,15 @@ mod tests {
         assert!(super::Settings::default().auto_install);
         let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
         assert!(settings.auto_install);
+    }
+
+    #[test]
+    fn hoard_sweeps_hourly_by_default_and_for_settings_saved_before_the_choice() {
+        assert_eq!(super::Settings::default().hoard_every_hours, 1);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert_eq!(settings.hoard_every_hours, 1);
+        let six: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","hoard_every_hours":6}"#).unwrap();
+        assert_eq!(six.hoard_every_hours, 6);
     }
 
     #[test]

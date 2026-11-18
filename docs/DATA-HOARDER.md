@@ -46,14 +46,15 @@ first and then back through the old ones, and saves each release's description n
 | Data Hoarder Mode | off | Turns the whole thing on. Turning it off stops the sweep at once; the file it was saving keeps its `.part` file and carries on if you turn the mode on again. Files already saved stay. |
 | Hoard folder | `<library folder>/Releases` | Where releases are kept. Changing it starts a new sweep into the new folder; the old folder is not moved. |
 | Releases to keep | all | **All releases**, **Latest release only**, or **Latest releases, a number** (the newest N, 5 to start). Counted per game, newest first, drafts never counted (a pre-release counts as a release). Narrowing it never deletes anything already saved. |
+| Look for New Releases | every hour | How often every Library game is checked by the clock while the launcher is open: every hour, 3, 6, 12 hours, every day or every week. A shorter choice made mid-wait counts from the last sweep. |
 | Only builds for this PC | off | Off keeps every platform's files. On keeps only the builds that run on this PC, which takes much less room. |
 | Save Now | | Looks for anything new right away. |
 
 ## When it looks
 
 A sweep runs when the mode is turned on, when a game is added to the Library, when an install
-finishes, when updates are checked, shortly after the launcher starts, and about every six hours
-while it runs. A sweep that finds everything already saved does very little: it only reads each
+finishes, when updates are checked, shortly after the launcher starts, and then on the clock
+(Look for New Releases: every hour unless you pick a longer gap) while it runs. A sweep that finds everything already saved does very little: it only reads each
 game's release list.
 
 ## Edge cases
@@ -65,9 +66,10 @@ game's release list.
   or the site answers with a limit (403, 429) or says it is busy, the sweep stops there and the next
   one tries again, instead of asking again for every game.
 - **Not enough space.** The sweep stops with a message when the drive can't hold the next file.
-- **One download at a time.** Hoarder downloads share the launcher's single download slot and its
-  speed limit (Settings → Updates → Speed Limit). Installing a game while it runs waits at most for
-  the file being saved at that moment.
+- **Downloads at Once.** Hoarder downloads share the launcher's download slots (Settings → Updates →
+  Downloads at Once, one unless you pick more) and its speed limit. A sweep saves one file at a time,
+  so with one slot, installing a game while it runs waits at most for the file being saved at that
+  moment; with more slots, installs don't wait for it at all.
 - **Files taken down.** A file whose download address no longer exists is skipped and tried again on
   later sweeps; nothing else is held up.
 - **GitLab and SourceForge.** Their releases come only through recomplauncher.com, so you get what it

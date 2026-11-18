@@ -27,9 +27,17 @@ use tauri::{AppHandle, Emitter, Manager};
 pub const NOTES_FILE: &str = "RELEASE-NOTES.md";
 /// GitHub's own answer for the release, kept as it came (tag, dates, every asset's address).
 pub const INFO_FILE: &str = "release.json";
-/// How often the launcher sweeps by the clock while it runs: hourly, so a new release of a game in
-/// the Library is kept within the hour it comes out.
+/// The shortest gap between sweeps by the clock while it runs: hourly, so a new release of a game
+/// in the Library is kept within the hour it comes out. Settings → Data Hoarder → Look for New
+/// Releases stretches it to a number of hours (`hoard_every_hours`).
 pub const SWEEP_EVERY: u64 = 3600;
+/// The longest gap the setting may ask for: a week.
+const MOST_HOURS: u32 = 168;
+
+/// Seconds between sweeps by the clock for the hours the player picked (at least one, at most a week).
+pub fn sweep_every(hours: u32) -> u64 {
+    SWEEP_EVERY * u64::from(hours.clamp(1, MOST_HOURS))
+}
 /// How old a game's release list may be on a sweep by the clock. Below the clock's shortest gap
 /// (it's spread by a tenth either way), so every hourly sweep asks again; the site answers an
 /// unchanged list with a 304 of a few bytes.
@@ -279,15 +287,33 @@ pub fn stop() {
 /// The download id of the file being saved right now, empty between files (see `stop`).
 static CURRENT: Mutex<String> = Mutex::new(String::new());
 
-/// The launcher's clock for it: a first look shortly after start, then every hour.
+/// The launcher's clock for it: a first look shortly after start, then every `hoard_every_hours`.
+/// It looks at the setting each minute, so a shorter gap picked mid-wait counts from the last sweep.
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(45)).await;
         loop {
             tick(&app);
-            tokio::time::sleep(net::spread(SWEEP_EVERY, 0.1)).await;
+            let since = std::time::Instant::now();
+            let mut hours = every_hours(&app);
+            let mut wait = net::spread(sweep_every(hours), 0.1);
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                let now_hours = every_hours(&app);
+                if now_hours != hours {
+                    hours = now_hours;
+                    wait = net::spread(sweep_every(hours), 0.1);
+                }
+                if since.elapsed() >= wait {
+                    break;
+                }
+            }
         }
     });
+}
+
+fn every_hours(app: &AppHandle) -> u32 {
+    app.state::<App>().lib.lock().unwrap().settings.hoard_every_hours
 }
 
 fn enabled(app: &AppHandle) -> bool {
@@ -400,7 +426,8 @@ async fn hoard_release(app: &AppHandle, settings: &Settings, t: &Target, rel: &R
         });
         // One download at a time, shared with installs: a player's own install waits for at most
         // the file being saved now.
-        let Ok(permit) = st.download_slot.clone().acquire_owned().await else { return Ok(()) };
+        // A save counts against Settings → Downloads → Downloads at Once, like any download.
+        let Some(permit) = crate::slots::DOWNLOADS.take(&stop_flag()).await else { return Ok(()) };
         // The mode may have been turned off while this waited for its turn.
         if !enabled(app) {
             return Ok(());
@@ -646,6 +673,14 @@ mod tests {
         // The clock is spread by a tenth either way: even its shortest gap finds the lists stale.
         assert!(CLOCK_FRESH < SWEEP_EVERY * 9 / 10);
         assert!(CLOCK_FRESH < catalog::RELEASES_FRESH);
+    }
+
+    #[test]
+    fn the_clock_gap_follows_the_hours_picked_within_an_hour_and_a_week() {
+        assert_eq!(sweep_every(1), 3600);
+        assert_eq!(sweep_every(6), 6 * 3600);
+        assert_eq!(sweep_every(0), 3600);
+        assert_eq!(sweep_every(10_000), 168 * 3600);
     }
 
     #[test]
