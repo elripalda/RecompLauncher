@@ -859,9 +859,8 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
+    // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
-    // The session's save is copied: one that fails to go up is kept as pending from here on.
-    set_after_play(&st.dir, id, false);
     if g.cloud == Some(true) && signed_in(&st.dir) {
         let s = saves::state(&st.dir, id);
         let latest = saves::list(&st.dir, id, &g).into_iter().next();

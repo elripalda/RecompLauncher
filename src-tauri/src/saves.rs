@@ -823,6 +823,19 @@ pub fn list(app_dir: &Path, id: &str, g: &Installed) -> Vec<Copy> {
     out
 }
 
+/// The save as it is now has a copy (or there is none to copy): no session waits on it anymore.
+/// Every copy clears it, whatever made it (after a session, Sync Now, Back Up Now, before a restore
+/// or a cloud save), so "Waiting to upload" can't outlive the copy. All of those run with the game
+/// closed, so none ends a session that's still going.
+fn copied(app_dir: &Path, id: &str) {
+    let mut st = state(app_dir, id);
+    if !st.after_play {
+        return;
+    }
+    st.after_play = false;
+    set_state(app_dir, id, &st);
+}
+
 /// Writes a copy of the saves as they are now. None when there are none, or nothing changed since
 /// the last copy.
 pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result<Option<Copy>, Error> {
@@ -833,15 +846,18 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
         return Err(too_big_error(g, spots, &too_big));
     }
     if pre.is_empty() {
+        copied(app_dir, id);
         return Ok(None);
     }
     let (entries, infos, hash, _) = current(spots, g);
     if entries.is_empty() {
+        copied(app_dir, id);
         return Ok(None);
     }
     let mut st = state(app_dir, id);
     let all = list(app_dir, id, g);
     if st.last_hash == hash && all.first().map(|c| c.hash == hash).unwrap_or(false) {
+        copied(app_dir, id);
         return Ok(None);
     }
     let d = dir_of(app_dir, id, g);
@@ -883,6 +899,7 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
         }
     }
     st.last_hash = hash.clone();
+    st.after_play = false;
     set_state(app_dir, id, &st);
     let size = fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
     Ok(Some(Copy { name: format!("{when}.zip"), when, size, files: infos.len(), hash, device: man.device, played: man.played }))
@@ -1315,6 +1332,36 @@ mod tests {
 
     fn game(dir: &Path) -> Installed {
         Installed { id: "g".into(), name: "Test Game".into(), path: dir.to_path_buf(), files: vec![PathBuf::from("game.exe"), PathBuf::from("data/a.bin")], played_secs: 60, ..Default::default() }
+    }
+
+    // A game whose saves are in {install}/save, with one save file in it.
+    fn game_with_a_save(d: &Path) -> (Installed, Vec<Spot>, PathBuf) {
+        let g = game(&d.join("lib/Game"));
+        fs::create_dir_all(d.join("lib/Game/save")).unwrap();
+        fs::write(d.join("lib/Game/save/slot.sav"), b"one").unwrap();
+        let s = spots(&["{install}/save".into()], &[], &g);
+        (g, s, d.join("app"))
+    }
+
+    #[test]
+    fn a_copy_of_the_save_ends_the_open_session() {
+        let d = tmp("copy-ends-session");
+        let (g, s, app) = game_with_a_save(&d);
+        set_state(&app, "g", &State { after_play: true, ..Default::default() });
+        backup(&app, "g", &s, &g).unwrap();
+        assert!(!state(&app, "g").after_play);
+    }
+
+    #[test]
+    fn a_save_already_copied_ends_the_open_session_too() {
+        let d = tmp("copied-ends-session");
+        let (g, s, app) = game_with_a_save(&d);
+        backup(&app, "g", &s, &g).unwrap();
+        let mut st = state(&app, "g");
+        st.after_play = true;
+        set_state(&app, "g", &st);
+        assert!(backup(&app, "g", &s, &g).unwrap().is_none());
+        assert!(!state(&app, "g").after_play);
     }
 
     #[test]
