@@ -1206,9 +1206,10 @@ pub fn app_data() -> Option<PathBuf> {
 }
 
 /// The one folder a game keeps everything it writes in (saves, settings, caches), inside its own
-/// folder: `{data}` in its recomplauncher.json, and RECOMPLAUNCHER_DATA when it starts. Not `data`:
-/// releases ship a `data` folder of their own (TotK's does).
-pub const DATA_DIR: &str = "userdata";
+/// folder: `{data}` in its recomplauncher.json, and RECOMPLAUNCHER_DATA when it starts. A name no
+/// game uses: releases ship a `data` folder of their own (TotK's does), and 11 catalog games
+/// already write or ship a top-level `userdata` (the same folder as `UserData` on Windows).
+pub const DATA_DIR: &str = "recompdata";
 
 /// `{data}` for a game in `install`.
 pub fn data_dir(install: &Path) -> PathBuf {
@@ -4009,10 +4010,10 @@ mod tests {
     }
 
     #[test]
-    fn data_fills_in_as_the_userdata_folder_in_the_game() {
+    fn data_fills_in_as_the_recompdata_folder_in_the_game() {
         let install = Path::new("/games/x");
-        assert_eq!(PathBuf::from(fill("{data}", install, None)), install.join("userdata"));
-        assert_eq!(PathBuf::from(fill("{data}/cache", install, None)), install.join("userdata").join("cache"));
+        assert_eq!(PathBuf::from(fill("{data}", install, None)), install.join("recompdata"));
+        assert_eq!(PathBuf::from(fill("{data}/cache", install, None)), install.join("recompdata").join("cache"));
     }
 
     #[test]
@@ -4021,7 +4022,7 @@ mod tests {
         let pr = p.prepare.unwrap();
         let e = pr.env_vars(Path::new("/games/x"), Some(Path::new("/isos/x.iso")));
         let get = |k: &str| e.iter().find(|(n, _)| n == k).map(|(_, v)| PathBuf::from(v));
-        assert_eq!(get("BUILD_CACHE"), Some(Path::new("/games/x").join("userdata").join("cache")));
+        assert_eq!(get("BUILD_CACHE"), Some(Path::new("/games/x").join("recompdata").join("cache")));
         assert_eq!(get("DISC"), Some(PathBuf::from("/isos/x.iso")));
         assert_eq!(e.len(), 2, "TEMP and the launcher's own names stay out: {e:?}");
     }

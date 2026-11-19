@@ -272,17 +272,17 @@ mod tests {
     /// A game with its {data} caches and saves, as a builder leaves it.
     fn game_with_caches(d: &Path) -> PathBuf {
         let game = d.join("Game");
-        fs::create_dir_all(game.join("userdata/cache/shaders")).unwrap();
-        fs::create_dir_all(game.join("userdata/saves")).unwrap();
+        fs::create_dir_all(game.join("recompdata/cache/shaders")).unwrap();
+        fs::create_dir_all(game.join("recompdata/saves")).unwrap();
         fs::write(game.join("Game.exe"), b"exe").unwrap();
-        fs::write(game.join("userdata/cache/shaders/pipeline.bin"), b"cache").unwrap();
-        fs::write(game.join("userdata/saves/slot1.sav"), b"save").unwrap();
+        fs::write(game.join("recompdata/cache/shaders/pipeline.bin"), b"cache").unwrap();
+        fs::write(game.join("recompdata/saves/slot1.sav"), b"save").unwrap();
         game
     }
 
     fn has_caches(game: &Path) -> bool {
-        fs::read(game.join("userdata/cache/shaders/pipeline.bin")).ok().as_deref() == Some(b"cache".as_slice())
-            && fs::read(game.join("userdata/saves/slot1.sav")).ok().as_deref() == Some(b"save".as_slice())
+        fs::read(game.join("recompdata/cache/shaders/pipeline.bin")).ok().as_deref() == Some(b"cache".as_slice())
+            && fs::read(game.join("recompdata/saves/slot1.sav")).ok().as_deref() == Some(b"save".as_slice())
     }
 
     #[test]

@@ -1315,8 +1315,8 @@ mod tests {
     #[test]
     fn a_folder_in_data_is_named_by_data() {
         let d = tmp("data-name");
-        assert_eq!(templatize(&d.join("userdata").join("saves"), &d), "{data}/saves");
-        assert_eq!(templatize(&d.join("userdata"), &d), "{data}");
+        assert_eq!(templatize(&d.join("recompdata").join("saves"), &d), "{data}/saves");
+        assert_eq!(templatize(&d.join("recompdata"), &d), "{data}");
         assert_eq!(templatize(&d.join("save"), &d), "{install}/save");
         let _ = fs::remove_dir_all(&d);
     }
@@ -1324,7 +1324,7 @@ mod tests {
     #[test]
     fn data_as_a_save_place_leaves_out_caches_and_the_launchers_work_folders() {
         let d = tmp("data-skip");
-        let data = d.join("userdata");
+        let data = d.join("recompdata");
         for sub in ["saves", "cache/shaders", ".recomplauncher-tmp", ".recomplauncher-game-update/old", "tmp"] {
             fs::create_dir_all(data.join(sub)).unwrap();
         }
@@ -1361,11 +1361,11 @@ mod tests {
         let d = tmp("data-keep");
         let app = d.join("app");
         let inst = d.join("lib").join("Game");
-        fs::create_dir_all(inst.join("userdata/saves")).unwrap();
-        fs::write(inst.join("userdata/saves/slot1.sav"), b"save").unwrap();
+        fs::create_dir_all(inst.join("recompdata/saves")).unwrap();
+        fs::write(inst.join("recompdata/saves/slot1.sav"), b"save").unwrap();
         let g = game(&inst);
         let s = vec![Spot { template: "{data}/saves".into(), from: "developer" }];
-        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("userdata").join("saves").join("slot1.sav")]);
+        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("recompdata").join("saves").join("slot1.sav")]);
         let copy = backup(&app, "g", &s, &g).unwrap().unwrap();
         let kept = dir_of(&app, "g", &g).join(&copy.name);
         assert!(kept.is_file() && !kept.starts_with(&inst), "{}", kept.display());

@@ -77,10 +77,10 @@ through us, and every release you publish reaches players the next time the laun
 The launcher moves, backs up and uninstalls a game as its folder. What your game writes inside it
 goes along; what it writes anywhere else is left behind. So:
 
-- **Write only under `{install}` and `{data}`.** `{data}` is `userdata` inside the game's folder,
+- **Write only under `{install}` and `{data}`.** `{data}` is `recompdata` inside the game's folder,
   the one place for everything your game makes: saves, settings, caches, builds. The launcher
   makes it before your game or your setup step starts, and passes it as `RECOMPLAUNCHER_DATA`.
-  Don't ship a `userdata` folder in your release.
+  Don't ship a `recompdata` folder in your release.
 - **Take one data path for everything, like portable emulators do.** A command-line option or
   `RECOMPLAUNCHER_DATA` that moves all of it at once, not one option per kind of file. Without one,
   keep your system's usual places. An AppImage or a `.app` writes to the system's usual places
@@ -311,7 +311,7 @@ These fill in anywhere a path, an argument or a value is written:
 | | |
 | --- | --- |
 | `{install}` | Your game's folder |
-| `{data}` | `{install}/userdata`: everything your game writes (see [Where your game writes](#where-your-game-writes)) |
+| `{data}` | `{install}/recompdata`: everything your game writes (see [Where your game writes](#where-your-game-writes)) |
 | `{game}` | The player's copy (the .iso or the folder; for a .cue, its .bin unless `label` names .cue) |
 | `{documents}` | Documents |
 | `{local}` | AppData\Local, or ~/.local/share |

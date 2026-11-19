@@ -11136,9 +11136,9 @@ mod prepare_env_tests {
         assert_eq!(said(&dir, "exists.txt"), PathBuf::from("yes"));
         assert!(!temp.exists(), "the temp folder is gone after the run");
         assert_eq!(said(&dir, "rl.txt"), PathBuf::from("1"));
-        assert_eq!(said(&dir, "data.txt"), dir.join("userdata"));
-        assert!(dir.join("userdata").is_dir());
-        assert_eq!(said(&dir, "cache.txt"), dir.join("userdata").join("cache"));
+        assert_eq!(said(&dir, "data.txt"), dir.join("recompdata"));
+        assert!(dir.join("recompdata").is_dir());
+        assert_eq!(said(&dir, "cache.txt"), dir.join("recompdata").join("cache"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
