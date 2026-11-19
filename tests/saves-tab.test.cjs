@@ -169,6 +169,8 @@ const SITUATIONS = [
   ['a newer save going up after the next session', { state: 'waiting' }, {}, 'saves-sync'],
   ['a copy waiting while offline', { state: 'waiting', problem: { kind: 'offline' } }, {}, 'saves-sync'],
   ['an upload running', { state: 'waiting' }, { phase: 'up' }, 'by itself'],
+  ['the game just closed, its save being copied', { state: 'waiting' }, { phase: 'after' }, 'by itself'],
+  ['the launcher crashed before copying a session (finished at its next start)', { state: 'waiting' }, {}, 'saves-sync'],
   ['an upload that failed', problem('error'), {}, 'saves-sync'],
   ['cloud saves paused by the site', problem('paused'), {}, 'by itself'],
   ['a save too big to upload', problem('too-big-copy'), {}, 'report'],
