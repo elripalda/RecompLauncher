@@ -94,8 +94,8 @@ goes along; what it writes anywhere else is left behind. So:
 - **Name both programs.** `start.program` and `prepare.program` say which file runs. Don't copy
   yourself somewhere else and run from there (bootstrapping): the launcher updates the copy in the
   game's folder, so the other one goes stale.
-- **Don't depend on `$APPIMAGE`.** The launcher may run your AppImage unpacked, from its own folder
-  (the Flatpak does), and then it isn't set.
+- **Don't depend on `$APPIMAGE`.** On Linux the launcher always unpacks your AppImage and runs it
+  from a plain folder, so `APPIMAGE` is never set (see [AppImages](#appimages)).
 - **Never update yourself when `RECOMPLAUNCHER=1`.** Your game and your setup step both get it,
   and the launcher installs every release you publish. If only a flag turns your updater off,
   put it in `start.args`, like `"args": ["--no-update-check"]`.
