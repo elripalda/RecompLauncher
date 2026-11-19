@@ -66,6 +66,11 @@ pub fn init(app: &AppHandle) {
     let _ = APP.set(app.clone());
 }
 
+/// The running launcher, for code that tells the window something without being handed it.
+pub fn app() -> Option<&'static AppHandle> {
+    APP.get()
+}
+
 /// Is the server resting (it had trouble and isn't being asked right now)?
 pub fn offline() -> bool {
     OFFLINE.load(Ordering::Relaxed)

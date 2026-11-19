@@ -5964,7 +5964,10 @@ function devReportItem(x) {
 // The game's folder is its own, right inside one of the libraries (so the launcher may delete it).
 // A game brought over from elsewhere, or a local build, keeps its folder.
 function ownFolder(g) {
-  if (!g || g.local || !g.path) return false;
+  if (!g || !g.path) return false;
+  // The folder the launcher unpacked the player's AppImage into is the launcher's own.
+  if (g.unpacked) return true;
+  if (g.local) return false;
   const norm = (p) => String(p || '').replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
   const parent = norm(g.path).replace(/\/[^/]*$/, '');
   if ([S.settings.library_dir, ...(S.settings.library_dirs || [])].some((l) => l && norm(l) === parent)) return true;
@@ -6081,7 +6084,10 @@ async function haveIt(id) {
       [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Use It Anyway'), icon: 'check', v: 'yes', main: true }]);
     if (v !== 'yes') return;
   }
-  const where = await ask(tf('Add {name}', { name: a.name }), `<p class="path">${esc(r.path)}</p>`,
+  // On Linux an AppImage is always unpacked into the Recomp Library (it never plays as it is):
+  // nothing to ask.
+  const image = S.os === 'linux' && /\.appimage$/i.test(String(r.exe || ''));
+  const where = image ? 'unpack' : await ask(tf('Add {name}', { name: a.name }), `<p class="path">${esc(r.path)}</p>`,
     [{ label: t('Move It Into the Recomp Library'), sub: S.settings.library_dir || '', icon: 'move', v: 'move' }, { label: t('Play It From Where It Is'), sub: t('It stays in its folder'), icon: 'play', v: 'here', main: true }]);
   if (!where) return;
   let added = [];
@@ -8032,7 +8038,11 @@ const TS_TEXT = [
   N_('This build comes as a Flatpak, and the RecompLauncher Flatpak is not allowed to install it. Allow it with: flatpak override --user --talk-name=org.freedesktop.Flatpak com.recomplauncher.RecompLauncher. Or switch to another build on the game page.'),
   N_('This Flatpak file doesn\'t say which app it holds, so it can\'t be installed. Switch to another build on the game\'s page.'),
   N_('Installing its Flatpak for the first time. It can take a few minutes; the game starts when it\'s done.'),
-  N_('Unpacking the game the first time it\'s played. Later starts are quicker.'),
+  N_('Unpacking the game into your Recomp Library. This happens once; it starts when it\'s done.'),
+  N_('That\'s an AppImage, and on Linux the launcher plays games only from a plain folder. Bring it in with Bring Your Recomps, and it\'s unpacked into your Recomp Library.'),
+  N_('The launcher couldn\'t unpack this game\'s AppImage, and its release has no other Linux build to use instead. On Linux the launcher plays games only from a plain folder. Pick another version on the game\'s page, or tell its developer.'),
+  N_('The launcher couldn\'t unpack this game\'s AppImage, and on Linux it plays games only from a plain folder. Install it again from its page, or bring in another build of it.'),
+  N_('Your library folder is on a drive Linux games can\'t play from: it\'s formatted for Windows (exFAT, NTFS or FAT), or set up so programs can\'t run from it. Games there lose their run permission and their links. Pick a library folder on a Linux drive, like your home folder, in Settings → Games and folders.'),
   N_('That\'s inside the launcher\'s own folder. Pick a folder of yours, on any drive.'),
   N_('The launcher can\'t write to that folder. Pick another one.'),
   N_('The launcher isn\'t allowed to write to the library folder. Pick one in your home folder in Settings → Games and Folders.'),
@@ -9346,6 +9356,21 @@ function openLinkedGame(id) {
 T.event.listen('open-game', ({ payload }) => openLinkedGame(payload));
 // Something on its way that takes a while (a Flatpak installing before its game starts).
 T.event.listen('note', ({ payload }) => toast(t(String(payload)), false, null, 9000));
+// Linux: a game's AppImage was unpacked into the Recomp Library (when it was brought in, or at its
+// first Play after this version). Said once, the same on the desktop and in Big Picture.
+function unpackedText(b) {
+  const where = b.replaced
+    ? tf('{name} is unpacked into your Recomp Library, in place of its AppImage.', { name: b.name })
+    : tf('{name} is unpacked into your Recomp Library. Your AppImage stays where it is.', { name: b.name });
+  return b.own ? `${where} ${t('To update it, bring in its newer AppImage the same way.')}` : where;
+}
+T.event.listen('unpacked', async ({ payload }) => {
+  toast(unpackedText(payload || {}), false, null, 12000);
+  // It plays from its new folder: the page shows that one.
+  try { await refreshState(); } catch (e) { return; }
+  render(true);
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+});
 T.event.listen('setup-required', ({ payload }) => { if (S.cat && S.cat.apps.length) { invoke('take_setup_asked').catch(() => {}); setupReqModal(String(payload)); } });
 // A shortcut asked to play a game whose project added setup options: its page, then Play asks.
 function newOptsFromShortcut(id) {
