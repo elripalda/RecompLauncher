@@ -206,3 +206,8 @@ test('a local build has only its project association under Updates', () => {
   assert.match(html, /data-act="project-association"/);
   assert.doesNotMatch(html, /hold-up|auto-up|data-act="build"/);
 });
+
+test('Relink Setup shows only for a game set up before (there are files to use again)', () => {
+  assert.match(fn(app, 'manageStartRows'), /const setUpBefore = !!inst\.game_copy \|\| !!\(su && \(su\.previous \|\| \[\]\)\.length\);/);
+  assert.match(fn(app, 'manageStartRows'), /const relink = setUpBefore \? `<button type="button" class="btn" data-act="relink"/);
+});
