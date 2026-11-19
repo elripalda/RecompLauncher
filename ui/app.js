@@ -3406,6 +3406,12 @@ function forgetLooks(id) {
   delete LOOK_PIC[id];
 }
 const LOOK_NONE = { id: '', name: N_('Original'), blurb: N_('The game as it comes, with nothing on top.') };
+// Every wording stacked in one spot, only one visible: the line is always as tall as its longest
+// wording, so picking a shader never pushes the Amount slider up or down.
+function steadyText(texts, shown) {
+  const parts = texts.map((s, i) => `<span${i === shown ? '' : ' aria-hidden="true"'}>${esc(s)}</span>`);
+  return `<span class="steady">${parts.join('')}</span>`;
+}
 function looksTab(a) {
   const id = a.id, li = S.looks[id];
   if (li === undefined) loadLooks(id);
@@ -3416,8 +3422,10 @@ function looksTab(a) {
   const all = [LOOK_NONE].concat(D.looks);
   const crt = look && look.lines;
   const origin = originName(a.origin);
-  const src = (li.shot ? t('Your latest screenshot.') : t('The game\'s banner. Take a screenshot while you play (F12) to see shaders on the game itself.')) + (look ? ' ' + t('Drag across the picture to compare.') : '');
-  const amountRow = `<div class="lk-amtrow${look ? '' : ' off'}"><div class="k"><b>${esc(t('Amount'))}</b><span>${esc(look ? tf('How strong {look} is.', { look: look.name === 'CRT' ? t('the CRT shader') : t(look.name) === look.name ? look.name.toLowerCase() : t(look.name) }) : t('Pick a shader first.'))}</span></div>
+  const pic = li.shot ? t('Your latest screenshot.') : t('The game\'s banner. Take a screenshot while you play (F12) to see shaders on the game itself.');
+  const src = steadyText([pic, pic + ' ' + t('Drag across the picture to compare.')], look ? 1 : 0);
+  const amountHint = steadyText([t('Pick a shader first.'), t('How strong the shader is.')], look ? 1 : 0);
+  const amountRow = `<div class="lk-amtrow${look ? '' : ' off'}"><div class="k"><b>${esc(t('Amount'))}</b>${amountHint}</div>
         <div class="lk-amt"><span>${esc(t('Light'))}</span><input type="range" min="0" max="100" step="5" value="${li.amount}" data-lk-amount="${esc(id)}"${look ? '' : ' disabled'} aria-label="${esc(t('Amount'))}"><span>${esc(t('Strong'))}</span></div></div>`;
   // The picture and its strength on one side, every shader in a short list beside it: one look
   // at the tab shows them all, and picking one never scrolls the picture away.
@@ -3432,7 +3440,7 @@ function looksTab(a) {
       <input class="lk-range" type="range" min="0" max="100" value="50" aria-label="${esc(t('Compare with the original'))}" data-lk-split>
       <p class="lk-nopic">${esc(t('No picture to show it on yet. Take a screenshot while you play (F12).'))}</p>
     </div>
-    <p class="lk-src">${esc(src)}</p>
+    <p class="lk-src">${src}</p>
     ${amountRow}
     </div>
     <div class="lk-list" role="radiogroup" aria-label="${esc(t('Shader'))}">${all.map((l) => `<button type="button" role="radio" class="lk-item" aria-checked="${l.id === cur}" data-act="look" data-id="${esc(id)}" data-look="${esc(l.id)}"><span class="lk-th"><canvas data-look-th="${esc(l.id)}"></canvas></span><span class="lk-txt"><b>${esc(t(l.name))}</b><span>${esc(t(l.blurb))}</span></span></button>`).join('')}</div>
