@@ -665,7 +665,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         if let Some(what) = swap::recover(&t2, record.as_ref()) {
             trail::note(format!("Install: {what} ({})", t2.display()));
         }
-        let placed = swap::put_in_place(&t2, &staged.root, &files2, &sha, &dropped);
+        let old_release = record.as_ref().map(|r| r.files.as_slice()).unwrap_or_default();
+        let placed = swap::put_in_place(&t2, &staged.root, &files2, &sha, &dropped, old_release);
         let _ = std::fs::remove_dir_all(&staging);
         placed
     })

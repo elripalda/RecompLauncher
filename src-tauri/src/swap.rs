@@ -12,6 +12,7 @@
 use crate::library::Installed;
 use crate::Error;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -48,20 +49,21 @@ type Mover<'a> = &'a mut dyn FnMut(&Path, &Path) -> io::Result<()>;
 
 /// Put the release unpacked at `staged` into `game`: what it replaces and `dropped` (the old
 /// release's files it no longer has) set aside, then its own moved in. `files` and `sha256` are
-/// what the game's record says once the update counts. On a failure nothing is changed, and the
-/// error says what stopped it.
-pub fn put_in_place(game: &Path, staged: &Path, files: &[PathBuf], sha256: &str, dropped: &[PathBuf]) -> Result<Update, Error> {
-    put_in_place_with(game, staged, files, sha256, dropped, &mut move_path)
+/// what the game's record says once the update counts; `old_release` is what the record says now
+/// (the old release's files). On a failure nothing is changed, and the error says what stopped it.
+pub fn put_in_place(game: &Path, staged: &Path, files: &[PathBuf], sha256: &str, dropped: &[PathBuf], old_release: &[PathBuf]) -> Result<Update, Error> {
+    put_in_place_with(game, staged, files, sha256, dropped, old_release, &mut move_path)
 }
 
-fn put_in_place_with(game: &Path, staged: &Path, files: &[PathBuf], sha256: &str, dropped: &[PathBuf], mv: Mover) -> Result<Update, Error> {
+fn put_in_place_with(game: &Path, staged: &Path, files: &[PathBuf], sha256: &str, dropped: &[PathBuf], old_release: &[PathBuf], mv: Mover) -> Result<Update, Error> {
     let folder = game.join(FOLDER);
     if folder.join(MARKER).exists() {
         return Err(Error::Msg(format!("An earlier update of this game didn't finish, and its files couldn't be put back yet ({}). Restart the launcher, then try again.", folder.display())));
     }
     // Without a marker, nothing in the folder is the game's (see `close`).
     let _ = fs::remove_dir_all(&folder);
-    let (set_aside, moved_in) = plan(game, staged, dropped)?;
+    let own: HashSet<PathBuf> = old_release.iter().chain(dropped).cloned().collect();
+    let (set_aside, moved_in) = plan(game, staged, dropped, &own)?;
     let marker = Marker { files: files.to_vec(), sha256: sha256.into(), set_aside, moved_in };
     let Err(stopped) = apply(game, staged, &marker, mv) else {
         return Ok(Update { game: game.to_path_buf(), open: true });
@@ -158,11 +160,12 @@ impl Stopped {
     }
 }
 
-/// What of `game` to set aside and what of `staged` to move in, both relative.
-fn plan(game: &Path, staged: &Path, dropped: &[PathBuf]) -> io::Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+/// What of `game` to set aside and what of `staged` to move in, both relative. `own` is the old
+/// release's files: only those are ever set aside in a way that loses them.
+fn plan(game: &Path, staged: &Path, dropped: &[PathBuf], own: &HashSet<PathBuf>) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Error> {
     let mut set_aside = vec![];
     let mut moved_in = vec![];
-    walk(game, staged, Path::new(""), &mut set_aside, &mut moved_in)?;
+    walk(game, staged, Path::new(""), own, &mut set_aside, &mut moved_in)?;
     for rel in dropped {
         let inside = rel.components().all(|c| matches!(c, Component::Normal(_)));
         let covered = set_aside.iter().any(|a| rel.starts_with(a));
@@ -175,7 +178,7 @@ fn plan(game: &Path, staged: &Path, dropped: &[PathBuf]) -> io::Result<(Vec<Path
 
 /// A folder the game has too is gone into, so only the release's own files in it move; anything
 /// else of the release moves in whole, and what of the game's is in its place is set aside.
-fn walk(game: &Path, staged: &Path, rel: &Path, set_aside: &mut Vec<PathBuf>, moved_in: &mut Vec<PathBuf>) -> io::Result<()> {
+fn walk(game: &Path, staged: &Path, rel: &Path, own: &HashSet<PathBuf>, set_aside: &mut Vec<PathBuf>, moved_in: &mut Vec<PathBuf>) -> Result<(), Error> {
     let mut entries = fs::read_dir(staged.join(rel))?.collect::<io::Result<Vec<_>>>()?;
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
@@ -186,11 +189,24 @@ fn walk(game: &Path, staged: &Path, rel: &Path, set_aside: &mut Vec<PathBuf>, mo
         // Not following links: a link where the release has a folder is replaced, never written through.
         let there = fs::symlink_metadata(game.join(&path)).ok();
         let folder_there = there.as_ref().is_some_and(|m| m.is_dir());
+        let new_is_folder = e.file_type()?.is_dir();
         // A Mac app is one signed unit: replaced whole, never merged.
-        let both_folders = e.file_type()?.is_dir() && folder_there && !crate::macos::is_bundle(&e.path());
+        let both_folders = new_is_folder && folder_there && !crate::macos::is_bundle(&e.path());
         if both_folders {
-            walk(game, staged, &path, set_aside, moved_in)?;
+            walk(game, staged, &path, own, set_aside, moved_in)?;
             continue;
+        }
+        // A folder in the way of a release file is set aside whole and deleted when the update
+        // finishes, so it may only hold the old release's files, never the player's.
+        if folder_there && !new_is_folder {
+            if let Some(theirs) = not_own_within(game, &path, own) {
+                return Err(Error::Msg(format!("The update can't go in: the new release has a file named {}, where the game has a folder that holds your own files ({}). Move them out of that folder, then try again. Nothing was changed.", path.display(), theirs.display())));
+            }
+        }
+        // The same the other way: a file in the way of a release folder goes only if it's the old release's.
+        let file_there = there.is_some() && !folder_there;
+        if file_there && new_is_folder && !own.contains(&path) {
+            return Err(Error::Msg(format!("The update can't go in: the new release has a folder named {0}, where the game has a file of yours named {0}. Move or rename that file, then try again. Nothing was changed.", path.display())));
         }
         if there.is_some() {
             set_aside.push(path.clone());
@@ -198,6 +214,30 @@ fn walk(game: &Path, staged: &Path, rel: &Path, set_aside: &mut Vec<PathBuf>, mo
         moved_in.push(path);
     }
     Ok(())
+}
+
+/// The first thing in the game's folder `rel` (looked through, links not followed) that isn't one
+/// of the old release's files. Folders themselves don't count: only what's in them.
+fn not_own_within(game: &Path, rel: &Path, own: &HashSet<PathBuf>) -> Option<PathBuf> {
+    let mut stack = vec![rel.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = fs::read_dir(game.join(&d)) else {
+            // Can't be looked through, so it can't be shown to be the release's.
+            return Some(d);
+        };
+        for e in entries.flatten() {
+            let p = d.join(e.file_name());
+            let is_folder = e.file_type().is_ok_and(|t| t.is_dir());
+            if is_folder {
+                stack.push(p);
+                continue;
+            }
+            if !own.contains(&p) {
+                return Some(p);
+            }
+        }
+    }
+    None
 }
 
 /// The marker written, then everything set aside, then everything moved in. Stops at the first
@@ -409,6 +449,15 @@ mod tests {
         vec![PathBuf::from("gone.txt")]
     }
 
+    /// The old release's files, as the game's record has them before the update.
+    fn old_release() -> Vec<PathBuf> {
+        ["Game.exe", "data/a.bin", "gone.txt", "cfg", "Game.app/Contents/Info.plist", "Game.app/Contents/old-only"].iter().map(PathBuf::from).collect()
+    }
+
+    fn own() -> HashSet<PathBuf> {
+        old_release().into_iter().chain(dropped()).collect()
+    }
+
     /// The game's record once the update counts.
     fn new_record() -> Installed {
         Installed { files: release_files(), sha256: "new".into(), ..Default::default() }
@@ -416,7 +465,7 @@ mod tests {
 
     /// The number of moves the update makes.
     fn moves(game: &Path, staged: &Path) -> usize {
-        let (set_aside, moved_in) = plan(game, staged, &dropped()).unwrap();
+        let (set_aside, moved_in) = plan(game, staged, &dropped(), &own()).unwrap();
         set_aside.len() + moved_in.len()
     }
 
@@ -433,14 +482,14 @@ mod tests {
     }
 
     fn marker_for(game: &Path, staged: &Path) -> Marker {
-        let (set_aside, moved_in) = plan(game, staged, &dropped()).unwrap();
+        let (set_aside, moved_in) = plan(game, staged, &dropped(), &own()).unwrap();
         Marker { files: release_files(), sha256: "new".into(), set_aside, moved_in }
     }
 
     #[test]
     fn an_update_puts_the_new_release_in_and_leaves_the_players_files() {
         let (game, staged) = game_and_update("whole");
-        put_in_place(&game, &staged, &release_files(), "new", &dropped()).unwrap().finish();
+        put_in_place(&game, &staged, &release_files(), "new", &dropped(), &old_release()).unwrap().finish();
         let got = snapshot(&game);
         assert_eq!(got[Path::new("Game.exe")], "new exe");
         assert_eq!(got[Path::new("data/a.bin")], "new a");
@@ -462,7 +511,7 @@ mod tests {
         for n in 0..total {
             let (game, staged) = game_and_update("fail-at");
             let before = snapshot(&game);
-            let got = put_in_place_with(&game, &staged, &release_files(), "new", &dropped(), &mut failing_after(n));
+            let got = put_in_place_with(&game, &staged, &release_files(), "new", &dropped(), &old_release(), &mut failing_after(n));
             let Err(Error::Msg(said)) = got else { panic!("the update failing after {n} moves went ahead") };
             assert!(said.contains("Nothing was changed"), "{said}");
             assert_eq!(snapshot(&game), before, "after failing at move {n}");
@@ -498,7 +547,7 @@ mod tests {
     #[test]
     fn a_launcher_closed_after_the_record_was_saved_finishes_the_update() {
         let (game, staged) = game_and_update("closed-after-record");
-        let update = put_in_place(&game, &staged, &release_files(), "new", &dropped()).unwrap();
+        let update = put_in_place(&game, &staged, &release_files(), "new", &dropped(), &old_release()).unwrap();
         update.leave_for_next_start();
         recover(&game, Some(&new_record()));
         let got = snapshot(&game);
@@ -523,7 +572,7 @@ mod tests {
     fn an_update_dropped_before_it_counts_is_undone() {
         let (game, staged) = game_and_update("dropped-guard");
         let before = snapshot(&game);
-        drop(put_in_place(&game, &staged, &release_files(), "new", &dropped()).unwrap());
+        drop(put_in_place(&game, &staged, &release_files(), "new", &dropped(), &old_release()).unwrap());
         assert_eq!(snapshot(&game), before);
     }
 
@@ -531,7 +580,7 @@ mod tests {
     fn a_step_after_the_files_went_in_failing_undoes_the_update() {
         let (game, staged) = game_and_update("undo-after");
         let before = snapshot(&game);
-        let update = put_in_place(&game, &staged, &release_files(), "new", &dropped()).unwrap();
+        let update = put_in_place(&game, &staged, &release_files(), "new", &dropped(), &old_release()).unwrap();
         let said = update.undo_after(Error::Msg("Couldn't get its project files.".into())).to_string();
         assert!(said.contains("undone"), "{said}");
         assert_eq!(snapshot(&game), before);
@@ -543,7 +592,7 @@ mod tests {
         let (game, staged) = (d.join("game"), d.join("staging"));
         put(&game.join("old/deep/a.bin"), "old");
         put(&staged.join("new.bin"), "new");
-        let update = put_in_place(&game, &staged, &[PathBuf::from("new.bin")], "new", &[PathBuf::from("old/deep/a.bin")]).unwrap();
+        let update = put_in_place(&game, &staged, &[PathBuf::from("new.bin")], "new", &[PathBuf::from("old/deep/a.bin")], &[]).unwrap();
         update.finish();
         assert!(!game.join("old").exists());
         assert!(game.join("new.bin").exists());
@@ -555,7 +604,7 @@ mod tests {
         let (game, staged) = (d.join("game"), d.join("staging"));
         put(&d.join("other.txt"), "not the game's");
         put(&staged.join("new.bin"), "new");
-        put_in_place(&game, &staged, &[PathBuf::from("new.bin")], "new", &[PathBuf::from("../other.txt")]).unwrap().finish();
+        put_in_place(&game, &staged, &[PathBuf::from("new.bin")], "new", &[PathBuf::from("../other.txt")], &[]).unwrap().finish();
         assert!(d.join("other.txt").exists());
     }
 
@@ -563,7 +612,7 @@ mod tests {
     fn an_update_waits_for_one_that_couldnt_be_put_back() {
         let (game, staged) = game_and_update("waits");
         let _ = apply(&game, &staged, &marker_for(&game, &staged), &mut failing_after(2));
-        let got = put_in_place(&game, &staged, &release_files(), "new", &dropped());
+        let got = put_in_place(&game, &staged, &release_files(), "new", &dropped(), &old_release());
         assert!(got.is_err());
     }
 
@@ -577,6 +626,68 @@ mod tests {
         write_marker(&game.join(FOLDER), &marker).unwrap();
         recover(&game, None);
         assert!(d.join("outside.txt").exists());
+    }
+
+    /// A game whose folder `cfg` the new release has as a file. `player_file` adds one of the
+    /// player's to that folder.
+    fn folder_becomes_file(name: &str, player_file: bool) -> (PathBuf, PathBuf) {
+        let d = tmp(name);
+        let (game, staged) = (d.join("game"), d.join("staging"));
+        put(&game.join("cfg/old.ini"), "old release");
+        if player_file {
+            put(&game.join("cfg/mine.ini"), "player's");
+        }
+        put(&staged.join("cfg"), "new cfg file");
+        (game, staged)
+    }
+
+    #[test]
+    fn a_release_file_replaces_a_folder_of_only_old_release_files() {
+        let (game, staged) = folder_becomes_file("folder-to-file", false);
+        let old = [PathBuf::from("cfg/old.ini")];
+        put_in_place(&game, &staged, &[PathBuf::from("cfg")], "new", &[], &old).unwrap().finish();
+        assert_eq!(fs::read_to_string(game.join("cfg")).unwrap(), "new cfg file");
+        assert!(!game.join(FOLDER).exists());
+    }
+
+    #[test]
+    fn a_release_file_never_replaces_a_folder_holding_player_files() {
+        let (game, staged) = folder_becomes_file("folder-to-file-player", true);
+        let before = snapshot(&game);
+        let old = [PathBuf::from("cfg/old.ini")];
+        let got = put_in_place(&game, &staged, &[PathBuf::from("cfg")], "new", &[], &old);
+        let Err(Error::Msg(said)) = got else { panic!("the update set aside a folder with the player's files") };
+        assert!(said.contains("cfg") && said.contains("your own files"), "{said}");
+        assert!(said.contains("Nothing was changed"), "{said}");
+        assert_eq!(snapshot(&game), before);
+    }
+
+    /// A game with a file `cfg` where the new release has a folder.
+    fn file_becomes_folder(name: &str) -> (PathBuf, PathBuf) {
+        let d = tmp(name);
+        let (game, staged) = (d.join("game"), d.join("staging"));
+        put(&game.join("cfg"), "a cfg file");
+        put(&staged.join("cfg/settings.ini"), "new settings");
+        (game, staged)
+    }
+
+    #[test]
+    fn a_release_folder_replaces_an_old_release_file() {
+        let (game, staged) = file_becomes_folder("file-to-folder");
+        let files = [Path::new("cfg").join("settings.ini")];
+        put_in_place(&game, &staged, &files, "new", &[], &[PathBuf::from("cfg")]).unwrap().finish();
+        assert_eq!(fs::read_to_string(game.join("cfg/settings.ini")).unwrap(), "new settings");
+    }
+
+    #[test]
+    fn a_release_folder_never_replaces_a_player_file() {
+        let (game, staged) = file_becomes_folder("file-to-folder-player");
+        let before = snapshot(&game);
+        let files = [Path::new("cfg").join("settings.ini")];
+        let got = put_in_place(&game, &staged, &files, "new", &[], &[]);
+        let Err(Error::Msg(said)) = got else { panic!("the update set aside a file of the player's") };
+        assert!(said.contains("cfg") && said.contains("Nothing was changed"), "{said}");
+        assert_eq!(snapshot(&game), before);
     }
 
     /// Holds `file` the way a running game or an antivirus does, until dropped.
@@ -613,7 +724,7 @@ mod tests {
         let (game, staged) = game_and_update("locked");
         let before = snapshot(&game);
         let Some(held) = lock(&game.join("data/a.bin")) else { return };
-        let got = put_in_place(&game, &staged, &release_files(), "new", &dropped());
+        let got = put_in_place(&game, &staged, &release_files(), "new", &dropped(), &old_release());
         let Err(Error::Msg(said)) = got else { panic!("the update went ahead past a locked file") };
         assert!(said.contains("in use"), "{said}");
         assert!(said.contains("Nothing was changed"), "{said}");

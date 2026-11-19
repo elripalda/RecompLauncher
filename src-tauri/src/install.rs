@@ -1964,8 +1964,9 @@ mod tests {
 
         let staged = stage(&zpath, &staging).unwrap();
         assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"old", "unpacking alone leaves the game as it is");
-        let gone = dropped(&target, &paths(&["Game.exe", "old-only.dll"]), &staged.files, later(), None);
-        crate::swap::put_in_place(&target, &staged.root, &staged.files, "sha", &gone).unwrap().finish();
+        let old = paths(&["Game.exe", "old-only.dll"]);
+        let gone = dropped(&target, &old, &staged.files, later(), None);
+        crate::swap::put_in_place(&target, &staged.root, &staged.files, "sha", &gone, &old).unwrap().finish();
 
         assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"new");
         assert_eq!(fs::read(target.join("data/assets.bin")).unwrap(), b"data");
