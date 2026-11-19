@@ -306,6 +306,9 @@ const PHASE_BADGE = {
   check: { mark: 'check-run', label: N_('Checking cloud…'), head: N_('Looking for a newer save'), text: N_('Before the game starts, the launcher checks whether another PC saved after this one.') },
   up: { mark: 'up', label: N_('Uploading…'), head: N_('Sending your save'), text: N_('Your newest save is going to the cloud.') },
   down: { mark: 'down', label: N_('Getting cloud save…'), head: N_('Bringing in a newer save'), text: N_('Another PC saved after this one. Your current save is kept as a backup first.') },
+  // The game just closed (or crashed, or the launcher is finishing a session it didn't see end):
+  // its save is being copied, and sent when cloud saves are on.
+  after: { mark: 'play', label: N_('Syncs after you play'), head: N_('Saving after you played'), text: N_('Its save is being copied, and sent to the cloud when cloud saves are on.') },
 };
 
 // What the status line shows for a game: its tone (ok, cy, warn, bad, dim), the mark inside the

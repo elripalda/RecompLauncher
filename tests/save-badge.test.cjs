@@ -57,6 +57,16 @@ test('a game being played says its save goes up after', () => {
   assert.equal(b.label, 'Syncs after you play');
 });
 
+test('right after the game closes it still says the save goes up after play, not up to date', () => {
+  const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() }), 'after', false);
+  assert.equal(b.label, 'Syncs after you play');
+});
+
+test('a session the launcher has not copied yet is waiting, not up to date', () => {
+  const b = info.saveBadgeInfo(status('waiting'), undefined, false);
+  assert.equal(b.tone, 'warn');
+});
+
 test('a conflict still asks for a choice while the game runs', () => {
   const b = info.saveBadgeInfo(status('conflict'), undefined, true);
   assert.equal(b.label, 'Choose a save');

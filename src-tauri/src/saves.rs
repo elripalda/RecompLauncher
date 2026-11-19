@@ -698,6 +698,11 @@ pub struct State {
     /// Why the last sync didn't go through. Kept until one does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<Problem>,
+    /// A session started and its save hasn't been copied since: set at Play, cleared once the
+    /// copy after it is made. Still set when the launcher closed (or crashed) before that, so the
+    /// next start makes the copy and sends it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub after_play: bool,
 }
 
 /// Why a game's saves didn't reach the cloud. `kind` is one of: offline, full, paused,
@@ -744,7 +749,9 @@ impl State {
         if kind == "too-big-folder" {
             return "problem";
         }
-        if !self.behind() {
+        // A session whose save hasn't been copied yet may have changed it: not up to date until the
+        // copy after it is made.
+        if !self.behind() && !self.after_play {
             return if self.synced_hash.is_empty() && self.last_hash.is_empty() { "none" } else { "up-to-date" };
         }
         // No connection is only waiting: it goes up by itself once the website answers.
@@ -2017,6 +2024,24 @@ mod sync_state_tests {
 
     fn problem(kind: &str) -> Option<Problem> {
         Some(Problem { kind: kind.into(), text: String::new(), at: 1 })
+    }
+
+    #[test]
+    fn a_session_not_copied_yet_is_waiting_not_up_to_date() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), after_play: true, ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn a_first_session_not_copied_yet_is_waiting_not_none() {
+        let s = State { after_play: true, ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn a_session_not_copied_yet_is_left_out_of_the_file_when_there_is_none() {
+        let s = State { last_hash: "a".into(), ..Default::default() };
+        assert!(!serde_json::to_string(&s).unwrap().contains("after_play"));
     }
 
     #[test]

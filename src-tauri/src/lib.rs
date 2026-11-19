@@ -3253,6 +3253,9 @@ fn start_game_with_monitor_context(
     let _ = std::fs::create_dir_all(marker.parent().unwrap_or(&st.dir));
     // The launcher's own process id: a marker whose process is gone is stale (see marker_alive).
     let _ = std::fs::write(&marker, std::process::id().to_string());
+    // Its save may change from here: copied after the session, or at the next start if the
+    // launcher closes before that.
+    cloud::set_after_play(&st.dir, &save_id, true);
     ingame::set_hotkeys(app, true, quick_menu);
     let _ = app.emit("game", json!({"id": id, "game": game_full, "state": "running"}));
     // From Big Picture mode the launcher fills the screen, so it steps aside for the game (its first
@@ -3333,6 +3336,9 @@ fn start_game_with_monitor_context(
         }
         let secs = start.elapsed().as_secs();
         let st = app2.state::<App>();
+        // From the game closing to its save copied, the status above Play says so, not an "Up to
+        // date" the session may have made untrue. Said before the window hears the game stopped.
+        let after_step = (secs >= 5).then(|| cloud::after_play_step(&app2, &save_id));
         // A game that closes with the same code every time it's quit normally (its profile or the
         // catalog says which): that's a normal close, not a crash.
         let code = code.map(|c| if quit_code(&st, &id, prof.as_ref(), c) { 0 } else { c });
@@ -3367,6 +3373,10 @@ fn start_game_with_monitor_context(
         pads::PLAYING.store(!st.running.lock().unwrap().is_empty(), Ordering::Relaxed);
         if !st.running.lock().unwrap().contains_key(&id) {
             let _ = std::fs::remove_file(playing_file(&st.dir, &id));
+            // Under five seconds there's no copy after it (below): nothing left to finish.
+            if secs < 5 {
+                cloud::set_after_play(&st.dir, &save_id, false);
+            }
         }
         if let Some(g) = st.lib.lock().unwrap().installed.get_mut(&id) {
             g.played_secs += secs;
@@ -3423,6 +3433,7 @@ fn start_game_with_monitor_context(
                 Err(e) => eprintln!("Save copy for {id}: {e}"),
             }
         }
+        drop(after_step);
         // Started from a shortcut with no window: the launcher's job is done.
         if st.headless.load(Ordering::Relaxed) && st.running.lock().unwrap().is_empty() {
             app2.exit(0);
@@ -9997,10 +10008,14 @@ pub fn run() {
                     repair_lost_setups(&st);
                 });
             }
-            // Save copies that didn't reach the cloud last time.
+            // Sessions the launcher didn't see to the end (it closed or crashed before their saves
+            // were copied) are finished first, then save copies that didn't reach the cloud.
             {
                 let h = app.handle().clone();
-                tauri::async_runtime::spawn(async move { cloud::upload_pending(&h).await });
+                tauri::async_runtime::spawn(async move {
+                    cloud::finish_open_sessions(&h).await;
+                    cloud::upload_pending(&h).await;
+                });
             }
             // Screenshots show in the window straight from their folder, wherever Pictures is. The
             // folder itself is only made when the first screenshot is taken.

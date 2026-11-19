@@ -576,7 +576,7 @@ fn phase(app: &AppHandle, id: &str, what: &str) {
 }
 
 /// Says "idle" when the work it covers ends, on every way out of it (errors included).
-struct Working {
+pub(crate) struct Working {
     app: AppHandle,
     id: String,
 }
@@ -848,6 +848,8 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let spots = spots_of(&st, id, &g);
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
+    // The session's save is copied: one that fails to go up is kept as pending from here on.
+    set_after_play(&st.dir, id, false);
     if g.cloud == Some(true) && signed_in(&st.dir) {
         let s = saves::state(&st.dir, id);
         let latest = saves::list(&st.dir, id, &g).into_iter().next();
@@ -881,6 +883,54 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
         }
     }
     Ok(copy)
+}
+
+/// Marks a game's session as started (true) or its save as copied after it (false). A session
+/// still marked when the launcher starts is finished then (finish_open_sessions).
+pub(crate) fn set_after_play(dir: &Path, id: &str, open: bool) {
+    let mut s = saves::state(dir, id);
+    if s.after_play == open {
+        return;
+    }
+    s.after_play = open;
+    saves::set_state(dir, id, &s);
+}
+
+/// The step after a game closes, from its end to its save copied (and sent): the status above
+/// Play keeps saying "Syncs after you play" until then, instead of an "Up to date" that the
+/// session's save may already have made untrue. Ends (idle) on every way out.
+pub(crate) fn after_play_step(app: &AppHandle, id: &str) -> Working {
+    working(app, id, "after")
+}
+
+/// Sessions the launcher didn't see to the end (it closed or crashed while a game ran, or before
+/// the copy after it was made): their saves are copied and sent now. A game that's running again
+/// is left to its own session.
+pub(crate) async fn finish_open_sessions(app: &AppHandle) {
+    let st = app.state::<App>();
+    for id in open_sessions(&st.dir.join("saves")) {
+        if st.running.lock().unwrap().contains_key(&id) || game(&st, &id).is_err() {
+            continue;
+        }
+        let _step = after_play_step(app, &id);
+        match after_session(app, &id).await {
+            Ok(Some(_)) => {
+                let _ = app.emit("saves", json!({"id": id}));
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("Save copy for {id} after an unfinished session: {e}"),
+        }
+    }
+}
+
+/// The games whose sync notes still mark a session open, by their folders under `saves`.
+fn open_sessions(saves_dir: &Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(saves_dir) else { return vec![] };
+    let app_dir = saves_dir.parent().unwrap_or(saves_dir);
+    rd.flatten()
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .filter(|id| saves::state(app_dir, id).after_play)
+        .collect()
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
@@ -1936,6 +1986,22 @@ mod status_tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn a_session_started_is_open_until_its_save_is_copied() {
+        let d = tmp("after-play");
+        set_after_play(&d, "g", true);
+        assert_eq!(open_sessions(&d.join("saves")), vec!["g".to_string()]);
+        set_after_play(&d, "g", false);
+        assert!(open_sessions(&d.join("saves")).is_empty());
+    }
+
+    #[test]
+    fn a_game_with_no_open_session_is_not_finished_at_start() {
+        let d = tmp("after-play-none");
+        saves::set_state(&d, "g", &saves::State { last_hash: "a".into(), ..Default::default() });
+        assert!(open_sessions(&d.join("saves")).is_empty());
     }
 
     #[test]
