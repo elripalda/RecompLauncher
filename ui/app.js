@@ -8707,6 +8707,9 @@ document.addEventListener('input', (e) => {
 $('#isl').addEventListener('click', () => go('downloads'));
 // Past the top of a page, the window's buttons get a bar behind them.
 $('#main').addEventListener('scroll', () => {
+  // An open menu is fixed to the window, so it would stay put while its button scrolls away:
+  // it closes instead, as a system menu does.
+  if ($('.menu')) closeMenu();
   const s = $('#main').scrollTop > 10; const bar = $('.topbar'); if (bar.classList.contains('solid') !== s) bar.classList.toggle('solid', s);
   if (S.view === 'discover') stickCheck();
   // While it scrolls, tiles passing under the pointer don't light up (that redraw is what made

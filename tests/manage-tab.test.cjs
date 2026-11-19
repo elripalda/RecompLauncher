@@ -37,6 +37,10 @@ test('Uninstall stays in the menu of an installed game, last and in red', () => 
   assert.match(fn(app, 'gameMenu'), /\.\.\.\(g \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
 });
 
+test('an open menu closes when the page scrolls', () => {
+  assert.match(app, /\$\('#main'\)\.addEventListener\('scroll', \(\) => \{\n(?:\s*\/\/[^\n]*\n)*\s+if \(\$\('\.menu'\)\) closeMenu\(\);/);
+});
+
 test('the project page is one menu row', () => {
   const run = new Function('t', 'tf', 'isSF', 'isFJ', 'isLab', 'fjServer', 'repoHome', `${fn(app, 'repoItem')}; return repoItem;`);
   const no = () => false;
