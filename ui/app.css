@@ -1357,7 +1357,9 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .badge.vers svg{color:var(--cyan)}
 /* A favourite in the Library: a plain gold star, bottom right (the versions count is never on those tiles) */
 .badge.fav{top:auto;bottom:9px;right:9px;height:auto;padding:0;border:0;background:none;backdrop-filter:none;color:#ffc94d;filter:drop-shadow(0 1px 3px rgba(0,0,0,.85))}
-.badge.fav svg{width:17px;height:17px}
+.badge.fav svg{width:18px;height:18px;overflow:visible}
+/* A dark edge so the star reads on light covers too (still no box around it) */
+.badge.fav svg path{stroke:rgba(6,11,21,.9);stroke-width:2.6px;stroke-linejoin:round;paint-order:stroke}
 .ver-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 11px;border-radius:17px;background:rgba(6,11,21,.55);backdrop-filter:blur(10px);border:1px solid var(--line2);font-size:13px;font-weight:700;color:var(--ink);transition:border-color .15s,background-color .15s}
 .ver-pill:hover,.ver-pill[aria-expanded="true"]{border-color:rgba(52,242,232,.5);background:rgba(6,11,21,.75)}
 .ver-pill>svg:first-child{color:var(--cyan)}
