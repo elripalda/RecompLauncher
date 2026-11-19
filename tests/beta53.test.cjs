@@ -13,9 +13,9 @@ test('Skip Easy Setup: per game or for every game, and the page treats those gam
   applyEasySkip();
   assert.deepEqual([...S.easy], ['hopper', 'skyracer']);
   assert.equal(easySkipItem('hopper')[0].check, false);
-  // Installed, the menu opens the Easy Setup switch on its Manage tab instead.
+  // Installed, the switch is on its Manage tab and the menu leaves it out.
   S.library.skyracer = {};
-  assert.deepEqual(easySkipItem('skyracer'), [{ act: 'easy-row', id: 'skyracer', label: 'Easy Setup…', icon: 'disc' }]);
+  assert.deepEqual(easySkipItem('skyracer'), []);
   delete S.library.skyracer;
   assert.deepEqual(easySkipItem('plain'), [], 'only games Easy Setup can do get the item');
   S.settings.ui.easy_skip = ['hopper'];
@@ -34,7 +34,7 @@ test('Skip Easy Setup: per game or for every game, and the page treats those gam
 test('the menu item and the Settings switch', () => {
   const menu = fn(app, 'gameMenu');
   assert.match(menu, /\.\.\.\(!g \? easySkipItem\(id\) : \[\]\)/);
-  assert.match(menu, /act: 'manual'[^\n]*\n\s+\.\.\.easySkipItem\(id\),/);
+  assert.match(fn(app, 'manageStartRows'), /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(fn(app, 'setEasySkip'), /saveUi\(\{ easy_skip: \[\.\.\.skip\] \}, true\)/);
   assert.match(app, /sw\('easy_skip_all', ui\.easy_skip_all, t\('Skip Easy Setup'\), 'ui-toggle'\)/);
@@ -54,14 +54,14 @@ test('a skipped game starts as its own setup leaves it, after that setup when it
 const named = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 
-test('Use a Build You Already Have: a line under the copy in Easy Setup, a menu item, and the skipped-game prompt', () => {
+test('Use a Build You Already Have: a line under the copy in Easy Setup, a Manage row, and the skipped-game prompt', () => {
   const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
   // Easy Setup: one quiet line, and the folder shows in the copy's box until Set Up uses it.
   assert.match(fn(steps, 'ssAlt'), /if \(su\.own_build\) return `<p class="ss-alt">\$\{esc\(tf\('Already built \{name\} from your copy, outside the launcher\? Skip the build:'/);
   assert.match(fn(steps, 'stepsRun'), /await invoke\('setup_use_build', ns\.own \? \{ id, folder: ns\.own \} : \{ id \}\);/);
   assert.match(fn(named, 'useOwnBuild'), /invoke\('setup_use_build', \{ id, folder: typeof p === 'string' \? p : p\.path \}\)/);
   assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
-  assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
+  assert.match(fn(app, 'manageStartRows'), /data-act="ownbuild"/);
   // Big Picture draws the same steps, so it has the same line.
   assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
   // It says where the game's own setup builds it, when that's outside the launcher's folder for

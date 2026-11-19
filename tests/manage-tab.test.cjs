@@ -19,6 +19,28 @@ const updateRows = (inst, held) => {
 };
 const GAME = { path: 'F:\\Library\\hydro', repo: 'dev/hydro', tag: 'v1.3.0' };
 
+test('the menu leaves out what a tab of the game\'s page has', () => {
+  const menu = fn(app, 'gameMenu');
+  for (const act of ['saves-game', 'versions', 'looks', 'mods', 'launch-opts', 'setexe', 'manual', 'auto-up', 'build', 'folder', 'backups', 'move', 'shots', 'uninstall']) {
+    assert.doesNotMatch(menu, new RegExp(`act: '${act}'`), act);
+  }
+});
+
+test('the menu keeps what no tab has', () => {
+  const menu = fn(app, 'gameMenu');
+  for (const act of ['pin', 'fav', 'hide', 'customize', 'desktop', 'steam', 'troubleshoot', 'report']) {
+    assert.match(menu, new RegExp(`act: '${act}'`), act);
+  }
+});
+
+test('the project page is one menu row', () => {
+  const run = new Function('t', 'tf', 'isSF', 'isFJ', 'isLab', 'fjServer', 'repoHome', `${fn(app, 'repoItem')}; return repoItem;`);
+  const no = () => false;
+  const repoItem = run(same, same, no, no, no, same, (r) => `https://github.com/${r}`);
+  assert.deepEqual(repoItem({ repo: 'dev/hydro' }), [{ act: 'url', url: 'https://github.com/dev/hydro', label: 'On GitHub', icon: 'web' }]);
+  assert.deepEqual(repoItem({}), []);
+});
+
 test('Manage groups its rows in cards, with Uninstall last', () => {
   const tab = fn(app, 'manageTab');
   assert.match(tab, /card\(t\('Updates'\), [^\n]*card\(t\('Starting the Game'\), [^\n]*card\(t\('Files and Saves'\), [^\n]*\$\{shotsCard\}<div class="card">\$\{leave\}<\/div>/);

@@ -391,10 +391,6 @@ const viewOn = (repo) => (isSF(repo) ? t('View on SourceForge') : isFJ(repo) ? t
 // Where Report a problem goes: the catalog's own link when it gives one (https), else the project's.
 const reportUrl = (a) => (a && /^https:\/\//i.test(String(a.report_url || '')) ? String(a.report_url) : repoIssues(a.repo));
 window.isSF = isSF;
-// A SourceForge project's two links: its page and its files (its releases).
-const sfMenu = (repo) => [{ act: 'url', url: repoHome(repo), label: t('View on SourceForge'), icon: 'web' }, { act: 'url', url: repoFiles(repo), label: t('Releases'), icon: 'page' }];
-// A Forgejo project's three links: its page, its releases and its issues.
-const fjMenu = (repo) => [{ act: 'url', url: repoHome(repo), label: viewOn(repo), icon: 'web' }, { act: 'url', url: repoFiles(repo), label: t('Releases'), icon: 'page' }, { act: 'url', url: repoIssues(repo), label: t('Issues'), icon: 'page' }];
 window.isFJ = isFJ;
 window.repoFiles = repoFiles;
 // A Coming soon game announced before it has a project: the post to follow it on (https only), and
@@ -2044,7 +2040,7 @@ function pageLibrary() {
   // Consoles the player's games are from: a filter once there's more than one.
   const origins = [...new Set(Object.values(S.library).map((g) => (byId(g.id) || {}).origin).filter(Boolean))].sort((x, y) => originName(x).localeCompare(originName(y)));
   const consoleSel = origins.length > 1 ? `<label class="pill-sel">${esc(t('Console'))}<select class="sel" data-act="liborigin">${[['', t('Any')], ...origins.map((o) => [o, originName(o)])].map(([k, nm]) => `<option value="${esc(k)}"${k ? ` data-ico="c:${esc(k)}"` : ''}${(S.lib.origin || '') === k ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>` : '';
-  return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one for versions, launch options and more.', '{n} games. Right-click one for versions, launch options and more.'))}</p></div>
+  return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(tn(total, '1 game. Right-click one to pin it, add a shortcut and more.', '{n} games. Right-click one to pin it, add a shortcut and more.'))}</p></div>
       <div class="dctl"><label class="smallsearch"><span class="sr">${esc(t('Search your games'))}</span>${SEARCH.replace('width="20" height="20"', 'width="16" height="16"')}<input id="lq" type="search" placeholder="${esc(t('Search your games'))}" value="${esc(S.lq)}" autocomplete="off" spellcheck="false"></label>
       <button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button>
       <button type="button" class="btn" data-act="gh-add">${BRANCH_S}${esc(t('Add a Recomp'))}</button>
@@ -5876,30 +5872,17 @@ function askWhereBuild() {
     new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
   });
 }
-// Skip Easy Setup for one game, in its menu: only on games Easy Setup can do, and not while it's
-// skipped for every game in Settings. Before it's installed it's ticked here (it changes how the
-// game installs, and there's no Manage tab yet); once installed, Easy Setup… opens its switch.
+// Skip Easy Setup for one game, in its menu, before it's installed: only on games Easy Setup can
+// do, and not while it's skipped for every game in Settings. It changes how the game installs, and
+// there's no Manage tab yet. Once installed, the switch is in its Manage tab.
 function easySkipItem(id) {
   const ui = S.settings.ui || {};
   if (!S.easyAll || !S.easyAll.has(id) || ui.easy_skip_all) return [];
-  if (S.library[id]) return [{ act: 'easy-row', id, label: t('Easy Setup…'), icon: 'disc' }];
+  if (S.library[id]) return [];
   return [{ act: 'easy-skip', id, label: t('Skip Easy Setup'), icon: 'disc', check: (ui.easy_skip || []).includes(id) }];
 }
-// Easy Setup… in an installed game's menu: its Manage tab, scrolled to the switch, which lights up.
-async function showEasyRow(id) {
-  S.nextTab = 'installed';
-  go('game', id);
-  let row = null;
-  for (let i = 0; i < 20 && !row; i++) {
-    await new Promise((r) => setTimeout(r, 50));
-    row = document.getElementById('easy-row');
-  }
-  if (!row) return;
-  row.scrollIntoView({ block: 'center', behavior: calm() ? 'auto' : 'smooth' });
-  row.classList.add('lit');
-  setTimeout(() => row.classList.remove('lit'), 1800);
-}
-// The same menu wherever a game is: its "…" button, or a right-click on its tile.
+// The same menu wherever a game is: its "…" button, or a right-click on its tile. It holds what no
+// tab of the game's page has: settings live in its Manage tab, saves in Saves, releases in Updates.
 function gameMenu(id) {
   const g = S.library[id], x = byId(id), st = x ? status(x) : g ? 'installed' : 'get';
   const first = st === 'running' ? { act: 'stop', id, label: t('Close game'), icon: 'stop' }
@@ -5920,24 +5903,6 @@ function gameMenu(id) {
     ...(!g && x ? [{ act: 'customize', id, label: t('Customize…'), icon: 'shot' }] : []),
     ...(!g ? easySkipItem(id) : []),
     ...(g ? ['-',
-      { label: t('Manage'), icon: 'gear', sub: [
-        { act: 'project-association', id, label: t('Project association…'), icon: 'layers' },
-        ...(!g.local ? [{ act: 'auto-up', id, label: t('Update automatically'), icon: 'refresh', check: !!g.auto_update }] : []),
-        ...holdItem(id),
-        { act: 'versions', id, label: t('Changelog and other versions'), icon: 'history' },
-        ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
-        { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
-        { act: 'setexe', id, label: selfManaged(id) ? t('Set Game Executable (On)…') : t('Set Game Executable…'), icon: 'exe' },
-        { act: 'manual', id, label: byHand(g) ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
-        ...easySkipItem(id),
-        ...(S.setup[id] && S.setup[id] !== 'loading' && S.setup[id].build_at ? [{ act: 'move-build', id, label: t('Move Build…'), icon: 'move' }] : []),
-        ...(S.setup[id] && S.setup[id] !== 'loading' && (S.setup[id].own_build || S.setup[id].build_dir) ? [{ act: 'ownbuild', id, label: S.setup[id].build_dir ? t('Use a Build You Already Have (On)…') : t('Use a Build You Already Have…'), icon: 'folder' }] : []),
-        ...(S.easy.has(id) ? [{ act: 'setup', id, label: g.game_copy ? t('Change your copy…') : t('Insert your copy…'), icon: 'disc' }, { act: 'relink', id, label: t('Relink Setup'), icon: 'refresh' }] : []),
-        ...(looksHere() ? [{ act: 'looks', id, label: t('Shaders'), icon: 'look' }] : []),
-        ...(S.mods[id] ? [{ act: 'mods', id, label: t('Mods'), icon: 'puzzle' }] : []),
-        ...(S.os === 'linux' && g.proton ? [{ act: 'wine-tools', id, label: t('Wine Tools…'), icon: 'exe' }] : []),
-      ] },
-      { act: 'saves-game', id, label: t('Manage saves'), icon: 'save' },
       { act: 'customize', id, label: t('Customize…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
@@ -5945,20 +5910,19 @@ function gameMenu(id) {
         ...(S.os === 'windows' || S.os === 'linux' ? [{ act: 'app-menu', id, label: S.os === 'windows' ? t('Add to Start Menu') : t('Add to App Menu'), icon: 'desk' }] : []),
         ...(S.steam ? [{ act: 'steam', id, label: t('Add to Steam'), icon: 'steam' }] : []),
       ] },
-      { label: t('Files'), icon: 'folder', sub: [
-        { act: 'folder', id, label: t('Open its folder'), icon: 'folder' },
-        { act: 'shots', id, label: t('Screenshots'), icon: 'shot' },
-        { act: 'backups', id, label: t('Backups of your saves…'), icon: 'save' },
-        { act: 'move', id, label: t('Move to another drive…'), icon: 'move' },
-      ] },
-      ...(x && x.repo ? [isSF(x.repo) ? { label: t('On SourceForge'), icon: 'web', sub: sfMenu(x.repo) } : isFJ(x.repo) ? { label: tf('On {host}', { host: fjServer(x.repo) }), icon: 'web', sub: fjMenu(x.repo) } : { label: isLab(x.repo) ? t('On GitLab') : t('On GitHub'), icon: 'web', sub: [{ act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }] }] : []),
+      ...repoItem(x),
       ...(window.pluginMenu ? window.pluginMenu(id) : []),
       '-',
       { act: 'troubleshoot', id, label: t('Troubleshoot…'), icon: 'info' },
       { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
-    ] : x && x.repo ? (isSF(x.repo) ? ['-', ...sfMenu(x.repo)] : isFJ(x.repo) ? ['-', ...fjMenu(x.repo)] : ['-', { act: 'url', url: repoReadme(x.repo), label: t('Read me'), icon: 'page' }, { act: 'url', url: repoHome(x.repo), label: isLab(x.repo) ? t('Its GitLab') : t('Its GitHub'), icon: 'web' }]) : []),
-    ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
+    ] : x && x.repo ? ['-', ...repoItem(x)] : []),
   ];
+}
+// Its project page, one row: its README is on Overview, its releases on Updates.
+function repoItem(x) {
+  if (!x || !x.repo) return [];
+  const label = isSF(x.repo) ? t('On SourceForge') : isFJ(x.repo) ? tf('On {host}', { host: fjServer(x.repo) }) : isLab(x.repo) ? t('On GitLab') : t('On GitHub');
+  return [{ act: 'url', url: repoHome(x.repo), label, icon: 'web' }];
 }
 
 // The game's folder is its own, right inside one of the libraries (so the launcher may delete it).
@@ -6260,7 +6224,7 @@ function pickBuild(id, builds, current) {
   const lit = builds.some((b) => b.name === current) ? (b) => b.name === current : (b) => kinds && b.best;
   const btns = builds.map((b) => `<button type="button" class="btn bld${lit(b) ? ' main' : ''}" data-x="b" data-f="${esc(b.name)}" title="${esc(b.name)}">${kinds ? `<b>${esc(t(b.label))}${b.best ? ` <span class="bld-tag">${esc(t('Usual'))}</span>` : ''}</b><small dir="ltr">${esc(b.name)}</small>` : `<b dir="ltr">${esc(b.name)}</b>`}</button>`);
   if (btns.length % 2) btns[0] = btns[0].replace('class="btn', 'class="span2 btn');
-  const say = kinds ? t('This release comes in more than one kind of build. The usual one works for most players. You can switch later from its right-click menu.') : t('This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later from its right-click menu.');
+  const say = kinds ? t('This release comes in more than one kind of build. The usual one works for most players. You can switch later in its Manage tab.') : t('This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later in its Manage tab.');
   modal(`<h2>${esc(tf('Which Version of {name}?', { name: a.name }))}</h2><p>${esc(say)}</p>
     <div class="acts grid2 builds">${btns.join('')}</div>`, (x, close) => { if (x.dataset.x === 'b') { close(); go(x.dataset.f); } }, t('Pick a build'));
 }
@@ -8599,7 +8563,6 @@ async function act(el, e) {
     case 'setexe':
       try { if (await chooseProgram(id)) { toast(t('Play starts that program now.')); render(true); } } catch (err) { fail(err); }
       return;
-    case 'easy-row': return showEasyRow(id);
     case 'forget-program':
       try {
         S.library[id] = await invoke('forget_program', { id });

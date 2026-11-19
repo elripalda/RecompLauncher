@@ -67,14 +67,10 @@ test('turning Easy Setup off says it in the switch\'s words once installed, and 
   assert.match(sw, /toast\(tf\('\{name\} skips Easy Setup: it installs as it comes/);
 });
 
-test('the game\'s menu: Skip Easy Setup ticked before install, Easy Setup… (to the switch) once installed', () => {
+test('the game\'s menu: Skip Easy Setup ticked before install, nothing once installed (the switch is in Manage)', () => {
   const item = fn(app, 'easySkipItem');
-  assert.match(item, /if \(S\.library\[id\]\) return \[\{ act: 'easy-row', id, label: t\('Easy Setup…'\), icon: 'disc' \}\];/);
+  assert.match(item, /if \(S\.library\[id\]\) return \[\];/);
   assert.match(item, /return \[\{ act: 'easy-skip', id, label: t\('Skip Easy Setup'\), icon: 'disc', check: /);
-  assert.match(app, /case 'easy-row': return showEasyRow\(id\);/);
-  const show = fn(app, 'showEasyRow');
-  assert.match(show, /S\.nextTab = 'installed';\n\s+go\('game', id\);/);
-  assert.match(show, /row\.scrollIntoView\(\{ block: 'center'[^\n]*\n\s+row\.classList\.add\('lit'\);/);
 });
 
 test('a game Easy Setup can\'t do goes back with Use Default', () => {
@@ -85,9 +81,8 @@ test('with Easy Setup skipped for every game, the way back is Use Default', () =
   assert.match(row(MINE, true, undefined, { easy_skip_all: true }), /data-act="forget-program"[^>]*>Use Default</);
 });
 
-test('the Overview shows Self-Managed under the install date, and the menu marks it on', () => {
+test('the Overview shows Self-Managed under the install date', () => {
   assert.match(app, /\$\{inst && k === t\('Installed'\) \? selfManagedPill\(id\) : ''\}/);
-  assert.match(fn(app, 'gameMenu'), /act: 'setexe', id, label: selfManaged\(id\) \? t\('Set Game Executable \(On\)…'\) : t\('Set Game Executable…'\)/);
 });
 
 test('Where\'s Your Build? offers the build folder or the game\'s executable, each saying what it does', () => {
