@@ -901,6 +901,8 @@
  "Open to join": "Herkese açık",
  "Open {site} in your browser?": "{site} tarayıcınızda açılsın mı?",
  "Opens On": "Açılış Sayfası",
+ "Featured Banner on Home": "Ana sayfada öne çıkan afiş",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Ana sayfanın üstündeki recomp slayt gösterisi. Kapatırsanız ana sayfa “Kaldığınız yerden devam edin” ile başlar.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Tam ekran açılır, oyun kumandasına hazır. TV veya el konsolu için ideal.",
  "Opens it from the desktop view.": "Masaüstü görünümünden açar.",
  "Opens, picks and changes things, or goes back.": "Açar, seçer ve değiştirir ya da geri döner.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Bu oyun başlatıcıdan mod almıyor.",
  "This game doesn't work with looks.": "Bu oyun görünümlerle çalışmıyor.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "Bu oyunun kurulumu, siz derledikten sonra değişti. Kopyanızı seçin, yeniden derlensin.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Kopyanıza gerek yok: son seferde sakladıklarından yeniden derlenir.",
  "This is how it will look while you play.": "Oynarken böyle görünecek.",
  "This looks like {name}, which is already in Discover.": "Bu {name} gibi görünüyor ve zaten Keşfet'te.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Bu mod buradan yüklenemez. GameBanana'daki sayfasında nasıl yapılacağı yazıyor.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "Oyun Zaten Orada",
  "The build of {name} is in {path} now.": "{name} derlemesi artık {path} içinde.",
  "The game was built from your copy and plays without it.": "Oyun kopyandan derlendi ve onsuz çalışır.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Kopyan artık burada değil. {name} ona ihtiyaç duymuyor: oyun zaten derlendi.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Başlatıcı kopyanı oyunun klasörüne açtı, bu yüzden oyun onsuz çalışır.",
  "There's no build to move yet. Set the game up first.": "Henüz taşınacak bir derleme yok. Önce oyunu kur.",
  "This PC's Name": "Bu Bilgisayarın Adı",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} kaldırıldı ama klasörü duruyor: önce kayıtlarının bir kopyası alınamadı. Klasör {path} içinde.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Kayıtlarının bir kopyası saklandı. Oyunu yeniden yükleyin ve Kayıtlar sekmesinden geri koyun.",
  "{path}. A copy of its saves is kept first.": "{path}. Önce kayıtlarının bir kopyası saklanır.",
- "Delete its folder and its saves": "Klasörünü ve kayıtlarını sil"
+ "Delete its folder and its saves": "Klasörünü ve kayıtlarını sil",
+ "N/A": "Yok"
 }

@@ -901,6 +901,8 @@
  "Open to join": "เปิดให้ทุกคนเข้าร่วม",
  "Open {site} in your browser?": "เปิด {site} ในเบราว์เซอร์ไหม",
  "Opens On": "เปิดที่",
+ "Featured Banner on Home": "แบนเนอร์แนะนำในหน้าแรก",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "สไลด์โชว์รีคอมป์ที่ด้านบนของหน้าแรก ปิดไว้แล้วหน้าแรกจะเริ่มที่ \"กลับไปเล่นต่อ\"",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "เปิดแบบเต็มจอ พร้อมสำหรับคอนโทรลเลอร์ เหมาะกับทีวีหรือเครื่องพกพา",
  "Opens it from the desktop view.": "เปิดจากมุมมองเดสก์ท็อป",
  "Opens, picks and changes things, or goes back.": "เปิด เลือก และเปลี่ยนสิ่งต่างๆ หรือย้อนกลับ",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "เกมนี้ไม่รองรับม็อดจากตัวเปิดเกม",
  "This game doesn't work with looks.": "เกมนี้ใช้กับสไตล์ภาพไม่ได้",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "การตั้งค่าของเกมนี้เปลี่ยนไปตั้งแต่คุณสร้างไว้ เลือกสำเนาของคุณแล้วระบบจะสร้างใหม่",
+  "Your copy isn't needed: it's built again from what it kept last time.": "ไม่ต้องใช้สำเนาของคุณ: เกมจะถูกสร้างใหม่จากสิ่งที่เก็บไว้ครั้งก่อน",
  "This is how it will look while you play.": "หน้าตาจะเป็นแบบนี้ระหว่างที่คุณเล่น",
  "This looks like {name}, which is already in Discover.": "ดูเหมือนจะเป็น {name} ซึ่งมีอยู่ในหน้าค้นพบแล้ว",
  "This mod can't be installed from here. Its page on GameBanana says how.": "ม็อดนี้ติดตั้งจากที่นี่ไม่ได้ หน้าของม็อดบน GameBanana มีวิธีติดตั้ง",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "มีเกมอยู่ที่นั่นแล้ว",
  "The build of {name} is in {path} now.": "บิลด์ของ {name} อยู่ที่ {path} แล้ว",
  "The game was built from your copy and plays without it.": "เกมถูกบิลด์จากสำเนาของคุณ และเล่นได้โดยไม่ต้องใช้สำเนา",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "สำเนาของคุณไม่อยู่ที่นี่แล้ว {name} ไม่ต้องใช้สำเนา เพราะบิลด์ไว้แล้ว",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "ลันเชอร์แตกสำเนาของคุณลงในโฟลเดอร์ของเกมแล้ว เกมจึงเล่นได้โดยไม่ต้องใช้สำเนา",
  "There's no build to move yet. Set the game up first.": "ยังไม่มีบิลด์ให้ย้าย ตั้งค่าเกมก่อน",
  "This PC's Name": "ชื่อพีซีเครื่องนี้",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "ถอนการติดตั้ง {name} แล้ว แต่โฟลเดอร์ยังอยู่: ทำสำเนาเซฟไว้ก่อนไม่ได้ โฟลเดอร์อยู่ที่ {path}",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "เก็บสำเนาเซฟไว้แล้ว ติดตั้งเกมใหม่แล้วใส่เซฟกลับจากแท็บเซฟ",
  "{path}. A copy of its saves is kept first.": "{path} จะเก็บสำเนาเซฟไว้ก่อน",
- "Delete its folder and its saves": "ลบโฟลเดอร์และเซฟ"
+ "Delete its folder and its saves": "ลบโฟลเดอร์และเซฟ",
+ "N/A": "ไม่มี"
 }

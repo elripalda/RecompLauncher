@@ -901,6 +901,8 @@
  "Open to join": "誰でも参加可能",
  "Open {site} in your browser?": "{site} をブラウザーで開きますか？",
  "Opens On": "起動時に開くページ",
+ "Featured Banner on Home": "ホームのおすすめバナー",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "ホーム上部のリコンプのスライドショー。オフにすると、ホームは「すぐに再開」から始まります。",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "フルスクリーンで開き、コントローラーですぐ操作できます。テレビや携帯ゲーム機に最適です。",
  "Opens it from the desktop view.": "デスクトップ表示から開きます。",
  "Opens, picks and changes things, or goes back.": "開く、選ぶ、変更する、または戻ります。",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "このゲームはランチャーからの MOD に対応していません。",
  "This game doesn't work with looks.": "このゲームはスタイルに対応していません。",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "このゲームのセットアップは、ビルドした後に変更されました。ゲームデータを選ぶともう一度ビルドされます。",
+  "Your copy isn't needed: it's built again from what it kept last time.": "ゲームデータは必要ありません。前回保存したものからもう一度ビルドされます。",
  "This is how it will look while you play.": "プレイ中はこのように表示されます。",
  "This looks like {name}, which is already in Discover.": "これは {name} のようです。すでに「見つける」にあります。",
  "This mod can't be installed from here. Its page on GameBanana says how.": "この MOD はここからインストールできません。方法は GameBanana のページに書かれています。",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "ゲームはすでにそこにあります",
  "The build of {name} is in {path} now.": "{name} のビルドは現在 {path} にあります。",
  "The game was built from your copy and plays without it.": "ゲームはあなたのコピーからビルドされていて、コピーなしで遊べます。",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "コピーはもうここにありません。{name} はビルド済みなので、コピーは不要です。",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "ランチャーがコピーをゲームのフォルダーに展開したので、コピーなしで遊べます。",
  "There's no build to move yet. Set the game up first.": "移動するビルドはまだありません。先にゲームをセットアップしてください。",
  "This PC's Name": "この PC の名前",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} をアンインストールしましたが、フォルダーは残っています。先にセーブデータのコピーを作れませんでした。場所は {path} です。",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "セーブデータのコピーを残しました。もう一度インストールして、「セーブデータ」タブから戻してください。",
  "{path}. A copy of its saves is kept first.": "{path}。先にセーブデータのコピーを残します。",
- "Delete its folder and its saves": "フォルダーとセーブデータを削除"
+ "Delete its folder and its saves": "フォルダーとセーブデータを削除",
+ "N/A": "該当なし"
 }

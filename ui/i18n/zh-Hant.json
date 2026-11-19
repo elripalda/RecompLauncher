@@ -901,6 +901,8 @@
  "Open to join": "開放加入",
  "Open {site} in your browser?": "要在瀏覽器中開啟 {site} 嗎？",
  "Opens On": "開啟時顯示",
+ "Featured Banner on Home": "首頁精選橫幅",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "首頁頂部的重製作品輪播。關閉後，首頁從「繼續玩」開始。",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "以全螢幕開啟，適合使用控制器。很適合電視或掌機。",
  "Opens it from the desktop view.": "從桌面檢視開啟它。",
  "Opens, picks and changes things, or goes back.": "開啟、選擇和變更，或返回。",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "這款遊戲不支援透過啟動器安裝模組。",
  "This game doesn't work with looks.": "這款遊戲不支援畫面風格。",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "這個遊戲的設定在您建置之後有了變更。選擇您的副本，就會重新建置。",
+  "Your copy isn't needed: it's built again from what it kept last time.": "不需要您的副本：會用上次保留的內容重新建置。",
  "This is how it will look while you play.": "遊玩時會是這個樣子。",
  "This looks like {name}, which is already in Discover.": "這看起來是 {name}，它已經在「探索」中了。",
  "This mod can't be installed from here. Its page on GameBanana says how.": "這個模組無法從這裡安裝。它的 GameBanana 頁面上有安裝說明。",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "遊戲已經在那裡了",
  "The build of {name} is in {path} now.": "{name} 的建置現在位於 {path}。",
  "The game was built from your copy and plays without it.": "遊戲是用你的遊戲副本建置的，不需要它也能執行。",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "你的遊戲副本已不在這裡。{name} 已經建置好了，不再需要它。",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "啟動器已把你的遊戲副本解壓縮到遊戲資料夾中，所以不需要它也能執行。",
  "There's no build to move yet. Set the game up first.": "還沒有可移動的建置。請先設定遊戲。",
  "This PC's Name": "這台電腦的名稱",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} 已解除安裝，但它的資料夾還在：無法先做一份存檔副本。它位於 {path}。",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "已保留一份存檔副本。重新安裝後，可在「存檔」分頁中放回。",
  "{path}. A copy of its saves is kept first.": "{path}。會先保留一份存檔副本。",
- "Delete its folder and its saves": "刪除其資料夾和存檔"
+ "Delete its folder and its saves": "刪除其資料夾和存檔",
+ "N/A": "不適用"
 }

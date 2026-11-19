@@ -383,6 +383,11 @@
             "type": "string"
           }
         },
+        "keeps_copy": {
+          "type": "boolean",
+          "default": false,
+          "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument with {game} in it, so write the copy as one argument (--game={game}). List done too."
+        },
         "version": {
           "type": "string",
           "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to."

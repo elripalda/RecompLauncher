@@ -283,6 +283,9 @@ impl Boot {
             entries.sort_by_key(|e| e.file_name());
             for e in entries {
                 let Ok(t) = e.file_type() else { continue };
+                if e.file_name() == crate::swap::FOLDER {
+                    continue;
+                }
                 if t.is_dir() && depth < 2 {
                     stack.push((e.path(), depth + 1));
                 } else if t.is_file() && e.file_name().to_string_lossy().to_lowercase() == want {

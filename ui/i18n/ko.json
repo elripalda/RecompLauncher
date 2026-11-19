@@ -901,6 +901,8 @@
  "Open to join": "누구나 참여 가능",
  "Open {site} in your browser?": "브라우저에서 {site}을(를) 열까요?",
  "Opens On": "시작 페이지",
+ "Featured Banner on Home": "홈의 추천 배너",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "홈 맨 위의 리컴프 슬라이드쇼입니다. 끄면 홈이 \"바로 다시 플레이\"부터 시작합니다.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "전체 화면으로 열려 바로 컨트롤러로 조작할 수 있습니다. TV나 휴대용 기기에 좋습니다.",
  "Opens it from the desktop view.": "데스크톱 화면에서 엽니다.",
  "Opens, picks and changes things, or goes back.": "열기, 선택, 변경 또는 뒤로 가기.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "이 게임은 런처의 모드를 지원하지 않습니다.",
  "This game doesn't work with looks.": "이 게임은 스타일을 지원하지 않습니다.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "이 게임을 빌드한 뒤로 설정 방식이 바뀌었습니다. 내 사본을 고르면 다시 빌드됩니다.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "내 사본은 필요 없습니다. 지난번에 남겨 둔 것으로 다시 빌드됩니다.",
  "This is how it will look while you play.": "플레이 중에는 이렇게 표시됩니다.",
  "This looks like {name}, which is already in Discover.": "이 게임은 {name} 같습니다. 이미 탐색에 있습니다.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "이 모드는 여기에서 설치할 수 없습니다. 방법은 GameBanana 페이지에 있습니다.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "게임이 이미 거기에 있습니다",
  "The build of {name} is in {path} now.": "{name}의 빌드가 이제 {path}에 있습니다.",
  "The game was built from your copy and plays without it.": "게임이 사본으로 빌드되었고, 사본 없이 실행됩니다.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "사본이 더 이상 여기에 없습니다. {name}은(는) 이미 빌드되어 사본이 필요 없습니다.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "런처가 사본을 게임 폴더에 풀었으므로, 게임이 사본 없이 실행됩니다.",
  "There's no build to move yet. Set the game up first.": "아직 옮길 빌드가 없습니다. 먼저 게임을 설정하세요.",
  "This PC's Name": "이 PC의 이름",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name}을(를) 제거했지만 폴더는 남아 있습니다. 먼저 저장 데이터 사본을 만들지 못했습니다. 위치: {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "저장 데이터 사본을 남겼습니다. 다시 설치한 뒤 저장 데이터 탭에서 되돌리세요.",
  "{path}. A copy of its saves is kept first.": "{path}. 먼저 저장 데이터 사본을 남깁니다.",
- "Delete its folder and its saves": "폴더와 저장 데이터 삭제"
+ "Delete its folder and its saves": "폴더와 저장 데이터 삭제",
+ "N/A": "해당 없음"
 }

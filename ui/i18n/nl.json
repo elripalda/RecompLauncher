@@ -901,6 +901,8 @@
  "Open to join": "Open voor iedereen",
  "Open {site} in your browser?": "{site} openen in je browser?",
  "Opens On": "Openen op",
+ "Featured Banner on Home": "Uitgelichte banner op Start",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "De diavoorstelling met recomps bovenaan Start. Zet hem uit en Start begint bij ‘Verder waar je was’.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Opent op volledig scherm, klaar voor een controller. Handig voor een tv of een handheld.",
  "Opens it from the desktop view.": "Opent het vanuit de bureaubladweergave.",
  "Opens, picks and changes things, or goes back.": "Opent, kiest en wijzigt dingen, of gaat terug.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Deze game ondersteunt geen mods via de launcher.",
  "This game doesn't work with looks.": "Deze game werkt niet met looks.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "De installatie van deze game is veranderd sinds je hem hebt gebouwd. Kies je exemplaar, dan wordt hij opnieuw gebouwd.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Je exemplaar is niet nodig: hij wordt opnieuw gebouwd uit wat hij de vorige keer heeft bewaard.",
  "This is how it will look while you play.": "Zo ziet het eruit tijdens het spelen.",
  "This looks like {name}, which is already in Discover.": "Dit lijkt {name}, en die staat al in Ontdekken.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Deze mod kan niet hiervandaan worden geïnstalleerd. Op de pagina op GameBanana staat hoe het moet.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "Het spel staat er al",
  "The build of {name} is in {path} now.": "De build van {name} staat nu in {path}.",
  "The game was built from your copy and plays without it.": "Het spel is gebouwd uit je kopie en speelt zonder.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Je kopie is hier niet meer. {name} heeft hem niet nodig: het is al gebouwd.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "De launcher heeft je kopie uitgepakt in de map van het spel, dus het spel speelt zonder.",
  "There's no build to move yet. Set the game up first.": "Er is nog geen build om te verplaatsen. Stel het spel eerst in.",
  "This PC's Name": "Naam van deze pc",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} is verwijderd, maar de map is gebleven: er kon eerst geen kopie van de opgeslagen games worden gemaakt. Hij staat in {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Er is een kopie van de opgeslagen games bewaard. Installeer hem opnieuw en zet ze terug via het tabblad Opgeslagen games.",
  "{path}. A copy of its saves is kept first.": "{path}. Er wordt eerst een kopie van de opgeslagen games bewaard.",
- "Delete its folder and its saves": "De map en de opgeslagen games wissen"
+ "Delete its folder and its saves": "De map en de opgeslagen games wissen",
+ "N/A": "n.v.t."
 }

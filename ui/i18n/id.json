@@ -901,6 +901,8 @@
  "Open to join": "Terbuka untuk semua",
  "Open {site} in your browser?": "Buka {site} di browser-mu?",
  "Opens On": "Buka di",
+ "Featured Banner on Home": "Banner Unggulan di Beranda",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Tayangan slide recomp di bagian atas Beranda. Matikan dan Beranda dimulai dari \"Lanjut main\".",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Terbuka layar penuh, siap untuk kontroler. Cocok untuk TV atau perangkat genggam.",
  "Opens it from the desktop view.": "Membukanya dari tampilan desktop.",
  "Opens, picks and changes things, or goes back.": "Membuka, memilih, dan mengubah, atau kembali.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Game ini tidak menerima mod dari launcher.",
  "This game doesn't work with looks.": "Game ini tidak mendukung tampilan.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "Penyiapan game ini berubah sejak kamu membuatnya. Pilih salinanmu dan game akan dibuat lagi.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Salinanmu tidak diperlukan: game dibuat lagi dari yang disimpannya terakhir kali.",
  "This is how it will look while you play.": "Seperti inilah tampilannya saat kamu bermain.",
  "This looks like {name}, which is already in Discover.": "Sepertinya ini {name}, yang sudah ada di Jelajahi.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Mod ini tidak bisa dipasang dari sini. Halamannya di GameBanana menjelaskan caranya.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "Game-nya Sudah Ada di Sana",
  "The build of {name} is in {path} now.": "Build {name} sekarang ada di {path}.",
  "The game was built from your copy and plays without it.": "Game ini dibangun dari salinanmu dan bisa dimainkan tanpanya.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Salinanmu sudah tidak ada di sini. {name} tidak membutuhkannya: game ini sudah dibangun.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Launcher mengekstrak salinanmu ke folder game, jadi game bisa dimainkan tanpanya.",
  "There's no build to move yet. Set the game up first.": "Belum ada build untuk dipindahkan. Siapkan game-nya dulu.",
  "This PC's Name": "Nama PC Ini",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} sudah di-uninstall, tapi foldernya tetap ada: salinan save-nya tidak bisa dibuat dulu. Foldernya di {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Salinan save-nya disimpan. Pasang lagi game-nya dan kembalikan save dari tab Save.",
  "{path}. A copy of its saves is kept first.": "{path}. Salinan save-nya disimpan dulu.",
- "Delete its folder and its saves": "Hapus folder dan save-nya"
+ "Delete its folder and its saves": "Hapus folder dan save-nya",
+ "N/A": "Tidak ada"
 }

@@ -901,6 +901,8 @@
  "Open to join": "开放加入",
  "Open {site} in your browser?": "在浏览器中打开 {site}？",
  "Opens On": "打开时显示",
+ "Featured Banner on Home": "主页精选横幅",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "主页顶部的重制作品轮播。关闭后，主页从“继续玩”开始。",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "全屏打开，适合手柄操作。适合电视或掌机。",
  "Opens it from the desktop view.": "从桌面视图打开它。",
  "Opens, picks and changes things, or goes back.": "打开、选择和更改，或返回。",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "此游戏不支持通过启动器安装模组。",
  "This game doesn't work with looks.": "此游戏不支持画面风格。",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "这个游戏的设置在你构建之后有了变化。选择你的副本，就会重新构建。",
+  "Your copy isn't needed: it's built again from what it kept last time.": "不需要你的副本：会用上次保留的内容重新构建。",
  "This is how it will look while you play.": "游戏时会是这个样子。",
  "This looks like {name}, which is already in Discover.": "这看起来是 {name}，它已经在“发现”中了。",
  "This mod can't be installed from here. Its page on GameBanana says how.": "此模组无法在这里安装。其 GameBanana 页面上有安装说明。",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "游戏已经在那里了",
  "The build of {name} is in {path} now.": "{name} 的构建现在位于 {path}。",
  "The game was built from your copy and plays without it.": "游戏是用你的游戏副本构建的，不需要它也能运行。",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "你的游戏副本已不在这里。{name} 已经构建好了，不再需要它。",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "启动器已把你的游戏副本解压到游戏文件夹中，所以不需要它也能运行。",
  "There's no build to move yet. Set the game up first.": "还没有可移动的构建。请先配置游戏。",
  "This PC's Name": "此电脑的名称",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} 已卸载，但它的文件夹还在：无法先做一份存档副本。它位于 {path}。",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "已保留一份存档副本。重新安装后，可在“存档”选项卡中放回。",
  "{path}. A copy of its saves is kept first.": "{path}。会先保留一份存档副本。",
- "Delete its folder and its saves": "删除其文件夹和存档"
+ "Delete its folder and its saves": "删除其文件夹和存档",
+ "N/A": "不适用"
 }

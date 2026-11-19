@@ -32,6 +32,13 @@ pub fn dir_size(p: &Path) -> u64 {
     total
 }
 
+/// How much room a game takes, as the player sees it: its folder without the old files an update
+/// set aside and couldn't remove yet (they go at the next start). Moving or removing the game
+/// still takes the whole folder (`dir_size`).
+pub fn game_size(p: &Path) -> u64 {
+    dir_size(p).saturating_sub(dir_size(&p.join(crate::swap::FOLDER)))
+}
+
 /// Move a game's folder to `to`. A rename when it's the same drive; otherwise a copy, reporting
 /// bytes as it goes, then the old folder is deleted once everything has been copied.
 pub fn move_dir(from: &Path, to: &Path, report: &dyn Fn(u64, u64)) -> Result<(), Error> {
@@ -235,6 +242,16 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn a_games_size_leaves_out_what_an_update_set_aside() {
+        let game = tmp("size").join("game");
+        fs::create_dir_all(game.join(crate::swap::FOLDER).join("old")).unwrap();
+        fs::write(game.join("Game.exe"), [0u8; 100]).unwrap();
+        fs::write(game.join(crate::swap::FOLDER).join("old/Game.exe"), [0u8; 40]).unwrap();
+        assert_eq!(game_size(&game), 100);
+        assert_eq!(dir_size(&game), 140, "moving the game still counts all of it");
     }
 
     #[test]

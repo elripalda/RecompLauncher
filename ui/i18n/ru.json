@@ -901,6 +901,8 @@
  "Open to join": "Открыта для всех",
  "Open {site} in your browser?": "Открыть {site} в браузере?",
  "Opens On": "Открывать на",
+ "Featured Banner on Home": "Баннер с подборкой на главной",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Слайд-шоу рекомпов вверху главной страницы. Выключите его, и главная начнётся с раздела «Вернуться в игру».",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Открывается на весь экран, готов к игре на контроллере. Подходит для телевизора или портативного ПК.",
  "Opens it from the desktop view.": "Открывает его из обычного режима.",
  "Opens, picks and changes things, or goes back.": "Открывает, выбирает и меняет или возвращает назад.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Эта игра не поддерживает моды из лаунчера.",
  "This game doesn't work with looks.": "Эта игра не работает со стилями.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "Настройка этой игры изменилась с тех пор, как вы её собрали. Выберите свою копию, и она соберётся снова.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Ваша копия не нужна: игра соберётся заново из того, что сохранила в прошлый раз.",
  "This is how it will look while you play.": "Так это будет выглядеть во время игры.",
  "This looks like {name}, which is already in Discover.": "Похоже, это {name} — он уже есть в «Обзоре».",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Этот мод нельзя установить отсюда. Как это сделать, написано на его странице на GameBanana.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "Игра уже там",
  "The build of {name} is in {path} now.": "Сборка {name} теперь в {path}.",
  "The game was built from your copy and plays without it.": "Игра собрана из вашей копии и работает без неё.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Вашей копии здесь больше нет. {name} она не нужна: игра уже собрана.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Лаунчер распаковал вашу копию в папку игры, поэтому игра работает без неё.",
  "There's no build to move yet. Set the game up first.": "Пока нечего переносить. Сначала настройте игру.",
  "This PC's Name": "Имя этого ПК",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} удалена, но её папка осталась: сначала не удалось сделать копию сохранений. Она в {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Копия сохранений сохранена. Установите игру снова и верните их на вкладке «Сохранения».",
  "{path}. A copy of its saves is kept first.": "{path}. Сначала будет сделана копия сохранений.",
- "Delete its folder and its saves": "Удалить папку вместе с сохранениями"
+ "Delete its folder and its saves": "Удалить папку вместе с сохранениями",
+ "N/A": "Н/Д"
 }

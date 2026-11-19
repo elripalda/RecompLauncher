@@ -901,6 +901,8 @@
  "Open to join": "Ai cũng tham gia được",
  "Open {site} in your browser?": "Mở {site} trong trình duyệt?",
  "Opens On": "Mở vào",
+ "Featured Banner on Home": "Biểu ngữ nổi bật ở Trang chủ",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "Trình chiếu các recomp ở đầu Trang chủ. Tắt đi thì Trang chủ bắt đầu từ \"Chơi tiếp\".",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Mở toàn màn hình, sẵn sàng cho tay cầm. Phù hợp với TV hoặc máy cầm tay.",
  "Opens it from the desktop view.": "Mở từ giao diện máy tính.",
  "Opens, picks and changes things, or goes back.": "Mở, chọn và thay đổi, hoặc quay lại.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Trò chơi này không nhận mod từ trình khởi chạy.",
  "This game doesn't work with looks.": "Trò chơi này không dùng được phong cách.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "Cách thiết lập game này đã thay đổi kể từ khi bạn dựng nó. Chọn bản sao của bạn và game sẽ được dựng lại.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Không cần bản sao của bạn: game được dựng lại từ những gì nó đã giữ lần trước.",
  "This is how it will look while you play.": "Đây là cách nó sẽ hiện khi bạn chơi.",
  "This looks like {name}, which is already in Discover.": "Đây có vẻ là {name}, đã có trong Khám phá.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Không thể cài mod này từ đây. Trang của mod trên GameBanana có hướng dẫn.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "Trò chơi đã có ở đó",
  "The build of {name} is in {path} now.": "Bản build của {name} giờ ở {path}.",
  "The game was built from your copy and plays without it.": "Trò chơi được build từ bản sao của bạn và chạy được mà không cần nó.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Bản sao của bạn không còn ở đây nữa. {name} không cần nó: trò chơi đã được build.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Launcher đã giải nén bản sao của bạn vào thư mục của trò chơi, nên trò chơi chạy được mà không cần nó.",
  "There's no build to move yet. Set the game up first.": "Chưa có bản build nào để chuyển. Hãy thiết lập trò chơi trước.",
  "This PC's Name": "Tên của PC này",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "Đã gỡ {name}, nhưng thư mục của nó vẫn còn: không tạo được bản sao dữ liệu lưu trước. Nó nằm ở {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Đã giữ một bản sao dữ liệu lưu. Hãy cài lại trò chơi và khôi phục từ thẻ Dữ liệu lưu.",
  "{path}. A copy of its saves is kept first.": "{path}. Một bản sao dữ liệu lưu sẽ được giữ trước.",
- "Delete its folder and its saves": "Xóa thư mục và dữ liệu lưu"
+ "Delete its folder and its saves": "Xóa thư mục và dữ liệu lưu",
+ "N/A": "Không có"
 }

@@ -40,7 +40,9 @@ function stepsModel(id, su, ns) {
   // A build that's already there stands in for the copy: the player's own (Choose That Folder), or
   // the one in the game's folder from before, unless they asked to build it again.
   const skipBuild = !!ns.own || (!!su.prebuilt && !ns.rebuild);
-  const missing = needed.filter((r) => !r.path && !(skipBuild && r.legacy && r.id === 'game'));
+  // Its setup step runs again without the copy, from what it kept (prepare.keeps_copy).
+  const kept = !!su.kept && !skipBuild;
+  const missing = needed.filter((r) => !r.path && !((skipBuild || kept) && r.legacy && r.id === 'game'));
   // A build option, required or not, does nothing when nothing is built.
   const reqOff = !skipBuild && prepBlocked(su);
   const steps = [{ id: 'game', name: own.filter((r) => r.role === 'disc').length > 1 ? t('Discs') : t('Game') }];
@@ -52,7 +54,7 @@ function stepsModel(id, su, ns) {
   // The player's own build didn't pass (ownErr): Set Up waits for another folder or their copy.
   const ownBad = !!(ns.own && ns.ownErr);
   const blocked = missing.length > 0 || reqOff || broken || ownBad || !!ns.busy;
-  return { rows, own, keys, addons, runtime, opts, skipBuild, missing, reqOff, ownBad, steps, at, cur: steps[at], last, broken, blocked };
+  return { rows, own, keys, addons, runtime, opts, skipBuild, kept, missing, reqOff, ownBad, steps, at, cur: steps[at], last, broken, blocked };
 }
 
 const ssTag = (r) => {
@@ -133,6 +135,12 @@ function stepsView(id, su, ns, game) {
   if (m.cur.id === 'game') {
     head = m.own.filter((r) => r.role === 'disc').length > 1 ? t('Insert your discs') : t('Insert your copy');
     lead = t('Checked once when it\'s set up. After that, you just press Play.');
+    // Built again from what its setup step kept: the copy's box stays, for building from it instead.
+    const game = m.own.find((r) => r.legacy && r.id === 'game');
+    if (m.kept && game && !game.path) {
+      head = t('Build It Again');
+      lead = t('Your copy isn\'t needed: it\'s built again from what it kept last time.');
+    }
     const one = m.own.length === 1 && (m.own[0].legacy || m.own[0].role === 'game' || m.own[0].role === 'disc');
     const title = m.own[0] && m.own[0].legacy ? (game.game || name) : m.own[0] ? m.own[0].label : '';
     const main = one ? ssBox(id, su, ns, m.own[0], title) : m.own.length ? `<div class="ss-rows">${m.own.map((r) => ssRow(r, ns)).join('')}</div>` : '';
@@ -266,7 +274,8 @@ async function stepsDrop(id, path, ns) {
 }
 
 // Set Up: what starts, by what the screen has. { ready: text } when nothing has to run,
-// { copy: path } for setup_copy, { inputs: true } for setup_inputs_run, or nothing when it
+// { copy: path } for setup_copy, { kept: true } for setup_copy without the copy (built again from
+// what it kept), { inputs: true } for setup_inputs_run, or nothing when it
 // couldn't (the reason is in ns). saving: the options' save still on its way, which the backend
 // checks the required ones against.
 async function stepsRun(id, ns, saving) {
@@ -290,5 +299,6 @@ async function stepsRun(id, ns, saving) {
   await saving;
   if ((su.inputs || []).length) return { inputs: true };
   const game = m.own.find((r) => r.legacy && r.id === 'game');
-  return game && game.path ? { copy: game.path } : null;
+  if (game && game.path) return { copy: game.path };
+  return m.kept ? { kept: true } : null;
 }

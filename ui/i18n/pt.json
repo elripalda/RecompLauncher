@@ -901,6 +901,8 @@
  "Open to join": "Aberta a todos",
  "Open {site} in your browser?": "Abrir {site} no teu navegador?",
  "Opens On": "Abrir em",
+ "Featured Banner on Home": "Faixa em destaque no Início",
+ "The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.": "A apresentação de recomps no topo do Início. Desativa-a e o Início começa em “Voltar a jogar”.",
  "Opens full screen, ready for a controller. Good for a TV or a handheld.": "Abre em ecrã inteiro, pronto para comando. Ideal para uma TV ou uma consola portátil.",
  "Opens it from the desktop view.": "Abre-o a partir do modo janela.",
  "Opens, picks and changes things, or goes back.": "Abre, escolhe e muda coisas, ou volta atrás.",
@@ -1367,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Este jogo não aceita mods a partir do launcher.",
  "This game doesn't work with looks.": "Este jogo não funciona com estilos.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "A configuração deste jogo mudou desde que o compilaste. Escolhe a tua cópia e volta a ser compilado.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "A tua cópia não é necessária: volta a ser compilado com o que guardou da última vez.",
  "This is how it will look while you play.": "É assim que vai aparecer enquanto jogas.",
  "This looks like {name}, which is already in Discover.": "Parece ser {name}, que já está em Descobrir.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Este mod não pode ser instalado a partir daqui. A página no GameBanana explica como.",
@@ -3319,6 +3322,7 @@
  "The Game Is Already There": "O jogo já lá está",
  "The build of {name} is in {path} now.": "A build de {name} está agora em {path}.",
  "The game was built from your copy and plays without it.": "O jogo foi criado a partir da tua cópia e funciona sem ela.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "A tua cópia já não está aqui. {name} não precisa dela: o jogo já foi criado.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "O launcher descompactou a tua cópia na pasta do jogo, por isso o jogo funciona sem ela.",
  "There's no build to move yet. Set the game up first.": "Ainda não há uma build para mover. Configura o jogo primeiro.",
  "This PC's Name": "Nome deste PC",
@@ -3366,5 +3370,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} foi desinstalado, mas a pasta ficou: não foi possível fazer antes uma cópia dos dados guardados. Está em {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Fica guardada uma cópia dos dados guardados. Volta a instalá-lo e repõe-nos no separador Dados guardados.",
  "{path}. A copy of its saves is kept first.": "{path}. Antes fica guardada uma cópia dos dados guardados.",
- "Delete its folder and its saves": "Apagar a pasta e os dados guardados"
+ "Delete its folder and its saves": "Apagar a pasta e os dados guardados",
+ "N/A": "N/D"
 }

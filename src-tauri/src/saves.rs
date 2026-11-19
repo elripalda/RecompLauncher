@@ -218,7 +218,8 @@ fn is_save_file(name: &str, size: u64) -> bool {
 }
 
 fn skip_dir(name: &str) -> bool {
-    NOT_SAVE_DIRS.contains(&name.to_lowercase().as_str())
+    // An update's old files, set aside while it goes in, are never the player's saves.
+    name == crate::swap::FOLDER || NOT_SAVE_DIRS.contains(&name.to_lowercase().as_str())
 }
 
 /// `*.sav` against a file name.

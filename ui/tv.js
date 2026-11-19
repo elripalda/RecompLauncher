@@ -459,7 +459,7 @@
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
-      case 'installed': { const su = S.setup[id]; if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
+      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
       default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Install') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
@@ -570,9 +570,8 @@
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
       case 'installed': {
-        const su = S.setup[id];
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
-        if (S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
+        if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
         return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', run: () => playGame(id) };
       }
       case 'settingup': {
@@ -1489,7 +1488,7 @@
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
     const devText = a.blurb || notesLine(a.description);
-    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('Size'), a.size]].filter(([, v]) => v);
+    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
     const checkBlock = !g && checks.length ? `<section class="tv-block"><h3>${esc(t('Before you install'))}${bad ? ` <small>${esc(tn(bad, '1 thing to do', '{n} things to do'))}</small>` : ''}</h3><div class="tv-panel tv-checks" data-f data-key="g-checks"><dl>${checks.map((r) => `<div><dt>${esc(r.k)}<small>${esc(r.d || '')}</small></dt><dd>${okMark(r.v)}</dd></div>`).join('')}</dl></div></section>` : '';
     const aside = g
       ? `<aside class="tv-panel" aria-label="${esc(t('Details'))}"><h2>${esc(bad ? t('Before you play') : t('Ready to play'))}</h2><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${tvRuns(a)}</aside>`
@@ -1652,7 +1651,12 @@
       `<button type="button" class="tv-item${look ? '' : ' off'}" data-f data-key="gs:__amount" data-gset="__amount" data-id="${esc(id)}"${look ? '' : ' disabled'}><span class="k">${esc(t('Amount'))}<small>${esc(t('How strong the shader is.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 22)}</span></button>`,
     ] : [];
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
-      prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
+      prof && prof.needs ? (() => {
+        // Built from a copy that's gone since: it plays without it, as on the desktop.
+        const gone = copyNotNeeded(id), have = prof.copy || gone;
+        const sub = prof.copy ? baseName(prof.copy) : gone ? copyGoneText(id) : prof.needs;
+        return `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(sub)}</small></span><span class="tv-pill${have ? ' on' : ''}">${esc(have ? t('Change') : t('Insert it'))}</span></button>`;
+      })() : '',
       ...lookRows,
       ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
@@ -2062,6 +2066,7 @@
   const TS = { id: null, stage: 'steps', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
   async function tvSetup(id) {
     if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
+    if (TS.id !== id) setupOpened(id);
     const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
     if (activeJob) {
       if (TV.sheet) closeSheet();
@@ -2107,7 +2112,7 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
-      const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
+      const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
       const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
@@ -2215,6 +2220,7 @@
           toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
         }
         if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); }
+        setupClosed(id);
         TS.id = null;
       }
     };
@@ -2239,8 +2245,9 @@
     if (TS.id !== id) return;
     if (!go) { sfx('back'); return tsDraw(); }
     if (go.ready) { TS.stage = 'ready'; TS.result = { text: go.ready }; sfx('select'); return tsDraw(); }
+    if (go.kept) return tsBegin('', true);
     if (go.copy) return tsBegin(go.copy);
-    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' });
+    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '', kept: false });
     tsDraw();
     try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
@@ -2253,7 +2260,8 @@
       if (!TS.id) return;
       if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
     }
-    Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    // No path: built again from what it kept, so there's no copy to read or check.
+    Object.assign(TS, { stage: 'run', path, kept: !path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
     try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
@@ -2480,7 +2488,8 @@
         <div class="val">${svg('chevL', 34)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 34)}</div>
         <div class="dots">${o.choices.map((c, i) => `<i class="${i === o.current ? 'on' : ''}" title="${esc(c)}"></i>`).join('')}</div><p>${esc(o.help)}</p>`;
     } else if (el.dataset.key === 'gs:copy') {
-      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc(su.copy ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || su.needs || '')}</p>`;
+      const gone = copyNotNeeded(TV.arg);
+      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc((su.status ? su.status.ready : su.copy) ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || (gone ? copyGoneText(TV.arg) : su.needs) || '')}</p>`;
     } else if (el.dataset.key === 's:buttons' && window.buttonGuide) {
       html = `<span class="k">${esc(t('Controller'))}</span><div class="tv-padguide">${window.buttonGuide(glyph).map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b></span></div>`).join('')}</div>`;
     } else if (el.dataset.key === 's:monitor') {
