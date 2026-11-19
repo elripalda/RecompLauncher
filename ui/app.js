@@ -2544,24 +2544,69 @@ function gameBody(a) {
   } else if (S.tab === 'looks') {
     body = looksTab(a);
   } else {
-    const shots = S.shots[id];
-    if (!shots) loadShots(id);
-    body = `<div class="stack"><div class="card">
-      <div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>
-      <div class="set-row"><div class="k"><b>${esc(t('Shortcuts'))}</b><span>${esc(S.steam ? t('Start it from your desktop or from Steam, with its art. Play time still counts here.') : t('Start it from your desktop. Play time still counts here.'))}</span></div><div class="acts"><button type="button" class="btn" data-act="desktop" data-id="${esc(id)}">${esc(t('Add to desktop'))}</button>${S.steam ? `<button type="button" class="btn" data-act="steam" data-id="${esc(id)}">${esc(t('Add to Steam'))}</button>` : ''}</div></div>
-      <div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`}
-      <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
-      ${easyRow(id)}
-      ${programRow(id, inst)}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update: the saves in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
-      ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
-    </div>
-    <div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
-      ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div></div>`;
+    body = manageTab(a);
   }
   return body + gameRail(a);
+}
+// The Manage tab: every setting of an installed game, in one place. The game's "…" menu leaves out
+// whatever is here, so each setting has a single home. Shortcuts aren't repeated here: the buttons
+// beside every tab already add them.
+function manageTab(a) {
+  const id = a.id, inst = S.library[id];
+  const shots = S.shots[id];
+  if (!shots) loadShots(id);
+  const card = (title, rows) => `<div class="card"><div class="card-h"><h3>${esc(title)}</h3></div>${rows.join('')}</div>`;
+  const shotsCard = `<div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
+      ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div>`;
+  const leave = inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>`
+    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`;
+  return `<div class="stack">${card(t('Updates'), manageUpdateRows(id, inst))}${card(t('Starting the Game'), manageStartRows(id, inst))}${card(t('Files and Saves'), manageFileRows(id, inst))}${shotsCard}<div class="card">${leave}</div></div>`;
+}
+// Which version it has, and how it gets the next one.
+function manageUpdateRows(id, inst) {
+  const project = `<div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>`;
+  if (inst.local) return [project];
+  const other = isLab(inst.repo) || isSF(inst.repo);
+  const checked = inst.verified ? (other ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (other ? t('Its release had no checksum for it') : t('GitHub had no checksum for it'));
+  const what = inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(checked)}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'));
+  const held = heldIds().has(id);
+  return [
+    `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${what}</span></div><button type="button" class="btn" data-act="build" data-id="${esc(id)}">${esc(t('Change Build…'))}</button></div>`,
+    `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`,
+    `<div class="set-row"><div class="k"><b>${esc(t('Pause Updates'))}</b><span>${esc(t('It stays on the version it has until you turn this off.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${held}" aria-label="${esc(t('Pause Updates'))}" data-act="hold-up" data-id="${esc(id)}"></button></div>`,
+    project,
+  ];
+}
+// What Play starts, and how the game gets set up for it.
+function manageStartRows(id, inst) {
+  const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : null;
+  const rows = [easyRow(id), programRow(id, inst)];
+  rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>`);
+  if (S.easy.has(id)) {
+    const copy = typeof inst.game_copy === 'string' ? inst.game_copy : t('Easy Setup builds the game from it.');
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Your Copy'))}</b><span>${esc(copy)}</span></div><div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(inst.game_copy ? t('Change') : t('Add'))}</button><button type="button" class="btn" data-act="relink" data-id="${esc(id)}">${esc(t('Relink Setup'))}</button></div></div>`);
+  }
+  if (su && (su.own_build || su.build_dir)) {
+    const sub = su.build_dir ? String(su.build_dir) : t('Point it at a build of the game you already made.');
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Use a Build You Already Have'))}</b><span>${esc(sub)}</span></div><button type="button" class="btn" data-act="ownbuild" data-id="${esc(id)}">${esc(su.build_dir ? t('Change') : t('Choose…'))}</button></div>`);
+  }
+  if (su && su.build_at) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Move Build'))}</b><span>${esc(String(su.build_at))}</span></div><button type="button" class="btn" data-act="move-build" data-id="${esc(id)}">${esc(t('Move'))}</button></div>`);
+  const hand = byHand(inst);
+  const handSub = hand ? t('On. It starts the way you set, instead of the launcher\'s own setup.') : t('Point the launcher at the program and your game files yourself.');
+  rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Set Up By Hand'))}</b><span>${esc(handSub)}</span></div><button type="button" class="btn" data-act="manual" data-id="${esc(id)}">${esc(hand ? t('Change') : t('Set up'))}</button></div>`);
+  if (S.os === 'linux' && inst.proton) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn" data-act="wine-tools">${esc(t('Open'))}</button></div>`);
+  return rows;
+}
+// Where it is on disk, and what keeps its saves safe.
+function manageFileRows(id, inst) {
+  const rows = [`<div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>`];
+  if (!inst.local) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update: the saves in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`);
+  // Cloud saves is switched here only; the Saves tab just offers to turn it on.
+  if (S.account && S.account.signedIn) {
+    const on = inst.cloud === true;
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>`);
+  }
+  return rows;
 }
 // Asks once what the Updates tab shows for a game. update_info works it out from the release list
 // on disk, so an answer that comes back after a newer list came in (S.updInfo is a new object by
@@ -8231,6 +8276,8 @@ function launchOptions(id) {
 // ---------- clicks ----------
 async function act(el, e) {
   const a = el.dataset.act, id = el.dataset.id;
+  // The Cloud saves switch lives in the Manage tab, and the saves handler only redraws the Saves tab.
+  if (a === 'saves-cloud' && S.tab === 'installed' && window.accountAct) { await window.accountAct(a, el); return refreshGame(); }
   if (/^(acc|saves|myrep)-/.test(a) && window.accountAct) return window.accountAct(a, el);
   if (/^beta-/.test(a) && window.moreAct) return window.moreAct(a, el);
   if (a === 'project-association') return changeProject(id);

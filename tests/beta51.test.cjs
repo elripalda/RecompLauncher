@@ -69,7 +69,7 @@ test('the files from before and the build on this PC are offered under the game\
   // The build already in the game's folder comes first: Set Up uses it, unless Build It Again.
   const built = c.stepsView('h', su({ previous: ['Base.nsp'], prebuilt: '/home/p/Games/Hopper' }), {}, { name: 'H' });
   assert.match(built, /still here, so setup skips the build\. <button type="button" data-ss="rebuild">Build It Again<\/button>/);
-  assert.match(app, /\{ act: 'relink', id, label: t\('Relink Setup'\), icon: 'refresh' \}/);
+  assert.match(fn(app, 'manageStartRows'), /data-act="relink" data-id="\$\{esc\(id\)\}">\$\{esc\(t\('Relink Setup'\)\)\}/);
 });
 
 test('players can be asked where each game goes, Easy Install too', () => {

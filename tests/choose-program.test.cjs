@@ -48,7 +48,7 @@ const easyRowHtml = (easyAll, easyOn, ui = {}) => {
 };
 
 test('the Easy Setup switch sits above Game Executable and shows whether Easy Setup is on', () => {
-  assert.match(app, /\$\{easyRow\(id\)\}\n\s+\$\{programRow\(id, inst\)\}/);
+  assert.match(app, /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   const on = easyRowHtml(true, true);
   assert.match(on, /<div class="set-row" id="easy-row"><div class="k"><b>Easy Setup<\/b><span>The launcher sets this game up with your copy\. Off: you set it up yourself\.<\/span>/);
   assert.match(on, /class="switch" role="switch" aria-checked="true"[^>]*data-act="easy-skip" data-id="g"/);
