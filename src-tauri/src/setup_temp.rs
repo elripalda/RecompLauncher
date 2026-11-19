@@ -75,9 +75,20 @@ pub fn room_for_setup(free: Option<u64>) -> bool {
 /// Words Windows programs (and their runtimes) print when its 260-character path limit stopped
 /// them: .NET's PathTooLongException, Win32's ERROR_FILENAME_EXCED_RANGE (206), and plain ones.
 pub fn says_too_long(said: &str) -> bool {
-    const WORDS: [&str; 7] = ["path too long", "path is too long", "filename or extension is too long", "pathtoolongexception", "filename_exced_range", "os error 206", "max_path"];
+    // Not MAX_PATH: it's a constant's name, which a build can print in a warning that stopped nothing.
+    const WORDS: [&str; 6] = ["path too long", "path is too long", "filename or extension is too long", "pathtoolongexception", "filename_exced_range", "os error 206"];
     let s = said.to_ascii_lowercase();
     WORDS.iter().any(|w| s.contains(w))
+}
+
+/// TOO_LONG, then what the step said last on a line of its own. A step can print a path warning
+/// early and stop later for another reason: its last line keeps that reason in front of the
+/// player. The UI translates the first line and leaves the step's own words as they are.
+pub fn too_long_with(said: &str) -> String {
+    if said.is_empty() {
+        return TOO_LONG.to_string();
+    }
+    format!("{TOO_LONG}\n{said}")
 }
 
 /// An error from Windows' path limit (ERROR_FILENAME_EXCED_RANGE).
@@ -171,6 +182,17 @@ mod tests {
         assert!(says_too_long("Unhandled exception. System.IO.PathTooLongException: The path is too long"));
         assert!(says_too_long("error: The filename or extension is too long. (os error 206)"));
         assert!(!says_too_long("error: file not found"));
+    }
+
+    #[test]
+    fn a_mention_of_max_path_alone_isnt_the_path_limit() {
+        assert!(!says_too_long("warning: MAX_PATH is 260 on this PC, long paths may not work"));
+    }
+
+    #[test]
+    fn the_long_path_message_keeps_what_the_step_said_last() {
+        assert_eq!(too_long_with("error: out of disk space"), format!("{TOO_LONG}\nerror: out of disk space"));
+        assert_eq!(too_long_with(""), TOO_LONG);
     }
 
     #[test]

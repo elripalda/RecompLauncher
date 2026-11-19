@@ -4221,7 +4221,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
             trail::note(format!("Setup step stopped with code {code}; it said last: {said}"));
             if cfg!(windows) && too_long {
-                return Err(setup_temp::TOO_LONG.into());
+                return Err(setup_temp::too_long_with(&said));
             }
             return Err(if said.is_empty() { format!("Its setup step stopped with code {code}.") } else { format!("Its setup step stopped with code {code}: {said}") });
         }

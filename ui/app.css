@@ -700,7 +700,7 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .su-r .picks .btn{width:100%}
 .ni-content,.ni-tv{display:flex;flex-direction:column;min-height:0;gap:18px}
 .ni-notice p{margin:0 0 10px;color:var(--muted)}
-.su-err{color:#ffc2c2}
+.su-err{color:#ffc2c2;white-space:pre-line}
 /* ---------- Easy Setup in steps (setup-steps.js) ----------
    One height for every step, the list scrolling inside it, so Back, the line by the button and
    Next/Set Up never move. The copy's box keeps its size and buttons whether it's empty or filled. */
