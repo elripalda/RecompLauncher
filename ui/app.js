@@ -2561,10 +2561,7 @@ function manageStartRows(id, inst) {
   rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>`);
   if (S.easy.has(id)) {
     const copy = typeof inst.game_copy === 'string' ? inst.game_copy : t('Easy Setup builds the game from it.');
-    // Relink uses the files it was set up with again: only once there are some.
-    const setUpBefore = !!inst.game_copy || !!(su && (su.previous || []).length);
-    const relink = setUpBefore ? `<button type="button" class="btn" data-act="relink" data-id="${esc(id)}">${esc(t('Relink Setup'))}</button>` : '';
-    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Your Copy'))}</b><span>${esc(copy)}</span></div><div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(inst.game_copy ? t('Change') : t('Add'))}</button>${relink}</div></div>`);
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Your Copy'))}</b><span>${esc(copy)}</span></div><div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(inst.game_copy ? t('Change') : t('Add'))}</button></div></div>`);
   }
   if (su && (su.own_build || su.build_dir)) {
     const sub = su.build_dir ? String(su.build_dir) : t('Point it at a build of the game you already made.');
@@ -8366,13 +8363,6 @@ async function act(el, e) {
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
     case 'rep-only': S.repOnly = Object.assign(S.repOnly || {}, { [id]: !!el.dataset.on }); return refreshGame();
-    case 'relink': {
-      // The files it was set up with, checked and used again; one that moved opens the setup.
-      let r;
-      try { await loadSetup(id); r = await relinkSetup(id); } catch (e) { return fail(e); }
-      if (r === 'ready') { toast(tf('{name} is set up again with your files.', { name: (byId(id) || S.library[id] || {}).name || id })); if (S.view === 'game') refreshGame(); return; }
-      return setupModal(id);
-    }
     case 'reopen-setup': return setupModal(id);
     case 'setup-cancel': {
       invoke('setup_cancel', { id }).catch(() => {});

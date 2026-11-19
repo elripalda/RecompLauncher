@@ -207,7 +207,19 @@ test('a local build has only its project association under Updates', () => {
   assert.doesNotMatch(html, /hold-up|auto-up|data-act="build"/);
 });
 
-test('Relink Setup shows only for a game set up before (there are files to use again)', () => {
-  assert.match(fn(app, 'manageStartRows'), /const setUpBefore = !!inst\.game_copy \|\| !!\(su && \(su\.previous \|\| \[\]\)\.length\);/);
-  assert.match(fn(app, 'manageStartRows'), /const relink = setUpBefore \? `<button type="button" class="btn" data-act="relink"/);
+test('there is no Relink Setup: Change opens the setup with last time\'s files filled in', () => {
+  assert.doesNotMatch(fn(app, 'manageStartRows'), /relink/i);
+  assert.doesNotMatch(app, /case 'relink'/);
+});
+
+test('the setup window has no Use Them Again line', () => {
+  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
+  const inputs = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
+  assert.doesNotMatch(steps, /relink|Use Them Again/i);
+  assert.doesNotMatch(inputs, /relink/i);
+});
+
+test('the setup window starts with last time\'s copy in the game\'s box', () => {
+  const inputs = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
+  assert.match(inputs, /if \(su\.kind\) rows\.unshift\(\{ id: 'game', legacy: true, label: su\.needs, role: 'game', path: su\.copy,/);
 });

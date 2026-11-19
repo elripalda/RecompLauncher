@@ -192,13 +192,11 @@ function stepsView(id, su, ns, game) {
     <div class="ss-foot">${back}<p class="why" role="status">${ok ? CHECK : ''}${esc(status)}</p>${next}</div>`;
 }
 
-// The quiet line under the game's box: a build that's already there, or the files from before.
+// The quiet line under the game's box: a build that's already there, or one the player made.
 function ssAlt(su, ns, name) {
   if (ns.own) return '';
   if (su.prebuilt && !ns.rebuild) return `<p class="ss-alt">${esc(t('The game built from your copy last time is still here, so setup skips the build.'))} <button type="button" data-ss="rebuild">${esc(t('Build It Again'))}</button></p>`;
   if (su.prebuilt) return `<p class="ss-alt">${esc(t('Building it again from your copy.'))} <button type="button" data-ss="keepbuild">${esc(t('Use the One Still Here'))}</button></p>`;
-  const prev = su.previous || [];
-  if (prev.length && !su.inputs_ready) return `<p class="ss-alt">${esc(tf('Set up before with {files}.', { files: prev.join(' · ') }))} <button type="button" data-ss="relink">${esc(t('Use Them Again'))}</button></p>`;
   if (su.own_build) return `<p class="ss-alt">${esc(tf('Already built {name} from your copy, outside the launcher? Skip the build:', { name }))} <button type="button" data-ss="ownpick">${esc(t('Choose That Folder'))}</button></p>`;
   return '';
 }
@@ -242,16 +240,6 @@ async function stepsAction(id, act, input, ns) {
   if (act === 'ownpick') {
     const p = await pickFile({ title: tf('The folder you built {name} into', { name: (S.library[id] || {}).name || id }), directory: true }).catch(fail);
     if (p) { ns.own = typeof p === 'string' ? p : p.path; ns.ownErr = ''; }
-    return;
-  }
-  if (act === 'relink') {
-    ns.busy = true;
-    try {
-      const r = await relinkSetup(id);
-      if (r === 'ready') return 'ready';
-      if (r && r.label) ns.error = tf('{file} isn\'t where it was. Choose it again, then press Set Up.', { file: r.label });
-    } catch (e) { ns.error = String(e && e.message ? e.message : e); }
-    finally { ns.busy = false; }
     return;
   }
   // The game's copy (game.kind) stays on this screen until Set Up: setup_copy checks it and keeps
