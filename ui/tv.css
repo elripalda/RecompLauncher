@@ -1033,3 +1033,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-sbadge svg{flex:none}
 .tv-sbadge small{font-size:20px;font-weight:600;color:var(--tvsoft,#c9d3e0)}
 .tv-sbadge small::before{content:"· "}
+/* "Newer" beside a sheet item's label (the save made later, when both changed): green text. */
+.tv-newer{margin-left:12px;font-style:normal;font-size:19px;font-weight:700;color:#3ee08f}

@@ -1738,7 +1738,7 @@
     TV.sheet = { items, prev: (focused() || {}).dataset?.key };
     const el = document.createElement('div');
     el.className = 'tv-sheet' + (cls ? ' ' + cls : '');
-    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
+    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${x.tag ? `<span>${esc(x.label)}<em class="tv-newer">${esc(x.tag)}</em></span>` : esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
     stage().append(el);
     focus($('[data-sheet="0"]', el), true);
     sfx('open');

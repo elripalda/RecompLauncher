@@ -117,3 +117,18 @@ test('the tooltip says what it means, then when it last synced and where', () =>
 test('a sync over a day ago falls back to the coarse wording', () => {
   assert.equal(info.sinceText(now() - 3 * 86400), 'this week');
 });
+
+// Which save the conflict dialog marks Newer.
+const newerSave = new Function(`${block('function newerSave(')} return newerSave;`)();
+
+test('this PC saved after the cloud copy: this PC is newer', () => {
+  assert.equal(newerSave({ when: 200 }, { made: 100 }), 'local');
+});
+
+test('the cloud copy saved after this PC: the cloud one is newer', () => {
+  assert.equal(newerSave({ when: 100 }, { made: 200 }), 'cloud');
+});
+
+test('saved at the same second: neither is marked', () => {
+  assert.equal(newerSave({ when: 100 }, { made: 100 }), '');
+});

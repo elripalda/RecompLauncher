@@ -2586,3 +2586,7 @@ body.light .sbadge{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
 @keyframes sbspin{to{transform:rotate(360deg)}}
 @keyframes sbbob{50%{transform:translateY(-1.5px)}}
 @media (prefers-reduced-motion:reduce){.sb-spin,.sb-bob{animation:none}}
+/* "Newer" on the save that was made later, when both changed: a green word, not a pill. */
+.pick-newer{margin-left:6px;font-style:normal;font-size:12.5px;font-weight:700;color:#3ee08f}
+body.light .pick-newer{color:#127a45}
+.pick-note{margin:-4px 0 14px;font-size:13px}

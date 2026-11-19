@@ -482,16 +482,21 @@ window.loadSavesAll = loadSavesAll;
 // ---------- before Play ----------
 // Asks once per game, while signed in, whether its saves go to the cloud; then brings in a newer
 // save from another PC, or asks which to keep. false: don't start it.
-async function ask(title, text, buttons) {
+// `cards`: on the desktop the choices are big cards to click (a heading, a green tag such as
+// Newer, and their `lines`), not buttons under the text. Big Picture's sheet is the same either way.
+async function ask(title, text, buttons, cards) {
   if (inTV() && window.tvAsk) {
     // A button marked last (one that changes things for good) goes to the end of the list, away from the first focus.
     const list = buttons.filter((b) => !b.last).concat(buttons.filter((b) => b.last));
-    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, icon: b.icon })));
+    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, tag: b.tag, icon: b.icon })));
     return i == null || i < 0 ? null : list[i].v;
   }
+  const card = (b, i) => `<button type="button" class="pick-card pick-btn" data-x="b${i}"><b>${esc(b.label)}${b.tag ? ` <em class="pick-newer">${esc(b.tag)}</em>` : ''}</b>${(b.lines || []).map((l) => `<span>${esc(l)}</span>`).join('')}</button>`;
+  const button = (b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`;
+  const choices = cards ? `<div class="pick-two">${buttons.map(card).join('')}</div>` : `<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map(button).join('')}</div>`;
   return new Promise((res) => {
     let picked = null;
-    const box = modal(`<h2>${esc(title)}</h2>${text}<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map((b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`).join('')}</div>`, (x, close) => {
+    const box = modal(`<h2>${esc(title)}</h2>${text}${choices}`, (x, close) => {
       const i = Number(String(x.dataset.x).slice(1));
       if (!isNaN(i) && buttons[i]) { picked = buttons[i].v; close(); }
     }, title);
@@ -551,13 +556,32 @@ async function beforeCloudPlay(id) {
 }
 
 async function pickCloudSave(id, { local, cloud }) {
-  const card = (h, when, dev, played) => `<div class="pick-card"><b>${esc(h)}</b><span>${esc(whenText(when))}</span><span>${esc(dev)}</span><span>${esc(tf('Played {time} in all', { time: fmtTime(played) }))}</span></div>`;
-  const v = await ask(t('Which save do you want?'), `<div class="pick-two">${card(t('This PC'), local.when, local.device, local.played)}${card(t('Cloud'), cloud.made, cloud.device, cloud.played)}</div><p class="muted" style="font-size:13px">${esc(t('The other one is kept as a copy on its Saves tab, so nothing is lost.'))}</p>`,
-    [{ label: t('Keep this PC\'s'), sub: `${whenText(local.when)} · ${local.device}`, icon: 'desk', v: 'local' }, { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, icon: 'check', v: 'cloud' }]);
-  if (v == null) return false;
+  const v = await chooseSave(local, cloud);
+  if (v !== 'local' && v !== 'cloud') return false;
   await invoke('saves_pick', { id, keep: v, localHash: local.hash, cloudVersion: cloud.v });
   toast(t(v === 'cloud' ? 'The cloud save is in place.' : 'Your save is in the cloud.'));
   return true;
+}
+
+// Which of the two saves is newer ('local' or 'cloud'), or '' when they were saved at the same time.
+function newerSave(local, cloud) {
+  if (local.when > cloud.made) return 'local';
+  if (cloud.made > local.when) return 'cloud';
+  return '';
+}
+
+// Both saves changed: the player picks one. On the desktop the two saves are the choices
+// themselves (cards to click, no buttons under them); in Big Picture they're the sheet's two
+// items. The newer one says so, and what happens to the other is said under the question.
+function chooseSave(local, cloud) {
+  const newer = newerSave(local, cloud);
+  const tag = (k) => (k === newer ? t('Newer') : '');
+  const played = (secs) => tf('Played {time} in all', { time: fmtTime(secs) });
+  const note = `<p class="muted pick-note">${esc(t('The other one is kept as a copy on its Saves tab, so nothing is lost.'))}</p>`;
+  return ask(t('Which save do you want?'), note, [
+    { label: t('Keep this PC\'s'), sub: `${whenText(local.when)} · ${local.device}`, lines: [whenText(local.when), local.device, played(local.played)], tag: tag('local'), icon: 'desk', v: 'local' },
+    { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, lines: [whenText(cloud.made), cloud.device, played(cloud.played)], tag: tag('cloud'), icon: 'check', v: 'cloud' },
+  ], true);
 }
 
 async function syncCloudNow(id) {
