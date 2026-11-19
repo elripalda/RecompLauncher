@@ -199,6 +199,16 @@ const autoInstall = () => S.settings.auto_install !== false;
 const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
 // The yellow Set Up: the developer's steps not done yet, or an installer waiting to run.
 const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installerDue(a.id));
+// Easy Setup's answer for a game, worked out by the core (game_setup's status): {ready, reason,
+// detail}, or null until it's loaded. Play, the game's page and Big Picture all go by it, so a game
+// built from the player's copy, or their own build, never reads as not set up.
+const setupStatus = (id) => { const su = S.setup[id]; return su && su !== 'loading' && su.status ? su.status : null; };
+// An Easy Setup game that isn't set up: its main button is Set up instead of Play.
+const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready; };
+// Built from the player's copy, which isn't where it was anymore: the core says the game plays
+// without it, so its copy rows say so (desktop and Big Picture) instead of asking for it.
+const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && st.ready && st.reason === 'built'); };
+const copyGoneText = (id) => tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
@@ -1202,7 +1212,7 @@ function actions(a, size = 'big') {
     case 'busy': return progress(a.id) + (canPause(a.id) ? `<button type="button" class="${sq}" data-act="dl-pause" data-id="${id}" aria-label="${esc(t('Pause'))}" title="${esc(t('Pause'))}">${PAUSE}</button>` : '') + `<button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>`;
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + again() + more;
-    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : S.easy.has(a.id) && S.setup[a.id] && S.setup[a.id].needs && (!S.setup[a.id].copy || needUpdate(S.setup[a.id])) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + again() + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + again() + more : b('main', 'play', esc(t('Play')), PLAY) + again() + more;
+    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + again() + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + again() + more : b('main', 'play', esc(t('Play')), PLAY) + again() + more;
     case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy.
@@ -1348,7 +1358,11 @@ function readyRows(a) {
   // executable.
   const selfRun = !!(su && su.own_program);
   const cs = su && su.needs ? copyState(id, su) : null;
-  if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
+  // Set up without a copy to show: built from the copy (it plays without it), or their own build.
+  const st = setupStatus(id);
+  const builtOnly = !!(cs && !cs.file && st && st.ready && (st.reason === 'built' || st.reason === 'own_build'));
+  if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: st.reason === 'own_build' ? t('Your own build') : copyGoneText(id), fix: '' });
+  else if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
     d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
     tags: cs.file || own ? '' : fmtTags(cs.exts),
     fix: cs.file ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
@@ -2727,6 +2741,12 @@ async function pickUpdate(id, folder) {
 // ---------- setting a game up with the player's copy ----------
 const SU = { id: null, el: null, stage: 'steps', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
 const suDrive = createSetupDriveLight();
+// Easy Setup's window opened or closed: while it's open the core keeps how the game was set up, and
+// puts that back when it closes without a setup that worked (picks made in it, a run that failed).
+// (In order: a window that replaces another for the same game opens after that one has closed.)
+let setupClosing = Promise.resolve();
+const setupOpened = (id) => { if (id) setupClosing = setupClosing.then(() => invoke('setup_begin', { id })).catch(() => {}); };
+const setupClosed = (id) => { if (id) setupClosing = setupClosing.then(() => invoke('setup_end', { id })).catch(() => {}); };
 async function setupModal(id) {
   if (document.body.classList.contains('tv-on') && window.tvSetup) { S.setupNote = null; return window.tvSetup(id); }
   if (SU.el && SU.id === id) {
@@ -2757,6 +2777,7 @@ async function setupModal(id) {
     s.innerHTML = `<div class="modal su" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}"></div>`;
     document.body.append(s);
     SU.el = s;
+    setupOpened(id);
     s.addEventListener('click', (e) => {
       if (e.target === s && SU.stage !== 'run') return closeSetup();
       const b = e.target.closest('[data-su]');
@@ -2782,6 +2803,7 @@ async function setupModal(id) {
   s.innerHTML = `<div class="modal su" role="dialog" aria-modal="true" aria-label="${esc(t('Set up a game'))}"></div>`;
   document.body.append(s);
   SU.el = s;
+  setupOpened(id);
   s.addEventListener('click', (e) => {
     if (e.target === s && SU.stage !== 'run') return closeSetup();
     const b = e.target.closest('[data-su]');
@@ -2856,6 +2878,7 @@ async function closeSetup(quiet) {
     if (pick === 'watch' || pick == null) return;
     if (pick === 'cancel') {
       invoke('setup_cancel', { id }).catch(() => {});
+      setupClosed(id);
       if (S.setupJobs) delete S.setupJobs[id];
       if (SU.el) { SU.el.remove(); SU.el = null; }
       delete S.setup[id];
@@ -2866,6 +2889,7 @@ async function closeSetup(quiet) {
       return;
     }
     // pick === 'bg':
+    setupClosed(id);
     if (SU.el) { SU.el.remove(); SU.el = null; }
     render(true);
     if (S.view === 'game') refreshGame();
@@ -2877,6 +2901,7 @@ async function closeSetup(quiet) {
   const closingStage = SU.stage;
   SU.el.remove();
   SU.el = null;
+  setupClosed(closingId);
   if (!quiet && closingStage !== 'steps' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
 async function suAct(b) {
@@ -3217,7 +3242,14 @@ function settingsTab(a) {
     ? `<div class="seg" role="radiogroup" aria-label="${esc(o.label)}">${o.choices.map((c, i) => `<button type="button" role="radio" aria-checked="${o.own == null && o.current === i}" data-act="gset" data-id="${esc(id)}" data-k="${esc(o.id)}" data-i="${i}"${o.applies ? '' : ' disabled'}>${esc(c)}</button>`).join('')}</div>`
     : `<select class="sel" data-act="gsel" data-id="${esc(id)}" data-k="${esc(o.id)}"${o.applies ? '' : ' disabled'}>${o.own != null ? `<option value="" selected disabled>${esc(o.own)}</option>` : ''}${o.choices.map((c, i) => `<option value="${i}"${o.own == null && o.current === i ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
   return `<div class="stack">
-    ${su.needs ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${su.copy ? esc(su.copy) : esc(su.needs)}</span></div><button type="button" class="btn${su.copy ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(su.copy ? ((su.prepare_options || []).length ? t('Set Up Again') : t('Change')) : t('Insert it'))}</button></div>${spareRow(id, su)}</div>` : ''}
+    ${su.needs ? (() => {
+      // A game built from a copy that's gone since plays without it: said, and picking a copy is
+      // only for building it again (not the main button).
+      const gone = copyNotNeeded(id), have = su.copy || gone;
+      const sub = su.copy ? su.copy : gone ? copyGoneText(id) : su.needs;
+      const label = su.copy ? ((su.prepare_options || []).length ? t('Set Up Again') : t('Change')) : gone ? t('Change') : t('Insert it');
+      return `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${esc(sub)}</span></div><button type="button" class="btn${have ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(label)}</button></div>${spareRow(id, su)}</div>`;
+    })() : ''}
     ${su.update ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('The game\'s update'))}</b><span>${su.update_copy ? esc(su.update_copy) : esc(su.update)}</span></div><button type="button" class="btn${su.update_copy || su.update_optional ? '' : ' main'}" data-act="setupdate" data-id="${esc(id)}">${esc(su.update_copy ? t('Change') : t('Choose It'))}</button></div></div>` : ''}
     ${su.settings.length ? `<div class="card"><div class="card-h"><h3>${esc(t('How it runs'))}</h3><span>${esc(su.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings'))}</span></div>
       ${gameSettingRows(id, su, seg)}</div>` : ''}
@@ -4907,6 +4939,8 @@ async function refreshState() {
   S.removedPlayHistory = st.removedPlayHistory || {};
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
+  // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
+  applyEasySkip();
   document.body.classList.toggle('linux', S.os === 'linux');
   document.body.classList.toggle('mac', S.os === 'macos');
   document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
@@ -5160,11 +5194,17 @@ function setSection(k, fade = true) {
 let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
 // Skip Easy Setup (a game's ⋯ menu, or Settings for every game): those games install as they come
-// and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the ones it does.
+// and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the ones it does. An
+// installed game says it in its own mode ('own': the player sets it up); one not installed yet
+// by the tick in its menu (ui.easy_skip).
 function applyEasySkip() {
-  const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []);
-  S.easy = new Set(ui.easy_skip_all ? [] : [...(S.easyAll || [])].filter((id) => !skip.has(id)));
+  const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []), lib = S.library || {};
+  const record = (id) => lib[id] || (typeof parentId === 'function' ? lib[parentId(id)] : undefined);
+  const own = (id) => { const g = record(id); return g ? g.mode === 'own' : skip.has(id); };
+  S.easy = new Set(ui.easy_skip_all ? [] : [...(S.easyAll || [])].filter((id) => !own(id)));
 }
+// Set Up By Hand is how the game is set up now. Turned off, its setup stays recorded for next time.
+const byHand = (g) => !!(g && g.manual && g.mode === 'by_hand');
 function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   applyEasySkip();
@@ -5704,7 +5744,7 @@ function exePath(inst) {
   return String(inst.path || '').replace(/[\\/]+$/, '') + sep + e;
 }
 // Easy Setup on the game's Manage tab: the one switch for who sets the game up, the same as Skip
-// Easy Setup. Turning it back on lets go of an executable the player picked (setEasySkip). Only on
+// Easy Setup. Turning it back on keeps an executable the player picked, for switching back. Only on
 // games Easy Setup can do, and not while it's skipped for every game in Settings.
 function easyRow(id) {
   const ui = S.settings.ui || {};
@@ -5729,14 +5769,20 @@ function programRow(id, inst) {
   return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
 }
-// Skip Easy Setup for one game, or Easy Setup on for it again. Turning it back on lets go of an
-// executable the player picked, so the launcher starts the game its own way again.
+// Skip Easy Setup for one game, or Easy Setup on for it again. Installed, it's the game's mode:
+// only that changes, and an executable or build the player picked stays for switching back. Not
+// installed yet, it's a tick in Settings that the game takes as its mode when it's installed.
 async function setEasySkip(id, on) {
-  const skip = new Set((S.settings.ui || {}).easy_skip || []);
-  if (!on && S.library[id]) S.library[id] = await invoke('forget_program', { id });
-  if (on) skip.add(id);
-  else skip.delete(id);
-  await saveUi({ easy_skip: [...skip] }, true);
+  const rid = parentId(id);
+  if (S.library[rid]) {
+    S.library[rid] = await invoke('set_setup_mode', { id, mode: on ? 'own' : 'easy' });
+    applyEasySkip();
+  } else {
+    const skip = new Set((S.settings.ui || {}).easy_skip || []);
+    if (on) skip.add(id);
+    else skip.delete(id);
+    await saveUi({ easy_skip: [...skip] }, true);
+  }
   if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
 }
 // Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
@@ -5835,7 +5881,7 @@ function gameMenu(id) {
         ...(!g.local ? [{ act: 'build', id, label: t('Change Build…'), icon: 'layers' }] : []),
         { act: 'launch-opts', id, label: t('Launch options…'), icon: 'exe' },
         { act: 'setexe', id, label: selfManaged(id) ? t('Set Game Executable (On)…') : t('Set Game Executable…'), icon: 'exe' },
-        { act: 'manual', id, label: g.manual ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
+        { act: 'manual', id, label: byHand(g) ? t('Set Up By Hand (On)…') : t('Set Up By Hand…'), icon: 'gear' },
         ...easySkipItem(id),
         ...(S.setup[id] && S.setup[id] !== 'loading' && S.setup[id].build_at ? [{ act: 'move-build', id, label: t('Move Build…'), icon: 'move' }] : []),
         ...(S.setup[id] && S.setup[id] !== 'loading' && (S.setup[id].own_build || S.setup[id].build_dir) ? [{ act: 'ownbuild', id, label: S.setup[id].build_dir ? t('Use a Build You Already Have (On)…') : t('Use a Build You Already Have…'), icon: 'folder' }] : []),
@@ -6360,7 +6406,7 @@ async function playGame2(id, program) {
         const v = await ask(t('Use the Launcher\'s Way?'), `<p>${esc(t('This game is built from your copy before it starts, and only the launcher\'s way does that. Your hand setup is skipped, and the game is built and started the usual way.'))}</p>`,
           [{ label: t('Use the Launcher\'s Way'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
         if (v !== 'yes') return;
-        try { S.library[id] = await invoke('set_manual', { id, manual: null }); } catch (e) { return fail(e); }
+        try { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); } catch (e) { return fail(e); }
         return playGame(id);
       }
       // Easy Setup skipped on a game built from the copy, with no build yet: where it is, asked
@@ -7080,26 +7126,7 @@ window.keepOut = keepOut;
 async function loadEasy(quiet) {
   try { S.easyAll = new Set(await invoke('easy_setup')); } catch (e) { S.easyAll = new Set(); }
   applyEasySkip();
-  await skipOwnPrograms();
   if (!quiet) render(true);
-}
-// A game whose executable the player picked has Easy Setup off: Skip Easy Setup is the one switch
-// for who sets a game up. For picks made before it was (Beta 57 and earlier, when the pick took
-// over on its own), it's turned off here to match: those games already started the pick as it is.
-async function skipOwnPrograms() {
-  const ui = S.settings.ui || {};
-  if (ui.easy_skip_all) return;
-  const own = await invoke('own_program_games').catch(() => []);
-  const add = own.filter((id) => S.easy.has(id));
-  if (!add.length) return;
-  await saveUi({ easy_skip: [...(ui.easy_skip || []), ...add] }, true);
-}
-// Easy Setup on for every game again: a game whose executable the player picked keeps it off (its
-// own menu turns it back on), so the pick still starts.
-async function easyForEveryGame() {
-  const skip = new Set((S.settings.ui || {}).easy_skip || []);
-  for (const id of await invoke('own_program_games').catch(() => [])) skip.add(id);
-  return saveUi({ easy_skip_all: false, easy_skip: [...skip] });
 }
 async function loadOwned() {
   try { S.owned = await invoke('rom_matches'); S.ownedOk = true; } catch (e) { S.owned = {}; S.ownedOk = false; }
@@ -7809,7 +7836,7 @@ const TS_FIX = {
   move: [N_('Move…'), (id) => moveModal(id)],
   files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
   manual: [N_('Set Up By Hand…'), (id) => manualModal(id)],
-  byhandoff: [N_('Use the Launcher\'s Way'), async (id) => { S.library[id] = await invoke('set_manual', { id, manual: null }); toast(t('It uses the launcher\'s own setup again.')); render(true); }],
+  byhandoff: [N_('Use the Launcher\'s Way'), async (id) => { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); toast(t('It uses the launcher\'s own setup again.')); render(true); }],
   dxruntime: [N_('Get It'), () => invoke('open_url', { url: 'https://www.microsoft.com/en-us/download/details.aspx?id=35' })],
   lookroute: [N_('Try Both Ways'), async (id) => { await invoke('look_reset_route', { id }); toast(t('Done. Press Play to try the Look again.')); }],
   clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
@@ -8011,7 +8038,7 @@ async function manualModal(id) {
   let m;
   try { m = await invoke('manual_defaults', { id }); } catch (e) { return fail(e); }
   m = Object.assign({ exe: null, copy: null, how: 'none', into: '', name: '', arg: '' }, m);
-  const on = !!g.manual;
+  const on = byHand(g);
   const name = (libApp(g) || {}).name || g.name;
   const show = (p) => (p ? String(p) : '');
   const HOW = [['folder', t('Put Them in Its Folder')], ['arg', t('Give Them to the Program')], ['none', t('It Asks for Them')]];
@@ -8044,12 +8071,12 @@ async function manualModal(id) {
       case 'copy-dir': { const p = await pickFile({ title: t('Your game files'), directory: true }).catch(() => null); if (p) { m.copy = typeof p === 'string' ? p : p.path; redraw(); } return; }
       case 'how': m.how = x.dataset.k; return redraw();
       case 'off':
-        try { S.library[id] = await invoke('set_manual', { id, manual: null }); close(); toast(t('It uses the launcher\'s own setup again.')); render(true); } catch (e) { err(e); }
+        try { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); close(); toast(t('It uses the launcher\'s own setup again.')); render(true); } catch (e) { err(e); }
         return;
       case 'save':
         if (!m.exe) return err(t('Pick the program that starts the game.'));
         if (m.how !== 'none' && !m.copy) return err(t('Pick your game files, or choose It Asks for Them.'));
-        try { S.library[id] = await invoke('set_manual', { id, manual: m }); close(); toast(t('Saved. Press Play to start it your way.')); render(true); } catch (e) { err(e); }
+        try { S.library[id] = await invoke('set_manual', { id, manual: m }); applyEasySkip(); close(); toast(t('Saved. Press Play to start it your way.')); render(true); } catch (e) { err(e); }
     }
   }, tf('Set Up {name} By Hand', { name }));
 }
@@ -8235,7 +8262,8 @@ async function act(el, e) {
     }
     case 'ownbuild': try { if (await useOwnBuild(id)) { toast(t('It starts your own build now.')); render(true); } } catch (err) { fail(err); } return;
     case 'easy-skip': {
-      const on = !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
+      // Installed: its switch says what it is now (S.easy, from its mode). Not yet: the tick.
+      const on = S.library[parentId(id)] ? S.easy.has(id) : !((S.settings.ui || {}).easy_skip || []).includes(id), name = (byId(id) || S.library[id] || { name: id }).name;
       try { await setEasySkip(id, on); } catch (err) { return fail(err); }
       render(true);
       if (!on) return toast(tf('{name} uses Easy Setup again.', { name }));
@@ -8326,7 +8354,8 @@ async function act(el, e) {
       return render(true);
     }
     case 'ui-toggle':
-      if (el.dataset.k === 'easy_skip_all' && (S.settings.ui || {}).easy_skip_all) return easyForEveryGame();
+      // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
+      // leaves every game as it was, a game whose program the player picked included.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }
@@ -9042,7 +9071,7 @@ T.event.listen('install', ({ payload: p }) => {
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
         else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && !su.copy && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && !su.copy) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'steps') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'steps') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
       };

@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "Игра уже там",
  "The build of {name} is in {path} now.": "Сборка {name} теперь в {path}.",
  "The game was built from your copy and plays without it.": "Игра собрана из вашей копии и работает без неё.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Вашей копии здесь больше нет. {name} она не нужна: игра уже собрана.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Лаунчер распаковал вашу копию в папку игры, поэтому игра работает без неё.",
  "There's no build to move yet. Set the game up first.": "Пока нечего переносить. Сначала настройте игру.",
  "This PC's Name": "Имя этого ПК",

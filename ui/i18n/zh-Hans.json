@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "游戏已经在那里了",
  "The build of {name} is in {path} now.": "{name} 的构建现在位于 {path}。",
  "The game was built from your copy and plays without it.": "游戏是用你的游戏副本构建的，不需要它也能运行。",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "你的游戏副本已不在这里。{name} 已经构建好了，不再需要它。",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "启动器已把你的游戏副本解压到游戏文件夹中，所以不需要它也能运行。",
  "There's no build to move yet. Set the game up first.": "还没有可移动的构建。请先配置游戏。",
  "This PC's Name": "此电脑的名称",

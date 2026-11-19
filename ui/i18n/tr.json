@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "Oyun Zaten Orada",
  "The build of {name} is in {path} now.": "{name} derlemesi artık {path} içinde.",
  "The game was built from your copy and plays without it.": "Oyun kopyandan derlendi ve onsuz çalışır.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Kopyan artık burada değil. {name} ona ihtiyaç duymuyor: oyun zaten derlendi.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Başlatıcı kopyanı oyunun klasörüne açtı, bu yüzden oyun onsuz çalışır.",
  "There's no build to move yet. Set the game up first.": "Henüz taşınacak bir derleme yok. Önce oyunu kur.",
  "This PC's Name": "Bu Bilgisayarın Adı",

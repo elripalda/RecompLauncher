@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "Trò chơi đã có ở đó",
  "The build of {name} is in {path} now.": "Bản build của {name} giờ ở {path}.",
  "The game was built from your copy and plays without it.": "Trò chơi được build từ bản sao của bạn và chạy được mà không cần nó.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Bản sao của bạn không còn ở đây nữa. {name} không cần nó: trò chơi đã được build.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "Launcher đã giải nén bản sao của bạn vào thư mục của trò chơi, nên trò chơi chạy được mà không cần nó.",
  "There's no build to move yet. Set the game up first.": "Chưa có bản build nào để chuyển. Hãy thiết lập trò chơi trước.",
  "This PC's Name": "Tên của PC này",

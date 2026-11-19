@@ -3321,6 +3321,7 @@
  "The Game Is Already There": "Het spel staat er al",
  "The build of {name} is in {path} now.": "De build van {name} staat nu in {path}.",
  "The game was built from your copy and plays without it.": "Het spel is gebouwd uit je kopie en speelt zonder.",
+ "Your copy isn't here anymore. {name} doesn't need it: it's already built.": "Je kopie is hier niet meer. {name} heeft hem niet nodig: het is al gebouwd.",
  "The launcher unpacked your copy into the game's folder, so the game plays without it.": "De launcher heeft je kopie uitgepakt in de map van het spel, dus het spel speelt zonder.",
  "There's no build to move yet. Set the game up first.": "Er is nog geen build om te verplaatsen. Stel het spel eerst in.",
  "This PC's Name": "Naam van deze pc",
