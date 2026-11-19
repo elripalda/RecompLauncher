@@ -41,6 +41,7 @@
     history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/><path d="M12 8v4.5l3 2"/>',
     pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    findfolder: '<path d="M10.5 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2.5"/><circle cx="16.5" cy="15.5" r="3"/><path d="m18.7 17.7 2.3 2.3"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
@@ -572,7 +573,7 @@
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
         if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
-        return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', run: () => playGame(id) };
+        return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', play: true, run: () => playGame(id) };
       }
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
@@ -1268,7 +1269,7 @@
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
           ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
-          <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to put an older one back'))}</small></span>${svg('chevR', 30)}</button>
+          <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to restore an older one'))}</small></span>${svg('chevR', 30)}</button>
           ${head(t('Controller'))}
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
@@ -1304,24 +1305,59 @@
     const none = games.length - withSaves.length;
     const items = withSaves.map((x) => { const a = x.a || { id: x.id, name: x.g.name }; return `<button type="button" class="tv-item tv-stor" data-f data-key="sv:${esc(x.id)}" data-tvact="gsaves" data-id="${esc(x.id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${esc(tf('Last saved {when}', { when: ago(x.newest.when) }))}${x.cloudOn === true ? ' · ' + esc(t('In the cloud')) : ''}</small></span><span class="tv-stor-r"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button>`; }).join('');
     return `${backdrop(null)}${gameBar()}
-      ${region(`${pageHead(t('Saves'), t('After every session the launcher keeps a copy of each game\'s saves. Pick a game to put an older one back.'))}
+      ${region(`${pageHead(t('Saves'), t('After every session the launcher keeps a copy of each game\'s saves. Pick a game to restore an older one.'))}
         ${o && o.error ? `<p class="tv-empty">${esc(t(o.error))}</p>` : ''}
         <div class="tv-list">${!o ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : items || `<p class="tv-empty">${esc(t('Install a game and play it once. Its saves are copied here after every session.'))}</p>`}</div>
         ${none ? `<p class="tv-note">${esc(tn(none, '1 more game has no saves yet. Play it once and its saves show up here.', '{n} more games have no saves yet. Play them once and their saves show up here.'))}</p>` : ''}`)}
       ${hints([['A', t('Open')], ['B', t('Back')]])}`;
   }
 
-  // One game's saves: cloud on or off, a copy now, and every copy to put back.
+  // One game's saves, in the desktop tab's order: where they stand (A does the one thing to do about
+  // it), every save in one list (A restores one), the settings, and where it saves. Back Up Now only
+  // without cloud saves: with them, Sync Now copies the save before it goes up.
   async function loadGameSaves(id) {
     try { TV.saves[id] = await invoke('saves_info', { id }); } catch (e) { TV.saves[id] = { error: String(e && e.message ? e.message : e) }; }
+    // Whatever just changed the page changed its status too.
+    loadSaveStatus(saveIdOf(id));
     if (TV.on && TV.view === 'gsaves' && TV.arg === id) draw(true);
+  }
+  // The desktop's next steps as this page's actions. Reporting a problem stays in the desktop view.
+  const TV_STEP = { 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
+  // The status, as the item that leads the page.
+  function savesStatusItem(id, sv) {
+    const b = window.saveBadgeFor(id);
+    if (!b) return '';
+    const sid = saveIdOf(id);
+    const st = S.saveStat[sid] || {};
+    const picked = (sv.spots || []).some((p) => p.from === 'player');
+    const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+    const act = step && !sv.busy && TV_STEP[step.act];
+    // Reporting stays in the desktop view, and the account page needs a browser: said instead.
+    const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
+    const tvact = act ? ` data-tvact="${act}" data-id="${esc(id)}"` : '';
+    const pill = act ? `<span class="tv-pill on">${esc(t(step.label))}</span>` : '';
+    const note = b.note ? ` <i>· ${esc(b.note)}</i>` : '';
+    return `<button type="button" class="tv-item tv-svs sb-${b.tone}" data-f data-key="gs:status"${tvact} role="status">${window.saveBadgeIcon(b.mark, 34)}<span class="k"><b>${esc(b.label)}${note}</b><small>${esc(statusCardText(st, b, picked) + desk)}</small></span>${pill}</button>`;
+  }
+  // Nobody has said where it saves: red, as on the desktop, and A picks the folder.
+  function savesUnknownItem(id) {
+    return `<button type="button" class="tv-item tv-svs sb-bad" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${window.saveBadgeIcon('alert', 34)}<span class="k"><b>${esc(t(SAVES_UNKNOWN))}</b><small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span><span class="tv-pill on">${esc(t(SAVES_PICK))}</span></button>`;
+  }
+  function savesHistoryItem(id, r, sv) {
+    const marks = historyMarks(r, sv).map((m) => `<span class="tv-svm tv-svm-${m.k}">${esc(m.label)}</span>`).join('');
+    const which = r.name ? `data-name="${esc(r.name)}"` : `data-v="${esc(r.v)}"`;
+    // A cloud save that can be deleted carries its version, for the sheet's Delete.
+    const del = r.deletable ? ` data-cv="${esc(r.v)}"` : '';
+    const act = r.current ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
+    // The save in the game now is lit, and says so where the others say Restore.
+    const side = r.current ? `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
+    return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
   function pageGameSaves(id) {
     const a = libAppOf(id), g = S.library[id] || {};
     const s0 = TV.saves[id];
     if (s0 === undefined) { TV.saves[id] = 'loading'; loadGameSaves(id); }
     const sv = s0 && s0 !== 'loading' ? s0 : null;
-    const copy = (c, k, v, now) => { const when = c.when || c.made; return `<button type="button" class="tv-item" data-f data-key="gc:${k}:${esc(v)}" data-tvact="gs-restore" data-id="${esc(id)}" data-${k}="${esc(v)}"><span class="k">${esc(whenText(when))}${now ? ` <em class="tv-now">${esc(t('Same as this PC'))}</em>` : ''}<small>${esc([c.device, c.files ? tn(c.files, '1 file', '{n} files') : '', fmtB(c.size)].filter(Boolean).join(' · '))}</small></span><span class="tv-pill">${esc(t('Put back'))}</span></button>`; };
     let body = `<p class="tv-empty">${esc(t('Loading…'))}</p>`;
     let unknown = false;
     if (sv && sv.error) body = `<p class="tv-empty">${esc(t(sv.error))}</p>`;
@@ -1331,25 +1367,26 @@
       unknown = window.savesUnknown(sv);
       const on = sv.cloudOn === true;
       const shareTitle = saveShareTitle(id);
+      const rows = saveHistory(sv);
+      const shown = historyShown(id, rows);
+      const more = rows.length - shown.length;
+      const toggle = historyToggle(id, rows, more);
+      const empty = unknown ? t('No backups yet.') : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.');
       body = `<div class="tv-list">
-        ${unknown ? `<button type="button" class="tv-item" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${svg('folder')}<span class="k">${esc(t(SAVES_PICK))}<small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span></button>` : ''}
+        ${unknown ? savesUnknownItem(id) : savesStatusItem(id, sv)}
+        ${unknown || (sv.signedIn && on) ? '' : `<button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>`}
+        <h3 class="tv-lh">${esc(t('Save History'))}</h3>
+        ${on && sv.offline ? `<p class="tv-note">${esc(t('The cloud can\'t be reached right now, so only the copies on this PC are listed.'))}</p>` : ''}
+        ${rows.length ? shown.map((r) => savesHistoryItem(id, r, sv)).join('') : `<p class="tv-note">${esc(empty)}</p>`}
+        ${toggle ? `<button type="button" class="tv-item" data-f data-key="gs:more" data-tvact="${toggle.more ? 'gs-more' : 'gs-less'}" data-id="${esc(id)}">${svg('history')}<span class="k">${esc(toggle.label)}</span></button>` : ''}
+        ${shareTitle ? `<h3 class="tv-lh">${esc(t('Settings'))}</h3>` : ''}
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
-        ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
-        ${on && sv.signedIn ? (() => {
-          const newest = Array.isArray(sv.cloud) && sv.cloud[0];
-          const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || unknown || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
-        })() : ''}
-        ${unknown ? '' : `<button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>`}
-        <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
-        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(unknown ? t('No backups yet.') : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
-        ${on && Array.isArray(sv.cloud) ? `<h3 class="tv-lh">${esc(t('In the cloud'))}</h3>${sv.cloud.length ? sv.cloud.map((c) => copy(c, 'v', c.v, c.hash === sv.synced)).join('') : `<p class="tv-note">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`}` : ''}
         ${unknown ? '' : `<h3 class="tv-lh">${esc(t('Where it saves'))}</h3>`}
-        ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
+        ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${spotSet(p) ? `<span class="tv-svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${esc(t(FROM[p.from] || ''))}</span>` : esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
       </div>`;
     }
     return `${backdrop(a, 'game')}${gameBar()}
-      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), unknown ? t(SAVES_UNKNOWN) : t('After every session the launcher keeps a copy. Put an older one back with A.'))}${body}`)}
+      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), unknown ? t(SAVES_UNKNOWN) : t('After every session the launcher keeps a copy. Restore an older one with A.'))}${body}`)}
       ${hints([['A', t('Select')], ['B', t('Back')]])}`;
   }
 
@@ -1450,8 +1487,12 @@
     const info = S.info[id] && S.info[id] !== 'loading' ? S.info[id] : null;
     const modsOk = !!(S.mods[id] && S.mods[id] !== 'loading');
     const dv = devOf(a);
-    const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc)
-      .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : [])
+    const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc);
+    // Who made it, under "Based on" as on the desktop page: their picture, their name, Verified.
+    const who = (dv && dv.name) || a.author;
+    const pic = dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : '';
+    const vchip = dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : '';
+    const byLine = who ? `<p class="tv-based tv-by">${pic}<span>${htmlIn(t('By {who}'), { who: `<b>${esc(who)}</b>` })}</span>${vchip}</p>` : '';
     const ps = projectState(a);
     const deckChip = greatOnDeck(a) ? `<span class="tv-st deck">${DECK_ICON(18)}${esc(t('Great on Deck'))}</span>` : '';
     const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</span>`;
@@ -1468,19 +1509,22 @@
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
     const bad = checks.filter((r) => r.v === false).length;
+    // Where its saves stand (account.js), above the buttons as on the desktop: a line, not a button.
+    const sb = g && window.saveBadgeFor ? window.saveBadgeFor(id) : null;
+    const sbNote = sb && sb.note ? `<small>${esc(sb.note)}</small>` : '';
+    const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
       mainButton(a, 'g-main'),
-      // Set Up Again beside Play, marked New while its project has options not answered yet.
-      g && canSetUpAgain(id) ? btn('g-again', 'setup', esc(t('Set Up Again')) + (newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, icon: 'disc' }) : '',
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
-      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('I Already Have It')), { id, icon: 'folder' }) : '',
+      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'findfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
       verGroup(a) ? btn('g-vers', 'versions', esc(tn(verGroup(a).list.length, '1 version', '{n} versions')), { id, icon: 'layers' }) : '',
       g ? btn('g-shots', 'shots', esc(t('Screenshots')), { id, icon: 'shot' }) : '',
       g && (su || looksHere()) ? btn('g-set', 'gsettings', esc(t('Game settings')) + (su && su.beta && su.settings && su.settings.length ? `<b class="tv-beta-s">${esc(t('Beta'))}</b>` : ''), { id, icon: 'gear' }) : '',
       g && modsOk ? btn('g-mods', 'mods', esc(t('Mods')), { id, icon: 'puzzle' }) : '',
-      btn('g-more', 'more', esc(t('Options')), { id, g: 'x' }),
+      // Setup Options is in the X sheet: while its project has a new option, Options says so.
+      btn('g-more', 'more', esc(t('Options')) + (g && canSetUpAgain(id) && newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, g: 'x' }),
     ].filter(Boolean).join('');
     const ab = a.about && (a.about.summary || aboutFacts(a.about).length) ? a.about : null;
     const score = ab && ab.rating !== null && ab.rating !== undefined && ab.rating !== '' && Number.isFinite(Number(ab.rating)) ? Math.round(Number(ab.rating)) : null;
@@ -1489,7 +1533,7 @@
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
     const devText = a.blurb || notesLine(a.description);
-    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
+    const facts = [[t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
     const checkBlock = !g && checks.length ? `<section class="tv-block"><h3>${esc(t('Before you install'))}${bad ? ` <small>${esc(tn(bad, '1 thing to do', '{n} things to do'))}</small>` : ''}</h3><div class="tv-panel tv-checks" data-f data-key="g-checks"><dl>${checks.map((r) => `<div><dt>${esc(r.k)}<small>${esc(r.d || '')}</small></dt><dd>${okMark(r.v)}</dd></div>`).join('')}</dl></div></section>` : '';
     const aside = g
       ? `<aside class="tv-panel" aria-label="${esc(t('Details'))}"><h2>${esc(bad ? t('Before you play') : t('Ready to play'))}</h2><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${tvRuns(a)}</aside>`
@@ -1503,7 +1547,9 @@
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
+          ${byLine}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
+          ${sbLine}
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
@@ -1734,7 +1780,7 @@
     TV.sheet = { items, prev: (focused() || {}).dataset?.key };
     const el = document.createElement('div');
     el.className = 'tv-sheet' + (cls ? ' ' + cls : '');
-    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
+    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${x.tag ? `<span>${esc(x.label)}<em class="tv-newer">${esc(x.tag)}</em></span>` : esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
     stage().append(el);
     focus($('[data-sheet="0"]', el), true);
     sfx('open');
@@ -1754,8 +1800,13 @@
     const onPage = GAMEVIEWS.includes(TV.view) && TV.arg === id;
     const pinned = pins().includes(id);
     const m = mainItem(a);
+    // Play is the big button on the page and on the tile, so the sheet doesn't repeat it. Setup
+    // Options goes first instead (as in the desktop's "…" menu), marked while there's a new option.
+    const fresh = g && canSetUpAgain(id) ? newPrepOpts(S.setup[id]).length : 0;
+    const setupItem = g && canSetUpAgain(id) ? [{ label: t('Setup Options'), sub: t('Your copy and its options'), tag: fresh ? t('New option') : '', icon: 'disc', run: () => { closeSheet(); setTimeout(() => tvSetup(id), 250); } }] : [];
     const items = [
-      ...(m ? [m] : []),
+      ...(m && !m.play ? [m] : []),
+      ...setupItem,
       ...(TV.view !== 'game' || !onPage ? [{ label: t('Game page'), sub: a.game ? tf('Based on {game}', { game: a.game }) : '', icon: 'page', run: () => go('game', id) }] : []),
       { label: pinned ? t('Unpin from Home') : t('Pin to Home'), sub: pinned ? t('It comes off your Home row') : t('Keep it on Home, in the order you like'), icon: 'pin', run: () => togglePin(id) },
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),
@@ -1763,7 +1814,7 @@
       ...(g && !S.running.has(id) ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
       ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Discover'), sub: t('It shows in Discover and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Discover'), sub: t('It won\'t show in Discover or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
-        { gap: true, label: t('Saves'), sub: t('Back them up, or put an older one back'), icon: 'save', run: () => go('gsaves', id) },
+        { gap: true, label: t('Saves'), sub: t('Back them up, or restore an older one'), icon: 'save', run: () => go('gsaves', id) },
         ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and shaders'), icon: 'gear', run: () => go('gsettings', id) }] : []),
         { label: t('Screenshots'), icon: 'shot', run: async () => { await loadAllShots(); go('shots', id); } },
         ...(S.mods[id] && S.mods[id] !== 'loading' ? [{ label: t('Mods'), icon: 'puzzle', run: () => go('mods', id) }] : []),
@@ -2238,6 +2289,7 @@
     if (TS.id !== id || TS.stage !== 'steps') return;
     if (ns.at !== was) sfx(ns.at > was ? 'select' : 'back');
     if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; sfx('select'); return tsDraw(); }
+    if (r === 'skip') { closeSheet(); return skipEasyHere(id); }
     if (r !== 'run') return tsDraw();
     const go = await stepsRun(id, ns, TS.optsSaving);
     if (TS.id !== id) return;
@@ -2917,6 +2969,8 @@
         if (title) await toggleSaveShare(title);
         return draw(true);
       }
+      case 'gs-more': sfx('select'); S.savesMore.add(id); return draw(true);
+      case 'gs-less': sfx('select'); S.savesMore.delete(id); return draw(true);
       case 'gs-backup': {
         sfx('select');
         try { const c = await invoke('saves_backup', { id }); toast(c ? t('Backed up.') : t('Nothing changed since the last copy.')); } catch (e) { fail(e); }
@@ -2933,10 +2987,12 @@
       }
       case 'gs-restore': {
         sfx('open');
-        const name = el.dataset.name || null, v = el.dataset.v || null;
-        return sheet(t('Put this save back?'), [
+        const name = el.dataset.name || null, v = el.dataset.v || null, cv = el.dataset.cv || null;
+        const del = { label: t('Delete from the cloud'), sub: t('Gone from your account for good. Copies on this PC stay.'), icon: 'bin', cls: 'danger', run: async () => { try { await invoke('saves_cloud_delete', { id, v: cv }); toast(t('Deleted from the cloud.')); } catch (e) { fail(e); } loadGameSaves(id); } };
+        return sheet(t('Restore this save?'), [
           { label: t('Keep what\'s there'), sub: t('Nothing changes'), icon: 'chevL', run: () => {} },
-          { label: t('Put it back'), sub: t('It takes the place of the game\'s saves on this PC'), icon: 'history', run: async () => { try { await invoke('saves_restore', { id, name, v }); toast(t('That save is back in place.')); } catch (e) { fail(e); } loadGameSaves(id); } },
+          { label: t('Restore it'), sub: t('It takes the place of the game\'s saves on this PC'), icon: 'history', run: async () => { try { await invoke('saves_restore', { id, name, v }); toast(t('That save is back in place.')); } catch (e) { fail(e); } loadGameSaves(id); } },
+          ...(cv ? [del] : []),
         ]);
       }
     }

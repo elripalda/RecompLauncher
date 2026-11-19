@@ -82,6 +82,26 @@ test('a game turned off in its Manage tab waits, even with the Settings switch o
   assert.equal(c.autoUpdates('b'), false);
 });
 
+// The Updates card of a game's Manage tab, for a game with neither its own switch nor Pause on.
+function manageUpdates(settings) {
+  const c = switchContext(settings, { g: { repo: 'dev/hydro', tag: 'v1', auto_update: false } });
+  Object.assign(c, { isLab: () => false, isSF: () => false, fmtB: String, heldIds: () => new Set() });
+  vm.runInContext(fn(app, 'manageUpdateRows'), c);
+  return c.manageUpdateRows('g', c.S.library.g).join('');
+}
+
+test('with the Settings switch on, the Manage tab shows the game\'s switch on and says why', () => {
+  const html = manageUpdates({ auto_update_all: true });
+  assert.match(html, /Settings → Updates turns this on for every game\. Off here: this game waits for you\./);
+  assert.match(html, /aria-checked="true" aria-label="Update automatically" data-act="auto-up"/);
+});
+
+test('with the Settings switch off, the Manage tab shows the game\'s own setting', () => {
+  const html = manageUpdates({});
+  assert.match(html, /Installs new releases as soon as the launcher finds them\./);
+  assert.match(html, /aria-checked="false" aria-label="Update automatically" data-act="auto-up"/);
+});
+
 test('a local build never updates by itself, even with the Settings switch on', () => {
   const c = switchContext({ auto_update_all: true }, { l: { local: true, auto_update: true } });
   assert.equal(c.autoUpdates('l'), false);
