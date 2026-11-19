@@ -572,7 +572,7 @@
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
         if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
-        return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', run: () => playGame(id) };
+        return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', play: true, run: () => playGame(id) };
       }
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
@@ -1473,8 +1473,6 @@
     const bad = checks.filter((r) => r.v === false).length;
     const acts = [
       mainButton(a, 'g-main'),
-      // Set Up Again beside Play, marked New while its project has options not answered yet.
-      g && canSetUpAgain(id) ? btn('g-again', 'setup', esc(t('Set Up Again')) + (newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, icon: 'disc' }) : '',
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('I Already Have It')), { id, icon: 'folder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
@@ -1483,7 +1481,8 @@
       g ? btn('g-shots', 'shots', esc(t('Screenshots')), { id, icon: 'shot' }) : '',
       g && (su || looksHere()) ? btn('g-set', 'gsettings', esc(t('Game settings')) + (su && su.beta && su.settings && su.settings.length ? `<b class="tv-beta-s">${esc(t('Beta'))}</b>` : ''), { id, icon: 'gear' }) : '',
       g && modsOk ? btn('g-mods', 'mods', esc(t('Mods')), { id, icon: 'puzzle' }) : '',
-      btn('g-more', 'more', esc(t('Options')), { id, g: 'x' }),
+      // Setup Options is in the X sheet: while its project has a new option, Options says so.
+      btn('g-more', 'more', esc(t('Options')) + (g && canSetUpAgain(id) && newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, g: 'x' }),
     ].filter(Boolean).join('');
     const ab = a.about && (a.about.summary || aboutFacts(a.about).length) ? a.about : null;
     const score = ab && ab.rating !== null && ab.rating !== undefined && ab.rating !== '' && Number.isFinite(Number(ab.rating)) ? Math.round(Number(ab.rating)) : null;
@@ -1738,7 +1737,9 @@
     TV.sheet = { items, prev: (focused() || {}).dataset?.key };
     const el = document.createElement('div');
     el.className = 'tv-sheet' + (cls ? ' ' + cls : '');
-    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
+    // An item with something new behind it (`badge`) says so right after its name.
+    const name = (x) => (x.badge ? `<span>${esc(x.label)}<b class="tv-new">${esc(x.badge)}</b></span>` : esc(x.label));
+    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${name(x)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
     stage().append(el);
     focus($('[data-sheet="0"]', el), true);
     sfx('open');
@@ -1758,8 +1759,13 @@
     const onPage = GAMEVIEWS.includes(TV.view) && TV.arg === id;
     const pinned = pins().includes(id);
     const m = mainItem(a);
+    // Play is the big button on the page and on the tile, so the sheet doesn't repeat it. Setup
+    // Options goes first instead (as in the desktop's "…" menu), marked while there's a new option.
+    const fresh = g && canSetUpAgain(id) ? newPrepOpts(S.setup[id]).length : 0;
+    const setupItem = g && canSetUpAgain(id) ? [{ label: t('Setup Options'), sub: t('Your copy and its options'), badge: fresh ? t('New option') : '', icon: 'disc', run: () => { closeSheet(); setTimeout(() => tvSetup(id), 250); } }] : [];
     const items = [
-      ...(m ? [m] : []),
+      ...(m && !m.play ? [m] : []),
+      ...setupItem,
       ...(TV.view !== 'game' || !onPage ? [{ label: t('Game page'), sub: a.game ? tf('Based on {game}', { game: a.game }) : '', icon: 'page', run: () => go('game', id) }] : []),
       { label: pinned ? t('Unpin from Home') : t('Pin to Home'), sub: pinned ? t('It comes off your Home row') : t('Keep it on Home, in the order you like'), icon: 'pin', run: () => togglePin(id) },
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),

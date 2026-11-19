@@ -69,9 +69,23 @@ test('Play asks about new options before the game starts, in both modes', () => 
   assert.match(app, /if \(await askNewOpts\(id\)\) return;\n\s*await playGame2\(id, program\);/);
   assert.match(app, /T\.event\.listen\('options-new'/);
   assert.match(app, /invoke\('take_options_asked'\)/);
-  // Big Picture: Set Up Again beside Play, and the options as items the controller can reach.
-  assert.match(tv, /btn\('g-again', 'setup', esc\(t\('Set Up Again'\)\)/);
+  // Big Picture: the options as items the controller can reach.
   assert.match(tv, /row\.dataset\.f = ''; row\.dataset\.key = 'po:' \+ o\.id; row\.dataset\.sheet = at;/);
+});
+
+test('Big Picture has Setup Options in the X sheet, not as a button beside Play', () => {
+  assert.doesNotMatch(tv, /g-again/);
+  assert.match(tv, /const setupItem = g && canSetUpAgain\(id\) \? \[\{ label: t\('Setup Options'\)/);
+});
+
+test('Big Picture\'s X sheet leaves out Play (the big button) and puts Setup Options first', () => {
+  assert.match(tv, /\.\.\.\(m && !m\.play \? \[m\] : \[\]\),\n\s+\.\.\.setupItem,/);
+  assert.match(tv, /t\('Play'\), icon: 'play', play: true, run: \(\) => playGame\(id\)/);
+});
+
+test('Big Picture marks a new option on Setup Options and on the Options button', () => {
+  assert.match(tv, /badge: fresh \? t\('New option'\) : ''/);
+  assert.match(tv, /btn\('g-more', 'more', esc\(t\('Options'\)\) \+ \(g && canSetUpAgain\(id\) && newPrepOpts\(su\)\.length \? `<b class="tv-new">/);
 });
 
 test('Big Picture says who made it under Based on, as the desktop page does, not in a chip', () => {

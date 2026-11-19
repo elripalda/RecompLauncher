@@ -397,7 +397,7 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 
 
 /* A small beta mark on the game page's settings button (the launcher's own game settings). */
-.tv-btn .tv-beta-s,.tv-btn .tv-new{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}
+.tv-btn .tv-beta-s,.tv-btn .tv-new,.tv-item .tv-new{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}
 
 /* Light theme in Big Picture mode too. */
 body.light #tv{background:#F3F5F8}
