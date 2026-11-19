@@ -65,7 +65,7 @@ test('the build on this PC is offered under the game\'s box', () => {
   const c = stepsContext();
   const su = (x) => Object.assign({ needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Base', role: 'game', file: true, active: true, path: null }], prepare_options: [] }, x);
   // Set Up uses the build already in the game's folder, unless Build It Again.
-  const built = c.stepsView('h', su({ previous: ['Base.nsp'], prebuilt: '/home/p/Games/Hopper' }), {}, { name: 'H' });
+  const built = c.stepsView('h', su({ prebuilt: '/home/p/Games/Hopper' }), {}, { name: 'H' });
   assert.match(built, /still here, so setup skips the build\. <button type="button" data-ss="rebuild">Build It Again<\/button>/);
 });
 
@@ -73,7 +73,7 @@ test('files from before get no Use Them Again line', () => {
   const { stepsContext } = require('./steps-context.cjs');
   const c = stepsContext();
   const su = (x) => Object.assign({ needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Base', role: 'game', file: true, active: true, path: null }], prepare_options: [] }, x);
-  assert.doesNotMatch(c.stepsView('h', su({ previous: ['Base.nsp', 'Update.nsp'], inputs_ready: false }), {}, { name: 'H' }), /Set up before with|data-ss="relink"/);
+  assert.doesNotMatch(c.stepsView('h', su({ inputs_ready: false }), {}, { name: 'H' }), /Set up before with|data-ss="relink"/);
 });
 
 test('players can be asked where each game goes, Easy Install too', () => {

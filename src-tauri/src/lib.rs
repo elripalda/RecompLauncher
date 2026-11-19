@@ -5009,9 +5009,6 @@ struct Setup {
     inputs: Vec<inputs::Row>,
     inputs_error: Option<String>,
     inputs_ready: bool,
-    /// The files it was set up with before, by name (Use My Previous Setup), when they're
-    /// remembered and it isn't set up now.
-    previous: Vec<String>,
     /// A build already in the game's folder, to use instead of building it again.
     prebuilt: Option<PathBuf>,
     /// Set up from the build already on this PC.
@@ -5131,7 +5128,6 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         inputs: inputs::rows(&p, &g, &st.dir).unwrap_or_default(),
         inputs_error: inputs::validate(&p).err(),
         inputs_ready,
-        previous: if set_up { vec![] } else { previous_files(&p, &g, &st.dir) },
         prebuilt: if set_up { None } else { p.build_folder_here(&g.path) },
         prebuilt_on: g.prebuilt && built,
         kept: setup_state::builds_from_kept(&p, &g),
@@ -5270,89 +5266,6 @@ async fn free_up_space(st: State<'_, App>, id: String) -> Res<u64> {
     st.save();
     trail::note(format!("Free Up Space {id}: {} went to the trash ({}, the game {})", spare.path.display(), size, if spare.why == "built" { "was built from it" } else { "was unpacked from it" }));
     Ok(size)
-}
-
-/// The files a game was set up with, by name: its copy and its picked files, remembered after an
-/// update or a lost setup. Empty when nothing is remembered.
-fn previous_files(p: &profile::Profile, g: &Installed, dir: &Path) -> Vec<String> {
-    let name = |x: &Path| x.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| x.display().to_string());
-    let mut out = vec![];
-    if p.game.is_some() {
-        if let Some(c) = &g.game_copy {
-            out.push(name(c));
-        }
-    }
-    let active: Vec<inputs::Row> = inputs::rows(p, g, dir).unwrap_or_default().into_iter().filter(|r| r.active && r.shared.is_empty() && !r.runtime).collect();
-    for r in active {
-        if let Some(x) = g.setup_inputs.get(&r.id) {
-            out.push(name(x));
-        }
-    }
-    out
-}
-
-/// Use My Previous Setup: the files it was set up with are checked as Easy Setup checks them,
-/// the setup step is skipped when what it leaves is still there, and the game is set up again.
-/// `RELINK_MISSING|<input>|<label>`: that one file moved, so it's asked for alone.
-/// `RELINK_BUILD|`: the build is gone, so the setup runs.
-#[tauri::command(async)]
-fn setup_relink(st: State<'_, App>, id: String) -> Res<Value> {
-    let pick = game_of(&st, &id);
-    let rid = pick.as_ref().map(|p| p.recomp.clone()).unwrap_or_else(|| id.clone());
-    let sub = pick.as_ref().map(|p| p.game.id.clone());
-    if setup_busy(&id) || setup_busy(&rid) || st.running.lock().unwrap().contains_key(&rid) {
-        return Err(Error::Msg("Close the game or stop setup first.".into()));
-    }
-    let mut g = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    // Set up by the launcher from here on: in the setup's own folder, not a build of the player's.
-    // Their build stays in use until this has worked.
-    let theirs = g.build_dir.take();
-    let mut p = profile_of(&st, &rid, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
-    if let Some(pk) = &pick {
-        games::scope(&mut p, &pk.game, &pk.all);
-    }
-    let built = p.build_done(&g.path) == Some(true) || (g.prebuilt && p.build_folder_here(&g.path).is_some());
-    if let Some(need) = &p.game {
-        let ok = g.game_copy.clone().filter(|c| c.exists()).map(|c| copy_ok(need, &c, &g.path, false).is_ok()).unwrap_or(false);
-        if !ok && !(built && !p.start_uses_game() && p.inputs.is_empty()) {
-            return Err(Error::Msg(format!("RELINK_MISSING|game|{}", need.label)));
-        }
-    }
-    if !p.inputs.is_empty() {
-        inputs::validate(&p).map_err(Error::Msg)?;
-        let rows = inputs::rows(&p, &g, &st.dir).map_err(Error::Msg)?;
-        if let Some(r) = rows.iter().find(|r| r.active && !r.optional && !r.runtime && r.path.is_none()) {
-            return Err(Error::Msg(format!("RELINK_MISSING|{}|{}", r.id, r.label)));
-        }
-        p.input_paths = inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
-    }
-    // The build the setup step made: gone means it's made again.
-    if p.prepare.is_some() && p.build_done(&g.path) == Some(false) {
-        return Err(Error::Msg("RELINK_BUILD|".into()));
-    }
-    if !p.inputs.is_empty() {
-        inputs::stage(&p, &mut g, &st.dir).map_err(Error::Msg)?;
-        let sig = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
-        if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
-            x.input_staged = g.input_staged.clone();
-            x.input_stamps = g.input_stamps.clone();
-            match &sub {
-                Some(sub) => x.games.entry(sub.clone()).or_default().inputs_ready = sig,
-                None => x.inputs_ready = sig,
-            }
-        }
-    }
-    let _ = p.prepare(&g.path, g.game_copy.as_deref().filter(|c| c.exists()));
-    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
-        x.setup_before = None;
-        x.mode = library::SetupMode::Easy;
-        if theirs.is_some() {
-            x.build_dir = None;
-        }
-    }
-    trail::note(format!("Setup {id}: relinked to the files it was set up with before"));
-    st.save();
-    Ok(json!({"ok": true}))
 }
 
 /// Use the Build Already on This PC: the game's folder holds a finished build (made by this
@@ -10169,7 +10082,7 @@ pub fn run() {
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, setup_relink, setup_use_build, easy_setup, set_game_options,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, setup_use_build, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,
