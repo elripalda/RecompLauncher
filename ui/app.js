@@ -1381,9 +1381,10 @@ function readyCard(a) {
     ${rows.map((r) => `<div class="set-row"><div class="k"><b>${esc(r.k)}</b>${r.html ? `<span>${r.html}${r.d ? ' ' + esc(r.d) : ''}</span>` : `<span>${esc(r.d)}</span>`}${r.tags ? `<span class="fmts">${r.tags}</span>` : ''}</div><div class="acts">${r.fix}${r.fix && r.v !== true ? '' : okMark(r.v)}</div></div>`).join('')}</div>`;
 }
 
-// Play time from the sessions the launcher counted: this week, this month, and the last two weeks.
+// Play time from the sessions the launcher counted, on every PC of the account when signed in:
+// this week, this month, and the last two weeks.
 function playCard(g) {
-  const ses = (g && g.sessions) || [];
+  const ses = g ? playSessions(g.id, g.sessions) : [];
   if (!ses.length) return '';
   const now = Date.now() / 1000, sum = (from) => ses.filter((x) => x[0] >= from).reduce((acc, x) => acc + x[1], 0);
   const longest = Math.max(...ses.map((x) => x[1]));

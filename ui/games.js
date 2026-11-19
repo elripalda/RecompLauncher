@@ -148,6 +148,24 @@ function recompPlaytime(id) {
   return withAccount(localPlaytime(id), S.cloudPlay?.games?.[id]);
 }
 
+// One session as [start, secs], both whole seconds above zero; anything else from the website is
+// left out rather than drawn.
+const sessionOk = (x) => Array.isArray(x) && Number.isInteger(x[0]) && x[0] > 0 && Number.isInteger(x[1]) && x[1] > 0;
+
+// A game's sessions on every PC of the account, oldest first, for its play time card. The
+// account's already hold this PC's as the same [start, secs], so those two numbers join them; this
+// PC's newest session counts even before the website has it. Signed out, it's this PC's own.
+function playSessions(id, own) {
+  const cloud = S.cloudPlay?.games?.[id]?.sessions;
+  const all = [...(own || []), ...(Array.isArray(cloud) ? cloud : [])];
+  const byKey = new Map();
+  for (const x of all) {
+    if (!sessionOk(x)) continue;
+    byKey.set(`${x[0]}|${x[1]}`, [x[0], x[1]]);
+  }
+  return [...byKey.values()].sort((a, b) => a[0] - b[0]).slice(-500);
+}
+
 // A recomp's time, or the original game's over all its recomps (marked `grouped`).
 function gamePlaytime(a) {
   if (!a) return;
