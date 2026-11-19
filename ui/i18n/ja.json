@@ -3360,5 +3360,9 @@
  "Game A to Z": "ゲーム名順",
  "Checked by the RecompStore team": "RecompStore チームが確認済み",
  "Open the VirusTotal report": "VirusTotal のレポートを開く",
- "Verified Update": "確認済みのアップデート"
+ "Verified Update": "確認済みのアップデート",
+ "Update All Games Automatically": "すべてのゲームを自動でアップデート",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "インストール済みのゲームはすべて、ランチャーが新しいリリースを見つけたらすぐにアップデートされます。先にセーブデータがバックアップされます。「更新を一時停止」にしたゲームは今のバージョンのままです。",
+ "On for every game in Settings → Updates.": "設定 → アップデートで、すべてのゲームに対してオンになっています。",
+ "A game with Pause Updates stays on the version it has": "「更新を一時停止」にしたゲームは今のバージョンのままです"
 }

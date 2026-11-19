@@ -3360,5 +3360,9 @@
  "Game A to Z": "게임 이름순",
  "Checked by the RecompStore team": "RecompStore 팀이 확인함",
  "Open the VirusTotal report": "VirusTotal 보고서 열기",
- "Verified Update": "확인된 업데이트"
+ "Verified Update": "확인된 업데이트",
+ "Update All Games Automatically": "모든 게임 자동 업데이트",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "설치된 모든 게임은 런처가 새 릴리스를 찾으면 바로 받습니다. 저장 데이터는 먼저 백업됩니다. “업데이트 일시 중지”를 켠 게임은 지금 버전에 머뭅니다.",
+ "On for every game in Settings → Updates.": "설정 → 업데이트에서 모든 게임에 켜져 있습니다.",
+ "A game with Pause Updates stays on the version it has": "“업데이트 일시 중지”를 켠 게임은 지금 버전에 머뭅니다"
 }

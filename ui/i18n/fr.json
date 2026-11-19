@@ -3360,5 +3360,9 @@
  "Game A to Z": "Jeu de A à Z",
  "Checked by the RecompStore team": "Vérifié par l’équipe RecompStore",
  "Open the VirusTotal report": "Ouvrir le rapport VirusTotal",
- "Verified Update": "Mise à jour vérifiée"
+ "Verified Update": "Mise à jour vérifiée",
+ "Update All Games Automatically": "Mettre à jour tous les jeux automatiquement",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Chaque jeu installé reçoit une nouvelle version dès que le lanceur la trouve. Vos sauvegardes sont d’abord copiées. Un jeu avec « Suspendre les mises à jour » reste sur la version qu’il a.",
+ "On for every game in Settings → Updates.": "Activé pour tous les jeux dans Paramètres → Mises à jour.",
+ "A game with Pause Updates stays on the version it has": "Un jeu avec « Suspendre les mises à jour » reste sur la version qu’il a"
 }

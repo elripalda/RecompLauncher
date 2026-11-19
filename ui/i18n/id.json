@@ -3360,5 +3360,9 @@
  "Game A to Z": "Game A sampai Z",
  "Checked by the RecompStore team": "Diperiksa oleh tim RecompStore",
  "Open the VirusTotal report": "Buka laporan VirusTotal",
- "Verified Update": "Pembaruan terverifikasi"
+ "Verified Update": "Pembaruan terverifikasi",
+ "Update All Games Automatically": "Perbarui Semua Game Otomatis",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Setiap game yang terpasang mendapat rilis baru begitu launcher menemukannya. Save-mu dicadangkan dulu. Game dengan “Jeda Pembaruan” tetap di versi yang dimilikinya.",
+ "On for every game in Settings → Updates.": "Aktif untuk semua game di Pengaturan → Pembaruan.",
+ "A game with Pause Updates stays on the version it has": "Game dengan “Jeda Pembaruan” tetap di versi yang dimilikinya"
 }

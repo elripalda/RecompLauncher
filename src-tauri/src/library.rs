@@ -345,6 +345,11 @@ pub struct Settings {
     /// finishes downloading (an update too), its setup opens straight away. Off: it waits for Set Up.
     #[serde(default = "yes")]
     pub auto_install: bool,
+    /// Settings → Update All Games Automatically: every installed game takes its new release as
+    /// soon as the launcher finds it, like each game's own Update automatically. Off by default,
+    /// so nobody's games start updating by themselves after the launcher updates.
+    #[serde(default)]
+    pub auto_update_all: bool,
 }
 
 fn yes() -> bool {
@@ -400,6 +405,7 @@ impl Default for Settings {
             linux_graphics: String::new(),
             steam_sync: false,
             auto_install: true,
+            auto_update_all: false,
         }
     }
 }
@@ -764,6 +770,21 @@ mod tests {
         let saved = serde_json::to_string(&settings).unwrap();
         let restored: super::Settings = serde_json::from_str(&saved).unwrap();
         assert!(!restored.auto_install);
+    }
+
+    #[test]
+    fn update_all_games_automatically_is_off_by_default_and_for_settings_saved_before_it() {
+        assert!(!super::Settings::default().auto_update_all);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(!settings.auto_update_all);
+    }
+
+    #[test]
+    fn update_all_games_automatically_turned_on_stays_on() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","auto_update_all":true}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(restored.auto_update_all);
     }
 
     #[test]

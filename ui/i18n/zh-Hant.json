@@ -3360,5 +3360,9 @@
  "Game A to Z": "依遊戲名稱排序",
  "Checked by the RecompStore team": "已由 RecompStore 團隊檢查",
  "Open the VirusTotal report": "開啟 VirusTotal 報告",
- "Verified Update": "已驗證的更新"
+ "Verified Update": "已驗證的更新",
+ "Update All Games Automatically": "自動更新所有遊戲",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "啟動器一找到新版本，所有已安裝的遊戲就會立即更新。更新前會先備份您的存檔。設為「暫停更新」的遊戲會停留在目前版本。",
+ "On for every game in Settings → Updates.": "已在 設定 → 更新 中為所有遊戲開啟。",
+ "A game with Pause Updates stays on the version it has": "設為「暫停更新」的遊戲會停留在目前版本"
 }

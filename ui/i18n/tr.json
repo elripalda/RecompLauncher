@@ -3360,5 +3360,9 @@
  "Game A to Z": "Oyun A'dan Z'ye",
  "Checked by the RecompStore team": "RecompStore ekibi tarafından kontrol edildi",
  "Open the VirusTotal report": "VirusTotal raporunu aç",
- "Verified Update": "Doğrulanmış güncelleme"
+ "Verified Update": "Doğrulanmış güncelleme",
+ "Update All Games Automatically": "Tüm Oyunları Otomatik Güncelle",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Yüklü her oyun, başlatıcı yeni bir sürüm bulur bulmaz onu alır. Önce kayıtlarınız yedeklenir. “Güncellemeleri Duraklat” açık olan bir oyun sahip olduğu sürümde kalır.",
+ "On for every game in Settings → Updates.": "Ayarlar → Güncellemeler bölümünde tüm oyunlar için açık.",
+ "A game with Pause Updates stays on the version it has": "“Güncellemeleri Duraklat” açık olan bir oyun sahip olduğu sürümde kalır"
 }

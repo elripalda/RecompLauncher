@@ -3360,5 +3360,9 @@
  "Game A to Z": "Spel A tot Z",
  "Checked by the RecompStore team": "Gecontroleerd door het RecompStore-team",
  "Open the VirusTotal report": "VirusTotal-rapport openen",
- "Verified Update": "Geverifieerde update"
+ "Verified Update": "Geverifieerde update",
+ "Update All Games Automatically": "Alle games automatisch bijwerken",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Elke geïnstalleerde game krijgt een nieuwe release zodra de launcher die vindt. Er wordt eerst een back-up van je opgeslagen games gemaakt. Een game met ‘Updates pauzeren’ blijft op de versie die het heeft.",
+ "On for every game in Settings → Updates.": "Aan voor elke game in Instellingen → Updates.",
+ "A game with Pause Updates stays on the version it has": "Een game met ‘Updates pauzeren’ blijft op de versie die het heeft"
 }
