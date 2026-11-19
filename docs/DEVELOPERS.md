@@ -53,6 +53,13 @@ through us, and every release you publish reaches players the next time the laun
   settings and caches your game wrote stay. That also means a settings file *inside your release*
   replaces the player's on every update. Ship defaults instead (`default.toml`, or write them on
   first start), or let the launcher write them with `config.new`.
+- **Updates go in whole or not at all.** A file your last release had and the new one doesn't
+  goes with the update, unless the game changed it. If anything stops an update (a locked file, a
+  full drive, the PC turning off), the game is left exactly as it was, and an update cut off by the
+  launcher closing is finished or undone the next time it starts. Your release's files are only
+  ever all old or all new. A release that has a file where the last one had a folder (or the other
+  way round) replaces it only when it holds nothing but your last release's files; when the
+  player's own files are there, the update stops and says so, and nothing changes.
 - **`recomplauncher.json` at the top of the zip**, next to your program.
 - **Pre-releases are betas.** Mark a test build as a pre-release on GitHub. Normal players stay on
   your latest full release, and we can open the pre-release as a beta in the launcher, where
