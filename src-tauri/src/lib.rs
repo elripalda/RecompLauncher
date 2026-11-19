@@ -1354,7 +1354,7 @@ async fn game_sizes(st: State<'_, App>) -> Res<serde_json::Value> {
             if !p.is_dir() {
                 continue;
             }
-            sizes.insert(id, json!(manage::dir_size(&p)));
+            sizes.insert(id, json!(manage::game_size(&p)));
             let root = p.components().next().map(|c| c.as_os_str().to_string_lossy().to_string()).unwrap_or_default();
             if !drives.iter().any(|(r, _)| *r == root) {
                 if let Some(f) = manage::free_space(&p) {
@@ -1443,7 +1443,8 @@ fn holds_same_game(g: &Installed, dest: &Path) -> bool {
     if let Some(exe) = g.exe.as_ref().filter(|e| !e.as_os_str().is_empty() && e.is_relative()) {
         return dest.join(exe).is_file() && g.path.join(exe).is_file();
     }
-    let names: Vec<std::ffi::OsString> = std::fs::read_dir(&g.path).into_iter().flatten().flatten().map(|e| e.file_name()).collect();
+    // Old files an update set aside aren't the game's, and a copy elsewhere doesn't have them.
+    let names: Vec<std::ffi::OsString> = std::fs::read_dir(&g.path).into_iter().flatten().flatten().map(|e| e.file_name()).filter(|n| n != swap::FOLDER).collect();
     !names.is_empty() && names.iter().all(|n| dest.join(n).exists())
 }
 
@@ -6614,7 +6615,8 @@ fn has_linux_program(dir: &Path, depth: u32) -> bool {
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let p = e.path();
         if p.is_dir() {
-            if depth > 0 && has_linux_program(&p, depth - 1) {
+            // The old release an update set aside isn't what plays.
+            if depth > 0 && e.file_name() != swap::FOLDER && has_linux_program(&p, depth - 1) {
                 return true;
             }
             continue;
@@ -10887,6 +10889,9 @@ mod beta54_tests {
         std::fs::write(from.join("readme.txt"), b"x").unwrap();
         assert!(!holds_same_game(&g, &to));
         assert!(!holds_same_game(&g, &from), "its own folder isn't another place");
+        std::fs::remove_file(from.join("readme.txt")).unwrap();
+        std::fs::create_dir_all(from.join(swap::FOLDER).join("old")).unwrap();
+        assert!(holds_same_game(&g, &to), "old files an update set aside aren't the game's");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
