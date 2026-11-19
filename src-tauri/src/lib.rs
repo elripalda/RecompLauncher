@@ -175,10 +175,25 @@ fn in_plain_folder(st: &App, id: &str) -> Res<Installed> {
         if let Some(app) = net::app() {
             let _ = app.emit("note", UNPACKING_NOTE);
         }
-        plain::tell(&plain::bring_in(st, id, &image)?);
+        plain::tell(&block_here(|| plain::bring_in(st, id, &image))?);
         return st.lib.lock().unwrap().installed.get(id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()));
     }
     Ok(g)
+}
+
+/// Long work that blocks (a game's one-time unpack, gigabytes) where it may be on one of the async
+/// runtime's workers: Play runs there, and so do the sync commands marked async (setup_copy,
+/// setup_inputs_run). The runtime moves its other tasks to another thread while it waits, so
+/// downloads and the window's calls keep going. Off a multi-threaded runtime (a plain thread, a
+/// test) it just runs, since block_in_place would panic on a single-threaded one.
+#[cfg(target_os = "linux")]
+fn block_here<T>(work: impl FnOnce() -> T) -> T {
+    use tokio::runtime::{Handle, RuntimeFlavor};
+    let multi = Handle::try_current().is_ok_and(|h| h.runtime_flavor() == RuntimeFlavor::MultiThread);
+    if !multi {
+        return work();
+    }
+    tokio::task::block_in_place(work)
 }
 
 /// What the player sees when Play gets to an AppImage anyway (a program picked for one start).
@@ -10630,6 +10645,27 @@ mod tests {
             looked: Mutex::new(HashSet::new()),
             headless: AtomicBool::new(false),
         }
+    }
+
+    // With one worker, the other task can only run while `block_here` waits if the worker is handed
+    // over: without block_in_place it would wait for the whole timeout and get nothing.
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn long_work_on_the_only_worker_lets_the_other_tasks_run() {
+        let ran = tokio::spawn(async {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let other = tokio::spawn(async move { tx.send(()).unwrap() });
+            let got = block_here(|| rx.recv_timeout(std::time::Duration::from_secs(5)).is_ok());
+            other.await.unwrap();
+            got
+        });
+        assert!(ran.await.unwrap());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn long_work_off_the_runtime_just_runs() {
+        assert_eq!(block_here(|| 7), 7);
     }
 
     #[test]
