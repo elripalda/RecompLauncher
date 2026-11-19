@@ -37,6 +37,52 @@ test('Uninstall stays in the menu of an installed game, last and in red', () => 
   assert.match(fn(app, 'gameMenu'), /\.\.\.\(g \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
 });
 
+// One submenu of the game's menu, from its label to its closing bracket.
+const submenu = (label) => fn(app, 'gameMenu').match(new RegExp(`label: t\\('${label}'\\)[^]*?\\n      \\] \\},`))[0];
+
+test('Play is not in the menu: it is the big button', () => {
+  assert.doesNotMatch(fn(app, 'gameMenu'), /act: 'play'/);
+});
+
+test('Favorites is under Add To', () => {
+  assert.match(submenu('Add To'), /act: 'fav'/);
+});
+
+test('Add to Start Menu has its own icon, not the desktop one', () => {
+  assert.match(submenu('Add To'), /act: 'app-menu'[^\n]*icon: 'apps'/);
+});
+
+test('Troubleshoot holds the checker and both ways to report', () => {
+  const sub = submenu('Troubleshoot');
+  assert.match(sub, /act: 'troubleshoot', id, label: t\('Check What\\'s Wrong…'\)/);
+  assert.match(sub, /act: 'report', id, label: t\('Report to RecompLauncher…'\)/);
+  assert.match(sub, /\.\.\.devReportItem\(x\)/);
+});
+
+test('Set Up Again is Setup Options in the menu, not a button beside Play', () => {
+  assert.match(fn(app, 'gameMenu'), /canSetUpAgain\(id\) \? \[\{ act: 'setup', id, label: setupLabel, icon: 'disc' \}\]/);
+  assert.doesNotMatch(fn(app, 'actions'), /again/);
+});
+
+test('new setup options put a dot on the "…" button', () => {
+  assert.match(fn(app, 'actions'), /class="\$\{sq\}\$\{fresh \? ' has-new' : ''\}" data-act="menu"/);
+});
+
+test('Customize is called Edit Name and Artwork', () => {
+  assert.match(fn(app, 'gameMenu'), /act: 'customize', id, label: t\('Edit Name and Artwork…'\)/);
+  assert.doesNotMatch(fn(app, 'gameMenu'), /Customize…/);
+});
+
+test('the side column has no buttons, and Launcher Support is a box on Overview', () => {
+  const rail = fn(app, 'gameRail');
+  assert.doesNotMatch(rail, /quickActs|btn/);
+  assert.match(rail, /S\.tab === 'overview' \? readyCard\(a\) \+ supportCard\(a\) : ''/);
+});
+
+test('the facts card leaves out who made it (it is under the title)', () => {
+  assert.doesNotMatch(fn(app, 'gameRail'), /t\('By'\)/);
+});
+
 // A page that scrolls under a 42px top bar, 800px tall, with one open menu 300px tall.
 const scrolled = (style, by) => {
   const main = { scrollTop: 0, getBoundingClientRect: () => ({ bottom: 800 }) };
@@ -75,12 +121,36 @@ test('scrolling the page moves menus instead of closing them', () => {
   assert.doesNotMatch(handler, /closeMenu/);
 });
 
-test('the project page is one menu row', () => {
-  const run = new Function('t', 'tf', 'isSF', 'isFJ', 'isLab', 'fjServer', 'repoHome', `${fn(app, 'repoItem')}; return repoItem;`);
-  const no = () => false;
-  const repoItem = run(same, same, no, no, no, same, (r) => `https://github.com/${r}`);
-  assert.deepEqual(repoItem({ repo: 'dev/hydro' }), [{ act: 'url', url: 'https://github.com/dev/hydro', label: 'On GitHub', icon: 'web' }]);
-  assert.deepEqual(repoItem({}), []);
+// The menu's project row for an entry, with the hosts told apart by their repo's prefix.
+const projectRow = (x) => {
+  const run = new Function('t', 'tf', 'isSF', 'isFJ', 'isLab', 'fjServer', 'repoHome', 'followLink', 'followLabel', 'onX', `${fn(app, 'projectItem')}; return projectItem;`);
+  const pre = (p) => (r) => String(r || '').startsWith(p);
+  const follow = (a) => a.follow || '';
+  const projectItem = run(same, (s, v) => s.replace('{host}', v.host), pre('sourceforge:'), pre('forgejo:'), pre('gitlab:'), () => 'codeberg.org', (r) => `home:${r}`, follow, () => 'Follow It on X', (u) => u.includes('x.com'));
+  return projectItem(x);
+};
+
+test('the project row is GitHub with its logo', () => {
+  assert.deepEqual(projectRow({ repo: 'dev/hydro' }), [{ act: 'url', url: 'home:dev/hydro', label: 'On GitHub', icon: 'github' }]);
+});
+
+test('the project row shows GitLab, SourceForge and Forgejo with their own logos', () => {
+  assert.equal(projectRow({ repo: 'gitlab:dev/hydro' })[0].icon, 'gitlab');
+  assert.equal(projectRow({ repo: 'sourceforge:hydro' })[0].icon, 'sourceforge');
+  assert.deepEqual(projectRow({ repo: 'forgejo:codeberg.org/dev/hydro' })[0], { act: 'url', url: 'home:forgejo:codeberg.org/dev/hydro', label: 'On codeberg.org', icon: 'forgejo' });
+});
+
+test('a Coming Soon entry with no repo gets Follow It on X instead', () => {
+  assert.deepEqual(projectRow({ follow: 'https://x.com/hydro' }), [{ act: 'url', url: 'https://x.com/hydro', label: 'Follow It on X', icon: 'x' }]);
+});
+
+test('no repo and no follow link: no project row', () => {
+  assert.deepEqual(projectRow({}), []);
+});
+
+test('every logo the project row names is in the menu icons', () => {
+  const icons = app.match(/^const MI = \{[^]*?^\};/m)[0];
+  for (const k of ['github', 'gitlab', 'sourceforge', 'forgejo', 'x', 'apps', 'wrench']) assert.match(icons, new RegExp(`\\n  ${k}: '`), k);
 });
 
 test('Manage groups its rows in cards, with Uninstall last', () => {
@@ -112,14 +182,4 @@ test('a local build has only its project association under Updates', () => {
   const html = updateRows(Object.assign({ local: true }, GAME), false);
   assert.match(html, /data-act="project-association"/);
   assert.doesNotMatch(html, /hold-up|auto-up|data-act="build"/);
-});
-
-test('the side column has no buttons, and Launcher Support is a box on Overview', () => {
-  const rail = fn(app, 'gameRail');
-  assert.doesNotMatch(rail, /quickActs|btn/);
-  assert.match(rail, /S\.tab === 'overview' \? readyCard\(a\) \+ supportCard\(a\) : ''/);
-});
-
-test('the facts card leaves out who made it (it is under the title)', () => {
-  assert.doesNotMatch(fn(app, 'gameRail'), /t\('By'\)/);
 });
