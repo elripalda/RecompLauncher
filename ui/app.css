@@ -528,12 +528,33 @@ body.light .known-fix b{color:#127a45}
 .md-fold>summary:hover{color:var(--ink)}
 .about-game p{margin:0 0 12px;color:#d3d9e2;line-height:1.65}
 .about-game p.src{margin:6px 0 0;font-size:13px;color:var(--dim)}
-.rel{display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;border-bottom:1px solid var(--line);padding:20px 0}
-.rel:first-child{padding-top:4px}.rel:last-child{border-bottom:0;padding-bottom:0}
-.rel-h{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.rel-h h3{font-size:16px}
+.card.rels{padding:6px}
+.rel{border-top:1px solid var(--line)}
+.rel:first-child{border-top:0}
+.rel-h{display:flex;align-items:center;gap:10px;padding-right:10px;border-radius:14px;transition:background-color .15s}
+.rel-h:hover,.rel.open .rel-h{background:var(--fill)}
+.rel-t{flex:1;min-width:0;display:flex;align-items:flex-end;gap:16px;padding:14px 0 14px 16px;text-align:left}
+/* The Latest version pill sits above the title, so every title line looks the same. */
+.rel-name{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.rel-line{display:flex;align-items:center;gap:12px;min-width:0;max-width:100%}
+/* One line: the full title is in the notes below and in the tooltip, so a long one is cut short
+   rather than wrapping, and the date and Pre-release beside it always show. */
+.rel-line h3{font-size:16px;line-height:22px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-line .pre{flex:none}
 .rel-h .pre{font-size:12px;font-weight:700;color:var(--warn)}
-.rel-h .when{color:var(--dim);font-size:13px}
+.rel-h .when{flex:none;color:var(--dim);font-size:13px;line-height:22px}
+.rel-name .ai-tag{height:20px;font-size:11px}
+.ai-tag.latest{color:#3ddc97;background:rgba(61,220,151,.1);border-color:rgba(61,220,151,.35)}
+body.light .ai-tag.latest{color:#127a45}
+.rel-act{display:flex;align-items:center;gap:8px;flex:none}
+.rel-act:empty{display:none}
+.rel-chev{flex:none;display:grid;place-items:center;width:28px;height:28px}
+.rel.open .upd-chev{transform:rotate(180deg)}
+.rel-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s var(--ease)}
+.rel.open .rel-body{grid-template-rows:1fr}
+.rel-in{overflow:hidden;min-height:0;padding:0 16px}
+.rel.open .rel-in{padding:12px 16px 18px}
+@media (prefers-reduced-motion:reduce){.rel-body{transition:none}}
 .bars{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:8px;height:120px;margin-top:18px;align-items:end}
 .bars .b{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
 .bars i{display:block;width:100%;max-width:26px;border-radius:6px 6px 2px 2px;background:var(--cyan);opacity:.9;transform-origin:bottom;animation:growUp .6s var(--ease) both}

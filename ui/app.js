@@ -2531,8 +2531,11 @@ function gameBody(a) {
     else if (r.loading) body = `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading the releases…'))}</p></div></div>`;
     else if (r.error) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t(r.error))}</p></div></div>`;
     else if (!r.list.length) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t('No releases yet.'))}</p></div></div>`;
-    else body = `<div class="stack">${inst && inst.pinned ? `<div class="card pinned"><div class="set-row"><div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div><button type="button" class="btn main" data-act="install" data-id="${esc(id)}">${esc(t('Go to the newest'))}</button></div></div>` : ''}
-      <div class="card">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => `<div class="rel"><div class="rel-h"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${x.prerelease ? `<span class="pre">${esc(t('Pre-release'))}</span>` : ''}${relState(id, inst, r.list, x, n)}</div><div class="md">${x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('')}</div></div>`;
+    else {
+      const latest = latestRel(a, r.list);
+      body = `<div class="stack">${inst && inst.pinned ? `<div class="card pinned"><div class="set-row"><div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div><button type="button" class="btn main" data-act="install" data-id="${esc(id)}">${esc(t('Go to the newest'))}</button></div></div>` : ''}
+      <div class="card rels">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => relDrawer(id, inst, r.list, x, n, latest)).join('')}</div></div>`;
+    }
   } else if (S.tab === 'saves') {
     body = savesTab(a);
   } else if (S.tab === 'dev') {
@@ -2578,8 +2581,9 @@ function askUpdInfo(id) {
 }
 // What each release in the Updates tab offers, by the same rule as the Library's badge and
 // Settings > Check (update_info): the update on offer, releases the store is still checking,
-// and releases with no build for this system.
-function relState(id, inst, list, x, n) {
+// and releases with no build for this system. Any other release says which way it goes from the
+// installed one: the list is newest first, so a release above it is an update, below a downgrade.
+function relState(id, inst, list, x) {
   if (!inst) return '';
   if (inst.tag === x.tag_name) return `<span class="ai-tag inst">${esc(t('Installed'))}</span>`;
   const info = (S.updInfo || {})[id];
@@ -2591,7 +2595,47 @@ function relState(id, inst, list, x, n) {
   const ci = info && info.checked ? list.findIndex((y) => y.tag_name.replace(/^v/i, '').toLowerCase() === info.checked.replace(/^v/i, '').toLowerCase()) : -1;
   const li = list.indexOf(x);
   if (ci > 0 && li < ci) return `<span class="pre">${esc(t('Still being checked'))}</span>${btn(t('Install Anyway'))}`;
-  return btn(n === 0 ? t('Install this one') : t('Go back to this one'));
+  const ii = list.findIndex((y) => relKey(y.tag_name) === relKey(inst.tag));
+  // The installed version isn't in the list (a local build, or a release since taken down).
+  if (ii < 0) return btn(t('Install this one'));
+  return btn(li < ii ? t('Update') : t('Downgrade'));
+}
+// The release the game page's Latest version names (the store's version), so the pill and that
+// line agree; when no tag matches it, the newest release that isn't a pre-release, as GitHub does.
+function latestRel(a, list) {
+  const want = relKey(a.version);
+  const named = want ? list.find((x) => relKey(x.tag_name) === want) : null;
+  if (named) return named.tag_name;
+  const stable = list.find((x) => !x.draft && !x.prerelease);
+  return stable ? stable.tag_name : '';
+}
+// One release in the Updates tab as a drawer. Only the newest starts open, so its notes are right
+// there and older ones don't push them down; what the player opens or closes stays that way
+// through redraws (S.relOpen). The release tagged `latest` (latestRel) gets the Latest version pill.
+function relDrawer(id, inst, list, x, n, latest) {
+  S.relOpen = S.relOpen || {};
+  const key = `${id}@${x.tag_name}`;
+  const open = key in S.relOpen ? S.relOpen[key] : n === 0;
+  const pre = x.prerelease ? `<span class="pre">${esc(t('Pre-release'))}</span>` : '';
+  const newest = x.tag_name === latest ? `<span class="ai-tag latest">${esc(t('Latest version'))}</span>` : '';
+  const notes = x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
+  const title = x.name || x.tag_name;
+  const name = `<span class="rel-name">${newest}<span class="rel-line"><h3 title="${esc(title)}">${esc(title)}</h3>${pre}</span></span>`;
+  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}">${name}<span class="when">${esc(date(x.published_at))}</span></button>`;
+  const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
+  return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}<span class="rel-act">${relState(id, inst, list, x)}</span>${chev}</div>
+    <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;
+}
+// Opening or closing a drawer only flips its class, so the slide plays and the page stays put.
+function toggleRel(el) {
+  const row = el.closest('.rel');
+  if (!row) return;
+  const open = !row.classList.contains('open');
+  S.relOpen = S.relOpen || {};
+  S.relOpen[row.dataset.key] = open;
+  row.classList.toggle('open', open);
+  row.querySelector('.rel-t').setAttribute('aria-expanded', String(open));
+  row.querySelector('.rel-body').inert = !open;
 }
 // Switching tabs redraws only the part below them: the banner and cover stay where they are.
 function showTab(k) {
@@ -4030,17 +4074,18 @@ function fillUpd(el) {
   const box = el.querySelector('.upd-in');
   if (u && box) { box.innerHTML = updNotes(u); requestAnimationFrame(() => updMeasure(box)); }
 }
+// The drawer arrow shared by Downloads > History and a game's Updates tab.
+const CHEV_D = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function updatesTab(log) {
   S.updLog = log;
   S.updOpen = S.updOpen || new Set();
   if (!log.length) return `<div class="empty"><h2>${esc(t('No updates yet'))}</h2><p>${esc(t('When a game you have gets a new version and you install it, it\'s listed here with what changed.'))}</p></div>`;
-  const CHEV = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   return `<div class="upd-list">${log.map((u) => {
     const a = u.self ? null : byId(u.id) || { id: u.id, name: u.name };
     const img = u.self ? '<span class="upd-self cap" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.hero ? pic(thumbOf(a.hero, 320), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>';
     const open = S.updOpen.has(u.key);
     return `<div class="upd${open ? ' open' : ''}" data-key="${esc(u.key)}"${u.self ? ' data-self="1"' : ''}>
-      <button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(agoCap(u.when))}</span>${CHEV}</button>
+      <button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(agoCap(u.when))}</span>${CHEV_D}</button>
       <div class="upd-body"><div class="upd-in">${open ? updNotes(u) : ''}</div></div></div>`;
   }).join('')}</div>`;
 }
@@ -8469,6 +8514,7 @@ async function act(el, e) {
     case 'dl-clear': return saveUi({ [el.dataset.k]: Math.floor(Date.now() / 1000) });
     case 'dl-tab': if (S.dlTab === el.dataset.tab) return; S.dlTab = el.dataset.tab; S.anim = 'enter-soft'; return render();
     case 'upd': return toggleUpd(el);
+    case 'rel': return toggleRel(el);
     case 'upd-all': { const clip = el.closest('.upd-notes') && el.closest('.upd-notes').querySelector('.upd-clip'); if (clip) { const on = !clip.classList.contains('all'); clip.classList.toggle('all', on); el.textContent = on ? t('Show Less') : t('Show All'); } return; }
     case 'upd-game': S.nextTab = 'updates'; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
