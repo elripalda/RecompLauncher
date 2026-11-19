@@ -580,7 +580,7 @@ function chooseSave(local, cloud) {
   const note = `<p class="muted pick-note">${esc(t('The other one is kept as a copy on its Saves tab, so nothing is lost.'))}</p>`;
   return ask(t('Which save do you want?'), note, [
     { label: t('Keep this PC\'s'), sub: `${whenText(local.when)} · ${local.device}`, lines: [whenText(local.when), local.device, played(local.played)], tag: tag('local'), icon: 'desk', v: 'local' },
-    { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, lines: [whenText(cloud.made), cloud.device, played(cloud.played)], tag: tag('cloud'), icon: 'check', v: 'cloud' },
+    { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, lines: [whenText(cloud.made), cloud.device, played(cloud.played)], tag: tag('cloud'), icon: 'cloud', v: 'cloud' },
   ], true);
 }
 
