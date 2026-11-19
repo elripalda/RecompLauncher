@@ -1026,3 +1026,12 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-rail.box{right:auto;bottom:auto}
 .tv-rail i{position:absolute;left:0;top:0;width:100%;border-radius:6px;background:var(--acc,#34F2E8);opacity:.75;transition:transform .35s cubic-bezier(.2,.8,.2,1),height .2s}
 .tv-rail[hidden]{display:none}
+/* The cloud save status above a game's buttons (account.js decides the state): a coloured line,
+   not a button, as on the desktop. */
+.tv-sbadge{--c:#8B97AA;margin:0;display:inline-flex;align-items:center;gap:10px;font-size:22px;font-weight:700;color:var(--c)}
+.tv-sbadge.sb-ok{--c:#3ee08f}.tv-sbadge.sb-cy{--c:#34F2E8}.tv-sbadge.sb-warn{--c:#f5b83d}.tv-sbadge.sb-bad{--c:#ff7a7a}
+.tv-sbadge svg{flex:none}
+.tv-sbadge small{font-size:20px;font-weight:600;color:var(--tvsoft,#c9d3e0)}
+.tv-sbadge small::before{content:"· "}
+/* "Newer" beside a sheet item's label (the save made later, when both changed): green text. */
+.tv-newer{margin-left:12px;font-style:normal;font-size:19px;font-weight:700;color:#3ee08f}

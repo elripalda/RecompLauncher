@@ -20,7 +20,7 @@ async function loadAccount(fresh) {
   const was = !!(S.account && S.account.signedIn);
   try { S.account = await invoke('account_state', { fresh: !!fresh }); } catch (e) { S.account = S.account || { signedIn: false }; }
   // Signed in (or out) just now: what each game's Saves tab knew is out of date.
-  if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; }
+  if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; forgetSaveStatus(); }
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
   // Notify Me: the games they're waiting on (none when signed out).
@@ -125,6 +125,7 @@ async function signOut() {
   try { await invoke('account_signout'); } catch (e) { /* signed out here anyway */ }
   S.account = { signedIn: false };
   S.saves = {};
+  forgetSaveStatus();
   // The next sign-in merges this PC's saved list with that account's again.
   saveUi({ lib_synced: null, lib_queue: [] }, true).catch(() => {});
   toast(t('Signed out. Your saves stay on this PC.'));
@@ -184,6 +185,8 @@ async function loadSaves(id) {
   S.saves[id] = S.saves[id] && S.saves[id] !== 'loading' ? Object.assign(S.saves[id], { busy: true }) : 'loading';
   try { S.saves[id] = await invoke('saves_info', { id }); } catch (e) { S.saves[id] = { error: String(e && e.message ? e.message : e) }; }
   if (S.view === 'game' && S.arg === id && S.tab === 'saves') refreshGame();
+  // Whatever just changed the tab (Sync Now, Back Up Now, the cloud switch) changed the badge too.
+  loadSaveStatus(saveIdOf(id));
 }
 const FROM = { player: N_('You picked this folder'), developer: N_('Its developer says it saves here'), catalog: N_('RecompLauncher knows it saves here') };
 // Nobody (the player, its developer or RecompLauncher) has said where this game saves. Nothing is
@@ -250,6 +253,169 @@ function copyRow(id, c, k, v, current) {
 }
 
 const savesChanged = (id) => { delete S.saves[id]; if (S.view === 'game' && S.arg === id && S.tab === 'saves') loadSaves(id); };
+
+// ---------- the cloud save status above Play ----------
+// Where a game's saves stand, on its page above Play and above Big Picture's game buttons, so the
+// player doesn't have to open the Saves tab to see whether the last save reached the cloud. Only
+// a coloured line, not a button: what to do about it is on the Saves tab. Hovering it says more.
+// saves_status answers from this PC alone (it never asks the website); the save-sync event says
+// when something runs or ends, and the status is asked again then.
+S.saveStat = {};
+S.savePhase = {};
+const statLoading = new Set();
+
+// A game of several that keeps its own saves goes by its own id; any other by its recomp's.
+function saveIdOf(id) {
+  const s = subOf(id);
+  const own = s && Array.isArray(s.game.saves) && s.game.saves.length;
+  return own ? id : parentId(id);
+}
+
+async function loadSaveStatus(sid) {
+  if (statLoading.has(sid)) return;
+  statLoading.add(sid);
+  try { S.saveStat[sid] = await invoke('saves_status', { id: sid }); } catch (e) { S.saveStat[sid] = null; }
+  statLoading.delete(sid);
+  paintSaveBadges(sid);
+}
+
+// "12 min ago" for the last sync: ago() only goes down to "today", too coarse for "did that
+// session's save go up?".
+function sinceText(ts) {
+  if (!ts) return '';
+  const secs = Math.max(0, Date.now() / 1000 - ts);
+  if (secs < 60) return t('just now');
+  if (secs < 3600) return tn(Math.floor(secs / 60), '1 min ago', '{n} min ago');
+  if (secs < 86400) return tn(Math.floor(secs / 3600), '1 hour ago', '{n} hours ago');
+  return ago(ts);
+}
+
+// What a problem kept by the last sync looks like, by its kind. The backend's own words say why
+// (in the tooltip); these say it short.
+const PROBLEM_BADGE = {
+  full: { label: N_('Can\'t upload'), note: N_('cloud full'), head: N_('Your cloud saves are full') },
+  'too-big-copy': { label: N_('Too big for the cloud'), head: N_('This save is too big for the cloud') },
+  'too-big-folder': { label: N_('Sync paused'), head: N_('Cloud saves are paused for this game') },
+  paused: { label: N_('Cloud saves paused'), head: N_('Cloud saves are paused for now') },
+  error: { label: N_('Can\'t upload'), head: N_('The last upload didn\'t go through') },
+};
+
+// While something runs (from the save-sync event): checking before Play, a save going up or one
+// coming down.
+const PHASE_BADGE = {
+  check: { mark: 'check-run', label: N_('Checking cloud…'), head: N_('Looking for a newer save'), text: N_('Before the game starts, the launcher checks whether another PC saved after this one.') },
+  up: { mark: 'up', label: N_('Uploading…'), head: N_('Sending your save'), text: N_('Your newest save is going to the cloud.') },
+  down: { mark: 'down', label: N_('Getting cloud save…'), head: N_('Bringing in a newer save'), text: N_('Another PC saved after this one. Your current save is kept as a backup first.') },
+  // The game just closed (or crashed, or the launcher is finishing a session it didn't see end):
+  // its save is being copied, and sent when cloud saves are on.
+  after: { mark: 'play', label: N_('Syncs after you play'), head: N_('Saving after you played'), text: N_('Its save is being copied, and sent to the cloud when cloud saves are on.') },
+};
+
+// What the status line shows for a game: its tone (ok, cy, warn, bad, dim), the mark inside the
+// cloud, a label and a short note, and for the tooltip a heading, a line and rows ([label, value]).
+// `phase` is what's running now, `running` whether the game is.
+function saveBadgeInfo(st, phase, running) {
+  // The copy after a session runs for every game; it's only shown for one that syncs. Signed out
+  // or with cloud saves off, the line keeps saying so instead of a sync that isn't happening.
+  const syncs = st.state !== 'signed-out' && st.state !== 'off' && st.known !== false;
+  const p = syncs && PHASE_BADGE[phase];
+  if (p) return { tone: 'cy', mark: p.mark, label: t(p.label), note: '', head: t(p.head), text: t(p.text), rows: [] };
+  const synced = st.syncedAt ? [[t('Last synced'), whenText(st.syncedAt)], [t('Saved on'), st.syncedDevice || t('this PC')]] : [];
+  const newest = st.newest ? [[t('Last backup'), `${whenText(st.newest.when)}${st.newest.device ? ' · ' + st.newest.device : ''}`]] : [];
+  if (st.state === 'signed-out') return { tone: 'dim', mark: 'dash', label: t('Not signed in'), note: '', head: t('Keep this save on any PC'), text: t('Sign in to RecompStore and your saves go to the cloud after you play. It\'s free.'), rows: newest };
+  if (st.state === 'off') return { tone: 'dim', mark: 'off', label: t('Cloud saves off'), note: '', head: t('Saves stay on this PC'), text: t('The launcher still keeps a copy after every session. Turn cloud saves on in its Saves tab.'), rows: newest };
+  if (st.state === 'conflict') return { tone: 'warn', mark: 'conflict', label: t('Choose a save'), note: t('press Play to pick'), head: t('Both saves changed'), text: t('This PC and the cloud both changed since they last synced. Press Play, or Sync Now in its Saves tab, to pick the one to keep; the other stays as a backup on this PC.'), rows: synced };
+  if (st.state === 'problem') return problemBadge(st, synced);
+  if (running) return { tone: 'cy', mark: 'play', label: t('Syncs after you play'), note: '', head: t('Playing now'), text: t('Its save goes to the cloud when you close the game.'), rows: synced };
+  if (st.state === 'waiting') return waitingBadge(st, synced);
+  if (st.state === 'up-to-date') return { tone: 'ok', mark: 'check', label: t('Up to date'), note: sinceText(st.syncedAt), head: t('Your save is in the cloud'), text: t('This PC and the cloud have the same save.'), rows: synced };
+  return { tone: 'dim', mark: 'dash', label: t('No saves yet'), note: '', head: t('Nothing to sync yet'), text: t('Play it once. Its saves are backed up after, and go to the cloud too.'), rows: [] };
+}
+
+function problemBadge(st, synced) {
+  const kind = (st.problem && st.problem.kind) || 'error';
+  const b = PROBLEM_BADGE[kind] || PROBLEM_BADGE.error;
+  const text = st.problem && st.problem.text ? t(st.problem.text) : '';
+  return { tone: 'bad', mark: 'alert', label: t(b.label), note: b.note ? t(b.note) : '', head: t(b.head), text, rows: synced };
+}
+
+// Saved here and not in the cloud yet: queued after a try that didn't get through (with when the
+// next one is), or going up after the next session.
+function waitingBadge(st, synced) {
+  const queued = st.waiting > 0;
+  const offline = st.problem && st.problem.kind === 'offline';
+  const minutes = st.retryIn ? Math.max(1, Math.ceil(st.retryIn / 60)) : 0;
+  const note = minutes ? tn(minutes, 'next try in 1 min', 'next try in {n} min') : offline ? t('offline') : '';
+  const text = !queued ? t('It goes up after you play next, or now with Sync Now in its Saves tab.')
+    : offline ? t('The website can\'t be reached right now. Your save is safe here and goes up by itself when it can.')
+    : t('It goes up by itself on the next try.');
+  const rows = queued ? [[t('Waiting'), tn(st.waiting, '1 copy', '{n} copies')], ...synced] : synced;
+  return { tone: 'warn', mark: 'clock', label: t('Waiting to upload'), note, head: t('Saved on this PC, not in the cloud yet'), text, rows };
+}
+
+// The cloud, with a mark inside it for the state. Drawn the same in both modes.
+const BADGE_MARKS = {
+  check: '<path d="m9.4 13.4 2 2 3.4-3.6"/>',
+  'check-run': '<path class="sb-spin" d="M14.6 13a2.6 2.6 0 1 1-1-2"/>',
+  up: '<path class="sb-bob" d="M12 16.2v-5.4m0 0-2.3 2.3M12 10.8l2.3 2.3"/>',
+  down: '<path class="sb-bob" d="M12 10.8v5.4m0 0-2.3-2.3M12 16.2l2.3-2.3"/>',
+  clock: '<path d="M12 11v2.4l1.6 1"/>',
+  alert: '<path d="M12 10.6v2.8M12 15.7h.01"/>',
+  conflict: '<path d="M10 10.6v5.2m-1.6-1.6L10 15.8l1.6-1.6M14 15.8v-5.2m-1.6 1.6L14 10.6l1.6 1.6"/>',
+  off: '<path d="M4 4l16 16"/>',
+  dash: '<path d="M10 13.4h4"/>',
+  play: '<path d="M11 11v4.4l3.4-2.2z" fill="currentColor" stroke="none"/>',
+};
+const badgeIcon = (mark, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>${BADGE_MARKS[mark] || ''}</svg>`;
+
+// The tooltip: the heading, its line, then each row on its own line.
+const badgeTip = (b) => [b.head, b.text, ...b.rows.map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join('\n');
+
+// The status for a game page id, or null while it's not known (or not installed).
+function saveBadgeFor(id) {
+  if (!S.library[parentId(id)]) return null;
+  const sid = saveIdOf(id);
+  const st = S.saveStat[sid];
+  if (st === undefined) loadSaveStatus(sid);
+  if (!st) return null;
+  const b = saveBadgeInfo(st, S.savePhase[sid], S.running.has(parentId(sid)));
+  return { ...b, tip: badgeTip(b) };
+}
+
+function badgeInner(pageId) {
+  const b = saveBadgeFor(pageId);
+  if (!b) return '';
+  const note = b.note ? `<small>${esc(b.note)}</small>` : '';
+  return `<span class="sbadge-line sb-${b.tone}" title="${esc(b.tip)}">${badgeIcon(b.mark)}<b>${esc(b.label)}</b>${note}</span>`;
+}
+
+// The status on a game page, above Play. It says changes out loud to a screen reader.
+function saveBadge(a) {
+  if (!S.library[parentId(a.id)]) return '';
+  const sid = saveIdOf(a.id);
+  return `<div class="sbadge" role="status" aria-label="${esc(t('Cloud saves'))}" data-save-badge="${esc(sid)}" data-page="${esc(a.id)}">${badgeInner(a.id)}</div>`;
+}
+
+// Redraws the status lines on screen (one game's, or all of them), and Big Picture's game page.
+function paintSaveBadges(sid) {
+  for (const el of $$('[data-save-badge]')) {
+    if (sid && el.dataset.saveBadge !== sid) continue;
+    el.innerHTML = badgeInner(el.dataset.page);
+  }
+  if (window.tvRefresh && inTV()) window.tvRefresh();
+}
+
+// Signed in or out, or the cloud changed: every game's status is asked again.
+function forgetSaveStatus() {
+  S.saveStat = {};
+  S.savePhase = {};
+  paintSaveBadges();
+}
+
+window.saveBadge = saveBadge;
+window.saveBadgeFor = saveBadgeFor;
+window.saveBadgeIcon = badgeIcon;
+window.paintSaveBadges = paintSaveBadges;
 
 // ---------- the Saves page: every game's saves in one place ----------
 const CARD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 3v3.5M12 3v3.5M15 3v3.5M8.5 12h7v5h-7z"/></svg>';
@@ -322,16 +488,21 @@ window.loadSavesAll = loadSavesAll;
 // ---------- before Play ----------
 // Asks once per game, while signed in, whether its saves go to the cloud; then brings in a newer
 // save from another PC, or asks which to keep. false: don't start it.
-async function ask(title, text, buttons) {
+// `cards`: on the desktop the choices are big cards to click (a heading, a green tag such as
+// Newer, and their `lines`), not buttons under the text. Big Picture's sheet is the same either way.
+async function ask(title, text, buttons, cards) {
   if (inTV() && window.tvAsk) {
     // A button marked last (one that changes things for good) goes to the end of the list, away from the first focus.
     const list = buttons.filter((b) => !b.last).concat(buttons.filter((b) => b.last));
-    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, icon: b.icon })));
+    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, tag: b.tag, icon: b.icon })));
     return i == null || i < 0 ? null : list[i].v;
   }
+  const card = (b, i) => `<button type="button" class="pick-card pick-btn" data-x="b${i}"><b>${esc(b.label)}${b.tag ? ` <em class="pick-newer">${esc(b.tag)}</em>` : ''}</b>${(b.lines || []).map((l) => `<span>${esc(l)}</span>`).join('')}</button>`;
+  const button = (b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`;
+  const choices = cards ? `<div class="pick-two">${buttons.map(card).join('')}</div>` : `<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map(button).join('')}</div>`;
   return new Promise((res) => {
     let picked = null;
-    const box = modal(`<h2>${esc(title)}</h2>${text}<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map((b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`).join('')}</div>`, (x, close) => {
+    const box = modal(`<h2>${esc(title)}</h2>${text}${choices}`, (x, close) => {
       const i = Number(String(x.dataset.x).slice(1));
       if (!isNaN(i) && buttons[i]) { picked = buttons[i].v; close(); }
     }, title);
@@ -391,13 +562,32 @@ async function beforeCloudPlay(id) {
 }
 
 async function pickCloudSave(id, { local, cloud }) {
-  const card = (h, when, dev, played) => `<div class="pick-card"><b>${esc(h)}</b><span>${esc(whenText(when))}</span><span>${esc(dev)}</span><span>${esc(tf('Played {time} in all', { time: fmtTime(played) }))}</span></div>`;
-  const v = await ask(t('Which save do you want?'), `<div class="pick-two">${card(t('This PC'), local.when, local.device, local.played)}${card(t('Cloud'), cloud.made, cloud.device, cloud.played)}</div><p class="muted" style="font-size:13px">${esc(t('The other one is kept as a copy on its Saves tab, so nothing is lost.'))}</p>`,
-    [{ label: t('Keep this PC\'s'), sub: `${whenText(local.when)} · ${local.device}`, icon: 'desk', v: 'local' }, { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, icon: 'check', v: 'cloud' }]);
-  if (v == null) return false;
+  const v = await chooseSave(local, cloud);
+  if (v !== 'local' && v !== 'cloud') return false;
   await invoke('saves_pick', { id, keep: v, localHash: local.hash, cloudVersion: cloud.v });
   toast(t(v === 'cloud' ? 'The cloud save is in place.' : 'Your save is in the cloud.'));
   return true;
+}
+
+// Which of the two saves is newer ('local' or 'cloud'), or '' when they were saved at the same time.
+function newerSave(local, cloud) {
+  if (local.when > cloud.made) return 'local';
+  if (cloud.made > local.when) return 'cloud';
+  return '';
+}
+
+// Both saves changed: the player picks one. On the desktop the two saves are the choices
+// themselves (cards to click, no buttons under them); in Big Picture they're the sheet's two
+// items. The newer one says so, and what happens to the other is said under the question.
+function chooseSave(local, cloud) {
+  const newer = newerSave(local, cloud);
+  const tag = (k) => (k === newer ? t('Newer') : '');
+  const played = (secs) => tf('Played {time} in all', { time: fmtTime(secs) });
+  const note = `<p class="muted pick-note">${esc(t('The other one is kept as a copy on its Saves tab, so nothing is lost.'))}</p>`;
+  return ask(t('Which save do you want?'), note, [
+    { label: t('Keep this PC\'s'), sub: `${whenText(local.when)} · ${local.device}`, lines: [whenText(local.when), local.device, played(local.played)], tag: tag('local'), icon: 'desk', v: 'local' },
+    { label: t('Use the cloud one'), sub: `${whenText(cloud.made)} · ${cloud.device}`, lines: [whenText(cloud.made), cloud.device, played(cloud.played)], tag: tag('cloud'), icon: 'cloud', v: 'cloud' },
+  ], true);
 }
 
 async function syncCloudNow(id) {
@@ -520,8 +710,20 @@ window.accountAct = async (act, el) => {
   return null;
 };
 
-T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
-T.event.listen('saves', ({ payload }) => { if (S.view === 'saves') loadSavesAll(); if (payload && payload.id) { delete S.saves[payload.id]; if (S.view === 'game' && S.arg === payload.id && S.tab === 'saves') loadSaves(payload.id); } });
+T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; forgetSaveStatus(); renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
+T.event.listen('saves', ({ payload }) => { if (S.view === 'saves') loadSavesAll(); if (payload && payload.id) { delete S.saves[payload.id]; loadSaveStatus(payload.id); if (S.view === 'game' && S.arg === payload.id && S.tab === 'saves') loadSaves(payload.id); } });
+// A check, upload or download for a game started or ended: the badge says so, and asks for the
+// outcome once it's over.
+T.event.listen('save-sync', ({ payload }) => {
+  const sid = payload && payload.id;
+  if (!sid) return;
+  if (payload.phase !== 'idle') {
+    S.savePhase[sid] = payload.phase;
+    return paintSaveBadges(sid);
+  }
+  delete S.savePhase[sid];
+  loadSaveStatus(sid);
+});
 
 // Who's signed in: what's remembered first, then the website's answer.
 loadAccount(false).then(() => loadAccount(true));

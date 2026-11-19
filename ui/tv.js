@@ -1467,6 +1467,10 @@
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
     const bad = checks.filter((r) => r.v === false).length;
+    // Where its saves stand (account.js), above the buttons as on the desktop: a line, not a button.
+    const sb = g && window.saveBadgeFor ? window.saveBadgeFor(id) : null;
+    const sbNote = sb && sb.note ? `<small>${esc(sb.note)}</small>` : '';
+    const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
       mainButton(a, 'g-main'),
       // Set Up Again beside Play, marked New while its project has options not answered yet.
@@ -1503,6 +1507,7 @@
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
+          ${sbLine}
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
@@ -1733,7 +1738,7 @@
     TV.sheet = { items, prev: (focused() || {}).dataset?.key };
     const el = document.createElement('div');
     el.className = 'tv-sheet' + (cls ? ' ' + cls : '');
-    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
+    el.innerHTML = `<div class="tv-sheet-in">${head || `<h3>${esc(title)}</h3>`}${items.map((x, i) => `${x.gap ? '<hr class="tv-sh-gap">' : ''}<button type="button" class="tv-item${x.cls ? ' ' + x.cls : ''}" data-f data-key="sheet:${i}" data-sheet="${i}">${x.icon ? svg(x.icon) : ''}<span class="k">${x.tag ? `<span>${esc(x.label)}<em class="tv-newer">${esc(x.tag)}</em></span>` : esc(x.label)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></button>`).join('')}</div>`;
     stage().append(el);
     focus($('[data-sheet="0"]', el), true);
     sfx('open');

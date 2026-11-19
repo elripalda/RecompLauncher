@@ -2573,3 +2573,22 @@ body.light .su-req{color:#8a5300}
 .poster.cvl-on .badge.tl,.poster.cvl-on .badge.tr,.poster.cvl-on .badge.rank{top:calc(var(--cvl-top) * 100% + 9px)}
 .poster.cvl-on .badge.tl.low{top:calc(var(--cvl-top) * 100% + 41px)}
 .tv-poster.cvl-on .tv-badge,.tv-poster.cvl-on .tv-rank{top:calc(var(--cvl-top) * 100% + 12px)}
+/* The cloud save status above Play (account.js): a coloured line, not a button. Its colour says
+   the state: green in the cloud, cyan working, amber waiting or a choice, red stuck, grey no
+   cloud. The tooltip says more. */
+.sbadge{--sb-ok:#3ee08f;--sb-warn:var(--warn);--sb-bad:var(--bad);min-height:20px}
+body.light .sbadge{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
+.sbadge .sb-ok{--c:var(--sb-ok)}.sbadge .sb-cy{--c:var(--cyan)}.sbadge .sb-warn{--c:var(--sb-warn)}.sbadge .sb-bad{--c:var(--sb-bad)}.sbadge .sb-dim{--c:var(--dim)}
+.sbadge-line{display:inline-flex;align-items:center;gap:7px;font:700 13.5px Figtree,sans-serif;color:var(--c);white-space:nowrap;cursor:default}
+.sbadge-line svg{flex:none}
+.sbadge-line small{font-weight:500;font-size:12.5px;color:var(--muted)}
+.sbadge-line small::before{content:"· "}
+.sb-spin{animation:sbspin 1.1s linear infinite;transform-origin:12px 13px}
+.sb-bob{animation:sbbob 1.2s ease-in-out infinite}
+@keyframes sbspin{to{transform:rotate(360deg)}}
+@keyframes sbbob{50%{transform:translateY(-1.5px)}}
+@media (prefers-reduced-motion:reduce){.sb-spin,.sb-bob{animation:none}}
+/* "Newer" on the save that was made later, when both changed: a green word, not a pill. */
+.pick-newer{margin-left:6px;font-style:normal;font-size:12.5px;font-weight:700;color:#3ee08f}
+body.light .pick-newer{color:#127a45}
+.pick-note{margin:-4px 0 14px;font-size:13px}

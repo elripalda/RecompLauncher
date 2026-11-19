@@ -779,16 +779,25 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     Some(p)
 }
 
-/// An AppImage the Flatpak unpacked at install is gone, its AppRun in its place: programs named
-/// `….AppImage` that aren't in the folder start the AppRun instead.
+/// An AppImage unpacked at install (on Linux every game plays from a plain folder) is gone, its
+/// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
+/// instead. The one in a folder named after the AppImage first (a release with several), else the
+/// one at the top.
 fn to_apprun(p: &mut Profile, dir: &Path) {
-    if dir.as_os_str().is_empty() || !dir.join("AppRun").is_file() {
+    if dir.as_os_str().is_empty() {
         return;
     }
     let swap = |programs: &mut Vec<String>| {
         for prog in programs.iter_mut() {
-            let image = Path::new(prog.as_str()).extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
-            if image && !dir.join(prog.as_str()).is_file() {
+            let named = Path::new(prog.as_str());
+            let image = named.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
+            if !image || dir.join(named).is_file() {
+                continue;
+            }
+            let own = named.with_extension("").join("AppRun");
+            if dir.join(&own).is_file() {
+                *prog = own.to_string_lossy().replace('\\', "/");
+            } else if dir.join("AppRun").is_file() {
                 *prog = "AppRun".into();
             }
         }
@@ -3120,6 +3129,17 @@ mod tests {
         // No AppRun either: the profile is left as it is.
         std::fs::remove_file(d.join("AppRun")).unwrap();
         assert_eq!(find(&d, "", &Value::Null).unwrap().start.unwrap().program, ["Game-x86_64.AppImage"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn one_of_several_unpacked_appimages_starts_from_its_own_folder() {
+        let d = tmp("apprun-own");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["Game-x86_64.AppImage"]}}"#).unwrap();
+        std::fs::create_dir_all(d.join("Game-x86_64")).unwrap();
+        std::fs::write(d.join("Game-x86_64/AppRun"), b"#!/bin/sh\n").unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["Game-x86_64/AppRun"]);
         let _ = std::fs::remove_dir_all(&d);
     }
 
