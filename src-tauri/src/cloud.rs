@@ -321,7 +321,9 @@ pub async fn playtime_push(app: AppHandle, games: Option<Vec<String>>) -> Res<bo
     let Some(a) = load(&st.dir) else { return Ok(false) };
     let entries = st.lib.lock().unwrap().play_entries(games.as_deref());
     let url = format!("{}?a=play", api());
-    for chunk in entries.chunks(500) {
+    // 50 games a request, not the 500 the website takes: each brings up to 500 sessions along, and
+    // sending a big library in one request would be several megabytes.
+    for chunk in entries.chunks(50) {
         let req = st.http.post(&url).json(&json!({ "games": chunk })).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
         if play_call(req, &url).await.is_none() {
             return Ok(false);
@@ -330,7 +332,7 @@ pub async fn playtime_push(app: AppHandle, games: Option<Vec<String>>) -> Res<bo
     Ok(true)
 }
 
-/// The account's totals over all its PCs: {games: {id: {secs, last}}, titles: {title: {secs, last}}}.
+/// The account's totals over all its PCs: {games: {id: {secs, last, sessions}}, titles: {title: {secs, last}}}.
 /// Null when signed out or the website can't say.
 #[tauri::command]
 pub async fn playtime_pull(app: AppHandle) -> Res<Value> {

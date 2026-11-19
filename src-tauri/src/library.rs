@@ -441,12 +441,15 @@ pub(crate) struct PlayHistory {
     games: BTreeMap<String, crate::games::Played>,
 }
 
-/// One game's time on this PC as the website keeps it: seconds played here, ever, and when last.
+/// One game's time on this PC as the website keeps it: seconds played here, ever, when last, and
+/// the sessions this PC counted ([start, secs]), so every PC's game page can show them all.
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct PlayEntry {
     pub game: String,
     pub secs: u64,
     pub last: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<[u64; 2]>,
 }
 
 /// A developer's own builds ("local-…", "own-…") aren't catalog games: their time stays on this PC.
@@ -458,7 +461,7 @@ fn entry(game: String, p: &crate::games::Played) -> Option<PlayEntry> {
     if p.played_secs == 0 {
         return None;
     }
-    Some(PlayEntry { game, secs: p.played_secs, last: p.last_played })
+    Some(PlayEntry { game, secs: p.played_secs, last: p.last_played, sessions: p.sessions.clone() })
 }
 
 impl Library {
@@ -472,7 +475,7 @@ impl Library {
             if g.local || own_build(id) || !wanted(id) {
                 continue;
             }
-            let recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, ..Default::default() };
+            let recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, sessions: g.sessions.clone(), ..Default::default() };
             out.extend(entry(id.clone(), &recomp));
             for (sub, p) in &g.games {
                 out.extend(entry(crate::games::full(id, sub), p));
@@ -891,7 +894,18 @@ mod tests {
         l.put("gone", Installed { id: "gone".into(), played_secs: 30, last_played: 100, ..Default::default() });
         l.forget("gone").unwrap();
 
-        assert_eq!(l.play_entries(None), [PlayEntry { game: "gone".into(), secs: 30, last: 100 }]);
+        assert_eq!(l.play_entries(None), [PlayEntry { game: "gone".into(), secs: 30, last: 100, sessions: vec![] }]);
+    }
+
+    #[test]
+    fn play_entries_carry_each_session() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "bundle".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 60, last_played: 150, sessions: vec![[90, 60]], ..Default::default() });
+        l.put("bundle", g);
+
+        let sessions: Vec<Vec<[u64; 2]>> = l.play_entries(None).into_iter().map(|e| e.sessions).collect();
+        assert_eq!(sessions, [vec![[110, 90]], vec![[90, 60]]]);
     }
 
     #[test]

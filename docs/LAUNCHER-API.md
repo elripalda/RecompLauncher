@@ -54,15 +54,25 @@ or a lost request never counts anything twice.
 
 | Call | |
 | --- | --- |
-| `POST ?a=play` | `{"games": [{"game", "secs", "last"}]}`, up to 500 → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
-| `GET ?a=play` | `{"games": {ID: {"secs", "last"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+| `POST ?a=play` | `{"games": [{"game", "secs", "last", "sessions"}]}`, up to 500 → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
+| `GET ?a=play` | `{"games": {ID: {"secs", "last", "sessions"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+
+- `sessions` is a list of `[start, secs]` (start in Unix seconds, both whole numbers above zero):
+  each session of 10 seconds or more that PC played of that game, oldest first, its newest 500
+  at most. The website keeps each PC's sessions added to what it had (a session is the same one
+  when both numbers match, so a resend adds nothing), the newest 500 per PC and game, and skips
+  a bad session (start more than a day ahead, longer than 20 years) on its own. `GET` gives each
+  game every PC's sessions together, oldest first, the newest 500. They draw a game's "Your play
+  time" card (this week, this month, sessions, longest, the last two weeks) over all the PCs. A
+  site without them leaves the card to the PC's own sessions; titles don't carry sessions.
 
 - `game` is the recomp's id, or `recomp--game` for one game of a recomp that carries several.
   A developer's own builds (`local-…`, `own-…`) aren't sent.
 - A title is the sum of its recomps in the catalog's `titles[].pc`, and a replaced listing counts
   as its new id. `recomp--game` rows don't count toward titles until the catalog maps those games.
 - The launcher sends everything after signing in and then once a day (installed games and what
-  it kept from uninstalled ones), one game after each session, and reads the totals with the
+  it kept from uninstalled ones, 50 games a request since each brings its sessions along), one
+  game after each session, and reads the totals with the
   account and every 10 minutes (`cloud::playtime_push`, `playtime_pull`; `playSync` in app.js).
 - 120 sends and 120 reads an hour per PC. Any failure, a 401 included, just leaves this PC's own
   numbers showing: these calls never sign the PC out, and they rest on their own in net.rs.

@@ -66,6 +66,18 @@ async function loadTitles() {
   }
 }
 
+const MAX_SESSIONS = 500;
+
+// Sessions joined by their [start, secs], newest 500 kept: a resend adds nothing twice.
+function joinSessions(had, sent, now) {
+  const byKey = new Map();
+  for (const x of [...had, ...(Array.isArray(sent) ? sent : [])]) {
+    const ok = Array.isArray(x) && Number.isInteger(x[0]) && x[0] > 0 && x[0] <= now + 86400 && Number.isInteger(x[1]) && x[1] > 0 && x[1] <= MAX_SECS;
+    if (ok) byKey.set(`${x[0]}|${x[1]}`, [x[0], x[1]]);
+  }
+  return [...byKey.values()].sort((a, b) => a[0] - b[0]).slice(-MAX_SESSIONS);
+}
+
 // One PC's numbers in: the larger of what's stored and what's sent, so a late resend never lowers it.
 function takePlay(pc, games) {
   const now = Math.floor(Date.now() / 1000);
@@ -76,14 +88,15 @@ function takePlay(pc, games) {
     const bad = typeof g?.game !== 'string' || !g.game || !(secs >= 0) || secs > MAX_SECS || last > now + 86400;
     if (bad) continue;
     const key = `${pc}|${g.game}`;
-    const had = rows.get(key) || { pc, game: g.game, secs: 0, last: 0 };
-    rows.set(key, { pc, game: g.game, secs: Math.max(had.secs, secs), last: Math.max(had.last, last) });
+    const had = rows.get(key) || { pc, game: g.game, secs: 0, last: 0, sessions: [] };
+    const sessions = joinSessions(had.sessions, g.sessions, now);
+    rows.set(key, { pc, game: g.game, secs: Math.max(had.secs, secs), last: Math.max(had.last, last), sessions });
     took += 1;
   }
   return took;
 }
 
-// The account's totals over all its PCs, per game and per original game.
+// The account's totals over all its PCs, per game (with every PC's sessions) and per original game.
 function totals() {
   const games = {};
   const titles = {};
@@ -92,8 +105,10 @@ function totals() {
     t.secs += row.secs;
     t.last = Math.max(t.last, row.last);
   };
+  const now = Math.floor(Date.now() / 1000);
   for (const row of rows.values()) {
     add(games, row.game, row);
+    games[row.game].sessions = joinSessions(games[row.game].sessions || [], row.sessions, now);
     // A game inside a recomp with several ("recomp--game") isn't mapped to an original game yet.
     const title = titleOf.get(row.game);
     if (title) add(titles, title, row);
