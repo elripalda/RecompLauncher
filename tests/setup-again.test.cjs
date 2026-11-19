@@ -73,3 +73,13 @@ test('Play asks about new options before the game starts, in both modes', () => 
   assert.match(tv, /btn\('g-again', 'setup', esc\(t\('Set Up Again'\)\)/);
   assert.match(tv, /row\.dataset\.f = ''; row\.dataset\.key = 'po:' \+ o\.id; row\.dataset\.sheet = at;/);
 });
+
+test('Big Picture says who made it under Based on, as the desktop page does, not in a chip', () => {
+  assert.match(tv, /const byLine = who \? `<p class="tv-based tv-by">\$\{pic\}<span>\$\{htmlIn\(t\('By \{who\}'\)/);
+  assert.match(tv, /<p class="tv-based">[^\n]*\n\s+\$\{byLine\}/);
+  assert.match(tv, /const chips = \[originName\(a\.origin\), GENRES\[a\.genre\] \? t\(GENRES\[a\.genre\]\) : ''\]\.filter\(Boolean\)\.map\(esc\);\n/);
+});
+
+test('Big Picture\'s facts leave out who made it (it is under the title)', () => {
+  assert.doesNotMatch(tv, /\[t\('By'\), \(devOf\(a\)/);
+});

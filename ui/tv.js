@@ -1449,8 +1449,12 @@
     const info = S.info[id] && S.info[id] !== 'loading' ? S.info[id] : null;
     const modsOk = !!(S.mods[id] && S.mods[id] !== 'loading');
     const dv = devOf(a);
-    const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc)
-      .concat((dv && dv.name) || a.author ? [`${dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : ''}${esc(tf('By {who}', { who: (dv && dv.name) || a.author }))}${dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : ''}`] : [])
+    const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc);
+    // Who made it, under "Based on" as on the desktop page: their picture, their name, Verified.
+    const who = (dv && dv.name) || a.author;
+    const pic = dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : '';
+    const vchip = dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : '';
+    const byLine = who ? `<p class="tv-based tv-by">${pic}<span>${htmlIn(t('By {who}'), { who: `<b>${esc(who)}</b>` })}</span>${vchip}</p>` : '';
     const ps = projectState(a);
     const deckChip = greatOnDeck(a) ? `<span class="tv-st deck">${DECK_ICON(18)}${esc(t('Great on Deck'))}</span>` : '';
     const stChip = !ps ? '' : ps.kind === 'quiet' ? `<span class="tv-st quiet">${esc(ps.label)}</span>` : `<span class="tv-st ${ps.kind}">${STATE_ICON[ps.kind] || ''}${esc(t(STATE_PILL[ps.kind]))}</span>`;
@@ -1488,7 +1492,7 @@
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
     const devText = a.blurb || notesLine(a.description);
-    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
+    const facts = [[t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
     const checkBlock = !g && checks.length ? `<section class="tv-block"><h3>${esc(t('Before you install'))}${bad ? ` <small>${esc(tn(bad, '1 thing to do', '{n} things to do'))}</small>` : ''}</h3><div class="tv-panel tv-checks" data-f data-key="g-checks"><dl>${checks.map((r) => `<div><dt>${esc(r.k)}<small>${esc(r.d || '')}</small></dt><dd>${okMark(r.v)}</dd></div>`).join('')}</dl></div></section>` : '';
     const aside = g
       ? `<aside class="tv-panel" aria-label="${esc(t('Details'))}"><h2>${esc(bad ? t('Before you play') : t('Ready to play'))}</h2><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${tvRuns(a)}</aside>`
@@ -1502,6 +1506,7 @@
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
+          ${byLine}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           <div class="tv-acts">${acts}</div>
           ${stNote}

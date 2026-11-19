@@ -387,6 +387,9 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-runs .rbar{height:12px}
 .tv-g-chips span{display:inline-flex;align-items:center;gap:8px}
 .tv-dev-pic{width:26px;height:26px;border-radius:50%;object-fit:cover;margin-left:-8px}
+/* Who made it, right under "Based on": that line's bottom margin goes, the column's gap is enough */
+.tv-based + .tv-by{margin-top:-1em}
+.tv-by .tv-dev-pic{margin-left:0}
 .tv-vchip{font-style:normal;display:inline-flex;align-items:center;gap:5px;color:#34F2E8;font-size:15px;font-weight:700;margin-left:4px}
 .tv-vchip .vtick{margin:0}
 .tv-name .vtick{margin-left:6px;vertical-align:-3px}
