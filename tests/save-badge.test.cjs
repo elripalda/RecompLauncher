@@ -22,24 +22,22 @@ const line = (start) => {
   return account.slice(at, account.indexOf('\n', at));
 };
 
-// The badge's info for a status, with the window's helpers kept to plain English.
+// The status line's info for a status, with the window's helpers kept to plain English.
 const info = new Function(`
   const N_ = (x) => x, t = (x) => x, tf = (x) => x;
   const tn = (n, one, many) => (n === 1 ? one : many).replace('{n}', n);
   const ago = () => 'this week', whenText = (ts) => 'at ' + ts;
-  ${line('const SYNC_NOW = ')}
-  ${line('const OPEN_SAVES = ')}
   ${block('const PROBLEM_BADGE = ')}
   ${block('const PHASE_BADGE = ')}
   ${block('function sinceText(')}
   ${block('function saveBadgeInfo(')}
   ${block('function problemBadge(')}
   ${block('function waitingBadge(')}
-  return { saveBadgeInfo, sinceText };`)();
+  ${line('const badgeTip = ')}
+  return { saveBadgeInfo, sinceText, badgeTip };`)();
 
 const now = () => Math.floor(Date.now() / 1000);
 const status = (state, more = {}) => ({ state, syncedAt: 0, waiting: 0, retryIn: null, problem: null, newest: null, ...more });
-const acts = (b) => b.acts.map(([label]) => label);
 
 test('the same save here and in the cloud is green, with how long ago', () => {
   const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() - 12 * 60, syncedDevice: 'Desk PC' }), undefined, false);
@@ -62,14 +60,13 @@ test('a game being played says its save goes up after', () => {
 test('a conflict still asks for a choice while the game runs', () => {
   const b = info.saveBadgeInfo(status('conflict'), undefined, true);
   assert.equal(b.label, 'Choose a save');
-  assert.deepEqual(acts(b), ['Choose a Save']);
+  assert.equal(b.tone, 'warn');
 });
 
-test('a copy queued while offline says so and offers Try Again', () => {
+test('a copy queued while offline says so', () => {
   const b = info.saveBadgeInfo(status('waiting', { waiting: 1, problem: { kind: 'offline', text: '' } }), undefined, false);
   assert.equal(b.tone, 'warn');
   assert.equal(b.note, 'offline');
-  assert.deepEqual(acts(b), ['Try Again']);
 });
 
 test('a copy waiting its next try says when', () => {
@@ -77,9 +74,10 @@ test('a copy waiting its next try says when', () => {
   assert.equal(b.note, 'next try in 4 min');
 });
 
-test('a newer save that goes up after the next session offers Sync Now', () => {
+test('a newer save that goes up after the next session has no note', () => {
   const b = info.saveBadgeInfo(status('waiting'), undefined, false);
-  assert.deepEqual(acts(b), ['Sync Now']);
+  assert.equal(b.label, 'Waiting to upload');
+  assert.equal(b.note, '');
 });
 
 test('a copy too big to send is red and named', () => {
@@ -92,24 +90,28 @@ test('a copy too big to send is red and named', () => {
 test('a problem of a kind it does not know reads as an upload that failed', () => {
   const b = info.saveBadgeInfo(status('problem', { problem: { kind: 'something-new', text: '' } }), undefined, false);
   assert.equal(b.label, 'Can\'t upload');
-  assert.deepEqual(acts(b), ['Sync Now', 'Open Saves']);
 });
 
-test('cloud saves off offers to turn them on', () => {
+test('cloud saves off is grey', () => {
   const b = info.saveBadgeInfo(status('off'), undefined, false);
   assert.equal(b.tone, 'dim');
-  assert.deepEqual(acts(b), ['Turn On']);
+  assert.equal(b.label, 'Cloud saves off');
 });
 
-test('signed out offers to sign in', () => {
+test('signed out says so', () => {
   const b = info.saveBadgeInfo(status('signed-out'), undefined, false);
-  assert.deepEqual(acts(b), ['Sign In']);
+  assert.equal(b.label, 'Not signed in');
 });
 
 test('a game never played has nothing to sync', () => {
   const b = info.saveBadgeInfo(status('none'), undefined, false);
   assert.equal(b.label, 'No saves yet');
-  assert.equal(b.acts.length, 0);
+});
+
+test('the tooltip says what it means, then when it last synced and where', () => {
+  const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: 100, syncedDevice: 'Desk PC' }), undefined, false);
+  const tip = info.badgeTip(b);
+  assert.equal(tip, 'Your save is in the cloud\nThis PC and the cloud have the same save.\nLast synced: at 100\nSaved on: Desk PC');
 });
 
 test('a sync over a day ago falls back to the coarse wording', () => {

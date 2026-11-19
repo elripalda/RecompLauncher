@@ -254,16 +254,15 @@ function copyRow(id, c, k, v, current) {
 
 const savesChanged = (id) => { delete S.saves[id]; if (S.view === 'game' && S.arg === id && S.tab === 'saves') loadSaves(id); };
 
-// ---------- the cloud save badge beside Play ----------
-// Where a game's saves stand, on its page under Play and among Big Picture's game buttons, so the
-// player doesn't have to open the Saves tab to see whether the last save reached the cloud.
+// ---------- the cloud save status above Play ----------
+// Where a game's saves stand, on its page above Play and above Big Picture's game buttons, so the
+// player doesn't have to open the Saves tab to see whether the last save reached the cloud. Only
+// a coloured line, not a button: what to do about it is on the Saves tab. Hovering it says more.
 // saves_status answers from this PC alone (it never asks the website); the save-sync event says
 // when something runs or ends, and the status is asked again then.
 S.saveStat = {};
 S.savePhase = {};
 const statLoading = new Set();
-// The badge whose details are open (its save id), and the popover goes with any full redraw.
-let badgeOpen = '';
 
 // A game of several that keeps its own saves goes by its own id; any other by its recomp's.
 function saveIdOf(id) {
@@ -291,17 +290,14 @@ function sinceText(ts) {
   return ago(ts);
 }
 
-const SYNC_NOW = [N_('Sync Now'), 'saves-sync'];
-const OPEN_SAVES = [N_('Open Saves'), 'tab'];
-
-// What a problem kept by the last sync looks like on the badge, by its kind. The backend's own
-// words say why; these say it short.
+// What a problem kept by the last sync looks like, by its kind. The backend's own words say why
+// (in the tooltip); these say it short.
 const PROBLEM_BADGE = {
-  full: { label: N_('Can\'t upload'), note: N_('cloud full'), head: N_('Your cloud saves are full'), acts: [OPEN_SAVES] },
-  'too-big-copy': { label: N_('Too big for the cloud'), head: N_('This save is too big for the cloud'), acts: [OPEN_SAVES] },
-  'too-big-folder': { label: N_('Sync paused'), head: N_('Cloud saves are paused for this game'), acts: [OPEN_SAVES] },
-  paused: { label: N_('Cloud saves paused'), head: N_('Cloud saves are paused for now'), acts: [OPEN_SAVES] },
-  error: { label: N_('Can\'t upload'), head: N_('The last upload didn\'t go through'), acts: [SYNC_NOW, OPEN_SAVES] },
+  full: { label: N_('Can\'t upload'), note: N_('cloud full'), head: N_('Your cloud saves are full') },
+  'too-big-copy': { label: N_('Too big for the cloud'), head: N_('This save is too big for the cloud') },
+  'too-big-folder': { label: N_('Sync paused'), head: N_('Cloud saves are paused for this game') },
+  paused: { label: N_('Cloud saves paused'), head: N_('Cloud saves are paused for now') },
+  error: { label: N_('Can\'t upload'), head: N_('The last upload didn\'t go through') },
 };
 
 // While something runs (from the save-sync event): checking before Play, a save going up or one
@@ -312,29 +308,29 @@ const PHASE_BADGE = {
   down: { mark: 'down', label: N_('Getting cloud save…'), head: N_('Bringing in a newer save'), text: N_('Another PC saved after this one. Your current save is kept as a backup first.') },
 };
 
-// What the badge shows for a game's status: its tone (ok, cy, warn, bad, dim), the mark inside the
-// cloud, a label and a short note, and the details: a heading, a line, rows and buttons
-// ([label, act]). `phase` is what's running now, `running` whether the game is.
+// What the status line shows for a game: its tone (ok, cy, warn, bad, dim), the mark inside the
+// cloud, a label and a short note, and for the tooltip a heading, a line and rows ([label, value]).
+// `phase` is what's running now, `running` whether the game is.
 function saveBadgeInfo(st, phase, running) {
   const p = PHASE_BADGE[phase];
-  if (p) return { tone: 'cy', mark: p.mark, label: t(p.label), note: '', head: t(p.head), text: t(p.text), rows: [], acts: [] };
+  if (p) return { tone: 'cy', mark: p.mark, label: t(p.label), note: '', head: t(p.head), text: t(p.text), rows: [] };
   const synced = st.syncedAt ? [[t('Last synced'), whenText(st.syncedAt)], [t('Saved on'), st.syncedDevice || t('this PC')]] : [];
   const newest = st.newest ? [[t('Last backup'), `${whenText(st.newest.when)}${st.newest.device ? ' · ' + st.newest.device : ''}`]] : [];
-  if (st.state === 'signed-out') return { tone: 'dim', mark: 'dash', label: t('Not signed in'), note: '', head: t('Keep this save on any PC'), text: t('Sign in to RecompStore and your saves go to the cloud after you play. It\'s free.'), rows: newest, acts: [[N_('Sign In'), 'acc-signin']] };
-  if (st.state === 'off') return { tone: 'dim', mark: 'off', label: t('Cloud saves off'), note: '', head: t('Saves stay on this PC'), text: t('The launcher still keeps a copy after every session.'), rows: newest, acts: [[N_('Turn On'), 'saves-cloud']] };
-  if (st.state === 'conflict') return { tone: 'warn', mark: 'conflict', label: t('Choose a save'), note: '', head: t('Both saves changed'), text: t('This PC and the cloud both changed since they last synced. Pick the one to keep; the other stays as a backup on this PC.'), rows: synced, acts: [[N_('Choose a Save'), 'saves-sync']] };
+  if (st.state === 'signed-out') return { tone: 'dim', mark: 'dash', label: t('Not signed in'), note: '', head: t('Keep this save on any PC'), text: t('Sign in to RecompStore and your saves go to the cloud after you play. It\'s free.'), rows: newest };
+  if (st.state === 'off') return { tone: 'dim', mark: 'off', label: t('Cloud saves off'), note: '', head: t('Saves stay on this PC'), text: t('The launcher still keeps a copy after every session. Turn cloud saves on in its Saves tab.'), rows: newest };
+  if (st.state === 'conflict') return { tone: 'warn', mark: 'conflict', label: t('Choose a save'), note: '', head: t('Both saves changed'), text: t('This PC and the cloud both changed since they last synced. Pick the one to keep with Sync Now in its Saves tab; the other stays as a backup on this PC.'), rows: synced };
   if (st.state === 'problem') return problemBadge(st, synced);
-  if (running) return { tone: 'cy', mark: 'play', label: t('Syncs after you play'), note: '', head: t('Playing now'), text: t('Its save goes to the cloud when you close the game.'), rows: synced, acts: [] };
+  if (running) return { tone: 'cy', mark: 'play', label: t('Syncs after you play'), note: '', head: t('Playing now'), text: t('Its save goes to the cloud when you close the game.'), rows: synced };
   if (st.state === 'waiting') return waitingBadge(st, synced);
-  if (st.state === 'up-to-date') return { tone: 'ok', mark: 'check', label: t('Up to date'), note: sinceText(st.syncedAt), head: t('Your save is in the cloud'), text: t('This PC and the cloud have the same save.'), rows: synced, acts: [SYNC_NOW, OPEN_SAVES] };
-  return { tone: 'dim', mark: 'dash', label: t('No saves yet'), note: '', head: t('Nothing to sync yet'), text: t('Play it once. Its saves are backed up after, and go to the cloud too.'), rows: [], acts: [] };
+  if (st.state === 'up-to-date') return { tone: 'ok', mark: 'check', label: t('Up to date'), note: sinceText(st.syncedAt), head: t('Your save is in the cloud'), text: t('This PC and the cloud have the same save.'), rows: synced };
+  return { tone: 'dim', mark: 'dash', label: t('No saves yet'), note: '', head: t('Nothing to sync yet'), text: t('Play it once. Its saves are backed up after, and go to the cloud too.'), rows: [] };
 }
 
 function problemBadge(st, synced) {
   const kind = (st.problem && st.problem.kind) || 'error';
   const b = PROBLEM_BADGE[kind] || PROBLEM_BADGE.error;
   const text = st.problem && st.problem.text ? t(st.problem.text) : '';
-  return { tone: 'bad', mark: 'alert', label: t(b.label), note: b.note ? t(b.note) : '', head: t(b.head), text, rows: synced, acts: b.acts };
+  return { tone: 'bad', mark: 'alert', label: t(b.label), note: b.note ? t(b.note) : '', head: t(b.head), text, rows: synced };
 }
 
 // Saved here and not in the cloud yet: queued after a try that didn't get through (with when the
@@ -344,11 +340,11 @@ function waitingBadge(st, synced) {
   const offline = st.problem && st.problem.kind === 'offline';
   const minutes = st.retryIn ? Math.max(1, Math.ceil(st.retryIn / 60)) : 0;
   const note = minutes ? tn(minutes, 'next try in 1 min', 'next try in {n} min') : offline ? t('offline') : '';
-  const text = !queued ? t('It goes up after you play next, or now with Sync Now.')
+  const text = !queued ? t('It goes up after you play next, or now with Sync Now in its Saves tab.')
     : offline ? t('The website can\'t be reached right now. Your save is safe here and goes up by itself when it can.')
     : t('It goes up by itself on the next try.');
   const rows = queued ? [[t('Waiting'), tn(st.waiting, '1 copy', '{n} copies')], ...synced] : synced;
-  return { tone: 'warn', mark: 'clock', label: t('Waiting to upload'), note, head: t('Saved on this PC, not in the cloud yet'), text, rows, acts: [[queued ? N_('Try Again') : N_('Sync Now'), 'saves-sync']] };
+  return { tone: 'warn', mark: 'clock', label: t('Waiting to upload'), note, head: t('Saved on this PC, not in the cloud yet'), text, rows };
 }
 
 // The cloud, with a mark inside it for the state. Drawn the same in both modes.
@@ -366,71 +362,42 @@ const BADGE_MARKS = {
 };
 const badgeIcon = (mark, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>${BADGE_MARKS[mark] || ''}</svg>`;
 
-// The badge's info for a game page id, or null while it's not known (or not installed).
+// The tooltip: the heading, its line, then each row on its own line.
+const badgeTip = (b) => [b.head, b.text, ...b.rows.map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join('\n');
+
+// The status for a game page id, or null while it's not known (or not installed).
 function saveBadgeFor(id) {
   if (!S.library[parentId(id)]) return null;
   const sid = saveIdOf(id);
   const st = S.saveStat[sid];
   if (st === undefined) loadSaveStatus(sid);
   if (!st) return null;
-  return saveBadgeInfo(st, S.savePhase[sid], S.running.has(parentId(sid)));
+  const b = saveBadgeInfo(st, S.savePhase[sid], S.running.has(parentId(sid)));
+  return { ...b, tip: badgeTip(b) };
 }
 
-// A details button: Open Saves goes to the tab, Turn On flips cloud saves on, the rest act on the
-// game's saves.
-function badgeButton([label, act], sid, main) {
-  const cls = `btn sm${main ? ' main' : ''}`;
-  if (act === 'tab') return `<button type="button" class="${cls}" data-act="tab" data-tab="saves">${esc(t(label))}</button>`;
-  if (act === 'saves-cloud') return `<button type="button" class="${cls}" data-act="saves-cloud" data-id="${esc(parentId(sid))}" aria-checked="false">${esc(t(label))}</button>`;
-  const busy = act === 'saves-sync' && S.running.has(parentId(sid));
-  return `<button type="button" class="${cls}" data-act="${act}" data-id="${esc(sid)}"${busy ? ' disabled' : ''}>${esc(t(label))}</button>`;
-}
-
-function badgeInner(sid, pageId) {
+function badgeInner(pageId) {
   const b = saveBadgeFor(pageId);
   if (!b) return '';
-  const open = badgeOpen === sid;
-  const hot = b.tone === 'warn' || b.tone === 'bad';
-  const chip = `<button type="button" class="sbadge-chip sb-${b.tone}${hot ? ' hot' : ''}" data-act="saves-badge" data-id="${esc(sid)}" aria-expanded="${open}" aria-haspopup="dialog" title="${esc(t('Cloud saves'))}">${badgeIcon(b.mark)}<b>${esc(b.label)}</b>${b.note ? `<small>${esc(b.note)}</small>` : ''}</button>`;
-  if (!open) return chip;
-  const rows = b.rows.length ? `<dl>${b.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '';
-  const acts = b.acts.length ? `<div class="acts">${b.acts.map((x, i) => badgeButton(x, sid, i === 0)).join('')}</div>` : '';
-  const pop = `<div class="sbadge-pop sb-${b.tone}" role="dialog" aria-label="${esc(t('Cloud saves'))}"><div class="sbadge-h"><span class="sbadge-ico">${badgeIcon(b.mark, 22)}</span><div><b>${esc(b.head)}</b>${b.text ? `<span>${esc(b.text)}</span>` : ''}</div></div>${rows}${acts}</div>`;
-  return chip + pop;
+  const note = b.note ? `<small>${esc(b.note)}</small>` : '';
+  return `<span class="sbadge-line sb-${b.tone}" title="${esc(b.tip)}">${badgeIcon(b.mark)}<b>${esc(b.label)}</b>${note}</span>`;
 }
 
-// The badge on a game page (beside Play). A full redraw of the page closes its details.
+// The status on a game page, above Play. It says changes out loud to a screen reader.
 function saveBadge(a) {
   if (!S.library[parentId(a.id)]) return '';
-  badgeOpen = '';
   const sid = saveIdOf(a.id);
-  return `<div class="sbadge" data-save-badge="${esc(sid)}" data-page="${esc(a.id)}">${badgeInner(sid, a.id)}</div>`;
+  return `<div class="sbadge" role="status" aria-label="${esc(t('Cloud saves'))}" data-save-badge="${esc(sid)}" data-page="${esc(a.id)}">${badgeInner(a.id)}</div>`;
 }
 
-// Redraws the badges on screen (one game's, or all of them), and Big Picture's game page.
+// Redraws the status lines on screen (one game's, or all of them), and Big Picture's game page.
 function paintSaveBadges(sid) {
   for (const el of $$('[data-save-badge]')) {
     if (sid && el.dataset.saveBadge !== sid) continue;
-    el.innerHTML = badgeInner(el.dataset.saveBadge, el.dataset.page);
+    el.innerHTML = badgeInner(el.dataset.page);
   }
   if (window.tvRefresh && inTV()) window.tvRefresh();
 }
-
-function closeBadge() {
-  if (!badgeOpen) return;
-  badgeOpen = '';
-  paintSaveBadges();
-}
-
-// Its details close on a click anywhere else, on a button in them, and on Escape.
-document.addEventListener('click', (e) => {
-  if (!badgeOpen) return;
-  const inside = e.target.closest('.sbadge');
-  const acted = e.target.closest('.sbadge-pop [data-act]');
-  if (inside && !acted) return;
-  setTimeout(closeBadge, 0);
-});
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBadge(); });
 
 // Signed in or out, or the cloud changed: every game's status is asked again.
 function forgetSaveStatus() {
@@ -620,10 +587,6 @@ window.accountAct = async (act, el) => {
       await loadAccount(true);
       if (ok && S.account && !S.account.offline) toast(t('Connected again.'));
       return render(true);
-    }
-    case 'saves-badge': {
-      badgeOpen = badgeOpen === id ? '' : id;
-      return paintSaveBadges(id);
     }
     case 'saves-sync': {
       if (S.saves[id]?.busy) return;

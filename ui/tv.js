@@ -1467,13 +1467,12 @@
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
     const bad = checks.filter((r) => r.v === false).length;
-    // Where its saves stand (account.js), beside Play as on the desktop; A opens its Saves.
+    // Where its saves stand (account.js), above the buttons as on the desktop: a line, not a button.
     const sb = g && window.saveBadgeFor ? window.saveBadgeFor(id) : null;
-    const sbLabel = sb ? esc(sb.label) + (sb.note ? `<small>${esc(sb.note)}</small>` : '') : '';
-    const sbBtn = sb ? `<button type="button" class="tv-btn tv-sbadge sb-${sb.tone}" data-f data-key="g-cloud" data-tvact="gsaves" data-id="${esc(id)}" aria-label="${esc(t('Cloud saves'))}: ${esc(sb.label)}">${window.saveBadgeIcon(sb.mark, 24)}<span>${sbLabel}</span></button>` : '';
+    const sbNote = sb && sb.note ? `<small>${esc(sb.note)}</small>` : '';
+    const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
       mainButton(a, 'g-main'),
-      sbBtn,
       // Set Up Again beside Play, marked New while its project has options not answered yet.
       g && canSetUpAgain(id) ? btn('g-again', 'setup', esc(t('Set Up Again')) + (newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, icon: 'disc' }) : '',
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
@@ -1508,6 +1507,7 @@
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
           ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
+          ${sbLine}
           <div class="tv-acts">${acts}</div>
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
