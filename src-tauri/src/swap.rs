@@ -358,10 +358,23 @@ fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
 fn remove_any(p: &Path) -> io::Result<()> {
     let Ok(meta) = fs::symlink_metadata(p) else { return Ok(()) };
     if meta.is_dir() {
-        fs::remove_dir_all(p)
-    } else {
-        fs::remove_file(p)
+        return fs::remove_dir_all(p);
     }
+    // On Windows a link to a folder (a symlink or a junction) isn't a folder to symlink_metadata,
+    // but it is one to Windows: remove_file is refused (Access is denied), remove_dir takes the
+    // link and leaves the folder it points at.
+    #[cfg(windows)]
+    if folder_link(&meta) {
+        return fs::remove_dir(p);
+    }
+    fs::remove_file(p)
+}
+
+#[cfg(windows)]
+fn folder_link(meta: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+    meta.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0
 }
 
 fn present(p: &Path) -> bool {
@@ -771,5 +784,20 @@ mod tests {
         assert!(said.contains("Nothing was changed"), "{said}");
         drop(held);
         assert_eq!(snapshot(&game), before);
+    }
+
+    /// A junction (`mklink /J`, no administrator needed) to a folder of the player's: removing it
+    /// takes the link and leaves the folder it points at, and its files.
+    #[cfg(windows)]
+    #[test]
+    fn a_link_to_a_folder_goes_and_the_folder_stays() {
+        let d = tmp("junction");
+        put(&d.join("theirs/save.dat"), "player save");
+        let link = d.join("link");
+        let made = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&link).arg(d.join("theirs")).output().unwrap();
+        assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+        remove_any(&link).unwrap();
+        assert!(fs::symlink_metadata(&link).is_err(), "the link is gone");
+        assert_eq!(fs::read_to_string(d.join("theirs/save.dat")).unwrap(), "player save");
     }
 }
