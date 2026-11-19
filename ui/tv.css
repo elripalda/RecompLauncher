@@ -985,7 +985,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-rail .s{height:46px;font-size:20px;padding:0 18px 0 8px;gap:10px}
 .ni-tv.ss .ss-rail .s i{width:32px;height:32px;font-size:17px}
 .ni-tv.ss .ss-rail .s i svg{width:16px;height:16px}
-.ni-tv.ss .ss-rail .s.req::after{width:10px;height:10px}
+.ni-tv.ss .ss-rail .s.req::after,.ni-tv.ss .ss-rail .s.new::after{width:10px;height:10px}
 .ni-tv.ss .ss-rail .bar{flex-basis:22px}
 .ni-tv.ss .ss-scroll{gap:20px;padding-right:18px}
 .ni-tv.ss .ss-cap{font-size:17px}

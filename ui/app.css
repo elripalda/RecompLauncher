@@ -609,6 +609,7 @@ button.prog.su-prog:focus-visible,.prog.su-prog:focus-visible{outline:2px solid 
 .menu button:hover svg{color:var(--ink)}
 .menu button.danger{color:var(--bad)}.menu button.danger svg{color:var(--bad)}
 .menu .ck{margin-left:auto;color:var(--cyan)}
+.menu .m-dot{margin-left:auto;flex:none;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px rgba(52,242,232,.7)}
 .menu hr{border:0;height:1px;background:var(--line2);margin:5px 6px}
 .scrim{position:fixed;inset:0;z-index:200;background:rgba(3,6,12,.62);display:grid;place-items:center;backdrop-filter:blur(8px);animation:fadeIn .2s ease;padding:24px}
 .scrim .modal{animation:modalIn .3s var(--ease)}
@@ -724,6 +725,7 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ss-rail .s.done i{background:rgba(52,242,232,.16);color:var(--cyan)}
 /* A required extra still off: an amber dot on the Extras pill, seen from the first step. */
 .ss-rail .s.req::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.ss-rail .s.new::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px rgba(52,242,232,.7)}
 .ss-rail .bar{flex:0 0 14px;height:1px;background:var(--line2)}
 .ss-box{display:grid;grid-template-columns:46px minmax(0,1fr);grid-template-rows:auto 34px;align-content:center;gap:12px 16px;height:132px;flex:none;padding:0 18px;border-radius:18px;border:1.5px dashed var(--line3);background:var(--fill);transition:border-color .18s,background .18s}
 .ss-box:hover{border-color:rgba(52,242,232,.5)}

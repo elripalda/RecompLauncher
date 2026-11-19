@@ -45,6 +45,8 @@ function stepsModel(id, su, ns) {
   const missing = needed.filter((r) => !r.path && !((skipBuild || kept) && r.legacy && r.id === 'game'));
   // A build option, required or not, does nothing when nothing is built.
   const reqOff = !skipBuild && prepBlocked(su);
+  // Options its project added since the player set it up: the Extras step has a dot.
+  const fresh = opts.filter((o) => o.new && (su.copy || su.inputs_ready));
   const steps = [{ id: 'game', name: own.filter((r) => r.role === 'disc').length > 1 ? t('Discs') : t('Game') }];
   if (addons.length) steps.push({ id: 'addons', name: t('Add-ons') });
   if (opts.length || runtime.length) steps.push({ id: 'extras', name: t('Extras') });
@@ -54,7 +56,7 @@ function stepsModel(id, su, ns) {
   // The player's own build didn't pass (ownErr): Set Up waits for another folder or their copy.
   const ownBad = !!(ns.own && ns.ownErr);
   const blocked = missing.length > 0 || reqOff || broken || ownBad || !!ns.busy;
-  return { rows, own, keys, addons, runtime, opts, skipBuild, kept, missing, reqOff, ownBad, steps, at, cur: steps[at], last, broken, blocked };
+  return { rows, own, keys, addons, runtime, opts, fresh, skipBuild, kept, missing, reqOff, ownBad, steps, at, cur: steps[at], last, broken, blocked };
 }
 
 const ssTag = (r) => {
@@ -130,7 +132,7 @@ function ssRuntime(r, ns) {
 function stepsView(id, su, ns, game) {
   const m = stepsModel(id, su, ns);
   const name = game.name || id;
-  const rail = m.steps.length > 1 ? `<div class="ss-rail">${m.steps.map((s, i) => `${i ? '<span class="bar"></span>' : ''}<span class="s${i === m.at ? ' now' : i < m.at ? ' done' : ''}${s.id === 'extras' && m.reqOff ? ' req' : ''}"><i>${i < m.at ? CHECK : i + 1}</i>${esc(s.name)}</span>`).join('')}</div>` : '';
+  const rail = m.steps.length > 1 ? `<div class="ss-rail">${m.steps.map((s, i) => `${i ? '<span class="bar"></span>' : ''}<span class="s${i === m.at ? ' now' : i < m.at ? ' done' : ''}${s.id === 'extras' && m.reqOff ? ' req' : ''}${s.id === 'extras' && m.fresh.length ? ' new' : ''}"><i>${i < m.at ? CHECK : i + 1}</i>${esc(s.name)}</span>`).join('')}</div>` : '';
   let head = '', lead = '', body = '', status = '';
   if (m.cur.id === 'game') {
     head = m.own.filter((r) => r.role === 'disc').length > 1 ? t('Insert your discs') : t('Insert your copy');
@@ -155,10 +157,9 @@ function stepsView(id, su, ns, game) {
     status = tf('{added} of {total} added.', { added: m.addons.filter((r) => r.path).length, total: m.addons.length });
   } else {
     head = t('Extras');
-    const fresh = m.opts.filter((o) => o.new && (su.copy || su.inputs_ready));
     const reqN = m.opts.filter((o) => o.required).length;
-    lead = t('Optional. You can change them later with Set Up Again.');
-    if (fresh.length) lead = tf('New since you set it up: {names}.', { names: fresh.map((o) => o.label).join(', ') });
+    lead = t('Optional. You can change them later in Setup Options.');
+    if (m.fresh.length) lead = tf('New since you set it up: {names}.', { names: m.fresh.map((o) => o.label).join(', ') });
     if (reqN) lead = reqN < m.opts.length + m.runtime.length ? t('Turn on the ones marked Required to set it up. The rest are optional.') : reqN === 1 ? t('Setup needs this one turned on.') : t('Setup needs these turned on.');
     if (m.skipBuild && m.opts.length) lead = t('Build options only apply when the game is built from your copy.');
     body = `<div class="ss-opts su-opts">${m.opts.map((o) => ssOption(o, m.skipBuild)).join('')}${m.runtime.map((r) => ssRuntime(r, ns)).join('')}</div>`;

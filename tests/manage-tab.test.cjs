@@ -60,12 +60,30 @@ test('Troubleshoot holds the checker and both ways to report', () => {
 });
 
 test('Set Up Again is Setup Options in the menu, not a button beside Play', () => {
-  assert.match(fn(app, 'gameMenu'), /canSetUpAgain\(id\) \? \[\{ act: 'setup', id, label: setupLabel, icon: 'disc' \}\]/);
+  assert.match(fn(app, 'gameMenu'), /canSetUpAgain\(id\) \? \[\{ act: 'setup', id, label: t\('Setup Options…'\), icon: 'disc', dot: newOpts \}\]/);
   assert.doesNotMatch(fn(app, 'actions'), /again/);
 });
 
 test('new setup options put a dot on the "…" button', () => {
   assert.match(fn(app, 'actions'), /class="\$\{sq\}\$\{fresh \? ' has-new' : ''\}" data-act="menu"/);
+});
+
+// The menu's rows as HTML, with the helpers they use.
+const rows = (items) => new Function('t', 'esc', 'MI', 'CHECK', 'M_CHEV', `${fn(app, 'menuRows')}; return menuRows;`)(same, same, {}, '✓', '›')(items);
+
+test('a menu row with something new has a dot on its right, and says it to screen readers', () => {
+  const html = rows([{ act: 'setup', id: 'g', label: 'Setup Options…', dot: '1 new option' }]);
+  assert.match(html, /aria-label="Setup Options… · 1 new option">Setup Options…<span class="m-dot" aria-hidden="true"><\/span><\/button>/);
+});
+
+test('a menu row with nothing new has no dot', () => {
+  assert.doesNotMatch(rows([{ act: 'setup', id: 'g', label: 'Setup Options…', dot: '' }]), /m-dot|aria-label/);
+});
+
+test('the setup window marks the Extras step when it has new options', () => {
+  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
+  assert.match(steps, /\$\{s\.id === 'extras' && m\.fresh\.length \? ' new' : ''\}/);
+  assert.match(steps, /const fresh = opts\.filter\(\(o\) => o\.new && \(su\.copy \|\| su\.inputs_ready\)\);/);
 });
 
 test('Customize is called Edit Name and Artwork', () => {

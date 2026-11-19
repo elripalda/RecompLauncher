@@ -2963,7 +2963,7 @@ function newPrepOpts(su) {
   if (!su || su === 'loading' || !(su.copy || su.inputs_ready)) return [];
   return (su.prepare_options || []).filter((o) => o.new);
 }
-// An Easy Setup game that's set up: Set Up Again sits beside Play.
+// An Easy Setup game that's set up: Setup Options is in its "…" menu.
 function canSetUpAgain(id) {
   const su = S.setup[id];
   return S.easy.has(id) && !!su && su !== 'loading' && !!su.needs && !!(su.copy || su.inputs_ready);
@@ -3264,7 +3264,7 @@ function settingsTab(a) {
       // only for building it again (not the main button).
       const gone = copyNotNeeded(id), have = su.copy || gone;
       const sub = su.copy ? su.copy : gone ? copyGoneText(id) : su.needs;
-      const label = su.copy ? ((su.prepare_options || []).length ? t('Set Up Again') : t('Change')) : gone ? t('Change') : t('Insert it');
+      const label = su.copy ? ((su.prepare_options || []).length ? t('Setup Options') : t('Change')) : gone ? t('Change') : t('Insert it');
       return `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${esc(sub)}</span></div><button type="button" class="btn${have ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(label)}</button></div>${spareRow(id, su)}</div>`;
     })() : ''}
     ${su.update ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('The game\'s update'))}</b><span>${su.update_copy ? esc(su.update_copy) : esc(su.update)}</span></div><button type="button" class="btn${su.update_copy || su.update_optional ? '' : ' main'}" data-act="setupdate" data-id="${esc(id)}">${esc(su.update_copy ? t('Change') : t('Choose It'))}</button></div></div>` : ''}
@@ -5671,7 +5671,10 @@ function menuRows(items) {
     if (i === '-') return '<hr>';
     const icon = i.icon ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MI[i.icon] || ''}</svg>` : '';
     if (i.sub) return `<button type="button" role="menuitem" aria-haspopup="menu" class="has-sub" data-sub="${n}">${icon}${esc(i.label)}${M_CHEV}</button>`;
-    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}</button>`;
+    // A row with something new behind it (`dot`, said in words for screen readers) has a dot on its right.
+    const dot = i.dot ? `<span class="m-dot" aria-hidden="true"></span>` : '';
+    const named = i.dot ? ` aria-label="${esc(i.label + ' · ' + i.dot)}"` : '';
+    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
   }).join('');
 }
 function menu(at, items) {
@@ -5876,9 +5879,9 @@ function gameMenu(id) {
   const pinned = pins().includes(id);
   // Before it's installed: its project page and where to report, under the rest.
   const links = [...projectItem(x), ...devReportItem(x)];
-  // Setup Options says how many new options its project added (the "…" button has a dot then).
+  // New options its project added since: a dot on Setup Options (and on the "…" button).
   const fresh = newPrepOpts(S.setup[id]).length;
-  const setupLabel = fresh ? `${t('Setup Options…')} · ${tn(fresh, '1 new option', '{n} new options')}` : t('Setup Options…');
+  const newOpts = fresh ? tn(fresh, '1 new option', '{n} new options') : '';
   return [
     ...(first ? [first] : []),
     ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
@@ -5893,7 +5896,7 @@ function gameMenu(id) {
     ...(g ? ['-',
       { act: 'customize', id, label: t('Edit Name and Artwork…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
-      ...(canSetUpAgain(id) ? [{ act: 'setup', id, label: setupLabel, icon: 'disc' }] : []),
+      ...(canSetUpAgain(id) ? [{ act: 'setup', id, label: t('Setup Options…'), icon: 'disc', dot: newOpts }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
         { act: 'desktop', id, label: t('Add to desktop'), icon: 'desk' },
         ...(S.os === 'windows' || S.os === 'linux' ? [{ act: 'app-menu', id, label: S.os === 'windows' ? t('Add to Start Menu') : t('Add to App Menu'), icon: 'apps' }] : []),
