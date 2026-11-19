@@ -168,7 +168,10 @@ pub fn bring_in(st: &App, id: &str, image: &Path) -> Result<Brought, Error> {
     let mut next = g.clone();
     next.exe = Some(start.clone());
     next.files = staged.files.clone();
-    next.unpacked = true;
+    // The folder is the launcher's own (uninstall may delete it) unless it's one the player put in
+    // the library themselves: that keeps whatever else of theirs is in there, and uninstall leaves it.
+    let players_folder = in_place && g.local && !g.unpacked;
+    next.unpacked = !players_folder;
     next.from_appimage = image_key(image);
     next.updated_at = now();
     // A game the player added before this version is named after its folder (Downloads, say):
@@ -214,7 +217,8 @@ fn put_in_place(st: &App, g: &Installed, next: Installed, image: &Path, staged: 
     if let Ok(rel) = image.strip_prefix(&target) {
         dropped.push(rel.to_path_buf());
     }
-    if g.unpacked {
+    // An earlier unpack's files (in the player's own folder too) are the ones a newer one may take away.
+    if g.unpacked || !g.from_appimage.is_empty() {
         dropped.extend(install::dropped(&target, &g.files, &staged.files, g.updated_at, None));
     }
     if let Some(what) = swap::recover(&target, Some(g)) {
@@ -387,6 +391,51 @@ mod tests {
         assert!(!image.exists());
         assert_eq!(std::fs::read(d.join("lib/game/settings.ini")).unwrap(), b"player's");
         assert!(!d.join("lib/game").join(swap::FOLDER).exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_folder_the_player_put_in_the_library_stays_theirs_when_unpacked_in_place() {
+        let (d, mut lib) = place("players-folder");
+        let image = d.join("lib/Mine/Game-1.0-x86_64.AppImage");
+        put_image(&image);
+        std::fs::write(d.join("lib/Mine/notes.txt"), b"player's").unwrap();
+        let g = Installed { id: "own-mine".into(), name: "Mine".into(), path: d.join("lib/Mine"), exe: Some("Game-1.0-x86_64.AppImage".into()), local: true, ..Default::default() };
+        lib.installed.insert(g.id.clone(), g);
+        let st = crate::tests::app_in(&d, lib);
+
+        bring_in(&st, "own-mine", &image).unwrap();
+
+        let g = st.lib.lock().unwrap().installed["own-mine"].clone();
+        assert_eq!(g.path, d.join("lib/Mine"));
+        assert!(!g.unpacked, "the folder is the player's: uninstall must not delete it");
+        assert!(g.files.contains(&PathBuf::from("AppRun")), "what the unpack put there is still known");
+        assert!(!image.exists());
+        assert_eq!(std::fs::read(d.join("lib/Mine/notes.txt")).unwrap(), b"player's");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_newer_appimage_updates_the_players_own_folder_and_only_its_files_go() {
+        let (d, mut lib) = place("players-update");
+        std::fs::create_dir_all(d.join("lib/Mine/usr")).unwrap();
+        std::fs::write(d.join("lib/Mine/usr/old.bin"), b"old release").unwrap();
+        std::fs::write(d.join("lib/Mine/notes.txt"), b"player's").unwrap();
+        let earlier = image_key(Path::new("Game-1.0-x86_64.AppImage"));
+        let g = Installed { id: "own-mine".into(), name: "Mine".into(), path: d.join("lib/Mine"), exe: Some("AppRun".into()), files: vec!["usr/old.bin".into()], local: true, from_appimage: earlier, updated_at: now() + 60, ..Default::default() };
+        lib.installed.insert(g.id.clone(), g);
+        let image = d.join("Downloads/Game-1.1-x86_64.AppImage");
+        put_image(&image);
+        let st = crate::tests::app_in(&d, lib);
+
+        bring_in(&st, "own-mine", &image).unwrap();
+
+        let g = st.lib.lock().unwrap().installed["own-mine"].clone();
+        assert_eq!(g.path, d.join("lib/Mine"));
+        assert!(!g.unpacked);
+        assert!(!d.join("lib/Mine/usr/old.bin").exists(), "the earlier unpack's file it no longer has goes");
+        assert_eq!(std::fs::read(d.join("lib/Mine/notes.txt")).unwrap(), b"player's");
+        assert!(d.join("lib/Mine/usr/bin/game").is_file());
         let _ = std::fs::remove_dir_all(&d);
     }
 

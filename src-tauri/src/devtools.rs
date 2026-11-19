@@ -101,7 +101,7 @@ pub fn add_any(st: State<'_, App>, path: String) -> Res<Installed> {
 #[cfg(target_os = "linux")]
 fn add_appimage(st: &App, image: &Path) -> Res<Installed> {
     let key = crate::plain::image_key(image);
-    let earlier = st.lib.lock().unwrap().installed.values().find(|g| g.local && g.unpacked && g.from_appimage == key).map(|g| g.id.clone());
+    let earlier = st.lib.lock().unwrap().installed.values().find(|g| g.local && !key.is_empty() && g.from_appimage == key).map(|g| g.id.clone());
     let id = match &earlier {
         Some(id) => id.clone(),
         None => add_image_record(st, image)?,

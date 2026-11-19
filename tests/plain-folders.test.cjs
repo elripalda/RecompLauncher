@@ -42,7 +42,8 @@ test('I Already Have It doesn\'t ask where an AppImage plays from: it is always 
 });
 
 test('Bring Your Recomps doesn\'t move a game that was unpacked into the library already', () => {
-  assert.match(adopt, /added\.some\(\(g\) => g\.id === f\.id && !g\.unpacked\)/);
+  // Its own folder in the library, unpacked in place, isn't marked the launcher's: it still isn't moved.
+  assert.match(adopt, /added\.some\(\(g\) => g\.id === f\.id && !g\.from_appimage\)/);
 });
 
 test('the launcher no longer says it unpacks a game the first time it is played', () => {
