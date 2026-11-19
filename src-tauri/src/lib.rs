@@ -52,6 +52,7 @@ pub mod push;
 pub mod profile;
 pub mod proton;
 pub mod secret;
+pub mod server;
 pub mod setup_state;
 #[cfg(test)]
 mod setup_window_tests;
@@ -5059,6 +5060,8 @@ struct Setup {
     build_at: Option<PathBuf>,
     /// Set up, or why not: the answer Play gives too (setup_state).
     status: setup_state::Status,
+    /// Online and local network play, and its server (Host a Server), when the game says.
+    network: Option<server::View>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -5185,6 +5188,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         spare: if pick.is_some() || setup_busy(&id) { None } else { spare_copy(&g, &p, &st.lib.lock().unwrap().installed.values().cloned().collect::<Vec<_>>()) },
         build_at: if pick.is_some() { None } else { build_folder_now(&st, &id, &g) },
         status,
+        network: server::view(&p, &id),
     })
 }
 
@@ -10129,7 +10133,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, download_limits, server::server_start, server::server_stop, server::server_now, server::server_log, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             precheck_copy,
             emulator_folders,
             games_rom_folder,
@@ -10190,6 +10194,7 @@ pub fn run() {
                 tauri::RunEvent::ExitRequested { .. } => update_launch::note_quitting(),
                 tauri::RunEvent::Exit => {
                     pads::stop();
+                    server::stop_all();
                     ping::close(app);
                 }
                 _ => {}

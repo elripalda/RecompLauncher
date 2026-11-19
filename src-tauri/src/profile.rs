@@ -60,6 +60,10 @@ pub struct Profile {
     /// Whether looks (ReShade filters) can be used with it, and how.
     #[serde(default)]
     pub looks: Option<crate::looks::ProfileLooks>,
+    /// Playing with others: online, on the local network, and the server the release carries
+    /// (server.rs). A block with a mistake in it is left out, not the whole file.
+    #[serde(default, deserialize_with = "crate::server::lenient", skip_serializing_if = "Option::is_none")]
+    pub network: Option<crate::server::Network>,
     /// Where the game keeps its saves: folders, files, or `*` patterns, with the same {local},
     /// {documents}, {install}... as everywhere else. Backups and cloud saves copy these.
     #[serde(default)]
