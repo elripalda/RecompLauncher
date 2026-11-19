@@ -842,6 +842,55 @@
       },
       "additionalProperties": false
     },
+    "network": {
+      "type": "object",
+      "description": "Playing with others. Leave it out if your recomp has no online or local network play.",
+      "properties": {
+        "modes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "online",
+              "lan"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "How it can be played with others: online (over the internet), lan (on the same local network) or both. The game's page says it."
+        },
+        "server": {
+          "type": "object",
+          "description": "The dedicated server in your release. The game's page gets Host a Server, which starts it with the port the player picks and shows the address to share. Stop ends it, and so does closing the launcher.",
+          "required": [
+            "program",
+            "port"
+          ],
+          "properties": {
+            "program": {
+              "$ref": "#/definitions/programs"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "{port} is the port the player picked; paths fill in like everywhere else."
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535,
+              "description": "The port it listens on unless the player picks another."
+            },
+            "label": {
+              "type": "string",
+              "description": "What the game's page calls it, like \"Dedicated server\"."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "mods": {
       "type": "object",
       "description": "Where players get mods for your game. Leave it out if the launcher already knows (Zelda 64: Recompiled, Banjo: Recompiled, Unleashed Recompiled, Marathon Recompiled and the Ship of Harkinian family).",

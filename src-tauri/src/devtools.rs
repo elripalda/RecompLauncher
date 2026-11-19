@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 const FILE: &str = "recomplauncher.json";
-const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves", "inputs", "requires", "min", "games"];
+const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "network", "mods", "saves", "inputs", "requires", "min", "games"];
 
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
@@ -218,6 +218,8 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     let mut items = vec![];
     let mut error = String::new();
     let mut prof: Option<profile::Profile> = None;
+    // `network` as written: the profile leaves out a block it can't read, so it's checked from here.
+    let mut raw_network: Option<Value> = None;
     let has_file = file.is_file() || embedded.is_some();
     if has_file {
         let text = embedded.as_ref().map(|p| Ok(p.raw.to_string())).unwrap_or_else(|| std::fs::read_to_string(&file));
@@ -227,6 +229,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
                 Err(e) => error = format!("It isn't valid JSON: {e}."),
                 Ok(v) => {
                     if let Some(o) = v.as_object() {
+                        raw_network = o.get("network").cloned();
                         let unknown: Vec<&String> = o.keys().filter(|k| !TOP_KEYS.contains(&k.as_str())).collect();
                         if !unknown.is_empty() {
                             items.push(warn(
@@ -276,6 +279,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
             items.push(ok("Format 1"));
         }
         level = check_profile(p, &dir, &g, &mut items);
+        items.extend(network_items(raw_network.as_ref(), p.network.as_ref(), &dir));
     } else if !has_file && source == "none" {
         items.push(warn(
             "No recomplauncher.json in this folder",
@@ -487,6 +491,34 @@ fn keeps_copy_items(p: &profile::Profile, dir: &Path) -> Vec<Item> {
     }
     if pr.done.is_empty() {
         out.push(warn("\"prepare.keeps_copy\" without \"prepare.done\"", "List the files a finished build has, so the launcher can tell when it has to build again."));
+    }
+    out
+}
+
+/// network: a block the launcher couldn't read (and so left out), its server's program, and what
+/// the game's page will say.
+fn network_items(raw: Option<&Value>, read: Option<&crate::server::Network>, dir: &Path) -> Vec<Item> {
+    let Some(raw) = raw else { return vec![] };
+    let Some(n) = read else {
+        let why = serde_json::from_value::<crate::server::Network>(raw.clone()).err().map(|e| e.to_string()).unwrap_or_default();
+        return vec![err("\"network\" can't be used as it is, so it's left out", why)];
+    };
+    let mut out = vec![];
+    if n.modes.is_empty() {
+        out.push(warn("\"network.modes\" has neither \"online\" nor \"lan\"", "The game's page shows how it's played with others from these."));
+    } else {
+        out.push(ok(format!("Played with others: {}", n.modes.join(", "))));
+    }
+    let Some(s) = n.server.as_ref() else { return out };
+    match s.program_in(dir) {
+        Some(x) => out.push(ok(format!("Host a Server starts {} on port {}", x.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(), s.port))),
+        None => out.push(err("None of \"network.server.program\" is in this folder", s.program.join(", "))),
+    }
+    if s.port < 1024 {
+        out.push(err(format!("\"network.server.port\" is {}", s.port), "Ports below 1024 need an administrator on Linux and Mac. Pick one from 1024 to 65535."));
+    }
+    if !s.args.iter().any(|a| a.contains("{port}")) {
+        out.push(warn("\"network.server.args\" doesn't use {port}", "Without it, a port the player picks doesn't reach the server."));
     }
     out
 }
@@ -721,6 +753,39 @@ mod tests {
             assert!(!INTERNAL.contains(&name), "{name} is on the internal list but a developer can write it");
             assert!(props.contains_key(&shown), "Profile.{name} isn't in docs/recomplauncher.schema.json");
         }
+    }
+
+    fn net(json: &str) -> (Value, Option<crate::server::Network>) {
+        let v: Value = serde_json::from_str(json).unwrap();
+        let read = serde_json::from_value::<crate::server::Network>(v.clone()).ok();
+        (v, read)
+    }
+
+    #[test]
+    fn a_network_block_that_cant_be_read_is_an_error() {
+        let (v, read) = net(r#"{"server":{"program":["S"]}}"#);
+        let items = network_items(Some(&v), read.as_ref(), Path::new("/nowhere"));
+        assert_eq!(items[0].level, "err");
+        assert!(items[0].text.contains("left out"), "{}", items[0].text);
+    }
+
+    #[test]
+    fn a_missing_server_program_is_an_error() {
+        let (v, read) = net(r#"{"modes":["lan"],"server":{"program":["Missing.exe"],"args":["{port}"],"port":27015}}"#);
+        let items = network_items(Some(&v), read.as_ref(), Path::new("/nowhere"));
+        assert!(items.iter().any(|i| i.level == "err" && i.text.contains("network.server.program")));
+    }
+
+    #[test]
+    fn server_args_without_the_port_are_warned_about() {
+        let (v, read) = net(r#"{"modes":["online"],"server":{"program":["S"],"port":27015}}"#);
+        let items = network_items(Some(&v), read.as_ref(), Path::new("/nowhere"));
+        assert!(items.iter().any(|i| i.level == "warn" && i.text.contains("{port}")));
+    }
+
+    #[test]
+    fn no_network_block_says_nothing() {
+        assert!(network_items(None, None, Path::new("/nowhere")).is_empty());
     }
 
     #[test]

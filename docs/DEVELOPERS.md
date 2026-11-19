@@ -535,6 +535,32 @@ the Ship of Harkinian family are built in, so leave this out for those.
 Only files that passed GameBanana's virus scan, and come as a zip, 7z or rar, can be installed from
 the launcher. For the rest, the player gets a link to the mod's page.
 
+### `network`: playing with others
+
+If your recomp can be played online or on a local network, say so, and the game's page shows it:
+
+```json
+"network": {
+  "modes": ["online", "lan"],
+  "server": {
+    "program": ["GameServer.exe"],
+    "args": ["--port", "{port}", "--config={install}/server.ini"],
+    "port": 27015,
+    "label": "Dedicated server"
+  }
+}
+```
+
+- `modes`: `online` (over the internet), `lan` (on the same local network) or both.
+- `server`: the dedicated server in your release, if it has one. The game's page gets Host a
+  Server: it starts your program with `{port}` set to the port the player picks (`port` unless
+  they change it), shows the address other players on the network connect to, and Stop ends it.
+  Closing the launcher closes it too. What it prints goes to a log the player can open. A Windows
+  server on Linux goes through Proton, like the game.
+
+The launcher only starts your program: it doesn't relay traffic, open ports on the router or run
+servers of its own. Leave `server` out when players connect to each other or to a server you run.
+
 ### `folders`, `actions` and `exit_codes`
 
 - `folders`: named places the launcher can open or clear. When your game crashes, the newest

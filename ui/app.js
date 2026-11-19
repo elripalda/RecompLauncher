@@ -3256,7 +3256,31 @@ function settingsTab(a) {
     ${su.settings.length ? `<div class="card"><div class="card-h"><h3>${esc(t('How it runs'))}</h3><span>${esc(su.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings'))}</span></div>
       ${gameSettingRows(id, su, seg)}</div>` : ''}
     ${su.actions.length ? `<div class="card">${su.actions.map((x) => `<div class="set-row"><div class="k"><b>${esc(x.label)}</b><span>${esc(x.help)}</span></div><button type="button" class="btn${x.kind === 'clear' ? ' danger' : ''}" data-act="gaction" data-id="${esc(id)}" data-k="${esc(x.id)}">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</button></div>`).join('')}</div>` : ''}
+    ${networkCard(id, su.network)}
   </div>`;
+}
+// Playing with others: how (online, on this network), and the game's own server when it has one.
+function networkModes(modes) {
+  const online = modes.includes('online'), lan = modes.includes('lan');
+  if (online && lan) return t('Online and on your local network');
+  if (online) return t('Online');
+  if (lan) return t('On your local network');
+  return '';
+}
+function networkCard(id, n) {
+  if (!n) return '';
+  const how = networkModes(n.modes || []);
+  const head = `<div class="card-h"><h3>${esc(t('Play With Others'))}</h3>${how ? `<span>${esc(how)}</span>` : ''}</div>`;
+  if (!n.server) return how ? `<div class="card">${head}</div>` : '';
+  const label = n.server.label || t('Dedicated server');
+  const h = n.hosting;
+  if (h) {
+    const where = h.address ? tf('Running. Players on your network join {address}.', { address: h.address }) : tf('Running on port {port}. This PC isn\'t on a network, so only it can join.', { port: h.port });
+    const copy = h.address ? `<button type="button" class="btn" data-act="srv-copy" data-k="${esc(h.address)}">${esc(t('Copy Address'))}</button>` : '';
+    return `<div class="card">${head}<div class="set-row"><div class="k"><b>${esc(label)}</b><span>${esc(where)}</span></div><div class="acts">${copy}<button type="button" class="btn" data-act="srv-log">${esc(t('Open Log'))}</button><button type="button" class="btn danger" data-act="srv-stop" data-id="${esc(id)}">${esc(t('Stop'))}</button></div></div></div>`;
+  }
+  const port = `<input class="field" type="number" min="1024" max="65535" value="${esc(String(n.server.port))}" data-srv-port="${esc(id)}" aria-label="${esc(t('Port'))}" style="width:7.5em">`;
+  return `<div class="card">${head}<div class="set-row"><div class="k"><b>${esc(label)}</b><span>${esc(t('Host a game for other players: the server runs on this PC until you stop it or close the launcher.'))}</span></div><div class="acts">${port}<button type="button" class="btn main" data-act="srv-start" data-id="${esc(id)}">${esc(t('Host a Server'))}</button></div></div></div>`;
 }
 // Settings > General > Portable: whether this launcher keeps its data beside itself, or a button
 // to make a copy that does (on a portable drive, to use on other PCs).
@@ -8434,6 +8458,28 @@ async function act(el, e) {
     case 'bindreset': { try { await invoke('reset_game_bindings', { id, setting: el.dataset.k }); } catch (e) { fail(e); } delete S.setup[id]; return loadSetup(id); }
     case 'gadv': { await saveUi({ adv_open: Object.assign({}, (S.settings.ui || {}).adv_open || {}, { [id]: !advOpen(id) }) }, true); if (S.view === 'game' && S.arg === id && $('#g-body')) showTab(S.tab); else render(true); return; }
     case 'look': return setLook(id, el.dataset.look);
+    case 'srv-start': {
+      const box = document.querySelector(`[data-srv-port="${CSS.escape(id)}"]`);
+      const asked = box ? Number(box.value) : NaN;
+      const port = Number.isInteger(asked) && asked >= 1024 && asked <= 65535 ? asked : null;
+      el.disabled = true;
+      try { await invoke('server_start', { id, port }); } catch (err) { fail(err); }
+      el.disabled = false;
+      delete S.setup[id];
+      loadSetup(id);
+      return;
+    }
+    case 'srv-stop': {
+      try { await invoke('server_stop', { id }); } catch (err) { fail(err); }
+      delete S.setup[id];
+      loadSetup(id);
+      return;
+    }
+    case 'srv-copy': {
+      try { await navigator.clipboard.writeText(el.dataset.k); toast(t('Copied.')); } catch (err) { fail(err); }
+      return;
+    }
+    case 'srv-log': invoke('server_log').catch(fail); return;
     case 'gaction': {
       const run = async () => { try { const r = await invoke('game_action', { id, action: el.dataset.k }); if (r) toast(t(r)); } catch (err) { fail(err); } };
       if (!el.classList.contains('danger')) return run();
