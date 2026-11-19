@@ -84,7 +84,9 @@ test('Big Picture\'s X sheet leaves out Play (the big button) and puts Setup Opt
 });
 
 test('Big Picture marks a new option on Setup Options and on the Options button', () => {
-  assert.match(tv, /badge: fresh \? t\('New option'\) : ''/);
+  // The sheet's own "new" mark after an item's name (x.tag, shared with the Saves sheet).
+  assert.match(tv, /tag: fresh \? t\('New option'\) : ''/);
+  assert.match(tv, /\$\{x\.tag \? `<span>\$\{esc\(x\.label\)\}<em class="tv-newer">\$\{esc\(x\.tag\)\}<\/em><\/span>` : esc\(x\.label\)\}/);
   assert.match(tv, /btn\('g-more', 'more', esc\(t\('Options'\)\) \+ \(g && canSetUpAgain\(id\) && newPrepOpts\(su\)\.length \? `<b class="tv-new">/);
 });
 

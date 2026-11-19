@@ -397,7 +397,7 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 
 
 /* A small beta mark on the game page's settings button (the launcher's own game settings). */
-.tv-btn .tv-beta-s,.tv-btn .tv-new,.tv-item .tv-new{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}
+.tv-btn .tv-beta-s,.tv-btn .tv-new{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}
 
 /* Light theme in Big Picture mode too. */
 body.light #tv{background:#F3F5F8}
@@ -1029,3 +1029,30 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-rail.box{right:auto;bottom:auto}
 .tv-rail i{position:absolute;left:0;top:0;width:100%;border-radius:6px;background:var(--acc,#34F2E8);opacity:.75;transition:transform .35s cubic-bezier(.2,.8,.2,1),height .2s}
 .tv-rail[hidden]{display:none}
+/* The cloud save status above a game's buttons (account.js decides the state): a coloured line,
+   not a button, as on the desktop. */
+.tv-sbadge{--c:#8B97AA;margin:0;display:inline-flex;align-items:center;gap:10px;font-size:22px;font-weight:700;color:var(--c)}
+.tv-sbadge.sb-ok,.tv-svs.sb-ok{--c:#3ee08f}.tv-sbadge.sb-cy,.tv-svs.sb-cy{--c:#34F2E8}.tv-sbadge.sb-warn,.tv-svs.sb-warn{--c:#f5b83d}.tv-sbadge.sb-bad,.tv-svs.sb-bad{--c:#ff7a7a}
+.tv-sbadge svg{flex:none}
+.tv-sbadge small{font-size:20px;font-weight:600;color:var(--tvsoft,#c9d3e0)}
+.tv-sbadge small::before{content:"· "}
+/* "Newer" beside a sheet item's label (the save made later, when both changed): green text. */
+.tv-newer{margin-left:12px;font-style:normal;font-size:19px;font-weight:700;color:#3ee08f}
+/* A game's Saves page: the status leads it in its colour, then every save marked by where it's
+   kept (account.js). */
+.tv-svs{--c:#8B97AA}
+.tv-svs>svg{flex:none;color:var(--c)}
+.tv-svs .k b{color:var(--c)}
+.tv-svs .k b i{font-style:normal;font-weight:600;color:var(--tvsoft,#c9d3e0)}
+.tv-svs .k small{white-space:normal;line-height:1.35}
+.tv-svh-marks{display:flex;flex-wrap:wrap;gap:2px 18px;margin:2px 0}
+.tv-svm{font:600 16px Figtree,sans-serif;color:var(--tvmuted,#a7b3c4)}
+.tv-svm::before{content:"";display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:50%;background:currentColor;vertical-align:2px}
+.tv-svm-cloud{color:#34F2E8}
+.tv-svm-other{color:#b9a1ff}
+.tv-svh-current{background:rgba(62,224,143,.1);box-shadow:inset 4px 0 0 #3ee08f}
+.tv-svh-cur{flex:none;display:inline-flex;align-items:center;gap:8px;font:700 18px Figtree,sans-serif;color:#3ee08f}
+.tv-svh-cur svg{width:22px;height:22px}
+.tv-svp-set{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#3ee08f}
+.tv-svp-set svg{flex:none;width:20px;height:20px}
+.tv-svp-set.ours{color:#34F2E8}

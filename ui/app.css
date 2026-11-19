@@ -529,12 +529,33 @@ body.light .known-fix b{color:#127a45}
 .md-fold>summary:hover{color:var(--ink)}
 .about-game p{margin:0 0 12px;color:#d3d9e2;line-height:1.65}
 .about-game p.src{margin:6px 0 0;font-size:13px;color:var(--dim)}
-.rel{display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;border-bottom:1px solid var(--line);padding:20px 0}
-.rel:first-child{padding-top:4px}.rel:last-child{border-bottom:0;padding-bottom:0}
-.rel-h{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.rel-h h3{font-size:16px}
+.card.rels{padding:6px}
+.rel{border-top:1px solid var(--line)}
+.rel:first-child{border-top:0}
+.rel-h{display:flex;align-items:center;gap:10px;padding-right:10px;border-radius:14px;transition:background-color .15s}
+.rel-h:hover,.rel.open .rel-h{background:var(--fill)}
+.rel-t{flex:1;min-width:0;display:flex;align-items:flex-end;gap:16px;padding:14px 0 14px 16px;text-align:left}
+/* The Latest version pill sits above the title, so every title line looks the same. */
+.rel-name{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.rel-line{display:flex;align-items:center;gap:12px;min-width:0;max-width:100%}
+/* One line: the full title is in the notes below and in the tooltip, so a long one is cut short
+   rather than wrapping, and the date and Pre-release beside it always show. */
+.rel-line h3{font-size:16px;line-height:22px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-line .pre{flex:none}
 .rel-h .pre{font-size:12px;font-weight:700;color:var(--warn)}
-.rel-h .when{color:var(--dim);font-size:13px}
+.rel-h .when{flex:none;color:var(--dim);font-size:13px;line-height:22px}
+.rel-name .ai-tag{height:20px;font-size:11px}
+.ai-tag.latest{color:#3ddc97;background:rgba(61,220,151,.1);border-color:rgba(61,220,151,.35)}
+body.light .ai-tag.latest{color:#127a45}
+.rel-act{display:flex;align-items:center;gap:8px;flex:none}
+.rel-act:empty{display:none}
+.rel-chev{flex:none;display:grid;place-items:center;width:28px;height:28px}
+.rel.open .upd-chev{transform:rotate(180deg)}
+.rel-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s var(--ease)}
+.rel.open .rel-body{grid-template-rows:1fr}
+.rel-in{overflow:hidden;min-height:0;padding:0 16px}
+.rel.open .rel-in{padding:12px 16px 18px}
+@media (prefers-reduced-motion:reduce){.rel-body{transition:none}}
 .bars{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:8px;height:120px;margin-top:18px;align-items:end}
 .bars .b{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
 .bars i{display:block;width:100%;max-width:26px;border-radius:6px 6px 2px 2px;background:var(--cyan);opacity:.9;transform-origin:bottom;animation:growUp .6s var(--ease) both}
@@ -842,6 +863,8 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .lk-view.nogl .lk-after,.lk-view.nogl .lk-split,.lk-view.nogl .lk-range,.lk-view.nogl .lk-tag.a{display:none}
 .lk-view.nogl .lk-before{clip-path:none}
 .lk-src{margin:-6px 2px 0;color:var(--dim);font-size:13.5px}
+/* One cell for every wording, only one visible, so the line keeps the height of its longest one. */
+.steady{display:grid}.steady>span{grid-area:1/1}.steady>[aria-hidden]{visibility:hidden}
 .lk-studio{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
 .lk-main{display:flex;flex-direction:column;gap:14px;min-width:0}
 .lk-list{display:flex;flex-direction:column;gap:8px}
@@ -2571,3 +2594,61 @@ body.light .su-req{color:#8a5300}
 .poster.cvl-on .badge.tl,.poster.cvl-on .badge.tr,.poster.cvl-on .badge.rank{top:calc(var(--cvl-top) * 100% + 9px)}
 .poster.cvl-on .badge.tl.low{top:calc(var(--cvl-top) * 100% + 41px)}
 .tv-poster.cvl-on .tv-badge,.tv-poster.cvl-on .tv-rank{top:calc(var(--cvl-top) * 100% + 12px)}
+/* The cloud save status above Play (account.js): a coloured line, not a button. Its colour says
+   the state: green in the cloud, cyan working, amber waiting or a choice, red stuck, grey no
+   cloud. The tooltip says more. */
+.sbadge,.svs{--sb-ok:#3ee08f;--sb-warn:var(--warn);--sb-bad:var(--bad)}
+.sbadge{min-height:20px}
+body.light .sbadge,body.light .svs{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
+.sbadge .sb-ok,.svs.sb-ok{--c:var(--sb-ok)}.sbadge .sb-cy,.svs.sb-cy{--c:var(--cyan)}.sbadge .sb-warn,.svs.sb-warn{--c:var(--sb-warn)}.sbadge .sb-bad,.svs.sb-bad{--c:var(--sb-bad)}.sbadge .sb-dim,.svs.sb-dim{--c:var(--dim)}
+.sbadge-line{display:inline-flex;align-items:center;gap:7px;font:700 13.5px Figtree,sans-serif;color:var(--c);white-space:nowrap;cursor:default}
+.sbadge-line svg{flex:none}
+.sbadge-line small{font-weight:500;font-size:12.5px;color:var(--muted)}
+.sbadge-line small::before{content:"· "}
+.sb-spin{animation:sbspin 1.1s linear infinite;transform-origin:12px 13px}
+.sb-bob{animation:sbbob 1.2s ease-in-out infinite}
+@keyframes sbspin{to{transform:rotate(360deg)}}
+@keyframes sbbob{50%{transform:translateY(-1.5px)}}
+@media (prefers-reduced-motion:reduce){.sb-spin,.sb-bob{animation:none}}
+/* "Newer" on the save that was made later, when both changed: a green word, not a pill. */
+.pick-newer{margin-left:6px;font-style:normal;font-size:12.5px;font-weight:700;color:#3ee08f}
+body.light .pick-newer{color:#127a45}
+.pick-note{margin:-4px 0 14px;font-size:13px}
+/* The Saves tab (account.js). Its first card is the status above Play, bigger, with the one thing
+   to do about it; then every save in one list, marked by where it's kept. */
+.svs-row{display:flex;align-items:center;gap:16px}
+.svs-ico{flex:none;display:grid;place-items:center;width:52px;height:52px;border-radius:14px;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent)}
+.svs .k{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+.svs .k b{font-size:17px;color:var(--c)}
+.svs .k b small{font-size:13.5px;font-weight:500;color:var(--muted)}
+.svs .k span{font-size:13.5px;color:var(--dim)}
+.svs .k>small{font-size:12.5px;color:var(--muted)}
+.svs .acts{flex:none}
+.svs .set-note{margin:12px 0 0}
+/* No box on the desktop: the status sits on the page as the tab's heading (Big Picture keeps its item box). */
+.card.svs{background:none;border-color:transparent;padding:6px 4px 10px}
+.svs-space{margin-top:14px}
+.svh-marks{display:flex;flex-wrap:wrap;gap:3px 14px;margin:2px 0 1px}
+.set-row .k .svm{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--dim)}
+.svm svg{flex:none}
+.set-row .k .svm-cloud{color:var(--cyan)}
+.set-row .k .svm-other{color:#b9a1ff}
+body.light .set-row .k .svm-other{color:#6a4bc9}
+.svh-more{margin-top:14px}
+@media (max-width:640px){.svs-row{flex-wrap:wrap}.svs .acts{width:100%}}
+/* The save in the game now: its row is lit green, with a green edge, and says so on the right. */
+.svh-row{--ok:#3ee08f}
+body.light .svh-row{--ok:#127a45}
+.svh-row.cur{margin:0 -14px;padding-left:14px;padding-right:14px;border-radius:12px;border-bottom-color:transparent;background:color-mix(in srgb,var(--ok) 9%,transparent);box-shadow:inset 3px 0 0 var(--ok)}
+.card-h+.svh-row.cur{padding-top:16px}
+.svh-cur{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--ok)}
+/* A save folder its developer or RecompLauncher set: said in green, with a shield. */
+.set-row .k .svp-set{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#3ee08f}
+body.light .set-row .k .svp-set{color:#127a45}
+.svp-set svg{flex:none}
+/* Delete from the cloud: a quiet icon beside Restore, red on hover. */
+.svh-row .acts{display:flex;align-items:center;gap:8px}
+.svh-del{color:var(--muted)}
+.svh-del:hover{color:var(--bad)}
+/* One RecompLauncher set is the launcher's cyan, so it reads apart from the developer's green. */
+.set-row .k .svp-set.ours{color:var(--cyan)}
