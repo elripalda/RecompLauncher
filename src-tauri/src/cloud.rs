@@ -885,6 +885,14 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     Ok(copy)
 }
 
+/// When this PC's save was made, for the "which save?" choice: the time of the first copy holding
+/// it (the same save is copied again before a restore or a cloud save replaces it). The files'
+/// own time is only the fallback: restoring a copy writes them anew, which made an older save look
+/// newer than the cloud's.
+fn local_save_time(copies: &[saves::Copy], hash: &str, files_time: u64) -> u64 {
+    copies.iter().filter(|c| c.hash == hash).map(|c| c.when).min().unwrap_or(files_time)
+}
+
 /// Marks a game's session as started (true) or its save as copied after it (false). A session
 /// still marked when the launcher starts is finished then (finish_open_sessions).
 pub(crate) fn set_after_play(dir: &Path, id: &str, open: bool) {
@@ -1117,7 +1125,8 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     s.conflict = Some(top.v.clone());
     saves::set_state(&st.dir, &id, &s);
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
-    let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let files_time = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let when = local_save_time(&saves::list(&st.dir, &id, &g), &local, files_time);
     Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
 }
 
@@ -1986,6 +1995,27 @@ mod status_tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn copy_made(when: u64, hash: &str) -> saves::Copy {
+        saves::Copy { name: format!("{when}.zip"), when, size: 1, files: 1, hash: hash.into(), device: String::new(), played: 0 }
+    }
+
+    #[test]
+    fn a_restored_save_is_dated_by_its_copy_not_by_when_it_was_written_back() {
+        let copies = [copy_made(300, "new"), copy_made(100, "old")];
+        assert_eq!(local_save_time(&copies, "old", 500), 100);
+    }
+
+    #[test]
+    fn a_save_copied_twice_is_dated_by_its_first_copy() {
+        let copies = [copy_made(400, "old"), copy_made(300, "new"), copy_made(100, "old")];
+        assert_eq!(local_save_time(&copies, "old", 500), 100);
+    }
+
+    #[test]
+    fn a_save_no_copy_holds_is_dated_by_its_files() {
+        assert_eq!(local_save_time(&[copy_made(300, "new")], "changed", 500), 500);
     }
 
     #[test]
