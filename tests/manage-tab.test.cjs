@@ -37,8 +37,42 @@ test('Uninstall stays in the menu of an installed game, last and in red', () => 
   assert.match(fn(app, 'gameMenu'), /\.\.\.\(g \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
 });
 
-test('an open menu closes when the page scrolls', () => {
-  assert.match(app, /\$\('#main'\)\.addEventListener\('scroll', \(\) => \{\n(?:\s*\/\/[^\n]*\n)*\s+if \(\$\('\.menu'\)\) closeMenu\(\);/);
+// A page that scrolls under a 42px top bar, 800px tall, with one open menu 300px tall.
+const scrolled = (style, by) => {
+  const main = { scrollTop: 0, getBoundingClientRect: () => ({ bottom: 800 }) };
+  const bar = { getBoundingClientRect: () => ({ bottom: 42 }) };
+  const menu = { style: Object.assign({ clipPath: '' }, style) };
+  menu.getBoundingClientRect = () => {
+    const top = menu.style.top ? parseFloat(menu.style.top) : 800 - parseFloat(menu.style.bottom) - 300;
+    return { top, bottom: top + 300 };
+  };
+  const run = new Function('$', '$$', `let menuScroll = 0; ${fn(app, 'scrollMenus')}; return scrollMenus;`);
+  const scrollMenus = run((s) => (s === '#main' ? main : bar), () => [menu]);
+  main.scrollTop = by;
+  scrollMenus();
+  return menu.style;
+};
+
+test('an open menu moves with the page as it scrolls', () => {
+  assert.equal(scrolled({ top: '200px' }, 50).top, '150px');
+});
+
+test('a menu that opens upward moves with the page too', () => {
+  assert.equal(scrolled({ top: '', bottom: '100px' }, 50).bottom, '150px');
+});
+
+test('the part of a menu under the top bar is hidden', () => {
+  assert.equal(scrolled({ top: '100px' }, 80).clipPath, 'inset(22px 0 0px 0)');
+});
+
+test('a menu fully on the page is not clipped', () => {
+  assert.equal(scrolled({ top: '400px' }, 50).clipPath, '');
+});
+
+test('scrolling the page moves menus instead of closing them', () => {
+  const handler = app.match(/\$\('#main'\)\.addEventListener\('scroll', \(\) => \{[^]*?\n\}, \{ passive: true \}\);/)[0];
+  assert.match(handler, /^\$\('#main'\)\.addEventListener\('scroll', \(\) => \{\n\s+scrollMenus\(\);/);
+  assert.doesNotMatch(handler, /closeMenu/);
 });
 
 test('the project page is one menu row', () => {

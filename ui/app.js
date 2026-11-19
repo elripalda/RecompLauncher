@@ -8705,11 +8705,28 @@ document.addEventListener('input', (e) => {
   qTimer = setTimeout(() => { if (id === 'dq') S.q = e.target.value; else S.lq = e.target.value; refreshList(id); }, 120);
 });
 $('#isl').addEventListener('click', () => go('downloads'));
+// An open menu is part of the page: it stays open and moves with it as it scrolls. Menus are fixed
+// to the window, so they're moved by hand, by as much as the page moved. The part that goes under
+// the window's top bar or past the page's bottom edge is hidden, as the page's own content is.
+let menuScroll = 0;
+function scrollMenus() {
+  const main = $('#main'), dy = menuScroll - main.scrollTop;
+  menuScroll = main.scrollTop;
+  const menus = $$('.menu');
+  if (!dy || !menus.length) return;
+  const top = $('.topbar').getBoundingClientRect().bottom, bottom = main.getBoundingClientRect().bottom;
+  for (const m of menus) {
+    // A menu that opens upward (the version list near the bottom) is placed by its bottom edge.
+    if (m.style.top) m.style.top = parseFloat(m.style.top) + dy + 'px';
+    else if (m.style.bottom) m.style.bottom = parseFloat(m.style.bottom) - dy + 'px';
+    const r = m.getBoundingClientRect();
+    const cutTop = Math.max(0, top - r.top), cutBottom = Math.max(0, r.bottom - bottom);
+    m.style.clipPath = cutTop || cutBottom ? `inset(${cutTop}px 0 ${cutBottom}px 0)` : '';
+  }
+}
 // Past the top of a page, the window's buttons get a bar behind them.
 $('#main').addEventListener('scroll', () => {
-  // An open menu is fixed to the window, so it would stay put while its button scrolls away:
-  // it closes instead, as a system menu does.
-  if ($('.menu')) closeMenu();
+  scrollMenus();
   const s = $('#main').scrollTop > 10; const bar = $('.topbar'); if (bar.classList.contains('solid') !== s) bar.classList.toggle('solid', s);
   if (S.view === 'discover') stickCheck();
   // While it scrolls, tiles passing under the pointer don't light up (that redraw is what made
