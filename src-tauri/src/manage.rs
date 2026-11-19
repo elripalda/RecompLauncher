@@ -205,10 +205,17 @@ pub struct PcCheck {
     pub clang: Option<bool>,
     /// Python 3's version ("3.12.4"); empty when there's none. For setups that run Python.
     pub python: Option<String>,
+    /// Windows' ("10.0.22631") or macOS's ("14.5") version, for what a game says it needs
+    /// (sysneeds.rs). None on Linux.
+    pub os_version: Option<String>,
+    /// glibc's version ("2.39") on Linux, for a game's Linux build.
+    pub glibc: Option<String>,
 }
 
 pub fn pc_check() -> PcCheck {
     let mut c = PcCheck { cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), ..Default::default() };
+    c.os_version = crate::sysneeds::os_version();
+    c.glibc = crate::sysneeds::glibc_version();
     #[cfg(target_arch = "x86_64")]
     {
         c.avx = std::arch::is_x86_feature_detected!("avx");

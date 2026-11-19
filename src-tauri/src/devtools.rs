@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 const FILE: &str = "recomplauncher.json";
-const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves", "inputs", "requires", "min", "games"];
+const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves", "inputs", "requires", "min", "games", "system"];
 
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
@@ -470,7 +470,21 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         items.extend(version_item(&pr.version));
         items.extend(keeps_copy_items(p, dir));
     }
+    items.extend(system_item(p));
     level
+}
+
+/// `system`: values the launcher can't read as a version, or a graphics API it doesn't know. Those
+/// are ignored, so the PC is never checked against them.
+fn system_item(p: &profile::Profile) -> Option<Item> {
+    let bad = crate::sysneeds::bad_values(p.system.as_ref()?);
+    if bad.is_empty() {
+        return None;
+    }
+    Some(warn(
+        format!("Not read in \"system\": {}", bad.join(", ")),
+        format!("Versions are numbers with dots (\"10\", \"2.35\", \"1.3\"), and graphics APIs are {}. Linux builds give glibc, not a version.", crate::sysneeds::GRAPHICS.join(", ")),
+    ))
 }
 
 /// prepare.keeps_copy: run again without the copy, leaving out the arguments with {game} in them.
@@ -623,6 +637,22 @@ mod tests {
             {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}"#).unwrap();
         let items = super::option_items(&p.options);
         assert!(items[0].text.contains("starts off") && items[0].text.contains("required"), "{}", items[0].text);
+    }
+
+    #[test]
+    fn a_system_value_the_launcher_cant_read_is_named() {
+        let p: crate::profile::Profile = serde_json::from_str(r#"{"format":1,"system":{"linux":{"glibc":"latest","graphics":{"vulkan":"1.3"}}}}"#).unwrap();
+        let item = super::system_item(&p).unwrap();
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("system.linux.glibc"), "{}", item.text);
+    }
+
+    #[test]
+    fn a_system_part_that_reads_well_is_left_alone() {
+        let p: crate::profile::Profile = serde_json::from_str(r#"{"format":1,"system":{"windows":{"version":"10","graphics":{"d3d12":"12_0"}},"linux":{"glibc":"2.35"}}}"#).unwrap();
+        assert!(super::system_item(&p).is_none());
+        let none: crate::profile::Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert!(super::system_item(&none).is_none());
     }
 
     #[test]
