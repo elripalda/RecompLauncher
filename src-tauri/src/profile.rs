@@ -103,6 +103,10 @@ pub struct Prepare {
     /// game is set up, even when another launcher built it.
     #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
     pub done: Vec<String>,
+    /// The step keeps what it needs from the copy in the game's build folder (folders.game), and
+    /// runs again from there without the copy: then the arguments with {game} are left out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_copy: bool,
 }
 
 /// A path or a list of them; anything else is nothing.
@@ -1592,20 +1596,15 @@ impl Profile {
         (dir.is_absolute() && dir != install).then_some(dir)
     }
 
-    /// The game's own folders (`folders.game`, filled in for this install), with the folder a
-    /// moved build went to: where a game built from the player's copy keeps what it built from.
-    pub fn game_folders(&self, install: &Path, moved: Option<&Path>) -> Vec<PathBuf> {
-        let mut out: Vec<PathBuf> = moved.map(Path::to_path_buf).into_iter().collect();
-        for place in self.folders.get("game").into_iter().flatten() {
-            if place.path.is_empty() || place.path.contains("{game}") {
-                continue;
-            }
-            let dir = PathBuf::from(fill(&place.path, install, None));
-            if dir.is_absolute() && !out.contains(&dir) {
-                out.push(dir);
-            }
+    /// What a step that keeps the copy (`prepare.keeps_copy`) kept from it: its build folder, when
+    /// it's there with files in it. A build folder that's gone took what it kept with it.
+    pub fn kept_from_copy(&self, install: &Path) -> Option<PathBuf> {
+        if !self.prepare.as_ref()?.keeps_copy {
+            return None;
         }
-        out
+        let home = self.build_home(install)?;
+        let has_files = std::fs::read_dir(&home).ok()?.flatten().next().is_some();
+        has_files.then_some(home)
     }
 
     /// The player's build in `to` standing in for the setup's own folder: every path of the
@@ -3555,11 +3554,13 @@ mod tests {
         assert_eq!(backup.files, 2);
         std::fs::remove_file(&card).unwrap();
         std::fs::remove_file(&states).unwrap();
-        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        let archive = crate::saves::dir_of(&app, "dusklight", &game).join(backup.name);
         assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
         assert_eq!(std::fs::read(card).unwrap(), b"card");
         assert_eq!(std::fs::read(states).unwrap(), b"[]");
         let _ = std::fs::remove_dir_all(&install);
+        // The copies sit beside the game, in its library's .backups folder.
+        let _ = std::fs::remove_dir_all(crate::backups_dir(&game));
     }
 
     #[test]
@@ -3942,18 +3943,34 @@ mod tests {
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());
-        // The copy a game keeps for rebuilding: a hidden `.name_exefs` beside `romfs`.
-        let kept = d.join("Hopper");
-        std::fs::create_dir_all(kept.join(".hopper_exefs")).unwrap();
-        std::fs::create_dir_all(kept.join("romfs")).unwrap();
-        std::fs::write(kept.join(".hopper_exefs").join("main"), &main).unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &kept).is_ok());
-        assert!(check_copy(&g("11223344"), &kept).is_err());
-        // Any other hidden folder ending in _exefs without the executable is refused.
-        let other = d.join("Other");
-        std::fs::create_dir_all(other.join(".foo_exefs")).unwrap();
-        std::fs::create_dir_all(other.join("romfs")).unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &other).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_games_own_build_folder_is_not_a_copy() {
+        // Hookshot's and Longshot's builders keep what they built from in their output folder, in a
+        // hidden folder of their own. That's the builder's private layout, not the player's copy:
+        // handed back to the builder as its copy, it refuses it (#215). Only a real copy counts.
+        let d = tmp("nup-build-folder");
+        let mut main = vec![0u8; 0x100];
+        main[..4].copy_from_slice(b"NSO0");
+        main[0x40..0x44].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        let build = d.join("Longshot");
+        std::fs::create_dir_all(build.join(".longshot_exefs")).unwrap();
+        std::fs::create_dir_all(build.join("romfs")).unwrap();
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join(".longshot_exefs").join("main"), &main).unwrap();
+        std::fs::write(build.join("bin").join("longshot.exe"), b"").unwrap();
+        let need = GameCopy {
+            kind: "iso_or_folder".into(),
+            label: String::new(),
+            check: Check { nup_build_id: "e0f3ccfa".into(), ..Default::default() },
+            ..Default::default()
+        };
+        assert!(check_copy(&need, &build).is_err());
+        // Nor is the player pointed at it from the folder around it.
+        let around = check_copy(&need, &d).unwrap_err();
+        assert!(!around.contains(&build.display().to_string()), "{around}");
         let _ = std::fs::remove_dir_all(&d);
     }
 

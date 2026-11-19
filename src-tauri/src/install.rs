@@ -884,10 +884,13 @@ pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<Pa
 const NOT_A_RELEASE: &str = "not-a-release";
 
 /// Unpacked beside `target` first, then put in all at once (see swap): a mod, an installer or a
-/// copy of a game goes in whole, or `target` stays as it was.
+/// copy of a game goes in whole, or `target` stays as it was. Nothing keeps a list of what such an
+/// unpack put there before, so none of what's there counts as its own: a file of it where `target`
+/// has a folder (or a folder where it has a file) stops it, rather than setting the player's files
+/// aside. A file over a file of the same name is replaced, as it always was.
 fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
     let staged = stage_with(file, staging, strip_top)?;
-    let placed = crate::swap::put_in_place(target, &staged.root, &staged.files, NOT_A_RELEASE, &[]);
+    let placed = crate::swap::put_in_place(target, &staged.root, &staged.files, NOT_A_RELEASE, &[], &[]);
     let _ = fs::remove_dir_all(staging);
     placed?.finish();
     Ok(staged.files)
@@ -2003,8 +2006,9 @@ mod tests {
 
         let staged = stage(&zpath, &staging).unwrap();
         assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"old", "unpacking alone leaves the game as it is");
-        let gone = dropped(&target, &paths(&["Game.exe", "old-only.dll"]), &staged.files, later(), None);
-        crate::swap::put_in_place(&target, &staged.root, &staged.files, "sha", &gone).unwrap().finish();
+        let old = paths(&["Game.exe", "old-only.dll"]);
+        let gone = dropped(&target, &old, &staged.files, later(), None);
+        crate::swap::put_in_place(&target, &staged.root, &staged.files, "sha", &gone, &old).unwrap().finish();
 
         assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"new");
         assert_eq!(fs::read(target.join("data/assets.bin")).unwrap(), b"data");
@@ -2184,6 +2188,19 @@ mod tests {
         assert_eq!(files, paths(&["mods/new.pak"]));
         assert_eq!(fs::read(target.join("mods/new.pak")).unwrap(), b"new mod");
         assert_eq!(fs::read(target.join("mods/theirs.pak")).unwrap(), b"player's");
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn a_mod_never_sets_aside_a_folder_of_the_players_files() {
+        let d = tmp("mod-folder-in-the-way");
+        let target = d.join("game");
+        fs::create_dir_all(target.join("config")).unwrap();
+        fs::write(target.join("config/mine.ini"), b"player's").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("config", b"a file where the game has a folder")])).unwrap();
+        assert!(unpack_as_is(&zpath, &target, &d.join("st")).is_err());
+        assert_eq!(fs::read(target.join("config/mine.ini")).unwrap(), b"player's");
         assert!(!target.join(crate::swap::FOLDER).exists());
     }
 

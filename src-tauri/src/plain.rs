@@ -220,7 +220,9 @@ fn put_in_place(st: &App, g: &Installed, next: Installed, image: &Path, staged: 
     if let Some(what) = swap::recover(&target, Some(g)) {
         trail::note(format!("Bring in {}: {what}", g.id));
     }
-    let placed = swap::put_in_place(&target, &staged.root, &staged.files, &g.sha256, &dropped);
+    // What the game's record says it has (an older launcher's release, or what an earlier unpack put
+    // there) may be set aside where the unpacked files need its place; nothing else of the folder.
+    let placed = swap::put_in_place(&target, &staged.root, &staged.files, &g.sha256, &dropped, &g.files);
     let _ = std::fs::remove_dir_all(staging);
     let update = placed?;
     // The new files count once the saved library has them (see swap::recover).

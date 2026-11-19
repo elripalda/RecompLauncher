@@ -78,7 +78,7 @@ test('a finished installer download opens its installer only with Auto-Install o
 });
 
 test('a finished Easy Install download opens its setup only with Auto-Install on', () => {
-  assert.match(doneHandler, /su\.needs && !su\.copy && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
+  assert.match(doneHandler, /su\.needs && su\.status && !su\.status\.ready && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
 });
 
 test('Easy Install skips Pick Your Copy First with Auto-Install off', () => {
