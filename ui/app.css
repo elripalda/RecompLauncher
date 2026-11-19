@@ -618,6 +618,7 @@ button.prog.su-prog:focus-visible,.prog.su-prog:focus-visible{outline:2px solid 
 .modal p{margin:0;color:var(--muted);overflow-wrap:anywhere}
 .modal .acts{justify-content:flex-end}
 .modal label{display:flex;gap:10px;align-items:center;font-size:14px}
+.modal label:has(> input:disabled){opacity:.5}
 .modal .field{margin:2px 0 4px}
 .modal:has(.choices){width:min(620px,92vw)}
 .choices{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto}

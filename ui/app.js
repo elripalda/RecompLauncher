@@ -5942,6 +5942,9 @@ function confirmUninstall(id) {
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep it'))}</button><button type="button" class="btn danger" data-x="yes">${esc(t('Uninstall'))}</button></div></div>`;
   document.body.append(s);
   $('[data-x="no"]', s).focus();
+  // A copy of the saves is made only when the folder goes: with it kept, the tick means nothing.
+  const delBox = $('#u-del', s), keepBox = $('#u-keep', s);
+  if (delBox && keepBox) delBox.addEventListener('change', () => { keepBox.disabled = !delBox.checked; });
   s.addEventListener('click', async (e) => {
     const x = e.target.closest('[data-x]');
     if (e.target === s || (x && x.dataset.x === 'no')) return s.remove();

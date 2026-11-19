@@ -24,6 +24,11 @@ test('the desktop uninstall keeps a copy of the saves unless the tick is taken o
   assert.match(u, /invoke\('uninstall', \{ id, deleteFiles: del, runUninstaller: unins, keepSaves: keep \}\)/);
 });
 
+test('the desktop keep-saves tick is off while the folder stays', () => {
+  const u = fn(app, 'confirmUninstall');
+  assert.match(u, /delBox\.addEventListener\('change', \(\) => \{ keepBox\.disabled = !delBox\.checked; \}\)/);
+});
+
 test('the desktop says where the saves went, or why the folder stayed', () => {
   const u = fn(app, 'confirmUninstall');
   assert.match(u, /if \(r\.saves_kept\) toast\(t\('A copy of its saves is kept\./);
