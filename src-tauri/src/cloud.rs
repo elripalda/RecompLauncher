@@ -313,6 +313,15 @@ async fn play_call(req: reqwest::RequestBuilder, url: &str) -> Option<Value> {
     (v.get("ok") != Some(&Value::Bool(false))).then_some(v)
 }
 
+/// Which PC this play time is from, for the website, the same however often the player signs out
+/// and back in. The website tells PCs apart by their sign-in, so without it each new sign-in
+/// would be another PC sending the same running totals, and they'd count twice. Its own file,
+/// not the usage ID: that one only goes when the player shares usage, and Settings can reset it.
+/// It stays with the play time it counts: new data, new totals, a new ID.
+fn play_id(dir: &std::path::Path) -> String {
+    crate::usage::random_id(dir, "play.id")
+}
+
 /// Sends this PC's time to the account: for `games` only (after a session), or all of it.
 /// True when the website took it.
 #[tauri::command]
@@ -321,9 +330,11 @@ pub async fn playtime_push(app: AppHandle, games: Option<Vec<String>>) -> Res<bo
     let Some(a) = load(&st.dir) else { return Ok(false) };
     let since = crate::library::now().saturating_sub(crate::library::PLAY_RECENT_SECS);
     let entries = st.lib.lock().unwrap().play_entries(games.as_deref(), since);
+    let pc = play_id(&st.dir);
     let url = format!("{}?a=play", api());
     for chunk in entries.chunks(500) {
-        let req = st.http.post(&url).json(&json!({ "games": chunk })).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+        let body = json!({ "pc": pc, "games": chunk });
+        let req = st.http.post(&url).json(&body).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
         if play_call(req, &url).await.is_none() {
             return Ok(false);
         }
@@ -1653,6 +1664,34 @@ mod child_retry_tests {
         st.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(true);
         let (_busy, pending) = pending_copy(&st.dir, "series--first", &st.lib).await;
         assert_eq!(pending.as_deref(), Some("101.zip"));
+    }
+}
+
+#[cfg(test)]
+mod play_id_tests {
+    use super::play_id;
+
+    fn data_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rl-play-id-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn play_id_stays_the_same() {
+        let dir = data_dir("same");
+        let first = play_id(&dir);
+        assert_eq!(first.len(), 32);
+        assert_eq!(play_id(&dir), first);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn play_id_is_not_the_usage_id() {
+        let dir = data_dir("apart");
+        assert_ne!(play_id(&dir), crate::usage::install_id(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

@@ -23,7 +23,8 @@ const PORT = portAt >= 0 ? Number(args[portAt + 1]) : 8787;
 const NO_PLAY = args.includes('--no-play');
 
 const ACCOUNT = { uid: 'fake-1', username: 'Playtime tester', avatar: '' };
-// token -> PC name, poll code -> PC name, and the playtime rows: "pc|game" -> {pc, game, secs, last}.
+// token -> PC name, poll code -> PC name, and the playtime rows: "pc|game" -> {pc, game, secs, last,
+// count, longest, recent}, where pc is "play:<play ID>", or the PC name for a launcher without one.
 const pcs = new Map();
 const polls = new Map();
 const rows = new Map();
@@ -81,7 +82,40 @@ function joinRecent(had, sent, now) {
   return [...byKey.values()].sort((a, b) => a[0] - b[0]);
 }
 
-// One PC's numbers in: the larger of what's stored and what's sent, so a late resend never lowers it.
+const emptyRow = (pc, game) => ({ pc, game, secs: 0, last: 0, count: 0, longest: 0, recent: [] });
+
+// One PC's row for a game with `sent` taken in: the larger of each number, so a late resend never
+// lowers it, and the recent sessions joined.
+function mergeRow(had, sent, now) {
+  return {
+    pc: had.pc,
+    game: had.game,
+    secs: Math.max(had.secs, sent.secs),
+    last: Math.max(had.last, sent.last),
+    count: Math.max(had.count, whole(sent.count, MAX_COUNT)),
+    longest: Math.max(had.longest, whole(sent.longest, MAX_SECS)),
+    recent: joinRecent(had.recent, sent.recent, now),
+  };
+}
+
+// Whose rows a send goes to: the PC's play ID when it sends a good one, else its sign-in. A PC
+// that signs in again keeps its play ID, so it adds to the same rows instead of counting twice.
+// Rows it sent before under its sign-in move to its play ID, merged with what's there.
+const PLAY_ID = /^[0-9a-f]{32}$/;
+function playOwner(signedIn, sentId) {
+  if (typeof sentId !== 'string' || !PLAY_ID.test(sentId)) return signedIn;
+  const owner = `play:${sentId}`;
+  const now = Math.floor(Date.now() / 1000);
+  for (const [key, row] of [...rows]) {
+    if (row.pc !== signedIn) continue;
+    rows.delete(key);
+    const target = `${owner}|${row.game}`;
+    rows.set(target, mergeRow(rows.get(target) || emptyRow(owner, row.game), row, now));
+  }
+  return owner;
+}
+
+// One PC's numbers in.
 function takePlay(pc, games) {
   const now = Math.floor(Date.now() / 1000);
   let took = 0;
@@ -91,11 +125,8 @@ function takePlay(pc, games) {
     const bad = typeof g?.game !== 'string' || !g.game || !(secs >= 0) || secs > MAX_SECS || last > now + 86400;
     if (bad) continue;
     const key = `${pc}|${g.game}`;
-    const had = rows.get(key) || { pc, game: g.game, secs: 0, last: 0, count: 0, longest: 0, recent: [] };
-    const count = Math.max(had.count, whole(g.count, MAX_COUNT));
-    const longest = Math.max(had.longest, whole(g.longest, MAX_SECS));
-    const recent = joinRecent(had.recent, g.recent, now);
-    rows.set(key, { pc, game: g.game, secs: Math.max(had.secs, secs), last: Math.max(had.last, last), count, longest, recent });
+    const had = rows.get(key) || emptyRow(pc, g.game);
+    rows.set(key, mergeRow(had, { ...g, secs, last }, now));
     took += 1;
   }
   return took;
@@ -152,8 +183,9 @@ async function launcherCall(req, res, url) {
     if (NO_PLAY || !pc) return send(res, 401, { ok: false, error: 'Sign in again.' });
     if (req.method === 'POST') {
       const body = await readBody(req);
-      const took = takePlay(pc, body.games);
-      console.log(`Playtime from ${pc}: ${took} game(s)`);
+      const owner = playOwner(pc, body.pc);
+      const took = takePlay(owner, body.games);
+      console.log(`Playtime from ${pc} (${owner}): ${took} game(s)`);
       return send(res, 200, { ok: true });
     }
     return send(res, 200, totals());
