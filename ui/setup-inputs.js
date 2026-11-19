@@ -36,18 +36,6 @@ async function runtimeFetch(id, ns, redraw) {
   catch (e) { ns.dlss = { failed: true }; }
   finally { off(); redraw(); }
 }
-// Use My Previous Setup (Relink): 'ready' when it's set up again, 'build' when the setup step has
-// to run, or { input, label } when one file moved and only it is asked for.
-async function relinkSetup(id) {
-  try { await invoke('setup_relink', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
-  catch (e) {
-    const m = String(e && e.message ? e.message : e);
-    if (m.startsWith('RELINK_BUILD|')) return 'build';
-    const x = m.match(/^RELINK_MISSING\|([^|]*)\|(.*)$/);
-    if (x) return { input: x[1], label: x[2] };
-    throw e;
-  }
-}
 // A build the player already has, anywhere (Use a Build You Already Have): its folder picked, and
 // used in place of building it again. True when it's set.
 async function useOwnBuild(id) {
@@ -67,13 +55,6 @@ async function namedInputsAction(id, act, input, ns) {
   try {
     const su = S.setup[id], row = namedInputRows(su).find((r) => r.id === input);
     if (act === 'run') return 'run';
-    if (act === 'relink') {
-      const r = await relinkSetup(id);
-      if (r === 'build') return 'run';
-      if (r === 'ready') return 'ready';
-      ns.error = tf('{file} isn\'t where it was. Pick it again, then press Set Up.', { file: r.label });
-      return;
-    }
     if (act === 'prebuilt') { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
     if (act === 'ownbuild') return (await useOwnBuild(id)) ? 'ready' : undefined;
     if (act === 'dlss-off' || act === 'dlss-on') {

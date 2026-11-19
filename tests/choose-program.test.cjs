@@ -48,7 +48,7 @@ const easyRowHtml = (easyAll, easyOn, ui = {}) => {
 };
 
 test('the Easy Setup switch sits above Game Executable and shows whether Easy Setup is on', () => {
-  assert.match(app, /\$\{easyRow\(id\)\}\n\s+\$\{programRow\(id, inst\)\}/);
+  assert.match(app, /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   const on = easyRowHtml(true, true);
   assert.match(on, /<div class="set-row" id="easy-row"><div class="k"><b>Easy Setup<\/b><span>The launcher sets this game up with your copy\. Off: you set it up yourself\.<\/span>/);
   assert.match(on, /class="switch" role="switch" aria-checked="true"[^>]*data-act="easy-skip" data-id="g"/);
@@ -67,14 +67,22 @@ test('turning Easy Setup off says it in the switch\'s words once installed, and 
   assert.match(sw, /toast\(tf\('\{name\} skips Easy Setup: it installs as it comes/);
 });
 
-test('the game\'s menu: Skip Easy Setup ticked before install, Easy Setup… (to the switch) once installed', () => {
-  const item = fn(app, 'easySkipItem');
-  assert.match(item, /if \(S\.library\[id\]\) return \[\{ act: 'easy-row', id, label: t\('Easy Setup…'\), icon: 'disc' \}\];/);
-  assert.match(item, /return \[\{ act: 'easy-skip', id, label: t\('Skip Easy Setup'\), icon: 'disc', check: /);
-  assert.match(app, /case 'easy-row': return showEasyRow\(id\);/);
-  const show = fn(app, 'showEasyRow');
-  assert.match(show, /S\.nextTab = 'installed';\n\s+go\('game', id\);/);
-  assert.match(show, /row\.scrollIntoView\(\{ block: 'center'[^\n]*\n\s+row\.classList\.add\('lit'\);/);
+test('the setup window offers Skip Easy Setup on its first step, for a game Easy Setup does', () => {
+  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
+  assert.match(steps, /const skippable = m\.at === 0 && S\.easyAll && S\.easyAll\.has\(id\) && !\(S\.settings\.ui \|\| \{\}\)\.easy_skip_all;/);
+  assert.match(steps, /data-ss="skip-easy">\$\{esc\(t\('Skip Easy Setup'\)\)\}/);
+  assert.match(steps, /if \(act === 'skip-easy'\) return 'skip';/);
+});
+
+test('Skip Easy Setup closes the setup window and turns Easy Setup off, on the desktop and in Big Picture', () => {
+  const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+  assert.match(app, /if \(r === 'skip'\) \{ await closeSetup\(true\); return skipEasyHere\(id\); \}/);
+  assert.match(tv, /if \(r === 'skip'\) \{ closeSheet\(\); return skipEasyHere\(id\); \}/);
+  assert.match(fn(app, 'skipEasyHere'), /await setEasySkip\(id, true\);/);
+});
+
+test('Skip Easy Setup waits for the window\'s close, which would otherwise put the switch back', () => {
+  assert.match(fn(app, 'skipEasyHere'), /await setupClosing;\n\s+try \{ await setEasySkip\(id, true\); \}/);
 });
 
 test('a game Easy Setup can\'t do goes back with Use Default', () => {
@@ -85,9 +93,8 @@ test('with Easy Setup skipped for every game, the way back is Use Default', () =
   assert.match(row(MINE, true, undefined, { easy_skip_all: true }), /data-act="forget-program"[^>]*>Use Default</);
 });
 
-test('the Overview shows Self-Managed under the install date, and the menu marks it on', () => {
+test('the Overview shows Self-Managed under the install date', () => {
   assert.match(app, /\$\{inst && k === t\('Installed'\) \? selfManagedPill\(id\) : ''\}/);
-  assert.match(fn(app, 'gameMenu'), /act: 'setexe', id, label: selfManaged\(id\) \? t\('Set Game Executable \(On\)…'\) : t\('Set Game Executable…'\)/);
 });
 
 test('Where\'s Your Build? offers the build folder or the game\'s executable, each saying what it does', () => {

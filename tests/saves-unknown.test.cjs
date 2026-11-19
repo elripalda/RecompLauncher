@@ -24,16 +24,18 @@ const line = (src, start) => {
   return src.slice(i, src.indexOf('\n', i));
 };
 
-// The desktop Saves tab for one game, with the window's helpers kept to what it needs.
+// The desktop Saves tab for one game. Its cards are stood in for by their names (the cards
+// themselves are tested in saves-tab.test.cjs), except the one for an unknown folder.
 function savesTabFor(s) {
   const consts = ['const SAVES_UNKNOWN = ', 'const SAVES_UNKNOWN_HELP = ', 'const SAVES_PICK = ', 'const savesUnknown = '].map((c) => line(account, c)).join('\n');
   const make = new Function('S', `
-    const N_ = (x) => x, t = (x) => x, esc = (x) => String(x), tf = (x) => x, tn = (n, a) => a;
-    const FROM = {}, CLOUD_ICON = '', SHARE_SAVES = '', SHARE_SAVES_HELP = '';
-    const saveShareTitle = () => false, saveShareOn = () => false, loadSaves = () => {};
-    const cloudStatus = () => '', copyRow = (id, c) => '<div class="copy">' + c.name + '</div>';
+    const N_ = (x) => x, t = (x) => x, esc = (x) => String(x);
+    const badgeIcon = () => '', loadSaves = () => {};
+    const saveStatusCard = () => '[status]', savesSettingsCard = () => '[settings]', whereCard = () => '[where]';
+    const historyCard = (id, s, g, unknown) => (unknown ? '[history, nothing to back up]' : '[history]');
     const window = {};
     ${consts}
+    ${fn(account, 'unknownCard')}
     ${fn(account, 'savesTab')}
     return savesTab;`);
   const S = { saves: { g: s }, library: { g: {} }, running: new Set(), settings: { ui: {} } };
@@ -43,7 +45,7 @@ function savesTabFor(s) {
 const unknownGame = { spots: [], local: [], signedIn: false };
 const knownGame = { spots: [{ path: '/saves', template: '{install}/save', from: 'developer', exists: true }], local: [], signedIn: false };
 
-test('a game with no known save folder says why once, in Where it saves', () => {
+test('a game with no known save folder says why once', () => {
   const html = savesTabFor(unknownGame);
   const help = 'Nothing is backed up or sent to the cloud until you pick the folder where it keeps its saves.';
   assert.equal(html.split(help).length - 1, 1);
@@ -51,32 +53,40 @@ test('a game with no known save folder says why once, in Where it saves', () => 
 
 test('a game with no known save folder leads with Pick a Folder', () => {
   const html = savesTabFor(unknownGame);
-  assert.ok(html.indexOf('data-act="saves-place"') < html.indexOf('On this PC'));
+  assert.ok(html.indexOf('data-act="saves-place"') < html.indexOf('[history'));
   assert.match(html, /class="btn sm main" data-act="saves-place"/);
 });
 
-test('a game with no known save folder offers no backup or save folder to open', () => {
+test('a game with no known save folder is shown in red, since nothing of it uploads', () => {
+  assert.match(savesTabFor(unknownGame), /class="card svs sb-bad"/);
+});
+
+test('a game with no known save folder has nothing to back up and no folder to show', () => {
   const html = savesTabFor(unknownGame);
-  assert.doesNotMatch(html, /data-act="saves-now"/);
-  assert.doesNotMatch(html, /data-act="saves-open"/);
+  assert.match(html, /\[history, nothing to back up\]/);
+  assert.doesNotMatch(html, /\[where\]/);
+  assert.doesNotMatch(html, /\[status\]/);
 });
 
-test('a game with a known save folder keeps Back up now as the main button', () => {
+test('a game with a known save folder leads with its status, then its saves, then where', () => {
   const html = savesTabFor(knownGame);
-  assert.match(html, /class="btn sm main" data-act="saves-now"/);
-  assert.match(html, /data-act="saves-open"/);
-  assert.ok(html.indexOf('On this PC') < html.indexOf('Where it saves'));
+  assert.ok(html.indexOf('[status]') < html.indexOf('[history]'));
+  assert.ok(html.indexOf('[history]') < html.indexOf('[where]'));
 });
 
-test('Big Picture puts Pick a Folder first and holds back what needs a folder', () => {
+test('a known save folder keeps Back up now as the list\'s main button', () => {
+  assert.match(fn(account, 'historyCard'), /class="btn sm main" data-act="saves-now"/);
+});
+
+test('Big Picture puts Pick a Folder first, in red, and holds back what needs a folder', () => {
   const list = tv.indexOf('body = `<div class="tv-list">');
-  const pick = tv.indexOf('data-key="gs:pick"');
-  const share = tv.indexOf('data-key="gs:share"', list);
-  assert.ok(list >= 0 && list < pick && pick < share, 'the pick is the first item, so it has the focus');
-  assert.match(tv, /\$\{unknown \? '' : `<button type="button" class="tv-item" data-f data-key="gs:now"/);
-  assert.match(tv, /data-key="gs:sync"[^>]*sv\.busy \|\| unknown/);
+  const first = tv.indexOf('${unknown ? savesUnknownItem(id) : savesStatusItem(id, sv)}', list);
+  const history = tv.indexOf("t('Save History')", list);
+  assert.ok(list >= 0 && list < first && first < history, 'the pick is the first item, so it has the focus');
+  assert.match(fn(tv, 'savesUnknownItem'), /tv-svs sb-bad[^>]*data-tvact="gs-place"/);
+  assert.match(tv, /\$\{unknown \? '' : `<h3 class="tv-lh">\$\{esc\(t\('Where it saves'\)\)\}<\/h3>`\}/);
 });
 
 test('Big Picture only says a copy is kept after every session when it knows where', () => {
-  assert.match(tv, /unknown \? t\(SAVES_UNKNOWN\) : t\('After every session the launcher keeps a copy\. Put an older one back with A\.'\)/);
+  assert.match(tv, /unknown \? t\(SAVES_UNKNOWN\) : t\('After every session the launcher keeps a copy\. Restore an older one with A\.'\)/);
 });
