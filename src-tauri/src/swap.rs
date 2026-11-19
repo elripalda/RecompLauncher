@@ -203,8 +203,11 @@ fn walk(game: &Path, staged: &Path, rel: &Path, own: &HashSet<PathBuf>, set_asid
                 return Err(Error::Msg(format!("The update can't go in: the new release has a file named {}, where the game has a folder that holds your own files ({}). Move them out of that folder, then try again. Nothing was changed.", path.display(), theirs.display())));
             }
         }
-        // The same the other way: a file in the way of a release folder goes only if it's the old release's.
-        let file_there = there.is_some() && !folder_there;
+        // The same the other way: a file in the way of a release folder goes only if it's the old
+        // release's. A link (a release folder the player moved to another drive) isn't refused:
+        // only the link is set aside, and what it points at is never touched.
+        let link_there = there.as_ref().is_some_and(|m| m.file_type().is_symlink());
+        let file_there = there.is_some() && !folder_there && !link_there;
         if file_there && new_is_folder && !own.contains(&path) {
             return Err(Error::Msg(format!("The update can't go in: the new release has a folder named {0}, where the game has a file of yours named {0}. Move or rename that file, then try again. Nothing was changed.", path.display())));
         }
@@ -688,6 +691,22 @@ mod tests {
         let Err(Error::Msg(said)) = got else { panic!("the update set aside a file of the player's") };
         assert!(said.contains("cfg") && said.contains("Nothing was changed"), "{said}");
         assert_eq!(snapshot(&game), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_release_folder_replaces_a_link_and_leaves_what_it_points_at() {
+        let d = tmp("linked-folder");
+        let (game, staged, elsewhere) = (d.join("game"), d.join("staging"), d.join("other-drive/data"));
+        put(&elsewhere.join("big.pak"), "the player's moved data");
+        fs::create_dir_all(&game).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, game.join("data")).unwrap();
+        put(&staged.join("data/x.bin"), "new x");
+        let files = [PathBuf::from("data/x.bin")];
+        put_in_place(&game, &staged, &files, "new", &[], &[]).unwrap().finish();
+        assert_eq!(fs::read_to_string(game.join("data/x.bin")).unwrap(), "new x");
+        assert!(!fs::symlink_metadata(game.join("data")).unwrap().file_type().is_symlink());
+        assert_eq!(snapshot(&elsewhere), BTreeMap::from([(PathBuf::from("big.pak"), "the player's moved data".to_string())]));
     }
 
     #[test]
