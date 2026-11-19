@@ -60,6 +60,7 @@ test('a game being played says its save goes up after', () => {
 test('a conflict still asks for a choice while the game runs', () => {
   const b = info.saveBadgeInfo(status('conflict'), undefined, true);
   assert.equal(b.label, 'Choose a save');
+  assert.equal(b.note, 'press Play to pick');
   assert.equal(b.tone, 'warn');
 });
 
