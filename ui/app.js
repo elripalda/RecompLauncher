@@ -379,6 +379,9 @@ const sfName = (repo) => String(repo).slice(12);
 const fjPath = (repo) => String(repo).slice(8);
 const fjServer = (repo) => fjPath(repo).split('/')[0];
 const hostName = (repo) => (isSF(repo) ? 'SourceForge' : isLab(repo) ? 'GitLab' : isFJ(repo) ? fjServer(repo) : 'GitHub');
+// Stars are counted by whichever site hosts the project, so the label names that site. SourceForge has none.
+const starsLabel = (repo) => (isLab(repo) ? t('Stars on GitLab') : isFJ(repo) || isSF(repo) ? tf('Stars on {host}', { host: hostName(repo) }) : t('Stars on GitHub'));
+const starsText = (a) => (a.stars && !isSF(a.repo) ? fmtN(a.stars) : '');
 const repoHome = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/` : isLab(repo) ? `https://gitlab.com/${String(repo).slice(7)}` : isFJ(repo) ? `https://${fjPath(repo)}` : `https://github.com/${repo}`;
 const repoIssues = (repo) => isSF(repo) ? `https://sourceforge.net/projects/${sfName(repo)}/support` : isLab(repo) ? `${repoHome(repo)}/-/issues/new` : isFJ(repo) ? `${repoHome(repo)}/issues` : `https://github.com/${repo}/issues`;
 const repoReadme = (repo) => isSF(repo) || isLab(repo) || isFJ(repo) ? repoHome(repo) : `https://github.com/${repo}#readme`;
@@ -1530,8 +1533,10 @@ function pageHome() {
   const found = foundInFolders();
   const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
+  // Settings → Appearance can turn the banner off, so Home starts with the player's own games.
+  const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;
   return `<div class="page home">${offlineNote()}
-    ${feats.length ? slider(feats) : ''}
+    ${showBanner ? slider(feats) : ''}
     ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
     ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
     ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
@@ -2463,7 +2468,7 @@ function playersText(a) {
 function gameRail(a) {
   const facts = [
     [t('Latest version'), verText(a.version)], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [isLab(a.repo) ? t('Stars on GitLab') : isFJ(a.repo) ? tf('Stars on {host}', { host: fjServer(a.repo) }) : t('Stars on GitHub'), a.stars && !isSF(a.repo) ? fmtN(a.stars) : ''], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   return `<div class="stack">${quickActs(a)}${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
@@ -2496,7 +2501,7 @@ function gameBody(a) {
     const play = gamePlaytime(a);
     const stats = inst
       ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || (inst.installer_setup ? t('Not set up yet') : t('Not known'))) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
-      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [t('Stars'), a.stars ? fmtN(a.stars) : '—']];
+      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [starsLabel(a.repo), isSF(a.repo) ? t('N/A') : starsText(a) || '—']];
     // Under the version: how the store checked that release (a player's own game has none). Before
     // installing it's the latest release, so the player sees it was checked before downloading it.
     // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").
@@ -2549,7 +2554,7 @@ function gameBody(a) {
       <div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>
       ${easyRow(id)}
       ${programRow(id, inst)}
-      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update. Saves, settings and mods in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
+      ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update: the saves in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`}
       ${inst.local ? '' : `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(inst.verified ? (isLab(inst.repo) || isSF(inst.repo) ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (isLab(inst.repo) || isSF(inst.repo) ? t('Its release had no checksum for it') : t('GitHub had no checksum for it')))}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'))}</span></div></div>`}
       ${inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>` : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`}
     </div>
@@ -4257,7 +4262,7 @@ function pageSettings() {
     case 'updates':
       body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
-          + row(t('Back up saves before updates'), t('Keeps the newest five copies of each game\'s saves and settings.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
+          + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
@@ -4276,6 +4281,7 @@ function pageSettings() {
       body = group(t('Appearance'), `<div class="set-row"><div class="k"><b>${esc(t('Theme'))}</b><span>${esc(t('Dark, black for OLED screens, or light.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Theme'))}">${[['dark', t('Dark')], ['oled', t('OLED')], ['light', tc('Light|theme')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.theme === 'light' ? 'light' : ui.oled ? 'oled' : 'dark') === k}" data-act="theme" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Text Size'))}</b><span>${esc(t('Bigger or smaller text, buttons and covers. Ctrl with + or - works too.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Text Size'))}">${UI_SCALES.map((k) => `<button type="button" role="radio" aria-checked="${uiScale() === k}" data-act="ui-scale" data-k="${k}">${Math.round(k * 100)}%</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['discover', t('Discover')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
+        + row(t('Featured Banner on Home'), t('The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.'), sw('hide_hero', !ui.hide_hero, t('Featured Banner on Home'), 'ui-toggle'))
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
@@ -6653,10 +6659,10 @@ async function backupsModal(id) {
   let list = [];
   try { list = (await invoke('backups', { id })) || []; } catch (e) { return fail(e); }
   modal(`<h2>${esc(tf('Backups of {name}', { name: g.name }))}</h2>
-    <p>${esc(t('Before every update the launcher keeps a copy of the files that are yours: saves, settings and mods. The newest five are kept.'))}</p>
+    <p>${esc(t('Before every update the launcher keeps a copy of the saves in the game\'s folder. Saves elsewhere stay as they are through an update. The newest five are kept.'))}</p>
     ${list.length ? `<div class="choices">${list.map((b) => `<div class="choice"><span><b>${esc(when(b.when))}</b><small>${esc(tn(b.files, '1 file', '{n} files'))} · ${esc(fmtB(b.size) || tf('{n} B', { n: 0 }))}</small></span><button type="button" class="btn" data-x="restore" data-name="${esc(b.name)}">${esc(t('Restore'))}</button></div>`).join('')}</div>` : `<p class="muted">${esc(t('No backups yet.'))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Close'))}</button><button type="button" class="btn main" data-x="now">${esc(t('Back up now'))}</button></div>`, async (x, close) => {
-    if (x.dataset.x === 'now') { try { const b = await invoke('backup_now', { id }); close(); toast(b ? t('Backed up.') : t('Nothing to back up yet: the folder only has the game\'s own files.')); } catch (e) { fail(e); } }
+    if (x.dataset.x === 'now') { try { const b = await invoke('backup_now', { id }); close(); toast(b ? t('Backed up.') : t('Nothing to back up yet: none of its saves are in the game\'s folder.')); } catch (e) { fail(e); } }
     if (x.dataset.x === 'restore') { try { const n = await invoke('restore_backup', { id, name: x.dataset.name }); close(); toast(tn(n, 'Put back 1 file.', 'Put back {n} files.')); } catch (e) { fail(e); } }
   }, t('Backups'));
 }
