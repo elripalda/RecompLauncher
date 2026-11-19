@@ -209,6 +209,10 @@ impl Prepare {
     pub fn env_vars(&self, install: &Path, copy: Option<&Path>) -> Vec<(String, String)> {
         let mut out = vec![];
         for (k, v) in self.env.iter().filter(|(k, _)| env_name_ok(k)) {
+            // Run again without the copy (keeps_copy): a value naming it is left out, as in args.
+            if copy.is_none() && v.contains("{game}") {
+                continue;
+            }
             let value = fill(v, install, copy);
             if value.contains("{input:") {
                 continue;
@@ -4020,6 +4024,14 @@ mod tests {
         assert_eq!(get("BUILD_CACHE"), Some(Path::new("/games/x").join("userdata").join("cache")));
         assert_eq!(get("DISC"), Some(PathBuf::from("/isos/x.iso")));
         assert_eq!(e.len(), 2, "TEMP and the launcher's own names stay out: {e:?}");
+    }
+
+    #[test]
+    fn prepare_env_run_again_without_the_copy_leaves_out_what_names_it() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"keeps_copy":true,"env":{"BUILD_CACHE":"{data}/cache","DISC":"{game}"}}}"#).unwrap();
+        let e = p.prepare.unwrap().env_vars(Path::new("/games/x"), None);
+        let names: Vec<&str> = e.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["BUILD_CACHE"]);
     }
 
     #[test]

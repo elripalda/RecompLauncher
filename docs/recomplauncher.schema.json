@@ -386,7 +386,7 @@
         "keeps_copy": {
           "type": "boolean",
           "default": false,
-          "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument with {game} in it, so write the copy as one argument (--game={game}). List done too."
+          "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument (and prepare.env value) with {game} in it, so write the copy as one argument (--game={game}). List done too."
         },
         "version": {
           "type": "string",
