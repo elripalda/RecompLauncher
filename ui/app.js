@@ -5883,6 +5883,7 @@ function easySkipItem(id) {
 }
 // The same menu wherever a game is: its "…" button, or a right-click on its tile. It holds what no
 // tab of the game's page has: settings live in its Manage tab, saves in Saves, releases in Updates.
+// Uninstall is the one exception: players expect it on a right-click in their Library.
 function gameMenu(id) {
   const g = S.library[id], x = byId(id), st = x ? status(x) : g ? 'installed' : 'get';
   const first = st === 'running' ? { act: 'stop', id, label: t('Close game'), icon: 'stop' }
@@ -5916,6 +5917,7 @@ function gameMenu(id) {
       { act: 'troubleshoot', id, label: t('Troubleshoot…'), icon: 'info' },
       { act: 'report', id, label: t('Report a Problem…'), icon: 'page' },
     ] : x && x.repo ? ['-', ...repoItem(x)] : []),
+    ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }
 // Its project page, one row: its README is on Overview, its releases on Updates.

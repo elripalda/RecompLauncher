@@ -21,7 +21,7 @@ const GAME = { path: 'F:\\Library\\hydro', repo: 'dev/hydro', tag: 'v1.3.0' };
 
 test('the menu leaves out what a tab of the game\'s page has', () => {
   const menu = fn(app, 'gameMenu');
-  for (const act of ['saves-game', 'versions', 'looks', 'mods', 'launch-opts', 'setexe', 'manual', 'auto-up', 'build', 'folder', 'backups', 'move', 'shots', 'uninstall']) {
+  for (const act of ['saves-game', 'versions', 'looks', 'mods', 'launch-opts', 'setexe', 'manual', 'auto-up', 'build', 'folder', 'backups', 'move', 'shots']) {
     assert.doesNotMatch(menu, new RegExp(`act: '${act}'`), act);
   }
 });
@@ -31,6 +31,10 @@ test('the menu keeps what no tab has', () => {
   for (const act of ['pin', 'fav', 'hide', 'customize', 'desktop', 'steam', 'troubleshoot', 'report']) {
     assert.match(menu, new RegExp(`act: '${act}'`), act);
   }
+});
+
+test('Uninstall stays in the menu of an installed game, last and in red', () => {
+  assert.match(fn(app, 'gameMenu'), /\.\.\.\(g \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
 });
 
 test('the project page is one menu row', () => {
