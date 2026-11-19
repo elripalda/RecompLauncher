@@ -150,7 +150,7 @@
       default: {
         const found = games();
         return `<div class="oob-logo big done">${LOGO}</div><h1>${esc(t('You\'re all set'))}</h1>
-          <p class="oob-lead">${esc(found.length ? tn(found.length, 'One of your games has a recomp. It\'s in your Library, ready to install.', '{n} of your games have recomps. They\'re in your Library, ready to install.') : t('Find something to play in Discover.'))}</p>${found.length ? covers(found) : ''}`;
+          <p class="oob-lead">${esc(found.length ? tn(found.length, 'One of your games has a recomp. It\'s in your Library, ready to install.', '{n} of your games have recomps. They\'re in your Library, ready to install.') : t('Find something to play in the Catalog.'))}</p>${found.length ? covers(found) : ''}`;
       }
     }
   }
