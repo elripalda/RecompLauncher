@@ -67,6 +67,11 @@ test('signed out, the copy after a session is not called a sync', () => {
   assert.equal(b.label, 'Not signed in');
 });
 
+test('with no known save folder, the step after a session does not hide that nothing is backed up', () => {
+  const b = info.saveBadgeInfo(status('none', { known: false }), 'after', false);
+  assert.equal(b.label, 'Saves not backed up');
+});
+
 test('right after the game closes it still says the save goes up after play, not up to date', () => {
   const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() }), 'after', false);
   assert.equal(b.label, 'Syncs after you play');
