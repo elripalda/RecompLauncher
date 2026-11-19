@@ -692,6 +692,20 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
         }
     }
     st.save();
+    // On Linux a game plays only from a plain folder: one that's an AppImage is unpacked into the
+    // Recomp Library now, and the player's AppImage stays where it is. One that won't unpack isn't
+    // added.
+    #[cfg(target_os = "linux")]
+    let added = {
+        let ids: Vec<String> = added.iter().map(|g| g.id.clone()).collect();
+        let failed = tokio::task::block_in_place(|| unpack_added(&st, &ids));
+        let kept: Vec<Installed> = ids.iter().filter_map(|id| st.lib.lock().unwrap().installed.get(id).cloned()).collect();
+        if let (true, Some(e)) = (kept.is_empty() && unknown.is_empty(), failed) {
+            return Err(e);
+        }
+        kept
+    };
+    let mut added = added;
     for it in unknown {
         let path = match &it.exe {
             Some(e) if it.path.join(e).is_file() => it.path.join(e),
@@ -702,6 +716,27 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
         }
     }
     Ok(added)
+}
+
+/// The games just added that are AppImages, unpacked (see plain::bring_in). One that doesn't
+/// unpack leaves the Library again. The last thing that went wrong, if anything did.
+#[cfg(target_os = "linux")]
+fn unpack_added(st: &App, ids: &[String]) -> Option<Error> {
+    let mut failed = None;
+    for id in ids {
+        let g = st.lib.lock().unwrap().installed.get(id).cloned();
+        let Some(image) = g.as_ref().and_then(crate::plain::image_of) else { continue };
+        match crate::plain::bring_in(st, id, &image) {
+            Ok(b) => crate::plain::tell(&b),
+            Err(e) => {
+                crate::trail::note(format!("Bring in {id}: it wasn't added ({e})"));
+                st.lib.lock().unwrap().forget(id);
+                st.save();
+                failed = Some(e);
+            }
+        }
+    }
+    failed
 }
 
 /// Change the catalog association without installing or touching the game's folder.
@@ -821,10 +856,11 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         return Err(Error::Msg("Connect your save backup drive before changing the project.".into()));
     }
     let next = associated_game(&g, &new, entry);
-    // Library ids also key backups and looks. Rename them before committing the library;
-    // reject collisions, and roll back if moving data or saving the library fails.
+    // Library ids also key this PC's save notes and looks. Rename them before committing the
+    // library; reject collisions, and roll back if moving data or saving the library fails.
+    // The save copies move after (see below).
+    let copies = (crate::saves::dir_of(&st.dir, old, &g), crate::saves::dir_of(&st.dir, &new, &next));
     let mut dirs = vec![
-        (crate::saves::dir_of(&st.dir, old), crate::saves::dir_of(&st.dir, &new)),
         (st.dir.join("saves").join(old), st.dir.join("saves").join(&new)),
         (st.dir.join("looks").join(old), st.dir.join("looks").join(&new)),
     ];
@@ -857,6 +893,16 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         *l = before;
         for (from, to) in moved.iter().rev() { let _ = std::fs::rename(to, from); }
         return Err(err.into());
+    }
+    // The save copies, where they're kept by id (the player's folder) or the game's kind changed
+    // (a library game that's the player's own build now, kept in the launcher's folder). Each is
+    // checked before its original goes, and they join any copies already there; ones that can't
+    // move stay where they were, where nothing is lost.
+    drop(l);
+    if copies.0 != copies.1 {
+        if let Err(err) = crate::saves::move_copies(std::slice::from_ref(&copies)) {
+            crate::trail::note(format!("{new}: its save copies stayed in {} ({err})", copies.0.display()));
+        }
     }
     Ok(next)
 }

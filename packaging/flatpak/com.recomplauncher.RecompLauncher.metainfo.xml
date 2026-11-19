@@ -61,6 +61,16 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.65" date="2026-11-19">
+      <description>
+        <p>Reworks how games install, update and build, Easy Setup keeps your choices, updates go in whole or not at all, cloud save status for each game, and the featured banner can be turned off.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.64" date="2026-11-17">
+      <description>
+        <p>Easy Setup goes in clear steps on the desktop and in Big Picture, setup options a game needs are marked Required, the game page is cleaner, consoles are listed A to Z, custom logos show full size in Big Picture, and using a build you already made works for more games.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.63" date="2026-11-17">
       <description>
         <p>Fixes games built from your copy asking to set up again after an update.</p>

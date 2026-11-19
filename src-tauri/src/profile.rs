@@ -103,6 +103,10 @@ pub struct Prepare {
     /// game is set up, even when another launcher built it.
     #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
     pub done: Vec<String>,
+    /// The step keeps what it needs from the copy in the game's build folder (folders.game), and
+    /// runs again from there without the copy: then the arguments with {game} are left out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_copy: bool,
 }
 
 /// A path or a list of them; anything else is nothing.
@@ -144,6 +148,10 @@ pub struct PrepareOption {
     /// Whether it starts ticked (on when not given). Ignored with a license.
     #[serde(default, rename = "default")]
     pub start_on: Option<bool>,
+    /// Setup can't run until it's ticked (a license the build can't do without). It still starts
+    /// off with a license: only the player accepts one.
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -183,6 +191,10 @@ impl Prepare {
     /// The arguments the ticked options add, in their order.
     pub fn option_args(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<String> {
         self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.on(picked)).flat_map(|o| o.args.iter().cloned()).collect()
+    }
+    /// The required options this PC is offered that aren't ticked: setup waits for them.
+    pub fn unticked_required(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<&PrepareOption> {
+        self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.required && !o.on(picked)).collect()
     }
 }
 
@@ -767,16 +779,25 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     Some(p)
 }
 
-/// An AppImage the Flatpak unpacked at install is gone, its AppRun in its place: programs named
-/// `….AppImage` that aren't in the folder start the AppRun instead.
+/// An AppImage unpacked at install (on Linux every game plays from a plain folder) is gone, its
+/// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
+/// instead. The one in a folder named after the AppImage first (a release with several), else the
+/// one at the top.
 fn to_apprun(p: &mut Profile, dir: &Path) {
-    if dir.as_os_str().is_empty() || !dir.join("AppRun").is_file() {
+    if dir.as_os_str().is_empty() {
         return;
     }
     let swap = |programs: &mut Vec<String>| {
         for prog in programs.iter_mut() {
-            let image = Path::new(prog.as_str()).extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
-            if image && !dir.join(prog.as_str()).is_file() {
+            let named = Path::new(prog.as_str());
+            let image = named.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
+            if !image || dir.join(named).is_file() {
+                continue;
+            }
+            let own = named.with_extension("").join("AppRun");
+            if dir.join(&own).is_file() {
+                *prog = own.to_string_lossy().replace('\\', "/");
+            } else if dir.join("AppRun").is_file() {
                 *prog = "AppRun".into();
             }
         }
@@ -1575,25 +1596,21 @@ impl Profile {
         (dir.is_absolute() && dir != install).then_some(dir)
     }
 
-    /// The game's own folders (`folders.game`, filled in for this install), with the folder a
-    /// moved build went to: where a game built from the player's copy keeps what it built from.
-    pub fn game_folders(&self, install: &Path, moved: Option<&Path>) -> Vec<PathBuf> {
-        let mut out: Vec<PathBuf> = moved.map(Path::to_path_buf).into_iter().collect();
-        for place in self.folders.get("game").into_iter().flatten() {
-            if place.path.is_empty() || place.path.contains("{game}") {
-                continue;
-            }
-            let dir = PathBuf::from(fill(&place.path, install, None));
-            if dir.is_absolute() && !out.contains(&dir) {
-                out.push(dir);
-            }
+    /// What a step that keeps the copy (`prepare.keeps_copy`) kept from it: its build folder, when
+    /// it's there with files in it. A build folder that's gone took what it kept with it.
+    pub fn kept_from_copy(&self, install: &Path) -> Option<PathBuf> {
+        if !self.prepare.as_ref()?.keeps_copy {
+            return None;
         }
-        out
+        let home = self.build_home(install)?;
+        let has_files = std::fs::read_dir(&home).ok()?.flatten().next().is_some();
+        has_files.then_some(home)
     }
 
     /// The player's build in `to` standing in for the setup's own folder: every path of the
-    /// profile in that folder (how it starts, its settings files, its saves, its folders) moves
-    /// with it. What the setup step runs stays as it is: the launcher's own build goes to its folder.
+    /// profile in that folder (how it starts, its settings files, its saves, its folders, and the
+    /// files a finished build has, prepare.done) moves with it. What the setup step runs stays as
+    /// it is: the launcher's own build goes to its folder.
     pub fn rebase_build(&mut self, install: &Path, to: &Path) {
         let Some(from) = self.build_home(install) else { return };
         let moved = |t: &mut String| {
@@ -1622,6 +1639,27 @@ impl Profile {
                 moved(&mut f.when);
             }
         }
+        if let Some(pr) = self.prepare.as_mut() {
+            pr.done.iter_mut().for_each(moved);
+        }
+    }
+
+    /// The first file its setup step says it leaves (prepare.done, filled in) that isn't there.
+    /// None when they're all there, or it lists none.
+    pub fn done_missing(&self, install: &Path) -> Option<PathBuf> {
+        let done = &self.prepare.as_ref()?.done;
+        done.iter().map(|d| PathBuf::from(fill(d, install, None))).find(|p| !p.exists())
+    }
+
+    /// The files of prepare.done that are in the build folder `home`, relative to it: what a
+    /// finished build has, to look for in a folder the player says holds their own build.
+    pub fn done_in(&self, install: &Path, home: &Path) -> Vec<PathBuf> {
+        let Some(pr) = self.prepare.as_ref() else { return Vec::new() };
+        pr.done
+            .iter()
+            .filter_map(|d| PathBuf::from(fill(d, install, None)).strip_prefix(home).ok().map(Path::to_path_buf))
+            .filter(|rest| !rest.as_os_str().is_empty())
+            .collect()
     }
 
     pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
@@ -2624,6 +2662,42 @@ mod tests {
     }
 
     #[test]
+    fn a_required_option_with_a_license_starts_unticked_and_holds_setup_until_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--accept-vs-license"],"required":true,"default":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        // "default": true doesn't accept a license for the player.
+        let ids = |picked: &std::collections::BTreeMap<String, bool>| pr.unticked_required("windows", false, false, picked).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&picked), ["vs"]);
+        assert!(pr.option_args("windows", false, false, &picked).is_empty());
+        picked.insert("vs".to_string(), true);
+        assert!(ids(&picked).is_empty());
+        assert_eq!(pr.option_args("windows", false, false, &picked), ["--accept-vs-license"]);
+    }
+
+    #[test]
+    fn a_required_option_without_a_license_can_start_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"tools","label":"Tools","args":["--tools"],"required":true}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        assert!(pr.unticked_required("linux", false, false, &picked).is_empty());
+        picked.insert("tools".to_string(), false);
+        assert_eq!(pr.unticked_required("linux", false, false, &picked).len(), 1);
+    }
+
+    #[test]
+    fn a_required_option_this_pc_isnt_offered_doesnt_hold_setup() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"os":["windows"],"license":{"name":"VS","url":"https://example.com/vs"}},
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"required":true,"gpu":"nvidia","default":false}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        // A Steam Deck: neither applies.
+        assert!(pr.unticked_required("linux", false, true, &std::collections::BTreeMap::new()).is_empty());
+    }
+
+    #[test]
     fn an_option_added_after_setup_is_unanswered_until_the_player_answers_it() {
         let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
             {"id":"hd","label":"HD textures","args":["--hd"]},
@@ -3059,6 +3133,17 @@ mod tests {
     }
 
     #[test]
+    fn one_of_several_unpacked_appimages_starts_from_its_own_folder() {
+        let d = tmp("apprun-own");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["Game-x86_64.AppImage"]}}"#).unwrap();
+        std::fs::create_dir_all(d.join("Game-x86_64")).unwrap();
+        std::fs::write(d.join("Game-x86_64/AppRun"), b"#!/bin/sh\n").unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["Game-x86_64/AppRun"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn groups_advanced_settings_and_sliders_parse() {
         let p: Profile = serde_json::from_str(r#"{"format":1,
             "config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
@@ -3469,11 +3554,13 @@ mod tests {
         assert_eq!(backup.files, 2);
         std::fs::remove_file(&card).unwrap();
         std::fs::remove_file(&states).unwrap();
-        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        let archive = crate::saves::dir_of(&app, "dusklight", &game).join(backup.name);
         assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
         assert_eq!(std::fs::read(card).unwrap(), b"card");
         assert_eq!(std::fs::read(states).unwrap(), b"[]");
         let _ = std::fs::remove_dir_all(&install);
+        // The copies sit beside the game, in its library's .backups folder.
+        let _ = std::fs::remove_dir_all(crate::backups_dir(&game));
     }
 
     #[test]
@@ -3856,18 +3943,34 @@ mod tests {
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());
-        // The copy a game keeps for rebuilding: a hidden `.name_exefs` beside `romfs`.
-        let kept = d.join("Hopper");
-        std::fs::create_dir_all(kept.join(".hopper_exefs")).unwrap();
-        std::fs::create_dir_all(kept.join("romfs")).unwrap();
-        std::fs::write(kept.join(".hopper_exefs").join("main"), &main).unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &kept).is_ok());
-        assert!(check_copy(&g("11223344"), &kept).is_err());
-        // Any other hidden folder ending in _exefs without the executable is refused.
-        let other = d.join("Other");
-        std::fs::create_dir_all(other.join(".foo_exefs")).unwrap();
-        std::fs::create_dir_all(other.join("romfs")).unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &other).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_games_own_build_folder_is_not_a_copy() {
+        // Hookshot's and Longshot's builders keep what they built from in their output folder, in a
+        // hidden folder of their own. That's the builder's private layout, not the player's copy:
+        // handed back to the builder as its copy, it refuses it (#215). Only a real copy counts.
+        let d = tmp("nup-build-folder");
+        let mut main = vec![0u8; 0x100];
+        main[..4].copy_from_slice(b"NSO0");
+        main[0x40..0x44].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        let build = d.join("Longshot");
+        std::fs::create_dir_all(build.join(".longshot_exefs")).unwrap();
+        std::fs::create_dir_all(build.join("romfs")).unwrap();
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join(".longshot_exefs").join("main"), &main).unwrap();
+        std::fs::write(build.join("bin").join("longshot.exe"), b"").unwrap();
+        let need = GameCopy {
+            kind: "iso_or_folder".into(),
+            label: String::new(),
+            check: Check { nup_build_id: "e0f3ccfa".into(), ..Default::default() },
+            ..Default::default()
+        };
+        assert!(check_copy(&need, &build).is_err());
+        // Nor is the player pointed at it from the folder around it.
+        let around = check_copy(&need, &d).unwrap_err();
+        assert!(!around.contains(&build.display().to_string()), "{around}");
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -3986,5 +4089,29 @@ mod own_build_tests {
         let before = serde_json::to_string(&p).unwrap();
         p.rebase_build(&install, Path::new("/elsewhere"));
         assert_eq!(serde_json::to_string(&p).unwrap(), before, "nothing moves without a folder of its own");
+    }
+
+    #[test]
+    fn what_a_finished_build_has_moves_with_the_players_build() {
+        let install = std::env::temp_dir().join("rl-own-build-done");
+        let mine = std::env::temp_dir().join("rl-own-build-done-mine");
+        let _ = std::fs::remove_dir_all(&mine);
+        let mut p = builder();
+        p.prepare.as_mut().unwrap().done = vec!["{home}/Games/Hopper/bin/hopper.exe".into(), "{local}/hopper/cache.bin".into()];
+        let home = p.build_home(&install).unwrap();
+        // Only the done files in the build folder are what to look for in the player's folder.
+        assert_eq!(p.done_in(&install, &home), vec![PathBuf::from("bin").join("hopper.exe")]);
+        p.rebase_build(&install, &mine);
+        let done = &p.prepare.as_ref().unwrap().done;
+        assert_eq!(PathBuf::from(&done[0]), mine.join("bin").join("hopper.exe"));
+        assert_eq!(done[1], "{local}/hopper/cache.bin", "one outside that folder stays as it is");
+        assert_eq!(p.done_missing(&install), Some(mine.join("bin").join("hopper.exe")));
+    }
+
+    #[test]
+    fn nothing_is_missing_when_the_profile_lists_no_done_files() {
+        let install = std::env::temp_dir().join("rl-own-build-nodone");
+        assert_eq!(builder().done_missing(&install), None);
+        assert!(builder().done_in(&install, &install.join("Games")).is_empty());
     }
 }

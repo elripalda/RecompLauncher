@@ -907,6 +907,7 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+.tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
 .tb-in{grid-template-rows:minmax(0,1fr)}
@@ -969,21 +970,55 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-tnote .tn-acts{display:flex;margin-top:6px}
 .tv-tnote .tv-btn.sm{min-height:0;height:46px;padding:0 20px;font-size:17px}
 .tv-tnote .tv-tnote-x{width:46px;padding:0;justify-content:center}
-.tv-setup[data-stage="inputs"]{gap:0;padding:60px 120px;align-items:stretch;justify-content:center}
+/* Easy Setup's steps (setup-steps.js) in Big Picture: the desktop's layout at TV size. One height
+   for every step, so the footer and its buttons stay where they are; the list scrolls inside. */
+.tv-setup[data-stage="steps"]{gap:0;padding:60px 120px;align-items:stretch;justify-content:center}
 .ni-tv-layout{position:relative;display:grid;grid-template-columns:400px minmax(0,1fr);align-items:center;gap:90px;width:100%;height:100%;min-height:0}
 .ni-tv-art{position:relative;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:44px}
 .ni-tv-art .ni-disc-summary{font-size:21px;color:var(--tvmuted,#A9B4C4);text-align:center;margin:0}
-.ni-tv{position:relative;max-height:100%;color:var(--tvink,#F4F8FC);width:100%;max-width:1200px;margin:auto;gap:24px}
-.ni-tv .ni-heading h2{font-size:36px}
-.ni-tv .ni-heading p,.ni-tv .ni-footer p{font-size:19px;color:var(--tvmuted,#A9B4C4)}
-.ni-tv .ni-scroll{max-height:660px;padding-right:18px}
-.ni-tv .ni-row{min-height:76px;gap:18px;border-color:var(--tvline,rgba(244,248,252,.08))}
-.ni-tv .ni-name b{font-size:22px}
-.ni-tv .ni-name span,.ni-tv .ni-group h3{font-size:18px;color:var(--tvmuted,#A9B4C4)}
-.ni-tv .btn{font-size:19px;padding:12px 20px;min-height:50px;border-radius:8px}
-.ni-tv .btn:focus,.ni-tv .btn.f{outline:3px solid var(--cyan);outline-offset:3px}
-.ni-tv .ni-optional-toggle{font-size:21px;min-height:60px;padding:12px}
-.ni-tv .ni-optional-toggle.f{outline:3px solid var(--cyan);outline-offset:2px}
+.ni-tv{position:relative;color:var(--tvink,#F4F8FC);width:100%;max-width:1200px;margin:auto}
+.ni-tv.su-r.ss{height:900px;max-height:100%;padding:0;gap:24px}
+.ni-tv.ss .kick{font-size:17px}
+.ni-tv.ss .ss-head h2{font-size:46px;margin:6px 0 8px}
+.ni-tv.ss .ss-head p,.ni-tv.ss .ss-alt,.ni-tv.ss .ss-foot .why{font-size:21px}
+.ni-tv.ss .ss-rail{gap:10px;margin:10px 0}
+.ni-tv.ss .ss-rail .s{height:46px;font-size:20px;padding:0 18px 0 8px;gap:10px}
+.ni-tv.ss .ss-rail .s i{width:32px;height:32px;font-size:17px}
+.ni-tv.ss .ss-rail .s i svg{width:16px;height:16px}
+.ni-tv.ss .ss-rail .s.req::after{width:10px;height:10px}
+.ni-tv.ss .ss-rail .bar{flex-basis:22px}
+.ni-tv.ss .ss-scroll{gap:20px;padding-right:18px}
+.ni-tv.ss .ss-cap{font-size:17px}
+.ni-tv.ss .ss-cap i{font-size:18px}
+.ni-tv.ss .ss-box{height:196px;grid-template-columns:68px minmax(0,1fr);grid-template-rows:auto 56px;gap:18px 26px;padding:0 28px;border-radius:24px}
+.ni-tv.ss .ss-ic{width:68px;height:68px}
+.ni-tv.ss .ss-ic svg{width:30px;height:30px}
+.ni-tv.ss .ss-box .k b{font-size:28px}
+.ni-tv.ss .ss-box .k span{font-size:21px}
+.ni-tv.ss .fmt{font-size:17px;padding:6px 9px;border-radius:7px}
+.ni-tv.ss .ss-src{height:34px;font-size:18px;padding:0 13px;border-radius:9px}
+.ni-tv.ss .btn{font-size:20px;height:56px;padding:0 22px;border-radius:12px}
+.ni-tv.ss .ss-box .acts{gap:10px}
+.ni-tv.ss .ss-box .acts .btn{min-width:180px}
+.ni-tv.ss .ss-rows{border-radius:22px}
+.ni-tv.ss .ss-row{min-height:92px;gap:20px;padding:12px 18px 12px 20px}
+.ni-tv.ss .ss-row .st{width:36px;height:36px}
+.ni-tv.ss .ss-row .k b{font-size:23px}
+.ni-tv.ss .ss-row .line>span:not(.ss-src):not(.fmts){font-size:19px}
+.ni-tv.ss .ss-row .acts .btn{min-width:130px}
+.ni-tv.ss .ss-row .acts .rm{min-width:56px;width:56px}
+.ni-tv.ss .su-opt{font-size:22px;padding:18px 16px;border-radius:16px}
+.ni-tv.ss .su-opt small{font-size:18px}
+.ni-tv.ss .su-req-tag,.ni-tv.ss .su-new{font-size:15px;padding:3px 10px}
+.ni-tv.ss .ss-alt button{font-size:21px}
+.ni-tv.ss .ss-sum{border-radius:18px;padding:4px 20px}
+.ni-tv.ss .ss-sum div{font-size:20px;padding:12px 0}
+.ni-tv.ss .ss-sum span{min-width:190px}
+.ni-tv.ss .ss-foot{gap:24px;padding-top:22px}
+.ni-tv.ss .ss-foot .btn.big{height:76px;font-size:25px;border-radius:18px;padding:0 34px}
+.ni-tv.ss .ss-foot .btn.main{min-width:260px}
+/* The focused item has Big Picture's own ring (.tv-stage [data-f].f); an option row is lit too. */
+.ni-tv.ss .su-opt.f{background:rgba(52,242,232,.09)}
 .tv-rank{position:absolute;top:12px;left:12px;z-index:3;padding:4px 12px;border-radius:999px;font:800 17px Archivo,Figtree,sans-serif;color:#06121a;background:linear-gradient(180deg,#34F2E8,#377BB6);box-shadow:0 6px 18px rgba(0,0,0,.4)}
 .tv-badge.left.low{top:52px}
 /* Where you are in a long page or list: a slim rail at the right edge. */
