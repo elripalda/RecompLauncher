@@ -52,6 +52,11 @@ test('Add to Start Menu has its own icon, not the desktop one', () => {
   assert.match(submenu('Add To'), /act: 'app-menu'[^\n]*icon: 'apps'/);
 });
 
+test('a game that isn\'t installed has no way to report a problem in its menu', () => {
+  assert.match(fn(app, 'gameMenu'), /const links = projectItem\(x\);/);
+  assert.equal((fn(app, 'gameMenu').match(/devReportItem\(x\)/g) || []).length, 1, 'only inside Troubleshoot, which is for installed games');
+});
+
 test('Troubleshoot holds the checker and both ways to report', () => {
   const sub = submenu('Troubleshoot');
   assert.match(sub, /act: 'troubleshoot', id, label: t\('Check What\\'s Wrong…'\)/);

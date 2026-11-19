@@ -5897,8 +5897,9 @@ function gameMenu(id) {
     : g ? null
       : st === 'get' ? (isSaved(id) ? { act: 'install', id, label: x && turnkey(x) ? t('Easy Install') : t('Install'), icon: x && turnkey(x) ? 'disc' : 'down' } : { act: 'addlib', id, label: t('Add to Library'), icon: 'plus' }) : null;
   const pinned = pins().includes(id);
-  // Before it's installed: its project page and where to report, under the rest.
-  const links = [...projectItem(x), ...devReportItem(x)];
+  // Before it's installed: its project page, under the rest. Reporting a problem waits until it's
+  // installed (Troubleshoot): there's nothing to report about a game the player hasn't run.
+  const links = projectItem(x);
   // New options its project added since: a dot on Setup Options (and on the "…" button).
   const fresh = newPrepOpts(S.setup[id]).length;
   const newOpts = fresh ? tn(fresh, '1 new option', '{n} new options') : '';
