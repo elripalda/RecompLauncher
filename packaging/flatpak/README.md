@@ -27,7 +27,7 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
   updater is off (`flatpak::sandboxed()`).
 - Many games ship as AppImages, and there's no FUSE in the sandbox to mount one. That needs
   nothing of its own here: on every Linux build the launcher unpacks AppImages with its own
-  SquashFS reader (`appimage.rs`) and never runs one. A release's AppImage is unpacked at install
+  SquashFS and DwarFS readers (`appimage.rs`) and never runs one. A release's AppImage is unpacked at install
   and update, and one the player brings in is unpacked into their Recomp Library (`plain.rs`).
   The game starts from `AppRun` with `APPDIR` and `ARGV0` set. The cache folder earlier versions
   unpacked AppImages into (`~/.var/app/<id>/cache/appimage-run`) is removed once, at start.

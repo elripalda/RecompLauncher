@@ -22,9 +22,26 @@ fn number(bytes: &[u8], at: usize, size: usize, little: bool) -> u64 {
     value
 }
 
+/// What an AppImage's files are packed in after its runtime. Most are SquashFS; the
+/// "runs anywhere" tooling (pkgforge's Anylinux/uruntime, Tauri's portable AppImage) writes DwarFS.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Packed {
+    SquashFs,
+    DwarFs,
+}
+
 /// The runtime ends after the ELF section table or its last file-backed section.
 /// Do not scan for magic bytes: the runtime can contain unrelated SquashFS data.
 fn payload_offset(file: &mut File) -> io::Result<u64> {
+    let (end, packed) = payload(file)?;
+    if packed != Packed::SquashFs {
+        return Err(invalid("Unsupported AppImage filesystem"));
+    }
+    Ok(end)
+}
+
+/// Where an AppImage's files start, and what they're packed in.
+fn payload(file: &mut File) -> io::Result<(u64, Packed)> {
     let length = file.metadata()?.len();
     let mut header = [0u8; 64];
     file.read_exact(&mut header)?;
@@ -83,12 +100,15 @@ fn payload_offset(file: &mut File) -> io::Result<u64> {
         return Err(invalid("Missing AppImage SquashFS payload"));
     }
     file.seek(SeekFrom::Start(end))?;
-    let mut magic = [0u8; 4];
+    let mut magic = [0u8; 6];
     file.read_exact(&mut magic)?;
-    if &magic != b"hsqs" {
-        return Err(invalid("Unsupported AppImage filesystem"));
+    if &magic[..4] == b"hsqs" {
+        return Ok((end, Packed::SquashFs));
     }
-    Ok(end)
+    if &magic == b"DWARFS" {
+        return Ok((end, Packed::DwarFs));
+    }
+    Err(invalid("Unsupported AppImage filesystem"))
 }
 
 /// Check a launcher update's container and native runtime before making it executable.
@@ -186,7 +206,10 @@ pub(crate) fn manifest(path: &Path) -> io::Result<Vec<u8>> {
 
 fn read_manifest(path: &Path) -> io::Result<Vec<u8>> {
     let mut file = File::open(path)?;
-    let offset = payload_offset(&mut file)?;
+    let (offset, packed) = payload(&mut file)?;
+    if packed == Packed::DwarFs {
+        return std::panic::catch_unwind(move || dwarfs_manifest(file, offset)).unwrap_or_else(|_| Err(invalid("Invalid AppImage filesystem")));
+    }
     // Malformed compressed blocks in third-party images must not unwind into
     // the UI. The same adjacent/catalog fallback applies to reader panics.
     std::panic::catch_unwind(move || {
@@ -218,75 +241,157 @@ fn read_manifest(path: &Path) -> io::Result<Vec<u8>> {
     .unwrap_or_else(|_| Err(invalid("Invalid AppImage filesystem")))
 }
 
-/// Unpack a type-2 AppImage's files into `to` with the launcher's own SquashFS reader: the
-/// AppImage is never run or mounted, so it works without FUSE and inside the Flatpak. Programs keep
-/// their run permission. Links that would point outside `to` are left out. Err when it isn't a
-/// type-2 SquashFS AppImage (an old type-1 image, or one packed with DwarFS), when it's damaged, or
+/// The manifest at the top of a DwarFS AppImage, as read_manifest reads a SquashFS one.
+fn dwarfs_manifest(file: File, offset: u64) -> io::Result<Vec<u8>> {
+    use dwarfs::archive::{Archive, ArchiveIndex, AsChunks, Config};
+    let config = Config::default();
+    let mut reader = dwarfs::section::SectionReader::new_with_offset(file, offset);
+    let index = ArchiveIndex::new_with_config(&mut reader, &config).map_err(|e| invalid(&format!("Cannot read AppImage filesystem: {e}")))?;
+    let inode = index.get_path([MANIFEST]).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No embedded recomplauncher.json"))?;
+    let file = inode.as_file().ok_or_else(|| invalid("Embedded manifest is not a regular file"))?;
+    if file.as_chunks().total_size() > MAX_MANIFEST {
+        return Err(invalid("Embedded manifest exceeds 1 MiB"));
+    }
+    let mut archive = Archive::new_with_index_and_config(reader, &index, &config).map_err(|e| invalid(&format!("Cannot read AppImage filesystem: {e}")))?;
+    file.read_to_vec(&mut archive)
+}
+
+/// Unpack a type-2 AppImage's files into `to` with the launcher's own readers (SquashFS, or DwarFS
+/// for the "runs anywhere" kind): the AppImage is never run or mounted, so it works without FUSE
+/// and inside the Flatpak. Programs keep their run permission. Links that would point outside `to`
+/// are left out. Err when it isn't a type-2 AppImage (an old type-1 image), when it's damaged, or
 /// when the drive hasn't room for it.
 #[cfg(unix)]
 pub(crate) fn unpack(image: &Path, to: &Path) -> io::Result<()> {
     let mut file = File::open(image)?;
-    let offset = payload_offset(&mut file)?;
+    let (offset, packed) = payload(&mut file)?;
     let to = to.to_path_buf();
     // A damaged third-party image must not take the launcher down with it (as in read_manifest).
-    std::panic::catch_unwind(move || unpack_payload(file, offset, &to)).unwrap_or_else(|_| Err(invalid("The AppImage's files are damaged")))
+    let unpacked = std::panic::catch_unwind(move || match packed {
+        Packed::SquashFs => unpack_squashfs(file, offset, &to),
+        Packed::DwarFs => unpack_dwarfs(file, offset, &to),
+    });
+    unpacked.unwrap_or_else(|_| Err(invalid("The AppImage's files are damaged")))
 }
 
 #[cfg(unix)]
-fn unpack_payload(file: File, offset: u64, to: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
+fn unpack_squashfs(file: File, offset: u64, to: &Path) -> io::Result<()> {
     let filesystem = FilesystemReader::from_reader_with_offset(BufReader::new(file), offset).map_err(|e| invalid(&format!("Cannot read AppImage filesystem: {e}")))?;
-    fs::create_dir_all(to)?;
     let need: u64 = filesystem.files().filter_map(|n| if let InnerNode::File(f) = &n.inner { Some(f.file_len() as u64) } else { None }).sum();
-    if crate::manage::free_space(to).is_some_and(|free| free < need) {
-        return Err(io::Error::new(io::ErrorKind::StorageFull, "The drive hasn't room for the unpacked game"));
-    }
-    let mut links = vec![];
-    let mut folders = vec![];
+    let mut out = Unpacking::start(to, need)?;
     for node in filesystem.files() {
         let Some(rel) = inside_image(&node.fullpath) else { continue };
-        let dest = to.join(&rel);
-        // Never setuid, setgid or sticky: only the read, write and run bits come along.
-        let mode = u32::from(node.header.permissions) & 0o777;
+        let mode = u32::from(node.header.permissions);
         match &node.inner {
-            InnerNode::Dir(_) => {
-                fs::create_dir_all(&dest)?;
-                folders.push((dest, mode | 0o700));
-            }
-            InnerNode::File(f) => {
-                if let Some(parent) = dest.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                let mut out = io::BufWriter::new(File::create(&dest)?);
-                io::copy(&mut filesystem.file(f).reader(), &mut out)?;
-                io::Write::flush(&mut out)?;
-                fs::set_permissions(&dest, fs::Permissions::from_mode(mode | 0o600))?;
-            }
-            InnerNode::Symlink(l) => links.push((rel, l.link.clone())),
+            InnerNode::Dir(_) => out.folder(&rel, mode)?,
+            InnerNode::File(f) => out.file(&rel, mode, &mut filesystem.file(f).reader())?,
+            InnerNode::Symlink(l) => out.link(rel, l.link.clone()),
             // Devices, pipes and sockets aren't a game's files.
             _ => {}
         }
     }
-    let mut left_out = 0;
-    for (rel, target) in links {
-        if !link_stays_inside(&rel, &target) {
-            left_out += 1;
-            continue;
+    out.finish()
+}
+
+#[cfg(unix)]
+fn unpack_dwarfs(file: File, offset: u64, to: &Path) -> io::Result<()> {
+    use dwarfs::archive::{Archive, ArchiveIndex, AsChunks, Config, InodeKind};
+    let config = Config::default();
+    let mut reader = dwarfs::section::SectionReader::new_with_offset(file, offset);
+    let index = ArchiveIndex::new_with_config(&mut reader, &config).map_err(|e| invalid(&format!("Cannot read AppImage filesystem: {e}")))?;
+    let mut archive = Archive::new_with_index_and_config(reader, &index, &config).map_err(|e| invalid(&format!("Cannot read AppImage filesystem: {e}")))?;
+    let need: u64 = index.inodes().filter_map(|i| i.as_file()).map(|f| f.as_chunks().total_size()).sum();
+    let mut out = Unpacking::start(to, need)?;
+    // Folders still to go through, each with its path in the image.
+    let mut folders = vec![(index.root(), PathBuf::from("/"))];
+    while let Some((dir, at)) = folders.pop() {
+        for entry in dir.entries() {
+            let full = at.join(entry.name());
+            let Some(rel) = inside_image(&full) else { continue };
+            let inode = entry.inode();
+            let mode = inode.metadata().file_type_mode().mode_bits();
+            match inode.classify() {
+                InodeKind::Directory(sub) => {
+                    out.folder(&rel, mode)?;
+                    folders.push((sub, full));
+                }
+                InodeKind::File(f) => out.file(&rel, mode, &mut f.as_reader(&mut archive))?,
+                InodeKind::Symlink(l) => out.link(rel, PathBuf::from(l.target())),
+                // Devices, pipes and sockets aren't a game's files.
+                _ => {}
+            }
         }
-        let dest = to.join(&rel);
+    }
+    out.finish()
+}
+
+/// Writing an AppImage's files out, whatever they were packed in: the same rules for both.
+#[cfg(unix)]
+struct Unpacking<'a> {
+    to: &'a Path,
+    links: Vec<(PathBuf, PathBuf)>,
+    folders: Vec<(PathBuf, u32)>,
+}
+
+#[cfg(unix)]
+impl<'a> Unpacking<'a> {
+    /// Into `to`, when its drive has room for `need` bytes.
+    fn start(to: &'a Path, need: u64) -> io::Result<Self> {
+        fs::create_dir_all(to)?;
+        if crate::manage::free_space(to).is_some_and(|free| free < need) {
+            return Err(io::Error::new(io::ErrorKind::StorageFull, "The drive hasn't room for the unpacked game"));
+        }
+        Ok(Self { to, links: vec![], folders: vec![] })
+    }
+
+    fn folder(&mut self, rel: &Path, mode: u32) -> io::Result<()> {
+        let dest = self.to.join(rel);
+        fs::create_dir_all(&dest)?;
+        self.folders.push((dest, (mode & 0o777) | 0o700));
+        Ok(())
+    }
+
+    /// Never setuid, setgid or sticky: only the read, write and run bits come along.
+    fn file(&mut self, rel: &Path, mode: u32, content: &mut dyn Read) -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let dest = self.to.join(rel);
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
         }
-        std::os::unix::fs::symlink(&target, &dest)?;
+        let mut out = io::BufWriter::new(File::create(&dest)?);
+        io::copy(content, &mut out)?;
+        io::Write::flush(&mut out)?;
+        fs::set_permissions(&dest, fs::Permissions::from_mode((mode & 0o777) | 0o600))
     }
-    if left_out > 0 {
-        crate::trail::note(format!("AppImage: {left_out} links pointing outside the game's folder were left out"));
+
+    /// Made at the end, once every file is in, so no file is ever written through a link.
+    fn link(&mut self, rel: PathBuf, target: PathBuf) {
+        self.links.push((rel, target));
     }
-    // Folders' own permissions last: a read-only folder in the image would stop its files going in.
-    for (dir, mode) in folders.into_iter().rev() {
-        fs::set_permissions(&dir, fs::Permissions::from_mode(mode))?;
+
+    fn finish(self) -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let mut left_out = 0;
+        for (rel, target) in self.links {
+            if !link_stays_inside(&rel, &target) {
+                left_out += 1;
+                continue;
+            }
+            let dest = self.to.join(&rel);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            std::os::unix::fs::symlink(&target, &dest)?;
+        }
+        if left_out > 0 {
+            crate::trail::note(format!("AppImage: {left_out} links pointing outside the game's folder were left out"));
+        }
+        // Folders' own permissions last: a read-only folder in the image would stop its files going in.
+        for (dir, mode) in self.folders.into_iter().rev() {
+            fs::set_permissions(&dir, fs::Permissions::from_mode(mode))?;
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// A path in the image (`/usr/bin/game`) as one inside the folder it unpacks to, or None for the
@@ -422,6 +527,84 @@ pub(crate) mod tests {
         unpack(&image, &to).unwrap();
         assert!(fs::symlink_metadata(to.join("absolute")).is_err());
         assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+    }
+
+    /// The same game as `game_image`, packed with DwarFS the way "runs anywhere" AppImages are.
+    #[cfg(unix)]
+    pub(crate) fn dwarfs_game_image() -> Vec<u8> {
+        use dwarfs_enc::chunker::{BasicChunker, Chunker};
+        use dwarfs_enc::metadata::{Builder, InodeMetadata};
+        use dwarfs_enc::section::{CompressParam, Writer};
+        let mut meta = Builder::new(&InodeMetadata::new(0o755));
+        let compress = CompressParam::Zstd(3);
+        let mut chunker = BasicChunker::new(Writer::new(Vec::new()).unwrap(), meta.block_size(), compress);
+        let root = meta.root();
+        let usr = meta.put_dir(root, "usr", &InodeMetadata::new(0o755)).unwrap();
+        let bin = meta.put_dir(usr, "bin", &InodeMetadata::new(0o755)).unwrap();
+        let game = chunker.put_bytes(b"#!/bin/sh\necho game\n").unwrap();
+        // (dwarfs-enc can't write a setuid bit; the SquashFS test covers that it's dropped.)
+        meta.put_file(bin, "game", &InodeMetadata::new(0o755), game).unwrap();
+        let data = chunker.put_bytes(b"data").unwrap();
+        meta.put_file(usr, "data.bin", &InodeMetadata::new(0o644), data).unwrap();
+        meta.put_symlink(root, "AppRun", &InodeMetadata::new(0o777), "usr/bin/game").unwrap();
+        meta.put_symlink(root, "absolute", &InodeMetadata::new(0o777), "/etc/passwd").unwrap();
+        meta.put_symlink(usr, "escape", &InodeMetadata::new(0o777), "../../outside").unwrap();
+        let manifest = chunker.put_bytes(br#"{"format":1}"#).unwrap();
+        meta.put_file(root, "recomplauncher.json", &InodeMetadata::new(0o644), manifest).unwrap();
+        let mut writer = chunker.finish().unwrap();
+        writer.write_metadata_sections(&meta.finish().unwrap(), compress).unwrap();
+        let mut bytes = image(None, Compressor::Gzip)[..128].to_vec();
+        bytes.extend(writer.finish().unwrap());
+        bytes
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dwarfs_appimage_unpacks_into_a_plain_folder_too() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new();
+        let image = dir.0.join("Game-anylinux-x86_64.AppImage");
+        fs::write(&image, dwarfs_game_image()).unwrap();
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert_eq!(fs::read(to.join("usr/data.bin")).unwrap(), b"data");
+        assert_eq!(fs::read_link(to.join("AppRun")).unwrap(), Path::new("usr/bin/game"));
+        let mode = fs::metadata(to.join("usr/bin/game")).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o755);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dwarfs_appimage_keeps_its_links_inside_too() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Game.AppImage");
+        fs::write(&image, dwarfs_game_image()).unwrap();
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert!(fs::symlink_metadata(to.join("absolute")).is_err());
+        assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dwarfs_appimages_manifest_is_read_without_unpacking() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Game.AppImage");
+        fs::write(&image, dwarfs_game_image()).unwrap();
+        assert_eq!(manifest(&image).unwrap(), br#"{"format":1}"#);
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_damaged_dwarfs_appimage_doesnt_unpack() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Game.AppImage");
+        let mut bytes = dwarfs_game_image();
+        let half = 128 + (bytes.len() - 128) / 2;
+        bytes.truncate(half);
+        fs::write(&image, bytes).unwrap();
+        assert!(unpack(&image, &dir.0.join("game")).is_err());
     }
 
     #[cfg(unix)]

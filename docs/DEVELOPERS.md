@@ -82,14 +82,15 @@ The launcher uses the first one it finds:
 
 ### AppImages
 
-The launcher reads `/recomplauncher.json` directly from the AppImage's SquashFS payload.
+The launcher reads `/recomplauncher.json` directly from the AppImage's SquashFS or DwarFS payload.
 It does not execute or mount the image to inspect it, and writes no extracted JSON sidecar.
 Settings, save and folder paths still start from the installation directory (`{install}`),
 not from the internal filesystem.
 
 **On Linux the launcher never runs an AppImage.** Every game plays from a plain folder: your
-AppImage is unpacked at install with the launcher's own SquashFS reader (no FUSE, and nothing of
-the image runs), the AppImage file is deleted, and the game starts from its `AppRun`. This is the
+AppImage is unpacked at install with the launcher's own reader (no FUSE, and nothing of the image
+runs), the AppImage file is deleted, and the game starts from its `AppRun`. SquashFS AppImages and
+DwarFS ones (what pkgforge's Anylinux tooling and Tauri's portable AppImage write) both work. This is the
 same in the AppImage, .deb and Flatpak builds of the launcher (the sandbox's other differences are
 in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
 
@@ -100,8 +101,8 @@ in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
   Find your files from `APPDIR` or your own program's path (`/proc/self/exe`), never from
   `APPIMAGE` or a mount point, and don't update yourself through `APPIMAGE`: updates come from
   your releases through the launcher.
-- If your AppImage won't unpack (an old type-1 image, or one packed with DwarFS instead of
-  SquashFS), the launcher installs your release's tarball instead, when it has one. Without one,
+- If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
+  release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.
 - A release with several AppImages unpacks each into a folder named after it
   (`MyGame-Editor-x86_64.AppImage` into `MyGame-Editor-x86_64/`, started from its `AppRun`). Ship
@@ -127,7 +128,7 @@ Embedded lookup applies when the install folder contains exactly one regular `.A
 file at its top level (case-insensitive extension). With multiple AppImages it does not
 guess: the adjacent profile and catalog fallback continue to work. The manifest must be
 a regular file no larger than 1 MiB, with `format: 1`. Gzip, XZ, Zstandard and LZ4 SquashFS
-compression are supported. Missing, malformed or unsupported metadata falls back to the
+compression are supported, and DwarFS with Zstandard (its usual compression). Missing, malformed or unsupported metadata falls back to the
 adjacent manifest and then the catalog. Replacing the image is reflected on the next read;
 there is no extracted copy to become stale.
 

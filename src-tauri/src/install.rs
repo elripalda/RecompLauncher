@@ -2109,6 +2109,18 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn a_release_dwarfs_appimage_is_unpacked_too() {
+        let d = tmp("stage-dwarfs-appimage");
+        let image = d.join("Game-anylinux-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::dwarfs_game_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("usr/bin/game")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+        assert_eq!(find_exe(&staged.root, "linux", &["Game"]), Some(PathBuf::from("AppRun")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn an_appimage_in_a_zip_unpacks_beside_the_rest() {
         let d = tmp("stage-appimage-zip");
         let image = crate::appimage::tests::game_image();

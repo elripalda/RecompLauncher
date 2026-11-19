@@ -27,8 +27,8 @@ runs in the Flatpak.
 ## AppImages are unpacked at install
 
 On Linux the launcher never runs an AppImage, in the Flatpak or out of it: every game plays from a
-plain folder. Your AppImage is unpacked at install with the launcher's own SquashFS reader (it
-needs no FUSE, and nothing of the image runs), and the game starts from its `AppRun`. What that
+plain folder. Your AppImage is unpacked at install with the launcher's own reader, SquashFS or
+DwarFS (it needs no FUSE, and nothing of the image runs), and the game starts from its `AppRun`. What that
 means for your AppImage is in [AppImages](DEVELOPERS.md#appimages) in the developer guide.
 
 Inside the Flatpak this is also why it works at all: there's no FUSE in the sandbox, so an
