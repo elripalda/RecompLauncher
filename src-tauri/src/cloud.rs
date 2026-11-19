@@ -6,7 +6,7 @@
 //! of PCs, so one can be signed out from there. No password ever passes through the launcher.
 //!
 //! Cloud saves: after each session a game's new save copy (saves.rs) goes up to the account, which
-//! keeps the newest five per game, up to 150 MB in all. Before a game starts, a newer copy from
+//! keeps the newest five per game, up to 300 MB in all. Before a game starts, a newer copy from
 //! another PC is put in place first; if both changed, the player picks. docs/LAUNCHER-API.md has the
 //! website's side.
 
@@ -143,7 +143,8 @@ fn save_url(action: &str) -> String {
 /// (When it said so, the size of the copy it refused.)
 static FULL: Mutex<Option<(std::time::Instant, u64)>> = Mutex::new(None);
 static FULL_TOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-const FULL_TEXT: &str = "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.";
+// No size here: the site sets it (300 MB now) and says it in its own answer.
+const FULL_TEXT: &str = "Your cloud saves are full. The newest save of each game is always kept, so make room by deleting another game's cloud saves on your account page at recomplauncher.com. Your saves stay on this PC.";
 const FULL_REST: std::time::Duration = std::time::Duration::from_secs(3600);
 
 fn full_now() -> bool {
@@ -476,13 +477,24 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
-        return saves::spots(&p.game.saves, &[], &g);
+        return named_spots(p.game.saves, vec![], &g);
     }
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    let dev = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
+    let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
     let from_cat: Vec<String> = entry.get("saves").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    saves::spots(&dev, &from_cat, g)
+    named_spots(profile_saves, from_cat, g)
+}
+
+/// The save folders a profile names are the developer's only when the profile came with the
+/// game's own release. One RecompLauncher keeps for the game (in the catalog, or built into the
+/// launcher) is ours, and the Saves tab says so: "Set by RecompLauncher".
+fn named_spots(profile_saves: Vec<String>, from_cat: Vec<String>, g: &Installed) -> Vec<Spot> {
+    let developers = crate::profile::release_profile(&g.path).is_some();
+    if developers || profile_saves.is_empty() {
+        return saves::spots(&profile_saves, &from_cat, g);
+    }
+    saves::spots(&[], &profile_saves, g)
 }
 
 /// Nobody (the player, the developer or the catalog) has said where the game saves. A fixed text,
@@ -1179,6 +1191,9 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         "spots": spots, "local": local, "cloud": cloud, "space": space, "offline": offline,
         "cloudOn": g.cloud, "signedIn": signed_in(&st.dir), "synced": state.synced_hash, "pending": state.pending.is_some(),
         "waiting": waiting, "status": STATUS_PAGE,
+        // The save in the game's folder now (the last copy made or put back), and this PC's name:
+        // the tab marks the copy that's current and the ones another PC made.
+        "current": state.last_hash, "here": saves::device_name(),
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
@@ -1447,8 +1462,29 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
 }
 
-/// The player's own answer to where the game saves (a folder they picked), or None to go back to
-/// the developer's or the catalog's folders (or none: then the launcher says it doesn't know).
+/// Deletes one of a game's cloud saves. Never its newest: that's the one the next PC brings in
+/// and the one this PC last synced with, so without it an older copy would look like the newest.
+#[tauri::command]
+pub async fn saves_cloud_delete(app: AppHandle, id: String, v: String) -> Res<()> {
+    let _busy = BUSY.lock().await;
+    let (list, _) = cloud_list(&app, &id).await?;
+    if !deletable(&list, &v) {
+        return Err(Error::Msg("The newest cloud save stays: the next PC you play on brings it in.".into()));
+    }
+    let r = post(&app, "save-delete", json!({"game": id, "v": v}), true).await?;
+    if let (Some(used), Some(quota)) = (r.get("used").and_then(Value::as_u64), r.get("quota").and_then(Value::as_u64)) {
+        room_now(used, quota);
+    }
+    Ok(())
+}
+
+/// A cloud save that can go: one of the list (newest first) that isn't its newest.
+fn deletable(list: &[CloudCopy], v: &str) -> bool {
+    list.iter().skip(1).any(|c| c.v == v)
+}
+
+/// The player's own answer to where the game saves (a folder they picked), or None to forget it.
+/// It only counts while neither the developer nor the catalog names a folder (saves::spots).
 #[tauri::command(async)]
 pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
@@ -1936,6 +1972,39 @@ mod status_tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn cloud_copy(v: &str) -> CloudCopy {
+        CloudCopy { v: v.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn the_newest_cloud_save_is_never_deleted() {
+        assert!(!deletable(&[cloud_copy("new"), cloud_copy("old")], "new"));
+    }
+
+    #[test]
+    fn an_older_cloud_save_can_be_deleted() {
+        assert!(deletable(&[cloud_copy("new"), cloud_copy("old")], "old"));
+    }
+
+    #[test]
+    fn a_cloud_save_that_is_not_there_is_not_deleted() {
+        assert!(!deletable(&[cloud_copy("new"), cloud_copy("old")], "gone"));
+    }
+
+    #[test]
+    fn save_folders_from_a_profile_the_release_has_are_the_developers() {
+        let d = tmp("release-profile");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1}"#).unwrap();
+        let g = Installed { path: d, ..Default::default() };
+        assert_eq!(named_spots(vec!["{install}/save".into()], vec![], &g)[0].from, "developer");
+    }
+
+    #[test]
+    fn save_folders_from_a_profile_we_keep_are_recomplaunchers() {
+        let g = Installed { path: tmp("our-profile"), ..Default::default() };
+        assert_eq!(named_spots(vec!["{install}/save".into()], vec![], &g)[0].from, "catalog");
     }
 
     #[test]
