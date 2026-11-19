@@ -132,6 +132,11 @@ function ssRuntime(r, ns) {
 function stepsView(id, su, ns, game) {
   const m = stepsModel(id, su, ns);
   const name = game.name || id;
+  // On Extras with new options: they count as seen (Setup Options' dots go), once per window.
+  if (m.cur.id === 'extras' && m.fresh.length && !ns.seenNew && typeof seenNewOpts === 'function') {
+    ns.seenNew = true;
+    seenNewOpts(id, m.fresh);
+  }
   const rail = m.steps.length > 1 ? `<div class="ss-rail">${m.steps.map((s, i) => `${i ? '<span class="bar"></span>' : ''}<span class="s${i === m.at ? ' now' : i < m.at ? ' done' : ''}${s.id === 'extras' && m.reqOff ? ' req' : ''}${s.id === 'extras' && m.fresh.length ? ' new' : ''}"><i>${i < m.at ? CHECK : i + 1}</i>${esc(s.name)}</span>`).join('')}</div>` : '';
   let head = '', lead = '', body = '', status = '';
   if (m.cur.id === 'game') {

@@ -2961,7 +2961,19 @@ function pickChoices(picks) {
 // Options its project added since the game was set up: ones the player hasn't answered yet.
 function newPrepOpts(su) {
   if (!su || su === 'loading' || !(su.copy || su.inputs_ready)) return [];
-  return (su.prepare_options || []).filter((o) => o.new);
+  return (su.prepare_options || []).filter((o) => o.new && !o.seen);
+}
+// The player reached the Extras step of Setup Options, where the new options are: they've seen
+// them. Each is kept as it is (off unless they turn it on), so the dots go and Play doesn't ask
+// about them. They're marked seen rather than not new, so the open window keeps its New tags;
+// the next time the setup info loads, they aren't new anymore.
+async function seenNewOpts(id, list) {
+  const opts = Object.fromEntries(list.map((o) => [o.id, !!o.on]));
+  try { await invoke('set_prepare_opts', { id, opts }); } catch (e) { return; }
+  const su = S.setup[id];
+  for (const o of (su && su !== 'loading' && su.prepare_options) || []) if (o.id in opts) o.seen = true;
+  render(true);
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
 }
 // An Easy Setup game that's set up: Setup Options is in its "…" menu.
 function canSetUpAgain(id) {
