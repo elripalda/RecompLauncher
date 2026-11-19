@@ -588,7 +588,7 @@ fn phase(app: &AppHandle, id: &str, what: &str) {
 }
 
 /// Says "idle" when the work it covers ends, on every way out of it (errors included).
-struct Working {
+pub(crate) struct Working {
     app: AppHandle,
     id: String,
 }
@@ -860,6 +860,8 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let spots = spots_of(&st, id, &g);
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
+    // The session's save is copied: one that fails to go up is kept as pending from here on.
+    set_after_play(&st.dir, id, false);
     if g.cloud == Some(true) && signed_in(&st.dir) {
         let s = saves::state(&st.dir, id);
         let latest = saves::list(&st.dir, id, &g).into_iter().next();
@@ -893,6 +895,62 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
         }
     }
     Ok(copy)
+}
+
+/// When this PC's save was made, for the "which save?" choice: the time of the first copy holding
+/// it (the same save is copied again before a restore or a cloud save replaces it). The files'
+/// own time is only the fallback: restoring a copy writes them anew, which made an older save look
+/// newer than the cloud's.
+fn local_save_time(copies: &[saves::Copy], hash: &str, files_time: u64) -> u64 {
+    copies.iter().filter(|c| c.hash == hash).map(|c| c.when).min().unwrap_or(files_time)
+}
+
+/// Marks a game's session as started (true) or its save as copied after it (false). A session
+/// still marked when the launcher starts is finished then (finish_open_sessions).
+pub(crate) fn set_after_play(dir: &Path, id: &str, open: bool) {
+    let mut s = saves::state(dir, id);
+    if s.after_play == open {
+        return;
+    }
+    s.after_play = open;
+    saves::set_state(dir, id, &s);
+}
+
+/// The step after a game closes, from its end to its save copied (and sent): the status above
+/// Play keeps saying "Syncs after you play" until then, instead of an "Up to date" that the
+/// session's save may already have made untrue. Ends (idle) on every way out.
+pub(crate) fn after_play_step(app: &AppHandle, id: &str) -> Working {
+    working(app, id, "after")
+}
+
+/// Sessions the launcher didn't see to the end (it closed or crashed while a game ran, or before
+/// the copy after it was made): their saves are copied and sent now. A game that's running again
+/// is left to its own session.
+pub(crate) async fn finish_open_sessions(app: &AppHandle) {
+    let st = app.state::<App>();
+    for id in open_sessions(&st.dir.join("saves")) {
+        if st.running.lock().unwrap().contains_key(&id) || game(&st, &id).is_err() {
+            continue;
+        }
+        let _step = after_play_step(app, &id);
+        match after_session(app, &id).await {
+            Ok(Some(_)) => {
+                let _ = app.emit("saves", json!({"id": id}));
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("Save copy for {id} after an unfinished session: {e}"),
+        }
+    }
+}
+
+/// The games whose sync notes still mark a session open, by their folders under `saves`.
+fn open_sessions(saves_dir: &Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(saves_dir) else { return vec![] };
+    let app_dir = saves_dir.parent().unwrap_or(saves_dir);
+    rd.flatten()
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .filter(|id| saves::state(app_dir, id).after_play)
+        .collect()
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
@@ -1079,7 +1137,8 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     s.conflict = Some(top.v.clone());
     saves::set_state(&st.dir, &id, &s);
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
-    let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let files_time = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let when = local_save_time(&saves::list(&st.dir, &id, &g), &local, files_time);
     Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
 }
 
@@ -1976,6 +2035,43 @@ mod status_tests {
 
     fn cloud_copy(v: &str) -> CloudCopy {
         CloudCopy { v: v.into(), ..Default::default() }
+    }
+
+    fn copy_made(when: u64, hash: &str) -> saves::Copy {
+        saves::Copy { name: format!("{when}.zip"), when, size: 1, files: 1, hash: hash.into(), device: String::new(), played: 0 }
+    }
+
+    #[test]
+    fn a_restored_save_is_dated_by_its_copy_not_by_when_it_was_written_back() {
+        let copies = [copy_made(300, "new"), copy_made(100, "old")];
+        assert_eq!(local_save_time(&copies, "old", 500), 100);
+    }
+
+    #[test]
+    fn a_save_copied_twice_is_dated_by_its_first_copy() {
+        let copies = [copy_made(400, "old"), copy_made(300, "new"), copy_made(100, "old")];
+        assert_eq!(local_save_time(&copies, "old", 500), 100);
+    }
+
+    #[test]
+    fn a_save_no_copy_holds_is_dated_by_its_files() {
+        assert_eq!(local_save_time(&[copy_made(300, "new")], "changed", 500), 500);
+    }
+
+    #[test]
+    fn a_session_started_is_open_until_its_save_is_copied() {
+        let d = tmp("after-play");
+        set_after_play(&d, "g", true);
+        assert_eq!(open_sessions(&d.join("saves")), vec!["g".to_string()]);
+        set_after_play(&d, "g", false);
+        assert!(open_sessions(&d.join("saves")).is_empty());
+    }
+
+    #[test]
+    fn a_game_with_no_open_session_is_not_finished_at_start() {
+        let d = tmp("after-play-none");
+        saves::set_state(&d, "g", &saves::State { last_hash: "a".into(), ..Default::default() });
+        assert!(open_sessions(&d.join("saves")).is_empty());
     }
 
     #[test]
