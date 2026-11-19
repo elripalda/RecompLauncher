@@ -45,6 +45,8 @@ function stepsModel(id, su, ns) {
   const missing = needed.filter((r) => !r.path && !((skipBuild || kept) && r.legacy && r.id === 'game'));
   // A build option, required or not, does nothing when nothing is built.
   const reqOff = !skipBuild && prepBlocked(su);
+  // Options its project added since the player set it up: the Extras step has a dot.
+  const fresh = opts.filter((o) => o.new && (su.copy || su.inputs_ready));
   const steps = [{ id: 'game', name: own.filter((r) => r.role === 'disc').length > 1 ? t('Discs') : t('Game') }];
   if (addons.length) steps.push({ id: 'addons', name: t('Add-ons') });
   if (opts.length || runtime.length) steps.push({ id: 'extras', name: t('Extras') });
@@ -54,7 +56,7 @@ function stepsModel(id, su, ns) {
   // The player's own build didn't pass (ownErr): Set Up waits for another folder or their copy.
   const ownBad = !!(ns.own && ns.ownErr);
   const blocked = missing.length > 0 || reqOff || broken || ownBad || !!ns.busy;
-  return { rows, own, keys, addons, runtime, opts, skipBuild, kept, missing, reqOff, ownBad, steps, at, cur: steps[at], last, broken, blocked };
+  return { rows, own, keys, addons, runtime, opts, fresh, skipBuild, kept, missing, reqOff, ownBad, steps, at, cur: steps[at], last, broken, blocked };
 }
 
 const ssTag = (r) => {
@@ -130,7 +132,12 @@ function ssRuntime(r, ns) {
 function stepsView(id, su, ns, game) {
   const m = stepsModel(id, su, ns);
   const name = game.name || id;
-  const rail = m.steps.length > 1 ? `<div class="ss-rail">${m.steps.map((s, i) => `${i ? '<span class="bar"></span>' : ''}<span class="s${i === m.at ? ' now' : i < m.at ? ' done' : ''}${s.id === 'extras' && m.reqOff ? ' req' : ''}"><i>${i < m.at ? CHECK : i + 1}</i>${esc(s.name)}</span>`).join('')}</div>` : '';
+  // On Extras with new options: they count as seen (Setup Options' dots go), once per window.
+  if (m.cur.id === 'extras' && m.fresh.length && !ns.seenNew && typeof seenNewOpts === 'function') {
+    ns.seenNew = true;
+    seenNewOpts(id, m.fresh);
+  }
+  const rail = m.steps.length > 1 ? `<div class="ss-rail">${m.steps.map((s, i) => `${i ? '<span class="bar"></span>' : ''}<span class="s${i === m.at ? ' now' : i < m.at ? ' done' : ''}${s.id === 'extras' && m.reqOff ? ' req' : ''}${s.id === 'extras' && m.fresh.length ? ' new' : ''}"><i>${i < m.at ? CHECK : i + 1}</i>${esc(s.name)}</span>`).join('')}</div>` : '';
   let head = '', lead = '', body = '', status = '';
   if (m.cur.id === 'game') {
     head = m.own.filter((r) => r.role === 'disc').length > 1 ? t('Insert your discs') : t('Insert your copy');
@@ -155,10 +162,9 @@ function stepsView(id, su, ns, game) {
     status = tf('{added} of {total} added.', { added: m.addons.filter((r) => r.path).length, total: m.addons.length });
   } else {
     head = t('Extras');
-    const fresh = m.opts.filter((o) => o.new && (su.copy || su.inputs_ready));
     const reqN = m.opts.filter((o) => o.required).length;
-    lead = t('Optional. You can change them later with Set Up Again.');
-    if (fresh.length) lead = tf('New since you set it up: {names}.', { names: fresh.map((o) => o.label).join(', ') });
+    lead = t('Optional. You can change them later in Setup Options.');
+    if (m.fresh.length) lead = tf('New since you set it up: {names}.', { names: m.fresh.map((o) => o.label).join(', ') });
     if (reqN) lead = reqN < m.opts.length + m.runtime.length ? t('Turn on the ones marked Required to set it up. The rest are optional.') : reqN === 1 ? t('Setup needs this one turned on.') : t('Setup needs these turned on.');
     if (m.skipBuild && m.opts.length) lead = t('Build options only apply when the game is built from your copy.');
     body = `<div class="ss-opts su-opts">${m.opts.map((o) => ssOption(o, m.skipBuild)).join('')}${m.runtime.map((r) => ssRuntime(r, ns)).join('')}</div>`;
@@ -169,6 +175,10 @@ function stepsView(id, su, ns, game) {
     else if (!m.missing.length) status = m.reqOff ? prepReq() : t('Ready to set up.');
     if (m.ownBad) status = t('Choose the finished game\'s folder.');
   }
+  // Rather set it up yourself: Easy Setup off for this game, from its first step. Its Manage tab
+  // has the switch to turn it back on.
+  const skippable = m.at === 0 && S.easyAll && S.easyAll.has(id) && !(S.settings.ui || {}).easy_skip_all;
+  if (skippable) body += `<p class="ss-alt">${esc(t('Rather set it up yourself?'))} <button type="button" data-ss="skip-easy">${esc(t('Skip Easy Setup'))}</button></p>`;
   // The check mark only on the lines that say it's ready.
   const ok = [t('Everything it needs is here.'), t('Ready to set up.')].includes(status);
   const error = ns.error || su.inputs_error;
@@ -182,13 +192,11 @@ function stepsView(id, su, ns, game) {
     <div class="ss-foot">${back}<p class="why" role="status">${ok ? CHECK : ''}${esc(status)}</p>${next}</div>`;
 }
 
-// The quiet line under the game's box: a build that's already there, or the files from before.
+// The quiet line under the game's box: a build that's already there, or one the player made.
 function ssAlt(su, ns, name) {
   if (ns.own) return '';
   if (su.prebuilt && !ns.rebuild) return `<p class="ss-alt">${esc(t('The game built from your copy last time is still here, so setup skips the build.'))} <button type="button" data-ss="rebuild">${esc(t('Build It Again'))}</button></p>`;
   if (su.prebuilt) return `<p class="ss-alt">${esc(t('Building it again from your copy.'))} <button type="button" data-ss="keepbuild">${esc(t('Use the One Still Here'))}</button></p>`;
-  const prev = su.previous || [];
-  if (prev.length && !su.inputs_ready) return `<p class="ss-alt">${esc(tf('Set up before with {files}.', { files: prev.join(' · ') }))} <button type="button" data-ss="relink">${esc(t('Use Them Again'))}</button></p>`;
   if (su.own_build) return `<p class="ss-alt">${esc(tf('Already built {name} from your copy, outside the launcher? Skip the build:', { name }))} <button type="button" data-ss="ownpick">${esc(t('Choose That Folder'))}</button></p>`;
   return '';
 }
@@ -228,19 +236,10 @@ async function stepsAction(id, act, input, ns) {
   if (act === 'keepbuild') { ns.rebuild = false; return; }
   if (act === 'owncopy') { ns.own = ''; ns.ownErr = ''; return; }
   if (act === 'run') return 'run';
+  if (act === 'skip-easy') return 'skip';
   if (act === 'ownpick') {
     const p = await pickFile({ title: tf('The folder you built {name} into', { name: (S.library[id] || {}).name || id }), directory: true }).catch(fail);
     if (p) { ns.own = typeof p === 'string' ? p : p.path; ns.ownErr = ''; }
-    return;
-  }
-  if (act === 'relink') {
-    ns.busy = true;
-    try {
-      const r = await relinkSetup(id);
-      if (r === 'ready') return 'ready';
-      if (r && r.label) ns.error = tf('{file} isn\'t where it was. Choose it again, then press Set Up.', { file: r.label });
-    } catch (e) { ns.error = String(e && e.message ? e.message : e); }
-    finally { ns.busy = false; }
     return;
   }
   // The game's copy (game.kind) stays on this screen until Set Up: setup_copy checks it and keeps

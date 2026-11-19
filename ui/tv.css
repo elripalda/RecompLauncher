@@ -387,6 +387,9 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-runs .rbar{height:12px}
 .tv-g-chips span{display:inline-flex;align-items:center;gap:8px}
 .tv-dev-pic{width:26px;height:26px;border-radius:50%;object-fit:cover;margin-left:-8px}
+/* Who made it, right under "Based on": that line's bottom margin goes, the column's gap is enough */
+.tv-based + .tv-by{margin-top:-1em}
+.tv-by .tv-dev-pic{margin-left:0}
 .tv-vchip{font-style:normal;display:inline-flex;align-items:center;gap:5px;color:#34F2E8;font-size:15px;font-weight:700;margin-left:4px}
 .tv-vchip .vtick{margin:0}
 .tv-name .vtick{margin-left:6px;vertical-align:-3px}
@@ -985,7 +988,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-rail .s{height:46px;font-size:20px;padding:0 18px 0 8px;gap:10px}
 .ni-tv.ss .ss-rail .s i{width:32px;height:32px;font-size:17px}
 .ni-tv.ss .ss-rail .s i svg{width:16px;height:16px}
-.ni-tv.ss .ss-rail .s.req::after{width:10px;height:10px}
+.ni-tv.ss .ss-rail .s.req::after,.ni-tv.ss .ss-rail .s.new::after{width:10px;height:10px}
 .ni-tv.ss .ss-rail .bar{flex-basis:22px}
 .ni-tv.ss .ss-scroll{gap:20px;padding-right:18px}
 .ni-tv.ss .ss-cap{font-size:17px}
@@ -1033,7 +1036,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-sbadge svg{flex:none}
 .tv-sbadge small{font-size:20px;font-weight:600;color:var(--tvsoft,#c9d3e0)}
 .tv-sbadge small::before{content:"· "}
-/* "Newer" beside a sheet item's label (the save made later, when both changed): green text. */
+/* A short green mark after a sheet item's label: "Newer" on the save made later when both changed, and "New option" on Setup Options. */
 .tv-newer{margin-left:12px;font-style:normal;font-size:19px;font-weight:700;color:#3ee08f}
 /* A game's Saves page: the status leads it in its colour, then every save marked by where it's
    kept (account.js). */

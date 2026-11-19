@@ -74,6 +74,7 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .pin .th img{width:100%;height:100%;object-fit:cover;display:block}
 .pin.on .th{box-shadow:0 0 0 2px var(--cyan)}
 .pin .lbl{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pin .pin-fav{flex:none;display:flex;margin-left:auto;padding-right:12px;color:#ffc94d}
 /* Moving a pinned game: the others slide aside, the one in hand stays on top. */
 .pins.sorting{user-select:none}
 .pins.sorting .pin{transition:transform .15s var(--ease),background .15s,color .15s}
@@ -630,6 +631,7 @@ button.prog.su-prog:focus-visible,.prog.su-prog:focus-visible{outline:2px solid 
 .menu button:hover svg{color:var(--ink)}
 .menu button.danger{color:var(--bad)}.menu button.danger svg{color:var(--bad)}
 .menu .ck{margin-left:auto;color:var(--cyan)}
+.menu .m-dot{margin-left:auto;flex:none;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px rgba(52,242,232,.7)}
 .menu hr{border:0;height:1px;background:var(--line2);margin:5px 6px}
 .scrim{position:fixed;inset:0;z-index:200;background:rgba(3,6,12,.62);display:grid;place-items:center;backdrop-filter:blur(8px);animation:fadeIn .2s ease;padding:24px}
 .scrim .modal{animation:modalIn .3s var(--ease)}
@@ -745,6 +747,7 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ss-rail .s.done i{background:rgba(52,242,232,.16);color:var(--cyan)}
 /* A required extra still off: an amber dot on the Extras pill, seen from the first step. */
 .ss-rail .s.req::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.ss-rail .s.new::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px rgba(52,242,232,.7)}
 .ss-rail .bar{flex:0 0 14px;height:1px;background:var(--line2)}
 .ss-box{display:grid;grid-template-columns:46px minmax(0,1fr);grid-template-rows:auto 34px;align-content:center;gap:12px 16px;height:132px;flex:none;padding:0 18px;border-radius:18px;border:1.5px dashed var(--line3);background:var(--fill);transition:border-color .18s,background .18s}
 .ss-box:hover{border-color:rgba(52,242,232,.5)}
@@ -1375,6 +1378,11 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 /* ---------- versions of the same game ---------- */
 .badge.vers{top:auto;bottom:9px;right:9px;color:var(--ink);background:rgba(6,11,21,.78);backdrop-filter:blur(8px);border:1px solid rgba(244,248,252,.16);gap:4px;padding:0 8px}
 .badge.vers svg{color:var(--cyan)}
+/* A favourite in the Library: a plain gold star, bottom right (the versions count is never on those tiles) */
+.badge.fav{top:auto;bottom:9px;right:9px;height:auto;padding:0;border:0;background:none;backdrop-filter:none;color:#ffc94d;filter:drop-shadow(0 1px 3px rgba(0,0,0,.85))}
+.badge.fav svg{width:18px;height:18px;overflow:visible}
+/* A dark edge so the star reads on light covers too (still no box around it) */
+.badge.fav svg path{stroke:rgba(6,11,21,.9);stroke-width:2.6px;stroke-linejoin:round;paint-order:stroke}
 .ver-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 11px;border-radius:17px;background:rgba(6,11,21,.55);backdrop-filter:blur(10px);border:1px solid var(--line2);font-size:13px;font-weight:700;color:var(--ink);transition:border-color .15s,background-color .15s}
 .ver-pill:hover,.ver-pill[aria-expanded="true"]{border-color:rgba(52,242,232,.5);background:rgba(6,11,21,.75)}
 .ver-pill>svg:first-child{color:var(--cyan)}
@@ -2141,10 +2149,6 @@ body.light .ds-panel{box-shadow:0 14px 40px rgba(14,22,38,.16)}
 body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}
 
 /* A game's quick actions above Before You Play: icon and name, two to a row. */
-.gp-quick{margin:0}
-.gp-quick .btn{gap:9px;justify-content:center}
-.gp-quick .btn svg{width:18px;height:18px;flex:none}
-.gp-quick .btn .qi-brand{width:18px;height:18px;flex:none}
 
 /* Mac: the web view there pays a lot for big blurs, so covers don't glow on hover. */
 body.mac .tile .glow{display:none}
@@ -2187,14 +2191,10 @@ body.mac .tile .glow{display:none}
 .copy-tags{display:flex;gap:6px;flex-shrink:0}
 .tag.ok{color:#3ee08f;background:rgba(62,224,143,.08);border-color:rgba(62,224,143,.36)}
 .modal .warn-line{color:var(--warn);font-weight:700}
-/* Launcher support: one row per feature, checked or not, and who made it work */
-.modal:has(.sup-list){width:min(560px,94vw)}
-.sup-list{gap:8px}
-.sup-row{min-height:74px}
-.sup-d{font-size:12.5px;color:var(--dim);line-height:1.35}
-.sup-row .tag{height:22px;padding:0 8px;font-size:11.5px;flex-shrink:0}
-.sup-mark{display:flex;flex-shrink:0}
-.modal .sup-own{color:#3ee08f;font-weight:700}
+/* Launcher Support, on Overview under Before You Play: one row per feature, and who made it work */
+.sup-card>p{margin:10px 0 0;font-size:13.5px}
+.sup-card .acts .tag{height:22px;padding:0 8px;font-size:11.5px;flex-shrink:0}
+.sup-card .sup-own{color:#3ee08f;font-weight:700}
 /* The crash window: the game's own last error line */
 .modal .fatal-line{display:flex;flex-direction:column;gap:4px;margin:0}
 .modal .fatal-line code{font-size:12.5px;padding:8px 10px;border-radius:10px;background:var(--card2);color:var(--text);overflow-wrap:anywhere;white-space:pre-wrap}
@@ -2538,8 +2538,8 @@ body.light .su-req-tag{color:#8a5300}
 body.light .su-req{color:#8a5300}
 .su-new{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;background:var(--cyan);color:#04161b;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;vertical-align:1px}
 /* Set Up Again beside Play: a dot while its project has options the player hasn't answered yet. */
-.btn.again{position:relative}
-.btn.again.has-new::after{content:"";position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 2px rgba(8,14,26,.9),0 0 10px rgba(52,242,232,.7)}
+.btn.has-new{position:relative}
+.btn.has-new::after{content:"";position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 2px rgba(8,14,26,.9),0 0 10px rgba(52,242,232,.7)}
 
 .mig-welcome{margin:4px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
 .mig-welcome li{padding:10px 14px 10px 16px;border-radius:12px;background:var(--fill);border:1px solid var(--line);border-left:3px solid var(--cyan);font-size:13.5px}
