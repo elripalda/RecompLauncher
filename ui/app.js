@@ -2531,8 +2531,11 @@ function gameBody(a) {
     else if (r.loading) body = `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading the releases…'))}</p></div></div>`;
     else if (r.error) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t(r.error))}</p></div></div>`;
     else if (!r.list.length) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t('No releases yet.'))}</p></div></div>`;
-    else body = `<div class="stack">${inst && inst.pinned ? `<div class="card pinned"><div class="set-row"><div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div><button type="button" class="btn main" data-act="install" data-id="${esc(id)}">${esc(t('Go to the newest'))}</button></div></div>` : ''}
-      <div class="card rels">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => relDrawer(id, inst, r.list, x, n)).join('')}</div></div>`;
+    else {
+      const latest = latestRel(a, r.list);
+      body = `<div class="stack">${inst && inst.pinned ? `<div class="card pinned"><div class="set-row"><div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div><button type="button" class="btn main" data-act="install" data-id="${esc(id)}">${esc(t('Go to the newest'))}</button></div></div>` : ''}
+      <div class="card rels">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => relDrawer(id, inst, r.list, x, n, latest)).join('')}</div></div>`;
+    }
   } else if (S.tab === 'saves') {
     body = savesTab(a);
   } else if (S.tab === 'dev') {
@@ -2579,7 +2582,7 @@ function askUpdInfo(id) {
 // What each release in the Updates tab offers, by the same rule as the Library's badge and
 // Settings > Check (update_info): the update on offer, releases the store is still checking,
 // and releases with no build for this system. Any other release says which way it goes from the
-// installed one: the list is newest first, so a release above it is an upgrade, below a downgrade.
+// installed one: the list is newest first, so a release above it is an update, below a downgrade.
 function relState(id, inst, list, x) {
   if (!inst) return '';
   if (inst.tag === x.tag_name) return `<span class="ai-tag inst">${esc(t('Installed'))}</span>`;
@@ -2595,18 +2598,28 @@ function relState(id, inst, list, x) {
   const ii = list.findIndex((y) => relKey(y.tag_name) === relKey(inst.tag));
   // The installed version isn't in the list (a local build, or a release since taken down).
   if (ii < 0) return btn(t('Install this one'));
-  return btn(li < ii ? t('Upgrade') : t('Downgrade'));
+  return btn(li < ii ? t('Update') : t('Downgrade'));
+}
+// The release the game page's Latest version names (the store's version), so the pill and that
+// line agree; when no tag matches it, the newest release that isn't a pre-release, as GitHub does.
+function latestRel(a, list) {
+  const want = relKey(a.version);
+  const named = want ? list.find((x) => relKey(x.tag_name) === want) : null;
+  if (named) return named.tag_name;
+  const stable = list.find((x) => !x.draft && !x.prerelease);
+  return stable ? stable.tag_name : '';
 }
 // One release in the Updates tab as a drawer. Only the newest starts open, so its notes are right
 // there and older ones don't push them down; what the player opens or closes stays that way
-// through redraws (S.relOpen).
-function relDrawer(id, inst, list, x, n) {
+// through redraws (S.relOpen). The release tagged `latest` (latestRel) gets the Latest version pill.
+function relDrawer(id, inst, list, x, n, latest) {
   S.relOpen = S.relOpen || {};
   const key = `${id}@${x.tag_name}`;
   const open = key in S.relOpen ? S.relOpen[key] : n === 0;
   const pre = x.prerelease ? `<span class="pre">${esc(t('Pre-release'))}</span>` : '';
+  const newest = x.tag_name === latest ? `<span class="ai-tag latest">${esc(t('Latest version'))}</span>` : '';
   const notes = x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
-  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${pre}</button>`;
+  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${newest}${pre}</button>`;
   const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
   return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}<span class="rel-act">${relState(id, inst, list, x)}</span>${chev}</div>
     <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;

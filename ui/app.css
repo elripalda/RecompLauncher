@@ -537,6 +537,9 @@ body.light .known-fix b{color:#127a45}
 .rel-t h3{font-size:16px}
 .rel-h .pre{font-size:12px;font-weight:700;color:var(--warn)}
 .rel-h .when{color:var(--dim);font-size:13px}
+.rel-t .ai-tag{align-self:center;height:22px}
+.ai-tag.latest{color:#3ddc97;background:rgba(61,220,151,.1);border-color:rgba(61,220,151,.35)}
+body.light .ai-tag.latest{color:#127a45}
 .rel-act{display:flex;align-items:center;gap:8px;flex:none}
 .rel-act:empty{display:none}
 .rel-chev{flex:none;display:grid;place-items:center;width:28px;height:28px}

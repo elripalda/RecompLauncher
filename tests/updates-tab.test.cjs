@@ -30,11 +30,11 @@ function updatesTab(info) {
     document: { body: { classList: { contains: () => false } } },
     invoke: async (cmd) => (cmd === 'get_releases' ? { data: newer } : info()),
   });
-  for (const name of ['loadRels', 'askUpdInfo', 'relState']) {
+  for (const name of ['loadRels', 'askUpdInfo', 'relState', 'latestRel']) {
     if (app.includes(`function ${name}(`)) vm.runInContext(fn(name), c);
   }
-  // relState compares tags with relKey, a const rather than a function; vm keeps a const in its
-  // own script, so it goes on the context as a plain global.
+  // relState and latestRel compare tags with relKey, a const rather than a function; vm keeps a
+  // const in its own script, so it goes on the context as a plain global.
   vm.runInContext(app.match(/^const relKey = .*$/m)[0].replace(/^const /, 'globalThis.'), c);
   return c;
 }
@@ -67,14 +67,27 @@ test('a release older than the installed one offers Downgrade', () => {
   assert.match(c.relState(id, installed, three, three[2]), />Downgrade</);
 });
 
-test('a newer release that is not the update on offer offers Upgrade', () => {
+test('a newer release that is not the update on offer also offers Update', () => {
   const c = updatesTab(() => new Promise(() => {}));
   c.S.updInfo[id] = settled;
-  assert.match(c.relState(id, installed, three, three[0]), />Upgrade</);
+  assert.match(c.relState(id, installed, three, three[0]), /class="btn sm" [^>]*>Update</);
 });
 
-test('the update on offer still says Update', () => {
+test('the update on offer is the main Update button', () => {
   const c = updatesTab(() => new Promise(() => {}));
   c.S.updInfo[id] = { ...settled, offered: 'v0.1.12' };
-  assert.match(c.relState(id, installed, three, three[0]), />Update</);
+  assert.match(c.relState(id, installed, three, three[0]), /class="btn sm main"[^>]*>Update</);
+});
+
+// The game page's Latest version comes from the store; the pill goes on the release it names.
+const withPre = [{ tag_name: 'v0.2.0-rc1', prerelease: true }, { tag_name: 'v0.1.12' }, { tag_name: 'v0.1.11' }];
+
+test('the Latest version pill goes on the release the store names', () => {
+  const c = updatesTab(() => new Promise(() => {}));
+  assert.equal(c.latestRel({ version: '0.1.11' }, withPre), 'v0.1.11');
+});
+
+test('with no store version, the pill goes on the newest release that is not a pre-release', () => {
+  const c = updatesTab(() => new Promise(() => {}));
+  assert.equal(c.latestRel({ version: '' }, withPre), 'v0.1.12');
 });
