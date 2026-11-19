@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "Відкрити звіт VirusTotal",
  "Verified Update": "Перевірене оновлення",
  "Update All Games Automatically": "Оновлювати всі ігри автоматично",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Кожна встановлена гра отримує новий реліз, щойно лаунчер його знаходить. Спершу створюється копія твоїх збережень. Гра з «Призупинити оновлення» залишається на своїй версії.",
- "On for every game in Settings → Updates.": "Увімкнено для всіх ігор у Налаштування → Оновлення.",
- "A game with Pause Updates stays on the version it has": "Гра з «Призупинити оновлення» залишається на своїй версії"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Кожна встановлена гра отримує новий реліз, щойно лаунчер його знаходить. Спершу створюється копія твоїх збережень. Щоб гра чекала на тебе, вимкни «Оновлювати автоматично» на її вкладці «Керування».",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Налаштування → Оновлення вмикають це для всіх ігор. Вимкнено тут: ця гра чекає на тебе.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Кожна встановлена гра отримує новий реліз, щойно лаунчер його знаходить",
+ "Turn off automatic updates": "Вимкнути автооновлення",
+ "Updates wait for you in Downloads": "Оновлення чекають на тебе в «Завантаженнях»"
 }

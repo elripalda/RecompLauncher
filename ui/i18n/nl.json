@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "VirusTotal-rapport openen",
  "Verified Update": "Geverifieerde update",
  "Update All Games Automatically": "Alle games automatisch bijwerken",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Elke geïnstalleerde game krijgt een nieuwe release zodra de launcher die vindt. Er wordt eerst een back-up van je opgeslagen games gemaakt. Een game met ‘Updates pauzeren’ blijft op de versie die het heeft.",
- "On for every game in Settings → Updates.": "Aan voor elke game in Instellingen → Updates.",
- "A game with Pause Updates stays on the version it has": "Een game met ‘Updates pauzeren’ blijft op de versie die het heeft"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Elke geïnstalleerde game krijgt een nieuwe release zodra de launcher die vindt. Er wordt eerst een back-up van je opgeslagen games gemaakt. Wil je dat één game op je wacht, zet dan ‘Automatisch bijwerken’ uit op het tabblad Beheren.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Instellingen → Updates zet dit aan voor elke game. Hier uit: deze game wacht op jou.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Elke geïnstalleerde game krijgt een nieuwe release zodra de launcher die vindt",
+ "Turn off automatic updates": "Automatische updates uitzetten",
+ "Updates wait for you in Downloads": "Updates wachten op je bij Downloads"
 }

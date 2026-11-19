@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "Buka laporan VirusTotal",
  "Verified Update": "Pembaruan terverifikasi",
  "Update All Games Automatically": "Perbarui Semua Game Otomatis",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Setiap game yang terpasang mendapat rilis baru begitu launcher menemukannya. Save-mu dicadangkan dulu. Game dengan “Jeda Pembaruan” tetap di versi yang dimilikinya.",
- "On for every game in Settings → Updates.": "Aktif untuk semua game di Pengaturan → Pembaruan.",
- "A game with Pause Updates stays on the version it has": "Game dengan “Jeda Pembaruan” tetap di versi yang dimilikinya"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Setiap game yang terpasang mendapat rilis baru begitu launcher menemukannya. Save-mu dicadangkan dulu. Agar satu game menunggumu, matikan “Perbarui otomatis” di tab Kelola game itu.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Pengaturan → Pembaruan menyalakan ini untuk semua game. Mati di sini: game ini menunggumu.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Setiap game yang terpasang mendapat rilis baru begitu launcher menemukannya",
+ "Turn off automatic updates": "Matikan pembaruan otomatis",
+ "Updates wait for you in Downloads": "Pembaruan menunggumu di Unduhan"
 }

@@ -1260,7 +1260,7 @@
           ${sw('close_to_tray', t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
           ${head(t('Games and updates'))}
           ${sw('notify', t('Notifications'), t('When a new recomp comes out for a game you own'))}
-          ${sw('auto_update_all', t('Update All Games Automatically'), t('A game with Pause Updates stays on the version it has'))}
+          ${sw('auto_update_all', t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one'))}
           ${sw('backup_before_update', t('Back up saves before updates'), t('The newest five copies of each game\'s saves'))}
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in Discover'))}
@@ -1764,6 +1764,8 @@
         ...(S.steam ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
         ...(S.account && S.account.signedIn ? [{ label: g.cloud ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: g.cloud ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); toast(g.cloud ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
+        // The same switch as the game's Manage tab on the desktop, and the same skip list under Settings.
+        ...(!g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
         ...(!g.local && window.holdItem ? [(() => { const on = window.holdItem(id)[0]?.check; return { label: on ? t('Resume Updates') : t('Pause Updates'), sub: on ? ((S.held || {})[id] ? tf('{v} is out', { v: S.held[id] }) : t('It updates like the rest again')) : t('It stays on the version it has'), icon: 'pause', run: async () => { await window.toggleHold(id); draw(true); } }; })()] : []),
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },

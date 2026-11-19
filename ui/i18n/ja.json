@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "VirusTotal のレポートを開く",
  "Verified Update": "確認済みのアップデート",
  "Update All Games Automatically": "すべてのゲームを自動でアップデート",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "インストール済みのゲームはすべて、ランチャーが新しいリリースを見つけたらすぐにアップデートされます。先にセーブデータがバックアップされます。「更新を一時停止」にしたゲームは今のバージョンのままです。",
- "On for every game in Settings → Updates.": "設定 → アップデートで、すべてのゲームに対してオンになっています。",
- "A game with Pause Updates stays on the version it has": "「更新を一時停止」にしたゲームは今のバージョンのままです"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "インストール済みのゲームはすべて、ランチャーが新しいリリースを見つけたらすぐにアップデートされます。先にセーブデータがバックアップされます。待たせたいゲームは、その「管理」タブで「自動でアップデート」をオフにしてください。",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "設定 → アップデートで、すべてのゲームに対してオンになっています。ここでオフにすると、このゲームはあなたを待ちます。",
+ "Every installed game takes a new release as soon as the launcher finds one": "インストール済みのゲームはすべて、ランチャーが新しいリリースを見つけたらすぐにアップデートされます",
+ "Turn off automatic updates": "自動アップデートをオフにする",
+ "Updates wait for you in Downloads": "アップデートは「ダウンロード」で待っています"
 }

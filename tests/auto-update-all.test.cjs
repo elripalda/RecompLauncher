@@ -7,8 +7,8 @@ const vm = require('node:vm');
 const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
-const helpersSrc = [/^const autoInstall = .*$/m, /^const autoUpdateAll = .*$/m, /^const autoUpdates = .*$/m]
-  .map((re) => app.match(re)[0]).join('\n');
+const helpersSrc = [/^const autoInstall = .*$/m, /^const autoUpdateAll = .*$/m, /^const autoUpSkipped = .*$/m]
+  .map((re) => app.match(re)[0]).join('\n') + '\n' + fn(app, 'autoUpdates') + '\n' + fn(app, 'toggleAutoUpdate');
 
 function settingsContext(settings) {
   const c = vm.createContext({
@@ -28,8 +28,21 @@ function settingsContext(settings) {
   c.window = c;
   c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
   vm.runInContext(helpersSrc, c);
-  // A const stays inside the script it was declared in, so the tests ask for it by name.
-  c.autoUpdates = vm.runInContext('autoUpdates', c);
+  return c;
+}
+
+// Arrays made inside the sandbox aren't this file's arrays, so they're compared as plain data.
+const plain = (x) => JSON.parse(JSON.stringify(x));
+
+// A library of the given games, and a record of what a game's own switch saves.
+function switchContext(settings, library) {
+  const c = settingsContext(settings);
+  c.S.library = library;
+  c.calls = [];
+  c.invoke = async (command, args) => { c.calls.push({ command, autoUpdate: args.autoUpdate }); return { ...library[args.id], auto_update: args.autoUpdate }; };
+  c.saveUi = async (patch) => { c.calls.push({ ui: patch }); c.S.settings.ui = { ...(c.S.settings.ui || {}), ...patch }; };
+  c.toast = () => {}; c.render = () => {};
+  c.fail = (error) => { throw error; };
   return c;
 }
 
@@ -54,23 +67,56 @@ test('Big Picture shows the same Update All Games Automatically switch', () => {
 });
 
 test('a game updates by itself with only its own switch on', () => {
-  const c = settingsContext({});
-  assert.equal(c.autoUpdates({ auto_update: true }), true);
-  assert.equal(c.autoUpdates({ auto_update: false }), false);
+  const c = switchContext({}, { a: { auto_update: true }, b: { auto_update: false } });
+  assert.equal(c.autoUpdates('a'), true);
+  assert.equal(c.autoUpdates('b'), false);
 });
 
 test('every game updates by itself with the Settings switch on', () => {
-  const c = settingsContext({ auto_update_all: true });
-  assert.equal(c.autoUpdates({ auto_update: false }), true);
+  const c = switchContext({ auto_update_all: true }, { b: { auto_update: false } });
+  assert.equal(c.autoUpdates('b'), true);
+});
+
+test('a game turned off in its Manage tab waits, even with the Settings switch on', () => {
+  const c = switchContext({ auto_update_all: true, ui: { auto_update_skip: ['b'] } }, { b: { auto_update: false } });
+  assert.equal(c.autoUpdates('b'), false);
 });
 
 test('a local build never updates by itself, even with the Settings switch on', () => {
-  const c = settingsContext({ auto_update_all: true });
-  assert.equal(c.autoUpdates({ local: true, auto_update: true }), false);
+  const c = switchContext({ auto_update_all: true }, { l: { local: true, auto_update: true } });
+  assert.equal(c.autoUpdates('l'), false);
+});
+
+test('with the Settings switch on, a game\'s own switch goes on the skip list and off it again', async () => {
+  const c = switchContext({ auto_update_all: true }, { b: { name: 'B', auto_update: false } });
+  await c.toggleAutoUpdate('b');
+  assert.equal(c.autoUpdates('b'), false);
+  await c.toggleAutoUpdate('b');
+  assert.equal(c.autoUpdates('b'), true);
+  assert.deepEqual(plain(c.calls), [{ ui: { auto_update_skip: ['b'] } }, { ui: { auto_update_skip: [] } }]);
+});
+
+test('with the Settings switch on, turning off a game that had its own switch on clears that too', async () => {
+  const c = switchContext({ auto_update_all: true }, { a: { name: 'A', auto_update: true } });
+  await c.toggleAutoUpdate('a');
+  assert.equal(c.autoUpdates('a'), false);
+  assert.deepEqual(plain(c.calls), [{ command: 'set_game_options', autoUpdate: false }, { ui: { auto_update_skip: ['a'] } }]);
+});
+
+test('with the Settings switch off, a game\'s own switch saves only the game', async () => {
+  const c = switchContext({}, { b: { name: 'B', auto_update: false } });
+  await c.toggleAutoUpdate('b');
+  assert.equal(c.autoUpdates('b'), true);
+  assert.deepEqual(plain(c.calls), [{ command: 'set_game_options', autoUpdate: true }]);
+});
+
+test('Big Picture\'s game options carry the same switch', () => {
+  assert.match(tv, /window\.autoUpdates\(id\); return \{ label: on \? t\('Turn off automatic updates'\) : t\('Update automatically'\)/);
+  assert.match(tv, /run: async \(\) => \{ await window\.toggleAutoUpdate\(id\); draw\(true\); \}/);
 });
 
 test('the update check starts the updates of games that update by themselves', () => {
-  assert.match(fn(app, 'checkUpdates'), /\.filter\(\(id\) => autoUpdates\(S\.library\[id\]\) && !S\.running\.has\(id\)/);
+  assert.match(fn(app, 'checkUpdates'), /\.filter\(\(id\) => autoUpdates\(id\) && !S\.running\.has\(id\)/);
 });
 
 test('turning the Settings switch on starts the updates already waiting', async () => {

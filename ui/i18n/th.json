@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "เปิดรายงาน VirusTotal",
  "Verified Update": "อัปเดตที่ยืนยันแล้ว",
  "Update All Games Automatically": "อัปเดตทุกเกมอัตโนมัติ",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "ทุกเกมที่ติดตั้งไว้จะได้รับรุ่นใหม่ทันทีที่ตัวเปิดเกมพบ โดยจะสำรองเซฟของคุณไว้ก่อน เกมที่เปิด “หยุดอัปเดตชั่วคราว” จะอยู่ที่เวอร์ชันที่มี",
- "On for every game in Settings → Updates.": "เปิดไว้สำหรับทุกเกมใน การตั้งค่า → อัปเดต",
- "A game with Pause Updates stays on the version it has": "เกมที่เปิด “หยุดอัปเดตชั่วคราว” จะอยู่ที่เวอร์ชันที่มี"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "ทุกเกมที่ติดตั้งไว้จะได้รับรุ่นใหม่ทันทีที่ตัวเปิดเกมพบ โดยจะสำรองเซฟของคุณไว้ก่อน หากอยากให้เกมใดรอคุณ ให้ปิด “อัปเดตอัตโนมัติ” ในแท็บจัดการของเกมนั้น",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "การตั้งค่า → อัปเดต เปิดตัวเลือกนี้ให้ทุกเกม ปิดตรงนี้: เกมนี้จะรอคุณ",
+ "Every installed game takes a new release as soon as the launcher finds one": "ทุกเกมที่ติดตั้งไว้จะได้รับรุ่นใหม่ทันทีที่ตัวเปิดเกมพบ",
+ "Turn off automatic updates": "ปิดการอัปเดตอัตโนมัติ",
+ "Updates wait for you in Downloads": "อัปเดตจะรอคุณอยู่ในดาวน์โหลด"
 }

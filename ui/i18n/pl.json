@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "Otwórz raport VirusTotal",
  "Verified Update": "Zweryfikowana aktualizacja",
  "Update All Games Automatically": "Aktualizuj automatycznie wszystkie gry",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Każda zainstalowana gra dostaje nowe wydanie, gdy tylko launcher je znajdzie. Najpierw tworzona jest kopia twoich zapisów. Gra z opcją „Wstrzymaj aktualizacje” zostaje przy wersji, którą ma.",
- "On for every game in Settings → Updates.": "Włączone dla wszystkich gier w Ustawienia → Aktualizacje.",
- "A game with Pause Updates stays on the version it has": "Gra z opcją „Wstrzymaj aktualizacje” zostaje przy wersji, którą ma"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Każda zainstalowana gra dostaje nowe wydanie, gdy tylko launcher je znajdzie. Najpierw tworzona jest kopia twoich zapisów. Żeby jedna gra na ciebie czekała, wyłącz „Aktualizuj automatycznie” w jej karcie Zarządzaj.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Ustawienia → Aktualizacje włączają to dla wszystkich gier. Wyłączone tutaj: ta gra na ciebie czeka.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Każda zainstalowana gra dostaje nowe wydanie, gdy tylko launcher je znajdzie",
+ "Turn off automatic updates": "Wyłącz automatyczne aktualizacje",
+ "Updates wait for you in Downloads": "Aktualizacje czekają na ciebie w Pobieraniu"
 }

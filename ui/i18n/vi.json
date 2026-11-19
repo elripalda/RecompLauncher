@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "Mở báo cáo VirusTotal",
  "Verified Update": "Bản cập nhật đã xác minh",
  "Update All Games Automatically": "Tự động cập nhật mọi game",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "Mỗi game đã cài nhận bản phát hành mới ngay khi trình khởi chạy tìm thấy. Dữ liệu lưu của bạn được sao lưu trước. Game đã bật “Tạm dừng cập nhật” giữ nguyên phiên bản đang có.",
- "On for every game in Settings → Updates.": "Đang bật cho mọi game trong Cài đặt → Cập nhật.",
- "A game with Pause Updates stays on the version it has": "Game đã bật “Tạm dừng cập nhật” giữ nguyên phiên bản đang có"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Mỗi game đã cài nhận bản phát hành mới ngay khi trình khởi chạy tìm thấy. Dữ liệu lưu của bạn được sao lưu trước. Để một game chờ bạn, hãy tắt “Tự động cập nhật” trong thẻ Quản lý của nó.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Cài đặt → Cập nhật bật mục này cho mọi game. Tắt ở đây: game này sẽ chờ bạn.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Mỗi game đã cài nhận bản phát hành mới ngay khi trình khởi chạy tìm thấy",
+ "Turn off automatic updates": "Tắt tự động cập nhật",
+ "Updates wait for you in Downloads": "Bản cập nhật chờ bạn trong Tải xuống"
 }

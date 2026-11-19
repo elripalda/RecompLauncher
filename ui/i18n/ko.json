@@ -3362,7 +3362,9 @@
  "Open the VirusTotal report": "VirusTotal 보고서 열기",
  "Verified Update": "확인된 업데이트",
  "Update All Games Automatically": "모든 게임 자동 업데이트",
- "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. A game with Pause Updates stays on the version it has.": "설치된 모든 게임은 런처가 새 릴리스를 찾으면 바로 받습니다. 저장 데이터는 먼저 백업됩니다. “업데이트 일시 중지”를 켠 게임은 지금 버전에 머뭅니다.",
- "On for every game in Settings → Updates.": "설정 → 업데이트에서 모든 게임에 켜져 있습니다.",
- "A game with Pause Updates stays on the version it has": "“업데이트 일시 중지”를 켠 게임은 지금 버전에 머뭅니다"
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "설치된 모든 게임은 런처가 새 릴리스를 찾으면 바로 받습니다. 저장 데이터는 먼저 백업됩니다. 한 게임만 기다리게 하려면 그 게임의 관리 탭에서 “자동 업데이트”를 끄세요.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "설정 → 업데이트에서 모든 게임에 켜져 있습니다. 여기서 끄면 이 게임은 기다립니다.",
+ "Every installed game takes a new release as soon as the launcher finds one": "설치된 모든 게임은 런처가 새 릴리스를 찾으면 바로 받습니다",
+ "Turn off automatic updates": "자동 업데이트 끄기",
+ "Updates wait for you in Downloads": "업데이트는 다운로드에서 기다립니다"
 }
