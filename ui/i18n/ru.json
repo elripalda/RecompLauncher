@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "Проверено командой RecompStore",
  "Open the VirusTotal report": "Открыть отчёт VirusTotal",
  "Verified Update": "Проверенное обновление",
- "N/A": "Н/Д"
+ "N/A": "Н/Д",
+ "{what} or newer": "{what} или новее",
+ "This PC has {version}": "На этом ПК {version}",
+ "This PC has {version}. The game may not start.": "На этом ПК {version}. Игра может не запуститься.",
+ "Graphics: {api} {version}": "Графика: {api} {version}",
+ "Your graphics card and its driver need to support it": "Видеокарта и её драйвер должны это поддерживать",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} нужна {what} или новее, а на этом ПК {have}. Игра может не запуститься."
 }

@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "تم الفحص بواسطة فريق RecompStore",
  "Open the VirusTotal report": "فتح تقرير VirusTotal",
  "Verified Update": "تحديث موثّق",
- "N/A": "غير متاح"
+ "N/A": "غير متاح",
+ "{what} or newer": "{what} أو أحدث",
+ "This PC has {version}": "هذا الحاسوب فيه {version}",
+ "This PC has {version}. The game may not start.": "هذا الحاسوب فيه {version}. قد لا تعمل اللعبة.",
+ "Graphics: {api} {version}": "الرسومات: {api} {version}",
+ "Your graphics card and its driver need to support it": "يجب أن تدعمها بطاقة الرسومات وبرنامج تشغيلها",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "تحتاج {name} إلى {what} أو أحدث، وهذا الحاسوب فيه {have}. قد لا تعمل."
 }

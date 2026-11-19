@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "ตรวจสอบโดยทีม RecompStore",
  "Open the VirusTotal report": "เปิดรายงาน VirusTotal",
  "Verified Update": "อัปเดตที่ยืนยันแล้ว",
- "N/A": "ไม่มี"
+ "N/A": "ไม่มี",
+ "{what} or newer": "{what} ขึ้นไป",
+ "This PC has {version}": "พีซีเครื่องนี้มี {version}",
+ "This PC has {version}. The game may not start.": "พีซีเครื่องนี้มี {version} เกมอาจเปิดไม่ขึ้น",
+ "Graphics: {api} {version}": "กราฟิก: {api} {version}",
+ "Your graphics card and its driver need to support it": "การ์ดจอและไดรเวอร์ต้องรองรับสิ่งนี้",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} ต้องใช้ {what} ขึ้นไป แต่พีซีเครื่องนี้มี {have} เกมอาจเปิดไม่ขึ้น"
 }

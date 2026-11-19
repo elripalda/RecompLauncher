@@ -1374,6 +1374,7 @@ function readyRows(a) {
   if (su && su.needs && su.update && !selfRun) rows.push({ k: t('The game\'s update'), v: su.update_copy ? true : su.update_optional ? true : null,
     d: su.update_copy ? tf('Set up with {file}', { file: baseName(su.update_copy) }) : su.update,
     fix: su.update_copy || su.update_optional ? '' : `<button type="button" class="btn sm main" data-act="setupdate" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` });
+  rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
   // A recomp whose own setup builds it on this PC (from a clone of its repo).
@@ -1394,6 +1395,31 @@ function readyRows(a) {
     if (lib && lib.free != null && need) rows.push({ k: t('Room on the drive'), v: lib.free > need, d: tf('{free} free in {path}', { free: fmtB(lib.free), path: lib.path }), fix: '' });
   }
   return rows;
+}
+// The graphics APIs `system.*.graphics` names, as players know them.
+const GRAPHICS_NAMES = { vulkan: 'Vulkan', opengl: 'OpenGL', d3d12: 'Direct3D 12', d3d11: 'Direct3D 11', d3d9: 'Direct3D 9', metal: 'Metal' };
+// What the installed build says it needs from the PC (`system` in its recomplauncher.json). The
+// system's version and glibc are checked (in red when this PC is older; the game still starts);
+// the graphics API is only shown. Nothing when the PC can't tell its own version.
+function systemRows(su, pc) {
+  const need = su && su.system;
+  if (!need) return [];
+  const old = (what) => (su.system_old || []).find((o) => o.what === what);
+  const rows = [];
+  const row = (label, have, o) => rows.push({ k: tf('{what} or newer', { what: label }), v: have ? !o : null,
+    d: o ? tf('This PC has {version}. The game may not start.', { version: o.have }) : have ? tf('This PC has {version}', { version: have }) : '', fix: '' });
+  const osName = { windows: 'Windows', macos: 'macOS' }[S.os];
+  if (need.version && osName) row(`${osName} ${need.version}`, pc.os_version, old(S.os));
+  if (need.glibc && S.os === 'linux') row(`glibc ${need.glibc}`, pc.glibc, old('glibc'));
+  for (const [api, version] of Object.entries(need.graphics || {})) {
+    rows.push({ k: tf('Graphics: {api} {version}', { api: GRAPHICS_NAMES[api] || api, version }), v: null, d: t('Your graphics card and its driver need to support it'), fix: '' });
+  }
+  return rows;
+}
+// Said when the game starts on a PC older than it says it needs (the game page shows it too).
+function systemOldText(name, o) {
+  const what = o.what === 'glibc' ? `glibc ${o.want}` : `${o.what === 'macos' ? 'macOS' : 'Windows'} ${o.want}`;
+  return tf('{name} needs {what} or newer, and this PC has {have}. It may not start.', { name, what, have: o.have });
 }
 const parseSize = (sz) => { const m = String(sz || '').match(/([\d.]+)\s*(KB|MB|GB)/i); return m ? parseFloat(m[1]) * { KB: 1024, MB: 1048576, GB: 1073741824 }[m[2].toUpperCase()] : 0; };
 
@@ -9264,6 +9290,12 @@ function openLinkedGame(id) {
 T.event.listen('open-game', ({ payload }) => openLinkedGame(payload));
 // Something on its way that takes a while (a Flatpak installing before its game starts).
 T.event.listen('note', ({ payload }) => toast(t(String(payload)), false, null, 9000));
+// The game started on a PC older than it says it needs: once per start, the desktop and Big Picture
+// alike.
+T.event.listen('system-old', ({ payload }) => {
+  const p = payload || {};
+  for (const o of p.old || []) toast(systemOldText(p.name || '', o), true, null, 12000);
+});
 T.event.listen('setup-required', ({ payload }) => { if (S.cat && S.cat.apps.length) { invoke('take_setup_asked').catch(() => {}); setupReqModal(String(payload)); } });
 // A shortcut asked to play a game whose project added setup options: its page, then Play asks.
 function newOptsFromShortcut(id) {

@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "Diperiksa oleh tim RecompStore",
  "Open the VirusTotal report": "Buka laporan VirusTotal",
  "Verified Update": "Pembaruan terverifikasi",
- "N/A": "Tidak ada"
+ "N/A": "Tidak ada",
+ "{what} or newer": "{what} atau lebih baru",
+ "This PC has {version}": "PC ini punya {version}",
+ "This PC has {version}. The game may not start.": "PC ini punya {version}. Gamenya mungkin tidak mau jalan.",
+ "Graphics: {api} {version}": "Grafis: {api} {version}",
+ "Your graphics card and its driver need to support it": "Kartu grafis dan drivernya harus mendukungnya",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} butuh {what} atau lebih baru, dan PC ini punya {have}. Gamenya mungkin tidak mau jalan."
 }

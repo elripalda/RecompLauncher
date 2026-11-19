@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "Gecontroleerd door het RecompStore-team",
  "Open the VirusTotal report": "VirusTotal-rapport openen",
  "Verified Update": "Geverifieerde update",
- "N/A": "n.v.t."
+ "N/A": "n.v.t.",
+ "{what} or newer": "{what} of nieuwer",
+ "This PC has {version}": "Deze pc heeft {version}",
+ "This PC has {version}. The game may not start.": "Deze pc heeft {version}. Het spel start misschien niet.",
+ "Graphics: {api} {version}": "Graphics: {api} {version}",
+ "Your graphics card and its driver need to support it": "Je videokaart en de driver ervan moeten het ondersteunen",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} heeft {what} of nieuwer nodig, en deze pc heeft {have}. Het start misschien niet."
 }

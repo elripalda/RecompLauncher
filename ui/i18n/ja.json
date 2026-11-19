@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "RecompStore チームが確認済み",
  "Open the VirusTotal report": "VirusTotal のレポートを開く",
  "Verified Update": "確認済みのアップデート",
- "N/A": "該当なし"
+ "N/A": "該当なし",
+ "{what} or newer": "{what} 以降",
+ "This PC has {version}": "このPCは {version}",
+ "This PC has {version}. The game may not start.": "このPCは {version} です。ゲームが起動しないかもしれません。",
+ "Graphics: {api} {version}": "グラフィックス: {api} {version}",
+ "Your graphics card and its driver need to support it": "グラフィックカードとそのドライバーが対応している必要があります",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} には {what} 以降が必要ですが、このPCは {have} です。起動しないかもしれません。"
 }

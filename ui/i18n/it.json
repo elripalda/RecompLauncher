@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "Controllato dal team di RecompStore",
  "Open the VirusTotal report": "Apri il report di VirusTotal",
  "Verified Update": "Aggiornamento verificato",
- "N/A": "N/D"
+ "N/A": "N/D",
+ "{what} or newer": "{what} o successivo",
+ "This PC has {version}": "Questo PC ha {version}",
+ "This PC has {version}. The game may not start.": "Questo PC ha {version}. Il gioco potrebbe non avviarsi.",
+ "Graphics: {api} {version}": "Grafica: {api} {version}",
+ "Your graphics card and its driver need to support it": "La scheda grafica e il suo driver devono supportarlo",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} richiede {what} o successivo, e questo PC ha {have}. Potrebbe non avviarsi."
 }

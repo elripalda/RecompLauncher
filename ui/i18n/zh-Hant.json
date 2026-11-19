@@ -3362,5 +3362,11 @@
  "Checked by the RecompStore team": "已由 RecompStore 團隊檢查",
  "Open the VirusTotal report": "開啟 VirusTotal 報告",
  "Verified Update": "已驗證的更新",
- "N/A": "不適用"
+ "N/A": "不適用",
+ "{what} or newer": "{what} 或更新版本",
+ "This PC has {version}": "這台電腦是 {version}",
+ "This PC has {version}. The game may not start.": "這台電腦是 {version}，遊戲可能無法啟動。",
+ "Graphics: {api} {version}": "圖形：{api} {version}",
+ "Your graphics card and its driver need to support it": "需要顯示卡及其驅動程式支援",
+ "{name} needs {what} or newer, and this PC has {have}. It may not start.": "{name} 需要 {what} 或更新版本，而這台電腦是 {have}，可能無法啟動。"
 }
