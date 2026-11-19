@@ -290,9 +290,10 @@ PC. List folders, single files, or files matching a `*` pattern:
 "saves": ["{local}/My Game/saves", "{install}/settings.toml"]
 ```
 
-Without it, the launcher watches which files the game writes while it runs, and uses those places.
-That works for most games, but saying where is better. Only list saves and small settings: game
-files, programs and archives are never copied, and nothing over 64 MB.
+Without it (and without a catalog entry that says), the launcher doesn't guess: the game's Saves tab
+says it doesn't know where the game saves, and nothing is backed up or synced until the player picks
+the folder. So say where. Only list saves and small settings: game files, programs and archives are
+never copied, and nothing over 64 MB.
 
 You can move them in a later release. Keep the same number of entries in the same order, and change
 the path in place: a copy made from the old place goes into the new one when the player restores it,

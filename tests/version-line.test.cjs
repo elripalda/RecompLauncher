@@ -65,7 +65,7 @@ test('the Library passes the installed release to its tiles only with the settin
 
 test('a game page before install shows the latest version with its scan, then the stars', () => {
   const body = fn('gameBody');
-  assert.match(body, /\[t\('Version'\), a\.version \|\| '—'\], \[t\('Stars'\)/);
+  assert.match(body, /\[t\('Version'\), a\.version \|\| '—'\], \[starsLabel\(a\.repo\)/);
 });
 
 test('a game page before install looks up the scan by the release tag, not the version', () => {

@@ -1,7 +1,6 @@
-//! Looking after installed games: moving them between drives, backing up what's the player's
-//! (saves, settings, mods) and putting it back, and checking the PC has what recomps need.
+//! Looking after installed games: moving them between drives, backing up their saves before an
+//! update and putting them back, and checking the PC has what recomps need.
 
-use std::collections::HashSet;
 use crate::Error;
 use serde::Serialize;
 use std::fs;
@@ -92,78 +91,8 @@ fn copy_tree(from: &Path, to: &Path, done: &mut u64, total: u64, report: &dyn Fn
     Ok(())
 }
 
-const PROGRAM_ENDS: [&str; 9] = [".exe", ".dll", ".so", ".appimage", ".pdb", ".msi", ".zip", ".7z", ".tar.gz"];
-
-/// The files in a game's folder that are the player's rather than the release's: saves, settings,
-/// mods. `release` is what the last install put there (empty for games installed before the launcher
-/// kept that list: then anything that isn't a program). Never a file over 50 MB.
-pub fn player_files(dir: &Path, release: &[PathBuf]) -> Vec<PathBuf> {
-    player_files_within(dir, release).unwrap_or_default()
-}
-
 /// The player asked to skip the backup that's being made (the update goes on without it).
 pub static SKIP_BACKUP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Folders that hold a game's data (a disc or console dump copied in), never saves or settings.
-const DATA_DIRS: [&str; 14] = [
-    "ps3_game", "usrdir", "sce_sys", "sce_module", "ps4_game", "app0", "romfs", "exefs", "shadercache", "shader_cache", "cache", "logs", "crashdumps", ".backups",
-];
-/// Bigger than this, a single file isn't a save or a setting.
-const PLAYER_FILE_MAX: u64 = 16 * 1024 * 1024;
-/// More than this altogether is game data, not the player's files: no backup then.
-const PLAYER_TOTAL_MAX: u64 = 512 * 1024 * 1024;
-const PLAYER_COUNT_MAX: usize = 8_000;
-
-/// None when what's there is too much to be the player's files (a dump unpacked into the game's
-/// folder), took too long to look through, or the player skipped it.
-fn player_files_within(dir: &Path, release: &[PathBuf]) -> Option<Vec<PathBuf>> {
-    use std::sync::atomic::Ordering;
-    let release: HashSet<&PathBuf> = release.iter().collect();
-    let start = std::time::Instant::now();
-    let mut out = vec![];
-    let mut total = 0u64;
-    let mut seen = 0usize;
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
-            seen += 1;
-            if seen % 256 == 0 && (start.elapsed().as_secs() > 20 || SKIP_BACKUP.load(Ordering::Relaxed)) {
-                return None;
-            }
-            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
-                continue;
-            }
-            let p = e.path();
-            let Ok(m) = e.metadata() else { continue };
-            if p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(".recomplauncher-input-") || n == crate::swap::FOLDER || ["prod.keys", "title.keys", "common.key"].iter().any(|s| n.eq_ignore_ascii_case(s))) { continue; }
-            if m.is_dir() {
-                let name = e.file_name().to_string_lossy().to_lowercase();
-                if !DATA_DIRS.contains(&name.as_str()) {
-                    stack.push(p);
-                }
-                continue;
-            }
-            let Ok(rel) = p.strip_prefix(dir) else { continue };
-            let rel = rel.to_path_buf();
-            let n = rel.to_string_lossy().to_lowercase();
-            // Saves, settings and mods, not the player's own game files (a disc's worth of data
-            // copied in): those don't change with an update and would make every backup gigabytes.
-            let mine = if release.is_empty() { !PROGRAM_ENDS.iter().any(|e| n.ends_with(e)) } else { !release.contains(&rel) };
-            if mine && m.len() <= PLAYER_FILE_MAX && !DATA_ENDS.iter().any(|e| n.ends_with(e)) {
-                total += m.len();
-                out.push(rel);
-                if total > PLAYER_TOTAL_MAX || out.len() > PLAYER_COUNT_MAX {
-                    return None;
-                }
-            }
-        }
-    }
-    out.sort();
-    Some(out)
-}
-
-/// Game data and disc images: never the player's files.
-const DATA_ENDS: [&str; 16] = [".iso", ".bin", ".cue", ".chd", ".rvz", ".wbfs", ".xex", ".xbe", ".sdat", ".edat", ".sprx", ".self", ".pkg", ".psarc", ".z64", ".log"];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Backup {
@@ -174,11 +103,10 @@ pub struct Backup {
     pub files: usize,
 }
 
-/// Zip the player's files into `<backups>/<when>.zip`, keeping the newest `keep`. None when there's
-/// nothing of theirs to keep.
-pub fn backup(dir: &Path, release: &[PathBuf], backups: &Path, keep: usize) -> Result<Option<Backup>, Error> {
+/// Zip `files` (paths inside the game's folder `dir`: its saves there, see `saves::files_inside`)
+/// into `<backups>/<when>.zip`, keeping the newest `keep`. None when there are none.
+pub fn backup(dir: &Path, files: &[PathBuf], backups: &Path, keep: usize) -> Result<Option<Backup>, Error> {
     SKIP_BACKUP.store(false, std::sync::atomic::Ordering::Relaxed);
-    let Some(files) = player_files_within(dir, release) else { return Ok(None) };
     if files.is_empty() {
         return Ok(None);
     }
@@ -188,7 +116,7 @@ pub fn backup(dir: &Path, release: &[PathBuf], backups: &Path, keep: usize) -> R
     {
         let mut z = zip::ZipWriter::new(fs::File::create(&file)?);
         let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        for rel in &files {
+        for rel in files {
             if SKIP_BACKUP.load(std::sync::atomic::Ordering::Relaxed) {
                 drop(z);
                 let _ = fs::remove_file(&file);
@@ -310,23 +238,25 @@ mod tests {
     }
 
     #[test]
-    fn backups_keep_only_the_players_files() {
+    fn a_backup_holds_the_files_it_is_given_and_puts_them_back() {
         let d = tmp("bk");
         let game = d.join("game");
         fs::create_dir_all(game.join("saves")).unwrap();
         fs::write(game.join("Game.exe"), b"exe").unwrap();
-        fs::write(game.join("data.bin"), b"release data").unwrap();
         fs::write(game.join("saves/slot1.sav"), b"save").unwrap();
         fs::write(game.join("settings.json"), b"{}").unwrap();
-        let release = vec![PathBuf::from("Game.exe"), PathBuf::from("data.bin")];
-        let b = backup(&game, &release, &d.join("backups"), 2).unwrap().unwrap();
-        assert_eq!(b.files, 2);
+        let b = backup(&game, &[PathBuf::from("saves/slot1.sav")], &d.join("backups"), 2).unwrap().unwrap();
+        assert_eq!(b.files, 1);
         fs::write(game.join("saves/slot1.sav"), b"broken").unwrap();
-        assert_eq!(restore(&b.file, &game).unwrap(), 2);
+        assert_eq!(restore(&b.file, &game).unwrap(), 1);
         assert_eq!(fs::read(game.join("saves/slot1.sav")).unwrap(), b"save");
-        // Old installs without a list: programs left out.
-        let guess = player_files(&game, &[]);
-        assert!(guess.contains(&PathBuf::from("saves/slot1.sav")) && !guess.contains(&PathBuf::from("Game.exe")));
+    }
+
+    #[test]
+    fn nothing_to_back_up_makes_no_backup() {
+        let d = tmp("bk-none");
+        assert!(backup(&d.join("game"), &[], &d.join("backups"), 2).unwrap().is_none());
+        assert!(!d.join("backups").exists());
     }
 
     #[test]
@@ -340,7 +270,7 @@ mod tests {
         let game = d.join("g");
         fs::create_dir_all(&game).unwrap();
         fs::write(game.join("s.sav"), b"x").unwrap();
-        backup(&game, &[], &b, 2).unwrap();
+        backup(&game, &[PathBuf::from("s.sav")], &b, 2).unwrap();
         let left: Vec<u64> = list_backups(&b).iter().map(|x| x.when).collect();
         assert_eq!(left.len(), 2);
         assert!(!left.contains(&100) && !left.contains(&200));
