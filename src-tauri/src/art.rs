@@ -203,6 +203,7 @@ pub async fn art_save(st: State<'_, App>, id: String, kind: String, data: Option
             if bytes.len() as u64 > MOST {
                 return Err(Error::Msg("That picture is too big (30 MB at most).".into()));
             }
+            let bytes = if kind == "logo" { trim_logo(&bytes).unwrap_or(bytes) } else { bytes };
             std::fs::create_dir_all(covers(&st))?;
             let stamp = now();
             let file = covers(&st).join(format!("{}-{kind}-{stamp}.{ext}", folder_name(&id)));
@@ -260,6 +261,64 @@ pub async fn art_save(st: State<'_, App>, id: String, kind: String, data: Option
     Ok(g)
 }
 
+/// Below this alpha a pixel counts as see-through: faint glow or noise left in a picture shouldn't
+/// keep a margin around a logo.
+const CLEAR: u8 = 8;
+
+/// A logo without the see-through margin around it, as a PNG; None when there's none to cut (or
+/// it isn't a picture). Customize frames a logo whole in a 2:1 frame, so a wide or tall one comes
+/// back with empty bands, and the launcher sizes logos by what the file holds: Big Picture by its
+/// height, so the bands made the logo itself small (issue #277).
+pub fn trim_logo(bytes: &[u8]) -> Option<Vec<u8>> {
+    let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (w, h) = img.dimensions();
+    let (mut left, mut top, mut right, mut bottom) = (w, h, 0, 0);
+    for (x, y, p) in img.enumerate_pixels() {
+        if p[3] < CLEAR {
+            continue;
+        }
+        left = left.min(x);
+        top = top.min(y);
+        right = right.max(x + 1);
+        bottom = bottom.max(y + 1);
+    }
+    // All see-through: nothing to keep, so it's left as it is.
+    if right == 0 {
+        return None;
+    }
+    if (left, top, right, bottom) == (0, 0, w, h) {
+        return None;
+    }
+    let cut = image::imageops::crop_imm(&img, left, top, right - left, bottom - top).to_image();
+    let mut out = std::io::Cursor::new(Vec::new());
+    cut.write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(out.into_inner())
+}
+
+/// Logos saved before the margin was cut (see `trim_logo`): cut now, into a new file so the window
+/// doesn't keep showing the old one from its cache. True when one changed.
+pub fn trim_saved_logos(dir: &Path, l: &mut Library) -> bool {
+    let covers = dir.join("covers");
+    let slots = l.installed.values_mut().map(|g| &mut g.logo_file).chain(l.arts.values_mut().map(|a| &mut a.logo_file));
+    let mut changed = false;
+    for slot in slots {
+        changed |= retrim(&covers, slot);
+    }
+    changed
+}
+
+fn retrim(covers: &Path, slot: &mut Option<PathBuf>) -> bool {
+    let Some(old) = slot.clone().filter(|p| p.starts_with(covers)) else { return false };
+    let Some(cut) = std::fs::read(&old).ok().and_then(|b| trim_logo(&b)) else { return false };
+    let new = old.with_extension("trim.png");
+    if std::fs::write(&new, cut).is_err() {
+        return false;
+    }
+    let _ = std::fs::remove_file(&old);
+    *slot = Some(new);
+    true
+}
+
 /// An .ico holding one PNG (Windows reads these since Vista).
 pub fn ico_from_png(png: &[u8]) -> Vec<u8> {
     // Width and height from the PNG's header (0 in an icon entry means 256).
@@ -305,5 +364,58 @@ mod tests {
         assert_eq!(u32::from_le_bytes([ico[14], ico[15], ico[16], ico[17]]) as usize, png.len());
         assert_eq!(u32::from_le_bytes([ico[18], ico[19], ico[20], ico[21]]), 22);
         assert_eq!(&ico[22..], &png[..]);
+    }
+
+    /// A PNG of w x h, see-through but for an opaque w2 x h2 block at (x, y).
+    fn logo(w: u32, h: u32, x: u32, y: u32, w2: u32, h2: u32) -> Vec<u8> {
+        let img = image::RgbaImage::from_fn(w, h, |px, py| {
+            let inside = px >= x && px < x + w2 && py >= y && py < y + h2;
+            image::Rgba([200, 30, 30, if inside { 255 } else { 0 }])
+        });
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    fn size(png: &[u8]) -> (u32, u32) {
+        image::load_from_memory(png).unwrap().to_rgba8().dimensions()
+    }
+
+    #[test]
+    fn a_framed_logo_loses_its_see_through_bands() {
+        // A wide logo fit in Customize's 1000x500 frame: empty above and below.
+        let framed = logo(1000, 500, 0, 180, 1000, 140);
+        let cut = super::trim_logo(&framed).unwrap();
+        assert_eq!(size(&cut), (1000, 140));
+    }
+
+    #[test]
+    fn a_logo_with_no_margin_is_left_alone() {
+        assert!(super::trim_logo(&logo(40, 20, 0, 0, 40, 20)).is_none());
+    }
+
+    #[test]
+    fn an_all_clear_picture_is_left_alone() {
+        assert!(super::trim_logo(&logo(40, 20, 0, 0, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn a_saved_logo_is_cut_into_a_new_file() {
+        let dir = std::env::temp_dir().join(format!("rl-art-trim-{}", std::process::id()));
+        let covers = dir.join("covers");
+        std::fs::create_dir_all(&covers).unwrap();
+        let old = covers.join("x-logo-1.png");
+        std::fs::write(&old, logo(100, 50, 10, 20, 80, 10)).unwrap();
+        let mut l = crate::library::Library::default();
+        l.arts.entry("x".into()).or_default().logo_file = Some(old.clone());
+
+        assert!(super::trim_saved_logos(&dir, &mut l));
+        let new = l.arts["x"].logo_file.clone().unwrap();
+        assert_ne!(new, old);
+        assert!(!old.exists());
+        assert_eq!(size(&std::fs::read(&new).unwrap()), (80, 10));
+        // Already cut: nothing more to do.
+        assert!(!super::trim_saved_logos(&dir, &mut l));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

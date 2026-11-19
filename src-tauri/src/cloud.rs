@@ -476,7 +476,6 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
-        g.found_saves.clear();
         return saves::spots(&p.game.saves, &[], &g);
     }
     let cat = crate::cached_catalog(st);
@@ -484,6 +483,27 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let dev = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
     let from_cat: Vec<String> = entry.get("saves").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
     saves::spots(&dev, &from_cat, g)
+}
+
+/// Nobody (the player, the developer or the catalog) has said where the game saves. A fixed text,
+/// so the window can translate it.
+pub(crate) const SAVES_UNKNOWN: &str = "The launcher doesn't know where this game saves. Pick its save folder under Where it saves.";
+
+/// Where this game's copies are (see saves::dir_of). A copy still waiting to go up for a game
+/// that isn't installed anymore is looked for where it was kept before: the player's folder, or
+/// the launcher's.
+fn copies_dir(st: &App, id: &str) -> PathBuf {
+    let g = game(st, id).ok();
+    saves::place(&st.dir, id, g.as_ref())
+}
+
+/// The folder the Saves page shows for the copies: the player's, else the library's .backups,
+/// where each game's copies sit beside the backups made before its updates.
+pub fn shown_root(st: &App) -> PathBuf {
+    match saves::chosen_root() {
+        Some(p) if p.is_dir() => p,
+        _ => st.lib.lock().unwrap().settings.library_dir.join(".backups"),
+    }
 }
 
 /// One game's saves at the same time: two backups of one game never overlap.
@@ -549,16 +569,75 @@ fn first_time_paused(id: &str) -> bool {
     true
 }
 
+/// What a game's saves are doing right now, for its page: "check", "up" or "down", then "idle".
+/// The page asks saves_status for how it ended.
+fn phase(app: &AppHandle, id: &str, what: &str) {
+    let _ = app.emit("save-sync", json!({"id": id, "phase": what}));
+}
+
+/// Says "idle" when the work it covers ends, on every way out of it (errors included).
+struct Working {
+    app: AppHandle,
+    id: String,
+}
+
+impl Drop for Working {
+    fn drop(&mut self) {
+        phase(&self.app, &self.id, "idle");
+    }
+}
+
+fn working(app: &AppHandle, id: &str, what: &str) -> Working {
+    phase(app, id, what);
+    Working { app: app.clone(), id: id.to_string() }
+}
+
+/// The kind of trouble behind a failed upload, as saves_status reports it.
+fn problem_kind(e: &Error) -> &'static str {
+    if paused() {
+        return "paused";
+    }
+    if is_full(e) {
+        return "full";
+    }
+    if e.to_string().starts_with("This save is too big") {
+        return "too-big-copy";
+    }
+    if matches!(e, Error::Net(_)) {
+        return "offline";
+    }
+    "error"
+}
+
+/// Remembers why this game's saves didn't go up, so its page can still say so after the toast is
+/// gone. A conflict is kept on its own (upload sets it), not as a problem.
+fn note_failure(dir: &Path, id: &str, e: &Error) {
+    if e.to_string() == SYNC_CONFLICT {
+        return;
+    }
+    let mut s = saves::state(dir, id);
+    s.problem = Some(saves::Problem { kind: problem_kind(e).into(), text: e.to_string(), at: crate::library::now() });
+    saves::set_state(dir, id, &s);
+}
+
 /// Puts one local copy up if the cloud hasn't changed since the last sync.
 async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
+    let r = upload_one(app, id, name).await;
+    if let Err(e) = &r {
+        note_failure(&app.state::<App>().dir, id, e);
+    }
+    r
+}
+
+async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
     let mut state = saves::state(&st.dir, id);
-    let copy = saves::manifest(&saves::dir_of(&st.dir, id).join(name))
+    let copy = saves::manifest(&copies_dir(&st, id).join(name))
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
     let Some(top) = list.first() else { return upload_copy(app, id, name, 0).await };
     if top.hash == copy.hash {
-        state.synced_hash = copy.hash;
+        state.mark_synced(&copy.hash, top.made, &top.device);
         if state.pending.as_deref() == Some(name) {
             state.pending = None;
         }
@@ -566,6 +645,8 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         return Ok(());
     }
     if top.hash != state.synced_hash {
+        state.conflict = Some(top.v.clone());
+        saves::set_state(&st.dir, id, &state);
         return Err(Error::Msg(SYNC_CONFLICT.into()));
     }
     upload_copy(app, id, name, top.made.saturating_add(1)).await
@@ -573,7 +654,7 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 
 async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Res<()> {
     let st = app.state::<App>();
-    let path = saves::dir_of(&st.dir, id).join(name);
+    let path = copies_dir(&st, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     if paused() {
         return Err(Error::Msg(PAUSED_TEXT.into()));
@@ -590,16 +671,21 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
     let body = tokio::fs::read(&path).await?;
     // Too big to go up: it stays on this PC, and isn't tried again (the next copy is).
     if body.len() > MAX_UPLOAD {
+        let why = "This save is too big for cloud saves (over 95 MB). It's kept on this PC.";
         let mut s = saves::state(&st.dir, id);
         if s.pending.as_deref() == Some(name) {
             s.pending = None;
-            saves::set_state(&st.dir, id, &s);
         }
+        // Kept here, not only said in a toast: with nothing queued, the game's page would
+        // otherwise show this copy as waiting to go up for good.
+        s.problem = Some(saves::Problem { kind: "too-big-copy".into(), text: why.into(), at: crate::library::now() });
+        saves::set_state(&st.dir, id, &s);
         crate::trail::note(format!("Cloud saves: {id}'s copy is {} MB, too big to send", body.len() / (1024 * 1024)));
-        return Err(Error::Msg("This save is too big for cloud saves (over 95 MB). It's kept on this PC.".into()));
+        return Err(Error::Msg(why.into()));
     }
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    let (made, played) = (man.made.max(earliest).to_string(), man.played.to_string());
+    let made_at = man.made.max(earliest);
+    let (made, played) = (made_at.to_string(), man.played.to_string());
     let size = body.len() as u64;
     let url = api();
     let req = st
@@ -614,6 +700,7 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
     if !crate::net::forced() && crate::net::resting(&save_url("save-put"), true) {
         return Err(Error::Net("Can't reach recomplauncher.com right now.".into()));
     }
+    let _working = working(app, id, "up");
     let r = match crate::net::send(req, &save_url("save-put"), true).await {
         Ok(r) => r,
         Err(e) => {
@@ -637,7 +724,7 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
     }
     copy_went_up(id, name);
     let mut s = saves::state(&st.dir, id);
-    s.synced_hash = man.hash;
+    s.mark_synced(&man.hash, made_at, &man.device);
     // The copy waiting is this one or an older one: what's in the cloud now is newer, so it
     // doesn't go up after it.
     if s.pending.as_deref().map(|p| p == name || copy_time(p) <= copy_time(name)).unwrap_or(false) {
@@ -763,7 +850,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         let s = saves::state(&st.dir, id);
-        let latest = saves::list(&st.dir, id).into_iter().next();
+        let latest = saves::list(&st.dir, id, &g).into_iter().next();
         if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
             if let Err(e) = upload(app, id, &l.name).await {
                 let too_big = e.to_string().starts_with("This save is too big");
@@ -800,6 +887,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
 async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    let _working = working(app, id, "down");
     let url = api();
     let req = st
         .http
@@ -813,7 +901,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
-    let d = saves::dir_of(&st.dir, id);
+    let d = copies_dir(&st, id);
     tokio::fs::create_dir_all(&d).await?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await?;
@@ -824,7 +912,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
-    s.synced_hash = c.hash.clone();
+    s.mark_synced(&c.hash, c.made, &c.device);
     s.last_hash = c.hash.clone();
     saves::set_state(&st.dir, id, &s);
     Ok(n)
@@ -859,11 +947,28 @@ async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot
     let id2 = id.to_string();
     let copy = blocking(move || {
         saves::backup(&dir, &id2, &spots, &g)?;
-        saves::list(&dir, &id2).into_iter().next().filter(|c| c.hash == hash)
+        saves::list(&dir, &id2, &g).into_iter().next().filter(|c| c.hash == hash)
             .ok_or_else(|| Error::Msg("The saves changed. Try syncing again.".into()))
     }).await??;
     // A player can choose a save that was backed up before the current cloud copy.
-    upload_copy(app, id, &copy.name, after.saturating_add(1)).await
+    let r = upload_copy(app, id, &copy.name, after.saturating_add(1)).await;
+    if let Err(e) = &r {
+        note_failure(&app.state::<App>().dir, id, e);
+    }
+    r
+}
+
+/// A save place too big to look through stops this game's sync: kept so its page says so on
+/// every launch, not only in the once-per-launch toast. Cleared by the first check that finds
+/// every place readable again.
+fn note_folder_too_big(dir: &Path, id: &str, why: Option<String>) {
+    let mut s = saves::state(dir, id);
+    let was = s.problem.as_ref().is_some_and(|p| p.kind == "too-big-folder");
+    if why.is_none() && !was {
+        return;
+    }
+    s.problem = why.map(|text| saves::Problem { kind: "too-big-folder".into(), text, at: crate::library::now() });
+    saves::set_state(dir, id, &s);
 }
 
 /// Before Play: what to do about the cloud.
@@ -888,6 +993,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     }
     let _busy = busy().await?;
     let _reserved = reserve_sync(&st, &id)?;
+    let _working = working(&app, &id, "check");
     let (list, _) = match cloud_list(&app, &id).await {
         Ok(x) => x,
         Err(Error::Net(_)) => return Ok(json!({"action": "offline"})),
@@ -898,6 +1004,14 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     let spots = spots_of(&st, &id, &g);
+    // Not knowing where it saves isn't the same as having no saves: a cloud copy put in place now
+    // could land beside the real ones, or over them. Nothing syncs until the player picks a folder.
+    if spots.is_empty() {
+        if manual {
+            return Err(Error::Msg(SAVES_UNKNOWN.into()));
+        }
+        return Ok(json!({"action": "play"}));
+    }
     let (g2, spots2) = (g.clone(), spots.clone());
     let (entries, infos, local, too_big) = blocking(move || saves::current(&spots2, &g2)).await?;
     if entries.len() != infos.len() {
@@ -907,6 +1021,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     // A cloud copy put in place now could be older than the saves there and replace them. That
     // holds even when other places had saves: the copy writes into every place it holds.
     if !too_big.is_empty() {
+        note_folder_too_big(&st.dir, &id, Some(SYNC_PAUSED.into()));
         if manual {
             return Err(saves::too_big_error(&g, &spots, &too_big));
         }
@@ -915,6 +1030,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         }
         return Ok(json!({"action": "play"}));
     }
+    note_folder_too_big(&st.dir, &id, None);
     let s = saves::state(&st.dir, &id);
     let Some(top) = top else {
         if local.is_empty() {
@@ -924,9 +1040,11 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "uploaded"}));
     };
     if top.hash == local {
-        if s.synced_hash != local || s.pending.is_some() {
+        // Already the same: a conflict or a problem noted before is over too.
+        let stale = s.synced_hash != local || s.pending.is_some() || s.conflict.is_some() || s.problem.is_some();
+        if stale {
             let mut s = s;
-            s.synced_hash = local;
+            s.mark_synced(&local, top.made, &top.device);
             s.pending = None;
             saves::set_state(&st.dir, &id, &s);
         }
@@ -944,6 +1062,10 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         // After Play, the local changes go up at the end of the session.
         return Ok(json!({"action": "play"}));
     }
+    // Both changed: kept until the player picks, so the game's page can ask after this prompt.
+    let mut s = s;
+    s.conflict = Some(top.v.clone());
+    saves::set_state(&st.dir, &id, &s);
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
     let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
     Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
@@ -1037,7 +1159,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             SpotInfo { exists: shown.exists(), path: p.to_string_lossy().to_string(), template: s.template, from: s.from }
         })
         .collect();
-    let local = saves::list(&st.dir, &id);
+    let local = saves::list(&st.dir, &id, &g);
     let state = saves::state(&st.dir, &id);
     let mut cloud = Value::Null;
     let mut space = Value::Null;
@@ -1052,11 +1174,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             Err(_) => {}
         }
     }
-    // Copies on this PC that haven't gone up yet: the newest ones, back to the one that's in the cloud.
-    let waiting = match state.pending.as_deref() {
-        Some(p) => local.iter().take_while(|c| c.hash != state.synced_hash).filter(|c| c.when >= copy_time(p)).count().max(1),
-        None => 0,
-    };
+    let waiting = waiting_copies(&local, &state);
     Ok(json!({
         "spots": spots, "local": local, "cloud": cloud, "space": space, "offline": offline,
         "cloudOn": g.cloud, "signedIn": signed_in(&st.dir), "synced": state.synced_hash, "pending": state.pending.is_some(),
@@ -1070,9 +1188,43 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
 /// Where players see whether the site is having trouble on our side.
 const STATUS_PAGE: &str = "https://recomplauncher.com/status";
 
-fn upload_candidate(dir: &Path, id: &str, running: bool) -> Res<Option<saves::Copy>> {
+/// Copies on this PC that haven't gone up yet: the newest ones, back to the one that's in the cloud.
+fn waiting_copies(local: &[saves::Copy], s: &saves::State) -> usize {
+    let Some(p) = s.pending.as_deref() else { return 0 };
+    local.iter().take_while(|c| c.hash != s.synced_hash).filter(|c| c.when >= copy_time(p)).count().max(1)
+}
+
+/// Where a game's cloud saves stand, for the badge on its page. Only what this PC knows: it
+/// never asks the website, so the page can ask on every draw. The save-sync event says when it
+/// changes. `state` is one word (saves::State::sync_state); `problem` says why when it's stuck.
+#[tauri::command]
+pub async fn saves_status(app: AppHandle, id: String) -> Res<Value> {
+    blocking(move || sync_status(&app, &id)).await?
+}
+
+fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
+    let st = app.state::<App>();
+    let g = game(&st, id)?;
+    let s = saves::state(&st.dir, id);
+    let signed = signed_in(&st.dir);
+    let local = saves::list(&st.dir, id, &g);
+    let retry = s.pending.as_deref().and_then(|p| copy_wait_left(id, p));
+    Ok(json!({
+        "state": s.sync_state(g.cloud == Some(true), signed),
+        "cloudOn": g.cloud, "signedIn": signed,
+        "syncedAt": s.synced_at, "syncedMade": s.synced_made, "syncedDevice": s.synced_device,
+        "waiting": waiting_copies(&local, &s), "retryIn": retry, "full": full_now(), "paused": paused(),
+        "problem": s.problem, "conflict": s.conflict.is_some(), "newest": local.first(),
+        // False: nobody has said where it saves, so nothing of it is backed up or synced.
+        "known": !spots_of(&st, id, &g).is_empty(),
+        // Where the saves go. Only RecompStore today; named so another cloud can say so later.
+        "provider": "recompstore",
+    }))
+}
+
+fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<Option<saves::Copy>> {
     let s = saves::state(dir, id);
-    let latest = saves::list(dir, id).into_iter().next();
+    let latest = saves::list(dir, id, g).into_iter().next();
     // The newest local archive can still hold the save from before a restore. During play we
     // cannot replace it with a current backup, so ask the player to close the game first.
     if running && latest.as_ref().map(|l| l.hash != s.last_hash).unwrap_or(false) {
@@ -1101,7 +1253,7 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
                 let (dir, id2, g2) = (st.dir.clone(), id.clone(), g.clone());
                 blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
             }
-            if let Some(l) = upload_candidate(&st.dir, &id, running)? {
+            if let Some(l) = upload_candidate(&st.dir, &id, &g, running)? {
                 if let Err(e) = upload(&app, &id, &l.name).await {
                     // It waits, and goes when the site answers again (once: no more tries now).
                     if !e.to_string().starts_with("This save is too big") {
@@ -1163,15 +1315,17 @@ pub async fn saves_overview(app: AppHandle) -> Res<Value> {
 
 fn overview(app: &AppHandle) -> Value {
     let st = app.state::<App>();
-    // Copies made here while the player's folder was away go to it now that it's back.
-    saves::gather(&st.dir);
     let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    // Copies made beside the games while the player's folder was away go to it now that it's back.
+    let installed: Vec<Installed> = games.iter().map(|(_, g)| g.clone()).collect();
+    saves::gather(&st.dir, &installed);
     let signed = signed_in(&st.dir);
     let mut out = Vec::new();
     for (id, g) in games {
-        let local = saves::list(&st.dir, &id);
+        let local = saves::list(&st.dir, &id, &g);
         let state = saves::state(&st.dir, &id);
-        let found = spots_of(&st, &id, &g).iter().any(|s| {
+        let spots = spots_of(&st, &id, &g);
+        let found = spots.iter().any(|s| {
             let p = saves::resolve_for(&s.template, &g);
             let shown = if s.template.contains('*') { p.parent().map(Path::to_path_buf).unwrap_or(p.clone()) } else { p };
             shown.exists()
@@ -1180,16 +1334,25 @@ fn overview(app: &AppHandle) -> Value {
         out.push(json!({
             "id": id, "copies": local.len(), "size": size, "newest": local.first(),
             "cloudOn": g.cloud, "synced": state.synced_hash, "pending": state.pending.is_some(), "found": found,
+            // False: nobody has said where it saves, so nothing of it is backed up.
+            "known": !spots.is_empty(),
+            "state": state.sync_state(g.cloud == Some(true), signed),
         }));
     }
     let chosen = saves::chosen_root();
-    json!({ "signedIn": signed, "games": out, "root": saves::root(&st.dir), "chosen": chosen, "reachable": chosen.as_ref().map(|p| p.is_dir()).unwrap_or(true) })
+    json!({ "signedIn": signed, "games": out, "root": shown_root(&st), "chosen": chosen, "reachable": chosen.as_ref().map(|p| p.is_dir()).unwrap_or(true) })
 }
 
 #[tauri::command]
 pub async fn saves_backup(app: AppHandle, id: String) -> Res<Option<saves::Copy>> {
-    if app.state::<App>().running.lock().unwrap().contains_key(&id) {
+    let st = app.state::<App>();
+    if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
+    }
+    // Asked for by hand: "nothing changed" would hide that nothing is looked at.
+    let g = game(&st, &id)?;
+    if spots_of(&st, &id, &g).is_empty() {
+        return Err(Error::Msg(SAVES_UNKNOWN.into()));
     }
     after_session(&app, &id).await
 }
@@ -1280,23 +1443,12 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     let g = game(&st, &id)?;
     let spots = spots_of(&st, &id, &g);
     let (dir, id2) = (st.dir.clone(), id.clone());
-    let file = saves::dir_of(&st.dir, &id).join(&name);
+    let file = saves::dir_of(&st.dir, &id, &g).join(&name);
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
 }
 
-/// Forgets where the launcher noticed the game saving (it looks again next time).
-#[tauri::command(async)]
-pub fn saves_forget_found(st: State<'_, App>, id: String) -> Res<Installed> {
-    let mut l = st.lib.lock().unwrap();
-    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    g.found_saves.clear();
-    let g = g.clone();
-    let _ = l.save(&st.dir);
-    Ok(g)
-}
-
 /// The player's own answer to where the game saves (a folder they picked), or None to go back to
-/// what the launcher works out.
+/// the developer's or the catalog's folders (or none: then the launcher says it doesn't know).
 #[tauri::command(async)]
 pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
@@ -1326,7 +1478,7 @@ pub fn saves_add_place(st: State<'_, App>, id: String, path: String) -> Res<Inst
     if !p.is_dir() {
         return Err(Error::Msg("That folder couldn't be found.".into()));
     }
-    let now: Vec<String> = spots_of(&st, &id, &g).into_iter().filter(|s| s.from != "game").map(|s| s.template).collect();
+    let now: Vec<String> = spots_of(&st, &id, &g).into_iter().map(|s| s.template).collect();
     let list = saves::add_place(&now, &p, &g).map_err(Error::Msg)?;
     let mut l = st.lib.lock().unwrap();
     let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
@@ -1355,7 +1507,11 @@ pub fn saves_remove_place(st: State<'_, App>, id: String, template: String) -> R
 pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
     let st = app.state::<App>();
     let g = game(&st, &id)?;
-    let p = spots_of(&st, &id, &g)
+    let spots = spots_of(&st, &id, &g);
+    if spots.is_empty() {
+        return Err(Error::Msg(SAVES_UNKNOWN.into()));
+    }
+    let p = spots
         .iter()
         .map(|s| saves::resolve_for(&s.template, &g))
         .map(|p| if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) })
@@ -1364,12 +1520,13 @@ pub async fn saves_open(app: AppHandle, id: String) -> Res<()> {
     crate::open_thing(&app, &p.to_string_lossy(), false)
 }
 
-/// Where the launcher keeps this game's save copies (the backups folder the player picked, or the
-/// launcher's own saves/<id>): not where the game itself saves.
+/// Where the launcher keeps this game's save copies (the backups folder the player picked, or
+/// beside the game in its library's .backups folder): not where the game itself saves.
 #[tauri::command]
 pub async fn saves_open_backups(app: AppHandle, id: String) -> Res<()> {
     let st = app.state::<App>();
-    let d = saves::dir_of(&st.dir, &id);
+    let g = game(&st, &id)?;
+    let d = saves::dir_of(&st.dir, &id, &g);
     std::fs::create_dir_all(&d).map_err(|e| Error::Msg(format!("Couldn't open the backups folder: {e}")))?;
     crate::open_thing(&app, &d.to_string_lossy(), false)
 }
@@ -1712,13 +1869,13 @@ mod sync_tests {
         let retry = pending_copy(&app, "g", &library);
         tokio::pin!(retry);
         assert!(futures_util::poll!(&mut retry).is_pending());
-        saves::restore(&app, "g", &saves::dir_of(&app, "g").join(&chosen.name), &spots, &game).unwrap();
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
         drop(restoring);
 
         let (_upload, pending) = retry.await;
         assert!(pending.is_none(), "read the queue after restore completes, not before waiting for it");
         assert_eq!(std::fs::read_to_string(path).unwrap(), "chosen save");
-        assert!(saves::dir_of(&app, "g").join(queued.name).is_file());
+        assert!(saves::dir_of(&app, "g", &game).join(queued.name).is_file());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1760,12 +1917,89 @@ mod sync_tests {
         let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
         std::fs::write(&path, "superseded save").unwrap();
         let previous = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
-        assert_eq!(upload_candidate(&app, "g", true).unwrap().unwrap().hash, previous.hash);
-        saves::restore(&app, "g", &saves::dir_of(&app, "g").join(&chosen.name), &spots, &game).unwrap();
-        assert!(matches!(upload_candidate(&app, "g", true), Err(Error::Msg(_))), "ask the player to close the game rather than upload the superseded save");
+        assert_eq!(upload_candidate(&app, "g", &game, true).unwrap().unwrap().hash, previous.hash);
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
+        assert!(matches!(upload_candidate(&app, "g", &game, true), Err(Error::Msg(_))), "ask the player to close the game rather than upload the superseded save");
         // Closing the game makes a current backup; Upload Now can then send the chosen save.
         saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
-        assert_eq!(upload_candidate(&app, "g", false).unwrap().unwrap().hash, chosen.hash);
+        assert_eq!(upload_candidate(&app, "g", &game, false).unwrap().unwrap().hash, chosen.hash);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    fn tmp(n: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-cloud-status-{n}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_full_cloud_is_its_own_problem() {
+        assert_eq!(problem_kind(&Error::Msg(FULL_TEXT.into())), "full");
+    }
+
+    #[test]
+    fn a_copy_over_the_limit_is_too_big() {
+        let e = Error::Msg("This save is too big for cloud saves (over 95 MB). It's kept on this PC.".into());
+        assert_eq!(problem_kind(&e), "too-big-copy");
+    }
+
+    #[test]
+    fn no_connection_is_offline() {
+        assert_eq!(problem_kind(&Error::Net("Can't reach recomplauncher.com right now.".into())), "offline");
+    }
+
+    #[test]
+    fn any_other_refusal_is_an_error() {
+        assert_eq!(problem_kind(&Error::Msg("That copy is gone.".into())), "error");
+    }
+
+    #[test]
+    fn a_failed_upload_is_remembered() {
+        let d = tmp("failed");
+        note_failure(&d, "g", &Error::Net("Can't reach recomplauncher.com right now.".into()));
+        let p = saves::state(&d, "g").problem.unwrap();
+        assert_eq!(p.kind, "offline");
+        assert_eq!(p.text, "Can't reach recomplauncher.com right now.");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_conflict_is_not_recorded_as_a_problem() {
+        let d = tmp("conflict");
+        note_failure(&d, "g", &Error::Msg(SYNC_CONFLICT.into()));
+        assert!(saves::state(&d, "g").problem.is_none());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_readable_folder_again_clears_the_folder_problem() {
+        let d = tmp("folder");
+        note_folder_too_big(&d, "g", Some(SYNC_PAUSED.into()));
+        assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "too-big-folder");
+        note_folder_too_big(&d, "g", None);
+        assert!(saves::state(&d, "g").problem.is_none());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_readable_folder_keeps_other_problems() {
+        let d = tmp("folder-other");
+        note_failure(&d, "g", &Error::Msg(FULL_TEXT.into()));
+        note_folder_too_big(&d, "g", None);
+        assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "full");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn nothing_waits_without_a_queued_copy() {
+        let local = vec![saves::Copy { name: "200.zip".into(), when: 200, size: 1, files: 1, hash: "b".into(), device: String::new(), played: 0 }];
+        let s = saves::State { synced_hash: "a".into(), ..Default::default() };
+        assert_eq!(waiting_copies(&local, &s), 0);
     }
 }

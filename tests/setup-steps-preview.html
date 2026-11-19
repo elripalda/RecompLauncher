@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Easy Setup steps — fixture preview</title>
+<!-- Every step of each case with the real renderer and CSS. Add ?tv for Big Picture. -->
+<link rel="stylesheet" href="/ui/app.css">
+<link rel="stylesheet" href="/ui/tv.css">
+<link rel="stylesheet" href="/ui/media-art.css">
+<style>
+html,body{overflow:auto;height:auto}
+body{padding:24px;background:var(--bg)}
+.pv-sec{margin:28px 0 10px;font:800 20px Archivo,sans-serif;color:var(--ink)}
+.pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(900px,1fr));gap:22px}
+.pv-cell h3{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.pv-cell .modal{width:900px;max-height:none}
+.pv-tv{position:relative;width:900px;height:506px;overflow:hidden;border-radius:16px}
+.pv-tv .tv-stage{transform:translate(-50%,-50%) scale(.46875)}
+</style>
+<body>
+<div id="out"></div>
+<script>
+// Fixture only: the real renderer and CSS, made-up games and files. Nothing is imported or run.
+const t = (x) => x, tf = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => (k in v ? v[k] : _)), tn = (n, one, many) => tf(n === 1 ? one : many, { n });
+const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const htmlFill = (s, v) => esc(s).replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
+const baseName = (s) => String(s).replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+const media = (u) => u || '', thumbOf = (u) => u;
+const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+const XMARK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+const DISC_L = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 6a6 6 0 0 1 6 6" opacity=".5"/></svg>';
+const DISC_S = DISC_L;
+const S = { owned: {}, library: {}, setup: {} };
+const FORMATS = {};
+const copyFormats = (id) => FORMATS[id] || { type: 'disc', exts: ['iso'], folder: true };
+const copyDrop = () => 'Drop your game file here';
+const copyPickOpts = () => ({});
+const prepReq = () => 'Turn on the option marked Required to continue';
+const prepBlocked = (su) => (su.prepare_options || []).some((o) => o.required && !o.on);
+const T = { event: { listen: async () => () => {} } };
+const invoke = async () => null, pickFile = async () => null, refreshState = async () => {}, fail = () => {};
+</script>
+<script src="/ui/media-art.js"></script>
+<script src="/ui/setup-inputs.js"></script>
+<script src="/ui/setup-steps.js"></script>
+<script>
+const LONGSHOT = 'Your copy of The Legend of Zelda: Ocarina of Time for Nintendo Switch 2, version 131072 (build e0f3ccfa): the .nup file, or the folder that holds its romfs and exefs.';
+const dlssSdk = (on) => ({ id: 'dlss', label: 'NVIDIA DLSS and frame generation', note: 'Downloads NVIDIA\'s DLSS SDK during the build so the in-game menu offers DLSS. Never share the game folder.', license: { name: 'NVIDIA RTX SDKs license', url: 'https://example.com' }, on });
+const longshot = (x) => Object.assign({ needs: LONGSHOT, kind: 'iso_or_folder', copy: null, inputs: [], previous: [], prebuilt: null, own_build: '/x/Longshot', prepare_label: 'Building the game from your copy (15 to 30 minutes)', prepare_options: [dlssSdk(false)] }, x);
+const disc = (n, path) => ({ id: 'disc' + n, label: 'Disc ' + n, role: 'disc', file: true, extensions: ['iso'], active: true, path });
+const dlc = (id, label, path) => ({ id, label, role: 'dlc', optional: true, file: true, extensions: [], active: true, path });
+const CASES = [
+  { title: 'Longshot · nothing found', id: 'ls', game: { name: 'Longshot', game: 'The Legend of Zelda: Ocarina of Time', origin: 'switch2' }, fm: { exts: ['xci', 'nsp', 'nup', 'nca'] }, su: longshot({}) },
+  { title: 'Longshot · copy found in your folders', id: 'ls2', owned: '/home/deck/ROMs/switch2/Ocarina of Time.nup', game: { name: 'Longshot', game: 'The Legend of Zelda: Ocarina of Time', origin: 'switch2' }, fm: { exts: ['xci', 'nsp', 'nup', 'nca'] }, su: longshot({}) },
+  { title: 'Longshot · its build is still here', id: 'ls3', game: { name: 'Longshot', game: 'The Legend of Zelda: Ocarina of Time', origin: 'switch2' }, fm: { exts: ['xci', 'nsp', 'nup', 'nca'] }, su: longshot({ copy: '/home/deck/ROMs/switch2/Ocarina of Time.nup', prebuilt: '/x/Longshot/Longshot', prepare_options: [dlssSdk(true)] }) },
+  { title: 'Longshot · own build chosen', id: 'ls4', ns: { own: '/home/deck/Games/Longshot' }, game: { name: 'Longshot', game: 'The Legend of Zelda: Ocarina of Time', origin: 'switch2' }, fm: { exts: ['xci', 'nsp', 'nup', 'nca'] }, su: longshot({}) },
+  { title: 'Longshot · own build: not finished', id: 'ls5', ns: { own: '/home/deck/Downloads/Longshot-linux', ownErr: 'That folder is empty. Pick the folder your build is in.' }, game: { name: 'Longshot', game: 'The Legend of Zelda: Ocarina of Time', origin: 'switch2' }, fm: { exts: ['xci', 'nsp', 'nup', 'nca'] }, su: longshot({}) },
+  { title: 'Lost Odyssey · four discs, DLC, DLSS downloading', id: 'lo', ns: { dlss: { done: 29, total: 58 } }, game: { name: 'Lost Odyssey', game: 'Lost Odyssey', origin: 'xbox360' },
+    su: { needs: 'x', kind: '', inputs: [disc(1, '/r/Lost Odyssey (Disc 1).iso'), disc(2, '/r/Lost Odyssey (Disc 2).iso'), disc(3, null), disc(4, null), dlc('d1', 'Thousand Years of Dreams', '/r/DLC/Dreams'), dlc('d2', 'Seeker of the Deep', null), { id: 'dlss', label: 'NVIDIA DLSS', role: 'runtime', shared: 'nvidia.dlss', optional: true, runtime: true, active: true, path: null }], prepare_label: 'Preparing your game', prepare_options: [] } },
+  { title: 'Switch game · .nsp needs keys', id: 'sw', game: { name: 'Example Switch recomp', game: 'Your Switch game', origin: 'switch' },
+    su: { needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Your game', role: 'game', file: true, folder: true, extensions: ['nsp', 'xci'], active: true, path: '/r/switch/Game.nsp' }, { id: 'prod', label: 'Switch prod.keys', role: 'key', shared: 'switch.prod-keys', file: true, extensions: ['keys'], active: true, path: 'stored' }, { id: 'title', label: 'Switch title.keys', role: 'key', shared: 'switch.title-keys', file: true, extensions: ['keys'], active: true, path: null }], prepare_options: [] } },
+  { title: 'SSX · required extra (Windows)', id: 'ssx', game: { name: 'SSX', game: 'SSX', origin: 'xbox360' }, fm: { exts: ['iso'] },
+    su: { needs: 'Your copy of SSX for Xbox 360 (EA-2413): its disc image (.iso), or the extracted folder with default.xex.', kind: 'iso_or_folder', copy: '/r/xbox360/SSX.iso', inputs: [dlc('tu', 'Title update 0.0.3.2 (about 9 MB): the gear for levels 11 to 15', null), dlc('me', 'SSX Mount Eddie (about 250 MB): the Mt. Eddie region and the classic riders', null)], own_build: '/x/SSX', prepare_label: 'Recompiling SSX for your PC from your disc (10 to 30 minutes the first time)', prepare_options: [{ id: 'vs', label: 'Microsoft Visual Studio Build Tools', note: 'Needed to build SSX on your PC (Windows asks for permission).', required: true, license: { name: 'Microsoft Visual Studio license terms', url: 'https://example.com' }, on: false }] } },
+];
+const TV = new URLSearchParams(location.search).has('tv') || location.hash === '#tv';
+let html = '';
+for (const c of CASES) {
+  S.setup[c.id] = c.su;
+  if (c.owned) S.owned[c.id] = { path: c.owned };
+  if (c.fm) FORMATS[c.id] = Object.assign({ type: 'disc', folder: true }, c.fm);
+  const n = stepsModel(c.id, c.su, Object.assign({}, c.ns)).steps.length;
+  html += `<h2 class="pv-sec">${esc(c.title)}</h2><div class="pv-grid">`;
+  for (let i = 0; i < n; i++) {
+    const ns = Object.assign({ at: i }, c.ns);
+    const step = stepsModel(c.id, c.su, ns).steps[i];
+    // ?tv: Big Picture's sheet at its 1920x1080 size, scaled down to fit the cell.
+    const page = TV ? `<div class="pv-tv"><div class="tv-stage"><div class="tv-sheet tv-setup" data-stage="steps">${stepsShell(c.id, c.su, ns, c.game, true)}</div></div></div>`
+      : `<div class="modal su ss-modal"><button type="button" class="su-x" aria-label="Close">${XMARK}</button>${stepsShell(c.id, c.su, ns, c.game, false)}</div>`;
+    html += `<div class="pv-cell"><h3>Step ${i + 1} · ${esc(step.name)}</h3>${page}</div>`;
+  }
+  html += '</div>';
+}
+document.getElementById('out').innerHTML = html;
+// Big Picture marks the item the controller is on: the main button of each page, as it opens.
+if (TV) for (const b of document.querySelectorAll('.ss-foot .btn.main:not([disabled])')) { b.dataset.f = ''; b.classList.add('f'); }
+</script>
