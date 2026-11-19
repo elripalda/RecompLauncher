@@ -67,6 +67,11 @@ test('signed out, the copy after a session is not called a sync', () => {
   assert.equal(b.label, 'Not signed in');
 });
 
+test('with no known save folder, the step after a session does not hide that nothing is backed up', () => {
+  const b = info.saveBadgeInfo(status('none', { known: false }), 'after', false);
+  assert.equal(b.label, 'Saves not backed up');
+});
+
 test('right after the game closes it still says the save goes up after play, not up to date', () => {
   const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() }), 'after', false);
   assert.equal(b.label, 'Syncs after you play');
@@ -122,6 +127,16 @@ test('cloud saves off is grey', () => {
 test('signed out says so', () => {
   const b = info.saveBadgeInfo(status('signed-out'), undefined, false);
   assert.equal(b.label, 'Not signed in');
+});
+
+test('a game whose save folder nobody named says it is not backed up, whatever else is set', () => {
+  const b = info.saveBadgeInfo(status('up-to-date', { known: false, syncedAt: now() }), undefined, false);
+  assert.equal(b.label, 'Saves not backed up');
+});
+
+test('a game whose save folder nobody named is grey above Play, not a red alarm', () => {
+  const b = info.saveBadgeInfo(status('none', { known: false }), undefined, false);
+  assert.equal(b.tone, 'dim');
 });
 
 test('a game never played has nothing to sync', () => {

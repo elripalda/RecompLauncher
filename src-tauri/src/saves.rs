@@ -48,28 +48,30 @@ pub struct Spot {
     pub from: &'static str,
 }
 
-/// Where a game's saves are: the player's folders, else the developer's file, else the catalog.
-/// Empty when none of them says: the launcher doesn't know where this game saves.
+/// Where a game's saves are: the developer's file, else the catalog, else the player's folders.
+/// A folder the developer or RecompLauncher named is the right one (the launcher never moves where
+/// a game saves, it only reads that folder), so a folder the player picked before one was named
+/// isn't used anymore. Empty when nobody says: the launcher doesn't know where this game saves.
 pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
-    // The player's own folders: one, or several (a launcher with more than one game in it).
+    let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
+    let named = list(dev, "developer");
+    if !named.is_empty() {
+        return named;
+    }
+    let ours = list(catalog, "catalog");
+    if !ours.is_empty() {
+        return ours;
+    }
+    // The player's own folders: one, or several (a launcher with more than one game in it). Not a
+    // guess (the whole game folder, or files it was seen writing): that backed up caches and build
+    // folders as saves, and could put the wrong files back.
     let mut mine: Vec<String> = vec![];
     for t in g.save_place.iter().chain(g.more_save_places.iter()).map(|t| t.trim()).filter(|t| !t.is_empty()) {
         if !mine.iter().any(|m| m == t) {
             mine.push(t.to_string());
         }
     }
-    if !mine.is_empty() {
-        return mine.into_iter().map(|template| Spot { template, from: "player" }).collect();
-    }
-    let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
-    let named = list(dev, "developer");
-    if !named.is_empty() {
-        return named;
-    }
-    // Nothing else: a guess (the whole game folder, or files it was seen writing) backed up caches
-    // and build folders as saves, and could put the wrong files back. The Saves tab says the
-    // launcher doesn't know, and the player picks the folder.
-    list(catalog, "catalog")
+    mine.into_iter().map(|template| Spot { template, from: "player" }).collect()
 }
 
 /// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
@@ -1302,7 +1304,7 @@ mod tests {
         assert!(add_place(&two, &d.join("TT-Xbox"), &g).is_err());
         g.save_place = Some(two[0].clone());
         g.more_save_places = vec![two[1].clone()];
-        let s = spots(&["{install}/dev".into()], &[], &g);
+        let s = spots(&[], &[], &g);
         assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/TT-Xbox/saves", "player"), ("{install}/ROTK-Xbox/saves", "player")]);
         // Both folders' files go in the backup, kept apart.
         let mut from: Vec<usize> = collect(&s, &g).iter().map(|e| e.spot).collect();
@@ -1453,6 +1455,30 @@ mod tests {
         let g = game(Path::new("/games/test"));
         let s = spots(&["{install}/save".into()], &["{local}/Test/saves".into()], &g);
         assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn the_developers_folder_comes_before_one_the_player_picked() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let s = spots(&["{install}/save".into()], &[], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn recomplaunchers_folder_comes_before_one_the_player_picked() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let s = spots(&[], &["{local}/Test/saves".into()], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{local}/Test/saves", "catalog")]);
+    }
+
+    #[test]
+    fn the_players_folder_counts_when_nobody_named_one() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let s = spots(&[], &[], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/mine", "player")]);
     }
 
     #[test]

@@ -2597,9 +2597,10 @@ body.light .su-req{color:#8a5300}
 /* The cloud save status above Play (account.js): a coloured line, not a button. Its colour says
    the state: green in the cloud, cyan working, amber waiting or a choice, red stuck, grey no
    cloud. The tooltip says more. */
-.sbadge{--sb-ok:#3ee08f;--sb-warn:var(--warn);--sb-bad:var(--bad);min-height:20px}
-body.light .sbadge{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
-.sbadge .sb-ok{--c:var(--sb-ok)}.sbadge .sb-cy{--c:var(--cyan)}.sbadge .sb-warn{--c:var(--sb-warn)}.sbadge .sb-bad{--c:var(--sb-bad)}.sbadge .sb-dim{--c:var(--dim)}
+.sbadge,.svs{--sb-ok:#3ee08f;--sb-warn:var(--warn);--sb-bad:var(--bad)}
+.sbadge{min-height:20px}
+body.light .sbadge,body.light .svs{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
+.sbadge .sb-ok,.svs.sb-ok{--c:var(--sb-ok)}.sbadge .sb-cy,.svs.sb-cy{--c:var(--cyan)}.sbadge .sb-warn,.svs.sb-warn{--c:var(--sb-warn)}.sbadge .sb-bad,.svs.sb-bad{--c:var(--sb-bad)}.sbadge .sb-dim,.svs.sb-dim{--c:var(--dim)}
 .sbadge-line{display:inline-flex;align-items:center;gap:7px;font:700 13.5px Figtree,sans-serif;color:var(--c);white-space:nowrap;cursor:default}
 .sbadge-line svg{flex:none}
 .sbadge-line small{font-weight:500;font-size:12.5px;color:var(--muted)}
@@ -2613,3 +2614,41 @@ body.light .sbadge{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
 .pick-newer{margin-left:6px;font-style:normal;font-size:12.5px;font-weight:700;color:#3ee08f}
 body.light .pick-newer{color:#127a45}
 .pick-note{margin:-4px 0 14px;font-size:13px}
+/* The Saves tab (account.js). Its first card is the status above Play, bigger, with the one thing
+   to do about it; then every save in one list, marked by where it's kept. */
+.svs-row{display:flex;align-items:center;gap:16px}
+.svs-ico{flex:none;display:grid;place-items:center;width:52px;height:52px;border-radius:14px;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent)}
+.svs .k{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+.svs .k b{font-size:17px;color:var(--c)}
+.svs .k b small{font-size:13.5px;font-weight:500;color:var(--muted)}
+.svs .k span{font-size:13.5px;color:var(--dim)}
+.svs .k>small{font-size:12.5px;color:var(--muted)}
+.svs .acts{flex:none}
+.svs .set-note{margin:12px 0 0}
+/* No box on the desktop: the status sits on the page as the tab's heading (Big Picture keeps its item box). */
+.card.svs{background:none;border-color:transparent;padding:6px 4px 10px}
+.svs-space{margin-top:14px}
+.svh-marks{display:flex;flex-wrap:wrap;gap:3px 14px;margin:2px 0 1px}
+.set-row .k .svm{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--dim)}
+.svm svg{flex:none}
+.set-row .k .svm-cloud{color:var(--cyan)}
+.set-row .k .svm-other{color:#b9a1ff}
+body.light .set-row .k .svm-other{color:#6a4bc9}
+.svh-more{margin-top:14px}
+@media (max-width:640px){.svs-row{flex-wrap:wrap}.svs .acts{width:100%}}
+/* The save in the game now: its row is lit green, with a green edge, and says so on the right. */
+.svh-row{--ok:#3ee08f}
+body.light .svh-row{--ok:#127a45}
+.svh-row.cur{margin:0 -14px;padding-left:14px;padding-right:14px;border-radius:12px;border-bottom-color:transparent;background:color-mix(in srgb,var(--ok) 9%,transparent);box-shadow:inset 3px 0 0 var(--ok)}
+.card-h+.svh-row.cur{padding-top:16px}
+.svh-cur{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--ok)}
+/* A save folder its developer or RecompLauncher set: said in green, with a shield. */
+.set-row .k .svp-set{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#3ee08f}
+body.light .set-row .k .svp-set{color:#127a45}
+.svp-set svg{flex:none}
+/* Delete from the cloud: a quiet icon beside Restore, red on hover. */
+.svh-row .acts{display:flex;align-items:center;gap:8px}
+.svh-del{color:var(--muted)}
+.svh-del:hover{color:var(--bad)}
+/* One RecompLauncher set is the launcher's cyan, so it reads apart from the developer's green. */
+.set-row .k .svp-set.ours{color:var(--cyan)}
