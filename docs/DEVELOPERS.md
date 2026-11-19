@@ -86,7 +86,9 @@ goes along; what it writes anywhere else is left behind. So:
   `RECOMPLAUNCHER_DATA` that moves all of it at once, not one option per kind of file. Without one,
   keep your system's usual places. An AppImage or a `.app` writes to the system's usual places
   (`~/.local/share`, `~/Library/Application Support`) unless it's given a data path; given one,
-  it's portable and the launcher looks after it. Never write inside the AppImage.
+  it's portable and the launcher looks after it. Your program's own files (an unpacked
+  AppImage's `AppRun` and `usr/`, a `.app`'s contents) are replaced on every update, so nothing
+  your game writes goes there: it goes in `{data}`.
 - **Caches go in `{data}`, under `{data}/cache`.** Backups and cloud saves leave `cache` folders
   out, so a shader cache never fills a player's save copies.
 - **Temp is temp.** Your setup step gets a temp folder of its own (see [`prepare`](#prepare-your-own-setup-step)),
