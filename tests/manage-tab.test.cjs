@@ -113,3 +113,13 @@ test('a local build has only its project association under Updates', () => {
   assert.match(html, /data-act="project-association"/);
   assert.doesNotMatch(html, /hold-up|auto-up|data-act="build"/);
 });
+
+test('the side column has no buttons, and Launcher Support is a box on Overview', () => {
+  const rail = fn(app, 'gameRail');
+  assert.doesNotMatch(rail, /quickActs|btn/);
+  assert.match(rail, /S\.tab === 'overview' \? readyCard\(a\) \+ supportCard\(a\) : ''/);
+});
+
+test('the facts card leaves out who made it (it is under the title)', () => {
+  assert.doesNotMatch(fn(app, 'gameRail'), /t\('By'\)/);
+});

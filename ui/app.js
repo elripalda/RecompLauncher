@@ -359,7 +359,6 @@ async function playSync(ids) {
 }
 setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); } }, 10 * 60 * 1000);
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
-const GITHUB_S = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8z"/></svg>';
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
 // for sourceforge:<name>, or a Forgejo server for forgejo:<server>/<owner>/<name>.
 const isLab = (repo) => /^gitlab:/i.test(String(repo || ''));
@@ -401,7 +400,6 @@ const followLabel = (url) => (onX(url) ? t('Follow It on X') : t('Follow It'));
 window.onX = onX;
 window.followLink = followLink;
 window.followLabel = followLabel;
-const X_S = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5z"/></svg>';
 // A link to a project: GitHub's mark for GitHub, a plain branch for anywhere else.
 const BRANCH_S = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3.4-11 6.6"/></svg>';
 window.repoHome = repoHome;
@@ -752,8 +750,6 @@ async function toggleFollow(slug) {
   if (S.view === 'home') render(true);
   if (window.tvRefresh) window.tvRefresh();
 }
-// A name with the tick after it, for lists.
-const whoHTML = (a) => { const d = devOf(a); return esc((d && d.name) || a.author || '') + (d && d.verified ? TICK(13) : ''); };
 // A game with more than one version for this computer: { id, name, pick, list }, or null. A page of
 // a version that doesn't run here still points at the ones that do.
 const verGroup = (a) => {
@@ -1216,16 +1212,6 @@ function actions(a, size = 'big') {
   }
 }
 
-// A game's quick actions, at the top of its side column: Add to Steam and to the desktop
-// (installed games), its project page and Report a problem (games with a repo). Each has its icon
-// and its name. Steam's own icon is used when ui/icons/steam.svg is there.
-const QI = (d, w = 1.9) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-const QI_PAD = QI('<path d="M7.5 7.5h9a4.5 4.5 0 0 1 4.4 5.4l-.8 3.9a2.3 2.3 0 0 1-3.9 1.1L14 15.5h-4l-2.2 2.4a2.3 2.3 0 0 1-3.9-1.1l-.8-3.9a4.5 4.5 0 0 1 4.4-5.4z"/><path d="M8 10.5v3M6.5 12h3"/><circle cx="15.5" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="17.3" cy="13" r=".9" fill="currentColor" stroke="none"/>');
-const QI_DESK = QI('<rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M9 20.5h6M12 16.5v4"/>');
-const QI_REPORT = QI('<path d="M10.3 4.1 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.1a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17h.01"/>', 2);
-let STEAM_ICON = '';
-fetch('icons/steam.svg').then((r) => (r.ok ? r.text() : '')).then((t) => { if (/^\s*<svg[\s>]/i.test(t) && !/<script|on\w+=/i.test(t)) { STEAM_ICON = t.replace(/<svg/i, '<svg class="qi-brand"'); if (!/aria-hidden/.test(STEAM_ICON)) STEAM_ICON = STEAM_ICON.replace(/<svg/i, '<svg aria-hidden="true"'); if (typeof S !== 'undefined' && S.view === 'game' && typeof refreshGame === 'function') refreshGame(); } }).catch(() => {});
-const SUPPORT_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 9 1.5 1.5L12 8M8 15l1.5 1.5L12 14M14.5 9.5H17M14.5 15.5H17"/></svg>';
 // A new issue on the recomp's own page, asking for RecompLauncher support. Opened for the player to
 // send themselves; nothing is sent from here.
 function askSupportUrl(a) {
@@ -1235,14 +1221,23 @@ function askSupportUrl(a) {
   if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
   return `${repoIssues(a.repo)}/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
-// What RecompLauncher can do for this recomp, and who made each part work: the catalog's
-// "support", the recomp's own recomplauncher.json in its folder, or (offline) its boot profile.
-async function supportModal(id) {
-  const a = byId(id) || (S.library[id] && libApp(S.library[id]));
-  if (!a) return;
+// Launcher Support, a box on Overview under Before You Play: what RecompLauncher can do for this
+// recomp, and who made each part work. From the catalog's "support", the recomp's own
+// recomplauncher.json in its folder (asked for once, for an installed game), or (offline) its
+// boot profile.
+S.supLocal = {};
+function supportCard(a) {
+  if (!a || a.soon) return '';
+  const id = a.id;
+  if (S.library[id] && S.supLocal[id] === undefined) {
+    S.supLocal[id] = null;
+    invoke('support_local', { id }).then((v) => {
+      S.supLocal[id] = v || null;
+      if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
+    }).catch(() => {});
+  }
+  const local = S.library[id] ? S.supLocal[id] : null;
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
-  let local = null;
-  if (S.library[id]) local = await invoke('support_local', { id }).catch(() => null);
   const boot = a.boot || builtinBoot()[id] || {};
   const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
   const guess = {
@@ -1274,35 +1269,13 @@ async function supportModal(id) {
   // manifest may have been supplied by the player, launcher, or another contributor.
   const owner = a.maintained_by === 'official' ? 'project' : ['project', 'launcher', 'community'].includes(a.maintained_by) ? a.maintained_by : 'unconfirmed';
   const ask = a.repo && (sdk === 'none' || missing);
-  const html = `<h2>${esc(t('Launcher Support'))}</h2><p class="muted">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
-    <div class="mh sup-list">${rows.map(([k, d, w]) => `<div class="mh-row sup-row"><span class="sup-mark">${okMark(w ? true : null)}</span><div class="mh-k"><b>${esc(k)}</b><span class="sup-d">${esc(d)}</span></div>${tag(w)}</div>`).join('')}</div>
+  const row = ([k, d, w]) => `<div class="set-row"><div class="k"><b>${esc(k)}</b><span>${esc(d)}</span></div><div class="acts">${tag(w)}${okMark(w ? true : null)}</div></div>`;
+  return `<div class="card sup-card"><div class="card-h"><h3>${esc(t('Launcher Support'))}</h3></div>
+    <p class="muted">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
+    ${rows.map(row).join('')}
     ${source ? `<p class="muted">${esc(source)}</p>` : ''}
     <p class="sup-own">${esc(t(OWNER_LONG[owner]))}</p>
-    ${ask ? `<p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p>` : ''}
-    <div class="acts ${ask ? 'grid2' : ''}">${ask ? `<button type="button" class="btn" data-x="ask">${esc(t('Ask the Developer'))}</button>` : ''}<button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`;
-  modal(html, (x) => { if (x.dataset.x === 'ask') invoke('open_url', { url: askSupportUrl(a) }).catch(fail); }, t('Launcher Support'));
-}
-
-function quickActs(a) {
-  const id = esc(a.id), b = (act, label, icon, extra = '') => `<button type="button" class="btn" data-act="${act}" data-id="${id}" ${extra}>${icon}<span>${esc(label)}</span></button>`;
-  const out = [];
-  if (S.library[a.id] && S.os !== 'macos') {
-    if (S.steam) out.push(b('steam', t('Add to Steam'), STEAM_ICON || QI_PAD));
-    out.push(b('desktop', t('Add to desktop'), QI_DESK));
-  }
-  if (followLink(a)) {
-    const f = followLink(a);
-    out.push(b('url', followLabel(f), onX(f) ? X_S : BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(f)}"`));
-  }
-  if (a.repo) {
-    out.push(b('url', viewOn(a.repo), isLab(a.repo) || isSF(a.repo) || isFJ(a.repo) ? BRANCH_S.replace('width="15" height="15"', 'width="18" height="18"') : GITHUB_S.replace('width="15" height="15"', 'width="18" height="18"'), `data-url="${esc(repoHome(a.repo))}"`));
-    out.push(b('url', t('Report a problem'), QI_REPORT, `data-url="${esc(reportUrl(a))}"`));
-  }
-  if (!a.soon) out.push(b('support', t('Launcher Support'), SUPPORT_I));
-  if (!out.length) return '';
-  // Even rows: an odd one out takes the whole row.
-  if (out.length % 2) out[out.length - 1] = out[out.length - 1].replace('class="btn"', 'class="btn span2"');
-  return `<div class="gp-quick acts grid2">${out.join('')}</div>`;
+    ${ask ? `<p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p><div class="acts"><button type="button" class="btn" data-act="url" data-url="${esc(askSupportUrl(a))}">${esc(t('Ask the Developer'))}</button></div>` : ''}</div>`;
 }
 
 // The other versions of this game that are installed too.
@@ -2464,10 +2437,13 @@ function playersText(a) {
 function gameRail(a) {
   const facts = [
     [t('Latest version'), verText(a.version)], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('License'), a.license], [t('By'), a.author], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('License'), a.license], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
-  return `<div class="stack">${quickActs(a)}${S.tab === 'overview' ? readyCard(a) : ''}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === t('By') ? `<span class="who">${whoHTML(a)}</span>` : esc(v)}</dd></div>`).join('')}
+  // Who made it is under the title; adding it somewhere, its project page and reporting are in the
+  // "…" menu. Overview has what it needs to play, and what the launcher can do for it.
+  const overview = S.tab === 'overview' ? readyCard(a) + supportCard(a) : '';
+  return `<div class="stack">${overview}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
     </div>`;
 }
@@ -8549,7 +8525,6 @@ async function act(el, e) {
     case 'rom-emus': return emuFolders();
     case 'found-fix': return fixFound(id);
     case 'copies': return copiesModal(id);
-    case 'support': return supportModal(id);
     case 'tv': return window.enterTV && window.enterTV();
     case 'vcredist': return installVcredist();
     case 'report': S.reportGame = id; return setSection('report');

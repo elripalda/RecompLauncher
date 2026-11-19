@@ -2118,10 +2118,6 @@ body.light .ds-panel{box-shadow:0 14px 40px rgba(14,22,38,.16)}
 body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}
 
 /* A game's quick actions above Before You Play: icon and name, two to a row. */
-.gp-quick{margin:0}
-.gp-quick .btn{gap:9px;justify-content:center}
-.gp-quick .btn svg{width:18px;height:18px;flex:none}
-.gp-quick .btn .qi-brand{width:18px;height:18px;flex:none}
 
 /* Mac: the web view there pays a lot for big blurs, so covers don't glow on hover. */
 body.mac .tile .glow{display:none}
@@ -2164,14 +2160,10 @@ body.mac .tile .glow{display:none}
 .copy-tags{display:flex;gap:6px;flex-shrink:0}
 .tag.ok{color:#3ee08f;background:rgba(62,224,143,.08);border-color:rgba(62,224,143,.36)}
 .modal .warn-line{color:var(--warn);font-weight:700}
-/* Launcher support: one row per feature, checked or not, and who made it work */
-.modal:has(.sup-list){width:min(560px,94vw)}
-.sup-list{gap:8px}
-.sup-row{min-height:74px}
-.sup-d{font-size:12.5px;color:var(--dim);line-height:1.35}
-.sup-row .tag{height:22px;padding:0 8px;font-size:11.5px;flex-shrink:0}
-.sup-mark{display:flex;flex-shrink:0}
-.modal .sup-own{color:#3ee08f;font-weight:700}
+/* Launcher Support, on Overview under Before You Play: one row per feature, and who made it work */
+.sup-card>p{margin:10px 0 0;font-size:13.5px}
+.sup-card .acts .tag{height:22px;padding:0 8px;font-size:11.5px;flex-shrink:0}
+.sup-card .sup-own{color:#3ee08f;font-weight:700}
 /* The crash window: the game's own last error line */
 .modal .fatal-line{display:flex;flex-direction:column;gap:4px;margin:0}
 .modal .fatal-line code{font-size:12.5px;padding:8px 10px;border-radius:10px;background:var(--card2);color:var(--text);overflow-wrap:anywhere;white-space:pre-wrap}
