@@ -2571,3 +2571,32 @@ body.light .su-req{color:#8a5300}
 .poster.cvl-on .badge.tl,.poster.cvl-on .badge.tr,.poster.cvl-on .badge.rank{top:calc(var(--cvl-top) * 100% + 9px)}
 .poster.cvl-on .badge.tl.low{top:calc(var(--cvl-top) * 100% + 41px)}
 .tv-poster.cvl-on .tv-badge,.tv-poster.cvl-on .tv-rank{top:calc(var(--cvl-top) * 100% + 12px)}
+/* The cloud save badge beside Play, and its details (account.js). Its colour says the state:
+   green in the cloud, cyan working, amber waiting or a choice, red stuck, grey no cloud. */
+.sbadge{position:relative;--sb-ok:#3ee08f;--sb-warn:var(--warn);--sb-bad:var(--bad)}
+body.light .sbadge{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
+.sbadge .sb-ok{--c:var(--sb-ok)}.sbadge .sb-cy{--c:var(--cyan)}.sbadge .sb-warn{--c:var(--sb-warn)}.sbadge .sb-bad{--c:var(--sb-bad)}.sbadge .sb-dim{--c:var(--dim)}
+.sbadge-chip{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 13px 0 10px;border-radius:11px;border:1px solid var(--line2);background:color-mix(in srgb,var(--card) 70%,transparent);backdrop-filter:blur(14px);color:var(--ink);font:700 13px Figtree,sans-serif;white-space:nowrap;cursor:pointer;transition:border-color .15s,background-color .15s}
+.sbadge-chip:hover,.sbadge-chip[aria-expanded=true]{border-color:var(--line3);background:var(--card2)}
+.sbadge-chip svg{color:var(--c);flex:none}
+.sbadge-chip small{font-weight:500;font-size:12.5px;color:var(--muted)}
+.sbadge-chip small::before{content:"· "}
+.sbadge-chip.hot{border-color:color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 10%,var(--card))}
+.sbadge-chip.hot b{color:var(--c)}
+.sbadge-pop{position:absolute;top:calc(100% + 8px);inset-inline-end:0;z-index:30;width:340px;max-width:calc(100vw - 48px);padding:16px;border-radius:16px;background:var(--card2);border:1px solid var(--line2);box-shadow:0 24px 60px -20px rgba(0,0,0,.8);display:flex;flex-direction:column;gap:12px;text-align:start;white-space:normal;animation:dropin .16s var(--ease)}
+body.light .sbadge-pop{box-shadow:0 12px 40px rgba(14,22,38,.18)}
+.sbadge-h{display:flex;gap:12px;align-items:flex-start}
+.sbadge-ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex:none;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.sbadge-h>div>b{display:block;font-size:15px}
+.sbadge-h>div>span{display:block;margin-top:2px;font-size:13px;line-height:1.45;color:var(--muted)}
+.sbadge-pop dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;padding:10px 12px;border-radius:12px;background:var(--fill);border:1px solid var(--line);font-size:13px}
+.sbadge-pop dt{color:var(--dim);font-weight:600}
+.sbadge-pop dd{margin:0;text-align:end;font-weight:600;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.sbadge-pop .acts{display:flex;gap:8px;flex-wrap:wrap}
+@container gp (max-width:1260px){.sbadge-pop{inset-inline-start:0;inset-inline-end:auto}}
+@media (max-width:1060px){.gp .sbadge-pop{inset-inline-start:0;inset-inline-end:auto}}
+.sb-spin{animation:sbspin 1.1s linear infinite;transform-origin:12px 13px}
+.sb-bob{animation:sbbob 1.2s ease-in-out infinite}
+@keyframes sbspin{to{transform:rotate(360deg)}}
+@keyframes sbbob{50%{transform:translateY(-1.5px)}}
+@media (prefers-reduced-motion:reduce){.sb-spin,.sb-bob{animation:none}}

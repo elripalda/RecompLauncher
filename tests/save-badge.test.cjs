@@ -1,0 +1,117 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const account = fs.readFileSync(path.join(__dirname, '../ui/account.js'), 'utf8');
+
+// Everything from `start` to the brace that closes the first one after it (a function, or a
+// const object), out of account.js.
+function block(start) {
+  const at = account.indexOf(start);
+  assert.ok(at >= 0, start);
+  let i = account.indexOf('{', at), depth = 0;
+  for (; i < account.length; i++) {
+    if (account[i] === '{') depth++;
+    if (account[i] === '}' && --depth === 0) break;
+  }
+  return account.slice(at, i + 1);
+}
+const line = (start) => {
+  const at = account.indexOf(start);
+  assert.ok(at >= 0, start);
+  return account.slice(at, account.indexOf('\n', at));
+};
+
+// The badge's info for a status, with the window's helpers kept to plain English.
+const info = new Function(`
+  const N_ = (x) => x, t = (x) => x, tf = (x) => x;
+  const tn = (n, one, many) => (n === 1 ? one : many).replace('{n}', n);
+  const ago = () => 'this week', whenText = (ts) => 'at ' + ts;
+  ${line('const SYNC_NOW = ')}
+  ${line('const OPEN_SAVES = ')}
+  ${block('const PROBLEM_BADGE = ')}
+  ${block('const PHASE_BADGE = ')}
+  ${block('function sinceText(')}
+  ${block('function saveBadgeInfo(')}
+  ${block('function problemBadge(')}
+  ${block('function waitingBadge(')}
+  return { saveBadgeInfo, sinceText };`)();
+
+const now = () => Math.floor(Date.now() / 1000);
+const status = (state, more = {}) => ({ state, syncedAt: 0, waiting: 0, retryIn: null, problem: null, newest: null, ...more });
+const acts = (b) => b.acts.map(([label]) => label);
+
+test('the same save here and in the cloud is green, with how long ago', () => {
+  const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() - 12 * 60, syncedDevice: 'Desk PC' }), undefined, false);
+  assert.equal(b.tone, 'ok');
+  assert.equal(b.label, 'Up to date');
+  assert.equal(b.note, '12 min ago');
+});
+
+test('an upload running shows over what the status says', () => {
+  const b = info.saveBadgeInfo(status('waiting', { waiting: 1 }), 'up', false);
+  assert.equal(b.label, 'Uploading…');
+  assert.equal(b.tone, 'cy');
+});
+
+test('a game being played says its save goes up after', () => {
+  const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() }), undefined, true);
+  assert.equal(b.label, 'Syncs after you play');
+});
+
+test('a conflict still asks for a choice while the game runs', () => {
+  const b = info.saveBadgeInfo(status('conflict'), undefined, true);
+  assert.equal(b.label, 'Choose a save');
+  assert.deepEqual(acts(b), ['Choose a Save']);
+});
+
+test('a copy queued while offline says so and offers Try Again', () => {
+  const b = info.saveBadgeInfo(status('waiting', { waiting: 1, problem: { kind: 'offline', text: '' } }), undefined, false);
+  assert.equal(b.tone, 'warn');
+  assert.equal(b.note, 'offline');
+  assert.deepEqual(acts(b), ['Try Again']);
+});
+
+test('a copy waiting its next try says when', () => {
+  const b = info.saveBadgeInfo(status('waiting', { waiting: 2, retryIn: 230 }), undefined, false);
+  assert.equal(b.note, 'next try in 4 min');
+});
+
+test('a newer save that goes up after the next session offers Sync Now', () => {
+  const b = info.saveBadgeInfo(status('waiting'), undefined, false);
+  assert.deepEqual(acts(b), ['Sync Now']);
+});
+
+test('a copy too big to send is red and named', () => {
+  const b = info.saveBadgeInfo(status('problem', { problem: { kind: 'too-big-copy', text: 'Over 95 MB.' } }), undefined, false);
+  assert.equal(b.tone, 'bad');
+  assert.equal(b.label, 'Too big for the cloud');
+  assert.equal(b.text, 'Over 95 MB.');
+});
+
+test('a problem of a kind it does not know reads as an upload that failed', () => {
+  const b = info.saveBadgeInfo(status('problem', { problem: { kind: 'something-new', text: '' } }), undefined, false);
+  assert.equal(b.label, 'Can\'t upload');
+  assert.deepEqual(acts(b), ['Sync Now', 'Open Saves']);
+});
+
+test('cloud saves off offers to turn them on', () => {
+  const b = info.saveBadgeInfo(status('off'), undefined, false);
+  assert.equal(b.tone, 'dim');
+  assert.deepEqual(acts(b), ['Turn On']);
+});
+
+test('signed out offers to sign in', () => {
+  const b = info.saveBadgeInfo(status('signed-out'), undefined, false);
+  assert.deepEqual(acts(b), ['Sign In']);
+});
+
+test('a game never played has nothing to sync', () => {
+  const b = info.saveBadgeInfo(status('none'), undefined, false);
+  assert.equal(b.label, 'No saves yet');
+  assert.equal(b.acts.length, 0);
+});
+
+test('a sync over a day ago falls back to the coarse wording', () => {
+  assert.equal(info.sinceText(now() - 3 * 86400), 'this week');
+});
