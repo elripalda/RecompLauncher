@@ -119,3 +119,28 @@ test('Big Picture opens the same steps: A presses, B goes back a step before it 
   assert.match(tv, /const go = await stepsRun\(id, ns, TS\.optsSaving\);/);
   assert.doesNotMatch(tv, /namedInputsShell|TS\.stage === 'pick'/);
 });
+
+test('a game whose setup step kept the copy builds again without it, on both screens', async () => {
+  const c = context();
+  const su = copy({ kept: true });
+  const m = c.stepsModel('g', su, {});
+  assert.ok(m.kept);
+  assert.equal(m.missing.length, 0, 'what it kept stands in for the copy');
+  assert.equal(m.blocked, false);
+  const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.match(html, /<h2>Build It Again<\/h2><p>Your copy isn&#39;t needed: it&#39;s built again from what it kept last time\.<\/p>/);
+  assert.match(html, /data-ss="file"/, 'the copy can still be picked, to build from it instead');
+  assert.match(c.stepsView('g', su, { copy: '/roms/G.nup' }, { name: 'R', game: 'G' }), /<h2>Insert your copy<\/h2>/);
+  c.S.setup.g = su;
+  assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { kept: true });
+  // A copy picked anyway is used: the player chose it.
+  assert.deepEqual({ ...(await c.stepsRun('g', { copy: '/roms/G.nup' }, null)) }, { copy: '/roms/G.nup' });
+  // A build that's already there still skips the build.
+  assert.equal(c.stepsModel('g', copy({ kept: true, prebuilt: '/install/G' }), {}).kept, false);
+  const app = read('app.js'), tv = read('tv.js');
+  assert.match(app, /if \(go\.kept\) return suBegin\('', true\);/);
+  assert.match(tv, /if \(go\.kept\) return tsBegin\('', true\);/);
+  assert.match(app, /const order = \(SU\.kept \? \[\] : \['read', 'verify'\]\)/);
+  assert.match(tv, /const order = \(TS\.kept \? \[\] : \['read', 'verify'\]\)/);
+  assert.match(app, /\/\^NEED_REBUILD\\\|kept\$\/\.test\([^\n]*\) S\.setupNote = null;/);
+});

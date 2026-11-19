@@ -1369,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "Bu oyun başlatıcıdan mod almıyor.",
  "This game doesn't work with looks.": "Bu oyun görünümlerle çalışmıyor.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "Bu oyunun kurulumu, siz derledikten sonra değişti. Kopyanızı seçin, yeniden derlensin.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Kopyanıza gerek yok: son seferde sakladıklarından yeniden derlenir.",
  "This is how it will look while you play.": "Oynarken böyle görünecek.",
  "This looks like {name}, which is already in Discover.": "Bu {name} gibi görünüyor ve zaten Keşfet'te.",
  "This mod can't be installed from here. Its page on GameBanana says how.": "Bu mod buradan yüklenemez. GameBanana'daki sayfasında nasıl yapılacağı yazıyor.",

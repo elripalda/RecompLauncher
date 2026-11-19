@@ -269,6 +269,7 @@
  "Theme": "Thème",
  "This PC is a handheld, so the launcher keeps out of the way while you play. Change it here.": "Ce PC est une console portable, alors le lanceur se fait discret pendant que vous jouez. Vous pouvez changer ça ici.",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "La configuration de ce jeu a changé depuis que vous l'avez compilé. Choisissez votre copie et il sera recompilé.",
+  "Your copy isn't needed: it's built again from what it kept last time.": "Votre copie n'est pas nécessaire : il est recompilé à partir de ce qu'il a gardé la dernière fois.",
  "This is how it will look while you play.": "Voici à quoi ça ressemblera pendant que vous jouez.",
  "This looks like {name}, which is already in Discover.": "On dirait {name}, qui est déjà dans Découvrir.",
  "This one needs a few things on your PC before it plays. Do these once, in order:": "Ce jeu a besoin de quelques éléments sur votre PC avant de pouvoir y jouer. Faites-les une fois, dans l'ordre :",

@@ -584,6 +584,25 @@ settings are written. It runs again whenever the player changes their copy.
   your build folder must be in theirs, so list one your
   build always leaves, like `["{install}/YourGame/game.pak"]`. Without `done`, any folder with files
   in it is taken.
+- `"keeps_copy": true` (optional): your step keeps what it needs from the copy in your build folder
+  (the first `folders.game`) and can run again from there without it, like an update that rebuilds
+  from what the first build unpacked. Then a player who deleted their copy to save space isn't
+  asked for it again: when `version` changes, or a file of `done` is missing, Play builds the game
+  again from what you kept, and Easy Setup runs the step the same way when no copy is picked. The
+  launcher leaves out every argument with `{game}` in it, so write the copy as one argument
+  (`--game={game}`, not `"--game", "{game}"`); option args (`--fetch-ngx-sdk`) are still added. List
+  `done` too, so the launcher can tell when the build is finished. When your build folder is gone,
+  or the run fails, the player is asked for their copy and the game is built from that.
+
+  ```json
+  "prepare": {
+    "program": ["YourGameBuilder.exe"],
+    "args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"],
+    "done": ["{install}/YourGame/yourgame.exe"],
+    "keeps_copy": true
+  },
+  "folders": { "game": [{ "path": "{install}/YourGame" }] }
+  ```
 
 **A second file from the player.** When your step needs more than the copy, like an official patch
 or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{game}`. The

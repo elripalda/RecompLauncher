@@ -1369,6 +1369,7 @@
  "This game doesn't take mods from the launcher.": "このゲームはランチャーからの MOD に対応していません。",
  "This game doesn't work with looks.": "このゲームはスタイルに対応していません。",
  "This game's setup changed since you built it. Pick your copy and it's built again.": "このゲームのセットアップは、ビルドした後に変更されました。ゲームデータを選ぶともう一度ビルドされます。",
+  "Your copy isn't needed: it's built again from what it kept last time.": "ゲームデータは必要ありません。前回保存したものからもう一度ビルドされます。",
  "This is how it will look while you play.": "プレイ中はこのように表示されます。",
  "This looks like {name}, which is already in Discover.": "これは {name} のようです。すでに「見つける」にあります。",
  "This mod can't be installed from here. Its page on GameBanana says how.": "この MOD はここからインストールできません。方法は GameBanana のページに書かれています。",
