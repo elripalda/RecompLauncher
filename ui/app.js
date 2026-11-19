@@ -160,6 +160,9 @@ const pins = () => ((S.settings.ui && S.settings.ui.pins) || []).filter((id) => 
 // The player's favourite games (Library filter, Home row).
 const STAR = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="margin-right:5px;vertical-align:-1px"><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>';
 const favs = () => ((S.settings.ui && S.settings.ui.favs) || []).filter((id) => S.library[id]);
+// A favourite shows it: a star on its Library tile and after its name in the sidebar's pins.
+const FAV_STAR = '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>';
+const favMark = (id, cls) => (favs().includes(id) ? `<span class="${cls}" title="${esc(t('Favorite'))}">${FAV_STAR}</span>` : '');
 // A word that means different things in different places ("Light" as a theme, not a strength):
 // its key carries the context after a bar, and English shows only the word.
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
@@ -1059,13 +1062,15 @@ function poster(a, mine, inst, wide, w, rank) {
   // A chart's rank takes the top-left corner; what's usually there moves down under it.
   const rk = rank ? `<span class="badge rank" title="${esc(tf('Number {n} this week', { n: rank }))}">#${fmtNum(rank)}</span>` : '';
   const down = (h) => (rank ? h.replace('class="badge tl', 'class="badge tl low') : h);
+  // A favourite in the player's own Library: a star in the corner the versions count uses elsewhere.
+  const fav = mine ? favMark(a.id, 'badge fav') : '';
   if (wide) {
     // A wide tile: the game's art, blurred and darkened, with its logo in the middle (its name
     // when there's no logo).
     const art = a.hero || a.cover, logo = a.logo;
-    return `<div class="poster wide${lb ? ' local' : ''}"><span class="ph"></span>${art ? `<img class="wbg" src="${esc(media(thumbOf(art)))}" alt="" loading="lazy" decoding="async">` : ''}<span class="wshade"></span>${logo ? `<img class="wlogo" src="${esc(media(logo))}" alt="${esc(a.name)}" loading="lazy" decoding="async">` : `<span class="wname">${esc(a.name)}</span>`}${lb || badge}${prog ? prog : easy}${vers}</div>`;
+    return `<div class="poster wide${lb ? ' local' : ''}"><span class="ph"></span>${art ? `<img class="wbg" src="${esc(media(thumbOf(art)))}" alt="" loading="lazy" decoding="async">` : ''}<span class="wshade"></span>${logo ? `<img class="wlogo" src="${esc(media(logo))}" alt="${esc(a.name)}" loading="lazy" decoding="async">` : `<span class="wname">${esc(a.name)}</span>`}${lb || badge}${prog ? prog : easy}${vers}${fav}</div>`;
   }
-  return `<div class="poster${lb ? ' local' : ''}${coverLabelPush(a)}"><span class="ph">${esc(a.name)}</span>${pic(thumbOf(a.cover, Math.max(w || 0, tileThumb())), '', 'loading="lazy"')}${coverLabel(a)}${rk}${down(lb || badge)}${prog ? prog : easy}${down(vers)}</div>`;
+  return `<div class="poster${lb ? ' local' : ''}${coverLabelPush(a)}"><span class="ph">${esc(a.name)}</span>${pic(thumbOf(a.cover, Math.max(w || 0, tileThumb())), '', 'loading="lazy"')}${coverLabel(a)}${rk}${down(lb || badge)}${prog ? prog : easy}${down(vers)}${fav}</div>`;
 }
 
 // The line under one game of a recomp's tile: its setup still to do, that it's picked in the
@@ -4595,7 +4600,7 @@ function renderSide() {
   $('#collapse .lbl').textContent = ui.mini ? t('Expand') : t('Collapse');
   const list = pins().map((id) => byId(id) || (S.library[id] && { id, name: S.library[id].name })).filter(Boolean);
   $('#pins-h').hidden = !list.length;
-  const html = list.map((a) => `<button type="button" class="pin${v === 'game' && S.arg === a.id ? ' on' : ''}" data-act="open" data-id="${esc(a.id)}" title="${esc(a.name)}"><span class="th">${a.cover ? pic(thumbOf(a.cover, 160)) : ''}${S.running.has(a.id) ? '<i class="run"></i>' : ''}</span><span class="lbl">${esc(a.name)}</span></button>`).join('');
+  const html = list.map((a) => `<button type="button" class="pin${v === 'game' && S.arg === a.id ? ' on' : ''}" data-act="open" data-id="${esc(a.id)}" title="${esc(a.name)}"><span class="th">${a.cover ? pic(thumbOf(a.cover, 160)) : ''}${S.running.has(a.id) ? '<i class="run"></i>' : ''}</span><span class="lbl">${esc(a.name)}</span>${favMark(a.id, 'lbl pin-fav')}</button>`).join('');
   const box = $('#pins');
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
   for (const b of $$('.pin', box)) if (!iconsOnly) b.removeAttribute('title');

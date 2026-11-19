@@ -74,6 +74,7 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .pin .th img{width:100%;height:100%;object-fit:cover;display:block}
 .pin.on .th{box-shadow:0 0 0 2px var(--cyan)}
 .pin .lbl{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pin .pin-fav{flex:none;display:flex;margin-left:auto;padding-right:12px;color:#ffc94d}
 /* Moving a pinned game: the others slide aside, the one in hand stays on top. */
 .pins.sorting{user-select:none}
 .pins.sorting .pin{transition:transform .15s var(--ease),background .15s,color .15s}
@@ -1354,6 +1355,9 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 /* ---------- versions of the same game ---------- */
 .badge.vers{top:auto;bottom:9px;right:9px;color:var(--ink);background:rgba(6,11,21,.78);backdrop-filter:blur(8px);border:1px solid rgba(244,248,252,.16);gap:4px;padding:0 8px}
 .badge.vers svg{color:var(--cyan)}
+/* A favourite in the Library: a plain gold star, bottom right (the versions count is never on those tiles) */
+.badge.fav{top:auto;bottom:9px;right:9px;height:auto;padding:0;border:0;background:none;backdrop-filter:none;color:#ffc94d;filter:drop-shadow(0 1px 3px rgba(0,0,0,.85))}
+.badge.fav svg{width:17px;height:17px}
 .ver-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 11px;border-radius:17px;background:rgba(6,11,21,.55);backdrop-filter:blur(10px);border:1px solid var(--line2);font-size:13px;font-weight:700;color:var(--ink);transition:border-color .15s,background-color .15s}
 .ver-pill:hover,.ver-pill[aria-expanded="true"]{border-color:rgba(52,242,232,.5);background:rgba(6,11,21,.75)}
 .ver-pill>svg:first-child{color:var(--cyan)}
