@@ -690,6 +690,28 @@ mod tests {
         assert_eq!(snapshot(&game), before);
     }
 
+    #[test]
+    fn an_update_still_counts_after_the_library_is_saved_and_loaded_again() {
+        let d = tmp("record-round-trip");
+        let (game, staged, lib) = (d.join("game"), d.join("staging"), d.join("lib"));
+        put(&game.join("data/deep/a.bin"), "old a");
+        put(&staged.join("data/deep/a.bin"), "new a");
+        put(&staged.join("data/deep/b.bin"), "new b");
+        // Joined, so on Windows these are written the Windows way, as an unpacked release's are.
+        let files = vec![Path::new("data").join("deep").join("a.bin"), Path::new("data").join("deep").join("b.bin")];
+        let old = [Path::new("data").join("deep").join("a.bin")];
+        put_in_place(&game, &staged, &files, "new", &[], &old).unwrap().leave_for_next_start();
+        let mut library = crate::library::Library::default();
+        let record = Installed { id: "g".into(), path: game.clone(), files, sha256: "new".into(), ..Default::default() };
+        library.installed.insert("g".into(), record);
+        library.save(&lib).unwrap();
+        let loaded = crate::library::Library::load(&lib);
+        let said = recover(&game, loaded.installed.get("g")).unwrap();
+        assert!(said.contains("finished"), "{said}");
+        assert_eq!(fs::read_to_string(game.join("data/deep/b.bin")).unwrap(), "new b");
+        assert!(!game.join(FOLDER).exists());
+    }
+
     /// Holds `file` the way a running game or an antivirus does, until dropped.
     #[cfg(windows)]
     fn lock(file: &Path) -> Option<fs::File> {
