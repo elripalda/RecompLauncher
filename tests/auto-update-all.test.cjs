@@ -134,3 +134,14 @@ test('turning the Settings switch on starts the updates already waiting', async 
   assert.deepEqual(saved, [true, false]);
   assert.equal(checks, 1);
 });
+
+test('Big Picture\'s Turn off automatic updates reads in Title Case in English', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../ui/titlecase.js'), 'utf8');
+  const c = vm.createContext({
+    document: { body: null, documentElement: { lang: 'en' }, addEventListener: () => {} },
+    MutationObserver: class { observe() {} },
+  });
+  c.window = c;
+  vm.runInContext(src, c);
+  assert.equal(c.titleCase('Turn off automatic updates'), 'Turn Off Automatic Updates');
+});
