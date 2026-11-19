@@ -669,14 +669,17 @@ fn un7z(file: &Path, to: &Path) -> Result<(), Error> {
     .map_err(|e| Error::Msg(format!("Couldn't open the 7z: {e}")))
 }
 
-fn untar(file: &Path, to: &Path, xz: bool) -> Result<(), Error> {
-    let f = fs::File::open(file)?;
-    if xz {
-        return Err(Error::Msg(".tar.xz isn't supported yet".into()));
-    }
-    let mut t = tar::Archive::new(flate2::read::GzDecoder::new(f));
+/// A tarball, compressed with gzip, xz or zstd. tar skips entries that would land outside the folder.
+fn untar(file: &Path, to: &Path, k: &str) -> Result<(), Error> {
+    let f = io::BufReader::new(fs::File::open(file)?);
+    let read: Box<dyn io::Read> = match k {
+        // Several xz streams one after another (parallel compressors write them) are one file.
+        "tar.xz" => Box::new(xz2::read::XzDecoder::new_multi_decoder(f)),
+        "tar.zst" => Box::new(zstd::stream::read::Decoder::with_buffer(f)?),
+        _ => Box::new(flate2::read::GzDecoder::new(f)),
+    };
+    let mut t = tar::Archive::new(read);
     t.set_preserve_permissions(true);
-    // tar skips entries that would land outside the folder.
     t.unpack(to)?;
     Ok(())
 }
@@ -713,56 +716,27 @@ pub(crate) fn in_use(e: &io::Error) -> bool {
     matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied
 }
 
-/// What to tell the player when a file can't be put in place.
-fn denied(e: io::Error, what: &Path) -> io::Error {
-    if in_use(&e) {
-        io::Error::new(
-            e.kind(),
-            format!(
-                "Windows wouldn't let the launcher write {}. Close the game if it's running, check that your antivirus isn't holding the folder, or pick a library folder outside Program Files, then try again.",
-                what.display()
-            ),
-        )
-    } else {
-        e
-    }
-}
-
-/// Move everything in `from` into `to`, replacing files of the same name and leaving the rest
-/// (saves, settings, the game files people added) alone.
-fn overlay(from: &Path, to: &Path) -> io::Result<()> {
-    patient(|| fs::create_dir_all(to)).map_err(|e| denied(e, to))?;
+/// Files unpacked in staging moved into `to`, also in staging, each replacing what has its name (an
+/// AppImage's own recomplauncher.json wins over one beside it in a zip, as its manifest does).
+/// Folders on both sides merge, except a Mac app: one signed unit, replaced whole.
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+fn merge_into(from: &Path, to: &Path) -> io::Result<()> {
+    fs::create_dir_all(to)?;
     for e in fs::read_dir(from)? {
         let e = e?;
-        let src = e.path();
         let dest = to.join(e.file_name());
-        let ty = e.file_type()?;
-        // A signed app is one unit. Merging leaves obsolete files and can invalidate its seal.
-        if ty.is_dir() && crate::macos::is_bundle(&src) {
-            replace_bundle(&src, &dest)?;
-        } else if ty.is_dir() {
-            if dest.is_file() || fs::symlink_metadata(&dest).map(|m| m.is_symlink()).unwrap_or(false) {
-                patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
-            }
-            overlay(&src, &dest)?;
-        } else {
-            if fs::symlink_metadata(&dest).map(|m| m.is_symlink()).unwrap_or(false) {
-                patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
-            } else if dest.is_dir() {
-                patient(|| fs::remove_dir_all(&dest)).map_err(|e| denied(e, &dest))?;
-            }
-            if patient(|| fs::rename(&src, &dest)).is_err() {
-                #[cfg(unix)]
-                if ty.is_symlink() {
-                    if dest.exists() {
-                        fs::remove_file(&dest)?;
-                    }
-                    std::os::unix::fs::symlink(fs::read_link(&src)?, &dest)?;
-                    continue;
-                }
-                patient(|| fs::copy(&src, &dest)).map_err(|e| denied(e, &dest))?;
-            }
+        let there = fs::symlink_metadata(&dest).ok();
+        let both_folders = e.file_type()?.is_dir() && there.as_ref().is_some_and(|m| m.is_dir()) && !crate::macos::is_bundle(&e.path());
+        if both_folders {
+            merge_into(&e.path(), &dest)?;
+            continue;
         }
+        match there {
+            Some(m) if m.is_dir() => fs::remove_dir_all(&dest)?,
+            Some(_) => fs::remove_file(&dest)?,
+            None => {}
+        }
+        fs::rename(e.path(), &dest)?;
     }
     Ok(())
 }
@@ -823,6 +797,11 @@ pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathB
             return (Some(n.clone()), Some(old));
         }
     }
+    // The AppImage an older launcher installed, and the new release unpacked (on Linux every game
+    // plays from a plain folder): its AppRun starts the game now, and the old AppImage goes.
+    if let Some(start) = is_appimage.then(|| unpacked_start(files, &old)).flatten() {
+        return (Some(start), Some(old));
+    }
     // The program the player picked isn't one of the new release's files (it was moved inside the
     // release, say): the new release's file of the same name, so Play starts the update.
     if !kept || files.contains(&old) {
@@ -834,6 +813,24 @@ pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathB
     (Some(moved.clone()), None)
 }
 
+/// The AppRun that starts an unpacked AppImage among a release's files: the one at the top, else
+/// the one in the folder named after the AppImage (see unpack_appimages), else the only one.
+pub fn unpacked_start(files: &[PathBuf], image: &Path) -> Option<PathBuf> {
+    let top = PathBuf::from("AppRun");
+    if files.contains(&top) {
+        return Some(top);
+    }
+    let own = image.with_extension("").join("AppRun");
+    if files.contains(&own) {
+        return Some(own);
+    }
+    let one_down: Vec<&PathBuf> = files.iter().filter(|f| f.components().count() == 2 && f.file_name().is_some_and(|n| n == "AppRun")).collect();
+    match one_down.as_slice() {
+        [only] => Some((*only).clone()),
+        _ => None,
+    }
+}
+
 /// The folders above a removed file that it leaves empty, up to (not including) `top`.
 pub(crate) fn remove_empty_parents(top: &Path, file: &Path) {
     let mut dir = file.parent();
@@ -843,25 +840,6 @@ pub(crate) fn remove_empty_parents(top: &Path, file: &Path) {
         }
         dir = d.parent();
     }
-}
-
-fn replace_bundle(from: &Path, to: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(to).is_err() {
-        return fs::rename(from, to);
-    }
-    // Staging is on the library's drive. Keep the old bundle until the new one is in place;
-    // on a failed rename restore it. A pre-existing backup name is never overwritten.
-    let backup_dir = from.with_extension("app.previous");
-    fs::create_dir(&backup_dir)?;
-    let backup = backup_dir.join("previous");
-    fs::rename(to, &backup)?;
-    if let Err(error) = fs::rename(from, to) {
-        fs::rename(&backup, to)?;
-        let _ = fs::remove_dir(&backup_dir);
-        return Err(error);
-    }
-    let _ = fs::remove_dir_all(backup_dir);
-    Ok(())
 }
 
 /// Unpack (or place) the downloaded file into `target`. Returns the files it put there, relative.
@@ -901,10 +879,20 @@ pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<Pa
     unpack_with(file, target, staging, false)
 }
 
+/// What the marker of a swap that isn't a game's release says instead of a download's SHA-256: no
+/// game's record has it, so a launcher closed in the middle undoes it (see swap::recover).
+const NOT_A_RELEASE: &str = "not-a-release";
+
+/// Unpacked beside `target` first, then put in all at once (see swap): a mod, an installer or a
+/// copy of a game goes in whole, or `target` stays as it was. Nothing keeps a list of what such an
+/// unpack put there before, so none of what's there counts as its own: a file of it where `target`
+/// has a folder (or a folder where it has a file) stops it, rather than setting the player's files
+/// aside. A file over a file of the same name is replaced, as it always was.
 fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
     let staged = stage_with(file, staging, strip_top)?;
-    overlay(&staged.root, target)?;
+    let placed = crate::swap::put_in_place(target, &staged.root, &staged.files, NOT_A_RELEASE, &[], &[]);
     let _ = fs::remove_dir_all(staging);
+    placed?.finish();
     Ok(staged.files)
 }
 
@@ -939,8 +927,7 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
         "zip" => unzip(file, staging)?,
         "7z" => un7z(file, staging)?,
         "rar" => crate::gamebanana::extract(file, staging)?,
-        "tar.gz" => untar(file, staging, false)?,
-        "tar.xz" => untar(file, staging, true)?,
+        "tar.gz" | "tar.xz" | "tar.zst" => untar(file, staging, k)?,
         #[cfg(target_os = "macos")]
         "dmg" => undmg(file, staging)?,
         "appimage" | "exe" | "msi" => {
@@ -962,6 +949,10 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
     let from = if strip_top { root(staging) } else { staging.to_path_buf() };
     #[cfg(target_os = "macos")]
     let from = if strip_top { unwrap_mac_zip(from, staging)? } else { from };
+    // On Linux every game plays from a plain folder: the release's AppImages are unpacked here, so
+    // their files are the game's files from now on.
+    #[cfg(target_os = "linux")]
+    unpack_appimages(&from, staging)?;
     validate_links(&from, &from)?;
     // Bundles must be self-contained when moved or replaced as a unit.
     for entry in fs::read_dir(&from)? {
@@ -970,47 +961,91 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
             validate_links(&entry.path(), &entry.path())?;
         }
     }
-    // In the Flatpak an AppImage can't mount itself (no FUSE): the release's AppImage is unpacked
-    // here like an archive, so its files are the game's files from now on.
-    #[cfg(target_os = "linux")]
-    if crate::flatpak::sandboxed() {
-        unpack_appimage_in(&from, staging);
-    }
     let mut files = vec![];
     list(&from, &from, &mut files);
     Ok(Staged { root: from, files })
 }
 
-/// The one AppImage at the top of a release (on its own, or out of a zip): its contents (AppRun,
-/// usr/, the desktop file, an embedded recomplauncher.json) put in its place and the AppImage
-/// removed. Two or more AppImages, or one that doesn't unpack cleanly, stay as they are: Play
-/// unpacks those itself.
+/// What an AppImage that wouldn't unpack says, before its name and why. The install then takes the
+/// release's tarball when it has one (see lib.rs).
+pub const APPIMAGE_UNPACK: &str = "APPIMAGE_UNPACK|";
+
+/// Every AppImage in a release, unpacked in staging (see appimage::unpack) and the AppImage taken
+/// out, so the launcher never runs one. The only one, at the top of the release (on its own or out
+/// of a zip), becomes the top, its AppRun beside the rest. Any other unpacks into a folder named
+/// after it. Err names the one that didn't unpack, and why.
 #[cfg(target_os = "linux")]
-fn unpack_appimage_in(dir: &Path, staging: &Path) {
-    let images: Vec<PathBuf> = fs::read_dir(dir)
-        .map(|r| r.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false)).collect())
-        .unwrap_or_default();
-    let [image] = images.as_slice() else { return };
+pub(crate) fn unpack_appimages(dir: &Path, staging: &Path) -> Result<(), Error> {
+    let images = appimages_in(dir);
+    let alone_at_top = images.len() == 1 && images[0].parent() == Some(dir);
     let work = staging.with_extension("appdir");
-    let _ = fs::remove_dir_all(&work);
-    if fs::create_dir_all(&work).is_err() {
-        return;
+    for image in &images {
+        let name = image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let into = if alone_at_top { dir.to_path_buf() } else { image.with_extension("") };
+        let _ = fs::remove_dir_all(&work);
+        let unpacked = unpack_one(image, &work, &into);
+        let _ = fs::remove_dir_all(&work);
+        if let Err(e) = unpacked {
+            return Err(Error::Msg(format!("{APPIMAGE_UNPACK}{name}: {e}")));
+        }
+        crate::trail::note(format!("Install: unpacked {name} into a plain folder"));
     }
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(image, fs::Permissions::from_mode(0o755));
+    Ok(())
+}
+
+/// An AppImage the player has (one they bring in, or one an older launcher left in a game's
+/// folder) unpacked into `staging` as if it were a release: read, never run, and left as it is.
+#[cfg(target_os = "linux")]
+pub fn stage_appimage(image: &Path, staging: &Path) -> Result<Staged, Error> {
+    let _ = fs::remove_dir_all(staging);
+    let name = image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let unpacked = crate::appimage::unpack(image, staging).and_then(|()| {
+        let has_start = staging.join("AppRun").is_file();
+        has_start.then_some(()).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "it has no AppRun"))
+    });
+    if let Err(e) = unpacked {
+        let _ = fs::remove_dir_all(staging);
+        return Err(Error::Msg(format!("{APPIMAGE_UNPACK}{name}: {e}")));
     }
-    // `--appimage-extract` writes squashfs-root into the folder it runs in, and needs no FUSE.
-    let mut c = std::process::Command::new(image);
-    c.arg("--appimage-extract").current_dir(&work).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    crate::sysenv::clean_std(&mut c);
-    let appdir = work.join("squashfs-root");
-    let ok = c.status().map(|s| s.success()).unwrap_or(false) && appdir.join("AppRun").is_file() && validate_links(&appdir, &appdir).is_ok();
-    if ok && overlay(&appdir, dir).is_ok() {
-        let _ = fs::remove_file(image);
-        crate::trail::note(format!("Install: unpacked {} for the Flatpak", image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+    validate_links(staging, staging)?;
+    let mut files = vec![];
+    list(staging, staging, &mut files);
+    Ok(Staged { root: staging.to_path_buf(), files })
+}
+
+/// One AppImage unpacked in `work`, then its files moved into `into` and the AppImage removed.
+#[cfg(target_os = "linux")]
+fn unpack_one(image: &Path, work: &Path, into: &Path) -> io::Result<()> {
+    crate::appimage::unpack(image, work)?;
+    // Every AppImage starts from its AppRun; without one there's nothing to play.
+    if !work.join("AppRun").is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "it has no AppRun"));
     }
-    let _ = fs::remove_dir_all(&work);
+    fs::remove_file(image)?;
+    merge_into(work, into)
+}
+
+/// The AppImages anywhere in `dir`: regular files named `….AppImage`, never through a link.
+#[cfg(target_os = "linux")]
+fn appimages_in(dir: &Path) -> Vec<PathBuf> {
+    let mut out = vec![];
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+            let Ok(ty) = e.file_type() else { continue };
+            let path = e.path();
+            if ty.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
+            if ty.is_file() && named {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// A Mac disk image: opened read-only where Finder doesn't show it, what's on it (the .app and
@@ -1105,7 +1140,7 @@ fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
         }
         // Files beside the ZIP stay with the game it holds.
         fs::remove_file(zips[0].path())?;
-        overlay(&root(&layer), &from)?;
+        merge_into(&root(&layer), &from)?;
         // The layer can sit inside `from` (a ZIP at the top of the download): not part of the game.
         let _ = fs::remove_dir_all(&layer);
     }
@@ -1422,9 +1457,16 @@ pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
-    // An AppImage unpacked at install (the Flatpak): its AppRun starts it, as the AppImage did.
+    // An AppImage unpacked at install: its AppRun starts it, as the AppImage did. One of a release's
+    // several AppImages unpacked into a folder named after it, when it's the only one.
     if os == "linux" && dir.join("AppRun").is_file() {
         return Some(PathBuf::from("AppRun"));
+    }
+    if os == "linux" {
+        let one_down: Vec<PathBuf> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| Path::new(&e.file_name()).join("AppRun")).filter(|r| dir.join(r).is_file()).collect();
+        if let [only] = one_down.as_slice() {
+            return Some(only.clone());
+        }
     }
     let mut want: Vec<String> = names.iter().flat_map(|n| tokens(n)).filter(|t| t.len() > 2 && t != "recomp" && t != "the").collect();
     // Initials too: VCSLauncher.exe is Vice City Stories' launcher, mcla.exe Midnight Club Los
@@ -2020,6 +2062,158 @@ mod tests {
         }
         #[cfg(unix)]
         assert!(!is_program(&target.join("LICENSE"), "linux"));
+    }
+
+    /// A tarball with one program in a folder, run permission and all.
+    fn tarball_into(w: impl io::Write) {
+        let mut t = tar::Builder::new(w);
+        let mut h = tar::Header::new_gnu();
+        h.set_size(10);
+        h.set_mode(0o755);
+        h.set_cksum();
+        t.append_data(&mut h, "Game/run.sh", &b"#!/bin/sh\n"[..]).unwrap();
+        t.finish().unwrap();
+    }
+
+    #[test]
+    fn tar_xz_unpacks() {
+        let d = tmp("txz");
+        let tpath = d.join("Game-Linux.tar.xz");
+        let mut xz = xz2::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
+        tarball_into(&mut xz);
+        xz.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+        assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");
+    }
+
+    #[test]
+    fn tar_zst_unpacks() {
+        let d = tmp("tzst");
+        let tpath = d.join("Game-Linux.tar.zst");
+        let mut zst = zstd::stream::write::Encoder::new(fs::File::create(&tpath).unwrap(), 1).unwrap();
+        tarball_into(&mut zst);
+        zst.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_release_appimage_is_unpacked_and_never_kept() {
+        let d = tmp("stage-appimage");
+        let image = d.join("Game-1.0-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::game_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("usr/bin/game")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+        assert_eq!(find_exe(&staged.root, "linux", &["Game"]), Some(PathBuf::from("AppRun")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_release_dwarfs_appimage_is_unpacked_too() {
+        let d = tmp("stage-dwarfs-appimage");
+        let image = d.join("Game-anylinux-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::dwarfs_game_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("usr/bin/game")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+        assert_eq!(find_exe(&staged.root, "linux", &["Game"]), Some(PathBuf::from("AppRun")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_appimage_in_a_zip_unpacks_beside_the_rest() {
+        let d = tmp("stage-appimage-zip");
+        let image = crate::appimage::tests::game_image();
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game/Game-x86_64.AppImage", image.as_slice()), ("Game/README.txt", b"read me")])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("README.txt")));
+        assert!(!staged.files.contains(&PathBuf::from("Game-x86_64.AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn several_appimages_each_unpack_into_a_folder_of_their_own() {
+        let d = tmp("stage-appimages");
+        let image = crate::appimage::tests::game_image();
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game.AppImage", image.as_slice()), ("Editor.AppImage", image.as_slice())])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("Game/AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("Editor/AppRun")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_appimage_that_wont_unpack_stops_the_install() {
+        let d = tmp("stage-bad-appimage");
+        let image = d.join("Game-x86_64.AppImage");
+        fs::write(&image, b"#!/bin/sh\necho it's a script\n").unwrap();
+        let Err(Error::Msg(m)) = stage(&image, &d.join("st")) else { panic!("it must not install") };
+        assert!(m.starts_with(APPIMAGE_UNPACK), "{m}");
+    }
+
+    #[test]
+    fn an_update_from_an_old_appimage_install_starts_its_apprun() {
+        let target = tmp("update-unpacked");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        let (got, replaced) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["AppRun", "usr/bin/game"]), true);
+        assert_eq!(got, Some("AppRun".into()));
+        assert_eq!(replaced, Some("Game-v1.AppImage".into()));
+    }
+
+    #[test]
+    fn the_apprun_of_an_unpacked_appimage_is_found_among_the_files() {
+        assert_eq!(unpacked_start(&paths(&["AppRun", "Tool/AppRun"]), Path::new("Game.AppImage")), Some("AppRun".into()));
+        assert_eq!(unpacked_start(&paths(&["Game/AppRun", "Tool/AppRun"]), Path::new("Game.AppImage")), Some("Game/AppRun".into()));
+        assert_eq!(unpacked_start(&paths(&["Other/AppRun"]), Path::new("Game.AppImage")), Some("Other/AppRun".into()));
+        assert_eq!(unpacked_start(&paths(&["A/AppRun", "B/AppRun"]), Path::new("Game.AppImage")), None);
+    }
+
+    #[test]
+    fn a_mod_goes_into_the_game_whole_and_leaves_its_files() {
+        let d = tmp("mod-whole");
+        let target = d.join("game");
+        fs::create_dir_all(target.join("mods")).unwrap();
+        fs::write(target.join("mods/theirs.pak"), b"player's").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("mods/new.pak", b"new mod")])).unwrap();
+        let files = unpack_as_is(&zpath, &target, &d.join("st")).unwrap();
+        assert_eq!(files, paths(&["mods/new.pak"]));
+        assert_eq!(fs::read(target.join("mods/new.pak")).unwrap(), b"new mod");
+        assert_eq!(fs::read(target.join("mods/theirs.pak")).unwrap(), b"player's");
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn a_mod_never_sets_aside_a_folder_of_the_players_files() {
+        let d = tmp("mod-folder-in-the-way");
+        let target = d.join("game");
+        fs::create_dir_all(target.join("config")).unwrap();
+        fs::write(target.join("config/mine.ini"), b"player's").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("config", b"a file where the game has a folder")])).unwrap();
+        assert!(unpack_as_is(&zpath, &target, &d.join("st")).is_err());
+        assert_eq!(fs::read(target.join("config/mine.ini")).unwrap(), b"player's");
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn a_mod_isnt_put_in_while_an_update_waits_to_be_settled() {
+        let d = tmp("mod-waits");
+        let target = d.join("game");
+        fs::create_dir_all(target.join(crate::swap::FOLDER)).unwrap();
+        fs::write(target.join(crate::swap::FOLDER).join("update.json"), b"{}").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("new.pak", b"new mod")])).unwrap();
+        assert!(unpack_as_is(&zpath, &target, &d.join("st")).is_err());
+        assert!(!target.join("new.pak").exists());
     }
 
     #[test]
