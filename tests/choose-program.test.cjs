@@ -81,6 +81,10 @@ test('Skip Easy Setup closes the setup window and turns Easy Setup off, on the d
   assert.match(fn(app, 'skipEasyHere'), /await setEasySkip\(id, true\);/);
 });
 
+test('Skip Easy Setup waits for the window\'s close, which would otherwise put the switch back', () => {
+  assert.match(fn(app, 'skipEasyHere'), /await setupClosing;\n\s+try \{ await setEasySkip\(id, true\); \}/);
+});
+
 test('a game Easy Setup can\'t do goes back with Use Default', () => {
   assert.match(row(MINE, false), /data-act="forget-program"[^>]*>Use Default</);
 });

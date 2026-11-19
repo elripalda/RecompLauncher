@@ -5836,6 +5836,9 @@ async function setEasySkip(id, on) {
 // Skip Easy Setup, pressed on its setup window (desktop or Big Picture, which closes it first):
 // the game plays as it comes from now on. The Easy Setup switch in its Manage tab turns it back on.
 async function skipEasyHere(id) {
+  // Closing the setup window puts the game back as it was before it opened, its Easy Setup switch
+  // included: the skip waits for that, or the put-back would undo it.
+  await setupClosing;
   try { await setEasySkip(id, true); } catch (e) { return fail(e); }
   const name = (byId(id) || S.library[id] || { name: id }).name;
   toast(tf('Easy Setup is off for {name}. You set it up yourself.', { name }));
