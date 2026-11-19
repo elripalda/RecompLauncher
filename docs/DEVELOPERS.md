@@ -95,8 +95,9 @@ goes along; what it writes anywhere else is left behind. So:
   game's folder, so the other one goes stale.
 - **Don't depend on `$APPIMAGE`.** The launcher may run your AppImage unpacked, from its own folder
   (the Flatpak does), and then it isn't set.
-- **Never update yourself when `RECOMPLAUNCHER=1`.** The launcher installs every release you
-  publish. Your game and your setup step both get `RECOMPLAUNCHER=1`.
+- **Never update yourself when `RECOMPLAUNCHER=1`.** Your game and your setup step both get it,
+  and the launcher installs every release you publish. If only a flag turns your updater off,
+  [Mac apps](#mac-apps) shows where it goes.
 
 ```json
 "start": { "program": ["MyRecomp.exe"], "args": ["--data", "{data}"] },
@@ -177,8 +178,10 @@ The first entry that exists on the player's system runs, so one file covers a Ma
 RecompLauncher 0.90 Beta 54 and older find an app in `start.program` and `prepare.program` only by
 its program's own path, which works everywhere: `"MyGame.app/Contents/MacOS/MyGame"`.
 
-If your app updates itself (Sparkle, say), leave that off when `RECOMPLAUNCHER` is set: the
-launcher installs each of your releases over the app, and two updaters on one app fight.
+If your game updates itself (Sparkle, say), skip that when `RECOMPLAUNCHER` is set: the
+launcher installs each of your releases over the app, and two updaters on one app fight. If it
+can only be turned off with a flag, put the flag in `start.args`, like
+`"args": ["--no-update-check"]`.
 
 Two examples are worth reading:
 
@@ -621,7 +624,8 @@ disc or building a cache, give the launcher a way to run it without a window:
 It runs on the setup screen as "Getting the extras", after the copy is checked and before the
 settings are written. It runs again whenever the player changes their copy.
 
-- Don't open a window.
+- The step runs with no window and never asks anything or waits for input: everything it needs
+  comes from its arguments and environment.
 - Print lines like `progress 0.4 Unpacking menu art` as you go. The number is from 0 to 1 and the
   text after it shows under the step.
 - Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
