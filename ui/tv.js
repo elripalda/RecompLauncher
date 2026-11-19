@@ -1467,8 +1467,13 @@
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
     ];
     const bad = checks.filter((r) => r.v === false).length;
+    // Where its saves stand (account.js), beside Play as on the desktop; A opens its Saves.
+    const sb = g && window.saveBadgeFor ? window.saveBadgeFor(id) : null;
+    const sbLabel = sb ? esc(sb.label) + (sb.note ? `<small>${esc(sb.note)}</small>` : '') : '';
+    const sbBtn = sb ? `<button type="button" class="tv-btn tv-sbadge sb-${sb.tone}" data-f data-key="g-cloud" data-tvact="gsaves" data-id="${esc(id)}" aria-label="${esc(t('Cloud saves'))}: ${esc(sb.label)}">${window.saveBadgeIcon(sb.mark, 24)}<span>${sbLabel}</span></button>` : '';
     const acts = [
       mainButton(a, 'g-main'),
+      sbBtn,
       // Set Up Again beside Play, marked New while its project has options not answered yet.
       g && canSetUpAgain(id) ? btn('g-again', 'setup', esc(t('Set Up Again')) + (newPrepOpts(su).length ? `<b class="tv-new">${esc(t('New option'))}</b>` : ''), { id, icon: 'disc' }) : '',
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',

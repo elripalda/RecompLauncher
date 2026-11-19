@@ -1026,3 +1026,9 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-rail.box{right:auto;bottom:auto}
 .tv-rail i{position:absolute;left:0;top:0;width:100%;border-radius:6px;background:var(--acc,#34F2E8);opacity:.75;transition:transform .35s cubic-bezier(.2,.8,.2,1),height .2s}
 .tv-rail[hidden]{display:none}
+/* The cloud save badge among a game's buttons (account.js decides the state): the cloud takes the
+   state's colour, and a state that needs the player tints the button. */
+.tv-sbadge{--c:#8B97AA}
+.tv-sbadge.sb-ok{--c:#3ee08f}.tv-sbadge.sb-cy{--c:#34F2E8}.tv-sbadge.sb-warn{--c:#f5b83d}.tv-sbadge.sb-bad{--c:#ff7a7a}
+.tv-sbadge svg{color:var(--c)}
+.tv-sbadge.sb-warn,.tv-sbadge.sb-bad{border-color:color-mix(in srgb,var(--c) 50%,transparent);background:color-mix(in srgb,var(--c) 14%,rgba(var(--tvrgb),.6))}
