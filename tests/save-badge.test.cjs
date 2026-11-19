@@ -104,6 +104,16 @@ test('signed out says so', () => {
   assert.equal(b.label, 'Not signed in');
 });
 
+test('a game whose save folder nobody named says it is not backed up, whatever else is set', () => {
+  const b = info.saveBadgeInfo(status('up-to-date', { known: false, syncedAt: now() }), undefined, false);
+  assert.equal(b.label, 'Saves not backed up');
+});
+
+test('a game whose save folder nobody named is grey above Play, not a red alarm', () => {
+  const b = info.saveBadgeInfo(status('none', { known: false }), undefined, false);
+  assert.equal(b.tone, 'dim');
+});
+
 test('a game never played has nothing to sync', () => {
   const b = info.saveBadgeInfo(status('none'), undefined, false);
   assert.equal(b.label, 'No saves yet');

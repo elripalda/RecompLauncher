@@ -1267,7 +1267,7 @@
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
           ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
-          <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to put an older one back'))}</small></span>${svg('chevR', 30)}</button>
+          <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to restore an older one'))}</small></span>${svg('chevR', 30)}</button>
           ${head(t('Controller'))}
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
@@ -1303,24 +1303,59 @@
     const none = games.length - withSaves.length;
     const items = withSaves.map((x) => { const a = x.a || { id: x.id, name: x.g.name }; return `<button type="button" class="tv-item tv-stor" data-f data-key="sv:${esc(x.id)}" data-tvact="gsaves" data-id="${esc(x.id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${esc(tf('Last saved {when}', { when: ago(x.newest.when) }))}${x.cloudOn === true ? ' · ' + esc(t('In the cloud')) : ''}</small></span><span class="tv-stor-r"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button>`; }).join('');
     return `${backdrop(null)}${gameBar()}
-      ${region(`${pageHead(t('Saves'), t('After every session the launcher keeps a copy of each game\'s saves. Pick a game to put an older one back.'))}
+      ${region(`${pageHead(t('Saves'), t('After every session the launcher keeps a copy of each game\'s saves. Pick a game to restore an older one.'))}
         ${o && o.error ? `<p class="tv-empty">${esc(t(o.error))}</p>` : ''}
         <div class="tv-list">${!o ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : items || `<p class="tv-empty">${esc(t('Install a game and play it once. Its saves are copied here after every session.'))}</p>`}</div>
         ${none ? `<p class="tv-note">${esc(tn(none, '1 more game has no saves yet. Play it once and its saves show up here.', '{n} more games have no saves yet. Play them once and their saves show up here.'))}</p>` : ''}`)}
       ${hints([['A', t('Open')], ['B', t('Back')]])}`;
   }
 
-  // One game's saves: cloud on or off, a copy now, and every copy to put back.
+  // One game's saves, in the desktop tab's order: where they stand (A does the one thing to do about
+  // it), every save in one list (A restores one), the settings, and where it saves. Back Up Now only
+  // without cloud saves: with them, Sync Now copies the save before it goes up.
   async function loadGameSaves(id) {
     try { TV.saves[id] = await invoke('saves_info', { id }); } catch (e) { TV.saves[id] = { error: String(e && e.message ? e.message : e) }; }
+    // Whatever just changed the page changed its status too.
+    loadSaveStatus(saveIdOf(id));
     if (TV.on && TV.view === 'gsaves' && TV.arg === id) draw(true);
+  }
+  // The desktop's next steps as this page's actions. Reporting a problem stays in the desktop view.
+  const TV_STEP = { 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
+  // The status, as the item that leads the page.
+  function savesStatusItem(id, sv) {
+    const b = window.saveBadgeFor(id);
+    if (!b) return '';
+    const sid = saveIdOf(id);
+    const st = S.saveStat[sid] || {};
+    const picked = (sv.spots || []).some((p) => p.from === 'player');
+    const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+    const act = step && !sv.busy && TV_STEP[step.act];
+    // Reporting stays in the desktop view, and the account page needs a browser: said instead.
+    const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
+    const tvact = act ? ` data-tvact="${act}" data-id="${esc(id)}"` : '';
+    const pill = act ? `<span class="tv-pill on">${esc(t(step.label))}</span>` : '';
+    const note = b.note ? ` <i>· ${esc(b.note)}</i>` : '';
+    return `<button type="button" class="tv-item tv-svs sb-${b.tone}" data-f data-key="gs:status"${tvact} role="status">${window.saveBadgeIcon(b.mark, 34)}<span class="k"><b>${esc(b.label)}${note}</b><small>${esc(statusCardText(st, b, picked) + desk)}</small></span>${pill}</button>`;
+  }
+  // Nobody has said where it saves: red, as on the desktop, and A picks the folder.
+  function savesUnknownItem(id) {
+    return `<button type="button" class="tv-item tv-svs sb-bad" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${window.saveBadgeIcon('alert', 34)}<span class="k"><b>${esc(t(SAVES_UNKNOWN))}</b><small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span><span class="tv-pill on">${esc(t(SAVES_PICK))}</span></button>`;
+  }
+  function savesHistoryItem(id, r, sv) {
+    const marks = historyMarks(r, sv).map((m) => `<span class="tv-svm tv-svm-${m.k}">${esc(m.label)}</span>`).join('');
+    const which = r.name ? `data-name="${esc(r.name)}"` : `data-v="${esc(r.v)}"`;
+    // A cloud save that can be deleted carries its version, for the sheet's Delete.
+    const del = r.deletable ? ` data-cv="${esc(r.v)}"` : '';
+    const act = r.current ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
+    // The save in the game now is lit, and says so where the others say Restore.
+    const side = r.current ? `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
+    return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
   function pageGameSaves(id) {
     const a = libAppOf(id), g = S.library[id] || {};
     const s0 = TV.saves[id];
     if (s0 === undefined) { TV.saves[id] = 'loading'; loadGameSaves(id); }
     const sv = s0 && s0 !== 'loading' ? s0 : null;
-    const copy = (c, k, v, now) => { const when = c.when || c.made; return `<button type="button" class="tv-item" data-f data-key="gc:${k}:${esc(v)}" data-tvact="gs-restore" data-id="${esc(id)}" data-${k}="${esc(v)}"><span class="k">${esc(whenText(when))}${now ? ` <em class="tv-now">${esc(t('Same as this PC'))}</em>` : ''}<small>${esc([c.device, c.files ? tn(c.files, '1 file', '{n} files') : '', fmtB(c.size)].filter(Boolean).join(' · '))}</small></span><span class="tv-pill">${esc(t('Put back'))}</span></button>`; };
     let body = `<p class="tv-empty">${esc(t('Loading…'))}</p>`;
     let unknown = false;
     if (sv && sv.error) body = `<p class="tv-empty">${esc(t(sv.error))}</p>`;
@@ -1330,25 +1365,26 @@
       unknown = window.savesUnknown(sv);
       const on = sv.cloudOn === true;
       const shareTitle = saveShareTitle(id);
+      const rows = saveHistory(sv);
+      const shown = historyShown(id, rows);
+      const more = rows.length - shown.length;
+      const toggle = historyToggle(id, rows, more);
+      const empty = unknown ? t('No backups yet.') : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.');
       body = `<div class="tv-list">
-        ${unknown ? `<button type="button" class="tv-item" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${svg('folder')}<span class="k">${esc(t(SAVES_PICK))}<small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span></button>` : ''}
+        ${unknown ? savesUnknownItem(id) : savesStatusItem(id, sv)}
+        ${unknown || (sv.signedIn && on) ? '' : `<button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>`}
+        <h3 class="tv-lh">${esc(t('Save History'))}</h3>
+        ${on && sv.offline ? `<p class="tv-note">${esc(t('The cloud can\'t be reached right now, so only the copies on this PC are listed.'))}</p>` : ''}
+        ${rows.length ? shown.map((r) => savesHistoryItem(id, r, sv)).join('') : `<p class="tv-note">${esc(empty)}</p>`}
+        ${toggle ? `<button type="button" class="tv-item" data-f data-key="gs:more" data-tvact="${toggle.more ? 'gs-more' : 'gs-less'}" data-id="${esc(id)}">${svg('history')}<span class="k">${esc(toggle.label)}</span></button>` : ''}
+        ${shareTitle ? `<h3 class="tv-lh">${esc(t('Settings'))}</h3>` : ''}
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
-        ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
-        ${on && sv.signedIn ? (() => {
-          const newest = Array.isArray(sv.cloud) && sv.cloud[0];
-          const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || unknown || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
-        })() : ''}
-        ${unknown ? '' : `<button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>`}
-        <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
-        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(unknown ? t('No backups yet.') : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
-        ${on && Array.isArray(sv.cloud) ? `<h3 class="tv-lh">${esc(t('In the cloud'))}</h3>${sv.cloud.length ? sv.cloud.map((c) => copy(c, 'v', c.v, c.hash === sv.synced)).join('') : `<p class="tv-note">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`}` : ''}
         ${unknown ? '' : `<h3 class="tv-lh">${esc(t('Where it saves'))}</h3>`}
-        ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
+        ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${spotSet(p) ? `<span class="tv-svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${esc(t(FROM[p.from] || ''))}</span>` : esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
       </div>`;
     }
     return `${backdrop(a, 'game')}${gameBar()}
-      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), unknown ? t(SAVES_UNKNOWN) : t('After every session the launcher keeps a copy. Put an older one back with A.'))}${body}`)}
+      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), unknown ? t(SAVES_UNKNOWN) : t('After every session the launcher keeps a copy. Restore an older one with A.'))}${body}`)}
       ${hints([['A', t('Select')], ['B', t('Back')]])}`;
   }
 
@@ -1767,7 +1803,7 @@
       ...(g && !S.running.has(id) ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
       ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Discover'), sub: t('It shows in Discover and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Discover'), sub: t('It won\'t show in Discover or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
-        { gap: true, label: t('Saves'), sub: t('Back them up, or put an older one back'), icon: 'save', run: () => go('gsaves', id) },
+        { gap: true, label: t('Saves'), sub: t('Back them up, or restore an older one'), icon: 'save', run: () => go('gsaves', id) },
         ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and shaders'), icon: 'gear', run: () => go('gsettings', id) }] : []),
         { label: t('Screenshots'), icon: 'shot', run: async () => { await loadAllShots(); go('shots', id); } },
         ...(S.mods[id] && S.mods[id] !== 'loading' ? [{ label: t('Mods'), icon: 'puzzle', run: () => go('mods', id) }] : []),
@@ -2919,6 +2955,8 @@
         if (title) await toggleSaveShare(title);
         return draw(true);
       }
+      case 'gs-more': sfx('select'); S.savesMore.add(id); return draw(true);
+      case 'gs-less': sfx('select'); S.savesMore.delete(id); return draw(true);
       case 'gs-backup': {
         sfx('select');
         try { const c = await invoke('saves_backup', { id }); toast(c ? t('Backed up.') : t('Nothing changed since the last copy.')); } catch (e) { fail(e); }
@@ -2935,10 +2973,12 @@
       }
       case 'gs-restore': {
         sfx('open');
-        const name = el.dataset.name || null, v = el.dataset.v || null;
-        return sheet(t('Put this save back?'), [
+        const name = el.dataset.name || null, v = el.dataset.v || null, cv = el.dataset.cv || null;
+        const del = { label: t('Delete from the cloud'), sub: t('Gone from your account for good. Copies on this PC stay.'), icon: 'bin', cls: 'danger', run: async () => { try { await invoke('saves_cloud_delete', { id, v: cv }); toast(t('Deleted from the cloud.')); } catch (e) { fail(e); } loadGameSaves(id); } };
+        return sheet(t('Restore this save?'), [
           { label: t('Keep what\'s there'), sub: t('Nothing changes'), icon: 'chevL', run: () => {} },
-          { label: t('Put it back'), sub: t('It takes the place of the game\'s saves on this PC'), icon: 'history', run: async () => { try { await invoke('saves_restore', { id, name, v }); toast(t('That save is back in place.')); } catch (e) { fail(e); } loadGameSaves(id); } },
+          { label: t('Restore it'), sub: t('It takes the place of the game\'s saves on this PC'), icon: 'history', run: async () => { try { await invoke('saves_restore', { id, name, v }); toast(t('That save is back in place.')); } catch (e) { fail(e); } loadGameSaves(id); } },
+          ...(cv ? [del] : []),
         ]);
       }
     }
