@@ -533,11 +533,17 @@ body.light .known-fix b{color:#127a45}
 .rel:first-child{border-top:0}
 .rel-h{display:flex;align-items:center;gap:10px;padding-right:10px;border-radius:14px;transition:background-color .15s}
 .rel-h:hover,.rel.open .rel-h{background:var(--fill)}
-.rel-t{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;column-gap:12px;row-gap:2px;padding:14px 0 14px 16px;text-align:left}
-.rel-t h3{font-size:16px}
+.rel-t{flex:1;min-width:0;display:flex;align-items:flex-end;gap:16px;padding:14px 0 14px 16px;text-align:left}
+/* The Latest version pill sits above the title, so every title line looks the same. */
+.rel-name{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.rel-line{display:flex;align-items:center;gap:12px;min-width:0;max-width:100%}
+/* One line: the full title is in the notes below and in the tooltip, so a long one is cut short
+   rather than wrapping, and the date and Pre-release beside it always show. */
+.rel-line h3{font-size:16px;line-height:22px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-line .pre{flex:none}
 .rel-h .pre{font-size:12px;font-weight:700;color:var(--warn)}
-.rel-h .when{color:var(--dim);font-size:13px}
-.rel-t .ai-tag{align-self:center;height:22px}
+.rel-h .when{flex:none;color:var(--dim);font-size:13px;line-height:22px}
+.rel-name .ai-tag{height:20px;font-size:11px}
 .ai-tag.latest{color:#3ddc97;background:rgba(61,220,151,.1);border-color:rgba(61,220,151,.35)}
 body.light .ai-tag.latest{color:#127a45}
 .rel-act{display:flex;align-items:center;gap:8px;flex:none}

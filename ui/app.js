@@ -2619,7 +2619,9 @@ function relDrawer(id, inst, list, x, n, latest) {
   const pre = x.prerelease ? `<span class="pre">${esc(t('Pre-release'))}</span>` : '';
   const newest = x.tag_name === latest ? `<span class="ai-tag latest">${esc(t('Latest version'))}</span>` : '';
   const notes = x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
-  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${newest}${pre}</button>`;
+  const title = x.name || x.tag_name;
+  const name = `<span class="rel-name">${newest}<span class="rel-line"><h3 title="${esc(title)}">${esc(title)}</h3>${pre}</span></span>`;
+  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}">${name}<span class="when">${esc(date(x.published_at))}</span></button>`;
   const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
   return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}<span class="rel-act">${relState(id, inst, list, x)}</span>${chev}</div>
     <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;
