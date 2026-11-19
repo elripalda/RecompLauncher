@@ -315,7 +315,10 @@ const PHASE_BADGE = {
 // cloud, a label and a short note, and for the tooltip a heading, a line and rows ([label, value]).
 // `phase` is what's running now, `running` whether the game is.
 function saveBadgeInfo(st, phase, running) {
-  const p = PHASE_BADGE[phase];
+  // The copy after a session runs for every game; it's only shown for one that syncs. Signed out
+  // or with cloud saves off, the line keeps saying so instead of a sync that isn't happening.
+  const syncs = st.state !== 'signed-out' && st.state !== 'off' && st.known !== false;
+  const p = syncs && PHASE_BADGE[phase];
   if (p) return { tone: 'cy', mark: p.mark, label: t(p.label), note: '', head: t(p.head), text: t(p.text), rows: [] };
   const synced = st.syncedAt ? [[t('Last synced'), whenText(st.syncedAt)], [t('Saved on'), st.syncedDevice || t('this PC')]] : [];
   const newest = st.newest ? [[t('Last backup'), `${whenText(st.newest.when)}${st.newest.device ? ' · ' + st.newest.device : ''}`]] : [];
