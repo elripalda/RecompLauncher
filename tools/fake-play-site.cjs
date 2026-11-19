@@ -66,16 +66,19 @@ async function loadTitles() {
   }
 }
 
-const MAX_SESSIONS = 500;
+// A play time card looks back a month, plus a day: older sessions are dropped.
+const RECENT_SECS = 31 * 86400;
+const MAX_COUNT = 1000000;
+const whole = (n, max) => (Number.isInteger(n) && n >= 0 && n <= max ? n : 0);
 
-// Sessions joined by their [start, secs], newest 500 kept: a resend adds nothing twice.
-function joinSessions(had, sent, now) {
+// Recent sessions joined by their [start, secs]: a resend adds nothing twice.
+function joinRecent(had, sent, now) {
   const byKey = new Map();
   for (const x of [...had, ...(Array.isArray(sent) ? sent : [])]) {
-    const ok = Array.isArray(x) && Number.isInteger(x[0]) && x[0] > 0 && x[0] <= now + 86400 && Number.isInteger(x[1]) && x[1] > 0 && x[1] <= MAX_SECS;
+    const ok = Array.isArray(x) && Number.isInteger(x[0]) && x[0] >= now - RECENT_SECS && x[0] <= now + 86400 && Number.isInteger(x[1]) && x[1] > 0 && x[1] <= MAX_SECS;
     if (ok) byKey.set(`${x[0]}|${x[1]}`, [x[0], x[1]]);
   }
-  return [...byKey.values()].sort((a, b) => a[0] - b[0]).slice(-MAX_SESSIONS);
+  return [...byKey.values()].sort((a, b) => a[0] - b[0]);
 }
 
 // One PC's numbers in: the larger of what's stored and what's sent, so a late resend never lowers it.
@@ -88,15 +91,17 @@ function takePlay(pc, games) {
     const bad = typeof g?.game !== 'string' || !g.game || !(secs >= 0) || secs > MAX_SECS || last > now + 86400;
     if (bad) continue;
     const key = `${pc}|${g.game}`;
-    const had = rows.get(key) || { pc, game: g.game, secs: 0, last: 0, sessions: [] };
-    const sessions = joinSessions(had.sessions, g.sessions, now);
-    rows.set(key, { pc, game: g.game, secs: Math.max(had.secs, secs), last: Math.max(had.last, last), sessions });
+    const had = rows.get(key) || { pc, game: g.game, secs: 0, last: 0, count: 0, longest: 0, recent: [] };
+    const count = Math.max(had.count, whole(g.count, MAX_COUNT));
+    const longest = Math.max(had.longest, whole(g.longest, MAX_SECS));
+    const recent = joinRecent(had.recent, g.recent, now);
+    rows.set(key, { pc, game: g.game, secs: Math.max(had.secs, secs), last: Math.max(had.last, last), count, longest, recent });
     took += 1;
   }
   return took;
 }
 
-// The account's totals over all its PCs, per game (with every PC's sessions) and per original game.
+// The account's totals over all its PCs, per game (with its play time card) and per original game.
 function totals() {
   const games = {};
   const titles = {};
@@ -108,7 +113,10 @@ function totals() {
   const now = Math.floor(Date.now() / 1000);
   for (const row of rows.values()) {
     add(games, row.game, row);
-    games[row.game].sessions = joinSessions(games[row.game].sessions || [], row.sessions, now);
+    const game = games[row.game];
+    game.count = (game.count || 0) + row.count;
+    game.longest = Math.max(game.longest || 0, row.longest);
+    game.recent = joinRecent(game.recent || [], row.recent, now);
     // A game inside a recomp with several ("recomp--game") isn't mapped to an original game yet.
     const title = titleOf.get(row.game);
     if (title) add(titles, title, row);
