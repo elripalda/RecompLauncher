@@ -57,6 +57,16 @@ test('a game being played says its save goes up after', () => {
   assert.equal(b.label, 'Syncs after you play');
 });
 
+test('with cloud saves off, the copy after a session is not called a sync', () => {
+  const b = info.saveBadgeInfo(status('off'), 'after', false);
+  assert.equal(b.label, 'Cloud saves off');
+});
+
+test('signed out, the copy after a session is not called a sync', () => {
+  const b = info.saveBadgeInfo(status('signed-out'), 'after', false);
+  assert.equal(b.label, 'Not signed in');
+});
+
 test('right after the game closes it still says the save goes up after play, not up to date', () => {
   const b = info.saveBadgeInfo(status('up-to-date', { syncedAt: now() }), 'after', false);
   assert.equal(b.label, 'Syncs after you play');
