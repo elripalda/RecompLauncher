@@ -92,8 +92,14 @@ test('Easy Install starts the download and opens the copy picker together, with 
   assert.doesNotMatch(app, /Pick Your Copy First\?/);
 });
 
-test('a copy picked while it downloads waits for the download, or goes straight to an open setup window', () => {
+test('a copy picked while it downloads waits for the download to be done', () => {
   const pick = fn(app, 'pickWhileDownloading');
-  assert.match(pick, /if \(SU\.el && SU\.id === id && SU\.stage === 'steps'\) return suBegin\(path\);/);
-  assert.match(pick, /if \(S\.jobs\[id\]\) \{\n\s+\(S\.prePicked = S\.prePicked \|\| \{\}\)\[id\] = path;/);
+  assert.match(pick, /if \(S\.jobs\[id\]\) \{\n\s+if \(!path\) return;\n\s+\(S\.prePicked = S\.prePicked \|\| \{\}\)\[id\] = path;/);
+});
+
+test('a download that ends while the copy is being picked leaves the setup window to the picking', () => {
+  assert.match(doneHandler, /else if \(S\.easy\.has\(id\) && \(S\.pickingCopy \|\| \{\}\)\[id\]\) \{ \/\* pickWhileDownloading opens it \*\/ \}/);
+  const pick = fn(app, 'pickWhileDownloading');
+  assert.match(pick, /try \{ path = await pickCheckedCopy\(id\); \} finally \{ delete S\.pickingCopy\[id\]; \}/);
+  assert.match(pick, /await setupModal\(id\);\n\s+if \(path && SU\.el && SU\.id === id && SU\.stage === 'steps'\) suBegin\(path\);/);
 });

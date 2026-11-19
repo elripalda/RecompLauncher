@@ -6202,20 +6202,23 @@ async function startInstall(id, dir, tag, anyway) {
 }
 // Easy Install: the download starts and the player picks their copy meanwhile. It's checked
 // against what the game needs while it downloads. Picked before the download is done, setup
-// starts with it straight away; picked after, the setup window (asking for it by then) takes it.
-// Closing the picker just leaves it to the setup window, after the download.
+// starts with it as soon as it is. While they pick, the end of the download doesn't open the
+// setup window (it would cover the picker's questions): it opens here once they're done, with
+// what they picked, or asking for it when they closed the picker.
 async function pickWhileDownloading(id) {
-  const path = await pickCheckedCopy(id);
-  if (!path) return;
-  if (SU.el && SU.id === id && SU.stage === 'steps') return suBegin(path);
+  (S.pickingCopy = S.pickingCopy || {})[id] = true;
+  let path = null;
+  try { path = await pickCheckedCopy(id); } finally { delete S.pickingCopy[id]; }
   if (S.jobs[id]) {
+    if (!path) return;
     (S.prePicked = S.prePicked || {})[id] = path;
     return toast(t('That\'s the right copy. It\'s set up as soon as the download is done.'));
   }
-  // The download ended while the picker was open, and nothing is asking for the copy yet.
+  // The download ended while they were picking (or it stopped: then there's nothing to set up).
+  if (!S.library[id]) await refreshState();
   if (!S.library[id]) return;
   await setupModal(id);
-  if (SU.el && SU.id === id && SU.stage === 'steps') suBegin(path);
+  if (path && SU.el && SU.id === id && SU.stage === 'steps') suBegin(path);
 }
 // The player's copy for a game not installed yet, checked against what it needs. '' when it can
 // only be checked once it's installed (setup asks for it then), null when they stopped.
@@ -9146,6 +9149,9 @@ T.event.listen('install', ({ payload: p }) => {
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
         else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
+        // The player is still picking their copy (Easy Install): the setup window opens when
+        // they're done, with what they picked, so it never covers the picker's questions.
+        else if (S.easy.has(id) && (S.pickingCopy || {})[id]) { /* pickWhileDownloading opens it */ }
         else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'steps') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
