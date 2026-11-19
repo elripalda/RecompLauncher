@@ -54,7 +54,7 @@ or a lost request never counts anything twice.
 
 | Call | |
 | --- | --- |
-| `POST ?a=play` | `{"pc", "games": [{"game", "secs", "last", "count", "longest", "recent"}]}`, up to 500 → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
+| `POST ?a=play` | `{"pc", "games": [{"game", "secs", "last", "count", "longest", "recent"}]}`, up to 500 and 1 MB → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
 | `GET ?a=play` | `{"games": {ID: {"secs", "last", "count", "longest", "recent"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
 
 `count`, `longest` and `recent` draw a game's "Your play time" card (this week, this month,

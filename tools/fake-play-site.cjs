@@ -1,16 +1,17 @@
 #!/usr/bin/env node
-// A stand-in for recomplauncher.com, for trying playtime sync before the website has it.
+// A stand-in for recomplauncher.com's playtime calls, for trying playtime sync without the real
+// account (two launchers on one fake account, what's stored at /state).
 //
 //   node tools/fake-play-site.cjs [--port 8787] [--no-play]
 //
 // Then start the launcher with RL_API=http://<this machine>:8787 and sign in from Settings,
 // Account: it signs in straight away to one fake account, with each launcher as its own PC.
-// The two playtime calls (docs/LAUNCHER-API.md, "Playtime") work as the website should do them.
+// The two playtime calls (docs/LAUNCHER-API.md, "Playtime") work as the website does them.
 // Every other call made with a fake token gets an empty answer, so cloud saves, the saved list and
 // the inbox stay quiet. Anything else (the list of games, pictures) comes from the real site.
 //
-// --no-play answers the playtime calls the way the real site does before it has them (401), to
-// check the launcher falls back to the PC's own numbers and stays signed in.
+// --no-play answers the playtime calls the way a site without them does (401), to check the
+// launcher falls back to the PC's own numbers and stays signed in.
 // GET /state shows what's stored. Nothing is kept after it stops.
 
 const http = require('node:http');
@@ -226,6 +227,6 @@ const server = http.createServer(async (req, res) => {
 
 loadTitles().then(() => {
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Fake site on port ${PORT}${NO_PLAY ? ' (playtime calls refused, like the real site today)' : ''}`);
+    console.log(`Fake site on port ${PORT}${NO_PLAY ? ' (playtime calls refused, like a site without them)' : ''}`);
   });
 });
