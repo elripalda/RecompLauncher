@@ -2578,8 +2578,9 @@ function askUpdInfo(id) {
 }
 // What each release in the Updates tab offers, by the same rule as the Library's badge and
 // Settings > Check (update_info): the update on offer, releases the store is still checking,
-// and releases with no build for this system.
-function relState(id, inst, list, x, n) {
+// and releases with no build for this system. Any other release says which way it goes from the
+// installed one: the list is newest first, so a release above it is an upgrade, below a downgrade.
+function relState(id, inst, list, x) {
   if (!inst) return '';
   if (inst.tag === x.tag_name) return `<span class="ai-tag inst">${esc(t('Installed'))}</span>`;
   const info = (S.updInfo || {})[id];
@@ -2591,7 +2592,10 @@ function relState(id, inst, list, x, n) {
   const ci = info && info.checked ? list.findIndex((y) => y.tag_name.replace(/^v/i, '').toLowerCase() === info.checked.replace(/^v/i, '').toLowerCase()) : -1;
   const li = list.indexOf(x);
   if (ci > 0 && li < ci) return `<span class="pre">${esc(t('Still being checked'))}</span>${btn(t('Install Anyway'))}`;
-  return btn(n === 0 ? t('Install this one') : t('Go back to this one'));
+  const ii = list.findIndex((y) => relKey(y.tag_name) === relKey(inst.tag));
+  // The installed version isn't in the list (a local build, or a release since taken down).
+  if (ii < 0) return btn(t('Install this one'));
+  return btn(li < ii ? t('Upgrade') : t('Downgrade'));
 }
 // One release in the Updates tab as a drawer. Only the newest starts open, so its notes are right
 // there and older ones don't push them down; what the player opens or closes stays that way
@@ -2604,7 +2608,7 @@ function relDrawer(id, inst, list, x, n) {
   const notes = x.body ? md(x.body) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
   const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}"><h3>${esc(x.name || x.tag_name)}</h3><span class="when">${esc(date(x.published_at))}</span>${pre}</button>`;
   const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
-  return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}<span class="rel-act">${relState(id, inst, list, x, n)}</span>${chev}</div>
+  return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}<span class="rel-act">${relState(id, inst, list, x)}</span>${chev}</div>
     <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;
 }
 // Opening or closing a drawer only flips its class, so the slide plays and the page stays put.

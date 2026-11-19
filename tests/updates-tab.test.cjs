@@ -33,6 +33,9 @@ function updatesTab(info) {
   for (const name of ['loadRels', 'askUpdInfo', 'relState']) {
     if (app.includes(`function ${name}(`)) vm.runInContext(fn(name), c);
   }
+  // relState compares tags with relKey, a const rather than a function; vm keeps a const in its
+  // own script, so it goes on the context as a plain global.
+  vm.runInContext(app.match(/^const relKey = .*$/m)[0].replace(/^const /, 'globalThis.'), c);
   return c;
 }
 
@@ -51,4 +54,27 @@ test('an answer worked out from the older list is dropped when it comes back lat
   answer(fromOlderList);
   await new Promise((resolve) => setImmediate(resolve));
   assert.doesNotMatch(c.relState(id, installed, newer, newer[0], 0), /No build for your system/);
+});
+
+// v0.1.11 installed, with v0.1.12 out but not on offer (say, a pre-release) and v0.1.10 before it.
+// Every release has a build for this PC and the store has checked them all.
+const three = [{ tag_name: 'v0.1.12' }, { tag_name: 'v0.1.11' }, { tag_name: 'v0.1.10' }];
+const settled = { offered: null, checked: 'v0.1.12', builds: ['v0.1.12', 'v0.1.11', 'v0.1.10'] };
+
+test('a release older than the installed one offers Downgrade', () => {
+  const c = updatesTab(() => new Promise(() => {}));
+  c.S.updInfo[id] = settled;
+  assert.match(c.relState(id, installed, three, three[2]), />Downgrade</);
+});
+
+test('a newer release that is not the update on offer offers Upgrade', () => {
+  const c = updatesTab(() => new Promise(() => {}));
+  c.S.updInfo[id] = settled;
+  assert.match(c.relState(id, installed, three, three[0]), />Upgrade</);
+});
+
+test('the update on offer still says Update', () => {
+  const c = updatesTab(() => new Promise(() => {}));
+  c.S.updInfo[id] = { ...settled, offered: 'v0.1.12' };
+  assert.match(c.relState(id, installed, three, three[0]), />Update</);
 });
