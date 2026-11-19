@@ -6171,35 +6171,10 @@ async function startInstall(id, dir, tag, anyway) {
     return locationModal(id);
   }
   if (S.running.has(id)) return toast(t('Close the game first.'), true);
-  // Easy Install with no copy found in the player's folders: pick it first, and it's checked against
-  // what the game needs before anything downloads. Once it's in, setup goes straight on with it.
+  // Easy Install with no copy found in the player's folders: the copy is picked while it downloads.
   // With Auto-Install off nothing sets up by itself after the download, so there's nothing to pick it for.
   // A recomp of several games: each game's copy is asked for on its own setup, after the download.
-  if (autoInstall() && !S.library[id] && !tag && !anyway && !pack.length && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on')) {
-    const pickIt = async () => {
-      for (;;) {
-        const f = await pickFile(copyPickOpts(id)).catch(() => null);
-        if (!f) return null;
-        const path = typeof f === 'string' ? f : f.path;
-        try { await invoke('precheck_copy', { id, path }); return path; } catch (e) {
-          const msg = String(e && e.message ? e.message : e);
-          // Can't be checked before it's installed: nothing is kept, setup asks after the download.
-          if (/only be checked once it's installed/i.test(msg)) return '';
-          // Compressed: kept, and made plain during setup.
-          if (/^CONVERT\|/.test(msg)) { toast(t('It\'s compressed. Setup makes a plain copy of it after the download.')); return path; }
-          const v = await ask(t('That Copy Won\'t Work'), `<p>${esc(t(msg))}</p>`, [{ label: t('Pick Another'), icon: 'disc', v: 'again', main: true }, { label: t('Download Anyway'), icon: 'down', v: 'go' }, { label: t('Cancel'), icon: 'chevL', v: null }]);
-          if (v === 'go') return '';
-          if (v !== 'again') return null;
-        }
-      }
-    };
-    const first = await ask(t('Pick Your Copy First?'), `<p>${esc(t('The launcher checks it\'s the right game and version before it downloads anything. Then it sets the game up with it as soon as the download is done.'))}</p>`, [{ label: t('Pick My Copy'), icon: 'disc', v: 'pick', main: true }, { label: t('Download First'), icon: 'down', v: 'later' }]);
-    if (first === 'pick') {
-      const path = await pickIt();
-      if (path === null) return;
-      if (path) { (S.prePicked = S.prePicked || {})[id] = path; toast(t('That\'s the right copy. Downloading now.')); }
-    } else if (first !== 'later') return;
-  }
+  const pickNow = autoInstall() && !S.library[id] && !tag && !anyway && !pack.length && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on');
   // An update the site found crashing for a lot of players: asked once, the player decides.
   const badNext = S.library[id] && !tag && !anyway && S.updates[id] && badVersion(byId(id), S.updates[id]);
   if (badNext) {
@@ -6221,7 +6196,43 @@ async function startInstall(id, dir, tag, anyway) {
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
   dlArgs(id, { id, dir: dir || null, tag: tag || null });
+  if (pickNow) pickWhileDownloading(id);
   try { await invoke('install', { id, dir: dir || null, tag: tag || null }); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
+}
+// Easy Install: the download starts and the player picks their copy meanwhile. It's checked
+// against what the game needs while it downloads. Picked before the download is done, setup
+// starts with it straight away; picked after, the setup window (asking for it by then) takes it.
+// Closing the picker just leaves it to the setup window, after the download.
+async function pickWhileDownloading(id) {
+  const path = await pickCheckedCopy(id);
+  if (!path) return;
+  if (SU.el && SU.id === id && SU.stage === 'steps') return suBegin(path);
+  if (S.jobs[id]) {
+    (S.prePicked = S.prePicked || {})[id] = path;
+    return toast(t('That\'s the right copy. It\'s set up as soon as the download is done.'));
+  }
+  // The download ended while the picker was open, and nothing is asking for the copy yet.
+  if (!S.library[id]) return;
+  await setupModal(id);
+  if (SU.el && SU.id === id && SU.stage === 'steps') suBegin(path);
+}
+// The player's copy for a game not installed yet, checked against what it needs. '' when it can
+// only be checked once it's installed (setup asks for it then), null when they stopped.
+async function pickCheckedCopy(id) {
+  for (;;) {
+    const f = await pickFile(copyPickOpts(id)).catch(() => null);
+    if (!f) return null;
+    const path = typeof f === 'string' ? f : f.path;
+    try { await invoke('precheck_copy', { id, path }); return path; } catch (e) {
+      const msg = String(e && e.message ? e.message : e);
+      // Can't be checked before it's installed: nothing is kept, setup asks after the download.
+      if (/only be checked once it's installed/i.test(msg)) return '';
+      // Compressed: kept, and made plain during setup.
+      if (/^CONVERT\|/.test(msg)) { toast(t('It\'s compressed. Setup makes a plain copy of it after the download.')); return path; }
+      const v = await ask(t('That Copy Won\'t Work'), `<p>${esc(t(msg))}</p>`, [{ label: t('Pick Another'), icon: 'disc', v: 'again', main: true }, { label: t('Pick It Later'), sub: t('The download goes on'), icon: 'chevL', v: null }]);
+      if (v !== 'again') return null;
+    }
+  }
 }
 // What each download was started with, so Resume carries on with the same version and folder.
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
