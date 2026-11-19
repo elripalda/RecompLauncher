@@ -97,7 +97,7 @@ goes along; what it writes anywhere else is left behind. So:
   (the Flatpak does), and then it isn't set.
 - **Never update yourself when `RECOMPLAUNCHER=1`.** Your game and your setup step both get it,
   and the launcher installs every release you publish. If only a flag turns your updater off,
-  [Mac apps](#mac-apps) shows where it goes.
+  put it in `start.args`, like `"args": ["--no-update-check"]`.
 
 ```json
 "start": { "program": ["MyRecomp.exe"], "args": ["--data", "{data}"] },
@@ -179,9 +179,7 @@ RecompLauncher 0.90 Beta 54 and older find an app in `start.program` and `prepar
 its program's own path, which works everywhere: `"MyGame.app/Contents/MacOS/MyGame"`.
 
 If your game updates itself (Sparkle, say), skip that when `RECOMPLAUNCHER` is set: the
-launcher installs each of your releases over the app, and two updaters on one app fight. If it
-can only be turned off with a flag, put the flag in `start.args`, like
-`"args": ["--no-update-check"]`.
+launcher installs each of your releases over the app, and two updaters on one app fight.
 
 Two examples are worth reading:
 
