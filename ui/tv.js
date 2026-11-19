@@ -459,7 +459,7 @@
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
-      case 'installed': { const su = S.setup[id]; if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
+      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
       default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Install') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
@@ -570,9 +570,8 @@
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
       case 'installed': {
-        const su = S.setup[id];
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
-        if (S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
+        if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
         return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', run: () => playGame(id) };
       }
       case 'settingup': {
@@ -965,7 +964,7 @@
     const runsName = t((runsList().find(([k]) => k === runsNow()) || runsList()[0])[1]);
     const SORTS = [['popular', t('Popular')], ['new', t('Newest')], ['updated', t('Recently updated')], ['stars', t('Most stars')], ['az', t('A to Z')]];
     const pickShow = () => sheet(t('Show'), showsNow(TV.dshow || '').map(([k, n]) => ({ label: t(n), icon: (TV.dshow || '') === k ? 'check' : '', run: () => { TV.dshow = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
-    const origins = ((S.cat && S.cat.origins) || []).map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
+    const origins = originsAZ().map((o) => [o, apps.filter((a) => a.origin === o.id).length]).filter(([, n]) => n);
     const pickSort = () => sheet(t('Sort'), SORTS.map(([k, n]) => ({ label: n, icon: k === srt ? 'check' : '', run: () => { TV.dsort = k; TV.focusKey = 'g:@filter'; discoverRedraw(); } })));
     const pickConsole = () => sheet(t('Console'), [{ label: t('Any'), icon: org ? '' : 'check', run: () => { TV.dorigin = ''; TV.focusKey = 'g:@filter'; discoverRedraw(); } }].concat(origins.map(([o, n]) => ({ label: o.name, sub: tn(n, '1 recomp', '{n} recomps'), icon: o.id === org ? 'check' : '', run: () => { TV.dorigin = o.id; TV.focusKey = 'g:@filter'; discoverRedraw(); } }))));
     const tagN = {};
@@ -1324,29 +1323,33 @@
     const sv = s0 && s0 !== 'loading' ? s0 : null;
     const copy = (c, k, v, now) => { const when = c.when || c.made; return `<button type="button" class="tv-item" data-f data-key="gc:${k}:${esc(v)}" data-tvact="gs-restore" data-id="${esc(id)}" data-${k}="${esc(v)}"><span class="k">${esc(whenText(when))}${now ? ` <em class="tv-now">${esc(t('Same as this PC'))}</em>` : ''}<small>${esc([c.device, c.files ? tn(c.files, '1 file', '{n} files') : '', fmtB(c.size)].filter(Boolean).join(' · '))}</small></span><span class="tv-pill">${esc(t('Put back'))}</span></button>`; };
     let body = `<p class="tv-empty">${esc(t('Loading…'))}</p>`;
+    let unknown = false;
     if (sv && sv.error) body = `<p class="tv-empty">${esc(t(sv.error))}</p>`;
     else if (sv) {
+      // Nobody has said where it saves: picking the folder is the one thing to do (first, so it has the
+      // focus), and backing up or syncing waits for it, as on the desktop.
+      unknown = window.savesUnknown(sv);
       const on = sv.cloudOn === true;
       const shareTitle = saveShareTitle(id);
       body = `<div class="tv-list">
+        ${unknown ? `<button type="button" class="tv-item" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${svg('folder')}<span class="k">${esc(t(SAVES_PICK))}<small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span></button>` : ''}
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
         ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
           const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
+          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || unknown || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
         })() : ''}
-        <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
+        ${unknown ? '' : `<button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>`}
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
-        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
+        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(unknown ? t('No backups yet.') : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
         ${on && Array.isArray(sv.cloud) ? `<h3 class="tv-lh">${esc(t('In the cloud'))}</h3>${sv.cloud.length ? sv.cloud.map((c) => copy(c, 'v', c.v, c.hash === sv.synced)).join('') : `<p class="tv-note">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`}` : ''}
-        <h3 class="tv-lh">${esc(t('Where it saves'))}</h3>
-        ${window.savesGuessed && window.savesGuessed(sv) ? `<p class="tv-note">${esc(t('No one has said where this game saves yet, so the launcher is going by what it noticed while you played.'))}</p>` : ''}
+        ${unknown ? '' : `<h3 class="tv-lh">${esc(t('Where it saves'))}</h3>`}
         ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
       </div>`;
     }
     return `${backdrop(a, 'game')}${gameBar()}
-      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), t('After every session the launcher keeps a copy. Put an older one back with A.'))}${body}`)}
+      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), unknown ? t(SAVES_UNKNOWN) : t('After every session the launcher keeps a copy. Put an older one back with A.'))}${body}`)}
       ${hints([['A', t('Select')], ['B', t('Back')]])}`;
   }
 
@@ -1486,7 +1489,7 @@
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
     const devText = a.blurb || notesLine(a.description);
-    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('Size'), a.size]].filter(([, v]) => v);
+    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
     const checkBlock = !g && checks.length ? `<section class="tv-block"><h3>${esc(t('Before you install'))}${bad ? ` <small>${esc(tn(bad, '1 thing to do', '{n} things to do'))}</small>` : ''}</h3><div class="tv-panel tv-checks" data-f data-key="g-checks"><dl>${checks.map((r) => `<div><dt>${esc(r.k)}<small>${esc(r.d || '')}</small></dt><dd>${okMark(r.v)}</dd></div>`).join('')}</dl></div></section>` : '';
     const aside = g
       ? `<aside class="tv-panel" aria-label="${esc(t('Details'))}"><h2>${esc(bad ? t('Before you play') : t('Ready to play'))}</h2><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${tvRuns(a)}</aside>`
@@ -1649,7 +1652,12 @@
       `<button type="button" class="tv-item${look ? '' : ' off'}" data-f data-key="gs:__amount" data-gset="__amount" data-id="${esc(id)}"${look ? '' : ' disabled'}><span class="k">${esc(t('Amount'))}<small>${esc(t('How strong the shader is.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 22)}</span></button>`,
     ] : [];
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
-      prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
+      prof && prof.needs ? (() => {
+        // Built from a copy that's gone since: it plays without it, as on the desktop.
+        const gone = copyNotNeeded(id), have = prof.copy || gone;
+        const sub = prof.copy ? baseName(prof.copy) : gone ? copyGoneText(id) : prof.needs;
+        return `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(sub)}</small></span><span class="tv-pill${have ? ' on' : ''}">${esc(have ? t('Change') : t('Insert it'))}</span></button>`;
+      })() : '',
       ...lookRows,
       ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
@@ -2053,9 +2061,10 @@
   }
 
   // ---------- setting a game up with the player's copy, full screen ----------
-  const TS = { id: null, stage: 'pick', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
+  const TS = { id: null, stage: 'steps', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
   async function tvSetup(id) {
     if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
+    if (TS.id !== id) setupOpened(id);
     const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
     if (activeJob) {
       if (TV.sheet) closeSheet();
@@ -2079,7 +2088,8 @@
     const su = S.setup[id];
     if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
     if (TV.sheet) closeSheet();
-    Object.assign(TS, { id, stage: su.inputs?.length || su.inputs_error ? 'inputs' : su.copy && su.update && !su.update_copy && !su.update_optional ? 'update' : 'pick', named: {}, step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
+    // The same steps as the desktop window (setup-steps.js), as items for the controller.
+    Object.assign(TS, { id, stage: 'steps', named: { at: 0 }, step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
     tsDraw();
     sfx('open');
   }
@@ -2090,49 +2100,17 @@
     let el = $('.tv-setup:not(.out)', st);
     const prevKey = (focused() || {}).dataset?.key;
     if (!el) { el = document.createElement('div'); el.className = 'tv-sheet tv-setup'; st.append(el); }
-    const namedScroll = $('.ni-scroll', el)?.scrollTop || 0;
+    const stepsScroll = $('.ss-scroll', el)?.scrollTop || 0;
     const cov = a.cover ? media(thumbOf(a.cover, 400)) : '';
     const med = (state) => `<div class="tv-media">${gameMediaHtml(a, state)}</div>`;
     let items = [], body = '';
     const it = (label, sub, run, cls = '') => { items.push({ run }); const i = items.length - 1; return `<button type="button" class="tv-item ${cls}" data-f data-key="ts:${i}" data-sheet="${i}"><span class="k">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`; };
-    const pickIt = async (folder) => { const p = await pickFile(folder ? { title: t('The game\'s folder'), directory: true } : copyPickOpts(TS.id)).catch(fail); if (p) tsBegin(typeof p === 'string' ? p : p.path); else tsDraw(); };
-    if (TS.stage === 'inputs') {
-      body = namedInputsShell(id, su, TS.named, a, true);
+    if (TS.stage === 'steps') {
+      body = stepsShell(id, su, TS.named, a, true);
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
-      setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'inputs') tsDraw(); }), 0);
-    } else if (TS.stage === 'pick') {
-      const own = S.owned[id];
-      // Its setup step's options, one item each: A turns it on or off, kept for the game at once.
-      const toggle = (o) => () => {
-        o.on = !o.on;
-        o.new = false;
-        invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
-        tsDraw();
-      };
-      const optItem = (o) => {
-        // Kept to one short line, like the other items: the note is on the desktop setup screen.
-        const lic = o.license && o.license.name ? tf('Accepts the {license}', { license: o.license.name }) : '';
-        const sub = [o.on ? t('On') : t('Off'), lic].filter(Boolean).join(' · ');
-        const read = o.license && o.license.url ? it(tf('Read the {license}', { license: o.license.name || o.license.url }), '', () => invoke('open_url', { url: o.license.url }).catch(fail)) : '';
-        return it(o.label + (o.new && su.copy ? ` · ${t('New option')}` : ''), sub, toggle(o), o.on ? 'on' : '') + read;
-      };
-      const prepOpts = (su.prepare_options || []).map(optItem).join('');
-      const again = su.copy && !own ? it(t('Use the copy it was set up with'), su.copy, () => tsBegin(su.copy), 'main') : '';
-      body = `${med('ghost')}<div class="tt"><h2>${esc(tf('Insert your copy of {game}', { game: a.game || a.name }))}</h2><p>${esc(su.needs || '')}</p></div>
-        <div class="opts">${prepOpts}${again}${(su.previous || []).length ? it(t('Use My Previous Setup'), su.previous.join(' · '), async () => {
-          let r; try { r = await relinkSetup(id); } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
-          if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
-          if (r === 'build' && su.copy) return tsBegin(su.copy);
-          if (r && r.label) toast(tf('{file} isn\'t where it was. Pick it again.', { file: r.label }));
-        }, 'main') : ''}${su.prebuilt ? it(t('Use the Build Already on This PC'), su.prebuilt, async () => {
-          try { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
-          TS.stage = 'ready'; TS.result = { text: t('The build on this PC') }; tsDraw();
-        }, 'main') : ''}${su.own_build && !su.prebuilt ? it(t('Use a Build You Already Have'), t('Built it before, with the game\'s own launcher or anywhere else? Pick its folder.'), async () => {
-          try { if (!(await useOwnBuild(id))) return; } catch (e) { toast(String(e && e.message ? e.message : e)); return; }
-          TS.stage = 'ready'; TS.result = { text: t('Your own build') }; tsDraw();
-        }, 'main') : ''}${own ? it(t('Use the one in your folders'), own.path, () => tsBegin(own.path), 'main') : ''}${su.kind !== 'folder' ? (() => { const fm = copyFormats(id); return it(fm.type === 'rom' ? t('Choose Your ROM') : fm.type === 'disc' ? t('Choose a disc image') : t('Choose Your Game File'), fm.exts.length ? fm.exts.map((e) => '.' + e).join('  ') : t('The file you made from your own copy'), () => pickIt(false)); })() : ''}${su.kind === 'iso_or_folder' || su.kind === 'folder' ? it(t('Choose a game folder'), t('A folder you copied from the disc'), () => pickIt(true)) : ''}</div>`;
+      setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
-      const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
+      const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
       const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
@@ -2181,57 +2159,107 @@
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Play'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Settings'))}</span></button></div>`;
     } else if (TS.stage === 'wrong') {
       const w = TS.wrong || {};
-      items = [{ run: () => { TS.stage = 'pick'; setTimeout(tsDraw, 0); } }, { run: () => tsBegin(TS.path, true) }];
+      items = [{ run: () => { TS.stage = 'steps'; TS.named = Object.assign({}, TS.named, { copy: '', busy: false }); setTimeout(tsDraw, 0); } }, { run: () => tsBegin(TS.path, true) }];
       body = `${med('ghost')}<div class="tt"><h2>${esc(t('This Looks Like Another Copy'))}</h2><p>${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))} ${esc(t('Another region or version of the game may not work with it.'))}</p></div>
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
-      items = [{ run: () => { TS.stage = S.setup[id]?.inputs?.length ? 'inputs' : 'pick'; TS.named = {}; setTimeout(tsDraw, 0); } }];
+      items = [{ run: () => { TS.stage = 'steps'; TS.named = Object.assign({}, TS.named, { copy: '', busy: false }); setTimeout(tsDraw, 0); } }];
       body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
-    if (TS.stage === 'inputs') {
-      $('.ni-scroll', el).scrollTop = namedScroll;
-      $$('[data-ni]', el).forEach((b) => {
-        if (b.disabled || b.closest('[hidden]')) return;
-        const at = items.length, act = b.dataset.ni, input = b.dataset.input;
-        b.dataset.f = ''; b.dataset.key = 'ni:' + at; b.dataset.sheet = at;
-        items.push({ run: async () => {
-          const pending = namedInputsAction(id, act, input, TS.named); tsDraw();
-          const result = await pending;
-          if (TS.id !== id) return;
-          if (result === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; return tsDraw(); }
-          if (result === 'run') {
-            Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' }); tsDraw();
-            try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e?.message || e); tsDraw(); }
-          } else { tsDraw(); const restore = $(`[data-key="ni:${at}"]`, el); if (restore) focus(restore, true); }
+    if (TS.stage === 'steps') {
+      $('.ss-scroll', el).scrollTop = stepsScroll;
+      // Each button of the steps is an item: A presses it. Keyed by what it does, so focus comes
+      // back to the same one after the redraw.
+      $$('[data-ss]', el).forEach((b) => {
+        if (b.disabled) return;
+        const at = items.length, act = b.dataset.ss, input = b.dataset.input || '';
+        b.dataset.f = ''; b.dataset.key = `ss:${act}:${input}`; b.dataset.sheet = at;
+        items.push({ run: () => tsStep(id, act, input) });
+      });
+      // The setup step's options: A turns one on or off, kept at once.
+      $$('.su-opt', el).forEach((row) => {
+        const box = $('input[data-popt]', row);
+        const o = (su.prepare_options || []).find((x) => x.id === box?.dataset.popt);
+        if (!o || box.disabled) return;
+        const at = items.length;
+        row.dataset.f = ''; row.dataset.key = 'po:' + o.id; row.dataset.sheet = at;
+        // The item turns it on or off; the label's own click would tick the box a second time.
+        row.addEventListener('click', (e) => e.preventDefault());
+        items.push({ run: () => {
+          o.on = !o.on;
+          o.new = false;
+          TS.optsSaving = invoke('set_prepare_opts', { id, opts: { [o.id]: o.on } }).catch(fail);
+          tsDraw();
         } });
       });
+      // An option's license, to read before turning it on.
+      $$('.ss-opts a[data-url]', el).forEach((link) => {
+        const at = items.length;
+        link.dataset.f = ''; link.dataset.key = 'url:' + link.dataset.url; link.dataset.sheet = at;
+        items.push({ run: () => invoke('open_url', { url: link.dataset.url }).catch(fail) });
+      });
     }
-    // B leaves: it keeps setup running in background.
+    // B leaves: it keeps setup running in background. In the steps, B goes back a step first.
     TV.sheet = {
       items,
       keep: TS.stage !== 'ready',
       prev: TV.sheet ? TV.sheet.prev : prevKey,
+      back: () => {
+        if (TS.stage !== 'steps' || !(TS.named.at > 0)) return false;
+        TS.named.at -= 1;
+        sfx('back');
+        tsDraw();
+        return true;
+      },
       onClose: () => {
         if (TS.stage === 'run') {
           toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
         }
         if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); }
+        setupClosed(id);
         TS.id = null;
       }
     };
-    const f = $('[data-sheet]', el);
+    // The same control again after a redraw; on a new step, its main button (Next or Set Up).
+    const same = TS.stage === 'steps' && prevKey ? $$('[data-sheet]', el).find((x) => x.dataset.key === prevKey) : null;
+    const main = TS.stage === 'steps' ? $('.ss-foot .btn.main[data-sheet]', el) : null;
+    const f = same || main || $('[data-sheet]', el);
     if (f) focus(f, true);
   }
+  // A button of the steps, pressed with A: the same actions as the desktop window's (ssAct).
+  async function tsStep(id, act, input) {
+    const ns = TS.named;
+    const was = ns.at;
+    const pending = stepsAction(id, act, input, ns);
+    tsDraw();
+    const r = await pending;
+    if (TS.id !== id || TS.stage !== 'steps') return;
+    if (ns.at !== was) sfx(ns.at > was ? 'select' : 'back');
+    if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; sfx('select'); return tsDraw(); }
+    if (r !== 'run') return tsDraw();
+    const go = await stepsRun(id, ns, TS.optsSaving);
+    if (TS.id !== id) return;
+    if (!go) { sfx('back'); return tsDraw(); }
+    if (go.ready) { TS.stage = 'ready'; TS.result = { text: go.ready }; sfx('select'); return tsDraw(); }
+    if (go.kept) return tsBegin('', true);
+    if (go.copy) return tsBegin(go.copy);
+    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '', kept: false });
+    tsDraw();
+    try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
+  }
   async function tsBegin(path, anyway) {
+    if (prepBlocked(S.setup[TS.id])) { toast(prepReq()); TS.stage = 'steps'; return tsDraw(); }
+    await TS.optsSaving;
     if (!anyway) {
       let w = null;
       try { w = await invoke('copy_check', { id: TS.id, path }); } catch (e) { /* can't tell: go ahead */ }
       if (!TS.id) return;
       if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
     }
-    Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    // No path: built again from what it kept, so there's no copy to read or check.
+    Object.assign(TS, { stage: 'run', path, kept: !path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
     try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
@@ -2458,7 +2486,8 @@
         <div class="val">${svg('chevL', 34)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 34)}</div>
         <div class="dots">${o.choices.map((c, i) => `<i class="${i === o.current ? 'on' : ''}" title="${esc(c)}"></i>`).join('')}</div><p>${esc(o.help)}</p>`;
     } else if (el.dataset.key === 'gs:copy') {
-      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc(su.copy ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || su.needs || '')}</p>`;
+      const gone = copyNotNeeded(TV.arg);
+      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc((su.status ? su.status.ready : su.copy) ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || (gone ? copyGoneText(TV.arg) : su.needs) || '')}</p>`;
     } else if (el.dataset.key === 's:buttons' && window.buttonGuide) {
       html = `<span class="k">${esc(t('Controller'))}</span><div class="tv-padguide">${window.buttonGuide(glyph).map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b></span></div>`).join('')}</div>`;
     } else if (el.dataset.key === 's:monitor') {
@@ -2556,7 +2585,8 @@
     if (down) down.style.opacity = y > 60 ? '0' : '';
   }
   function keepInView(el, instant) {
-    const inputs = el.closest('.ni-scroll');
+    // In the setup steps, the list scrolls inside its page: the focused item is brought into it.
+    const inputs = el.closest('.ss-scroll');
     if (inputs) {
       const top = (el.getBoundingClientRect().top - inputs.getBoundingClientRect().top) / (TV.k || 1) + inputs.scrollTop;
       if (top < inputs.scrollTop + 12) inputs.scrollTo({ top: Math.max(0, top - 12), behavior: instant ? 'auto' : 'smooth' });
@@ -2893,6 +2923,14 @@
         return loadGameSaves(id);
       }
       case 'gs-open': return invoke('saves_open', { id }).catch(fail);
+      case 'gs-place': {
+        // The same pick as the desktop's Where it saves: the player's folder from now on.
+        const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
+        if (!p) return;
+        try { S.library[id] = await invoke('saves_set_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+        toast(t('Saved. Backups and cloud saves use that folder now.'));
+        return loadGameSaves(id);
+      }
       case 'gs-restore': {
         sfx('open');
         const name = el.dataset.name || null, v = el.dataset.v || null;

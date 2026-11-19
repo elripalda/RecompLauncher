@@ -25,9 +25,21 @@ fn names(g: &Installed) -> Vec<String> {
     n
 }
 
-/// The setup to run before this Play, if one still has to. Installs from before the launcher
-/// knew about setups are looked at once here.
+/// The setup that has to run before the game starts, if one does: asked by shortcuts and the
+/// game's page. It leaves the once-only reasons (an update, the game asking) for Play.
 pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    pending_with(st, id, g, false)
+}
+
+/// The setup to run before this Play, if one still has to. A once-only reason is marked as
+/// answered here, so a setup closed before it finished isn't asked for again: the version that
+/// played before plays.
+pub fn pending_for_play(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
+    pending_with(st, id, g, true)
+}
+
+/// Installs from before the launcher knew about setups are looked at once here.
+fn pending_with(st: &App, id: &str, g: &Installed, play: bool) -> Option<PathBuf> {
     if g.local {
         return None;
     }
@@ -138,25 +150,23 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         }
         st.save();
     }
+    // From here on, why the setup runs now is worked out for this Play only and never written down:
+    // only a setup that finishes changes the record (`finish`). A setup closed before it finished
+    // leaves the game as it was, and the once-only reasons below (an update, the game asking) have
+    // their own marks, so a version that played before plays again on the next Play.
+    //
     // Set up, but the game it builds wasn't found then (the setup was still going, say): looked
-    // for again, and when it's nowhere, its setup opens again to finish.
+    // for again (and kept when found), and when it's nowhere, its setup opens again to finish.
     if g.setup_done && g.exe.is_none() {
         if let Some(want) = crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).and_then(|b| b.then_name()) {
             let since = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.installed_at);
             let mut near: Vec<PathBuf> = [Some(g.path.clone()), g.path.parent().map(Path::to_path_buf)].into_iter().flatten().collect();
             near.extend(player_places(st));
-            let found = find_built(&want, since, &near);
-            {
-                let mut l = st.lib.lock().unwrap();
-                if let Some(r) = l.installed.get_mut(id) {
-                    match &found {
-                        Some(p) => r.exe = Some(p.clone()),
-                        None => r.setup_done = false,
-                    }
+            if let Some(p) = find_built(&want, since, &near) {
+                if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
+                    r.exe = Some(p);
                 }
-            }
-            st.save();
-            if found.is_some() {
+                st.save();
                 return None;
             }
             g.setup_done = false;
@@ -165,10 +175,6 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     // Its setup ran, but what it makes isn't there (closed early, or the disc wasn't picked): it
     // hasn't finished, so it opens again instead of the game starting only to quit.
     if g.setup_done && g.setup.is_some() && crate::boot::of_build(&st.dir, id, crate::boot::windows_build(g.proton)).and_then(|b| b.not_made(&g.path)).is_some() {
-        if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
-            r.setup_done = false;
-        }
-        st.save();
         g.setup_done = false;
     }
     // Updated before the launcher knew to run an installer again (the game it built is older than
@@ -179,24 +185,18 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
         let updated = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(g.updated_at);
         let old_build = built.map(|b| b + std::time::Duration::from_secs(120) < updated).unwrap_or(false);
         if old_build && !mark.exists() && g.updated_at > g.installed_at {
-            let _ = std::fs::create_dir_all(mark.parent().unwrap());
-            let _ = std::fs::write(&mark, b"");
-            crate::trail::note(format!("Play {id}: its build is older than the {} update, the setup runs once to build it", g.tag));
-            if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
-                r.setup_done = false;
+            if play {
+                let _ = std::fs::create_dir_all(mark.parent().unwrap());
+                let _ = std::fs::write(&mark, b"");
+                crate::trail::note(format!("Play {id}: its build is older than the {} update, the setup runs once to build it", g.tag));
             }
-            st.save();
             g.setup_done = false;
         }
     }
     // The game said on its last start that its setup hasn't run ("run …Setup.exe first"): it
     // runs now, once for what the game said.
-    if g.setup_done && asked_for_setup(st, id, &g) {
+    if g.setup_done && asked_for_setup(st, id, &g, play) {
         crate::trail::note(format!("Play {id}: the game asked for its setup last time, so it runs first"));
-        if let Some(r) = st.lib.lock().unwrap().installed.get_mut(id) {
-            r.setup_done = false;
-        }
-        st.save();
         g.setup_done = false;
     }
     if g.setup_done {
@@ -206,9 +206,9 @@ pub fn pending(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
 }
 
 /// The game's own last words name its setup program (HopperSetup.exe), and that's news: each
-/// time the game prints it is answered once, so a setup that ran isn't asked for again by an old
-/// message.
-fn asked_for_setup(st: &App, id: &str, g: &Installed) -> bool {
+/// time the game prints it is answered once (`answer`: Play marks it), so a setup that ran, or
+/// one closed before it finished, isn't asked for again by an old message.
+fn asked_for_setup(st: &App, id: &str, g: &Installed, answer: bool) -> bool {
     let Some(name) = g.setup.as_ref().and_then(|s| s.file_name()).map(|n| n.to_string_lossy().to_lowercase()) else { return false };
     let out = crate::game_output_path(&st.dir, id);
     let Some(stamp) = std::fs::metadata(&out).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_millis().to_string()) else { return false };
@@ -219,7 +219,7 @@ fn asked_for_setup(st: &App, id: &str, g: &Installed) -> bool {
     let Ok(text) = std::fs::read_to_string(&out) else { return false };
     let lines: Vec<&str> = text.lines().collect();
     let named = lines.iter().rev().take(80).any(|l| l.to_lowercase().contains(&name));
-    if named {
+    if named && answer {
         let _ = std::fs::write(&mark, &stamp);
     }
     named
@@ -252,6 +252,12 @@ pub fn spawn(p: &Path) -> std::io::Result<Started> {
 /// `copy`: the player's copy of the game, handed to the setup as if dropped on it.
 pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
     let dir = p.parent().map(Path::to_path_buf).unwrap_or_default();
+    // On Linux every game plays from a plain folder: an AppImage is unpacked, never run (Play
+    // unpacks a game's own before its setup gets here).
+    #[cfg(target_os = "linux")]
+    if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")) {
+        return Err(std::io::Error::other("it's an AppImage, and on Linux the launcher plays games only from a plain folder. Install the game again from its page"));
+    }
     // A Windows setup on Linux runs through Proton (or Wine), like a Windows game does.
     // A Windows Installer package goes through Windows' installer (msiexec /i).
     let msi = crate::install::is_msi(p);
@@ -278,8 +284,6 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
         std::process::Command::new(p)
     };
     crate::sysenv::clean_std(&mut c);
-    #[cfg(target_os = "linux")]
-    unpack_if_appimage(&mut c, p);
     if let Some(x) = copy {
         c.arg(x);
     }
@@ -291,27 +295,6 @@ pub fn spawn_with(p: &Path, copy: Option<&Path>) -> std::io::Result<Started> {
             crate::win::run_as_admin(p, &args, &dir).map(Started::Admin)
         }
         Err(e) => Err(e),
-    }
-}
-
-/// A setup that comes as an AppImage can't mount itself in the Flatpak or on a PC without FUSE 2
-/// (NixOS, a container): it unpacks itself to run, as a game's AppImage does at Play.
-#[cfg(target_os = "linux")]
-fn unpack_if_appimage(c: &mut std::process::Command, p: &Path) {
-    if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")) {
-        return;
-    }
-    let sandboxed = crate::flatpak::sandboxed();
-    if !sandboxed && crate::sysenv::has_fuse2() {
-        return;
-    }
-    c.env("APPIMAGE_EXTRACT_AND_RUN", "1");
-    if !sandboxed {
-        return;
-    }
-    // The sandbox's /tmp is memory (about half the PC's RAM at most): a big setup unpacks on disk.
-    if let Some(dir) = crate::flatpak::scratch_dir() {
-        c.env("TMPDIR", dir);
     }
 }
 
@@ -591,12 +574,18 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
     } else {
         "cancelled"
     };
+    // It didn't finish: the game stays as it was (a version that played before still plays, and
+    // the next Play opens its setup when it has to), never left without its program.
+    if state == "cancelled" {
+        crate::trail::note(format!("Setup {id}: its setup closed before it finished; the game is as it was"));
+        return (state, candidates);
+    }
     {
         let mut l = st.lib.lock().unwrap();
         if let Some(r) = l.installed.get_mut(id) {
             r.exe = g.exe.clone();
             r.args = g.args.clone();
-            r.setup_done = state != "cancelled";
+            r.setup_done = true;
         }
     }
     st.save();
