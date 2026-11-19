@@ -103,6 +103,10 @@ pub struct Prepare {
     /// game is set up, even when another launcher built it.
     #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
     pub done: Vec<String>,
+    /// The step keeps what it needs from the copy in the game's build folder (folders.game), and
+    /// runs again from there without the copy: then the arguments with {game} are left out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_copy: bool,
 }
 
 /// A path or a list of them; anything else is nothing.
@@ -775,16 +779,25 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     Some(p)
 }
 
-/// An AppImage the Flatpak unpacked at install is gone, its AppRun in its place: programs named
-/// `….AppImage` that aren't in the folder start the AppRun instead.
+/// An AppImage unpacked at install (on Linux every game plays from a plain folder) is gone, its
+/// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
+/// instead. The one in a folder named after the AppImage first (a release with several), else the
+/// one at the top.
 fn to_apprun(p: &mut Profile, dir: &Path) {
-    if dir.as_os_str().is_empty() || !dir.join("AppRun").is_file() {
+    if dir.as_os_str().is_empty() {
         return;
     }
     let swap = |programs: &mut Vec<String>| {
         for prog in programs.iter_mut() {
-            let image = Path::new(prog.as_str()).extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
-            if image && !dir.join(prog.as_str()).is_file() {
+            let named = Path::new(prog.as_str());
+            let image = named.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
+            if !image || dir.join(named).is_file() {
+                continue;
+            }
+            let own = named.with_extension("").join("AppRun");
+            if dir.join(&own).is_file() {
+                *prog = own.to_string_lossy().replace('\\', "/");
+            } else if dir.join("AppRun").is_file() {
                 *prog = "AppRun".into();
             }
         }
@@ -1583,20 +1596,15 @@ impl Profile {
         (dir.is_absolute() && dir != install).then_some(dir)
     }
 
-    /// The game's own folders (`folders.game`, filled in for this install), with the folder a
-    /// moved build went to: where a game built from the player's copy keeps what it built from.
-    pub fn game_folders(&self, install: &Path, moved: Option<&Path>) -> Vec<PathBuf> {
-        let mut out: Vec<PathBuf> = moved.map(Path::to_path_buf).into_iter().collect();
-        for place in self.folders.get("game").into_iter().flatten() {
-            if place.path.is_empty() || place.path.contains("{game}") {
-                continue;
-            }
-            let dir = PathBuf::from(fill(&place.path, install, None));
-            if dir.is_absolute() && !out.contains(&dir) {
-                out.push(dir);
-            }
+    /// What a step that keeps the copy (`prepare.keeps_copy`) kept from it: its build folder, when
+    /// it's there with files in it. A build folder that's gone took what it kept with it.
+    pub fn kept_from_copy(&self, install: &Path) -> Option<PathBuf> {
+        if !self.prepare.as_ref()?.keeps_copy {
+            return None;
         }
-        out
+        let home = self.build_home(install)?;
+        let has_files = std::fs::read_dir(&home).ok()?.flatten().next().is_some();
+        has_files.then_some(home)
     }
 
     /// The player's build in `to` standing in for the setup's own folder: every path of the
@@ -3125,6 +3133,17 @@ mod tests {
     }
 
     #[test]
+    fn one_of_several_unpacked_appimages_starts_from_its_own_folder() {
+        let d = tmp("apprun-own");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["Game-x86_64.AppImage"]}}"#).unwrap();
+        std::fs::create_dir_all(d.join("Game-x86_64")).unwrap();
+        std::fs::write(d.join("Game-x86_64/AppRun"), b"#!/bin/sh\n").unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["Game-x86_64/AppRun"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn groups_advanced_settings_and_sliders_parse() {
         let p: Profile = serde_json::from_str(r#"{"format":1,
             "config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
@@ -3535,11 +3554,13 @@ mod tests {
         assert_eq!(backup.files, 2);
         std::fs::remove_file(&card).unwrap();
         std::fs::remove_file(&states).unwrap();
-        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        let archive = crate::saves::dir_of(&app, "dusklight", &game).join(backup.name);
         assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
         assert_eq!(std::fs::read(card).unwrap(), b"card");
         assert_eq!(std::fs::read(states).unwrap(), b"[]");
         let _ = std::fs::remove_dir_all(&install);
+        // The copies sit beside the game, in its library's .backups folder.
+        let _ = std::fs::remove_dir_all(crate::backups_dir(&game));
     }
 
     #[test]
@@ -3922,18 +3943,34 @@ mod tests {
         assert!(g("e0f3ccfa").identifies_by_contents() && g("e0f3ccfa").identifies());
         // No check, no change: any file is still accepted.
         assert!(check_copy(&g(""), &d.join("a.nup")).is_ok());
-        // The copy a game keeps for rebuilding: a hidden `.name_exefs` beside `romfs`.
-        let kept = d.join("Hopper");
-        std::fs::create_dir_all(kept.join(".hopper_exefs")).unwrap();
-        std::fs::create_dir_all(kept.join("romfs")).unwrap();
-        std::fs::write(kept.join(".hopper_exefs").join("main"), &main).unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &kept).is_ok());
-        assert!(check_copy(&g("11223344"), &kept).is_err());
-        // Any other hidden folder ending in _exefs without the executable is refused.
-        let other = d.join("Other");
-        std::fs::create_dir_all(other.join(".foo_exefs")).unwrap();
-        std::fs::create_dir_all(other.join("romfs")).unwrap();
-        assert!(check_copy(&g("e0f3ccfa"), &other).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_games_own_build_folder_is_not_a_copy() {
+        // Hookshot's and Longshot's builders keep what they built from in their output folder, in a
+        // hidden folder of their own. That's the builder's private layout, not the player's copy:
+        // handed back to the builder as its copy, it refuses it (#215). Only a real copy counts.
+        let d = tmp("nup-build-folder");
+        let mut main = vec![0u8; 0x100];
+        main[..4].copy_from_slice(b"NSO0");
+        main[0x40..0x44].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        let build = d.join("Longshot");
+        std::fs::create_dir_all(build.join(".longshot_exefs")).unwrap();
+        std::fs::create_dir_all(build.join("romfs")).unwrap();
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join(".longshot_exefs").join("main"), &main).unwrap();
+        std::fs::write(build.join("bin").join("longshot.exe"), b"").unwrap();
+        let need = GameCopy {
+            kind: "iso_or_folder".into(),
+            label: String::new(),
+            check: Check { nup_build_id: "e0f3ccfa".into(), ..Default::default() },
+            ..Default::default()
+        };
+        assert!(check_copy(&need, &build).is_err());
+        // Nor is the player pointed at it from the folder around it.
+        let around = check_copy(&need, &d).unwrap_err();
+        assert!(!around.contains(&build.display().to_string()), "{around}");
         let _ = std::fs::remove_dir_all(&d);
     }
 

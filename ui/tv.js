@@ -459,7 +459,7 @@
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
-      case 'installed': { const su = S.setup[id]; if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
+      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
       default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Install') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
@@ -570,9 +570,8 @@
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
       case 'installed': {
-        const su = S.setup[id];
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
-        if (S.easy.has(id) && su && su !== 'loading' && su.needs && !su.copy) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
+        if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
         return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', run: () => playGame(id) };
       }
       case 'settingup': {
@@ -1323,29 +1322,33 @@
     const sv = s0 && s0 !== 'loading' ? s0 : null;
     const copy = (c, k, v, now) => { const when = c.when || c.made; return `<button type="button" class="tv-item" data-f data-key="gc:${k}:${esc(v)}" data-tvact="gs-restore" data-id="${esc(id)}" data-${k}="${esc(v)}"><span class="k">${esc(whenText(when))}${now ? ` <em class="tv-now">${esc(t('Same as this PC'))}</em>` : ''}<small>${esc([c.device, c.files ? tn(c.files, '1 file', '{n} files') : '', fmtB(c.size)].filter(Boolean).join(' · '))}</small></span><span class="tv-pill">${esc(t('Put back'))}</span></button>`; };
     let body = `<p class="tv-empty">${esc(t('Loading…'))}</p>`;
+    let unknown = false;
     if (sv && sv.error) body = `<p class="tv-empty">${esc(t(sv.error))}</p>`;
     else if (sv) {
+      // Nobody has said where it saves: picking the folder is the one thing to do (first, so it has the
+      // focus), and backing up or syncing waits for it, as on the desktop.
+      unknown = window.savesUnknown(sv);
       const on = sv.cloudOn === true;
       const shareTitle = saveShareTitle(id);
       body = `<div class="tv-list">
+        ${unknown ? `<button type="button" class="tv-item" data-f data-key="gs:pick" data-tvact="gs-place" data-id="${esc(id)}">${svg('folder')}<span class="k">${esc(t(SAVES_PICK))}<small>${esc(t(SAVES_UNKNOWN_HELP))}</small></span></button>` : ''}
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
         ${sv.signedIn ? `<button type="button" class="tv-item" data-f data-key="gs:cloud" data-tvact="gs-cloud" data-id="${esc(id)}" data-sw="${on ? 1 : 0}"><span class="k">${esc(t('Cloud saves'))}<small>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>` : ''}
         ${on && sv.signedIn ? (() => {
           const newest = Array.isArray(sv.cloud) && sv.cloud[0];
           const line = sv.waiting ? tn(sv.waiting, 'Waiting to upload (1 copy)', 'Waiting to upload ({n} copies)') : newest ? tf('Last uploaded {when} from {device}', { when: whenText(newest.made), device: newest.device || t('this PC') }) : t('Nothing in the cloud yet');
-          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
+          return `<button type="button" class="tv-item" data-f data-key="gs:sync" data-tvact="gs-sync" data-id="${esc(id)}"${sv.busy || unknown || S.running.has(parentId(id)) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Sync Now'))}<small>${esc(sv.offline ? t('Cloud saves can\'t be reached right now.') : line)}</small></span></button>`;
         })() : ''}
-        <button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>
+        ${unknown ? '' : `<button type="button" class="tv-item" data-f data-key="gs:now" data-tvact="gs-backup" data-id="${esc(id)}"${S.running.has(id) ? ' disabled' : ''}>${svg('upload')}<span class="k">${esc(t('Back up now'))}<small>${esc(t('A copy of its saves as they are right now'))}</small></span></button>`}
         <h3 class="tv-lh">${esc(t('On this PC'))}</h3>
-        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
+        ${sv.local.length ? sv.local.map((c) => copy(c, 'name', c.name, false)).join('') : `<p class="tv-note">${esc(unknown ? t('No backups yet.') : g.last_played ? t('No saves found yet. If it saves somewhere unusual, its developer can say where in recomplauncher.json.') : t('Play it once and its saves are copied here after.'))}</p>`}
         ${on && Array.isArray(sv.cloud) ? `<h3 class="tv-lh">${esc(t('In the cloud'))}</h3>${sv.cloud.length ? sv.cloud.map((c) => copy(c, 'v', c.v, c.hash === sv.synced)).join('') : `<p class="tv-note">${esc(t('Nothing in the cloud yet. It goes up after you play.'))}</p>`}` : ''}
-        <h3 class="tv-lh">${esc(t('Where it saves'))}</h3>
-        ${window.savesGuessed && window.savesGuessed(sv) ? `<p class="tv-note">${esc(t('No one has said where this game saves yet, so the launcher is going by what it noticed while you played.'))}</p>` : ''}
+        ${unknown ? '' : `<h3 class="tv-lh">${esc(t('Where it saves'))}</h3>`}
         ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
       </div>`;
     }
     return `${backdrop(a, 'game')}${gameBar()}
-      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), t('After every session the launcher keeps a copy. Put an older one back with A.'))}${body}`)}
+      ${region(`${pageHead(tf('Saves for {game}', { game: a.name }), unknown ? t(SAVES_UNKNOWN) : t('After every session the launcher keeps a copy. Put an older one back with A.'))}${body}`)}
       ${hints([['A', t('Select')], ['B', t('Back')]])}`;
   }
 
@@ -1485,7 +1488,7 @@
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
     const devText = a.blurb || notesLine(a.description);
-    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [t('Stars on GitHub'), a.stars ? fmtN(a.stars) : ''], [t('Size'), a.size]].filter(([, v]) => v);
+    const facts = [[t('By'), (devOf(a) && devOf(a).name) || a.author], [t('Version'), window.verText(a.version)], [t('Latest release'), date(a.released)], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('Size'), a.size]].filter(([, v]) => v);
     const checkBlock = !g && checks.length ? `<section class="tv-block"><h3>${esc(t('Before you install'))}${bad ? ` <small>${esc(tn(bad, '1 thing to do', '{n} things to do'))}</small>` : ''}</h3><div class="tv-panel tv-checks" data-f data-key="g-checks"><dl>${checks.map((r) => `<div><dt>${esc(r.k)}<small>${esc(r.d || '')}</small></dt><dd>${okMark(r.v)}</dd></div>`).join('')}</dl></div></section>` : '';
     const aside = g
       ? `<aside class="tv-panel" aria-label="${esc(t('Details'))}"><h2>${esc(bad ? t('Before you play') : t('Ready to play'))}</h2><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${tvRuns(a)}</aside>`
@@ -1648,7 +1651,12 @@
       `<button type="button" class="tv-item${look ? '' : ' off'}" data-f data-key="gs:__amount" data-gset="__amount" data-id="${esc(id)}"${look ? '' : ' disabled'}><span class="k">${esc(t('Amount'))}<small>${esc(t('How strong the shader is.'))}</small></span><span class="tv-cycle">${svg('chevL', 22)}<b>${esc(tf('{pct}%', { pct: li.amount }))}</b>${svg('chevR', 22)}</span></button>`,
     ] : [];
     const items = waiting ? `<p class="tv-empty">${esc(t('Loading…'))}</p>` : [
-      prof && prof.needs ? `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(prof.copy ? baseName(prof.copy) : prof.needs)}</small></span><span class="tv-pill${prof.copy ? ' on' : ''}">${esc(prof.copy ? t('Change') : t('Insert it'))}</span></button>` : '',
+      prof && prof.needs ? (() => {
+        // Built from a copy that's gone since: it plays without it, as on the desktop.
+        const gone = copyNotNeeded(id), have = prof.copy || gone;
+        const sub = prof.copy ? baseName(prof.copy) : gone ? copyGoneText(id) : prof.needs;
+        return `<button type="button" class="tv-item" data-f data-key="gs:copy" data-tvact="setup" data-id="${esc(id)}"><span class="k">${esc(t('Your copy of the game'))}<small>${esc(sub)}</small></span><span class="tv-pill${have ? ' on' : ''}">${esc(have ? t('Change') : t('Insert it'))}</span></button>`;
+      })() : '',
       ...lookRows,
       ...tvSettingRows(id, prof),
       ...(prof ? prof.actions : []).map((x) => `<button type="button" class="tv-item" data-f data-key="ga:${esc(x.id)}" data-tvact="gaction" data-k="${esc(x.id)}" data-id="${esc(id)}"><span class="k">${esc(x.label)}<small>${esc(x.help)}</small></span><span class="tv-pill on">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</span></button>`),
@@ -2053,6 +2061,7 @@
   const TS = { id: null, stage: 'steps', step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
   async function tvSetup(id) {
     if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
+    if (TS.id !== id) setupOpened(id);
     const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
     if (activeJob) {
       if (TV.sheet) closeSheet();
@@ -2098,7 +2107,7 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
-      const order = ['read', 'verify'].concat(TS.extras ? ['extras'] : [], ['setup']);
+      const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
       const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
@@ -2206,6 +2215,7 @@
           toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
         }
         if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); }
+        setupClosed(id);
         TS.id = null;
       }
     };
@@ -2230,8 +2240,9 @@
     if (TS.id !== id) return;
     if (!go) { sfx('back'); return tsDraw(); }
     if (go.ready) { TS.stage = 'ready'; TS.result = { text: go.ready }; sfx('select'); return tsDraw(); }
+    if (go.kept) return tsBegin('', true);
     if (go.copy) return tsBegin(go.copy);
-    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '' });
+    Object.assign(TS, { stage: 'run', step: 'read', steps: {}, q: [], at: Date.now(), path: '', kept: false });
     tsDraw();
     try { await invoke('setup_inputs_run', { id }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
@@ -2244,7 +2255,8 @@
       if (!TS.id) return;
       if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
     }
-    Object.assign(TS, { stage: 'run', path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    // No path: built again from what it kept, so there's no copy to read or check.
+    Object.assign(TS, { stage: 'run', path, kept: !path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
     try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
@@ -2471,7 +2483,8 @@
         <div class="val">${svg('chevL', 34)}<b>${esc(o.choices[o.current] || '')}</b>${svg('chevR', 34)}</div>
         <div class="dots">${o.choices.map((c, i) => `<i class="${i === o.current ? 'on' : ''}" title="${esc(c)}"></i>`).join('')}</div><p>${esc(o.help)}</p>`;
     } else if (el.dataset.key === 'gs:copy') {
-      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc(su.copy ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || su.needs || '')}</p>`;
+      const gone = copyNotNeeded(TV.arg);
+      html = `<span class="k">${esc(t('Your copy'))}</span><h3>${esc((su.status ? su.status.ready : su.copy) ? t('Set up') : t('Not set up yet'))}</h3><p>${esc(su.copy || (gone ? copyGoneText(TV.arg) : su.needs) || '')}</p>`;
     } else if (el.dataset.key === 's:buttons' && window.buttonGuide) {
       html = `<span class="k">${esc(t('Controller'))}</span><div class="tv-padguide">${window.buttonGuide(glyph).map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b></span></div>`).join('')}</div>`;
     } else if (el.dataset.key === 's:monitor') {
@@ -2907,6 +2920,14 @@
         return loadGameSaves(id);
       }
       case 'gs-open': return invoke('saves_open', { id }).catch(fail);
+      case 'gs-place': {
+        // The same pick as the desktop's Where it saves: the player's folder from now on.
+        const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
+        if (!p) return;
+        try { S.library[id] = await invoke('saves_set_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+        toast(t('Saved. Backups and cloud saves use that folder now.'));
+        return loadGameSaves(id);
+      }
       case 'gs-restore': {
         sfx('open');
         const name = el.dataset.name || null, v = el.dataset.v || null;

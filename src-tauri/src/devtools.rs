@@ -83,12 +83,74 @@ pub fn dev_add(st: State<'_, App>, path: String) -> Res<Installed> {
 #[tauri::command(async)]
 pub fn add_any(st: State<'_, App>, path: String) -> Res<Installed> {
     let p = PathBuf::from(&path);
+    #[cfg(target_os = "linux")]
+    if p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
+        return add_appimage(&st, &p);
+    }
     if p.is_file() {
         let dir = p.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
         let rel = p.file_name().map(PathBuf::from);
         return add_folder(&st, dir.to_string_lossy().to_string(), rel, "own");
     }
     add_folder(&st, path, None, "own")
+}
+
+/// The player's own AppImage, on Linux: unpacked into the Recomp Library (see plain::bring_in) as
+/// a game of its own, or as the newer version of one brought in the same way before (the launcher
+/// doesn't update games it doesn't know, so this is how they update). Not added when it won't unpack.
+#[cfg(target_os = "linux")]
+fn add_appimage(st: &App, image: &Path) -> Res<Installed> {
+    let key = crate::plain::image_key(image);
+    let earlier = st.lib.lock().unwrap().installed.values().find(|g| g.local && !key.is_empty() && g.from_appimage == key).map(|g| g.id.clone());
+    let id = match &earlier {
+        Some(id) => id.clone(),
+        None => add_image_record(st, image)?,
+    };
+    match crate::plain::bring_in(st, &id, image) {
+        Ok(b) => crate::plain::tell(&b),
+        Err(e) => {
+            if earlier.is_none() {
+                st.lib.lock().unwrap().forget(&id);
+                st.save();
+            }
+            return Err(e);
+        }
+    }
+    st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
+}
+
+/// A new game of the player's own for their AppImage, before it's unpacked: named by its embedded
+/// recomplauncher.json, else by the AppImage's own name. Never another game the player added from
+/// the same folder (Downloads holds many).
+#[cfg(target_os = "linux")]
+fn add_image_record(st: &App, image: &Path) -> Res<String> {
+    let dir = image.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
+    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    let said = |k: &str| raw.as_ref().and_then(|v| v.get(k)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    let name = said("name").unwrap_or_else(|| crate::plain::image_title(image));
+    let mut l = st.lib.lock().unwrap();
+    let base = format!("own-{}", slug(&name));
+    let mut id = base.clone();
+    let mut n = 2;
+    while l.installed.contains_key(&id) {
+        id = format!("{base}-{n}");
+        n += 1;
+    }
+    let g = Installed {
+        id: id.clone(),
+        name,
+        game: said("game").unwrap_or_default(),
+        repo: said("repo").unwrap_or_default(),
+        tag: "own".into(),
+        path: dir,
+        exe: image.file_name().map(PathBuf::from),
+        installed_at: now(),
+        updated_at: now(),
+        local: true,
+        ..Default::default()
+    };
+    l.put(&id, g);
+    Ok(id)
 }
 
 /// `tag`: "local" for a developer's build, "own" for a game the player added themselves.
@@ -468,8 +530,27 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         }
         items.extend(option_items(&pr.options));
         items.extend(version_item(&pr.version));
+        items.extend(keeps_copy_items(p, dir));
     }
     level
+}
+
+/// prepare.keeps_copy: run again without the copy, leaving out the arguments with {game} in them.
+/// Only what would make that run go wrong, or never happen, is said; nothing stops the game.
+fn keeps_copy_items(p: &profile::Profile, dir: &Path) -> Vec<Item> {
+    let Some(pr) = p.prepare.as_ref().filter(|pr| pr.keeps_copy) else { return vec![] };
+    let mut out = vec![];
+    // "--game", "{game}": leaving out "{game}" alone would hand --game the next argument.
+    if pr.args.iter().any(|a| a == "{game}") {
+        out.push(warn("\"{game}\" is an argument of its own in \"prepare.args\"", "With keeps_copy, the launcher leaves out every argument with {game} in it when it builds again without the copy. Write the copy as one argument, like \"--game={game}\"."));
+    }
+    if p.build_home(dir).is_none() {
+        out.push(warn("\"prepare.keeps_copy\" has no build folder to look in", "List the folder your step keeps the copy's files in as the first \"folders.game\" (not the game's own folder). Without it, players are asked for their copy again."));
+    }
+    if pr.done.is_empty() {
+        out.push(warn("\"prepare.keeps_copy\" without \"prepare.done\"", "List the files a finished build has, so the launcher can tell when it has to build again."));
+    }
+    out
 }
 
 /// prepare.version: changing it is how a json asks players who set up already to run it again.
@@ -564,6 +645,24 @@ pub fn is_local(st: &App, id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn keeps_copy_says_what_would_stop_a_build_without_the_copy() {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "prepare": { "program": ["Builder.exe"], "args": ["--game", "{game}"], "keeps_copy": true },
+            "start": { "program": ["Builder.exe"] }
+        })).unwrap();
+        let items = super::keeps_copy_items(&p, &std::env::temp_dir().join("x"));
+        let said: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(items.len(), 3, "{said:?}");
+        assert!(items.iter().all(|i| i.level == "warn"));
+        let fine: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "prepare": { "program": ["Builder.exe"], "args": ["--game={game}"], "done": ["{install}/Game/game"], "keeps_copy": true },
+            "start": { "program": ["Builder.exe"] },
+            "folders": { "game": [{ "path": "{install}/Game" }] }
+        })).unwrap();
+        assert!(super::keeps_copy_items(&fine, &std::env::temp_dir().join("x")).is_empty());
+    }
+
     #[test]
     fn setup_options_are_checked_in_plain_words() {
         let p: crate::profile::Prepare = serde_json::from_str(r#"{"program":["Builder.exe"],"options":[

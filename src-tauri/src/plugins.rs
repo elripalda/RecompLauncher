@@ -562,6 +562,10 @@ pub fn plugin_game_files(st: State<'_, App>, id: String, game: String, sub: Opti
     let dir = g.path.join(sub_folder(sub.as_deref().unwrap_or(""))?);
     let mut out = vec![];
     for e in std::fs::read_dir(&dir).map_err(|_| Error::Msg("That folder isn't there.".into()))?.flatten().take(2000) {
+        // Old files an update set aside (gone at the next start) aren't the game's.
+        if e.file_name() == crate::swap::FOLDER {
+            continue;
+        }
         let md = e.metadata().ok();
         out.push(json!({
             "name": e.file_name().to_string_lossy(),
