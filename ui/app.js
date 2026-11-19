@@ -2090,6 +2090,15 @@ function libraryGrid() {
 
 
 
+// The lines under the game's name. refreshGame draws them again, so a chip such as the shader's
+// follows a change made on the page without opening the game again.
+function gameTitle(a, id) {
+  const inst = S.library[id], su = S.setup[id];
+  // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
+  const sp = statePill(a), quiet = sp.includes('tag quiet');
+  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  return `${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}`;
+}
 function pageGame(id) {
   wantCounts();
   let a = byId(id);
@@ -2098,17 +2107,13 @@ function pageGame(id) {
   const inst = S.library[id];
   if (S.mods[id] === undefined) loadMods(id);
   if (inst && S.setup[id] === undefined) loadSetup(id);
-  const su = S.setup[id];
-  // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
-  const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
     <div class="gp-hero">${pic(thumbOf(a.hero || a.cover, 960))}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
-      <div class="gp-title">${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}</div>
+      <div class="gp-title">${gameTitle(a, id)}</div>
       <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}<div class="ig-slot" data-ig="${esc(id)}">${igCard(a)}</div></div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
@@ -2678,6 +2683,8 @@ function refreshGame() {
   $$('.tabs-in button').forEach((b) => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
   const acts = $(`.gp-acts`);
   if (acts) morph(acts, actions(a));
+  const title = $('.gp-title');
+  if (title) morph(title, gameTitle(a, id));
   // The cloud save badge: the game started or closed, or its saves changed.
   if (window.paintSaveBadges) window.paintSaveBadges();
   const main = $('#main'), top = main.scrollTop;
@@ -3508,6 +3515,12 @@ function forgetLooks(id) {
   delete LOOK_PIC[id];
 }
 const LOOK_NONE = { id: '', name: N_('Original'), blurb: N_('The game as it comes, with nothing on top.') };
+// Every wording stacked in one spot, only one visible: the line is always as tall as its longest
+// wording, so picking a shader never pushes the Amount slider up or down.
+function steadyText(texts, shown) {
+  const parts = texts.map((s, i) => `<span${i === shown ? '' : ' aria-hidden="true"'}>${esc(s)}</span>`);
+  return `<span class="steady">${parts.join('')}</span>`;
+}
 function looksTab(a) {
   const id = a.id, li = S.looks[id];
   if (li === undefined) loadLooks(id);
@@ -3518,8 +3531,10 @@ function looksTab(a) {
   const all = [LOOK_NONE].concat(D.looks);
   const crt = look && look.lines;
   const origin = originName(a.origin);
-  const src = (li.shot ? t('Your latest screenshot.') : t('The game\'s banner. Take a screenshot while you play (F12) to see shaders on the game itself.')) + (look ? ' ' + t('Drag across the picture to compare.') : '');
-  const amountRow = `<div class="lk-amtrow${look ? '' : ' off'}"><div class="k"><b>${esc(t('Amount'))}</b><span>${esc(look ? tf('How strong {look} is.', { look: look.name === 'CRT' ? t('the CRT shader') : t(look.name) === look.name ? look.name.toLowerCase() : t(look.name) }) : t('Pick a shader first.'))}</span></div>
+  const pic = li.shot ? t('Your latest screenshot.') : t('The game\'s banner. Take a screenshot while you play (F12) to see shaders on the game itself.');
+  const src = steadyText([pic, pic + ' ' + t('Drag across the picture to compare.')], look ? 1 : 0);
+  const amountHint = steadyText([t('Pick a shader first.'), t('How strong the shader is.')], look ? 1 : 0);
+  const amountRow = `<div class="lk-amtrow${look ? '' : ' off'}"><div class="k"><b>${esc(t('Amount'))}</b>${amountHint}</div>
         <div class="lk-amt"><span>${esc(t('Light'))}</span><input type="range" min="0" max="100" step="5" value="${li.amount}" data-lk-amount="${esc(id)}"${look ? '' : ' disabled'} aria-label="${esc(t('Amount'))}"><span>${esc(t('Strong'))}</span></div></div>`;
   // The picture and its strength on one side, every shader in a short list beside it: one look
   // at the tab shows them all, and picking one never scrolls the picture away.
@@ -3534,7 +3549,7 @@ function looksTab(a) {
       <input class="lk-range" type="range" min="0" max="100" value="50" aria-label="${esc(t('Compare with the original'))}" data-lk-split>
       <p class="lk-nopic">${esc(t('No picture to show it on yet. Take a screenshot while you play (F12).'))}</p>
     </div>
-    <p class="lk-src">${esc(src)}</p>
+    <p class="lk-src">${src}</p>
     ${amountRow}
     </div>
     <div class="lk-list" role="radiogroup" aria-label="${esc(t('Shader'))}">${all.map((l) => `<button type="button" role="radio" class="lk-item" aria-checked="${l.id === cur}" data-act="look" data-id="${esc(id)}" data-look="${esc(l.id)}"><span class="lk-th"><canvas data-look-th="${esc(l.id)}"></canvas></span><span class="lk-txt"><b>${esc(t(l.name))}</b><span>${esc(t(l.blurb))}</span></span></button>`).join('')}</div>
