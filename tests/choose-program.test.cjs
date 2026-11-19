@@ -67,10 +67,18 @@ test('turning Easy Setup off says it in the switch\'s words once installed, and 
   assert.match(sw, /toast\(tf\('\{name\} skips Easy Setup: it installs as it comes/);
 });
 
-test('the game\'s menu: Skip Easy Setup ticked before install, nothing once installed (the switch is in Manage)', () => {
-  const item = fn(app, 'easySkipItem');
-  assert.match(item, /if \(S\.library\[id\]\) return \[\];/);
-  assert.match(item, /return \[\{ act: 'easy-skip', id, label: t\('Skip Easy Setup'\), icon: 'disc', check: /);
+test('the setup window offers Skip Easy Setup on its first step, for a game Easy Setup does', () => {
+  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
+  assert.match(steps, /const skippable = m\.at === 0 && S\.easyAll && S\.easyAll\.has\(id\) && !\(S\.settings\.ui \|\| \{\}\)\.easy_skip_all;/);
+  assert.match(steps, /data-ss="skip-easy">\$\{esc\(t\('Skip Easy Setup'\)\)\}/);
+  assert.match(steps, /if \(act === 'skip-easy'\) return 'skip';/);
+});
+
+test('Skip Easy Setup closes the setup window and turns Easy Setup off, on the desktop and in Big Picture', () => {
+  const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+  assert.match(app, /if \(r === 'skip'\) \{ await closeSetup\(true\); return skipEasyHere\(id\); \}/);
+  assert.match(tv, /if \(r === 'skip'\) \{ closeSheet\(\); return skipEasyHere\(id\); \}/);
+  assert.match(fn(app, 'skipEasyHere'), /await setEasySkip\(id, true\);/);
 });
 
 test('a game Easy Setup can\'t do goes back with Use Default', () => {

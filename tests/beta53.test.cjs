@@ -7,33 +7,24 @@ const rust = fs.readFileSync(path.join(__dirname, '../src-tauri/src/lib.rs'), 'u
 const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 
 test('Skip Easy Setup: per game or for every game, and the page treats those games as plain installs', () => {
-  const run = new Function('S', 't', `${fn(app, 'applyEasySkip')}; ${fn(app, 'easySkipItem')}; return { applyEasySkip, easySkipItem };`);
+  const run = new Function('S', 't', `${fn(app, 'applyEasySkip')}; return { applyEasySkip };`);
   const S = { settings: { ui: {} }, library: {}, easyAll: new Set(['hopper', 'skyracer']) };
-  const { applyEasySkip, easySkipItem } = run(S, (x) => x);
+  const { applyEasySkip } = run(S, (x) => x);
   applyEasySkip();
   assert.deepEqual([...S.easy], ['hopper', 'skyracer']);
-  assert.equal(easySkipItem('hopper')[0].check, false);
-  // Installed, the switch is on its Manage tab and the menu leaves it out.
-  S.library.skyracer = {};
-  assert.deepEqual(easySkipItem('skyracer'), []);
-  delete S.library.skyracer;
-  assert.deepEqual(easySkipItem('plain'), [], 'only games Easy Setup can do get the item');
   S.settings.ui.easy_skip = ['hopper'];
   applyEasySkip();
   assert.deepEqual([...S.easy], ['skyracer']);
-  assert.equal(easySkipItem('hopper')[0].check, true);
   S.settings.ui.easy_skip_all = true;
   applyEasySkip();
   assert.deepEqual([...S.easy], []);
-  assert.deepEqual(easySkipItem('skyracer'), [], 'no per-game item while every game skips it');
   // Saving settings applies it straight away, and the catalog's list is the starting point.
   assert.match(fn(app, 'saveSettings'), /S\.settings = Object\.assign\(\{\}, S\.settings, patch\);\n  applyEasySkip\(\);/);
   assert.match(app, /S\.easyAll = new Set\(await invoke\('easy_setup'\)\);[^\n]*\n  applyEasySkip\(\);/);
 });
 
-test('the menu item and the Settings switch', () => {
-  const menu = fn(app, 'gameMenu');
-  assert.match(menu, /\.\.\.\(!g \? easySkipItem\(id\) : \[\]\)/);
+test('Skip Easy Setup is on the setup window, the Manage tab and in Settings, not in the menu', () => {
+  assert.doesNotMatch(fn(app, 'gameMenu'), /easy-skip|Skip Easy Setup/);
   assert.match(fn(app, 'manageStartRows'), /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(fn(app, 'setEasySkip'), /saveUi\(\{ easy_skip: \[\.\.\.skip\] \}, true\)/);

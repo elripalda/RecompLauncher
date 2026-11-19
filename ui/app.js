@@ -2872,6 +2872,7 @@ async function ssAct(b) {
   const r = await pending;
   if (!SU.el || SU.id !== id || SU.stage !== 'steps') return;
   if (r === 'ready') { SU.stage = 'ready'; SU.result = { text: t('Your previous setup') }; return suDraw(); }
+  if (r === 'skip') { await closeSetup(true); return skipEasyHere(id); }
   if (r !== 'run') return ssDraw();
   const go = await stepsRun(id, ns, SU.optsSaving);
   if (!SU.el || SU.id !== id) return;
@@ -4279,7 +4280,7 @@ function pageSettings() {
         ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Install too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
-          + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup in its menu.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
+          + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup on its setup window, or the Easy Setup switch in its Manage tab.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
         + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
@@ -5229,10 +5230,10 @@ function setSection(k, fade = true) {
 // One save at a time, each with everything changed so far: two quick toggles both stick.
 let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
-// Skip Easy Setup (a game's ⋯ menu, or Settings for every game): those games install as they come
-// and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the ones it does. An
-// installed game says it in its own mode ('own': the player sets it up); one not installed yet
-// by the tick in its menu (ui.easy_skip).
+// Skip Easy Setup (a game's setup window or Manage tab, or Settings for every game): those games
+// install as they come and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the
+// ones it does. An installed game says it in its own mode ('own': the player sets it up); one not
+// installed yet by ui.easy_skip (set by older versions, from the game's menu).
 function applyEasySkip() {
   const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []), lib = S.library || {};
   const record = (id) => lib[id] || (typeof parentId === 'function' ? lib[parentId(id)] : undefined);
@@ -5832,6 +5833,15 @@ async function setEasySkip(id, on) {
   }
   if (S.setup[id] !== undefined) S.setup[id] = await invoke('game_setup', { id }).catch(() => null);
 }
+// Skip Easy Setup, pressed on its setup window (desktop or Big Picture, which closes it first):
+// the game plays as it comes from now on. The Easy Setup switch in its Manage tab turns it back on.
+async function skipEasyHere(id) {
+  try { await setEasySkip(id, true); } catch (e) { return fail(e); }
+  const name = (byId(id) || S.library[id] || { name: id }).name;
+  toast(tf('Easy Setup is off for {name}. You set it up yourself.', { name }));
+  render(true);
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+}
 // Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
 async function askEasyOff(id) {
   const name = (byId(id) || S.library[id] || { name: id }).name;
@@ -5876,15 +5886,6 @@ function askWhereBuild() {
     new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
   });
 }
-// Skip Easy Setup for one game, in its menu, before it's installed: only on games Easy Setup can
-// do, and not while it's skipped for every game in Settings. It changes how the game installs, and
-// there's no Manage tab yet. Once installed, the switch is in its Manage tab.
-function easySkipItem(id) {
-  const ui = S.settings.ui || {};
-  if (!S.easyAll || !S.easyAll.has(id) || ui.easy_skip_all) return [];
-  if (S.library[id]) return [];
-  return [{ act: 'easy-skip', id, label: t('Skip Easy Setup'), icon: 'disc', check: (ui.easy_skip || []).includes(id) }];
-}
 // The same menu wherever a game is: its "…" button, or a right-click on its tile. It holds what no
 // tab of the game's page has: settings live in its Manage tab, saves in Saves, releases in Updates.
 // Uninstall is the one exception: players expect it on a right-click in their Library. Play isn't
@@ -5911,7 +5912,6 @@ function gameMenu(id) {
     ...(x && !x.custom ? [isHidden(id) ? { act: 'unhide', id, label: t('Show in Discover'), icon: 'hide' } : { act: 'hide', id, label: t('Hide from Discover'), icon: 'hide' }] : []),
     // Its own pictures and words before it's installed too (they stay when it is).
     ...(!g && x ? [{ act: 'customize', id, label: t('Edit Name and Artwork…'), icon: 'shot' }] : []),
-    ...(!g ? easySkipItem(id) : []),
     ...(g ? ['-',
       { act: 'customize', id, label: t('Edit Name and Artwork…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),

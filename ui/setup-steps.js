@@ -175,6 +175,10 @@ function stepsView(id, su, ns, game) {
     else if (!m.missing.length) status = m.reqOff ? prepReq() : t('Ready to set up.');
     if (m.ownBad) status = t('Choose the finished game\'s folder.');
   }
+  // Rather set it up yourself: Easy Setup off for this game, from its first step. Its Manage tab
+  // has the switch to turn it back on.
+  const skippable = m.at === 0 && S.easyAll && S.easyAll.has(id) && !(S.settings.ui || {}).easy_skip_all;
+  if (skippable) body += `<p class="ss-alt">${esc(t('Rather set it up yourself?'))} <button type="button" data-ss="skip-easy">${esc(t('Skip Easy Setup'))}</button></p>`;
   // The check mark only on the lines that say it's ready.
   const ok = [t('Everything it needs is here.'), t('Ready to set up.')].includes(status);
   const error = ns.error || su.inputs_error;
@@ -234,6 +238,7 @@ async function stepsAction(id, act, input, ns) {
   if (act === 'keepbuild') { ns.rebuild = false; return; }
   if (act === 'owncopy') { ns.own = ''; ns.ownErr = ''; return; }
   if (act === 'run') return 'run';
+  if (act === 'skip-easy') return 'skip';
   if (act === 'ownpick') {
     const p = await pickFile({ title: tf('The folder you built {name} into', { name: (S.library[id] || {}).name || id }), directory: true }).catch(fail);
     if (p) { ns.own = typeof p === 'string' ? p : p.path; ns.ownErr = ''; }

@@ -2247,6 +2247,7 @@
     if (TS.id !== id || TS.stage !== 'steps') return;
     if (ns.at !== was) sfx(ns.at > was ? 'select' : 'back');
     if (r === 'ready') { TS.stage = 'ready'; TS.result = { text: t('Your previous setup') }; sfx('select'); return tsDraw(); }
+    if (r === 'skip') { closeSheet(); return skipEasyHere(id); }
     if (r !== 'run') return tsDraw();
     const go = await stepsRun(id, ns, TS.optsSaving);
     if (TS.id !== id) return;
