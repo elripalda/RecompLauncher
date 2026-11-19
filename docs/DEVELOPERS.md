@@ -648,8 +648,8 @@ settings are written. It runs again whenever the player changes their copy.
 - A run for new options only (the player turned one on after setting up) should reuse what the
   last run made, not start again from the disc.
 - **Built from the player's copy?** Keep everything the game needs in your folder, so it plays
-  without the copy, and list what the build leaves in `done`. When it keeps reading the copy while
-  it plays, `keeps_copy` (coming in a later launcher) says so.
+  without the copy, and list what the build leaves in `done`. To build again later without the
+  copy, see `keeps_copy` below.
 - `"version"` (optional): change it only when players who already set up must run the step again,
   like when your output format changes. Nothing else in this file makes them set up again. Their
   next Play opens Easy Setup with a note that the game is built again, whether it's set up from
@@ -753,9 +753,8 @@ when it's on its `args` are added after the step's own:
     }
   ]
   ```
-- Your builder gets these args added to its own, with the step's usual environment (`{data}` in
-  `RECOMPLAUNCHER_DATA`, its own temp folder). Download the SDK to the temp folder, or to
-  `{data}/cache` to reuse it on the next run, and put the runtime files where the game looks.
+- Your builder gets these args added to its own, with the step's usual environment. Where to put
+  the SDK and its runtime files: [Vendor SDKs the build needs](#vendor-sdks-the-build-needs).
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
   player sees "Its setup step stopped with code N", so put the reason in your own log.
 - An option you add in a later release reaches players who already set the game up: Set Up
@@ -773,10 +772,11 @@ the player agrees to the vendor's license:
    the license was accepted. Without the second, it downloads nothing and stops.
 2. Add a `prepare.options` tick, as above, with both flags in `args`, a `license`, and `gpu`
    (`nvidia` for DLSS). Ticking it is the player accepting the license.
-3. Keep the SDK in a folder of your builder's own. The launcher sets no environment variables for
-   `prepare`, so the flags must work without any: a variable you read today can still override the
-   folder, but it can't be required. Check it by running the builder exactly as the launcher does:
-   the arguments above, nothing else set.
+3. Download the SDK to the step's temp folder (`TEMP`, `TMP`, `TMPDIR`), which is emptied after
+   every run, or to `{data}/cache` to reuse it on the next one. The step gets
+   `RECOMPLAUNCHER_DATA` and whatever you set in `prepare.env`, and nothing else of yours: a
+   variable from your own setup can't be required. Check it by running the builder exactly as the
+   launcher does, with the arguments above and that environment.
 4. Put the vendor's runtime files where the game looks for them, never in your release. For
    DLSS, that is `nvngx_dlss.dll`, and `nvngx_dlssg.dll` for frame generation, in an `ngx` folder
    in the game's folder.
@@ -935,13 +935,13 @@ CHD is the format most disc-based backups come in, and the one players ask for m
 ### Releases
 
 - **Tag every release with a version** (`v1.2.0`) and attach the builds to the GitHub release, not just to the README or Actions.
-- **One file per platform, with a name that says what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.AppImage`, `-macos-arm64.zip`.
+- **Name every file for what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.tar.gz` and `-linux-x86_64.AppImage`, `-macos-arm64.zip`. [Releases that install cleanly](#releases-that-install-cleanly) has the rest: the words a launcher picks a file by, one portable Linux build packed both ways, `source` in a source archive's name, and staying out of Program Files.
 - **Build for Linux and Mac too** when you can. A lot of players are on Steam Deck.
 - **Say what changed** in the release notes, even in one line.
 
 ### On the player's PC
 
-- **Portable when it can be.** If the folder next to the exe is writable, keep saves, settings and logs there. Otherwise use the usual per-user folder, and say where in the README.
+- **One data folder, and a way to move it.** Take one option for where everything goes (saves, settings, caches, logs), like portable emulators do. Without it, use the system's usual per-user folder, and say where in the README. A launcher can then keep all of it with the game: RecompLauncher passes `{data}` (`RECOMPLAUNCHER_DATA`), see [Where your game writes](#where-your-game-writes).
 - **Settings in a file a person can read**: TOML, INI or JSON, with every option written out and commented. Don't hide settings in the registry.
 - **Logs in a known place**, kept for the last few runs, so players can send them when something breaks.
 - **Controllers through SDL**, with buttons that can be remapped and a sensible default for Xbox, PlayStation and Switch pads.
