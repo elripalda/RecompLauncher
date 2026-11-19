@@ -13,6 +13,11 @@ const LISTS: [&str; 17] = [
     "LD_LIBRARY_PATH", "LD_PRELOAD", "PATH", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "GSETTINGS_SCHEMA_DIR", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_SYSTEM_PATH_1_0",
     "GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GIO_MODULE_DIR", "GDK_PIXBUF_MODULE_FILE", "GTK_PATH", "QT_PLUGIN_PATH", "PYTHONPATH", "PERLLIB", "GI_TYPELIB_PATH",
 ];
+/// Settings the launcher's own AppImage forces for itself, by the values it forces: linuxdeploy's
+/// GTK hook pins the theme to Adwaita (a custom theme breaks inside an AppImage), and its AppRun
+/// stops Python writing bytecode. A game uses the PC's own GTK and Python, so it gets the player's
+/// theme back; a theme the player set themselves (anything else) stays.
+const FORCED: [(&str, &[&str]); 2] = [("GTK_THEME", &["Adwaita:light", "Adwaita:dark"]), ("PYTHONDONTWRITEBYTECODE", &["1"])];
 /// Single paths an AppImage points into itself: gone when they do.
 const SINGLE: [&str; 5] = ["PYTHONHOME", "GTK_EXE_PREFIX", "GTK_DATA_PREFIX", "GST_PLUGIN_SCANNER", "GTK_IM_MODULE_FILE"];
 
@@ -38,6 +43,7 @@ pub fn changes_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<Change> {
     }
     let appdir = appdir.trim_end_matches('/').to_string();
     out.extend(OWN.iter().filter(|k| get(k).is_some()).map(|k| (*k, None)));
+    out.extend(FORCED.iter().filter(|(k, v)| get(k).is_some_and(|now| v.contains(&now.as_str()))).map(|(k, _)| (*k, None)));
     for k in LISTS {
         let Some(v) = get(k) else { continue };
         let kept: Vec<&str> = v.split(':').filter(|e| !e.is_empty() && !inside(e, &appdir)).collect();
@@ -622,6 +628,24 @@ mod tests {
         assert_eq!(get("XDG_DATA_DIRS"), None); // nothing of the AppImage's in it
         // Not an AppImage: nothing changes.
         assert!(changes_from(&|k| if k == "PATH" { Some("/usr/bin".into()) } else { None }).is_empty());
+    }
+
+    #[test]
+    fn the_theme_and_python_setting_the_launchers_appimage_forces_never_reach_a_game() {
+        let forced: HashMap<&str, &str> = HashMap::from([("APPIMAGE", "/home/a/RecompLauncher.AppImage"), ("GTK_THEME", "Adwaita:dark"), ("PYTHONDONTWRITEBYTECODE", "1")]);
+        let c = changes_from(&|k| forced.get(k).map(|s| s.to_string()));
+        assert!(c.contains(&("GTK_THEME", None)));
+        assert!(c.contains(&("PYTHONDONTWRITEBYTECODE", None)));
+    }
+
+    #[test]
+    fn a_theme_the_player_set_reaches_a_game() {
+        let theirs: HashMap<&str, &str> = HashMap::from([("APPIMAGE", "/home/a/RecompLauncher.AppImage"), ("GTK_THEME", "Breeze-Dark")]);
+        let c = changes_from(&|k| theirs.get(k).map(|s| s.to_string()));
+        assert!(!c.iter().any(|(k, _)| *k == "GTK_THEME"));
+        // Not run as an AppImage, the launcher's own theme setting is the player's too.
+        let native: HashMap<&str, &str> = HashMap::from([("GTK_THEME", "Adwaita:dark")]);
+        assert!(changes_from(&|k| native.get(k).map(|s| s.to_string())).is_empty());
     }
 }
 
