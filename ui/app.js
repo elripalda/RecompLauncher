@@ -3367,7 +3367,7 @@ function suDraw() {
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>
       ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
-  const keepDisc = $('.su-media .md', box);
+  const keepDisc = $('.su-media .mdisc', box);
   const stageHtml = `<div class="su-media">${gameMediaHtml(a, mdState)}</div>`;
   if (!box.firstChild || box.dataset.stage !== SU.stage) {
     if (SU.stage !== 'run') box.dataset.step = '';
@@ -3378,7 +3378,7 @@ function suDraw() {
     if (f) f.focus({ preventScroll: true });
   } else {
     $('.su-r', box).innerHTML = right;
-    const d = $('.su-media .md', box);
+    const d = $('.su-media .mdisc', box);
     if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('is-busy')) mediaState(d, 'is-busy');
   }
   if (SU.stage === 'run') suDrive.start($('.drive i', box));

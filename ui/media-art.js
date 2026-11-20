@@ -390,14 +390,14 @@ const MediaArt = (() => {
     if (!known(k)) k = 'dvd';
     const L = DISCS[k] ? disc(k, art) : shell(k, art);
     const type = DISCS[k] ? 'md-disc' : k === 'umd' ? 'md-umd' : 'md-cart';
-    return `<div class="md ${type} md-k-${k}">${svgOpen('md-l md-back')}${L.back}</svg>${L.spin ? `${svgOpen('md-l md-spin')}${L.spin}</svg>` : ''}${L.front ? `${svgOpen('md-l md-front')}${L.front}</svg>` : ''}</div>`;
+    return `<div class="mdisc ${type} md-k-${k}">${svgOpen('md-l md-back')}${L.back}</svg>${L.spin ? `${svgOpen('md-l md-spin')}${L.spin}</svg>` : ''}${L.front ? `${svgOpen('md-l md-front')}${L.front}</svg>` : ''}</div>`;
   }
 
   // The empty outline of a kind's media, for while it waits for the player's files.
   function ghost(kind) {
     const k = known(kind) ? kind : 'dvd';
     const shape = DISCS[k] ? ring(DISCS[k].R, DISCS[k].hub[0]) : SHAPES[k].shape;
-    return `<div class="md md-ghost md-k-${k}">${svgOpen('md-l')}<path d="${shape}" fill="currentColor" fill-opacity=".04" fill-rule="evenodd" stroke="currentColor" stroke-width="2.4" stroke-dasharray="8 8" stroke-linejoin="round"/></svg></div>`;
+    return `<div class="mdisc md-ghost md-k-${k}">${svgOpen('md-l')}<path d="${shape}" fill="currentColor" fill-opacity=".04" fill-rule="evenodd" stroke="currentColor" stroke-width="2.4" stroke-dasharray="8 8" stroke-linejoin="round"/></svg></div>`;
   }
 
   // Where the label is, for the editor: the box art is cut to, and the label's outline.
