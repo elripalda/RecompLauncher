@@ -75,6 +75,12 @@ and its background work when you close the window. **Quit RecompLauncher** alway
 The setting is also available in Big Picture mode. It is off by default for new installations;
 existing saved choices are kept. Games already running keep playing.
 
+**Settings > General > Starting up > Start with your PC** starts RecompLauncher when you sign
+in, waiting in the system tray. The entry goes in your system's own startup list (Startup apps
+on Windows, Autostart on KDE Plasma and GNOME, Login Items on a Mac), so you can turn it off
+there too. The Flatpak asks your desktop through its Background portal. On a Mac (macOS 13 or
+newer) the window opens at login instead. It is off by default and also in Big Picture mode.
+
 ## No game files
 
 RecompLauncher has no game files and never downloads any. Every recomp comes from its developer's

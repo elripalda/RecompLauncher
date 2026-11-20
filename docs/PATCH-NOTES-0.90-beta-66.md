@@ -15,6 +15,7 @@ A big one. Game pages got a full cleanup, cloud saves and updates are easier to 
 - **After an update that needs the game built again, Play stays Play.** It finishes the update in a small window and starts the game, instead of going through Easy Setup again. — Added by @Xarishark ([#340](https://github.com/elripalda/RecompLauncher/pull/340)).
 
 ### Everything else
+- **Settings → General can start RecompLauncher with your PC,** waiting by the clock. It shows in your system's own startup list, so you can turn it off there too. — Added by @Xarishark.
 - **Games can say what they need from your PC,** and the launcher tells you when yours is older. — Added by @Xarishark ([#336](https://github.com/elripalda/RecompLauncher/pull/336)).
 - **On Linux every game plays from a plain folder,** and games keep their files in one place. — Improved by @Xarishark ([#310](https://github.com/elripalda/RecompLauncher/pull/310), [#309](https://github.com/elripalda/RecompLauncher/pull/309)).
 - **Discover is now Catalog, the scan pill says Safe, and play time counts every PC on your account.** — Improved by @Xarishark ([#329](https://github.com/elripalda/RecompLauncher/pull/329), [#291](https://github.com/elripalda/RecompLauncher/pull/291), [#328](https://github.com/elripalda/RecompLauncher/pull/328)).
