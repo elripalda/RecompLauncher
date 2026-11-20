@@ -442,7 +442,7 @@ pub struct Settings {
     /// The first-run setup has been gone through.
     #[serde(default)]
     pub setup_done: bool,
-    /// Settings → Run in background. Keep the existing field name so saved choices still apply.
+    /// Settings → Close to tray (called Run in background before; the field name never changed).
     #[serde(default)]
     pub close_to_tray: bool,
     /// Settings → Start with your PC. The system's own startup list is what counts: this follows

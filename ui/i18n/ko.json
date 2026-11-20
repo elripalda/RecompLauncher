@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "먼저 한 번 플레이하세요. 그때 설정 파일이 만들어집니다.",
  "Plugins can install .zip, .7z and .rar files only.": "플러그인은 .zip, .7z, .rar 파일만 설치할 수 있습니다.",
  "Remove shared keys from the shared-key controls.": "공유 키는 공유 키 컨트롤에서 제거하세요.",
- "Run in background": "백그라운드에서 실행",
+ "Close to tray": "닫으면 트레이로",
  "Start with your PC": "PC와 함께 시작",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "로그인하면 RecompLauncher가 시작되어 시계 옆에서 기다립니다. 시스템의 시작 앱 목록에도 표시됩니다.",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "로그인하면 RecompLauncher가 열립니다. 시스템 설정의 로그인 항목에도 표시됩니다.",

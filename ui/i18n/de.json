@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "Spiel es zuerst einmal: Dabei legt es seine Einstellungsdatei an.",
  "Plugins can install .zip, .7z and .rar files only.": "Plugins können nur .zip-, .7z- und .rar-Dateien installieren.",
  "Remove shared keys from the shared-key controls.": "Entferne gemeinsame Schlüssel über die Steuerung für gemeinsame Schlüssel.",
- "Run in background": "Im Hintergrund ausführen",
+ "Close to tray": "In den Infobereich schließen",
  "Start with your PC": "Mit dem PC starten",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "RecompLauncher startet bei der Anmeldung und wartet neben der Uhr. Er steht auch in den Autostart-Apps deines Systems.",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "RecompLauncher öffnet sich bei der Anmeldung. Er steht auch in den Systemeinstellungen unter Anmeldeobjekte.",

@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "先に一度プレイしてください。そのときに設定ファイルが作られます。",
  "Plugins can install .zip, .7z and .rar files only.": "プラグインがインストールできるのは .zip、.7z、.rar ファイルだけです。",
  "Remove shared keys from the shared-key controls.": "共有キーは共有キーの操作から削除してください。",
- "Run in background": "バックグラウンドで実行",
+ "Close to tray": "閉じるとトレイに格納",
  "Start with your PC": "PC と一緒に起動",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "サインインすると RecompLauncher が起動し、時計の横で待機します。システムのスタートアップアプリにも表示されます。",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "ログインすると RecompLauncher が開きます。システム設定の「ログイン項目」にも表示されます。",

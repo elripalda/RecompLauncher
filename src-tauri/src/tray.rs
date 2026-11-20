@@ -16,7 +16,7 @@ fn word(key: &str) -> String {
 }
 
 /// Quit from inside the window (Big Picture's way out on Home), the same as the tray's Quit: it
-/// closes even with Run in background on.
+/// closes even with Close to tray on.
 #[tauri::command]
 pub fn quit_launcher(app: AppHandle) {
     app.exit(0);

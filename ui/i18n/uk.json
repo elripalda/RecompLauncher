@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "Спершу зіграй один раз: тоді гра створить свій файл налаштувань.",
  "Plugins can install .zip, .7z and .rar files only.": "Плагіни можуть встановлювати лише файли .zip, .7z і .rar.",
  "Remove shared keys from the shared-key controls.": "Видаляй спільні ключі в керуванні спільними ключами.",
- "Run in background": "Працювати у фоні",
+ "Close to tray": "Закривати в трей",
  "Start with your PC": "Запускати разом із ПК",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "RecompLauncher запускається, коли ти входиш у систему, і чекає біля годинника. Його також видно в програмах автозапуску системи.",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "RecompLauncher відкривається, коли ти входиш у систему. Його також видно в Системних параметрах, у розділі «Елементи входу».",

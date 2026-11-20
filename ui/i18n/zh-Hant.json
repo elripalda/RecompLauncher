@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "請先玩一次：遊戲會在那時建立它的設定檔案。",
  "Plugins can install .zip, .7z and .rar files only.": "外掛程式只能安裝 .zip、.7z 和 .rar 檔案。",
  "Remove shared keys from the shared-key controls.": "請透過共用金鑰控制項移除共用金鑰。",
- "Run in background": "在背景執行",
+ "Close to tray": "關閉到系統匣",
  "Start with your PC": "隨電腦啟動",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "登入時 RecompLauncher 會啟動並在時鐘旁等候。它也會出現在系統的啟動應用程式中。",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "登入時 RecompLauncher 會開啟。它也會出現在系統設定的「登入項目」中。",

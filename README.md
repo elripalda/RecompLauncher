@@ -69,7 +69,7 @@ and run it. While the beta is new, Windows may say "Windows protected your PC". 
 **More info**, then **Run anyway**. Each release lists its file's SHA-256 so you can check you
 have the real one.
 
-In **Settings > General > When you close the window**, **Run in background** controls whether
+In **Settings > General > When you close the window**, **Close to tray** controls whether
 closing the window keeps RecompLauncher in the system tray. Turn it off to exit the launcher
 and its background work when you close the window. **Quit RecompLauncher** always exits.
 The setting is also available in Big Picture mode. It is off by default for new installations;

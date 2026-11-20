@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "Mainkan game-nya sekali dulu: saat itulah file pengaturannya dibuat.",
  "Plugins can install .zip, .7z and .rar files only.": "Plugin hanya bisa memasang file .zip, .7z, dan .rar.",
  "Remove shared keys from the shared-key controls.": "Hapus kunci bersama dari kontrol kunci bersama.",
- "Run in background": "Jalankan di latar belakang",
+ "Close to tray": "Tutup ke baki sistem",
  "Start with your PC": "Mulai bersama PC",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "RecompLauncher mulai saat kamu masuk dan menunggu di dekat jam. Ia juga muncul di daftar aplikasi startup sistem.",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "RecompLauncher terbuka saat kamu masuk. Ia juga muncul di Pengaturan Sistem, di bagian Item Masuk.",

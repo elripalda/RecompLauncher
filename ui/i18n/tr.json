@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "Önce oyunu bir kez oynayın: ayar dosyasını o zaman oluşturur.",
  "Plugins can install .zip, .7z and .rar files only.": "Eklentiler yalnızca .zip, .7z ve .rar dosyaları yükleyebilir.",
  "Remove shared keys from the shared-key controls.": "Paylaşılan anahtarları paylaşılan anahtar denetimlerinden kaldırın.",
- "Run in background": "Arka planda çalış",
+ "Close to tray": "Sistem tepsisine kapat",
  "Start with your PC": "Bilgisayarla başlat",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "RecompLauncher oturum açtığında başlar ve saatin yanında bekler. Sisteminin başlangıç uygulamalarında da görünür.",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "RecompLauncher oturum açtığında açılır. Sistem Ayarları'nda Giriş Öğeleri altında da görünür.",

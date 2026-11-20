@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "请先玩一次：游戏会在那时创建它的设置文件。",
  "Plugins can install .zip, .7z and .rar files only.": "插件只能安装 .zip、.7z 和 .rar 文件。",
  "Remove shared keys from the shared-key controls.": "请通过共享密钥控件移除共享密钥。",
- "Run in background": "在后台运行",
+ "Close to tray": "关闭到托盘",
  "Start with your PC": "随电脑启动",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "登录时 RecompLauncher 会启动并在时钟旁等待。它也会出现在系统的启动应用中。",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "登录时 RecompLauncher 会打开。它也会出现在系统设置的“登录项”中。",

@@ -9745,7 +9745,7 @@ pub fn run() {
                 return;
             }
             match ev {
-                // Run in background hides the window only when the tray can bring it back.
+                // Close to tray hides the window only when the tray can bring it back.
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     let app = w.app_handle();
                     let background = app.state::<App>().lib.lock().unwrap().settings.close_to_tray;

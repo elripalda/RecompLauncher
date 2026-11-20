@@ -2859,7 +2859,7 @@
  "Play the game once first: it makes its settings file then.": "Hãy chơi một lần trước: khi đó trò chơi mới tạo tệp cài đặt.",
  "Plugins can install .zip, .7z and .rar files only.": "Plugin chỉ có thể cài tệp .zip, .7z và .rar.",
  "Remove shared keys from the shared-key controls.": "Hãy gỡ khóa dùng chung bằng các điều khiển khóa dùng chung.",
- "Run in background": "Chạy trong nền",
+ "Close to tray": "Đóng xuống khay hệ thống",
  "Start with your PC": "Khởi động cùng máy tính",
  "RecompLauncher starts when you sign in and waits by the clock. It also shows in your system's startup apps.": "RecompLauncher khởi động khi bạn đăng nhập và chờ cạnh đồng hồ. Nó cũng có trong danh sách ứng dụng khởi động của hệ thống.",
  "RecompLauncher opens when you log in. It also shows in System Settings under Login Items.": "RecompLauncher mở khi bạn đăng nhập. Nó cũng có trong Cài đặt hệ thống, mục Mục đăng nhập.",
