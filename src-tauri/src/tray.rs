@@ -53,7 +53,7 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         }
     }
     m.append(&PredefinedMenuItem::separator(app)?)?;
-    for (id, key) in [("go:library", "Library"), ("go:discover", "Discover"), ("go:shots", "Screenshots"), ("go:settings", "Settings")] {
+    for (id, key) in [("go:library", "Library"), ("go:discover", "Catalog"), ("go:shots", "Screenshots"), ("go:settings", "Settings")] {
         m.append(&MenuItem::with_id(app, id, word(key), true, None::<&str>)?)?;
     }
     m.append(&MenuItem::with_id(app, "bp", word("Big Picture mode"), true, None::<&str>)?)?;

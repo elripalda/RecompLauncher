@@ -51,21 +51,21 @@ test('Big Picture draws the same steps and fetches DLSS the same way', () => {
 });
 
 // ---- the scan pill, players, Dreamcast ----
-test('the scan pill is one plain label: Verified, Checking or Not verified, with no scanner names', () => {
+test('the scan pill is one plain label: Safe with the VirusTotal mark, Checking or Not verified', () => {
   const c = vm.createContext(Object.assign(base(), { S: { scans: {}, os: 'windows' }, scanAsk: new Map(), SCAN_TIP: 'Scanned before release and checked by the RecompStore team.', invoke: async () => ({}), document: { querySelectorAll: () => [], body: { classList: { contains: () => false } } }, window: {}, CSS: { escape: (x) => x } }));
-  vm.runInContext(fn(app, 'scanVerdict') + fn(app, 'scanInfo') + fn(app, 'scanLink') + fn(app, 'scanPill'), c);
+  vm.runInContext(app.match(/^const VT_MARK = .*$/m)[0] + fn(app, 'scanVerdict') + fn(app, 'scanInfo') + fn(app, 'scanLink') + fn(app, 'scanPill'), c);
   c.S.scans['g@v1'] = [{ verdict: 'green', scanner: 'clamav', for: ['windows'] }];
   c.S.scans['g@v2'] = [{ verdict: 'green', scanner: 'virustotal', for: ['windows'] }];
   for (const tag of ['v1', 'v2']) {
     const pill = c.scanPill({ id: 'g', tag, update: true });
     assert.match(pill, /class="scan-pill ok"/);
-    assert.match(pill, /Verified Update/);
+    assert.match(pill, /Safe Update/);
     assert.doesNotMatch(pill, /data-act|ClamAV|VirusTotal|engines/);
   }
-  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), />Verified</);
-  // A minor flag the team okayed is Verified; one nobody has looked at yet is Checking.
+  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), /<i><svg viewBox="0 0 24 24" aria-hidden="true"><path [^>]*><\/svg><\/i>Safe</);
+  // A minor flag the team okayed is Safe; one nobody has looked at yet is Checking.
   c.S.scans['g@v3'] = [{ verdict: 'yellow', scanner: 'virustotal', found: 1, engines: 75, reviewed: true, for: ['windows'] }];
-  assert.match(c.scanPill({ id: 'g', tag: 'v3', update: true }), /scan-pill ok.*Verified Update/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v3', update: true }), /scan-pill ok.*Safe Update/);
   c.S.scans['g@v4'] = [{ verdict: 'yellow', scanner: 'virustotal', found: 1, engines: 75, for: ['windows'] }];
   const wait = c.scanPill({ id: 'g', tag: 'v4' });
   assert.match(wait, /scan-pill wait.*Checking/);
@@ -85,9 +85,9 @@ test('the scan pill is one plain label: Verified, Checking or Not verified, with
   c.S.scans['g@v7'] = [];
   assert.match(c.scanPill({ id: 'g', tag: 'v7', verified: true }), /Checksum matched/);
   assert.match(c.scanPill({ id: 'g', tag: 'v4' }), /title="Scanned before release and checked by the RecompStore team\."/);
-  // Nothing a player sees names the scanners.
-  // (VirusTotal is named only on the button that opens its report.)
-  for (const src of [app, tv]) assert.doesNotMatch(src.replace(/Open the VirusTotal report/g, ''), /ClamAV|VirusTotal|engines flagged|Clean ·/);
+  // VirusTotal shows as its mark and on the button that opens its report; the other scanner and
+  // the engine counts never do.
+  for (const src of [app, tv]) assert.doesNotMatch(src, /ClamAV|engines flagged|Clean ·/);
 });
 test('players show only when the catalog has them', () => {
   const c = vm.createContext(base());

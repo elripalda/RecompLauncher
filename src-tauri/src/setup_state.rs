@@ -20,12 +20,18 @@ use std::path::PathBuf;
 /// detail "kept": the copy's gone, and the step runs again from what it kept, prepare.keeps_copy),
 /// "build_missing" (detail: the folder that's gone), "own_build_missing" (detail: where its setup
 /// builds it), "way" (set up by hand, but it has to be built from the copy first).
+///
+/// `changed`: it's built again because its setup step changed since it was built (a new
+/// `prepare.version`, which comes with an update). Play then says it's finishing the update, not
+/// setting the game up from the start.
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Status {
     pub ready: bool,
     pub reason: &'static str,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub detail: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub changed: bool,
 }
 
 /// What the answer is worked out from. The caller gathers it: reading the library, the settings
@@ -48,11 +54,16 @@ pub struct Facts<'a> {
 }
 
 fn ready(reason: &'static str) -> Status {
-    Status { ready: true, reason, detail: String::new() }
+    Status { ready: true, reason, detail: String::new(), changed: false }
 }
 
 fn needs(reason: &'static str, detail: impl Into<String>) -> Status {
-    Status { ready: false, reason, detail: detail.into() }
+    Status { ready: false, reason, detail: detail.into(), changed: false }
+}
+
+/// A build needed because the setup step changed since the last one (an update).
+fn needs_after_update(reason: &'static str, detail: impl Into<String>) -> Status {
+    Status { changed: true, ..needs(reason, detail) }
 }
 
 pub fn of(f: &Facts) -> Status {
@@ -102,14 +113,15 @@ pub fn of(f: &Facts) -> Status {
         (Some(_), _) if plays_built => return ready(built_reason),
         (Some(why), _) => return needs("copy_wrong", why.clone()),
         // The copy's gone, and its setup step kept what it needs: built again from that.
-        (None, None) if (changed || unfinished) && builds_from_kept(p, g) => return needs("rebuild", "kept"),
+        (None, None) if changed && builds_from_kept(p, g) => return needs_after_update("rebuild", "kept"),
+        (None, None) if unfinished && builds_from_kept(p, g) => return needs("rebuild", "kept"),
         (None, None) if plays_built => return ready(built_reason),
         (None, None) => return needs("copy", need.label.clone()),
         (None, Some(_)) => {}
     }
     // Built by the launcher from the copy, but its setup step changed since: built again.
     if changed {
-        return needs("rebuild", "");
+        return needs_after_update("rebuild", "");
     }
     // Built from the copy into a folder of its own, and that folder is gone.
     if let Some(gone) = p.built_folder_missing(&g.path) {
@@ -196,7 +208,8 @@ mod tests {
         let mut g = set_up(&d);
         g.prepare_version = "1".into();
         let p = built_from_copy();
-        assert_eq!(of(&facts(&p, &g)), needs("rebuild", ""));
+        // (changed: an update's new prepare.version, so Play says it's finishing the update)
+        assert_eq!(of(&facts(&p, &g)), needs_after_update("rebuild", ""));
         assert!(g.game_copy.is_some());
         let _ = fs::remove_dir_all(&d);
     }
@@ -347,7 +360,7 @@ mod tests {
         let d = dir("kept-changed");
         let mut g = built_copy_gone(&d);
         g.prepare_version = "1".into();
-        assert_eq!(of(&facts(&keeps_copy(), &g)), needs("rebuild", "kept"));
+        assert_eq!(of(&facts(&keeps_copy(), &g)), needs_after_update("rebuild", "kept"));
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -357,6 +370,7 @@ mod tests {
         let g = built_copy_gone(&d);
         fs::remove_file(d.join("Hookshot").join("hookshot")).unwrap();
         fs::write(d.join("Hookshot").join(".hookshot_exefs"), b"kept").unwrap();
+        // (an unfinished build, not an update: Play keeps Easy Setup's Build It Again for it)
         assert_eq!(of(&facts(&keeps_copy(), &g)), needs("rebuild", "kept"));
         let _ = fs::remove_dir_all(&d);
     }
@@ -388,6 +402,15 @@ mod tests {
         p.prepare.as_mut().unwrap().keeps_copy = false;
         assert_eq!(of(&facts(&p, &g)), ready("built"));
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn changed_is_sent_to_the_page_only_when_an_update_did_it() {
+        let unfinished = serde_json::to_value(needs("rebuild", "kept")).unwrap();
+        assert!(unfinished.get("changed").is_none());
+        let update = serde_json::to_value(needs_after_update("rebuild", "kept")).unwrap();
+        assert_eq!(update["changed"], true);
+        assert_eq!(update["reason"], "rebuild");
     }
 
     #[test]

@@ -350,15 +350,10 @@ Your account's Terms and Privacy still apply.`;
     try { const r = await invoke('ach_board', { game: game || null, by }); if (Array.isArray(r.board) && !same(r.board, A.boards[key])) { A.boards[key] = r.board; redraw(); } } catch (e) { /* offline */ }
   }
 
-  // A points badge on the sidebar's Achievements, for testers.
+  // The sidebar's Achievements has no number on it (players found the points count noisy).
   function achSide() {
-    const nav = document.querySelector('.side .nav[data-go="achievements"]');
-    if (nav) {
-      let b = nav.querySelector('.ach-side-n');
-      const pts = A.allowed && A.profile ? Number(A.profile.points) || 0 : 0;
-      if (pts && !b) { b = document.createElement('span'); b.className = 'ach-side-n'; nav.appendChild(b); }
-      if (b) { if (pts) { b.textContent = fmtN(pts); b.title = tf('{n} Ranked points', { n: fmtN(pts) }); } else b.remove(); }
-    }
+    const old = document.querySelector('.side .nav[data-go="achievements"] .ach-side-n');
+    if (old) old.remove();
     // Opening the page asks the website again, so an approval switches it over by itself.
     const on = S.view === 'achievements';
     if (on && !A.onPage) loadStatus(true);

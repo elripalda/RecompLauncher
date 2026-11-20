@@ -45,7 +45,7 @@ const invoke = async () => null, pickFile = async () => null, refreshState = asy
 <script>
 const LONGSHOT = 'Your copy of The Legend of Zelda: Ocarina of Time for Nintendo Switch 2, version 131072 (build e0f3ccfa): the .nup file, or the folder that holds its romfs and exefs.';
 const dlssSdk = (on) => ({ id: 'dlss', label: 'NVIDIA DLSS and frame generation', note: 'Downloads NVIDIA\'s DLSS SDK during the build so the in-game menu offers DLSS. Never share the game folder.', license: { name: 'NVIDIA RTX SDKs license', url: 'https://example.com' }, on });
-const longshot = (x) => Object.assign({ needs: LONGSHOT, kind: 'iso_or_folder', copy: null, inputs: [], previous: [], prebuilt: null, own_build: '/x/Longshot', prepare_label: 'Building the game from your copy (15 to 30 minutes)', prepare_options: [dlssSdk(false)] }, x);
+const longshot = (x) => Object.assign({ needs: LONGSHOT, kind: 'iso_or_folder', copy: null, inputs: [], prebuilt: null, own_build: '/x/Longshot', prepare_label: 'Building the game from your copy (15 to 30 minutes)', prepare_options: [dlssSdk(false)] }, x);
 const disc = (n, path) => ({ id: 'disc' + n, label: 'Disc ' + n, role: 'disc', file: true, extensions: ['iso'], active: true, path });
 const dlc = (id, label, path) => ({ id, label, role: 'dlc', optional: true, file: true, extensions: [], active: true, path });
 const CASES = [

@@ -692,6 +692,20 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
         }
     }
     st.save();
+    // On Linux a game plays only from a plain folder: one that's an AppImage is unpacked into the
+    // Recomp Library now, and the player's AppImage stays where it is. One that won't unpack isn't
+    // added.
+    #[cfg(target_os = "linux")]
+    let added = {
+        let ids: Vec<String> = added.iter().map(|g| g.id.clone()).collect();
+        let failed = tokio::task::block_in_place(|| unpack_added(&st, &ids));
+        let kept: Vec<Installed> = ids.iter().filter_map(|id| st.lib.lock().unwrap().installed.get(id).cloned()).collect();
+        if let (true, Some(e)) = (kept.is_empty() && unknown.is_empty(), failed) {
+            return Err(e);
+        }
+        kept
+    };
+    let mut added = added;
     for it in unknown {
         let path = match &it.exe {
             Some(e) if it.path.join(e).is_file() => it.path.join(e),
@@ -702,6 +716,27 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
         }
     }
     Ok(added)
+}
+
+/// The games just added that are AppImages, unpacked (see plain::bring_in). One that doesn't
+/// unpack leaves the Library again. The last thing that went wrong, if anything did.
+#[cfg(target_os = "linux")]
+fn unpack_added(st: &App, ids: &[String]) -> Option<Error> {
+    let mut failed = None;
+    for id in ids {
+        let g = st.lib.lock().unwrap().installed.get(id).cloned();
+        let Some(image) = g.as_ref().and_then(crate::plain::image_of) else { continue };
+        match crate::plain::bring_in(st, id, &image) {
+            Ok(b) => crate::plain::tell(&b),
+            Err(e) => {
+                crate::trail::note(format!("Bring in {id}: it wasn't added ({e})"));
+                st.lib.lock().unwrap().forget(id);
+                st.save();
+                failed = Some(e);
+            }
+        }
+    }
+    failed
 }
 
 /// Change the catalog association without installing or touching the game's folder.

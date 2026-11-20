@@ -1,5 +1,6 @@
 //! Builds released as a Flatpak bundle (a `.flatpak` file): Linux can't run the file itself, so
-//! it's installed for this user the first time it's played, then started through Flatpak.
+//! it's installed for this user the first time it's played, then started through Flatpak. Also
+//! what the launcher itself running as a Flatpak changes.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -35,63 +36,16 @@ pub fn name_windows_after_app() {
     webkit2gtk::glib::set_prgname(Some(&id));
 }
 
-/// A folder on disk for what a program unpacks to run (an AppImage), since the sandbox's own
-/// /tmp is memory.
-pub fn scratch_dir() -> Option<PathBuf> {
-    let dir = dirs::cache_dir()?.join("appimage-run");
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir)
-}
-
-/// Where a game's AppImage is kept unpacked for the Flatpak: in the app's cache, not the game's
-/// folder (an update would back it up as the player's own files).
-fn unpacked_dir(id: &str) -> Option<PathBuf> {
-    Some(dirs::cache_dir()?.join("appimage-run").join("unpacked").join(crate::library::folder_name(id)))
-}
-
-/// What says which AppImage a folder was unpacked from: its size and when it was written. An
-/// update replaces the file, so it's unpacked again.
-fn appimage_stamp(appimage: &Path) -> Option<String> {
-    let m = std::fs::metadata(appimage).ok()?;
-    let t = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-    Some(format!("{} {t}", m.len()))
-}
-
-/// The game's AppImage unpacked once (there's no FUSE in the sandbox to mount it), the folder
-/// with its AppRun: unpacked the first time it's played and after an update, kept after that,
-/// so later starts don't unpack it again.
-pub fn unpacked_appimage(appimage: &Path, id: &str) -> Result<PathBuf, String> {
-    let base = unpacked_dir(id).ok_or("no cache folder")?;
-    let stamp = appimage_stamp(appimage).ok_or("can't read the AppImage")?;
-    let root = base.join("squashfs-root");
-    if is_unpacked(appimage, id) {
-        return Ok(root);
+/// Earlier versions of the Flatpak kept AppImages unpacked for Play in its cache, and let them
+/// unpack themselves there. Every game plays from its own plain folder now, so that's all
+/// leftovers: removed once, at start.
+pub fn forget_old_unpacked() {
+    if !sandboxed() {
+        return;
     }
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-    // `--appimage-extract` writes squashfs-root into the folder it runs in; it needs no FUSE.
-    let mut c = std::process::Command::new(appimage);
-    c.arg("--appimage-extract").current_dir(&base).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    crate::sysenv::clean_std(&mut c);
-    let ok = c.status().map(|s| s.success()).unwrap_or(false);
-    if !ok || !root.join("AppRun").is_file() {
-        let _ = std::fs::remove_dir_all(&base);
-        return Err("it didn't unpack".into());
-    }
-    std::fs::write(base.join("stamp"), &stamp).map_err(|e| e.to_string())?;
-    Ok(root)
-}
-
-/// This AppImage is unpacked already (the same file: no update since).
-pub fn is_unpacked(appimage: &Path, id: &str) -> bool {
-    let (Some(base), Some(stamp)) = (unpacked_dir(id), appimage_stamp(appimage)) else { return false };
-    std::fs::read_to_string(base.join("stamp")).ok().as_deref() == Some(stamp.as_str()) && base.join("squashfs-root/AppRun").is_file()
-}
-
-/// A game's unpacked AppImage, once it's uninstalled.
-pub fn forget_unpacked(id: &str) {
-    if let Some(d) = unpacked_dir(id) {
-        let _ = std::fs::remove_dir_all(d);
+    let Some(old) = dirs::cache_dir().map(|d| d.join("appimage-run")) else { return };
+    if old.is_dir() && std::fs::remove_dir_all(&old).is_ok() {
+        crate::trail::note("Flatpak: removed the AppImages earlier versions kept unpacked in the cache");
     }
 }
 
