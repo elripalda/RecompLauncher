@@ -27,6 +27,8 @@ pub mod gamefiles;
 pub mod games;
 pub mod flatpak;
 pub mod gamebanana;
+mod folders;
+mod folders_move;
 pub mod info;
 pub mod inputs;
 pub mod ingame;
@@ -487,7 +489,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if prev.as_ref().map(|p| p.local).unwrap_or(false) {
         return Err(Error::Msg("That's your local build. Take it out of the Library first to install the release.".into()));
     }
-    let target = prev.as_ref().map(|p| p.path.clone()).unwrap_or_else(|| lib_dir.join(folder_name(id)));
+    // Folder Structure: with "Automatically Use My Folder Structure for New Installations" on, a
+    // new game goes in a folder of the player's structure (folders_move.rs); updates stay put.
+    let designed = if prev.is_none() { folders_move::new_target(st, &lib_dir, id, &entry, &cat) } else { None };
+    let target = prev.as_ref().map(|p| p.path.clone()).or_else(|| designed.clone()).unwrap_or_else(|| lib_dir.join(folder_name(id)));
     let home = target.parent().map(Path::to_path_buf).unwrap_or(lib_dir.clone());
     std::fs::create_dir_all(&home).map_err(|e| {
         // The drive it's on isn't there (unplugged, or a letter that changed): said plainly.
@@ -687,6 +692,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             l.settings.asked_location = true;
         }
         st.save();
+        if let Some(d) = designed.as_ref() {
+            folders_move::note_placed(&st.dir, id, d);
+        }
         trail::note(format!("Install {id}: its installer {} is ready for Set Up", setup.file_name().unwrap_or_default().to_string_lossy()));
         note_download(&st.dir, json!({"id": id, "name": str_of(&entry, "name"), "tag": tag_got, "from": prev.as_ref().map(|p| p.tag.clone()).unwrap_or_default(), "repo": str_of(&entry, "repo"), "size": asset.size, "secs": started.elapsed().as_secs(), "when": now(), "update": prev.is_some(), "verified": got.verified}));
         st.jobs.lock().unwrap().remove(id);
@@ -886,6 +894,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
         l.put(id, rec);
         l.settings.asked_location = true;
+    }
+    if let Some(d) = designed.as_ref() {
+        folders_move::note_placed(&st.dir, id, d);
     }
     // The update counts once the saved library has its files. Until then both releases' files stay,
     // and the next start keeps the ones the saved library has.
@@ -1288,6 +1299,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         // Or a folder the launcher made for it (named after it) in a library folder since removed.
         let in_lib = g.path.parent().map(|p| libs.iter().any(|l| library::same_path(l, p))).unwrap_or(false);
         let made_here = !g.asset.is_empty() && g.path.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(&library::folder_name(&id))).unwrap_or(false);
+        // Or one the launcher put in a folder of the player's Folder Structure.
+        let made_here = made_here || folders_move::placed_by_us(&st.dir, &id, &g.path, &libs);
         let ok = (in_lib || made_here) && !library::shared_folder(&g.path, &libs) && g.path.is_dir();
         // The player's own files (their copy of the game, its update) kept inside the game's
         // folder are theirs: moved out to "Game Copies" beside it first, and if one can't be, the
@@ -1322,6 +1335,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         }
         if ok && !keep_failed {
             left = remove_game_folder(&g.path);
+            folders_move::forget(&st.dir, &id, &g.path, &libs);
         } else if g.path.is_dir() {
             copy_stuck = keep_failed && !saves_stuck;
             kept = true;
@@ -9968,6 +9982,9 @@ pub fn run() {
                 looked: Mutex::new(HashSet::new()),
                 headless: AtomicBool::new(play.is_some()),
             });
+            // Folder Structure: a reorganize the launcher was closed in the middle of, settled
+            // before any game can start from a half-moved folder.
+            folders_move::recover(&app.state::<App>());
             // Achievements: what the website said about this account last time.
             ach::init(&app.state::<App>().dir);
             #[cfg(windows)]
@@ -10197,7 +10214,7 @@ pub fn run() {
             take_setup_asked,
             take_options_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
-            save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
+            save_settings, folders_move::folders_get, folders_move::folders_preset, folders_move::folders_save, folders_move::folders_preview, folders_move::folders_known, folders_move::folders_plan, folders_move::folders_apply, folders_move::folders_undo, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,

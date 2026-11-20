@@ -32,7 +32,7 @@ const DISC: [&str; 7] = ["iso", "gcm", "rvz", "wia", "wbfs", "ciso", "chd"];
 /// name; which console is left open, as their ids in the catalog vary.
 const CART: [&str; 28] = ["nes", "fds", "unf", "gb", "gbc", "gba", "nds", "3ds", "cci", "cia", "cxi", "vb", "vboy", "md", "gen", "smd", "32x", "gg", "sms", "sfc", "smc", "adf", "hdf", "ipf", "lha", "xci", "nsp", "nup"];
 
-fn n64_header(p: &Path) -> Option<(String, String)> {
+pub(crate) fn n64_header(p: &Path) -> Option<(String, String)> {
     let mut f = fs::File::open(p).ok()?;
     let mut h = [0u8; 64];
     f.read_exact(&mut h).ok()?;
