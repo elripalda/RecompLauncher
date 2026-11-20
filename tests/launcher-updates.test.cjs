@@ -219,3 +219,25 @@ test('after an update on the desktop, the notes come as a card, not a window', a
 test('the card goes by itself after ten seconds', () => {
   assert.match(more, /^const WN_MS = 10000;$/m);
 });
+
+// The update window on big screens: wider, and a little bigger from 1440p up, but never narrower
+// than it was on a small one.
+const css = fs.readFileSync(path.join(__dirname, '../ui/app.css'), 'utf8');
+const winRule = () => css.match(/^\.upd-win\{[^}]*\}/m)[0];
+
+test('the update window is never narrower than before on a small screen', () => {
+  assert.match(winRule(), /width:clamp\(min\(820px,94vw\),/);
+});
+
+test('the update window grows with the screen up to 1100px', () => {
+  assert.match(winRule(), /width:clamp\([^;]*,52vw,1100px\)/);
+});
+
+test('a bigger update window still fits the screen\'s height', () => {
+  assert.match(winRule(), /max-height:calc\(88vh \/ var\(--uw-zoom\)\)/);
+});
+
+test('the update window gets a little bigger from 1440p and on 4K', () => {
+  assert.match(css, /@media \(min-width:2400px\)\{\.upd-win\{--uw-zoom:1\.15\}\}/);
+  assert.match(css, /@media \(min-width:3200px\)\{\.upd-win\{--uw-zoom:1\.3\}\}/);
+});

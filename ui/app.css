@@ -2557,7 +2557,10 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
    flat bar at the bottom whose Update Now becomes the download's progress. */
 .upd-start{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:24px;background:var(--noise),rgba(3,6,12,.78);backdrop-filter:blur(8px);animation:updIn .25s ease}
 @keyframes updIn{from{opacity:0}to{opacity:1}}
-.upd-win{width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:var(--card);border:1px solid var(--line2);box-shadow:0 30px 80px -20px rgba(0,0,0,.85);animation:modalIn .3s var(--ease)}
+/* Wider on big screens (half the window's width, up to 1100px), never narrower than it was
+   (820px, or the screen less a margin). From 1440p up everything in it is a little bigger too;
+   max-height is divided by the same zoom, so the window still fits the screen's height. */
+.upd-win{--uw-zoom:1;zoom:var(--uw-zoom);width:clamp(min(820px,94vw),52vw,1100px);max-height:calc(88vh / var(--uw-zoom));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:var(--card);border:1px solid var(--line2);box-shadow:0 30px 80px -20px rgba(0,0,0,.85);animation:modalIn .3s var(--ease)}
 .uw-ban{position:relative;flex:none;min-height:150px;display:flex;align-items:flex-end;padding:22px 30px;overflow:hidden;background:radial-gradient(ellipse at 20% 0%,rgba(52,242,232,.3),transparent 60%),radial-gradient(ellipse at 90% 100%,rgba(55,123,182,.4),transparent 60%),var(--card2)}
 .uw-art{position:absolute;right:30px;top:50%;width:130px;transform:translateY(-50%) rotate(-8deg);filter:drop-shadow(0 0 40px rgba(52,242,232,.5));pointer-events:none}
 .uw-t{position:relative;display:flex;flex-direction:column;gap:10px;min-width:0;padding-right:150px}
@@ -2590,6 +2593,8 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .upd-start.busy .uw-go{pointer-events:none;color:#fff;background:rgba(52,242,232,.14);border-color:rgba(52,242,232,.55);box-shadow:none}
 .upd-start.busy .uw-go::before{opacity:1}
 .upd-start.busy [data-x="later"],.upd-start.busy .uw-auto{visibility:hidden}
+@media (min-width:2400px){.upd-win{--uw-zoom:1.15}}
+@media (min-width:3200px){.upd-win{--uw-zoom:1.3}}
 @media (max-width:640px){.uw-t{padding-right:0}.uw-art{display:none}.uw-bar{flex-wrap:wrap}.uw-go{width:100%}}
 @media (prefers-reduced-motion:reduce){.upd-start,.upd-win{animation:none}.uw-go::before{transition:none}}
 
