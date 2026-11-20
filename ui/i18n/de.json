@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Eine Kopie der Spielstände bleibt erhalten. Installier das Spiel erneut und spiel sie im Tab „Spielstände“ zurück.",
  "{path}. A copy of its saves is kept first.": "{path}. Vorher wird eine Kopie der Spielstände behalten.",
  "Delete its folder and its saves": "Ordner und Spielstände löschen",
- "N/A": "k. A."
+ "N/A": "k. A.",
+ "Newer save from {device}": "Neuerer Spielstand von {device}",
+ "Newer save in the cloud": "Neuerer Spielstand in der Cloud",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Drück auf Spielen, und er wird von selbst übernommen. Der jetzige wird vorher als Sicherung behalten.",
+ "Get It Now": "Jetzt holen",
+ "Comes in when you play": "Kommt beim nächsten Spielen"
 }

@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "セーブデータのコピーを残しました。もう一度インストールして、「セーブデータ」タブから戻してください。",
  "{path}. A copy of its saves is kept first.": "{path}。先にセーブデータのコピーを残します。",
  "Delete its folder and its saves": "フォルダーとセーブデータを削除",
- "N/A": "該当なし"
+ "N/A": "該当なし",
+ "Newer save from {device}": "{device} の新しいセーブデータ",
+ "Newer save in the cloud": "クラウドに新しいセーブデータがあります",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "プレイを押すと自動で適用されます。今のセーブデータは先にバックアップとして残ります。",
+ "Get It Now": "今すぐ取得",
+ "Comes in when you play": "プレイ時に適用"
 }

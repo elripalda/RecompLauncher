@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Копия сохранений сохранена. Установите игру снова и верните их на вкладке «Сохранения».",
  "{path}. A copy of its saves is kept first.": "{path}. Сначала будет сделана копия сохранений.",
  "Delete its folder and its saves": "Удалить папку вместе с сохранениями",
- "N/A": "Н/Д"
+ "N/A": "Н/Д",
+ "Newer save from {device}": "Более новое сохранение с {device}",
+ "Newer save in the cloud": "Более новое сохранение в облаке",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Нажмите «Играть», и оно встанет на место само. Текущее сначала сохранится как копия.",
+ "Get It Now": "Получить сейчас",
+ "Comes in when you play": "Появится при запуске"
 }

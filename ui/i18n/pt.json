@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Fica guardada uma cópia dos dados guardados. Volta a instalá-lo e repõe-nos no separador Dados guardados.",
  "{path}. A copy of its saves is kept first.": "{path}. Antes fica guardada uma cópia dos dados guardados.",
  "Delete its folder and its saves": "Apagar a pasta e os dados guardados",
- "N/A": "N/D"
+ "N/A": "N/D",
+ "Newer save from {device}": "Gravação mais recente de {device}",
+ "Newer save in the cloud": "Gravação mais recente na nuvem",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Carrega em Jogar e ela é aplicada sozinha. A que está lá agora é guardada primeiro como cópia.",
+ "Get It Now": "Obter agora",
+ "Comes in when you play": "Chega quando jogares"
 }

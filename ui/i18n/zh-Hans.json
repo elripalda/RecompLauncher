@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "已保留一份存档副本。重新安装后，可在“存档”选项卡中放回。",
  "{path}. A copy of its saves is kept first.": "{path}。会先保留一份存档副本。",
  "Delete its folder and its saves": "删除其文件夹和存档",
- "N/A": "不适用"
+ "N/A": "不适用",
+ "Newer save from {device}": "来自 {device} 的较新存档",
+ "Newer save in the cloud": "云端有较新的存档",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "按“开始游戏”即会自动使用。当前存档会先保留为备份。",
+ "Get It Now": "立即获取",
+ "Comes in when you play": "游戏时自动使用"
 }

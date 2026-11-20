@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "เก็บสำเนาเซฟไว้แล้ว ติดตั้งเกมใหม่แล้วใส่เซฟกลับจากแท็บเซฟ",
  "{path}. A copy of its saves is kept first.": "{path} จะเก็บสำเนาเซฟไว้ก่อน",
  "Delete its folder and its saves": "ลบโฟลเดอร์และเซฟ",
- "N/A": "ไม่มี"
+ "N/A": "ไม่มี",
+ "Newer save from {device}": "เซฟที่ใหม่กว่าจาก {device}",
+ "Newer save in the cloud": "มีเซฟที่ใหม่กว่าบนคลาวด์",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "กดเล่นแล้วระบบจะใช้เซฟนี้ให้เอง เซฟที่มีอยู่ตอนนี้จะถูกเก็บเป็นข้อมูลสำรองก่อน",
+ "Get It Now": "ดึงมาเลย",
+ "Comes in when you play": "มาเมื่อคุณเล่น"
 }

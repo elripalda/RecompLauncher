@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Kopia zapisów została zachowana. Zainstaluj grę ponownie i przywróć je na karcie Zapisy.",
  "{path}. A copy of its saves is kept first.": "{path}. Najpierw zostanie zachowana kopia zapisów.",
  "Delete its folder and its saves": "Usuń folder i zapisy",
- "N/A": "nd."
+ "N/A": "nd.",
+ "Newer save from {device}": "Nowszy zapis z {device}",
+ "Newer save in the cloud": "Nowszy zapis w chmurze",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Naciśnij Graj, a zostanie wczytany sam. To, co jest teraz, zostanie najpierw zachowane jako kopia.",
+ "Get It Now": "Pobierz teraz",
+ "Comes in when you play": "Wczyta się, gdy zagrasz"
 }

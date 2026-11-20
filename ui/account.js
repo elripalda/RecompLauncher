@@ -232,10 +232,13 @@ const FOLDER_SET_TOO_BIG = N_('Its save folder is too big to look through, so cl
 // Where its saves stand, in the same words and colours as the line above Play, and the one thing
 // to do about it.
 function saveStatusCard(id, s) {
-  const b = saveBadgeFor(id);
-  if (!b) return '';
+  const badge = saveBadgeFor(id);
+  if (!badge) return '';
   const sid = saveIdOf(id);
   const st = S.saveStat[sid] || {};
+  const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+  const next = incomingSave(s, st, phase, running);
+  const b = next ? incomingBadge(next) : badge;
   const picked = s.spots.some((p) => p.from === 'player');
   const note = b.note ? ` <small>· ${esc(b.note)}</small>` : '';
   const rows = b.rows.map(([k, v]) => `${k}: ${v}`).join(' · ');
@@ -243,12 +246,30 @@ function saveStatusCard(id, s) {
   const offline = st.problem && st.problem.kind === 'offline' && s.status;
   const help = offline ? `<p class="set-note">${esc(t('Still no answer. Check whether the website is having trouble:'))} <button type="button" class="linkish" data-act="url" data-url="${esc(s.status)}">${esc(s.status.replace(/^https:\/\//, ''))}</button></p>` : '';
   const space = s.signedIn && s.cloudOn === true ? cloudSpace() : '';
-  const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+  const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
   const url = step && step.url ? ` data-url="${esc(step.url)}"` : '';
   const btn = step ? `<button type="button" class="btn sm main" data-act="${step.act}" data-id="${esc(id)}"${url}${s.busy ? ' disabled' : ''}>${esc(t(step.label))}</button>` : '';
   return `<div class="card svs sb-${b.tone}" role="status"><div class="svs-row"><span class="svs-ico">${badgeIcon(b.mark, 30)}</span>
     <div class="k"><b>${esc(b.label)}${note}</b>${text ? `<span>${esc(text)}</span>` : ''}${rows ? `<small>${esc(rows)}</small>` : ''}</div>
     <span class="acts">${btn}</span></div>${help}${space}</div>`;
+}
+
+// The cloud save another PC made that Play puts in place by itself (saves_info says which), or
+// null. This PC's own notes still call that "Up to date", and a Restore button on the newest save
+// reads like a step to do on every PC: the tab says it comes in when you play instead.
+function incomingSave(s, st, phase, running) {
+  if (!s.incoming || phase || running) return null;
+  if (st.state !== 'up-to-date' && st.state !== 'none') return null;
+  const cloud = Array.isArray(s.cloud) ? s.cloud : [];
+  return cloud.find((c) => c.v === s.incoming) || null;
+}
+const INCOMING_TEXT = N_('Press Play and it\'s put in place by itself. What\'s there now is kept as a backup first.');
+const INCOMING_STEP = { act: 'saves-sync', label: N_('Get It Now') };
+const COMES_IN = N_('Comes in when you play');
+
+function incomingBadge(c) {
+  const label = c.device ? tf('Newer save from {device}', { device: c.device }) : t('Newer save in the cloud');
+  return { tone: 'cy', mark: 'next', label, note: sinceText(c.made), text: t(INCOMING_TEXT), rows: [] };
 }
 
 // The status's line on the tab: the badge's, except where the badge points somewhere else.
@@ -315,6 +336,8 @@ function saveHistory(s) {
   rows.sort((p, q) => q.when - p.when);
   const now = s.current && rows.find((r) => r.hash === s.current);
   if (now) now.current = true;
+  // The cloud save Play brings in by itself is marked so, not offered as a Restore.
+  for (const r of rows) r.incoming = !r.current && !!s.incoming && r.v === s.incoming;
   // Any cloud save but the newest can be deleted (saves_cloud_delete says why not that one).
   const newestCloud = Array.isArray(s.cloud) && s.cloud.length ? s.cloud.reduce((p, q) => (q.made > p.made ? q : p)).v : '';
   for (const r of rows) r.deletable = !!r.v && r.v !== newestCloud;
@@ -337,6 +360,7 @@ const MARK_ICONS = {
 
 const BIN_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 const CURRENT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+const NEXT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m0 0-5.5-5.5M12 19l5.5-5.5"/></svg>';
 
 // Details under a save: how long the game had been played then, its files and size.
 function historyDetails(r) {
@@ -352,7 +376,9 @@ function historyRow(id, r, s) {
   const put = `<button type="button" class="btn sm" data-act="saves-restore" data-id="${esc(id)}" ${which}>${esc(t('Restore'))}</button>`;
   // The save in the game now has nothing to restore: its row is lit instead, and says so where
   // the others have their button.
-  const side = r.current ? `<span class="svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : put;
+  const cur = `<span class="svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>`;
+  const next = `<span class="svh-next">${NEXT_ICON}${esc(t(COMES_IN))}</span>`;
+  const side = r.current ? cur : r.incoming ? next : put;
   // Deleting from the cloud is quieter than Restore: an icon, with its name on hover.
   const del = r.deletable ? `<button type="button" class="icon-btn svh-del" data-act="saves-cloud-delete" data-id="${esc(id)}" data-v="${esc(r.v)}" title="${esc(t('Delete from the cloud'))}" aria-label="${esc(t('Delete from the cloud'))}">${BIN_ICON}</button>` : '';
   return `<div class="set-row svh-row${r.current ? ' cur' : ''}"><div class="k"><b>${esc(whenText(r.when))}</b><span class="svh-marks">${marks}</span><span>${esc(historyDetails(r))}</span></div><span class="acts">${del}${side}</span></div>`;
@@ -538,6 +564,8 @@ const BADGE_MARKS = {
   'check-run': '<path class="sb-spin" d="M14.6 13a2.6 2.6 0 1 1-1-2"/>',
   up: '<path class="sb-bob" d="M12 16.2v-5.4m0 0-2.3 2.3M12 10.8l2.3 2.3"/>',
   down: '<path class="sb-bob" d="M12 10.8v5.4m0 0-2.3-2.3M12 16.2l2.3-2.3"/>',
+  // The same arrow, still: a save that comes down at the next Play, not one coming down now.
+  next: '<path d="M12 10.8v5.4m0 0-2.3-2.3M12 16.2l2.3-2.3"/>',
   clock: '<path d="M12 11v2.4l1.6 1"/>',
   alert: '<path d="M12 10.6v2.8M12 15.7h.01"/>',
   conflict: '<path d="M10 10.6v5.2m-1.6-1.6L10 15.8l1.6-1.6M14 15.8v-5.2m-1.6 1.6L14 10.6l1.6 1.6"/>',

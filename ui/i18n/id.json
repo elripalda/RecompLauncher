@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Salinan save-nya disimpan. Pasang lagi game-nya dan kembalikan save dari tab Save.",
  "{path}. A copy of its saves is kept first.": "{path}. Salinan save-nya disimpan dulu.",
  "Delete its folder and its saves": "Hapus folder dan save-nya",
- "N/A": "Tidak ada"
+ "N/A": "Tidak ada",
+ "Newer save from {device}": "Save lebih baru dari {device}",
+ "Newer save in the cloud": "Save lebih baru di cloud",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Tekan Main dan save itu dipasang sendiri. Yang ada sekarang disimpan dulu sebagai cadangan.",
+ "Get It Now": "Ambil sekarang",
+ "Comes in when you play": "Masuk saat kamu main"
 }

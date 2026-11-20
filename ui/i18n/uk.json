@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Копію збережень збережено. Встанови гру знову й поверни їх на вкладці «Збереження».",
  "{path}. A copy of its saves is kept first.": "{path}. Спершу буде зроблено копію збережень.",
  "Delete its folder and its saves": "Видалити папку разом зі збереженнями",
- "N/A": "Н/Д"
+ "N/A": "Н/Д",
+ "Newer save from {device}": "Новіше збереження з {device}",
+ "Newer save in the cloud": "Новіше збереження в хмарі",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Натисніть «Грати», і воно стане на місце саме. Поточне спершу збережеться як копія.",
+ "Get It Now": "Отримати зараз",
+ "Comes in when you play": "З'явиться під час запуску"
 }

@@ -2681,6 +2681,8 @@ body.light .svh-row{--ok:#127a45}
 .svh-row.cur{margin:0 -14px;padding-left:14px;padding-right:14px;border-radius:12px;border-bottom-color:transparent;background:color-mix(in srgb,var(--ok) 9%,transparent);box-shadow:inset 3px 0 0 var(--ok)}
 .card-h+.svh-row.cur{padding-top:16px}
 .svh-cur{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--ok)}
+/* The cloud save Play brings in by itself: said where Restore would be, in the cyan of a sync. */
+.svh-next{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--cyan)}
 /* A save folder its developer or RecompLauncher set: said in green, with a shield. */
 .set-row .k .svp-set{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#3ee08f}
 body.light .set-row .k .svp-set{color:#127a45}

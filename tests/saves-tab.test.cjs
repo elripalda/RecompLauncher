@@ -34,6 +34,8 @@ function tab(S) {
     ${line(account, 'const SET_ICON = ')}
     ${line(account, 'const spotSet = ')}
     ${line(account, 'const CURRENT_ICON = ')}
+    ${line(account, 'const NEXT_ICON = ')}
+    ${line(account, 'const COMES_IN = ')}
     ${line(account, 'const BIN_ICON = ')}
     ${line(account, 'const HISTORY_SHOWN = ')}
     const MARK_ICONS = { pc: '', cloud: '', other: '' };
@@ -231,4 +233,59 @@ test('any cloud save but the newest can be deleted', () => {
 test('a save only on this PC has nothing to delete from the cloud', () => {
   const rows = tab(fresh()).saveHistory({ local: [local(100, 'a')], cloud: [] });
   assert.equal(rows[0].deletable, false);
+});
+
+// ---------- a newer save from another PC ----------
+// Play puts it in place by itself, so the tab says so instead of offering Restore on it.
+const incomingSave = new Function(`
+  ${block(account, 'function incomingSave(')}
+  return incomingSave;`)();
+const fromDeck = { local: [local(100, 'old')], cloud: [cloud(200, 'new', 'v2', 'Steam Deck'), cloud(100, 'old', 'v1')], current: 'old', incoming: 'v2', here: 'Desk PC', busy: false };
+
+test('the save Play brings in says so instead of Restore', () => {
+  const html = tab(fresh()).historyCard('g', fromDeck, {}, false);
+  const newest = html.slice(0, html.indexOf('at 100'));
+  assert.match(newest, /Comes in when you play/);
+  assert.doesNotMatch(newest, /data-act="saves-restore"/);
+});
+
+test('older saves keep their Restore', () => {
+  const s = { ...fromDeck, local: [local(100, 'old'), local(50, 'older')] };
+  const html = tab(fresh()).historyCard('g', s, {}, false);
+  assert.match(html.slice(html.indexOf('at 50')), /data-act="saves-restore"/);
+});
+
+test('the save in the game now is never the one coming in', () => {
+  const rows = tab(fresh()).saveHistory({ ...fromDeck, current: 'new' });
+  assert.deepEqual(rows.map((r) => r.incoming), [false, false]);
+});
+
+test('the status says a newer save is coming when this PC thinks it is up to date', () => {
+  assert.equal(incomingSave(fromDeck, { state: 'up-to-date' }, undefined, false).device, 'Steam Deck');
+});
+
+test('a new PC with no saves yet is told the cloud save comes in', () => {
+  assert.equal(incomingSave(fromDeck, { state: 'none' }, undefined, false).v, 'v2');
+});
+
+test('a conflict still asks to choose a save', () => {
+  assert.equal(incomingSave(fromDeck, { state: 'conflict' }, undefined, false), null);
+});
+
+test('while the save comes down, the status says that instead', () => {
+  assert.equal(incomingSave(fromDeck, { state: 'up-to-date' }, 'down', false), null);
+});
+
+test('while the game runs, the status says that instead', () => {
+  assert.equal(incomingSave(fromDeck, { state: 'up-to-date' }, undefined, true), null);
+});
+
+test('the newer save can be got now from the status card, on the desktop and in Big Picture', () => {
+  assert.match(line(account, 'const INCOMING_STEP = '), /act: 'saves-sync'/);
+  assert.match(line(tv, 'const TV_STEP = '), /'saves-sync': 'gs-sync'/);
+  assert.match(tv, /const step = next \? INCOMING_STEP : saveNextStep\(/);
+});
+
+test('Big Picture gives the save coming in no Restore either', () => {
+  assert.match(tv, /const act = r\.current \|\| r\.incoming \? '' :/);
 });

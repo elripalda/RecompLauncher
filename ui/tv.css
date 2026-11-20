@@ -1054,7 +1054,8 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-svm-other{color:#b9a1ff}
 .tv-svh-current{background:rgba(62,224,143,.1);box-shadow:inset 4px 0 0 #3ee08f}
 .tv-svh-cur{flex:none;display:inline-flex;align-items:center;gap:8px;font:700 18px Figtree,sans-serif;color:#3ee08f}
-.tv-svh-cur svg{width:22px;height:22px}
+.tv-svh-cur svg,.tv-svh-next svg{width:22px;height:22px}
+.tv-svh-next{flex:none;display:inline-flex;align-items:center;gap:8px;font:700 18px Figtree,sans-serif;color:#34F2E8}
 .tv-svp-set{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#3ee08f}
 .tv-svp-set svg{flex:none;width:20px;height:20px}
 .tv-svp-set.ours{color:#34F2E8}

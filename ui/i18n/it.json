@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Una copia dei suoi salvataggi viene tenuta. Reinstallalo e rimettili dalla sua scheda Salvataggi.",
  "{path}. A copy of its saves is kept first.": "{path}. Prima viene tenuta una copia dei suoi salvataggi.",
  "Delete its folder and its saves": "Elimina la cartella e i salvataggi",
- "N/A": "N/D"
+ "N/A": "N/D",
+ "Newer save from {device}": "Salvataggio più recente da {device}",
+ "Newer save in the cloud": "Salvataggio più recente nel cloud",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Premi Gioca e viene applicato da solo. Quello attuale viene prima conservato come backup.",
+ "Get It Now": "Prendilo ora",
+ "Comes in when you play": "Arriva quando giochi"
 }

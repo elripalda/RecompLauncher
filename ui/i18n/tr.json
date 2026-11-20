@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Kayıtlarının bir kopyası saklandı. Oyunu yeniden yükleyin ve Kayıtlar sekmesinden geri koyun.",
  "{path}. A copy of its saves is kept first.": "{path}. Önce kayıtlarının bir kopyası saklanır.",
  "Delete its folder and its saves": "Klasörünü ve kayıtlarını sil",
- "N/A": "Yok"
+ "N/A": "Yok",
+ "Newer save from {device}": "{device} cihazından daha yeni kayıt",
+ "Newer save in the cloud": "Bulutta daha yeni bir kayıt var",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Oyna'ya basınca kendiliğinden yerine konur. Şu anki kayıt önce yedek olarak saklanır.",
+ "Get It Now": "Şimdi al",
+ "Comes in when you play": "Oynayınca gelir"
 }

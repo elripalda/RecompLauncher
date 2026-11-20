@@ -1325,12 +1325,16 @@
   const TV_STEP = { 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
   // The status, as the item that leads the page.
   function savesStatusItem(id, sv) {
-    const b = window.saveBadgeFor(id);
-    if (!b) return '';
+    const badge = window.saveBadgeFor(id);
+    if (!badge) return '';
     const sid = saveIdOf(id);
     const st = S.saveStat[sid] || {};
+    const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+    // A newer save from another PC that Play brings in: said as on the desktop, and A gets it now.
+    const next = incomingSave(sv, st, phase, running);
+    const b = next ? incomingBadge(next) : badge;
     const picked = (sv.spots || []).some((p) => p.from === 'player');
-    const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+    const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
     const act = step && !sv.busy && TV_STEP[step.act];
     // Reporting stays in the desktop view, and the account page needs a browser: said instead.
     const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
@@ -1348,9 +1352,13 @@
     const which = r.name ? `data-name="${esc(r.name)}"` : `data-v="${esc(r.v)}"`;
     // A cloud save that can be deleted carries its version, for the sheet's Delete.
     const del = r.deletable ? ` data-cv="${esc(r.v)}"` : '';
-    const act = r.current ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
+    // The save in the game now and the one Play brings in have nothing to restore: the status
+    // above gets the newer one now.
+    const act = r.current || r.incoming ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
     // The save in the game now is lit, and says so where the others say Restore.
-    const side = r.current ? `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
+    const cur = `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>`;
+    const next = `<span class="tv-svh-next">${NEXT_ICON}${esc(t(COMES_IN))}</span>`;
+    const side = r.current ? cur : r.incoming ? next : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
     return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
   function pageGameSaves(id) {

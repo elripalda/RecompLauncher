@@ -3387,5 +3387,10 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "저장 데이터 사본을 남겼습니다. 다시 설치한 뒤 저장 데이터 탭에서 되돌리세요.",
  "{path}. A copy of its saves is kept first.": "{path}. 먼저 저장 데이터 사본을 남깁니다.",
  "Delete its folder and its saves": "폴더와 저장 데이터 삭제",
- "N/A": "해당 없음"
+ "N/A": "해당 없음",
+ "Newer save from {device}": "{device}의 최신 저장 데이터",
+ "Newer save in the cloud": "클라우드에 최신 저장 데이터가 있습니다",
+ "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "플레이를 누르면 자동으로 적용됩니다. 지금 있는 데이터는 먼저 백업으로 남겨 둡니다.",
+ "Get It Now": "지금 받기",
+ "Comes in when you play": "플레이할 때 적용"
 }
