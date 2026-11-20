@@ -719,6 +719,26 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .step .todo{width:28px;height:28px;border-radius:50%;border:2px dashed var(--line2);flex:none}
 .su-bar{height:6px;border-radius:3px;background:var(--fill3);overflow:hidden;margin-top:auto}
 .su-bar i{display:block;height:100%;background:var(--cyan);border-radius:3px;transition:width .25s linear}
+/* The update window (update-build.js): Easy Setup's run, small, for a game an update needs built again. */
+.modal.upd{width:min(520px,92vw);position:relative;gap:16px;padding:28px}
+.upd-head{display:flex;gap:16px;align-items:center;padding-right:30px}
+.upd-art{width:72px;flex:none}
+.upd-head h2{font-size:24px;margin:2px 0 0}
+.upd-ver{display:block;font-size:12.5px;color:var(--dim);margin-top:4px}
+.upd-note{padding:12px 14px;border-radius:14px;background:var(--fill2);font-size:13.5px;color:var(--muted)}
+.upd-opt{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;border:1px solid var(--line2)}
+.upd-opt .k{flex:1;min-width:0}
+.upd-opt b{font-size:14.5px}
+.upd-opt .sub{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
+.upd-new{font:700 10.5px Figtree,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan);background:rgba(52,242,232,.12);padding:2px 7px;border-radius:6px;margin-left:8px;vertical-align:2px}
+.upd .su-bar{margin-top:0;background:var(--card3)}
+.upd-prog{display:flex;justify-content:space-between;font-size:12.5px;color:var(--dim);margin-top:-6px}
+.upd-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding-top:16px;margin-top:4px}
+.upd-foot .why{font-size:13.5px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.upd-foot .why svg{color:var(--cyan)}
+/* Play with an update still to build: its line hangs under it and takes no room. */
+.play-wrap{position:relative;display:inline-flex}
+.play-line{position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);white-space:nowrap;font-size:12px;color:var(--dim);pointer-events:none}
 .su-ok{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 13px;border-radius:15px;background:rgba(52,242,232,.12);color:var(--cyan);font-weight:700;font-size:12.5px;align-self:flex-start}
 .su-ok.plain{background:var(--fill2);color:var(--muted)}
 .su-r .picks .btn{width:100%}
