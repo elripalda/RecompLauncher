@@ -13,7 +13,10 @@
   let lang = 'en';
   let dict = {};
   const has = (s) => Object.prototype.hasOwnProperty.call(dict, s) && dict[s];
-  const t = (s) => (s == null ? '' : has(s) ? dict[s] : s);
+  // A launcher text with what a program printed under it, on lines of its own: the text is
+  // translated, and the program's words stay as it printed them.
+  const firstLine = (s) => { const nl = s.indexOf('\n'); return nl > 0 && has(s.slice(0, nl)) ? dict[s.slice(0, nl)] + s.slice(nl) : s; };
+  const t = (s) => (s == null ? '' : has(s) ? dict[s] : typeof s === 'string' ? firstLine(s) : s);
   // English in a table that t() is given later.
   const N_ = (s) => s;
   const locale = () => (lang === 'ar' ? 'ar-u-nu-latn' : lang);

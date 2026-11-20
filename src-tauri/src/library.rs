@@ -198,6 +198,14 @@ pub struct Installed {
     /// A developer's own build, added from a folder on this PC: never updated, moved or deleted.
     #[serde(default)]
     pub local: bool,
+    /// Its folder is one the launcher unpacked the player's AppImage into (plain.rs), so it's the
+    /// launcher's own: uninstalling can delete it, even for a game the player added.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unpacked: bool,
+    /// The player's AppImage it came from, by its name without the version
+    /// (game-x86-64.appimage): a newer one they bring in updates it. Its path isn't kept.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_appimage: String,
     /// The look the game starts with (looks.rs), empty for the game's own picture.
     #[serde(default)]
     pub look: String,
@@ -484,6 +492,11 @@ pub struct Settings {
     /// finishes downloading (an update too), its setup opens straight away. Off: it waits for Set Up.
     #[serde(default = "yes")]
     pub auto_install: bool,
+    /// Settings → Update All Games Automatically: every installed game takes its new release as
+    /// soon as the launcher finds it, like each game's own Update automatically. Off by default,
+    /// so nobody's games start updating by themselves after the launcher updates.
+    #[serde(default)]
+    pub auto_update_all: bool,
 }
 
 fn yes() -> bool {
@@ -539,6 +552,7 @@ impl Default for Settings {
             linux_graphics: String::new(),
             steam_sync: false,
             auto_install: true,
+            auto_update_all: false,
         }
     }
 }
@@ -583,50 +597,65 @@ pub(crate) struct PlayHistory {
     games: BTreeMap<String, crate::games::Played>,
 }
 
-/// One game's time on this PC as the website keeps it: seconds played here, ever, and when last.
+/// One game's time on this PC as the website keeps it: seconds played here, ever, and when last;
+/// for its play time card, the sessions this PC kept and the longest of them, and the recent ones
+/// ([start, secs]) for this week, this month and the bars. Only recent ones go: older sessions
+/// would only make each send bigger, as the card shows nothing of them but count and longest.
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct PlayEntry {
     pub game: String,
     pub secs: u64,
     pub last: u64,
+    pub count: u64,
+    pub longest: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub recent: Vec<[u64; 2]>,
 }
+
+/// How far back a play time card looks: a month, plus a day for time zones.
+pub const PLAY_RECENT_SECS: u64 = 31 * 86400;
 
 /// A developer's own builds ("local-…", "own-…") aren't catalog games: their time stays on this PC.
 fn own_build(id: &str) -> bool {
     id.starts_with("local-") || id.starts_with("own-")
 }
 
-fn entry(game: String, p: &crate::games::Played) -> Option<PlayEntry> {
+/// `since`: the oldest session start that still counts as recent.
+fn entry(game: String, p: &crate::games::Played, since: u64) -> Option<PlayEntry> {
     if p.played_secs == 0 {
         return None;
     }
-    Some(PlayEntry { game, secs: p.played_secs, last: p.last_played })
+    let longest = p.sessions.iter().map(|s| s[1]).max().unwrap_or(0);
+    let recent = p.sessions.iter().filter(|s| s[0] >= since).copied().collect();
+    let count = p.sessions.len() as u64;
+    Some(PlayEntry { game, secs: p.played_secs, last: p.last_played, count, longest, recent })
 }
 
 impl Library {
     /// Every game's time on this PC, for the account: installed games and what's kept from
     /// uninstalled ones. A recomp with several games also sends each game as "recomp--game".
-    /// `only`: just those ids (a recomp's id brings its games along).
-    pub fn play_entries(&self, only: Option<&[String]>) -> Vec<PlayEntry> {
+    /// `only`: just those ids (a recomp's id brings its games along). Sessions that started
+    /// before `since` count toward count and longest but aren't sent themselves.
+    pub fn play_entries(&self, only: Option<&[String]>, since: u64) -> Vec<PlayEntry> {
         let wanted = |id: &str| only.is_none_or(|ids| ids.iter().any(|w| w == id));
         let mut out = Vec::new();
         for (id, g) in &self.installed {
             if g.local || own_build(id) || !wanted(id) {
                 continue;
             }
-            let recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, ..Default::default() };
-            out.extend(entry(id.clone(), &recomp));
+            let recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, sessions: g.sessions.clone(), ..Default::default() };
+            out.extend(entry(id.clone(), &recomp, since));
             for (sub, p) in &g.games {
-                out.extend(entry(crate::games::full(id, sub), p));
+                out.extend(entry(crate::games::full(id, sub), p, since));
             }
         }
         for (id, h) in &self.removed_play_history {
             if own_build(id) || !wanted(id) || self.installed.contains_key(id) {
                 continue;
             }
-            out.extend(entry(id.clone(), &h.recomp));
+            out.extend(entry(id.clone(), &h.recomp, since));
             for (sub, p) in &h.games {
-                out.extend(entry(crate::games::full(id, sub), p));
+                out.extend(entry(crate::games::full(id, sub), p, since));
             }
         }
         out
@@ -924,6 +953,21 @@ mod tests {
     }
 
     #[test]
+    fn update_all_games_automatically_is_off_by_default_and_for_settings_saved_before_it() {
+        assert!(!super::Settings::default().auto_update_all);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(!settings.auto_update_all);
+    }
+
+    #[test]
+    fn update_all_games_automatically_turned_on_stays_on() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","auto_update_all":true}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(restored.auto_update_all);
+    }
+
+    #[test]
     fn run_in_background_is_off_by_default() {
         assert!(!super::Settings::default().close_to_tray);
         let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
@@ -1038,7 +1082,7 @@ mod tests {
         g.games.insert("first".into(), crate::games::Played { played_secs: 60, last_played: 150, ..Default::default() });
         l.put("bundle", g);
 
-        let ids: Vec<String> = l.play_entries(None).into_iter().map(|e| e.game).collect();
+        let ids: Vec<String> = l.play_entries(None, 0).into_iter().map(|e| e.game).collect();
         assert_eq!(ids, ["bundle", "bundle--first"]);
     }
 
@@ -1048,7 +1092,29 @@ mod tests {
         l.put("gone", Installed { id: "gone".into(), played_secs: 30, last_played: 100, ..Default::default() });
         l.forget("gone").unwrap();
 
-        assert_eq!(l.play_entries(None), [PlayEntry { game: "gone".into(), secs: 30, last: 100 }]);
+        let gone = PlayEntry { game: "gone".into(), secs: 30, last: 100, count: 0, longest: 0, recent: vec![] };
+        assert_eq!(l.play_entries(None, 0), [gone]);
+    }
+
+    #[test]
+    fn play_entries_carry_each_games_recent_sessions() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "bundle".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 60, last_played: 150, sessions: vec![[90, 60]], ..Default::default() });
+        l.put("bundle", g);
+
+        let recent: Vec<Vec<[u64; 2]>> = l.play_entries(None, 0).into_iter().map(|e| e.recent).collect();
+        assert_eq!(recent, [vec![[110, 90]], vec![[90, 60]]]);
+    }
+
+    #[test]
+    fn older_sessions_count_but_are_not_sent() {
+        let mut l = Library::default();
+        let sessions = vec![[10, 500], [100, 60], [200, 30]];
+        l.put("g", Installed { id: "g".into(), played_secs: 590, last_played: 230, sessions, ..Default::default() });
+
+        let e = &l.play_entries(None, 100)[0];
+        assert_eq!((e.count, e.longest, e.recent.as_slice()), (3, 500, &[[100, 60], [200, 30]][..]));
     }
 
     #[test]
@@ -1057,7 +1123,7 @@ mod tests {
         l.put("local-test", Installed { id: "local-test".into(), played_secs: 30, local: true, ..Default::default() });
         l.put("fresh", Installed { id: "fresh".into(), ..Default::default() });
 
-        assert!(l.play_entries(None).is_empty());
+        assert!(l.play_entries(None, 0).is_empty());
     }
 
     #[test]
@@ -1066,7 +1132,7 @@ mod tests {
         l.put("a", Installed { id: "a".into(), played_secs: 30, ..Default::default() });
         l.put("b", Installed { id: "b".into(), played_secs: 40, ..Default::default() });
 
-        let ids: Vec<String> = l.play_entries(Some(&["b".to_string()])).into_iter().map(|e| e.game).collect();
+        let ids: Vec<String> = l.play_entries(Some(&["b".to_string()]), 0).into_iter().map(|e| e.game).collect();
         assert_eq!(ids, ["b"]);
     }
 

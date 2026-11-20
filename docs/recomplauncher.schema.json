@@ -334,7 +334,7 @@
         },
         "env": {
           "type": "object",
-          "description": "Environment variables for your game, like SDL hints. Paths such as {install} fill in. RECOMPLAUNCHER_ names and system ones like PATH are left out.",
+          "description": "Environment variables for your game, like SDL hints. Paths such as {install} and {data} fill in. RECOMPLAUNCHER_ names and system ones like PATH are left out.",
           "propertyNames": {
             "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
           },
@@ -371,16 +371,26 @@
         "done": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the game counts as set up and plays without the copy unless start uses {game}. The ones in the build folder are also what a player's own build must have for the launcher to use it."
+          "description": "Files the step leaves when it has finished ({data}, {install}, {home}...). All there: the game counts as set up and plays without the copy unless start uses {game}. The ones in the build folder are also what a player's own build must have for the launcher to use it."
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables for the step, like start.env. Paths such as {data} and {input:<id>} fill in. RECOMPLAUNCHER_ names and system ones like PATH, TEMP and TMP are left out: the step gets a temp folder of its own.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "keeps_copy": {
           "type": "boolean",
           "default": false,
-          "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument with {game} in it, so write the copy as one argument (--game={game}). List done too."
+          "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument (and prepare.env value) with {game} in it, so write the copy as one argument (--game={game}). List done too."
         },
         "version": {
           "type": "string",
-          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to."
+          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to, not even a new release: when the step builds the game itself, put your release version here each time you package one."
         },
         "options": {
           "type": "array",
@@ -907,6 +917,37 @@
         "additionalProperties": false
       }
     },
+    "system": {
+      "description": "What your game needs from the PC, for each system you ship a build for. The launcher checks what it can (the Windows or macOS version, glibc on Linux) and tells the player when their PC is older, but never stops the game. A system or a key left out is no known need.",
+      "type": "object",
+      "properties": {
+        "windows": {
+          "type": "object",
+          "properties": {
+            "version": { "type": "string", "pattern": "^\\d+(\\.\\d+)*$", "description": "The oldest Windows it runs on: \"10\", \"11\", or a build like \"10.0.19041\"." },
+            "graphics": { "$ref": "#/definitions/systemGraphics" }
+          },
+          "additionalProperties": false
+        },
+        "linux": {
+          "type": "object",
+          "properties": {
+            "glibc": { "type": "string", "pattern": "^\\d+(\\.\\d+)*$", "description": "The oldest glibc your Linux build runs with, like \"2.35\": the glibc of the system you built it on." },
+            "graphics": { "$ref": "#/definitions/systemGraphics" }
+          },
+          "additionalProperties": false
+        },
+        "macos": {
+          "type": "object",
+          "properties": {
+            "version": { "type": "string", "pattern": "^\\d+(\\.\\d+)*$", "description": "The oldest macOS it runs on, like \"13\" or \"14.4\"." },
+            "graphics": { "$ref": "#/definitions/systemGraphics" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "requires": {
       "description": "The launcher features this profile uses. Parts needing a feature the player's launcher doesn't have are left out (no Easy Setup, no settings tab for it); the game still installs and plays.",
       "type": "array",
@@ -923,13 +964,19 @@
   },
   "additionalProperties": false,
   "definitions": {
+    "systemGraphics": {
+      "description": "The graphics API the build draws with, and the oldest version it needs: {\"vulkan\": \"1.3\"}. Shown on the game's page; the launcher doesn't check it.",
+      "type": "object",
+      "propertyNames": { "enum": ["vulkan", "opengl", "d3d12", "d3d11", "d3d9", "metal"] },
+      "additionalProperties": { "type": "string", "pattern": "^\\d+([._]\\d+)*$" }
+    },
     "programs": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "string"
       },
-      "description": "Paths inside your release, tried in order. An .AppImage entry finds the AppImage installed under any name; on a Mac a .app runs the program its Info.plist names (Beta 55 and newer; before that, name the program inside it, like MyGame.app/Contents/MacOS/MyGame)."
+      "description": "Paths inside your release, tried in order. An .AppImage entry finds the AppImage installed under any name, and on Linux, where the launcher unpacks every AppImage into a plain folder, starts its AppRun; on a Mac a .app runs the program its Info.plist names (Beta 55 and newer; before that, name the program inside it, like MyGame.app/Contents/MacOS/MyGame)."
     },
     "args": {
       "type": "array",

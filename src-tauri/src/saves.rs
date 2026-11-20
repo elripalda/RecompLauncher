@@ -33,10 +33,12 @@ const NOT_SAVES: [&str; 37] = [
     ".sfc", ".smc", ".gba", ".nds", ".3ds", ".elf", ".rpx", ".exe", ".dll", ".so", ".pdb", ".msi", ".zip", ".7z", ".rar", ".appimage",
     ".log", ".tmp", ".dmp", ".mp4", ".mkv",
 ];
-/// Folders that are never saves.
-const NOT_SAVE_DIRS: [&str; 16] = [
+/// Folders that are never saves: a game's caches (`{data}/cache`) and temp folders, and the
+/// launcher's own work folders in a game's folder (its setup temp folder, the old release an update
+/// sets aside), which a save place around them would otherwise take in.
+const NOT_SAVE_DIRS: [&str; 19] = [
     "mods", "shadercache", "shader_cache", "shaders", "cache", "caches", "logs", "log", "crashdumps", "dumps", "screenshots", ".backups",
-    "texture_packs", "textures", "packs", "temp",
+    "texture_packs", "textures", "packs", "temp", "tmp", crate::setup_temp::FOLDER, ".recomplauncher-game-update",
 ];
 
 /// A place a game keeps its saves.
@@ -48,28 +50,30 @@ pub struct Spot {
     pub from: &'static str,
 }
 
-/// Where a game's saves are: the player's folders, else the developer's file, else the catalog.
-/// Empty when none of them says: the launcher doesn't know where this game saves.
+/// Where a game's saves are: the developer's file, else the catalog, else the player's folders.
+/// A folder the developer or RecompLauncher named is the right one (the launcher never moves where
+/// a game saves, it only reads that folder), so a folder the player picked before one was named
+/// isn't used anymore. Empty when nobody says: the launcher doesn't know where this game saves.
 pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
-    // The player's own folders: one, or several (a launcher with more than one game in it).
+    let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
+    let named = list(dev, "developer");
+    if !named.is_empty() {
+        return named;
+    }
+    let ours = list(catalog, "catalog");
+    if !ours.is_empty() {
+        return ours;
+    }
+    // The player's own folders: one, or several (a launcher with more than one game in it). Not a
+    // guess (the whole game folder, or files it was seen writing): that backed up caches and build
+    // folders as saves, and could put the wrong files back.
     let mut mine: Vec<String> = vec![];
     for t in g.save_place.iter().chain(g.more_save_places.iter()).map(|t| t.trim()).filter(|t| !t.is_empty()) {
         if !mine.iter().any(|m| m == t) {
             mine.push(t.to_string());
         }
     }
-    if !mine.is_empty() {
-        return mine.into_iter().map(|template| Spot { template, from: "player" }).collect();
-    }
-    let list = |v: &[String], from: &'static str| v.iter().filter(|t| !t.trim().is_empty()).map(|t| Spot { template: t.trim().to_string(), from }).collect::<Vec<_>>();
-    let named = list(dev, "developer");
-    if !named.is_empty() {
-        return named;
-    }
-    // Nothing else: a guess (the whole game folder, or files it was seen writing) backed up caches
-    // and build folders as saves, and could put the wrong files back. The Saves tab says the
-    // launcher doesn't know, and the player picks the folder.
-    list(catalog, "catalog")
+    mine.into_iter().map(|template| Spot { template, from: "player" }).collect()
 }
 
 /// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
@@ -153,7 +157,9 @@ pub fn templatize_for(p: &Path, g: &Installed) -> String {
 
 /// This PC's path as a template that works on any PC: `C:\Users\Ruben\AppData\Local\X` -> `{local}/X`.
 pub fn templatize(p: &Path, install: &Path) -> String {
+    // `{data}` before `{install}`: it's inside it, and the narrower name is the one the game uses.
     let bases: Vec<(&str, Option<PathBuf>)> = vec![
+        ("{data}", Some(crate::profile::data_dir(install))),
         ("{install}", Some(install.to_path_buf())),
         ("{local}", dirs::data_local_dir()),
         ("{config}", dirs::config_dir()),
@@ -698,6 +704,11 @@ pub struct State {
     /// Why the last sync didn't go through. Kept until one does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<Problem>,
+    /// A session started and its save hasn't been copied since: set at Play, cleared once the
+    /// copy after it is made. Still set when the launcher closed (or crashed) before that, so the
+    /// next start makes the copy and sends it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub after_play: bool,
 }
 
 /// Why a game's saves didn't reach the cloud. `kind` is one of: offline, full, paused,
@@ -744,7 +755,9 @@ impl State {
         if kind == "too-big-folder" {
             return "problem";
         }
-        if !self.behind() {
+        // A session whose save hasn't been copied yet may have changed it: not up to date until the
+        // copy after it is made.
+        if !self.behind() && !self.after_play {
             return if self.synced_hash.is_empty() && self.last_hash.is_empty() { "none" } else { "up-to-date" };
         }
         // No connection is only waiting: it goes up by itself once the website answers.
@@ -814,6 +827,19 @@ pub fn list(app_dir: &Path, id: &str, g: &Installed) -> Vec<Copy> {
     out
 }
 
+/// The save as it is now has a copy (or there is none to copy): no session waits on it anymore.
+/// Every copy clears it, whatever made it (after a session, Sync Now, Back Up Now, before a restore
+/// or a cloud save), so "Waiting to upload" can't outlive the copy. All of those run with the game
+/// closed, so none ends a session that's still going.
+fn copied(app_dir: &Path, id: &str) {
+    let mut st = state(app_dir, id);
+    if !st.after_play {
+        return;
+    }
+    st.after_play = false;
+    set_state(app_dir, id, &st);
+}
+
 /// Writes a copy of the saves as they are now. None when there are none, or nothing changed since
 /// the last copy.
 pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result<Option<Copy>, Error> {
@@ -824,15 +850,18 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
         return Err(too_big_error(g, spots, &too_big));
     }
     if pre.is_empty() {
+        copied(app_dir, id);
         return Ok(None);
     }
     let (entries, infos, hash, _) = current(spots, g);
     if entries.is_empty() {
+        copied(app_dir, id);
         return Ok(None);
     }
     let mut st = state(app_dir, id);
     let all = list(app_dir, id, g);
     if st.last_hash == hash && all.first().map(|c| c.hash == hash).unwrap_or(false) {
+        copied(app_dir, id);
         return Ok(None);
     }
     let d = dir_of(app_dir, id, g);
@@ -874,6 +903,7 @@ pub fn backup(app_dir: &Path, id: &str, spots: &[Spot], g: &Installed) -> Result
         }
     }
     st.last_hash = hash.clone();
+    st.after_play = false;
     set_state(app_dir, id, &st);
     let size = fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
     Ok(Some(Copy { name: format!("{when}.zip"), when, size, files: infos.len(), hash, device: man.device, played: man.played }))
@@ -958,7 +988,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             .map(|(i, s)| {
                 let t = &s.template;
                 let whole = t.trim_end_matches(['/', '\\']) == "{install}";
-                let in_game = t.starts_with("{install}");
+                let in_game = t.starts_with("{install}") || t.starts_with("{data}");
                 !whole && (!in_game || named(t)) && !roots.get(i).map(|r| holds_programs(r)).unwrap_or(true)
             })
             .collect();
@@ -970,7 +1000,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         }
     }
     let today: HashSet<&str> = spots_now.iter().map(|s| s.template.as_str()).collect();
-    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| s.template.starts_with("{install}/") && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
+    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| (s.template.starts_with("{install}/") || s.template.starts_with("{data}/")) && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
     let mut n = 0;
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| Error::Msg(e.to_string()))?;
@@ -1278,7 +1308,7 @@ mod tests {
         assert!(add_place(&two, &d.join("TT-Xbox"), &g).is_err());
         g.save_place = Some(two[0].clone());
         g.more_save_places = vec![two[1].clone()];
-        let s = spots(&["{install}/dev".into()], &[], &g);
+        let s = spots(&[], &[], &g);
         assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/TT-Xbox/saves", "player"), ("{install}/ROTK-Xbox/saves", "player")]);
         // Both folders' files go in the backup, kept apart.
         let mut from: Vec<usize> = collect(&s, &g).iter().map(|e| e.spot).collect();
@@ -1306,6 +1336,98 @@ mod tests {
 
     fn game(dir: &Path) -> Installed {
         Installed { id: "g".into(), name: "Test Game".into(), path: dir.to_path_buf(), files: vec![PathBuf::from("game.exe"), PathBuf::from("data/a.bin")], played_secs: 60, ..Default::default() }
+    }
+
+    // A game whose saves are in {install}/save, with one save file in it.
+    fn game_with_a_save(d: &Path) -> (Installed, Vec<Spot>, PathBuf) {
+        let g = game(&d.join("lib/Game"));
+        fs::create_dir_all(d.join("lib/Game/save")).unwrap();
+        fs::write(d.join("lib/Game/save/slot.sav"), b"one").unwrap();
+        let s = spots(&["{install}/save".into()], &[], &g);
+        (g, s, d.join("app"))
+    }
+
+    #[test]
+    fn a_copy_of_the_save_ends_the_open_session() {
+        let d = tmp("copy-ends-session");
+        let (g, s, app) = game_with_a_save(&d);
+        set_state(&app, "g", &State { after_play: true, ..Default::default() });
+        backup(&app, "g", &s, &g).unwrap();
+        assert!(!state(&app, "g").after_play);
+    }
+
+    #[test]
+    fn a_save_already_copied_ends_the_open_session_too() {
+        let d = tmp("copied-ends-session");
+        let (g, s, app) = game_with_a_save(&d);
+        backup(&app, "g", &s, &g).unwrap();
+        let mut st = state(&app, "g");
+        st.after_play = true;
+        set_state(&app, "g", &st);
+        assert!(backup(&app, "g", &s, &g).unwrap().is_none());
+        assert!(!state(&app, "g").after_play);
+    }
+
+    #[test]
+    fn a_folder_in_data_is_named_by_data() {
+        let d = tmp("data-name");
+        assert_eq!(templatize(&d.join("recompdata").join("saves"), &d), "{data}/saves");
+        assert_eq!(templatize(&d.join("recompdata"), &d), "{data}");
+        assert_eq!(templatize(&d.join("save"), &d), "{install}/save");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn data_as_a_save_place_leaves_out_caches_and_the_launchers_work_folders() {
+        let d = tmp("data-skip");
+        let data = d.join("recompdata");
+        for sub in ["saves", "cache/shaders", ".recomplauncher-tmp", ".recomplauncher-game-update/old", "tmp"] {
+            fs::create_dir_all(data.join(sub)).unwrap();
+        }
+        fs::write(data.join("saves/slot1.sav"), b"save").unwrap();
+        fs::write(data.join("settings.toml"), b"x = 1").unwrap();
+        fs::write(data.join("cache/shaders/a.bin"), b"cache").unwrap();
+        fs::write(data.join(".recomplauncher-tmp/part.bin"), b"temp").unwrap();
+        fs::write(data.join(".recomplauncher-game-update/old/old.sav"), b"old").unwrap();
+        fs::write(data.join("tmp/x.sav"), b"temp").unwrap();
+        let g = game(&d);
+        let s = vec![Spot { template: "{data}".into(), from: "developer" }];
+        let mut got: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
+        got.sort();
+        assert_eq!(got, vec!["saves/slot1.sav", "settings.toml"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_whole_game_folder_as_a_save_place_leaves_out_the_setup_temp_folder() {
+        let d = tmp("install-skip");
+        fs::create_dir_all(d.join(".recomplauncher-tmp")).unwrap();
+        fs::write(d.join(".recomplauncher-tmp/half.sav"), b"temp").unwrap();
+        fs::write(d.join("slot1.sav"), b"save").unwrap();
+        let g = game(&d);
+        let s = vec![Spot { template: "{install}".into(), from: "player" }];
+        let got: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
+        assert_eq!(got, vec!["slot1.sav"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn saves_in_data_are_kept_beside_the_library() {
+        // What uninstalling with "keep a copy of its saves" relies on: the copy is outside the game.
+        let d = tmp("data-keep");
+        let app = d.join("app");
+        let inst = d.join("lib").join("Game");
+        fs::create_dir_all(inst.join("recompdata/saves")).unwrap();
+        fs::write(inst.join("recompdata/saves/slot1.sav"), b"save").unwrap();
+        let g = game(&inst);
+        let s = vec![Spot { template: "{data}/saves".into(), from: "developer" }];
+        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("recompdata").join("saves").join("slot1.sav")]);
+        let copy = backup(&app, "g", &s, &g).unwrap().unwrap();
+        let kept = dir_of(&app, "g", &g).join(&copy.name);
+        assert!(kept.is_file() && !kept.starts_with(&inst), "{}", kept.display());
+        fs::remove_dir_all(&inst).unwrap();
+        assert!(kept.is_file(), "the copy outlives the game's folder");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -1399,6 +1521,30 @@ mod tests {
         let g = game(Path::new("/games/test"));
         let s = spots(&["{install}/save".into()], &["{local}/Test/saves".into()], &g);
         assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn the_developers_folder_comes_before_one_the_player_picked() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let s = spots(&["{install}/save".into()], &[], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn recomplaunchers_folder_comes_before_one_the_player_picked() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let s = spots(&[], &["{local}/Test/saves".into()], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{local}/Test/saves", "catalog")]);
+    }
+
+    #[test]
+    fn the_players_folder_counts_when_nobody_named_one() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let s = spots(&[], &[], &g);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/mine", "player")]);
     }
 
     #[test]
@@ -2017,6 +2163,24 @@ mod sync_state_tests {
 
     fn problem(kind: &str) -> Option<Problem> {
         Some(Problem { kind: kind.into(), text: String::new(), at: 1 })
+    }
+
+    #[test]
+    fn a_session_not_copied_yet_is_waiting_not_up_to_date() {
+        let s = State { last_hash: "a".into(), synced_hash: "a".into(), after_play: true, ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn a_first_session_not_copied_yet_is_waiting_not_none() {
+        let s = State { after_play: true, ..Default::default() };
+        assert_eq!(s.sync_state(true, true), "waiting");
+    }
+
+    #[test]
+    fn a_session_not_copied_yet_is_left_out_of_the_file_when_there_is_none() {
+        let s = State { last_hash: "a".into(), ..Default::default() };
+        assert!(!serde_json::to_string(&s).unwrap().contains("after_play"));
     }
 
     #[test]

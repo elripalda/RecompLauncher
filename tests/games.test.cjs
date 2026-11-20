@@ -133,6 +133,55 @@ test('signed out, playtime is this PC\'s own', () => {
   assert.equal(vm.runInContext('gamePlaytime(first).played_secs', c), 600);
 });
 
+// A session start this many days ago.
+const daysAgo = (days) => Math.floor(Date.now() / 1000) - days * 86400;
+const stats = (c, own) => {
+  c.own = own;
+  return vm.runInContext('playStats("hookshot", own)', c);
+};
+
+test('signed in, the play time card has every PC\'s recent sessions, each once', () => {
+  const c = ctx();
+  const mine = [daysAgo(2), 60], other = [daysAgo(1), 90];
+  c.S.cloudPlay = { games: { hookshot: { count: 2, longest: 90, recent: [mine, other] } }, titles: {} };
+  assert.deepEqual(JSON.parse(JSON.stringify(stats(c, [mine]).recent)), [mine, other]);
+});
+
+test('signed in, sessions and longest are the account\'s, older sessions included', () => {
+  const c = ctx();
+  c.S.cloudPlay = { games: { hookshot: { count: 40, longest: 7200, recent: [[daysAgo(1), 90]] } }, titles: {} };
+  const s = stats(c, [[daysAgo(1), 90]]);
+  assert.equal(s.count, 40);
+  assert.equal(s.longest, 7200);
+});
+
+test('a session the account has not heard about yet is still on the card', () => {
+  const c = ctx();
+  const old = [daysAgo(3), 60], fresh = [daysAgo(0), 3000];
+  c.S.cloudPlay = { games: { hookshot: { count: 1, longest: 60, recent: [old] } }, titles: {} };
+  const s = stats(c, [old, fresh]);
+  assert.equal(s.count, 2);
+  assert.equal(s.longest, 3000);
+  assert.equal(s.recent.length, 2);
+});
+
+test('signed out, the card is this PC\'s own: every session counted, the last month drawn', () => {
+  const c = ctx();
+  c.S.cloudPlay = null;
+  const s = stats(c, [[daysAgo(90), 5000], [daysAgo(1), 60]]);
+  assert.equal(s.count, 2);
+  assert.equal(s.longest, 5000);
+  assert.equal(s.recent.length, 1);
+});
+
+test('bad sessions and numbers from the website are left off the card', () => {
+  const c = ctx();
+  const good = [daysAgo(1), 60];
+  c.S.cloudPlay = { games: { hookshot: { count: 'lots', longest: -5, recent: [good, ['x', 5], [50], [0, 30], [daysAgo(1), -1], 'no'] } }, titles: {} };
+  const s = stats(c, []);
+  assert.deepEqual(JSON.parse(JSON.stringify(s)), { recent: [good], count: 1, longest: 60 });
+});
+
 test('a game played only on another PC shows the account time', () => {
   const c = ocarina();
   c.S.cloudPlay = { games: { longshot: { secs: 120, last: 400 } }, titles: {} };
