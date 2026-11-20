@@ -200,7 +200,8 @@ What the player sees:
     game's copy is refused with the ID it has. For a PS4 game, list every region's title ID next
     to `file: "eboot.bin"`: every PS4 game has an `eboot.bin`, and a game's own title often has an
     edition or subtitle your catalog name doesn't, so the ID is how the launcher finds the
-    player's folder.
+    player's folder. The developer check warns when a check by `eboot.bin` or `param.sfo` lists
+    no `ids`.
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found.

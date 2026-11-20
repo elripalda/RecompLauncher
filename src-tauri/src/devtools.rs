@@ -293,6 +293,24 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     Ok(Report { source, file: location, has_file, error, level, flow, caps, owner: owner(&entry), items })
 }
 
+/// What "game.check" lets the launcher do with the player's copy.
+fn check_item(c: &profile::Check) -> Item {
+    if c.file.is_empty() && c.xdvdfs.is_empty() && c.iso9660.is_empty() && c.nup_build_id.is_empty() {
+        return warn("No \"game.check\"", "Any disc or folder is accepted, and the launcher can't find the player's copy in their folders.");
+    }
+    // Every PlayStation game folder has these, so without title IDs the folder is found only by
+    // its title, and that often has an edition or subtitle the game's name doesn't.
+    let file_name = c.file.rsplit(['/', '\\']).next().unwrap_or("");
+    let shared = file_name.eq_ignore_ascii_case("eboot.bin") || file_name.eq_ignore_ascii_case("param.sfo");
+    if shared && c.ids.is_empty() {
+        return warn(
+            "\"game.check\" lists no title IDs",
+            format!("Every PlayStation game has {file_name}, so the launcher finds the player's folder only by its title, which can have an edition or subtitle your game's name doesn't. Add \"ids\" with each region's title ID, like [\"CUSA00242\"]."),
+        );
+    }
+    ok("Checks the player's copy and finds it in their folders")
+}
+
 /// The checks, top to bottom in the order of the developer guide. Gives back the level reached.
 fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Vec<Item>) -> u8 {
     let mut level = 0u8;
@@ -331,12 +349,7 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         } else {
             items.push(ok(format!("Asks for: {}", gc.label)));
         }
-        let c = &gc.check;
-        if c.file.is_empty() && c.xdvdfs.is_empty() && c.iso9660.is_empty() && c.nup_build_id.is_empty() {
-            items.push(warn("No \"game.check\"", "Any disc or folder is accepted, and the launcher can't find the player's copy in their folders."));
-        } else {
-            items.push(ok("Checks the player's copy and finds it in their folders"));
-        }
+        items.push(check_item(&gc.check));
         for d in &gc.dumps {
             if d.size == 0 || d.crc32.trim().is_empty() {
                 items.push(warn(format!("The \"{}\" dump needs both \"size\" and \"crc32\"", d.name), "Take them from Redump."));
@@ -623,6 +636,32 @@ mod tests {
             {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}"#).unwrap();
         let items = super::option_items(&p.options);
         assert!(items[0].text.contains("starts off") && items[0].text.contains("required"), "{}", items[0].text);
+    }
+
+    #[test]
+    fn a_playstation_check_without_title_ids_is_warned() {
+        let c = crate::profile::Check { file: "eboot.bin".into(), ..Default::default() };
+        let item = super::check_item(&c);
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("no title IDs"), "{}", item.text);
+    }
+
+    #[test]
+    fn a_ps3_check_by_its_usrdir_eboot_without_title_ids_is_warned() {
+        let c = crate::profile::Check { file: "USRDIR/EBOOT.BIN".into(), ..Default::default() };
+        assert!(super::check_item(&c).detail.contains("EBOOT.BIN"));
+    }
+
+    #[test]
+    fn a_playstation_check_with_title_ids_is_fine() {
+        let c = crate::profile::Check { file: "eboot.bin".into(), ids: vec!["CUSA00242".into()], ..Default::default() };
+        assert_eq!(super::check_item(&c).level, "ok");
+    }
+
+    #[test]
+    fn a_check_by_a_games_own_file_needs_no_ids() {
+        let c = crate::profile::Check { file: "data/sanctuary.pak".into(), ..Default::default() };
+        assert_eq!(super::check_item(&c).level, "ok");
     }
 
     #[test]
