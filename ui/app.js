@@ -4421,6 +4421,7 @@ function pageSettings() {
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Install too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
           + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup on its setup window, or the Easy Setup switch in its Manage tab.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
+        + (typeof folderStructureGroup === 'function' ? folderStructureGroup(group, row, sw) : '')
         + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
@@ -8477,6 +8478,7 @@ async function act(el, e) {
   if (a === 'project-association') return changeProject(id);
   if (a === 'adopt' && window.adoptAct) return window.adoptAct(a, el);
   if (/^mig-/.test(a) && window.migrateAct) return window.migrateAct(a, el);
+  if (/^fs-/.test(a) && window.foldersAct) return window.foldersAct(a, el);
   switch (a) {
     case 'scan-report': e.preventDefault(); e.stopPropagation(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'open': e.preventDefault(); closeMenu(); return go('game', id, el.closest('.tile') ? el : null);
