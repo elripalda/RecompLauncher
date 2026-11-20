@@ -946,12 +946,34 @@ impl Staged {
         let top = app.strip_prefix(&self.root).unwrap_or(app).to_path_buf();
         let files: Vec<PathBuf> = self.files.iter().filter_map(|f| f.strip_prefix(&top).ok()).map(Path::to_path_buf).collect();
         let shipped: std::collections::HashSet<&PathBuf> = files.iter().collect();
+        let fold = |p: &Path| p.to_string_lossy().to_lowercase();
+        let by_fold: std::collections::HashMap<String, &PathBuf> = files.iter().map(|f| (fold(f), f)).collect();
+        // A file only renamed in case is, on a Mac's usual drive, the one the update replaces: taken
+        // away as well, the update would fail moving it twice. On a drive that tells case apart, it's
+        // another file and goes.
+        let renamed = |f: &PathBuf| by_fold.get(&fold(f)).is_some_and(|s| same_entry(&game.join(f), &game.join(s)));
         let mut old = vec![];
         // Links too, never followed: a Mac app's frameworks link inside it.
         list(game, &game.join("Contents"), &mut old);
-        let leftovers = old.into_iter().filter(|f| !shipped.contains(f)).collect();
+        let leftovers = old.into_iter().filter(|f| !shipped.contains(f) && !renamed(f)).collect();
         Ok((Staged { root: app.clone(), files }, leftovers))
     }
+}
+
+/// Whether two paths name the same file (or link) on disk, as the drive sees them.
+#[cfg(unix)]
+fn same_entry(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// Only Macs replace an imported app (see for_game).
+#[cfg(not(unix))]
+fn same_entry(_: &Path, _: &Path) -> bool {
+    false
 }
 
 /// Unpack (or place) the downloaded file into `staging`, the way a game's release is: a single
@@ -2632,6 +2654,32 @@ mod mac_archive_tests {
         update_app(&app, app_zip(&[]), &d).unwrap();
         let link = app.join("Contents/Frameworks/Engine.framework/Versions/Current");
         assert_eq!(fs::read_link(link).unwrap(), PathBuf::from("A"));
+    }
+
+    /// The imported app with Artwork.txt, updated to one that ships it as artwork.txt.
+    fn case_renamed_update(d: &Path) -> (PathBuf, Result<Vec<PathBuf>, Error>) {
+        let app = imported_app(d);
+        fs::write(app.join("Contents/Resources/Artwork.txt"), b"old art").unwrap();
+        let release = app_zip(&[("Game.app/Contents/Resources/artwork.txt", b"new art", 0o644)]);
+        let updated = update_app(&app, release, d);
+        (app, updated)
+    }
+
+    #[test]
+    fn mac_imported_app_update_renamed_only_in_case_goes_in() {
+        let d = temp("imported-case");
+        let (app, updated) = case_renamed_update(&d);
+        assert!(updated.is_ok(), "{:?}", updated.err());
+        assert_eq!(fs::read(app.join("Contents/Resources/artwork.txt")).unwrap(), b"new art");
+    }
+
+    #[test]
+    fn mac_imported_app_update_renamed_only_in_case_leaves_no_old_copy() {
+        let d = temp("imported-case-old");
+        let (app, _) = case_renamed_update(&d);
+        let (old, new) = (app.join("Contents/Resources/Artwork.txt"), app.join("Contents/Resources/artwork.txt"));
+        // On a drive that ignores case both names are the one new file.
+        assert!(!old.exists() || same_entry(&old, &new));
     }
 
     #[test]
