@@ -14,7 +14,7 @@ function updLead(a, su, g) {
   return `${needs} ${su.kept ? t('Your copy isn\'t needed: it\'s built again from what it kept last time.') : t('It\'s built again from your copy.')}`;
 }
 
-// The options its update added (Setup Options' new ones), answered here: off until turned on.
+// The options its update added (Setup Options' new ones), answered here, as their developer set them.
 function updOptRows(id, su) {
   return newPrepOpts(su).map((o) => {
     const on = !!SU.updOpts[o.id];
@@ -29,15 +29,17 @@ function updOptRows(id, su) {
 function updRun(a, su) {
   const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
   const st = SU.steps;
-  const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Building the game') };
+  // (the setup events' "extras" is the game's own setup step, which builds it; "setup" the launcher's
+  // last few seconds after it)
+  const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Building the game'), setup: t('Setting it up') };
   const sub = {
     read: st.read && st.read.text ? st.read.text : baseName(SU.path),
     verify: st.verify && st.verify.total ? tf('{done} of {total}', { done: fmtB(st.verify.done), total: fmtB(st.verify.total) }) : (st.verify && st.verify.text) || '',
-    extras: (st.extras && st.extras.text) || '',
     // The builder's own line (Compiling, 112 of 611 files changed): what it's doing right now.
+    extras: (st.extras && st.extras.text) || '',
     setup: (st.setup && st.setup.text) || '',
   };
-  const weight = { read: 5, verify: SU.extras ? 70 : 80, extras: 15, setup: SU.kept ? 85 : 10 };
+  const weight = { read: 5, verify: 40, extras: 50, setup: 5 };
   let total = 0, have = 0;
   const cur = order.indexOf(SU.step);
   for (const k of order) {
@@ -100,7 +102,7 @@ async function updAct(b) {
     }
     case 'build': {
       if (prepBlocked(su)) return;
-      // The options it added are answered now (off unless turned on), so Play doesn't ask again.
+      // The options it added are answered now (as the switches show), so Play doesn't ask again.
       const answers = Object.fromEntries(newPrepOpts(su).map((o) => [o.id, !!SU.updOpts[o.id]]));
       if (Object.keys(answers).length) {
         SU.optsSaving = invoke('set_prepare_opts', { id, opts: answers }).catch(fail);
@@ -122,7 +124,10 @@ async function updateBuildModal(id) {
     try { su = S.setup[id] = await invoke('game_setup', { id }); } catch (e) { return fail(e); }
   }
   closeSetup(true);
-  Object.assign(SU, { id, upd: true, updOpts: {}, stage: 'confirm', named: {}, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', kept: !!su.kept, extras: false, result: null, err: '', uerr: '', note: '' });
+  // The options its update added start as their developer set them (on, unless they say otherwise
+  // or have a license to accept), as in Easy Setup.
+  const updOpts = Object.fromEntries(newPrepOpts(su).map((o) => [o.id, !!o.on]));
+  Object.assign(SU, { id, upd: true, updOpts, stage: 'confirm', named: {}, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', kept: !!su.kept, extras: false, result: null, err: '', uerr: '', note: '' });
   // Its build still running in the background (it was hidden): that build, not a second one.
   const job = S.setupJobs && S.setupJobs[id];
   if (job) {

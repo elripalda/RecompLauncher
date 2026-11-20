@@ -20,6 +20,10 @@ test('an update that changed the setup step keeps Play and needs the update wind
   assert.equal(c.easyNotReady('g'), false);
 });
 
+test('the options the update added start as their developer set them', () => {
+  assert.match(fn(upd, 'updateBuildModal'), /const updOpts = Object\.fromEntries\(newPrepOpts\(su\)\.map\(\(o\) => \[o\.id, !!o\.on\]\)\);/);
+});
+
 test('an unfinished build is still Easy Setup, not the update window', () => {
   const c = checks({ ready: false, reason: 'rebuild', detail: 'kept' });
   assert.equal(c.updateBuildDue('g'), false);
