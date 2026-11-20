@@ -605,7 +605,7 @@ settings are written. It runs again whenever the player changes their copy.
   release needs a new build, put your release version in `version` each time you package one
   (`"version": "0.4.2"`). Without it, players keep playing the build of the release they set up.
 - To build into the player's install folder instead of their home folder, pass it to your builder
-  (`"args": ["--cli", "--prepare", "--game", "{game}", "--out", "{install}/YourGame"]`) and start
+  (`"args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"]`) and start
   from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
   When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like
