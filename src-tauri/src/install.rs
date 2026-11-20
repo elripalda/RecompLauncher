@@ -1212,7 +1212,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 21;
+pub const EXE_RULES: u8 = 22;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1220,7 +1220,7 @@ pub const EXE_RULES: u8 = 21;
 const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
-const BUILD_TOOLS: [&str; 66] = [
+const BUILD_TOOLS: [&str; 67] = [
     "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
     "tcc", "zig", "sccache", "ccache", "goalc",
     "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
@@ -1228,7 +1228,7 @@ const BUILD_TOOLS: [&str; 66] = [
     // Disc and package converters a release brings along for the player's copy.
     "chd2gdi", "gdi2chd", "chdman", "maxcso", "extract-xiso", "xdvdfs", "hactool", "nsz",
     // Recompilers a release brings to build the game from the player's copy.
-    "nxlift", "xbe_recomp", "xenonrecomp", "xenonanalyse", "n64recomp", "ps2recomp", "ffmpeg", "ffprobe", "ffplay",
+    "nxlift", "xbe_recomp", "xenonrecomp", "xenonanalyse", "n64recomp", "ps2recomp", "spirv_harness", "ffmpeg", "ffprobe", "ffplay",
 ];
 /// Folders a release keeps its tools, or leftovers from building, in.
 /// "Tools" in other languages too: ferramentas (Portuguese), herramientas (Spanish), outils
@@ -1942,6 +1942,26 @@ mod tests {
             assert!(looks_like_tool(Path::new(p), &["Harmony Recomp"]), "{p}");
         }
         assert!(!looks_like_tool(Path::new("harmony.sh"), &["Harmony Recomp"]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spirv_harness_is_not_a_linux_game() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("spirv-harness");
+        let mut elf = vec![0u8; 20];
+        elf[..4].copy_from_slice(b"\x7fELF");
+        elf[18] = if crate::assets::arch_now() == "arm64" { 0xb7 } else { 0x3e };
+        let host = d.join("spirv_harness");
+        fs::write(&host, &elf).unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(find_game_exe(&d, "linux", &["EmblemWeave"]), None);
+        let game = d.join("Game");
+        fs::write(&game, &elf).unwrap();
+        fs::set_permissions(&game, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(find_game_exe(&d, "linux", &["EmblemWeave"]), Some(PathBuf::from("Game")));
+        assert!(looks_like_tool(Path::new("spirv_harness.exe"), &["EmblemWeave"]));
+        assert!(!looks_like_tool(Path::new("SpirvAdventure.exe"), &["Spirv Adventure"]));
     }
 
     #[test]

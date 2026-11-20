@@ -117,13 +117,14 @@ fn usable_file(os: &str, name: &str) -> bool {
     }
 }
 
-/// Files that are never the game: debug symbols, sources, checksums, signatures.
+/// Files that are never the game: debug symbols, sources, checksums, signatures and build tools.
 fn not_a_build(name: &str) -> bool {
     let w = words(name);
     let n = name.to_lowercase();
     n.ends_with(".sha256") || n.ends_with(".sig") || n.ends_with(".asc") || n.ends_with(".pdb")
         || w.iter().any(|x| matches!(x.as_str(), "symbols" | "pdb" | "debug" | "dbg" | "source" | "sources" | "src"))
         || dependency(&n, &w)
+        || w.windows(2).any(|pair| pair[0] == "shader" && pair[1] == "translator")
 }
 
 /// A compiler, SDK or library a release keeps for building the game (a "deps" mirror):
@@ -432,6 +433,26 @@ fn best_by<'a>(list: Vec<&'a Asset>, key: impl Fn(&Asset) -> i32) -> Option<&'a 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shader_translator_archives_are_not_game_builds() {
+        let files = [a("EmblemWeave-v0.1.38-shader-translator-linux-x64.tar.gz"), a("EmblemWeave-v0.1.38-windows-x64.zip")];
+        for pattern in [None, Some("EmblemWeave-*-shader-translator-linux-x64.tar.gz")] {
+            assert!(pick(&files, "linux", "x64", pattern).is_none());
+            assert!(choices(&files, "linux", "x64", pattern).is_empty());
+            assert!(all_for(&files, "linux", "x64", pattern).is_empty());
+        }
+        assert_eq!(pick(&files, "windows", "x64", None).unwrap().name, files[1].name);
+    }
+
+    #[test]
+    fn shader_translator_role_uses_words_not_game_name_fragments() {
+        assert!(not_a_build("Game-Shader_Translator-linux-x64.tar.gz"));
+        assert!(not_a_build("Game.shader.translator.linux.x64.zip"));
+        assert!(!not_a_build("ShaderQuest-linux-x64.tar.gz"));
+        assert!(!not_a_build("Translator-linux-x64.tar.gz"));
+        assert!(!not_a_build("Game-linux-x64.tar.gz"));
+    }
 
     #[test]
     fn a_list_pattern_finds_the_file_when_dots_and_dashes_trade_places() {
