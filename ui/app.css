@@ -2525,19 +2525,46 @@ body.light .ach-type.t-win{color:#9a6b00}body.light .ach-type.t-progression{colo
 .achp-mini small{color:var(--muted)}
 @media (max-width:1000px){.achp-hero,.achp-apply{grid-template-columns:minmax(0,1fr)}.achp-games{grid-template-columns:repeat(var(--cn,2),minmax(0,1fr))}.achp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* A newer RecompLauncher when it opens: a screen of its own. */
-.upd-start{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:24px;background:var(--noise),radial-gradient(ellipse at 50% 0%,rgba(52,242,232,.14),transparent 60%),var(--bg);animation:updIn .25s ease}
+/* The update window: over the dimmed app, never closed by a click outside. A banner with the
+   version it goes from and to, the notes as they're written in the middle (they scroll), and one
+   flat bar at the bottom whose Update Now becomes the download's progress. */
+.upd-start{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:24px;background:var(--noise),rgba(3,6,12,.78);backdrop-filter:blur(8px);animation:updIn .25s ease}
 @keyframes updIn{from{opacity:0}to{opacity:1}}
-.upd-start-box{width:min(700px,100%);max-height:100%;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px}
-.upd-start-mark{width:72px;height:72px;filter:drop-shadow(0 0 22px rgba(52,242,232,.35))}
-.upd-start h1{margin:4px 0 0;font:800 28px/1.15 Archivo,Figtree,sans-serif;font-stretch:112%}
-.upd-start p{margin:0}
-.upd-start-notes{width:100%;max-height:38vh;overflow:auto;text-align:left;padding:14px 18px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
-.upd-start .acts{width:100%;margin-top:4px}
-.upd-start .acts:not(.grid2){display:flex;justify-content:center}
-.upd-start .acts:not(.grid2) .btn{min-width:240px}
-.upd-start-small{font-size:13px}
-@media (prefers-reduced-motion:reduce){.upd-start{animation:none}}
+.upd-win{width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:var(--card);border:1px solid var(--line2);box-shadow:0 30px 80px -20px rgba(0,0,0,.85);animation:modalIn .3s var(--ease)}
+.uw-ban{position:relative;flex:none;min-height:150px;display:flex;align-items:flex-end;padding:22px 30px;overflow:hidden;background:radial-gradient(ellipse at 20% 0%,rgba(52,242,232,.3),transparent 60%),radial-gradient(ellipse at 90% 100%,rgba(55,123,182,.4),transparent 60%),var(--card2)}
+.uw-art{position:absolute;right:30px;top:50%;width:130px;transform:translateY(-50%) rotate(-8deg);filter:drop-shadow(0 0 40px rgba(52,242,232,.5));pointer-events:none}
+.uw-t{position:relative;display:flex;flex-direction:column;gap:10px;min-width:0;padding-right:150px}
+.uw-t h2{font-size:28px}
+.uw-jump{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-weight:700;font-size:13.5px}
+.uw-jump .from,.uw-jump .to{padding:4px 10px;border-radius:9px;border:1px solid var(--line2);background:var(--fill2);color:var(--muted)}
+.uw-jump .to{color:var(--cyan);background:rgba(52,242,232,.12);border-color:rgba(52,242,232,.45)}
+.uw-jump svg{color:var(--dim)}
+.uw-counts{color:var(--muted);font-weight:600;font-size:13px}
+.uw-body{flex:1;min-height:0;overflow:auto;padding:22px 30px 18px}
+.uw-lead{margin:0 0 14px;color:var(--warn);font-weight:600}
+.uw-bar{flex:none;display:flex;align-items:center;gap:14px;padding:18px 22px 18px 30px;border-top:1px solid var(--line);background:linear-gradient(90deg,rgba(52,242,232,.08),rgba(55,123,182,.05) 55%,transparent),var(--bg2)}
+.uw-bar .k{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.uw-bar .k b{font-size:15.5px}
+.uw-bar .k>span{color:var(--muted);font-size:13px}
+.uw-num{display:inline-block;font-variant-numeric:tabular-nums}
+.uw-auto{display:inline-flex;align-items:center;gap:10px;align-self:flex-start;margin-top:10px;font-size:13px;font-weight:600;color:var(--muted)}
+.uw-auto:hover,.uw-auto[aria-checked=true]{color:var(--ink)}
+.uw-auto .switch{width:34px;height:20px}.uw-auto .switch::after{width:14px;height:14px}
+.uw-auto[aria-checked=true] .switch{background:var(--cyan);box-shadow:none}
+.uw-auto[aria-checked=true] .switch::after{transform:translateX(14px);background:var(--bg)}
+.uw-bar .btn.link{height:auto;padding:6px 4px;background:none;border:0;color:var(--muted);font-weight:600}
+.uw-bar .btn.link:hover{color:var(--ink)}
+/* Update Now is the progress bar while it downloads: a deeper teal grows in it with a transform,
+   which animates smoothly between steps (a gradient's stop would jump), and the white label reads
+   on the filled and the empty part alike. */
+.uw-go{position:relative;overflow:hidden;flex:none;height:54px;min-width:220px;padding:0 28px;border-radius:15px;font-size:16px;font-variant-numeric:tabular-nums}
+.uw-go>*{position:relative;z-index:1}
+.uw-go::before{content:"";position:absolute;inset:0;background:#139a94;transform:scaleX(var(--f,0));transform-origin:left;transition:transform .2s linear;opacity:0}
+.upd-start.busy .uw-go{pointer-events:none;color:#fff;background:rgba(52,242,232,.14);border-color:rgba(52,242,232,.55);box-shadow:none}
+.upd-start.busy .uw-go::before{opacity:1}
+.upd-start.busy [data-x="later"],.upd-start.busy .uw-auto{visibility:hidden}
+@media (max-width:640px){.uw-t{padding-right:0}.uw-art{display:none}.uw-bar{flex-wrap:wrap}.uw-go{width:100%}}
+@media (prefers-reduced-motion:reduce){.upd-start,.upd-win{animation:none}.uw-go::before{transition:none}}
 
 /* Settings → Network: the custom proxy's address, user and password on one row. */
 .proxy-fields{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}

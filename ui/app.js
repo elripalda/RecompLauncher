@@ -470,7 +470,8 @@ async function checkLauncher(btn) {
   if (!v && offNow()) bad = true;
   await new Promise((r) => setTimeout(r, Math.max(0, 900 - (Date.now() - t0))));
   if (btn) btn.disabled = false;
-  if (v) { el.remove(); return updateToast(v); }
+  // Found one when asked: the update window on the desktop, so it can be installed right there.
+  if (v) { el.remove(); return document.body.classList.contains('tv-on') ? updateToast(v) : updateStart(v); }
   el.classList.add('found');
   el.classList.toggle('bad', bad);
   el.innerHTML = bad ? `<span>${esc(t('Couldn\'t check for updates right now.'))}</span>` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>${esc(t('You have the newest RecompLauncher.'))}</span>`;
@@ -6802,14 +6803,20 @@ function updateFailedModal(f) {
     try { await invoke('update_retry'); } catch (e) { fail(e); }
   }, t('The Update Didn\'t Install'));
 }
-async function selfUpdate() {
+// `win`: the update window it was started from, which shows the download in its own button;
+// without one, a toast says it started.
+async function selfUpdate(win) {
   if (S.selfUpdating) return;
   S.selfUpdating = true;
-  toast(t('Downloading the new RecompLauncher…'));
+  if (!win) toast(t('Downloading the new RecompLauncher…'));
   try {
     if (S.os === 'linux') await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
     else await invoke('update_launcher');
-  } catch (e) { if (!blocked('', e) && !cantReplace(e)) fail(e); lookForLauncher(); }
+  } catch (e) {
+    if (win) updWinReset(win);
+    if (!blocked('', e) && !cantReplace(e)) fail(e);
+    lookForLauncher();
+  }
   finally { S.selfUpdating = false; }
 }
 // The AppImage sits in a folder this account can't change, so it can't update itself in place.
@@ -7180,51 +7187,131 @@ async function lookForLauncher(atStart) {
   S.launcherUpd = v && v.version ? v : null;
   if (v && v.version && v.version !== LL.told) {
     LL.told = v.version;
-    // When the launcher opens: a screen of its own (unless it was opened for something else).
-    if (atStart && startUpdateDue(v)) setTimeout(() => { if (startUpdateDue(v)) updateStart(v); else updateToast(v); }, 1200);
+    // When the launcher opens: the update window (unless it was opened for something else). With
+    // Update RecompLauncher Automatically on, the window opens already downloading. Only here, at
+    // start: a version found later waits for the next start, so the launcher never restarts itself
+    // in the middle of something.
+    if (atStart && startUpdateDue(v)) setTimeout(() => { if (startUpdateDue(v)) updateStart(v, { auto: selfAuto() }); else updateToast(v); }, 1200);
     else updateToast(v);
   }
   renderSide();
 }
+const selfAuto = () => !S.flatpak && !!(S.settings.ui || {}).self_auto_update;
+const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>';
 
 // An update restart returns to the mode that was on screen.
 function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
 
-// The update screen at start: not during first-time setup, in Big Picture, with a game running
+// The update window at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
-// version the player put off with Later, unless that version is required.
+// version the player put off with Later, unless that version is required or updates go in by
+// themselves.
 function startUpdateDue(v) {
   if (!v || !v.version || !S.settings.setup_done) return false;
   if (document.body.classList.contains('tv-on') || startsInTV()) return false;
   if ((S.running && S.running.size) || $('.scrim') || $('.upd-start')) return false;
-  return !!v.required || (S.settings.ui || {}).upd_later !== v.version;
+  return !!v.required || selfAuto() || (S.settings.ui || {}).upd_later !== v.version;
 }
-function updateStart(v) {
+// The lines of release notes: each bullet's bold part, and whether its credit says Added, Improved
+// or Fixed. The update window counts them and the card after an update shows the first few; the
+// notes stay as they're written, nothing extra is needed for either.
+function noteItems(src) {
+  const out = [];
+  for (const line of String(src || '').split(/\r?\n/)) {
+    const m = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const bold = /^\*\*(.+?)\*\*/.exec(m[1]);
+    const verb = (/—\s*(Added|Improved|Fixed)\b/.exec(m[1]) || [])[1] || '';
+    out.push({ title: bold ? bold[1].trim().replace(/[.,:;]$/, '') : '', verb });
+  }
+  return out;
+}
+// A newer RecompLauncher: a window over the app with its notes, the version it goes from and to,
+// and one bar at the bottom with Update Now. Update Now stays where it is and fills up as the
+// download goes (self-update events, in more.js), so it's clear something started. Clicking
+// outside does nothing; Escape is Later. A required version has no Later. `auto`: it opens
+// already downloading (Update RecompLauncher Automatically).
+function updateStart(v, opts = {}) {
+  if ($('.upd-start')) return;
   const el = document.createElement('div');
   el.className = 'upd-start';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-labelledby', 'upd-start-h');
-  const notes = v.notes ? `<div class="md upd-start-notes">${md(v.notes, true)}</div>` : '';
-  const later = v.required ? '' : `<button type="button" class="btn" data-x="later">${esc(t('Later'))}</button>`;
-  el.innerHTML = `<div class="upd-start-box"><img class="upd-start-mark" src="img/mark.svg" alt=""><h1 id="upd-start-h">${esc(tf('RecompLauncher {version} is ready', { version: verName(v.version) }))}</h1>
-    <p class="muted">${esc(v.required ? tf('You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.', { version: verName(S.version) }) : tf('You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.', { version: verName(S.version) }))}</p>
-    ${notes}<div class="acts ${later ? 'grid2' : ''}">${later}<button type="button" class="btn main" data-x="now">${esc(t('Update Now'))}</button></div>
-    ${later ? `<p class="muted upd-start-small">${esc(t('Later keeps this version on the Downloads page until a newer one is out.'))}</p>` : ''}</div>`;
+  const items = noteItems(v.notes);
+  const fixes = items.filter((x) => x.verb === 'Fixed').length;
+  const counts = items.length ? [tn(items.length, '1 change', '{n} changes')].concat(fixes ? [tn(fixes, '1 fix', '{n} fixes')] : []).join(' · ') : '';
+  const jump = `<span class="uw-jump"><span class="from">${esc(verName(S.version))}</span>${ARROW_R}<span class="to">${esc(verName(v.version))}</span>${counts ? `<span class="uw-counts">${esc(counts)}</span>` : ''}</span>`;
+  const lead = v.required ? `<p class="uw-lead">${esc(tf('You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.', { version: verName(S.version) }))}</p>` : '';
+  const notes = v.notes ? `<div class="md">${md(v.notes, true)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
+  const sub = [fmtB(v.size), t('RecompLauncher opens again by itself')].filter(Boolean).join(' · ');
+  const auto = S.flatpak ? '' : `<button type="button" class="uw-auto" role="switch" data-x="auto" aria-checked="${selfAuto()}"><span class="switch"></span>${esc(t('Update automatically from now on'))}</button>`;
+  const later = v.required ? '' : `<button type="button" class="btn link" data-x="later">${esc(t('Later'))}</button>`;
+  el.innerHTML = `<div class="upd-win"><div class="uw-ban"><img class="uw-art" src="img/mark.svg" alt=""><div class="uw-t">${jump}<h2 id="upd-start-h">${esc(tf('RecompLauncher {version} is ready', { version: verName(v.version) }))}</h2></div></div>
+    <div class="uw-body">${lead}${notes}</div>
+    <div class="uw-bar"><div class="k"><b data-t>${esc(tf('Update to {version}', { version: verName(v.version) }))}</b><span data-s>${esc(sub)}</span>${auto}</div>
+      ${later}<button type="button" class="btn main uw-go" data-x="now">${DOWN}<span data-l>${esc(t('Update Now'))}</span></button></div></div>`;
   document.body.appendChild(el);
   const close = () => { el.remove(); document.removeEventListener('keydown', key, true); };
-  const key = (e) => { if (e.key === 'Escape' && !v.required) { e.preventDefault(); e.stopPropagation(); close(); saveUi({ upd_later: v.version }); } };
+  const putOff = () => { close(); saveUi({ upd_later: v.version }); };
+  const busy = () => el.classList.contains('busy');
+  const key = (e) => { if (e.key === 'Escape' && !v.required && !busy()) { e.preventDefault(); e.stopPropagation(); putOff(); } };
   document.addEventListener('keydown', key, true);
-  el.addEventListener('click', async (e) => {
+  const go = () => { updWinStart(el, v); selfUpdate(el); };
+  el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-x]');
-    if (!b) return;
-    if (b.dataset.x === 'later') { close(); saveUi({ upd_later: v.version }); return; }
-    // Update Now: the download's own window takes over; if it doesn't go, this screen goes too, so
-    // the launcher stays usable.
-    close();
-    selfUpdate();
+    if (!b || busy()) return;
+    if (b.dataset.x === 'later') return putOff();
+    if (b.dataset.x === 'now') return go();
+    if (b.dataset.x === 'auto') {
+      const on = !selfAuto();
+      b.setAttribute('aria-checked', String(on));
+      saveUi({ self_auto_update: on }, true);
+    }
   });
+  if (opts.auto) return go();
   setTimeout(() => { const b = $('[data-x="now"]', el); if (b) b.focus(); }, 50);
+}
+// Update Now pressed: the bar says it's downloading and the button becomes the progress bar.
+function updWinStart(el, v) {
+  el.classList.add('busy');
+  el.dataset.version = v.version;
+  const ttl = $('[data-t]', el), lbl = $('[data-l]', el);
+  if (ttl) ttl.textContent = tf('Downloading {version}', { version: verName(v.version) });
+  if (lbl) lbl.textContent = '0%';
+}
+// The download's progress (self-update events). The amount sits in a spot as wide as it is when
+// done, with digits of one width, so the words after it don't move while it counts.
+function updWinProgress(el, p) {
+  const btn = $('.uw-go', el), lbl = $('[data-l]', el), sub = $('[data-s]', el), ttl = $('[data-t]', el);
+  if (!btn || !lbl || !sub) return;
+  if (p.installing) {
+    btn.style.setProperty('--f', 1);
+    lbl.textContent = t('Installing…');
+    if (ttl) ttl.textContent = tf('Installing {version}', { version: verName(el.dataset.version) });
+    sub.textContent = t('Installing. RecompLauncher opens again in a moment.');
+    return;
+  }
+  const pct = p.total ? Math.floor((p.done / p.total) * 100) : 0;
+  btn.style.setProperty('--f', pct / 100);
+  lbl.textContent = `${pct}%`;
+  if (!p.total) return;
+  if (!el.dataset.amountW) {
+    sub.innerHTML = `<span class="uw-num">${esc(tf('{done} of {total}', { done: fmtB(p.total), total: fmtB(p.total) }))}</span>`;
+    el.dataset.amountW = String(Math.ceil(sub.firstChild.getBoundingClientRect().width));
+  }
+  const amount = tf('{done} of {total}', { done: fmtB(p.done), total: fmtB(p.total) });
+  sub.innerHTML = `<span class="uw-num" style="min-width:${el.dataset.amountW}px">${esc(amount)}</span> · ${esc(t('RecompLauncher opens again by itself'))}`;
+}
+// The download didn't go (the error says why): Update Now is a button again, and Later is back.
+function updWinReset(el) {
+  el.classList.remove('busy');
+  delete el.dataset.amountW;
+  const btn = $('.uw-go', el), lbl = $('[data-l]', el), ttl = $('[data-t]', el), sub = $('[data-s]', el);
+  if (btn) btn.style.removeProperty('--f');
+  if (lbl) lbl.textContent = t('Update Now');
+  if (ttl) ttl.textContent = tf('Update to {version}', { version: verName(el.dataset.version) });
+  if (sub) sub.textContent = t('RecompLauncher opens again by itself');
 }
 
 // A version too old to keep up (older than the list's "min"): a window, once each time the
@@ -7242,6 +7329,8 @@ function farBehind(cur, next) {
 function updateToast(v) {
   if (v && (v.required || farBehind(S.version, v.version)) && !requiredShown) {
     requiredShown = true;
+    // On the desktop it's the update window; Big Picture keeps its own small window.
+    if (!document.body.classList.contains('tv-on')) return updateStart(v);
     modal(`<h2>${esc(t('Time to Update'))}</h2><p>${esc(v.required ? tf('This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.', { version: verName(v.version) }) : tf('You\'re a few updates behind. {version} has fixes for crashes and setup problems people ran into on this one. It only takes a moment.', { version: verName(v.version) }))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Update now'))}</button></div>`, (x, close) => { close(); if (x.dataset.x === 'yes') selfUpdate(); }, t('Time to Update'));
   }
@@ -8660,7 +8749,8 @@ async function act(el, e) {
     case 'mods': if (S.view === 'game' && S.arg === id) return showTab('mods'); S.nextTab = 'mods'; return go('game', id);
     case 'looks': if (S.view === 'game' && S.arg === id) return showTab('looks'); S.nextTab = 'looks'; return go('game', id);
     case 'news-open': S.nextTab = 'updates'; return go('game', id);
-    case 'self-update': return selfUpdate();
+    // The sidebar's and Downloads' Update: on the desktop the update window, already downloading.
+    case 'self-update': return S.launcherUpd && !document.body.classList.contains('tv-on') ? updateStart(S.launcherUpd, { auto: true }) : selfUpdate();
     case 'pick-copy': return pickCopy(id, !!el.dataset.folder);
     case 'gset': return setGameSetting(id, el.dataset.k, el.dataset.i);
     case 'bindcap': return bindAsk(id, el.dataset.k, Number(el.dataset.a), Number(el.dataset.i));

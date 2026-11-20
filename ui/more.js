@@ -16,6 +16,9 @@ T.event.listen('push', ({ payload: p }) => {
 // The download, then the install (no window of its own); RecompLauncher opens again after.
 let updBox = null;
 T.event.listen('self-update', ({ payload: p }) => {
+  // The update window (app.js) shows the download in its own button.
+  const win = $('.upd-start.busy');
+  if (win) return p.failed ? updWinReset(win) : updWinProgress(win, p);
   if (p.failed) { if (updBox) updBox.remove(); updBox = null; return; }
   if (!updBox || !updBox.isConnected) {
     updBox = modal(`<div class="upd"><h2>${esc(t('Updating RecompLauncher'))}</h2><div class="prog"><div class="track"><i style="width:0%"></i></div></div><p class="muted" data-st>${esc(t('Downloading…'))}</p></div>`, () => {}, t('Updating RecompLauncher'));
