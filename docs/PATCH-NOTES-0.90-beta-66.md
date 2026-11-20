@@ -20,3 +20,6 @@ A big one. Game pages got a full cleanup, cloud saves and updates are easier to 
 - **Discover is now Catalog, the scan pill says Safe, and play time counts every PC on your account.** — Improved by @Xarishark ([#329](https://github.com/elripalda/RecompLauncher/pull/329), [#291](https://github.com/elripalda/RecompLauncher/pull/291), [#328](https://github.com/elripalda/RecompLauncher/pull/328)).
 
 Keep the logs coming from the crash window and Settings → Beta. Every one helps.
+
+### For the website (SDK guide)
+- `check.ids` now also takes an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`), and that is how the launcher finds the player's folder. The SDK guide should say to list every region's title ID next to `file: "eboot.bin"`, and that the developer check warns when a check by `eboot.bin` or `param.sfo` has no `ids`.
