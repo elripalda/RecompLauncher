@@ -5859,7 +5859,12 @@ function menuRows(items) {
   }).join('');
 }
 function menu(at, items) {
+  // The page's click handler has already closed the menu by the time its button's click gets here,
+  // so the button's aria-expanded is what says this click was meant to close it, not reopen it.
+  const opener = at instanceof Element ? at : null;
+  const wasOpen = !!opener && opener.getAttribute('aria-expanded') === 'true';
   closeMenu();
+  if (wasOpen) { opener.setAttribute('aria-expanded', 'false'); return; }
   const m = document.createElement('div');
   m.className = 'menu';
   m.setAttribute('role', 'menu');
@@ -5919,6 +5924,10 @@ function menu(at, items) {
     else { stack.pop(); const top = stack[stack.length - 1]; show(top ? top.list : items, top ? top.title : ''); }
   });
   document.body.append(m);
+  if (opener) {
+    opener.setAttribute('aria-expanded', 'true');
+    new MutationObserver((x, o) => { if (!m.isConnected) { o.disconnect(); opener.setAttribute('aria-expanded', 'false'); } }).observe(document.body, { childList: true });
+  }
   let x, y, right = false;
   if (at instanceof Element) { const r = at.getBoundingClientRect(); x = r.right; y = r.bottom + 6; right = true; m.style.transformOrigin = 'top right'; }
   else { x = at.x; y = at.y; m.style.transformOrigin = 'top left'; }
