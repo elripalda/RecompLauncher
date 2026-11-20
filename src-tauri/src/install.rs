@@ -1457,6 +1457,12 @@ pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
+    // A Mac app that is the game's folder itself: the program its Info.plist names, never a helper
+    // inside it, and nothing when that program is missing or not for this Mac.
+    if os == "macos" && crate::macos::is_bundle(dir) {
+        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now())?;
+        return exe.strip_prefix(dir).ok().map(Path::to_path_buf);
+    }
     // An AppImage unpacked at install: its AppRun starts it, as the AppImage did. One of a release's
     // several AppImages unpacked into a folder named after it, when it's the only one.
     if os == "linux" && dir.join("AppRun").is_file() {
@@ -2648,6 +2654,69 @@ mod mac_discovery_tests {
             bundle(&d, declared);
             assert!(find_game_exe(&d, "macos", &["My Game"]).is_none());
         }
+    }
+
+    #[test]
+    fn mac_app_as_the_games_folder_starts_its_declared_program() {
+        let app = bundle(&temp("app-root"), "Engine");
+        assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn mac_app_as_the_games_folder_with_a_bad_program_is_not_guessed_into() {
+        let app = bundle(&temp("app-root-invalid"), "Missing");
+        assert!(find_game_exe(&app, "macos", &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn mac_app_picked_as_the_folder_is_known_by_its_name() {
+        let app = bundle(&temp("import-app"), "Engine");
+        let entry = serde_json::json!({"name": "My Game"});
+        let (root, exe, fits) = crate::adopt::check_folder(&app, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(root, app, "the app itself, never its Contents folder");
+        assert_eq!(exe, Some(PathBuf::from("Contents/MacOS/Engine")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_folder_holding_only_the_app_stays_the_games_folder() {
+        let d = temp("import-folder");
+        bundle(&d, "Engine");
+        let entry = serde_json::json!({"name": "My Game"});
+        let (root, exe, fits) = crate::adopt::check_folder(&d, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(root, d);
+        assert_eq!(exe, Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_app_of_another_game_does_not_fit() {
+        let app = bundle(&temp("import-other"), "Engine");
+        let entry = serde_json::json!({"name": "Unrelated Title"});
+        let (_, _, fits) = crate::adopt::check_folder(&app, &entry, &["Unrelated Title".to_string()], "macos");
+        assert!(!fits);
+    }
+
+    #[test]
+    fn mac_app_named_in_the_profile_fits() {
+        let d = temp("import-profile-app");
+        bundle(&d, "Engine");
+        fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["My Game.app"]}}"#).unwrap();
+        let entry = serde_json::json!({"name": "Other Name"});
+        let (_, exe, fits) = crate::adopt::check_folder(&d, &entry, &["Other Name".to_string()], "macos");
+        assert_eq!(exe, Some(PathBuf::from("My Game.app")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_build_fits_when_the_profile_names_only_other_systems_programs() {
+        let d = temp("import-profile-windows");
+        bundle(&d, "Engine");
+        fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["MyGame.exe"]}}"#).unwrap();
+        let entry = serde_json::json!({"name": "My Game"});
+        let (_, exe, fits) = crate::adopt::check_folder(&d, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(exe, Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+        assert!(fits);
     }
 
     #[test]
