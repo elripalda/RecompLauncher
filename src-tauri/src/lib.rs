@@ -4108,7 +4108,10 @@ fn new_prepare_options(st: &App, id: &str) -> Vec<String> {
     let Some(p) = profile_of(st, id, &g) else { return vec![] };
     let Some(pr) = p.prepare.as_ref().filter(|pr| !pr.options.is_empty()) else { return vec![] };
     let has_copy = g.game_copy.as_ref().is_some_and(|c| c.exists()) || p.already_in_place(&g.path).is_some();
-    let set_up = has_copy || (!p.inputs.is_empty() && inputs::ready(&p, &g, &st.dir));
+    // A copy deleted after the build doesn't make it new to setting up: with prepare.keeps_copy the
+    // step builds again from what it kept, so an option an update added is asked about all the same.
+    let kept = setup_state::builds_from_kept(&p, &g);
+    let set_up = has_copy || kept || (!p.inputs.is_empty() && inputs::ready(&p, &g, &st.dir));
     if !set_up {
         return vec![];
     }
@@ -10674,6 +10677,35 @@ mod tests {
             looked: Mutex::new(HashSet::new()),
             headless: AtomicBool::new(false),
         }
+    }
+
+    // A player who deleted their copy after the build is still set up when the step kept what it
+    // needs (prepare.keeps_copy): an option an update added is asked about, as with the copy there.
+    #[test]
+    fn an_option_an_update_added_is_new_with_the_copy_gone_when_the_step_kept_it() {
+        let d = std::env::temp_dir().join(format!("rl-newopt-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let game = d.join("game");
+        std::fs::create_dir_all(game.join("Hookshot")).unwrap();
+        std::fs::write(game.join("Hookshot").join(".hookshot_exefs"), b"kept").unwrap();
+        let manifest = json!({
+            "format": 1,
+            "game": { "kind": "iso_or_folder", "label": "Your copy" },
+            "prepare": { "program": ["Hookshot.AppImage"], "args": ["--game={game}", "--out", "{install}/Hookshot"],
+                         "done": ["{install}/Hookshot/hookshot"], "keeps_copy": true,
+                         "options": [{ "id": "fsr", "label": "AMD FSR 4" }] },
+            "start": { "program": ["Hookshot.AppImage"], "args": ["--play", "{install}/Hookshot"] },
+            "folders": { "game": [{ "path": "{install}/Hookshot" }] }
+        });
+        std::fs::write(game.join("recomplauncher.json"), manifest.to_string()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("hookshot".into(), Installed { id: "hookshot".into(), path: game.clone(), ..Default::default() });
+        let app = app_in(&d, lib);
+        assert_eq!(new_prepare_options(&app, "hookshot"), vec!["fsr".to_string()]);
+        // Nothing kept and no copy: it isn't set up, so there's nothing new to ask yet.
+        std::fs::remove_dir_all(game.join("Hookshot")).unwrap();
+        assert!(new_prepare_options(&app, "hookshot").is_empty());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     // With one worker, the other task can only run while `block_here` waits if the worker is handed

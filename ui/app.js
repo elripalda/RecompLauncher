@@ -219,11 +219,17 @@ const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installer
 // built from the player's copy, or their own build, never reads as not set up.
 const setupStatus = (id) => { const su = S.setup[id]; return su && su !== 'loading' && su.status ? su.status : null; };
 // An Easy Setup game that isn't set up: its main button is Set up instead of Play.
-const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready; };
+const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready && !st.changed; };
+// Its update changed how it's built (prepare.version): it's set up, and needs a new build to finish
+// the update. Play stays Play, with a line under it, and opens the update window (update-build.js).
+// Not only the catalog's Easy Setup games (S.easy): one brought in by hand builds the same way, and
+// a game the player sets up their own way is never `changed`.
+const updateBuildDue = (id) => { const st = setupStatus(id); return !!st && !st.ready && !!st.changed; };
 // Built from the player's copy, which isn't where it was anymore: the core says the game plays
 // without it, so its copy rows say so (desktop and Big Picture) instead of asking for it.
-const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && st.ready && st.reason === 'built'); };
-const copyGoneText = (id) => tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
+// After an update, one built again from what its setup step kept doesn't need the copy either.
+const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && ((st.ready && st.reason === 'built') || (updateBuildDue(id) && st.detail === 'kept'))); };
+const copyGoneText = (id) => updateBuildDue(id) ? t('Your copy isn\'t needed: it\'s built again from what it kept last time.') : tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
@@ -1196,6 +1202,11 @@ const XS = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><
 // Only a game's own download can pause (and carry on later): not unpacking, setting up or a plugin.
 const canPause = (id) => { const j = S.jobs[id]; return !!j && !j.plug && (j.phase === 'download' || j.phase === 'queued'); };
 
+// Play on the game's page, with the line of an update still to build hung under it: it takes no
+// room, so the buttons stay where they are (updateBuildDue).
+const withBuildLine = (a, size, html) => (size === 'big' && updateBuildDue(a.id)
+  ? `<span class="play-wrap">${html}<span class="play-line">${esc(t('Needs a new build after the update'))}</span></span>` : html);
+
 // The main button for a game, whatever state it's in.
 function actions(a, size = 'big') {
   const st = status(a), id = esc(a.id), sq = size === 'big' ? 'btn sq glass' : 'btn sq sm';
@@ -1221,7 +1232,7 @@ function actions(a, size = 'big') {
     case 'busy': return progress(a.id) + (canPause(a.id) ? `<button type="button" class="${sq}" data-act="dl-pause" data-id="${id}" aria-label="${esc(t('Pause'))}" title="${esc(t('Pause'))}">${PAUSE}</button>` : '') + `<button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>`;
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
-    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${b('main', 'play', esc(t('Play')), PLAY)}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : b('main', 'play', esc(t('Play')), PLAY) + more;
+    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY))}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY)) + more;
     case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy.
@@ -1346,7 +1357,8 @@ function readyRows(a) {
   const cs = su && su.needs ? copyState(id, su) : null;
   // Set up without a copy to show: built from the copy (it plays without it), or their own build.
   const st = setupStatus(id);
-  const builtOnly = !!(cs && !cs.file && st && st.ready && (st.reason === 'built' || st.reason === 'own_build'));
+  // (or, after an update, built again from what its setup step kept)
+  const builtOnly = !!(cs && !cs.file && st && ((st.ready && (st.reason === 'built' || st.reason === 'own_build')) || copyNotNeeded(id)));
   if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: st.reason === 'own_build' ? t('Your own build') : copyGoneText(id), fix: '' });
   else if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
     d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
@@ -2875,6 +2887,7 @@ async function setupModal(id) {
     closeSetup(true);
     Object.assign(SU, {
       id,
+      upd: false,
       stage: 'run',
       step: activeJob.step || 'read',
       steps: { [activeJob.step || 'read']: Object.assign({}, activeJob) },
@@ -2911,7 +2924,7 @@ async function setupModal(id) {
   // Every game's files, whatever its profile asks for, are chosen in the same steps (setup-steps.js).
   // A note (a build that went missing) shows as the window's error line.
   const note = S.setupNote && S.setupNote.id === id ? S.setupNote.text : '';
-  Object.assign(SU, { id, stage: 'steps', named: { at: 0, error: note }, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: '' });
+  Object.assign(SU, { id, stage: 'steps', named: { at: 0, error: note }, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', note: '', upd: false });
   S.setupNote = null;
   const s = document.createElement('div');
   s.className = 'scrim';
@@ -2980,6 +2993,17 @@ async function ssAct(b) {
 async function closeSetup(quiet) {
   suDrive.stop();
   if (!SU.el) return;
+  // The update window's build hidden (Hide, the X, Escape): it goes on, and says when it's ready.
+  if (SU.upd && SU.stage === 'run' && SU.id && !quiet) {
+    const id = SU.id;
+    const a = byId(id) || { name: (S.library[id] || {}).name || id };
+    setupClosed(id);
+    SU.el.remove(); SU.el = null; SU.upd = false;
+    render(true);
+    if (S.view === 'game') refreshGame();
+    toast(tf('{name} keeps building in the background.', { name: a.name }));
+    return;
+  }
   if (SU.stage === 'run' && SU.id && !quiet) {
     const id = SU.id;
     const a = byId(id) || { name: (S.library[id] || {}).name || id };
@@ -3019,6 +3043,7 @@ async function closeSetup(quiet) {
   SU.el.remove();
   SU.el = null;
   setupClosed(closingId);
+  SU.upd = false;
   if (!quiet && closingStage !== 'steps' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
 async function suAct(b) {
@@ -3061,7 +3086,8 @@ function pickChoices(picks) {
 }
 // Options its project added since the game was set up: ones the player hasn't answered yet.
 function newPrepOpts(su) {
-  if (!su || su === 'loading' || !(su.copy || su.inputs_ready)) return [];
+  // (kept: its copy was deleted after the build, and it builds again from what it kept)
+  if (!su || su === 'loading' || !(su.copy || su.inputs_ready || su.kept)) return [];
   return (su.prepare_options || []).filter((o) => o.new && !o.seen);
 }
 // The player reached the Extras step of Setup Options, where the new options are: they've seen
@@ -3089,6 +3115,8 @@ async function askNewOpts(id) {
   if (su === undefined || su === 'loading') {
     try { su = S.setup[id] = await invoke('game_setup', { id }); } catch (e) { return false; }
   }
+  // A new build is due anyway: the update window asks about them with it.
+  if (updateBuildDue(id)) return false;
   const list = newPrepOpts(su);
   if (!list.length) return false;
   const name = (S.library[id] || {}).name || id;
@@ -3273,6 +3301,8 @@ function coverLabelPush(a) {
 }
 function suDraw() {
   if (!SU.el) return;
+  // The update window's run: drawn small (update-build.js).
+  if (SU.upd) return updDraw();
   if (SU.stage !== 'run') suDrive.stop();
   if (SU.stage === 'steps') return ssDraw();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
@@ -6557,6 +6587,8 @@ async function playGame(id, program) {
   // Another game of the same recomp is running: one at a time, since they share one install.
   if (subOf(id) && S.running.has(parentId(id)) && !S.running.has(id)) return toast(tf('{name} is running. Close it first to play another of its games.', { name: (S.library[parentId(id)] || {}).name || '' }), true);
   if (setupDue(byId(id) || { id })) return setupReqModal(id);
+  // Its update needs a new build first: the update window builds it, then starts the game.
+  if (updateBuildDue(id)) return updateBuildModal(id);
   // A second press while this one is still on its way (saving a look, the cloud check, ReShade)
   // does nothing.
   if (STARTING.has(id) || S.running.has(id)) return;
@@ -6585,6 +6617,11 @@ async function playGame2(id, program) {
       if (gone) S.setupNote = { id, text: tf('The game built from your copy isn\'t in {folder} anymore. Pick your copy and it\'s built again.', { folder: gone[1] }) };
       // Its developer changed how it's built (prepare.version) since it was set up: built again.
       const rebuild = /^NEED_REBUILD\|/.test(String(err && err.message ? err.message : err));
+      // An update did that: the update window, not Easy Setup (its status may not have been read yet).
+      if (rebuild) {
+        try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { /* Easy Setup below, as before */ }
+        if (updateBuildDue(id)) return updateBuildModal(id);
+      }
       if (rebuild) S.setupNote = { id, text: t('This game\'s setup changed since you built it. Pick your copy and it\'s built again.') };
       // Its setup step kept what it needs from the copy (prepare.keeps_copy): no copy to pick, and
       // Easy Setup's own heading says so.

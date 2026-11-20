@@ -573,7 +573,7 @@
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
         if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
-        return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', play: true, run: () => playGame(id) };
+        return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', play: true, run: () => playGame(id), sub: updateBuildDue(id) ? t('Needs a new build after the update') : '' };
       }
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
@@ -2126,6 +2126,7 @@
       if (TV.sheet) closeSheet();
       Object.assign(TS, {
         id,
+        upd: false,
         stage: 'run',
         step: activeJob.step || 'read',
         steps: { [activeJob.step || 'read']: Object.assign({}, activeJob) },
@@ -2145,10 +2146,42 @@
     if (!su || !su.needs) return toast(t('This game asks for your copy itself the first time it starts.'));
     if (TV.sheet) closeSheet();
     // The same steps as the desktop window (setup-steps.js), as items for the controller.
-    Object.assign(TS, { id, stage: 'steps', named: { at: 0 }, step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
+    Object.assign(TS, { id, stage: 'steps', named: { at: 0 }, step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '', upd: false });
     tsDraw();
     sfx('open');
   }
+  // An update that needs a new build (update-build.js on the desktop): the options it added and
+  // Build Now asked first, then the build on this screen, and the game starts when it's done.
+  async function tvUpdateBuild(id) {
+    if (S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)])) return tvSetup(id);
+    if (TS.id && TS.stage === 'run' && TS.id !== id) return toast(t('Finish the setup that\'s running first.'));
+    let su = S.setup[id];
+    if (su === undefined || su === 'loading') { try { su = S.setup[id] = await invoke('game_setup', { id }); } catch (e) { return fail(e); } }
+    const a = byId(id) || { name: (S.library[id] || {}).name || id };
+    const answers = {};
+    for (const o of newPrepOpts(su)) {
+      const sub = o.license && o.license.name ? tf('Accepts the {license}', { license: o.license.name }) : '';
+      // The option's name is in the title: Big Picture shows the title and the buttons only.
+      const v = await ask(tf('New in {name}: {option}', { name: a.name, option: o.label }), o.note ? `<p>${esc(o.note)}</p>` : '',
+        [{ label: t('Not now'), v: 'off', focus: true }, { label: t('Turn on'), sub, icon: 'check', v: 'on', main: true }]);
+      if (v === null) return;
+      answers[o.id] = v === 'on';
+    }
+    const go = await ask(t('Finish the Update'), `<p>${esc(updLead(a, su, S.library[id] || {}))}</p><p>${esc(t('Your saves and settings stay as they are.'))}</p>`,
+      [{ label: t('Build Now'), sub: t('The game starts when it\'s done.'), icon: 'check', v: 'build', main: true, focus: true }, { label: t('Not now'), v: null }]);
+    if (go !== 'build') return;
+    if (Object.keys(answers).length) {
+      TS.optsSaving = invoke('set_prepare_opts', { id, opts: answers }).catch(fail);
+      for (const o of su.prepare_options || []) if (o.id in answers) { o.on = answers[o.id]; o.new = false; }
+    }
+    if (prepBlocked(su)) return toast(prepReq());
+    if (TS.id !== id) setupOpened(id);
+    if (TV.sheet) closeSheet();
+    Object.assign(TS, { id, upd: true, stage: 'run', named: { at: 0 }, step: '', steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '', uerr: '' });
+    sfx('open');
+    tsBegin(su.kept ? '' : (su.copy || ''), true);
+  }
+  window.tvUpdateBuild = tvUpdateBuild;
   function tsDraw() {
     const st = stage();
     if (!st || !TS.id) return;
@@ -2208,6 +2241,11 @@
       };
       body = `${med('is-done')}<div class="tt"><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')}</p>${TS.uerr ? `<p class="err">${esc(t(TS.uerr))}</p>` : ''}</div>
         <div class="opts">${su.update_file ? it(t('Choose the Update File'), t('The file, as it came'), () => pickU(false), 'main') : ''}${su.update_folder ? it(t('Choose the Update Folder'), t('A folder with its files'), () => pickU(true), su.update_file ? '' : 'main') : ''}${su.update_optional ? it(t('Skip for Now'), '', () => { TS.stage = 'ready'; setTimeout(tsDraw, 0); }) : ''}</div>`;
+    } else if (TS.stage === 'ready' && TS.upd) {
+      // The update's build is done: the game starts, as Play asked.
+      closeSheet();
+      setTimeout(() => playGame(id), 0);
+      return;
     } else if (TS.stage === 'ready') {
       const r = TS.result || {};
       items = [{ run: () => playGame(id) }, { run: () => { if (TV.view === 'gsettings' && TV.arg === id) draw(true); else go('gsettings', id); } }];
@@ -2276,6 +2314,7 @@
         if (TS.stage === 'ready') { delete S.setup[id]; loadSetup(id); }
         setupClosed(id);
         TS.id = null;
+        TS.upd = false;
       }
     };
     // The same control again after a redraw; on a new step, its main button (Next or Set Up).
