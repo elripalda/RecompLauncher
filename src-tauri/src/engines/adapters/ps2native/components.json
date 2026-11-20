@@ -1,0 +1,69 @@
+{
+  "format": 1,
+  "upstream_revision": "9b0eef16ecd5df327eb23eb5adaf844251c2f29f",
+  "artifacts": {
+    "source": {
+      "name": "ps2-native-recomp-9b0eef16ecd5df327eb23eb5adaf844251c2f29f.tar.gz",
+      "url": "https://codeload.github.com/exoteric33/ps2-native-recomp/tar.gz/9b0eef16ecd5df327eb23eb5adaf844251c2f29f",
+      "digest": "c712f8e9d610dbfda53f7076219814c2e70770d11226c1ff0951103a01991194",
+      "size": 1458206,
+      "root": "ps2-native-recomp-9b0eef16ecd5df327eb23eb5adaf844251c2f29f"
+    },
+    "python": {
+      "name": "cpython-3.14.10+20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.14.10%2B20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "digest": "f15ec3d15460dd66c2eb88639b152cd9040e7d1ece11e38bf89e8f53f0171e02",
+      "size": 26970375,
+      "root": "python"
+    },
+    "cmake": {
+      "name": "cmake-4.4.4-macos-universal.tar.gz",
+      "url": "https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-macos-universal.tar.gz",
+      "digest": "4b7b73704b1db9b374e5c9ab8e17ac6148b817b6396ee75cd94a852cbac9d305",
+      "size": 89454352,
+      "root": "cmake-4.4.4-macos-universal"
+    },
+    "ninja": {
+      "name": "ninja-mac.zip",
+      "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip",
+      "digest": "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b",
+      "size": 314051,
+      "root": ""
+    },
+    "bash": {
+      "name": "bash-5.3.tar.gz",
+      "url": "https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz",
+      "digest": "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba",
+      "size": 11355854,
+      "root": "bash-5.3"
+    },
+    "sdl": {
+      "name": "SDL2-2.32.10.tar.gz",
+      "url": "https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz",
+      "digest": "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165",
+      "size": 7630262,
+      "root": "SDL2-2.32.10"
+    },
+    "wgpu": {
+      "name": "wgpu-macos-aarch64-release.zip",
+      "url": "https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-macos-aarch64-release.zip",
+      "digest": "a5797a37b1adf720bcd5dcffb291edbbd5b7b14be0a3874c28e6393a655a7a3e",
+      "size": 13733288,
+      "root": ""
+    }
+  },
+  "licenses": {
+    "wgpu-LICENSE-APACHE.txt": {
+      "name": "wgpu-LICENSE-APACHE.txt",
+      "url": "https://raw.githubusercontent.com/gfx-rs/wgpu-native/6aed50955d934ac36049ba8d002034841633ae02/LICENSE.APACHE",
+      "digest": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "size": 10173
+    },
+    "wgpu-LICENSE-MIT.txt": {
+      "name": "wgpu-LICENSE-MIT.txt",
+      "url": "https://raw.githubusercontent.com/gfx-rs/wgpu-native/6aed50955d934ac36049ba8d002034841633ae02/LICENSE.MIT",
+      "digest": "c7fea58d1cfe49634cd92e54fc10a9d871f4b275321a4cd8c09e449122caaeb4",
+      "size": 1078
+    }
+  }
+}
