@@ -470,7 +470,8 @@ async function checkLauncher(btn) {
   if (!v && offNow()) bad = true;
   await new Promise((r) => setTimeout(r, Math.max(0, 900 - (Date.now() - t0))));
   if (btn) btn.disabled = false;
-  if (v) { el.remove(); return updateToast(v); }
+  // Found one when asked: the update window on the desktop, so it can be installed right there.
+  if (v) { el.remove(); return document.body.classList.contains('tv-on') ? updateToast(v) : updateStart(v); }
   el.classList.add('found');
   el.classList.toggle('bad', bad);
   el.innerHTML = bad ? `<span>${esc(t('Couldn\'t check for updates right now.'))}</span>` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>${esc(t('You have the newest RecompLauncher.'))}</span>`;
@@ -4313,6 +4314,44 @@ function fillUpd(el) {
 }
 // The drawer arrow shared by Downloads > History and a game's Updates tab.
 const CHEV_D = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// Settings → Changelog: the launcher's own releases from its GitHub, as the same drawers as a
+// game's Updates tab. Ten at first, Show More adds ten older ones at a time (GitHub gives the
+// newest 30).
+const SELF_REPO = 'elripalda/RecompLauncher';
+const CHANGELOG_STEP = 10;
+function changelogPage() {
+  const r = S.rels[SELF_REPO];
+  if (!r) loadRels(SELF_REPO);
+  const list = r && !r.loading ? r.list.filter((x) => !x.draft) : [];
+  const shown = list.slice(0, S.clShown || CHANGELOG_STEP);
+  let inner = '';
+  if (!r || r.loading) inner = `<p class="muted cl-msg">${esc(t('Loading the notes…'))}</p>`;
+  else if (r.error) inner = `<p class="muted cl-msg">${esc(t(r.error))}</p>`;
+  else if (!list.length) inner = `<p class="muted cl-msg">${esc(t('No notes for this one.'))}</p>`;
+  else inner = shown.map((x, n) => selfRelDrawer(x, n)).join('');
+  const more = list.length > shown.length ? `<div class="cl-more"><button type="button" class="btn sm" data-act="cl-more">${esc(t('Show more'))}</button></div>` : '';
+  const check = `<button type="button" class="btn sm" data-act="about-update">${esc(t('Check for Updates'))}</button>`;
+  return `<section class="set-group"><div class="set-gh"><h3>${esc(t('Changelog'))}</h3>${check}</div>
+    <p class="set-note cl-note">${esc(t('Every version of RecompLauncher and what changed in it.'))}</p>
+    <div class="card rels">${inner}</div>${more}</section>`;
+}
+// One launcher version as a drawer. The newest says Latest version and starts open; the one this
+// PC runs says Installed. What the player opens or closes stays that way (S.relOpen, as in a game's
+// Updates tab, with toggleRel).
+function selfRelDrawer(x, n) {
+  S.relOpen = S.relOpen || {};
+  const key = `self@${x.tag_name}`;
+  const open = key in S.relOpen ? S.relOpen[key] : n === 0;
+  const latest = n === 0 ? `<span class="ai-tag latest">${esc(t('Latest version'))}</span>` : '';
+  const mine = relKey(x.tag_name) === relKey(S.version) ? `<span class="ai-tag inst">${esc(t('Installed'))}</span>` : '';
+  const tags = latest || mine ? `<span class="rel-tags">${latest}${mine}</span>` : '';
+  const title = x.name || `RecompLauncher ${verName(x.tag_name)}`;
+  const notes = x.body ? md(x.body, true, { foldTables: true }) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
+  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}"><span class="rel-name">${tags}<span class="rel-line"><h3 title="${esc(title)}">${esc(title)}</h3></span></span><span class="when">${esc(date(x.published_at))}</span></button>`;
+  const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
+  return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}${chev}</div>
+    <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;
+}
 function updatesTab(log) {
   S.updLog = log;
   S.updOpen = S.updOpen || new Set();
@@ -4397,6 +4436,7 @@ const SET_ICONS = {
   pc: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   dev: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>',
   about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  changelog: '<path d="M6 3h8.5L19 7.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8.5 12.5h7M8.5 16.5h7"/>',
   plugins: '<path d="M10 4.5a2 2 0 0 1 4 0V6h4a1 1 0 0 1 1 1v4h-1.5a2 2 0 0 0 0 4H19v4a1 1 0 0 1-1 1h-4v-1.5a2 2 0 0 0-4 0V20H6a1 1 0 0 1-1-1v-4h1.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h4z"/>',
   beta: '<path d="M9.5 3h5M10 3v6.2L4.8 18.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9.2V3"/><path d="M7.2 14h9.6"/>',
 };
@@ -4410,6 +4450,18 @@ function networkGroup(group, row, st) {
   const fields = custom ? `<div class="set-row proxy-row"><div class="k"><b>${esc(t('Proxy Address'))}</b><span>${esc(t('http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.'))}</span></div>
     <span class="acts proxy-fields"><input class="field sm" id="proxy-url" type="text" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:7890" value="${esc(st.proxy_url || '')}" aria-label="${esc(t('Proxy Address'))}"><input class="field sm" id="proxy-user" type="text" autocomplete="off" spellcheck="false" placeholder="${esc(t('User'))}" value="${esc(st.proxy_user || '')}" aria-label="${esc(t('User'))}"><input class="field sm" id="proxy-pass" type="password" autocomplete="off" placeholder="${esc(st.proxy_pass ? '••••••' : t('Password'))}" aria-label="${esc(t('Password'))}"><button type="button" class="btn sm main" data-act="proxy-save">${esc(t('Save'))}</button></span></div>` : '';
   return group(t('Network'), row(t('Proxy'), t('Where the launcher\'s requests go: the list, GitHub, downloads and the website. Use one if GitHub can\'t be reached from your network.'), pick) + fields);
+}
+// Settings → Updates and Downloads starts with the launcher's own updates, apart from the games':
+// the version you're on (or the one that's ready), and its two switches. A Flatpak is updated by
+// Flatpak, so it has no switch to update itself.
+function selfUpdatesGroup(group, row, sw, ui) {
+  const ready = S.launcherUpd && S.launcherUpd.version;
+  const check = ready
+    ? row(tf('RecompLauncher {version} is ready', { version: verName(S.launcherUpd.version) }), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm main" data-act="self-upd-open">${esc(t('Update Now'))}</button>`)
+    : row(t('Check for Updates'), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm main" data-act="about-update">${esc(t('Check now'))}</button>`);
+  const auto = S.flatpak ? '' : row(t('Update RecompLauncher Automatically'), t('A new version installs when the launcher opens, without asking first. Off: the launcher asks you with its update window.'), sw('self_auto_update', ui.self_auto_update, t('Update RecompLauncher Automatically'), 'ui-toggle'));
+  const news = row(t('Show What\'s New After an Update'), t('A small card the first time a new version opens. Off: the notes stay in Settings → Changelog.'), sw('whats_new_off', !ui.whats_new_off, t('Show What\'s New After an Update'), 'ui-toggle'));
+  return group(t('RecompLauncher Updates'), check + auto + news);
 }
 // The shared NVIDIA DLSS file, when the launcher keeps one: removing it affects every game that uses it.
 function dlssGroup(group, row) {
@@ -4428,7 +4480,7 @@ async function saveProxy(mode) {
     if (S.view === 'settings') setSection('updates', false);
   } catch (e) { fail(e); }
 }
-const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
+const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['changelog', N_('Changelog')], ['about', N_('About')]];
 // Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
 // shows the progress, and Windows may ask for permission).
 let vcBusy = false;
@@ -4544,7 +4596,8 @@ function pageSettings() {
       body = window.migratePage ? window.migratePage(group) : '';
       break;
     case 'updates':
-      body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
+      body = selfUpdatesGroup(group, row, sw, ui)
+        + group(t('Game Updates'), row(t('Check for Game Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
@@ -4610,6 +4663,9 @@ function pageSettings() {
         ${pc.proton != null ? `<div class="set-row"><div class="k"><b>Proton${pc.proton ? ' · ' + esc(pc.proton) : ''}</b><span>${esc(t('Plays recomps that only have a Windows version. Steam\'s Proton, GE-Proton, umu-launcher or Wine.'))}</span></div>${ok(!!pc.proton)}</div>` : ''}
         ${pc.proton ? `<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn sm" data-act="wine-tools">${esc(t('Open'))}</button></div>` : ''}
         ${S.os === 'macos' ? '' : `<div class="set-row"><div class="k"><b>AVX2</b><span>${esc(t('Some Xbox 360 recomps need a processor from 2013 or later.'))}</span></div>${ok(pc.avx2)}</div>`}`) : group(t('Your PC'), `<p class="set-empty">${esc(t('Loading…'))}</p>`);
+      break;
+    case 'changelog':
+      body = changelogPage();
       break;
     case 'dev': {
       const locals = Object.values(S.library).filter((g) => g.local && g.tag !== 'own');
@@ -5307,6 +5363,7 @@ async function loadRels(repo, force) {
   }
   if (S.view === 'game') refreshGame();
   else if (S.view === 'downloads') for (const el of $$('.upd.open')) fillUpd(el);
+  else if (S.view === 'settings' && S.setTab === 'changelog' && repo === SELF_REPO) setSection('changelog', false);
   else if (statusChanged && ['home', 'discover', 'library'].includes(S.view)) render(true);
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
 }
@@ -6935,14 +6992,20 @@ function updateFailedModal(f) {
     try { await invoke('update_retry'); } catch (e) { fail(e); }
   }, t('The Update Didn\'t Install'));
 }
-async function selfUpdate() {
+// `win`: the update window it was started from, which shows the download in its own button;
+// without one, a toast says it started.
+async function selfUpdate(win) {
   if (S.selfUpdating) return;
   S.selfUpdating = true;
-  toast(t('Downloading the new RecompLauncher…'));
+  if (!win) toast(t('Downloading the new RecompLauncher…'));
   try {
     if (S.os === 'linux') await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
     else await invoke('update_launcher');
-  } catch (e) { if (!blocked('', e) && !cantReplace(e)) fail(e); lookForLauncher(); }
+  } catch (e) {
+    if (win) updWinReset(win);
+    if (!blocked('', e) && !cantReplace(e)) fail(e);
+    lookForLauncher();
+  }
   finally { S.selfUpdating = false; }
 }
 // The AppImage sits in a folder this account can't change, so it can't update itself in place.
@@ -7313,51 +7376,131 @@ async function lookForLauncher(atStart) {
   S.launcherUpd = v && v.version ? v : null;
   if (v && v.version && v.version !== LL.told) {
     LL.told = v.version;
-    // When the launcher opens: a screen of its own (unless it was opened for something else).
-    if (atStart && startUpdateDue(v)) setTimeout(() => { if (startUpdateDue(v)) updateStart(v); else updateToast(v); }, 1200);
+    // When the launcher opens: the update window (unless it was opened for something else). With
+    // Update RecompLauncher Automatically on, the window opens already downloading. Only here, at
+    // start: a version found later waits for the next start, so the launcher never restarts itself
+    // in the middle of something.
+    if (atStart && startUpdateDue(v)) setTimeout(() => { if (startUpdateDue(v)) updateStart(v, { auto: selfAuto() }); else updateToast(v); }, 1200);
     else updateToast(v);
   }
   renderSide();
 }
+const selfAuto = () => !S.flatpak && !!(S.settings.ui || {}).self_auto_update;
+const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>';
 
 // An update restart returns to the mode that was on screen.
 function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
 
-// The update screen at start: not during first-time setup, in Big Picture, with a game running
+// The update window at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
-// version the player put off with Later, unless that version is required.
+// version the player put off with Later, unless that version is required or updates go in by
+// themselves.
 function startUpdateDue(v) {
   if (!v || !v.version || !S.settings.setup_done) return false;
   if (document.body.classList.contains('tv-on') || startsInTV()) return false;
   if ((S.running && S.running.size) || $('.scrim') || $('.upd-start')) return false;
-  return !!v.required || (S.settings.ui || {}).upd_later !== v.version;
+  return !!v.required || selfAuto() || (S.settings.ui || {}).upd_later !== v.version;
 }
-function updateStart(v) {
+// The lines of release notes: each bullet's bold part, and whether its credit says Added, Improved
+// or Fixed. The update window counts them and the card after an update shows the first few; the
+// notes stay as they're written, nothing extra is needed for either.
+function noteItems(src) {
+  const out = [];
+  for (const line of String(src || '').split(/\r?\n/)) {
+    const m = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const bold = /^\*\*(.+?)\*\*/.exec(m[1]);
+    const verb = (/—\s*(Added|Improved|Fixed)\b/.exec(m[1]) || [])[1] || '';
+    out.push({ title: bold ? bold[1].trim().replace(/[.,:;]$/, '') : '', verb });
+  }
+  return out;
+}
+// A newer RecompLauncher: a window over the app with its notes, the version it goes from and to,
+// and one bar at the bottom with Update Now. Update Now stays where it is and fills up as the
+// download goes (self-update events, in more.js), so it's clear something started. Clicking
+// outside does nothing; Escape is Later. A required version has no Later. `auto`: it opens
+// already downloading (Update RecompLauncher Automatically).
+function updateStart(v, opts = {}) {
+  if ($('.upd-start')) return;
   const el = document.createElement('div');
   el.className = 'upd-start';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-labelledby', 'upd-start-h');
-  const notes = v.notes ? `<div class="md upd-start-notes">${md(v.notes, true)}</div>` : '';
-  const later = v.required ? '' : `<button type="button" class="btn" data-x="later">${esc(t('Later'))}</button>`;
-  el.innerHTML = `<div class="upd-start-box"><img class="upd-start-mark" src="img/mark.svg" alt=""><h1 id="upd-start-h">${esc(tf('RecompLauncher {version} is ready', { version: verName(v.version) }))}</h1>
-    <p class="muted">${esc(v.required ? tf('You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.', { version: verName(S.version) }) : tf('You have {version}. Updating takes a moment, and RecompLauncher opens again by itself.', { version: verName(S.version) }))}</p>
-    ${notes}<div class="acts ${later ? 'grid2' : ''}">${later}<button type="button" class="btn main" data-x="now">${esc(t('Update Now'))}</button></div>
-    ${later ? `<p class="muted upd-start-small">${esc(t('Later keeps this version on the Downloads page until a newer one is out.'))}</p>` : ''}</div>`;
+  const items = noteItems(v.notes);
+  const fixes = items.filter((x) => x.verb === 'Fixed').length;
+  const counts = items.length ? [tn(items.length, '1 change', '{n} changes')].concat(fixes ? [tn(fixes, '1 fix', '{n} fixes')] : []).join(' · ') : '';
+  const jump = `<span class="uw-jump"><span class="from">${esc(verName(S.version))}</span>${ARROW_R}<span class="to">${esc(verName(v.version))}</span>${counts ? `<span class="uw-counts">${esc(counts)}</span>` : ''}</span>`;
+  const lead = v.required ? `<p class="uw-lead">${esc(tf('You have {version}, which is too old to keep up with the recomps. Update to keep playing. It only takes a moment.', { version: verName(S.version) }))}</p>` : '';
+  const notes = v.notes ? `<div class="md">${md(v.notes, true)}</div>` : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
+  const sub = [fmtB(v.size), t('RecompLauncher opens again by itself')].filter(Boolean).join(' · ');
+  const auto = S.flatpak ? '' : `<button type="button" class="uw-auto" role="switch" data-x="auto" aria-checked="${selfAuto()}"><span class="switch"></span>${esc(t('Update automatically from now on'))}</button>`;
+  const later = v.required ? '' : `<button type="button" class="btn link" data-x="later">${esc(t('Later'))}</button>`;
+  el.innerHTML = `<div class="upd-win"><div class="uw-ban"><img class="uw-art" src="img/mark.svg" alt=""><div class="uw-t">${jump}<h2 id="upd-start-h">${esc(tf('RecompLauncher {version} is ready', { version: verName(v.version) }))}</h2></div></div>
+    <div class="uw-body">${lead}${notes}</div>
+    <div class="uw-bar"><div class="k"><b data-t>${esc(tf('Update to {version}', { version: verName(v.version) }))}</b><span data-s>${esc(sub)}</span>${auto}</div>
+      ${later}<button type="button" class="btn main uw-go" data-x="now">${DOWN}<span data-l>${esc(t('Update Now'))}</span></button></div></div>`;
   document.body.appendChild(el);
   const close = () => { el.remove(); document.removeEventListener('keydown', key, true); };
-  const key = (e) => { if (e.key === 'Escape' && !v.required) { e.preventDefault(); e.stopPropagation(); close(); saveUi({ upd_later: v.version }); } };
+  const putOff = () => { close(); saveUi({ upd_later: v.version }); };
+  const busy = () => el.classList.contains('busy');
+  const key = (e) => { if (e.key === 'Escape' && !v.required && !busy()) { e.preventDefault(); e.stopPropagation(); putOff(); } };
   document.addEventListener('keydown', key, true);
-  el.addEventListener('click', async (e) => {
+  const go = () => { updWinStart(el, v); selfUpdate(el); };
+  el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-x]');
-    if (!b) return;
-    if (b.dataset.x === 'later') { close(); saveUi({ upd_later: v.version }); return; }
-    // Update Now: the download's own window takes over; if it doesn't go, this screen goes too, so
-    // the launcher stays usable.
-    close();
-    selfUpdate();
+    if (!b || busy()) return;
+    if (b.dataset.x === 'later') return putOff();
+    if (b.dataset.x === 'now') return go();
+    if (b.dataset.x === 'auto') {
+      const on = !selfAuto();
+      b.setAttribute('aria-checked', String(on));
+      saveUi({ self_auto_update: on }, true);
+    }
   });
+  if (opts.auto) return go();
   setTimeout(() => { const b = $('[data-x="now"]', el); if (b) b.focus(); }, 50);
+}
+// Update Now pressed: the bar says it's downloading and the button becomes the progress bar.
+function updWinStart(el, v) {
+  el.classList.add('busy');
+  el.dataset.version = v.version;
+  const ttl = $('[data-t]', el), lbl = $('[data-l]', el);
+  if (ttl) ttl.textContent = tf('Downloading {version}', { version: verName(v.version) });
+  if (lbl) lbl.textContent = '0%';
+}
+// The download's progress (self-update events). The amount sits in a spot as wide as it is when
+// done, with digits of one width, so the words after it don't move while it counts.
+function updWinProgress(el, p) {
+  const btn = $('.uw-go', el), lbl = $('[data-l]', el), sub = $('[data-s]', el), ttl = $('[data-t]', el);
+  if (!btn || !lbl || !sub) return;
+  if (p.installing) {
+    btn.style.setProperty('--f', 1);
+    lbl.textContent = t('Installing…');
+    if (ttl) ttl.textContent = tf('Installing {version}', { version: verName(el.dataset.version) });
+    sub.textContent = t('Installing. RecompLauncher opens again in a moment.');
+    return;
+  }
+  const pct = p.total ? Math.floor((p.done / p.total) * 100) : 0;
+  btn.style.setProperty('--f', pct / 100);
+  lbl.textContent = `${pct}%`;
+  if (!p.total) return;
+  if (!el.dataset.amountW) {
+    sub.innerHTML = `<span class="uw-num">${esc(tf('{done} of {total}', { done: fmtB(p.total), total: fmtB(p.total) }))}</span>`;
+    el.dataset.amountW = String(Math.ceil(sub.firstChild.getBoundingClientRect().width));
+  }
+  const amount = tf('{done} of {total}', { done: fmtB(p.done), total: fmtB(p.total) });
+  sub.innerHTML = `<span class="uw-num" style="min-width:${el.dataset.amountW}px">${esc(amount)}</span> · ${esc(t('RecompLauncher opens again by itself'))}`;
+}
+// The download didn't go (the error says why): Update Now is a button again, and Later is back.
+function updWinReset(el) {
+  el.classList.remove('busy');
+  delete el.dataset.amountW;
+  const btn = $('.uw-go', el), lbl = $('[data-l]', el), ttl = $('[data-t]', el), sub = $('[data-s]', el);
+  if (btn) btn.style.removeProperty('--f');
+  if (lbl) lbl.textContent = t('Update Now');
+  if (ttl) ttl.textContent = tf('Update to {version}', { version: verName(el.dataset.version) });
+  if (sub) sub.textContent = t('RecompLauncher opens again by itself');
 }
 
 // A version too old to keep up (older than the list's "min"): a window, once each time the
@@ -7375,6 +7518,8 @@ function farBehind(cur, next) {
 function updateToast(v) {
   if (v && (v.required || farBehind(S.version, v.version)) && !requiredShown) {
     requiredShown = true;
+    // On the desktop it's the update window; Big Picture keeps its own small window.
+    if (!document.body.classList.contains('tv-on')) return updateStart(v);
     modal(`<h2>${esc(t('Time to Update'))}</h2><p>${esc(v.required ? tf('This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.', { version: verName(v.version) }) : tf('You\'re a few updates behind. {version} has fixes for crashes and setup problems people ran into on this one. It only takes a moment.', { version: verName(v.version) }))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Update now'))}</button></div>`, (x, close) => { close(); if (x.dataset.x === 'yes') selfUpdate(); }, t('Time to Update'));
   }
@@ -8793,7 +8938,11 @@ async function act(el, e) {
     case 'mods': if (S.view === 'game' && S.arg === id) return showTab('mods'); S.nextTab = 'mods'; return go('game', id);
     case 'looks': if (S.view === 'game' && S.arg === id) return showTab('looks'); S.nextTab = 'looks'; return go('game', id);
     case 'news-open': S.nextTab = 'updates'; return go('game', id);
-    case 'self-update': return selfUpdate();
+    // The sidebar's and Downloads' Update: on the desktop the update window, already downloading.
+    case 'self-update': return S.launcherUpd && !document.body.classList.contains('tv-on') ? updateStart(S.launcherUpd, { auto: true }) : selfUpdate();
+    case 'self-upd-open': return S.launcherUpd ? updateStart(S.launcherUpd) : checkLauncher(el);
+    case 'about-update': return checkLauncher(el);
+    case 'cl-more': S.clShown = (S.clShown || CHANGELOG_STEP) + CHANGELOG_STEP; return setSection('changelog', false);
     case 'pick-copy': return pickCopy(id, !!el.dataset.folder);
     case 'gset': return setGameSetting(id, el.dataset.k, el.dataset.i);
     case 'bindcap': return bindAsk(id, el.dataset.k, Number(el.dataset.a), Number(el.dataset.i));
