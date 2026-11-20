@@ -74,6 +74,7 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .pin .th img{width:100%;height:100%;object-fit:cover;display:block}
 .pin.on .th{box-shadow:0 0 0 2px var(--cyan)}
 .pin .lbl{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pin .pin-fav{flex:none;display:flex;margin-left:auto;padding-right:12px;color:#ffc94d}
 /* Moving a pinned game: the others slide aside, the one in hand stays on top. */
 .pins.sorting{user-select:none}
 .pins.sorting .pin{transition:transform .15s var(--ease),background .15s,color .15s}
@@ -528,12 +529,33 @@ body.light .known-fix b{color:#127a45}
 .md-fold>summary:hover{color:var(--ink)}
 .about-game p{margin:0 0 12px;color:#d3d9e2;line-height:1.65}
 .about-game p.src{margin:6px 0 0;font-size:13px;color:var(--dim)}
-.rel{display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;border-bottom:1px solid var(--line);padding:20px 0}
-.rel:first-child{padding-top:4px}.rel:last-child{border-bottom:0;padding-bottom:0}
-.rel-h{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.rel-h h3{font-size:16px}
+.card.rels{padding:6px}
+.rel{border-top:1px solid var(--line)}
+.rel:first-child{border-top:0}
+.rel-h{display:flex;align-items:center;gap:10px;padding-right:10px;border-radius:14px;transition:background-color .15s}
+.rel-h:hover,.rel.open .rel-h{background:var(--fill)}
+.rel-t{flex:1;min-width:0;display:flex;align-items:flex-end;gap:16px;padding:14px 0 14px 16px;text-align:left}
+/* The Latest version pill sits above the title, so every title line looks the same. */
+.rel-name{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.rel-line{display:flex;align-items:center;gap:12px;min-width:0;max-width:100%}
+/* One line: the full title is in the notes below and in the tooltip, so a long one is cut short
+   rather than wrapping, and the date and Pre-release beside it always show. */
+.rel-line h3{font-size:16px;line-height:22px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rel-line .pre{flex:none}
 .rel-h .pre{font-size:12px;font-weight:700;color:var(--warn)}
-.rel-h .when{color:var(--dim);font-size:13px}
+.rel-h .when{flex:none;color:var(--dim);font-size:13px;line-height:22px}
+.rel-name .ai-tag{height:20px;font-size:11px}
+.ai-tag.latest{color:#3ddc97;background:rgba(61,220,151,.1);border-color:rgba(61,220,151,.35)}
+body.light .ai-tag.latest{color:#127a45}
+.rel-act{display:flex;align-items:center;gap:8px;flex:none}
+.rel-act:empty{display:none}
+.rel-chev{flex:none;display:grid;place-items:center;width:28px;height:28px}
+.rel.open .upd-chev{transform:rotate(180deg)}
+.rel-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s var(--ease)}
+.rel.open .rel-body{grid-template-rows:1fr}
+.rel-in{overflow:hidden;min-height:0;padding:0 16px}
+.rel.open .rel-in{padding:12px 16px 18px}
+@media (prefers-reduced-motion:reduce){.rel-body{transition:none}}
 .bars{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:8px;height:120px;margin-top:18px;align-items:end}
 .bars .b{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
 .bars i{display:block;width:100%;max-width:26px;border-radius:6px 6px 2px 2px;background:var(--cyan);opacity:.9;transform-origin:bottom;animation:growUp .6s var(--ease) both}
@@ -609,6 +631,7 @@ button.prog.su-prog:focus-visible,.prog.su-prog:focus-visible{outline:2px solid 
 .menu button:hover svg{color:var(--ink)}
 .menu button.danger{color:var(--bad)}.menu button.danger svg{color:var(--bad)}
 .menu .ck{margin-left:auto;color:var(--cyan)}
+.menu .m-dot{margin-left:auto;flex:none;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px rgba(52,242,232,.7)}
 .menu hr{border:0;height:1px;background:var(--line2);margin:5px 6px}
 .scrim{position:fixed;inset:0;z-index:200;background:rgba(3,6,12,.62);display:grid;place-items:center;backdrop-filter:blur(8px);animation:fadeIn .2s ease;padding:24px}
 .scrim .modal{animation:modalIn .3s var(--ease)}
@@ -724,6 +747,7 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ss-rail .s.done i{background:rgba(52,242,232,.16);color:var(--cyan)}
 /* A required extra still off: an amber dot on the Extras pill, seen from the first step. */
 .ss-rail .s.req::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.ss-rail .s.new::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px rgba(52,242,232,.7)}
 .ss-rail .bar{flex:0 0 14px;height:1px;background:var(--line2)}
 .ss-box{display:grid;grid-template-columns:46px minmax(0,1fr);grid-template-rows:auto 34px;align-content:center;gap:12px 16px;height:132px;flex:none;padding:0 18px;border-radius:18px;border:1.5px dashed var(--line3);background:var(--fill);transition:border-color .18s,background .18s}
 .ss-box:hover{border-color:rgba(52,242,232,.5)}
@@ -839,6 +863,8 @@ body.oled .topbar.solid{background:rgba(0,0,0,.82)}
 .lk-view.nogl .lk-after,.lk-view.nogl .lk-split,.lk-view.nogl .lk-range,.lk-view.nogl .lk-tag.a{display:none}
 .lk-view.nogl .lk-before{clip-path:none}
 .lk-src{margin:-6px 2px 0;color:var(--dim);font-size:13.5px}
+/* One cell for every wording, only one visible, so the line keeps the height of its longest one. */
+.steady{display:grid}.steady>span{grid-area:1/1}.steady>[aria-hidden]{visibility:hidden}
 .lk-studio{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
 .lk-main{display:flex;flex-direction:column;gap:14px;min-width:0}
 .lk-list{display:flex;flex-direction:column;gap:8px}
@@ -1355,6 +1381,11 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 /* ---------- versions of the same game ---------- */
 .badge.vers{top:auto;bottom:9px;right:9px;color:var(--ink);background:rgba(6,11,21,.78);backdrop-filter:blur(8px);border:1px solid rgba(244,248,252,.16);gap:4px;padding:0 8px}
 .badge.vers svg{color:var(--cyan)}
+/* A favourite in the Library: a plain gold star, bottom right (the versions count is never on those tiles) */
+.badge.fav{top:auto;bottom:9px;right:9px;height:auto;padding:0;border:0;background:none;backdrop-filter:none;color:#ffc94d;filter:drop-shadow(0 1px 3px rgba(0,0,0,.85))}
+.badge.fav svg{width:18px;height:18px;overflow:visible}
+/* A dark edge so the star reads on light covers too (still no box around it) */
+.badge.fav svg path{stroke:rgba(6,11,21,.9);stroke-width:2.6px;stroke-linejoin:round;paint-order:stroke}
 .ver-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 11px;border-radius:17px;background:rgba(6,11,21,.55);backdrop-filter:blur(10px);border:1px solid var(--line2);font-size:13px;font-weight:700;color:var(--ink);transition:border-color .15s,background-color .15s}
 .ver-pill:hover,.ver-pill[aria-expanded="true"]{border-color:rgba(52,242,232,.5);background:rgba(6,11,21,.75)}
 .ver-pill>svg:first-child{color:var(--cyan)}
@@ -2121,10 +2152,6 @@ body.light .ds-panel{box-shadow:0 14px 40px rgba(14,22,38,.16)}
 body.light .su-note{color:#8a5300;background:rgba(255,184,77,.14)}
 
 /* A game's quick actions above Before You Play: icon and name, two to a row. */
-.gp-quick{margin:0}
-.gp-quick .btn{gap:9px;justify-content:center}
-.gp-quick .btn svg{width:18px;height:18px;flex:none}
-.gp-quick .btn .qi-brand{width:18px;height:18px;flex:none}
 
 /* Mac: the web view there pays a lot for big blurs, so covers don't glow on hover. */
 body.mac .tile .glow{display:none}
@@ -2167,14 +2194,10 @@ body.mac .tile .glow{display:none}
 .copy-tags{display:flex;gap:6px;flex-shrink:0}
 .tag.ok{color:#3ee08f;background:rgba(62,224,143,.08);border-color:rgba(62,224,143,.36)}
 .modal .warn-line{color:var(--warn);font-weight:700}
-/* Launcher support: one row per feature, checked or not, and who made it work */
-.modal:has(.sup-list){width:min(560px,94vw)}
-.sup-list{gap:8px}
-.sup-row{min-height:74px}
-.sup-d{font-size:12.5px;color:var(--dim);line-height:1.35}
-.sup-row .tag{height:22px;padding:0 8px;font-size:11.5px;flex-shrink:0}
-.sup-mark{display:flex;flex-shrink:0}
-.modal .sup-own{color:#3ee08f;font-weight:700}
+/* Launcher Support, on Overview under Before You Play: one row per feature, and who made it work */
+.sup-card>p{margin:10px 0 0;font-size:13.5px}
+.sup-card .acts .tag{height:22px;padding:0 8px;font-size:11.5px;flex-shrink:0}
+.sup-card .sup-own{color:#3ee08f;font-weight:700}
 /* The crash window: the game's own last error line */
 .modal .fatal-line{display:flex;flex-direction:column;gap:4px;margin:0}
 .modal .fatal-line code{font-size:12.5px;padding:8px 10px;border-radius:10px;background:var(--card2);color:var(--text);overflow-wrap:anywhere;white-space:pre-wrap}
@@ -2518,8 +2541,8 @@ body.light .su-req-tag{color:#8a5300}
 body.light .su-req{color:#8a5300}
 .su-new{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;background:var(--cyan);color:#04161b;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;vertical-align:1px}
 /* Set Up Again beside Play: a dot while its project has options the player hasn't answered yet. */
-.btn.again{position:relative}
-.btn.again.has-new::after{content:"";position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 2px rgba(8,14,26,.9),0 0 10px rgba(52,242,232,.7)}
+.btn.has-new{position:relative}
+.btn.has-new::after{content:"";position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 2px rgba(8,14,26,.9),0 0 10px rgba(52,242,232,.7)}
 
 .mig-welcome{margin:4px 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
 .mig-welcome li{padding:10px 14px 10px 16px;border-radius:12px;background:var(--fill);border:1px solid var(--line);border-left:3px solid var(--cyan);font-size:13.5px}
@@ -2574,3 +2597,61 @@ body.light .su-req{color:#8a5300}
 .poster.cvl-on .badge.tl,.poster.cvl-on .badge.tr,.poster.cvl-on .badge.rank{top:calc(var(--cvl-top) * 100% + 9px)}
 .poster.cvl-on .badge.tl.low{top:calc(var(--cvl-top) * 100% + 41px)}
 .tv-poster.cvl-on .tv-badge,.tv-poster.cvl-on .tv-rank{top:calc(var(--cvl-top) * 100% + 12px)}
+/* The cloud save status above Play (account.js): a coloured line, not a button. Its colour says
+   the state: green in the cloud, cyan working, amber waiting or a choice, red stuck, grey no
+   cloud. The tooltip says more. */
+.sbadge,.svs{--sb-ok:#3ee08f;--sb-warn:var(--warn);--sb-bad:var(--bad)}
+.sbadge{min-height:20px}
+body.light .sbadge,body.light .svs{--sb-ok:#127a45;--sb-warn:#9a6200;--sb-bad:#c53030}
+.sbadge .sb-ok,.svs.sb-ok{--c:var(--sb-ok)}.sbadge .sb-cy,.svs.sb-cy{--c:var(--cyan)}.sbadge .sb-warn,.svs.sb-warn{--c:var(--sb-warn)}.sbadge .sb-bad,.svs.sb-bad{--c:var(--sb-bad)}.sbadge .sb-dim,.svs.sb-dim{--c:var(--dim)}
+.sbadge-line{display:inline-flex;align-items:center;gap:7px;font:700 13.5px Figtree,sans-serif;color:var(--c);white-space:nowrap;cursor:default}
+.sbadge-line svg{flex:none}
+.sbadge-line small{font-weight:500;font-size:12.5px;color:var(--muted)}
+.sbadge-line small::before{content:"· "}
+.sb-spin{animation:sbspin 1.1s linear infinite;transform-origin:12px 13px}
+.sb-bob{animation:sbbob 1.2s ease-in-out infinite}
+@keyframes sbspin{to{transform:rotate(360deg)}}
+@keyframes sbbob{50%{transform:translateY(-1.5px)}}
+@media (prefers-reduced-motion:reduce){.sb-spin,.sb-bob{animation:none}}
+/* "Newer" on the save that was made later, when both changed: a green word, not a pill. */
+.pick-newer{margin-left:6px;font-style:normal;font-size:12.5px;font-weight:700;color:#3ee08f}
+body.light .pick-newer{color:#127a45}
+.pick-note{margin:-4px 0 14px;font-size:13px}
+/* The Saves tab (account.js). Its first card is the status above Play, bigger, with the one thing
+   to do about it; then every save in one list, marked by where it's kept. */
+.svs-row{display:flex;align-items:center;gap:16px}
+.svs-ico{flex:none;display:grid;place-items:center;width:52px;height:52px;border-radius:14px;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent)}
+.svs .k{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+.svs .k b{font-size:17px;color:var(--c)}
+.svs .k b small{font-size:13.5px;font-weight:500;color:var(--muted)}
+.svs .k span{font-size:13.5px;color:var(--dim)}
+.svs .k>small{font-size:12.5px;color:var(--muted)}
+.svs .acts{flex:none}
+.svs .set-note{margin:12px 0 0}
+/* No box on the desktop: the status sits on the page as the tab's heading (Big Picture keeps its item box). */
+.card.svs{background:none;border-color:transparent;padding:6px 4px 10px}
+.svs-space{margin-top:14px}
+.svh-marks{display:flex;flex-wrap:wrap;gap:3px 14px;margin:2px 0 1px}
+.set-row .k .svm{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--dim)}
+.svm svg{flex:none}
+.set-row .k .svm-cloud{color:var(--cyan)}
+.set-row .k .svm-other{color:#b9a1ff}
+body.light .set-row .k .svm-other{color:#6a4bc9}
+.svh-more{margin-top:14px}
+@media (max-width:640px){.svs-row{flex-wrap:wrap}.svs .acts{width:100%}}
+/* The save in the game now: its row is lit green, with a green edge, and says so on the right. */
+.svh-row{--ok:#3ee08f}
+body.light .svh-row{--ok:#127a45}
+.svh-row.cur{margin:0 -14px;padding-left:14px;padding-right:14px;border-radius:12px;border-bottom-color:transparent;background:color-mix(in srgb,var(--ok) 9%,transparent);box-shadow:inset 3px 0 0 var(--ok)}
+.card-h+.svh-row.cur{padding-top:16px}
+.svh-cur{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--ok)}
+/* A save folder its developer or RecompLauncher set: said in green, with a shield. */
+.set-row .k .svp-set{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#3ee08f}
+body.light .set-row .k .svp-set{color:#127a45}
+.svp-set svg{flex:none}
+/* Delete from the cloud: a quiet icon beside Restore, red on hover. */
+.svh-row .acts{display:flex;align-items:center;gap:8px}
+.svh-del{color:var(--muted)}
+.svh-del:hover{color:var(--bad)}
+/* One RecompLauncher set is the launcher's cyan, so it reads apart from the developer's green. */
+.set-row .k .svp-set.ours{color:var(--cyan)}

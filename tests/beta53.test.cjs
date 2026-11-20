@@ -7,34 +7,25 @@ const rust = fs.readFileSync(path.join(__dirname, '../src-tauri/src/lib.rs'), 'u
 const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 
 test('Skip Easy Setup: per game or for every game, and the page treats those games as plain installs', () => {
-  const run = new Function('S', 't', `${fn(app, 'applyEasySkip')}; ${fn(app, 'easySkipItem')}; return { applyEasySkip, easySkipItem };`);
+  const run = new Function('S', 't', `${fn(app, 'applyEasySkip')}; return { applyEasySkip };`);
   const S = { settings: { ui: {} }, library: {}, easyAll: new Set(['hopper', 'skyracer']) };
-  const { applyEasySkip, easySkipItem } = run(S, (x) => x);
+  const { applyEasySkip } = run(S, (x) => x);
   applyEasySkip();
   assert.deepEqual([...S.easy], ['hopper', 'skyracer']);
-  assert.equal(easySkipItem('hopper')[0].check, false);
-  // Installed, the menu opens the Easy Setup switch on its Manage tab instead.
-  S.library.skyracer = {};
-  assert.deepEqual(easySkipItem('skyracer'), [{ act: 'easy-row', id: 'skyracer', label: 'Easy Setup…', icon: 'disc' }]);
-  delete S.library.skyracer;
-  assert.deepEqual(easySkipItem('plain'), [], 'only games Easy Setup can do get the item');
   S.settings.ui.easy_skip = ['hopper'];
   applyEasySkip();
   assert.deepEqual([...S.easy], ['skyracer']);
-  assert.equal(easySkipItem('hopper')[0].check, true);
   S.settings.ui.easy_skip_all = true;
   applyEasySkip();
   assert.deepEqual([...S.easy], []);
-  assert.deepEqual(easySkipItem('skyracer'), [], 'no per-game item while every game skips it');
   // Saving settings applies it straight away, and the catalog's list is the starting point.
   assert.match(fn(app, 'saveSettings'), /S\.settings = Object\.assign\(\{\}, S\.settings, patch\);\n  applyEasySkip\(\);/);
   assert.match(app, /S\.easyAll = new Set\(await invoke\('easy_setup'\)\);[^\n]*\n  applyEasySkip\(\);/);
 });
 
-test('the menu item and the Settings switch', () => {
-  const menu = fn(app, 'gameMenu');
-  assert.match(menu, /\.\.\.\(!g \? easySkipItem\(id\) : \[\]\)/);
-  assert.match(menu, /act: 'manual'[^\n]*\n\s+\.\.\.easySkipItem\(id\),/);
+test('Skip Easy Setup is on the setup window, the Manage tab and in Settings, not in the menu', () => {
+  assert.doesNotMatch(fn(app, 'gameMenu'), /easy-skip|Skip Easy Setup/);
+  assert.match(fn(app, 'manageStartRows'), /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(fn(app, 'setEasySkip'), /saveUi\(\{ easy_skip: \[\.\.\.skip\] \}, true\)/);
   assert.match(app, /sw\('easy_skip_all', ui\.easy_skip_all, t\('Skip Easy Setup'\), 'ui-toggle'\)/);
@@ -54,14 +45,14 @@ test('a skipped game starts as its own setup leaves it, after that setup when it
 const named = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 
-test('Use a Build You Already Have: a line under the copy in Easy Setup, a menu item, and the skipped-game prompt', () => {
+test('Use a Build You Already Have: a line under the copy in Easy Setup, a Manage row, and the skipped-game prompt', () => {
   const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
   // Easy Setup: one quiet line, and the folder shows in the copy's box until Set Up uses it.
   assert.match(fn(steps, 'ssAlt'), /if \(su\.own_build\) return `<p class="ss-alt">\$\{esc\(tf\('Already built \{name\} from your copy, outside the launcher\? Skip the build:'/);
   assert.match(fn(steps, 'stepsRun'), /await invoke\('setup_use_build', ns\.own \? \{ id, folder: ns\.own \} : \{ id \}\);/);
   assert.match(fn(named, 'useOwnBuild'), /invoke\('setup_use_build', \{ id, folder: typeof p === 'string' \? p : p\.path \}\)/);
   assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
-  assert.match(fn(app, 'gameMenu'), /act: 'ownbuild'/);
+  assert.match(fn(app, 'manageStartRows'), /data-act="ownbuild"/);
   // Big Picture draws the same steps, so it has the same line.
   assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
   // It says where the game's own setup builds it, when that's outside the launcher's folder for
@@ -72,12 +63,9 @@ test('Use a Build You Already Have: a line under the copy in Easy Setup, a menu 
 test('the launcher building it again goes back to the setup\'s own folder once that has worked; an update keeps the player\'s', () => {
   // Built in the setup's own folder, while the player's build stays in use until the setup works.
   assert.match(rust, /    g\.build_dir = None;\n    let p = profile_of\(&st, &id, &g\)/);
-  assert.match(rust, /let theirs = g\.build_dir\.take\(\);/);
   assert.doesNotMatch(rust, /if g\.build_dir\.take\(\)\.is_some\(\) \{/);
-  // Let go of only where a setup is done: setup_copy, and Use My Previous Setup.
+  // Let go of only where a setup is done: setup_copy.
   assert.match(rust, /x\.build_dir = None;\n\s+x\.prepare_version = [^\n]*\n\s+x\.setup_before = None;/);
-  // (Use My Previous Setup: a setup that worked, so the launcher sets the game up again.)
-  assert.match(rust, /x\.setup_before = None;\n\s+x\.mode = library::SetupMode::Easy;\n\s+if theirs\.is_some\(\) \{\n\s+x\.build_dir = None;/);
   assert.match(rust, /build_dir: prev\.as_ref\(\)\.and_then\(\|p\| p\.build_dir\.clone\(\)\),/);
   assert.match(rust, /if let Some\(dir\) = g\.build_dir\.as_ref\(\)\.filter\(\|d\| d\.is_dir\(\)\) \{\n\s+p\.rebase_build\(&g\.path, dir\);/);
 });
