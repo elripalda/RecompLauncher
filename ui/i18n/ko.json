@@ -3387,5 +3387,11 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "저장 데이터 사본을 남겼습니다. 다시 설치한 뒤 저장 데이터 탭에서 되돌리세요.",
  "{path}. A copy of its saves is kept first.": "{path}. 먼저 저장 데이터 사본을 남깁니다.",
  "Delete its folder and its saves": "폴더와 저장 데이터 삭제",
- "N/A": "해당 없음"
+ "N/A": "해당 없음",
+ "Newer save from {device}": "{device}의 최신 저장 데이터",
+ "Newer save in the cloud": "클라우드에 최신 저장 데이터가 있습니다",
+ "Syncs when you press Play": "플레이를 누르면 동기화됩니다",
+ "syncs when you press Play": "플레이를 누르면 동기화",
+ "Saved {time}. What's there now is kept as a backup first.": "{time} 저장됨. 지금 있는 데이터는 먼저 백업으로 남겨 둡니다.",
+ "A newer save is in the cloud": "클라우드에 최신 저장 데이터가 있습니다"
 }

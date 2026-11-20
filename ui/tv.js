@@ -1317,6 +1317,8 @@
   // without cloud saves: with them, Sync Now copies the save before it goes up.
   async function loadGameSaves(id) {
     try { TV.saves[id] = await invoke('saves_info', { id }); } catch (e) { TV.saves[id] = { error: String(e && e.message ? e.message : e) }; }
+    // The page asked the cloud just now: the status above the game's buttons says the same.
+    if (!TV.saves[id].error) S.saveNext[saveIdOf(id)] = TV.saves[id].incoming || null;
     // Whatever just changed the page changed its status too.
     loadSaveStatus(saveIdOf(id));
     if (TV.on && TV.view === 'gsaves' && TV.arg === id) draw(true);
@@ -1329,8 +1331,11 @@
     if (!b) return '';
     const sid = saveIdOf(id);
     const st = S.saveStat[sid] || {};
+    const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+    // A newer save from another PC that Play brings in: A syncs it now, as on the desktop.
+    const next = incomingSave(S.saveNext[sid], st, phase, running);
     const picked = (sv.spots || []).some((p) => p.from === 'player');
-    const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+    const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
     const act = step && !sv.busy && TV_STEP[step.act];
     // Reporting stays in the desktop view, and the account page needs a browser: said instead.
     const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
@@ -1348,9 +1353,13 @@
     const which = r.name ? `data-name="${esc(r.name)}"` : `data-v="${esc(r.v)}"`;
     // A cloud save that can be deleted carries its version, for the sheet's Delete.
     const del = r.deletable ? ` data-cv="${esc(r.v)}"` : '';
-    const act = r.current ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
+    // The save in the game now and the one Play brings in have nothing to restore: the status
+    // above gets the newer one now.
+    const act = r.current || r.incoming ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
     // The save in the game now is lit, and says so where the others say Restore.
-    const side = r.current ? `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
+    const cur = `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>`;
+    const next = `<span class="tv-svh-next">${NEXT_ICON}${esc(t(SYNCS_ON_PLAY))}</span>`;
+    const side = r.current ? cur : r.incoming ? next : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
     return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
   function pageGameSaves(id) {

@@ -3387,5 +3387,11 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Une copie de ses sauvegardes est gardée. Réinstallez-le et remettez-les depuis son onglet Sauvegardes.",
  "{path}. A copy of its saves is kept first.": "{path}. Une copie de ses sauvegardes est gardée avant.",
  "Delete its folder and its saves": "Supprimer son dossier et ses sauvegardes",
- "N/A": "N/D"
+ "N/A": "N/D",
+ "Newer save from {device}": "Sauvegarde plus récente de {device}",
+ "Newer save in the cloud": "Sauvegarde plus récente dans le cloud",
+ "Syncs when you press Play": "Se synchronise quand vous appuyez sur Jouer",
+ "syncs when you press Play": "se synchronise quand vous appuyez sur Jouer",
+ "Saved {time}. What's there now is kept as a backup first.": "Enregistrée {time}. Celle qui est là maintenant est d'abord gardée en copie.",
+ "A newer save is in the cloud": "Une sauvegarde plus récente est dans le cloud"
 }

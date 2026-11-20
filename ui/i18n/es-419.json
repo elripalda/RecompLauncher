@@ -3387,5 +3387,11 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Se guarda una copia de sus partidas. Vuelve a instalarlo y recupéralas desde su pestaña Partidas.",
  "{path}. A copy of its saves is kept first.": "{path}. Antes se guarda una copia de sus partidas.",
  "Delete its folder and its saves": "Borrar su carpeta y sus partidas",
- "N/A": "N/D"
+ "N/A": "N/D",
+ "Newer save from {device}": "Partida más reciente de {device}",
+ "Newer save in the cloud": "Partida más reciente en la nube",
+ "Syncs when you press Play": "Se sincroniza al presionar Jugar",
+ "syncs when you press Play": "se sincroniza al presionar Jugar",
+ "Saved {time}. What's there now is kept as a backup first.": "Guardada {time}. Lo que hay ahora se guarda antes como copia.",
+ "A newer save is in the cloud": "Hay una partida más reciente en la nube"
 }

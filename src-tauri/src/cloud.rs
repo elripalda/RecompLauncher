@@ -1000,6 +1000,21 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     Ok(n)
 }
 
+/// The cloud save that Play puts in place by itself: another PC saved after this one, and nothing
+/// changed here since they last agreed. The Saves tab marks it, so a player doesn't take its
+/// Restore button for a step they have to do on every PC. Judged from the last copy made here
+/// (the one the tab calls "In the game now"), by the same rule Play uses on the live files.
+fn incoming<'a>(s: &saves::State, list: &'a [CloudCopy]) -> Option<&'a CloudCopy> {
+    // Anything but settled (both changed and Play asks, a copy waiting to go up, a session not
+    // copied yet, a save folder too big to read) and Play won't just bring it in.
+    let settled = matches!(s.sync_state(true, true), "up-to-date" | "none");
+    if !settled {
+        return None;
+    }
+    let top = list.first()?;
+    should_restore(&s.last_hash, &s.synced_hash, &top.hash, false).then_some(top)
+}
+
 /// Whether the cloud copy can be put in place without replacing locally changed saves.
 fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
     if cloud == local {
@@ -1247,9 +1262,13 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let mut cloud = Value::Null;
     let mut space = Value::Null;
     let mut offline = false;
+    let mut next = Value::Null;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
+                next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
+                // The badge above Play reads the same list, so it says the same thing.
+                keep_peek(&id, &state.synced_hash, &l);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
@@ -1265,6 +1284,8 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         // The save in the game's folder now (the last copy made or put back), and this PC's name:
         // the tab marks the copy that's current and the ones another PC made.
         "current": state.last_hash, "here": saves::device_name(),
+        // The cloud save that another PC made and Play brings in by itself, or null.
+        "incoming": next,
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
@@ -1306,6 +1327,52 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
         // Where the saves go. Only RecompStore today; named so another cloud can say so later.
         "provider": "recompstore",
     }))
+}
+
+/// A game's cloud list as last asked by its page, and the save this PC had synced then. Kept a few
+/// minutes, so opening a game's page again doesn't ask the website again; a sync since (another
+/// synced save) asks anew, since the list it kept may be the one it just changed.
+struct Peek {
+    at: std::time::Instant,
+    synced: String,
+    list: Vec<CloudCopy>,
+}
+static PEEKED: Mutex<Option<std::collections::HashMap<String, Peek>>> = Mutex::new(None);
+const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn peeked(id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+    let kept = PEEKED.lock().unwrap();
+    let p = kept.as_ref()?.get(id)?;
+    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
+    fresh.then(|| p.list.clone())
+}
+
+fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
+    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), list: list.to_vec() };
+    PEEKED.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), peek);
+}
+
+/// For the badge above Play: a newer save from another PC that Play brings in by itself, or null.
+/// saves_status never asks the website, so on its own it would call that save "Up to date". This
+/// asks about this one game when its page opens, at most every few minutes.
+#[tauri::command]
+pub async fn saves_peek(app: AppHandle, id: String) -> Res<Value> {
+    let st = app.state::<App>();
+    let g = game(&st, &id)?;
+    if g.cloud != Some(true) || !signed_in(&st.dir) || spots_of(&st, &id, &g).is_empty() {
+        return Ok(Value::Null);
+    }
+    let state = saves::state(&st.dir, &id);
+    let list = match peeked(&id, &state.synced_hash) {
+        Some(list) => list,
+        None => {
+            // Offline or any other trouble: the badge keeps what this PC knows.
+            let Ok((list, _)) = cloud_list(&app, &id).await else { return Ok(Value::Null) };
+            keep_peek(&id, &state.synced_hash, &list);
+            list
+        }
+    };
+    Ok(incoming(&state, &list).map(|c| json!(c)).unwrap_or(Value::Null))
 }
 
 fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<Option<saves::Copy>> {
@@ -1948,7 +2015,81 @@ mod play_id_tests {
 
 #[cfg(test)]
 mod sync_tests {
-    use super::{first_time_paused, should_restore};
+    use super::{first_time_paused, incoming, should_restore, CloudCopy};
+    use crate::saves::State;
+
+    fn cloud(v: &str, hash: &str) -> CloudCopy {
+        CloudCopy { v: v.into(), hash: hash.into(), ..Default::default() }
+    }
+
+    fn agreed_on(hash: &str) -> State {
+        State { last_hash: hash.into(), synced_hash: hash.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_newer_save_from_another_pc_comes_in_on_play() {
+        let list = [cloud("2", "from-other-pc"), cloud("1", "old")];
+        assert_eq!(incoming(&agreed_on("old"), &list).map(|c| c.v.as_str()), Some("2"));
+    }
+
+    #[test]
+    fn a_new_pc_with_no_saves_yet_gets_the_cloud_save_on_play() {
+        let list = [cloud("1", "from-other-pc")];
+        assert_eq!(incoming(&State::default(), &list).map(|c| c.v.as_str()), Some("1"));
+    }
+
+    #[test]
+    fn the_save_in_the_game_now_is_not_incoming() {
+        assert!(incoming(&agreed_on("same"), &[cloud("1", "same")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_when_this_pc_changed_its_save_too() {
+        let s = State { last_hash: "played-here".into(), synced_hash: "old".into(), ..Default::default() };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_a_conflict_waits_for_a_pick() {
+        let s = State { conflict: Some("2".into()), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_before_the_last_session_is_copied() {
+        let s = State { after_play: true, ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_a_copy_waits_to_go_up() {
+        let s = State { pending: Some("copy.zip".into()), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_its_save_folder_is_too_big_to_read() {
+        let problem = crate::saves::Problem { kind: "too-big-folder".into(), text: String::new(), at: 0 };
+        let s = State { problem: Some(problem), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn a_game_page_opened_again_uses_the_list_it_just_asked_for() {
+        super::keep_peek("peek-same", "synced", &[cloud("2", "from-other-pc")]);
+        assert_eq!(super::peeked("peek-same", "synced").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn a_sync_since_the_last_look_asks_the_cloud_again() {
+        super::keep_peek("peek-synced", "before", &[cloud("2", "from-other-pc")]);
+        assert!(super::peeked("peek-synced", "after").is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_from_an_empty_cloud() {
+        assert!(incoming(&agreed_on("old"), &[]).is_none());
+    }
 
     #[test]
     fn paused_sync_is_said_once_per_game() {

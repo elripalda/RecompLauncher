@@ -3387,5 +3387,11 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Đã giữ một bản sao dữ liệu lưu. Hãy cài lại trò chơi và khôi phục từ thẻ Dữ liệu lưu.",
  "{path}. A copy of its saves is kept first.": "{path}. Một bản sao dữ liệu lưu sẽ được giữ trước.",
  "Delete its folder and its saves": "Xóa thư mục và dữ liệu lưu",
- "N/A": "Không có"
+ "N/A": "Không có",
+ "Newer save from {device}": "Bản lưu mới hơn từ {device}",
+ "Newer save in the cloud": "Có bản lưu mới hơn trên đám mây",
+ "Syncs when you press Play": "Đồng bộ khi bạn nhấn Chơi",
+ "syncs when you press Play": "đồng bộ khi bạn nhấn Chơi",
+ "Saved {time}. What's there now is kept as a backup first.": "Đã lưu {time}. Bản hiện có sẽ được giữ lại làm bản sao lưu trước.",
+ "A newer save is in the cloud": "Có bản lưu mới hơn trên đám mây"
 }

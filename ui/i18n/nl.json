@@ -3387,5 +3387,11 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Er is een kopie van de opgeslagen games bewaard. Installeer hem opnieuw en zet ze terug via het tabblad Opgeslagen games.",
  "{path}. A copy of its saves is kept first.": "{path}. Er wordt eerst een kopie van de opgeslagen games bewaard.",
  "Delete its folder and its saves": "De map en de opgeslagen games wissen",
- "N/A": "n.v.t."
+ "N/A": "n.v.t.",
+ "Newer save from {device}": "Nieuwere save van {device}",
+ "Newer save in the cloud": "Nieuwere save in de cloud",
+ "Syncs when you press Play": "Wordt gesynchroniseerd als je op Spelen drukt",
+ "syncs when you press Play": "wordt gesynchroniseerd als je op Spelen drukt",
+ "Saved {time}. What's there now is kept as a backup first.": "Opgeslagen {time}. Wat er nu staat, wordt eerst als back-up bewaard.",
+ "A newer save is in the cloud": "Er staat een nieuwere save in de cloud"
 }

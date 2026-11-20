@@ -3387,5 +3387,11 @@
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "تم الاحتفاظ بنسخة من ملفات الحفظ. ثبّت اللعبة مرة أخرى وأعدها من علامة التبويب «ملفات الحفظ».",
  "{path}. A copy of its saves is kept first.": "{path}. يُحتفظ بنسخة من ملفات الحفظ أولًا.",
  "Delete its folder and its saves": "حذف مجلدها وملفات الحفظ",
- "N/A": "غير متاح"
+ "N/A": "غير متاح",
+ "Newer save from {device}": "ملف حفظ أحدث من {device}",
+ "Newer save in the cloud": "ملف حفظ أحدث في السحابة",
+ "Syncs when you press Play": "يُزامَن عند الضغط على تشغيل",
+ "syncs when you press Play": "يُزامَن عند الضغط على تشغيل",
+ "Saved {time}. What's there now is kept as a backup first.": "حُفظ {time}. يُحتفظ بما هو موجود الآن كنسخة احتياطية أولًا.",
+ "A newer save is in the cloud": "يوجد ملف حفظ أحدث في السحابة"
 }
