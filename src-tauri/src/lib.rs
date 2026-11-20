@@ -75,6 +75,7 @@ mod update_check_tests;
 pub mod usage;
 pub mod webview_crash;
 pub mod win;
+pub mod autostart;
 #[cfg(windows)]
 mod game_window;
 mod installer;
@@ -8654,7 +8655,10 @@ fn get_state(st: State<'_, App>) -> Value {
         "pictures": pictures,
         "deck": deck,
         "bigArg": std::env::args().any(|a| a == "--bigpicture"),
-        "desktopArg": std::env::args().any(|a| a == "--desktop"),
+        // Started at sign-in with Big Picture mode at start: the page waits in the desktop view
+        // while the window is hidden, and Big Picture opens with the window (see show_main).
+        "desktopArg": std::env::args().any(|a| a == "--desktop") || TV_LATER.load(Ordering::Relaxed),
+        "canStartAtLogin": autostart::supported(),
         "missing": missing,
         // Where the web view can't play a sound (an AppImage, run as one or unpacked, or a PC
         // without GStreamer's base plugins) it stops the moment one starts. The page then plays none.
@@ -8733,9 +8737,12 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     let save_dir = l.settings.save_dir.clone();
     // The proxy changes only through its own command (its password is sealed there).
     let proxy = (l.settings.proxy.clone(), l.settings.proxy_url.clone(), l.settings.proxy_user.clone(), l.settings.proxy_pass.clone());
+    // Start with your PC changes only through its own command (the system's list changes with it).
+    let start_at_login = l.settings.start_at_login;
     l.settings = settings;
     l.settings.tray_told |= told;
     l.settings.save_dir = save_dir;
+    l.settings.start_at_login = start_at_login;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
     saves::use_chosen_device(&l.settings.ui);
@@ -8747,6 +8754,17 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
         discord_idle(&st, discord_now);
     }
     Ok(())
+}
+
+/// Settings → Start with your PC. The system's own startup list changes first, and the switch
+/// keeps what the system took: a Flatpak's desktop or a Mac can ask the player, who can say no.
+#[tauri::command(async)]
+fn set_start_at_login(st: State<'_, App>, on: bool) -> Res<bool> {
+    let now = autostart::set(on, &st.dir).map_err(Error::Msg)?;
+    let mut l = st.lib.lock().unwrap();
+    l.settings.start_at_login = now;
+    l.save(&st.dir)?;
+    Ok(now)
 }
 
 /// Since when the launcher has been open, for the Discord status.
@@ -9060,6 +9078,9 @@ fn apply_saved_zoom(app: &AppHandle, w: &tauri::WebviewWindow) {
 
 /// The main window is out of sight (minimized, or closed to the tray).
 static AWAY: AtomicBool = AtomicBool::new(false);
+
+/// Started at sign-in by the clock, set to start in Big Picture mode: it opens with the window.
+static TV_LATER: AtomicBool = AtomicBool::new(false);
 
 /// Set by the page once its first real screen is drawn. The window stays hidden until then, so the
 /// player never sees the empty first draw being replaced by the real one.
@@ -9469,6 +9490,9 @@ fn show_main(app: &AppHandle) {
             rest(&w, false);
             let _ = w.emit("away", false);
         }
+        if TV_LATER.swap(false, Ordering::Relaxed) {
+            let _ = app.emit("bigpicture", true);
+        }
     }
 }
 
@@ -9814,7 +9838,7 @@ pub fn run() {
                 return;
             }
             match ev {
-                // Run in background hides the window only when the tray can bring it back.
+                // Close to tray hides the window only when the tray can bring it back.
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     let app = w.app_handle();
                     let background = app.state::<App>().lib.lock().unwrap().settings.close_to_tray;
@@ -10033,6 +10057,13 @@ pub fn run() {
                 }
                 let _ = lib.save(&dir);
             }
+            // Start with your PC follows the system's own startup list: the player may have turned
+            // it off (or on) there since.
+            let at_login = autostart::refresh(lib.settings.start_at_login, &dir);
+            if at_login != lib.settings.start_at_login {
+                lib.settings.start_at_login = at_login;
+                let _ = lib.save(&dir);
+            }
             // Big Picture at start only once setup is done: the first-run setup is always in a window.
             let tv = !std::env::args().any(|a| a == "--desktop") && (lib.settings.start_in_tv || std::env::args().any(|a| a == "--bigpicture")) && lib.settings.setup_done;
             // ReShade left in a game's folder by a start that didn't finish (the launcher closed
@@ -10211,6 +10242,18 @@ pub fn run() {
                     if let Some(w) = app.get_webview_window("main") {
                         restore_window_place(&w, &app.state::<App>().dir);
                     }
+                    // Started at sign-in (Settings → Start with your PC): the window waits by the
+                    // clock until it's opened from there. With no tray icon to open it from, it
+                    // shows as usual.
+                    let at_login = std::env::args().any(|a| a == autostart::ARG) && app.tray_by_id("main").is_some();
+                    if at_login {
+                        TV_LATER.store(tv, Ordering::Relaxed);
+                        discord::send(discord::Msg::Shown(false));
+                        if let Some(w) = app.get_webview_window("main") {
+                            away(&w.as_ref().window(), true);
+                        }
+                        return Ok(());
+                    }
                     let monitor_id = app.state::<App>().lib.lock().unwrap().settings.tv_monitor.clone();
                     // While the window gets ready: a small one in the middle of the screen with the
                     // logo. Big Picture mode has its own start animation, so not there.
@@ -10287,7 +10330,7 @@ pub fn run() {
             take_setup_asked,
             take_options_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
-            save_settings, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
+            save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,

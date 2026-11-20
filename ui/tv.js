@@ -1256,8 +1256,9 @@
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
+          ${S.canStartAtLogin ? sw('start_at_login', t('Start with your PC'), startAtLoginNote()) : ''}
           ${head(t('When you close the window'))}
-          ${sw('close_to_tray', t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
+          ${sw('close_to_tray', t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
           ${head(t('Games and updates'))}
           ${sw('notify', t('Notifications'), t('When a new recomp comes out for a game you own'))}
           ${sw('auto_update_all', t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one'))}
@@ -2905,6 +2906,7 @@
       setScroll(keepY, false);
       return;
     }
+    if (el.dataset.toggle === 'start_at_login') { sfx('select'); await startAtLogin(!S.settings.start_at_login); draw(true); return; }
     if (el.dataset.toggle) { sfx('select'); const k = el.dataset.toggle, on = k === 'sounds' || k === 'discord' || k === 'auto_install' ? S.settings[k] !== false : !!S.settings[k]; await saveSettings({ [k]: !on }); draw(true); if (k === 'steam_sync' && !on && window.steamSync) window.steamSync(false); if (k === 'auto_update_all' && !on) checkUpdates(); return; }
     if (el.dataset.shotI !== undefined) { sfx('select'); return shotView(Number(el.dataset.shotI)); }
     if (el.dataset.gset) return cycleSetting(el, 1);

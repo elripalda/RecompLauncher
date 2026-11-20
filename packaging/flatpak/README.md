@@ -47,6 +47,11 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
   their ROM folders by hand. First-time setup offers "Use Games/ROMs": `~/Games/ROMs`, made when
   picked, read directly with no picker.
 
+- Settings → Start with your PC asks the Background portal (`autostart.rs`), which needs no
+  permission in the manifest. The portal writes `~/.config/autostart/com.recomplauncher.RecompLauncher.desktop`
+  itself (the desktop may ask the player first; Plasma doesn't) with `flatpak run ... --background`,
+  and Plasma's Autostart page lists it, with a plain icon because the portal's file names none.
+  The sandbox can't read that file, so the launcher keeps the player's choice in its settings.
 - Steam and desktop shortcuts start `flatpak run com.recomplauncher.RecompLauncher`. The sandbox
   can't see Steam's process, so Steam counts as open while its command pipe has a reader
   (`~/.steam/steam.pipe`, or Flathub Steam's under `~/.var/app/com.valvesoftware.Steam`).

@@ -69,11 +69,17 @@ and run it. While the beta is new, Windows may say "Windows protected your PC". 
 **More info**, then **Run anyway**. Each release lists its file's SHA-256 so you can check you
 have the real one.
 
-In **Settings > General > When you close the window**, **Run in background** controls whether
+In **Settings > General > When you close the window**, **Close to tray** controls whether
 closing the window keeps RecompLauncher in the system tray. Turn it off to exit the launcher
 and its background work when you close the window. **Quit RecompLauncher** always exits.
 The setting is also available in Big Picture mode. It is off by default for new installations;
 existing saved choices are kept. Games already running keep playing.
+
+**Settings > General > Starting up > Start with your PC** starts RecompLauncher when you sign
+in, waiting in the system tray. The entry goes in your system's own startup list (Startup apps
+on Windows, Autostart on KDE Plasma and GNOME, Login Items on a Mac), so you can turn it off
+there too. The Flatpak asks your desktop through its Background portal. On a Mac (macOS 13 or
+newer) the window opens at login instead. It is off by default and also in Big Picture mode.
 
 ## No game files
 

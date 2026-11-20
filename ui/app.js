@@ -4510,7 +4510,8 @@ function pageSettings() {
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
           + row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('share_stats', st.data_asked && st.share_stats, t('Share anonymous usage stats')))
           + row(t('Your IDs'), S.ids ? tf('Diagnostics {a} · Stats {b}. Quote them to have what was sent removed. A reset starts new ones.', { a: S.ids.usage.slice(0, 8), b: S.ids.stats.slice(0, 8) }) : t('Quote them to have what was sent removed. A reset starts new ones.'), `<span class="set-ctl2"><button type="button" class="btn" data-act="copy-ids">${esc(t('Copy'))}</button><button type="button" class="btn" data-act="reset-ids">${esc(t('Reset'))}</button></span>`))
-        + group(t('When you close the window'), row(t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'), sw('close_to_tray', st.close_to_tray, t('Run in background'))));
+        + (S.canStartAtLogin ? group(t('Starting up'), row(t('Start with your PC'), startAtLoginNote(), sw('start_at_login', st.start_at_login, t('Start with your PC')))) : '')
+        + group(t('When you close the window'), row(t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'), sw('close_to_tray', st.close_to_tray, t('Close to tray'))));
       break;
     case 'report':
       body = window.reportSection ? window.reportSection(group) : '';
@@ -5221,7 +5222,7 @@ function paintSetupProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   S.removedPlayHistory = st.removedPlayHistory || {};
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
   // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
   applyEasySkip();
@@ -5509,6 +5510,22 @@ function applyEasySkip() {
 }
 // Set Up By Hand is how the game is set up now. Turned off, its setup stays recorded for next time.
 const byHand = (g) => !!(g && g.manual && g.mode === 'by_hand');
+// Settings → Start with your PC (desktop and Big Picture). The system's own startup list changes
+// first, and the switch shows what the system took: a Flatpak's desktop can ask the player first.
+async function startAtLogin(on) {
+  let now = !!S.settings.start_at_login;
+  try { now = await invoke('set_start_at_login', { on }); } catch (e) { fail(e); return now; }
+  S.settings = Object.assign({}, S.settings, { start_at_login: now });
+  if (on && !now) toast(t('Your desktop didn\'t allow RecompLauncher to start when you sign in.'), true);
+  return now;
+}
+
+// A Mac opens the window at login; elsewhere it waits by the clock.
+function startAtLoginNote() {
+  if (S.os === 'macos') return t('RecompLauncher opens when you log in. It also shows in System Settings under Login Items.');
+  return t('RecompLauncher starts when you sign in and waits by the clock. It also shows in your system\'s startup apps.');
+}
+
 function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   applyEasySkip();
@@ -8931,6 +8948,7 @@ async function act(el, e) {
       // Turned on: the updates already waiting start now, not at the next check.
       if (k === 'auto_update_all') { await saveSettings({ auto_update_all: !autoUpdateAll() }); if (autoUpdateAll()) checkUpdates(); return; }
       if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
+      if (k === 'start_at_login') { await startAtLogin(!S.settings.start_at_login); return render(true); }
       return saveSettings({ [k]: !S.settings[k] });
     }
     case 'libdir': {
