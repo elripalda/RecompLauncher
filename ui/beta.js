@@ -4,7 +4,7 @@
 (() => {
   const KINDS = [['bug', N_('Something broke')], ['idea', N_('An idea')], ['thoughts', N_('Thoughts')]];
   const MOODS = [['great', N_('Great')], ['good', N_('Good')], ['rough', N_('Rough')], ['broken', N_('Broken')]];
-  const AREAS = [['Home and Discover', N_('Home and Discover')], ['Installing and updates', N_('Installing and updates')], ['Playing a game', N_('Playing a game')],
+  const AREAS = [['Home and Discover', N_('Home and Catalog')], ['Installing and updates', N_('Installing and updates')], ['Playing a game', N_('Playing a game')],
     ['Big Picture mode', N_('Big Picture mode')], ['Saves and cloud saves', N_('Saves and cloud saves')], ['Account and signing in', N_('Account and signing in')],
     ['Settings', N_('Settings')], ['Something else', N_('Something else')]];
   const fb = () => (S.betaFb = S.betaFb || { kind: 'bug', area: 'Something else', mood: '', text: '', contact: '', attach: true, sent: false, busy: false, game: '' });

@@ -18,7 +18,12 @@ fn api() -> String {
 
 /// This launcher's random ID, made the first time it's needed.
 pub fn install_id(dir: &Path) -> String {
-    let f = dir.join("install.id");
+    random_id(dir, "install.id")
+}
+
+/// A random 32-character ID kept in `file` in the data folder, made the first time it's needed.
+pub fn random_id(dir: &Path, file: &str) -> String {
+    let f = dir.join(file);
     if let Ok(s) = std::fs::read_to_string(&f) {
         let s = s.trim().to_string();
         if s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()) {

@@ -5,21 +5,19 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
+// The Launcher Support box on Overview, for a catalog entry and (installed) its own manifest.
 async function support(entry, local = null) {
-  let html = '';
   const ctx = vm.createContext({
-    S: { library: local ? { game: {} } : {}, easy: new Set() },
-    byId: () => ({ id: 'game', name: 'Example Game', ...entry }),
+    S: { library: local ? { game: {} } : {}, easy: new Set(), supLocal: local ? { game: local } : {} },
     invoke: async () => local, builtinBoot: () => ({}), TURNKEY_HOW: [],
     t: (s) => s, N_: (s) => s, tf: (s, args) => s.replace('{name}', args.name),
     esc: (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;'),
     okMark: (yes) => yes ? 'available' : 'unavailable',
-    modal: (content) => { html = content; },
+    a: { id: 'game', name: 'Example Game', ...entry },
   });
   vm.runInContext(source.match(/^const OWNER_LONG = .*;$/m)[0], ctx);
-  vm.runInContext(source.match(/^async function supportModal\([^]*?^}/m)[0], ctx);
-  await vm.runInContext("supportModal('game')", ctx);
-  return html;
+  vm.runInContext(source.match(/^function supportCard\([^]*?^}/m)[0], ctx);
+  return vm.runInContext('supportCard(a)', ctx);
 }
 
 test('an installed manifest provides capabilities without confirming developer maintenance', async () => {

@@ -41,7 +41,7 @@ test('Pause Updates keeps a game on its version: out of Update, Update All and a
   // It's applied as updates come in, so automatic updates and Update All never see it.
   const check = fn(app, 'checkUpdates');
   assert.ok(check.indexOf('holdUpdates();') < check.indexOf('const auto = '));
-  assert.match(fn(app, 'gameMenu'), /act: 'auto-up'[^\n]*\n\s+\.\.\.holdItem\(id\),/);
+  assert.match(fn(app, 'manageUpdateRows'), /aria-checked="\$\{held\}"[^\n]*data-act="hold-up"/);
   assert.match(app, /case 'hold-up': return toggleHold\(id\);/);
   assert.match(fn(app, 'badNote'), /gp-note held[^]*data-act="hold-up"/);
   assert.match(tv, /window\.toggleHold\(id\)/);
@@ -72,7 +72,7 @@ test('Free Up Space: on the Your Copy card when the game plays without the copy,
 });
 
 test('Move Build moves a build of its own folder and the game starts from there', () => {
-  assert.match(fn(app, 'gameMenu'), /S\.setup\[id\]\.build_at \? \[\{ act: 'move-build', id, label: t\('Move Build…'\)/);
+  assert.match(fn(app, 'manageStartRows'), /if \(su && su\.build_at\) rows\.push\([^\n]*data-act="move-build"/);
   assert.match(fn(app, 'moveBuild'), /invoke\('move_build', \{ id, to \}\)/);
   assert.match(rust, /x\.build_dir = \(dest != home\)\.then\(\|\| dest\.clone\(\)\);/);
 });

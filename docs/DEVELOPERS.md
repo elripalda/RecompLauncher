@@ -387,7 +387,7 @@ This only follows places your file or the catalog names, not ones the launcher n
 ### `games`: several games in one release
 
 A release that carries a whole series lists its games. Players see each one as a game of its own:
-in Discover, search and Home, with its own page (a "Part of" pill leads to the release's page) and
+in the Catalog, search and Home, with its own page (a "Part of" pill leads to the release's page) and
 its own tile in the Library and Big Picture, with its own play time, achievements, pins and
 shortcuts. Installing, updating and removing stay one thing for the whole release.
 
@@ -1009,7 +1009,7 @@ The launcher has tools for this. In Settings, open Developers and turn on Develo
 
 Add `"name"` to your file and the local build goes by that name.
 
-If you'd rather check a release the way players get it, install it from Discover and open its
+If you'd rather check a release the way players get it, install it from the Catalog and open its
 page. A file the launcher can't read is skipped, and the built-in one (if any) is used instead.
 
 Stuck, or want us to write the file with you? Open an issue, or send us your file.

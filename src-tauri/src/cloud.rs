@@ -6,7 +6,7 @@
 //! of PCs, so one can be signed out from there. No password ever passes through the launcher.
 //!
 //! Cloud saves: after each session a game's new save copy (saves.rs) goes up to the account, which
-//! keeps the newest five per game, up to 150 MB in all. Before a game starts, a newer copy from
+//! keeps the newest five per game, up to 300 MB in all. Before a game starts, a newer copy from
 //! another PC is put in place first; if both changed, the player picks. docs/LAUNCHER-API.md has the
 //! website's side.
 
@@ -143,7 +143,8 @@ fn save_url(action: &str) -> String {
 /// (When it said so, the size of the copy it refused.)
 static FULL: Mutex<Option<(std::time::Instant, u64)>> = Mutex::new(None);
 static FULL_TOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-const FULL_TEXT: &str = "Your cloud saves are full (150 MB). Remove old cloud copies to make room; your saves stay on this PC.";
+// No size here: the site sets it (300 MB now) and says it in its own answer.
+const FULL_TEXT: &str = "Your cloud saves are full. The newest save of each game is always kept, so make room by deleting another game's cloud saves on your account page at recomplauncher.com. Your saves stay on this PC.";
 const FULL_REST: std::time::Duration = std::time::Duration::from_secs(3600);
 
 fn full_now() -> bool {
@@ -313,16 +314,28 @@ async fn play_call(req: reqwest::RequestBuilder, url: &str) -> Option<Value> {
     (v.get("ok") != Some(&Value::Bool(false))).then_some(v)
 }
 
+/// Which PC this play time is from, for the website, the same however often the player signs out
+/// and back in. The website tells PCs apart by their sign-in, so without it each new sign-in
+/// would be another PC sending the same running totals, and they'd count twice. Its own file,
+/// not the usage ID: that one only goes when the player shares usage, and Settings can reset it.
+/// It stays with the play time it counts: new data, new totals, a new ID.
+fn play_id(dir: &std::path::Path) -> String {
+    crate::usage::random_id(dir, "play.id")
+}
+
 /// Sends this PC's time to the account: for `games` only (after a session), or all of it.
 /// True when the website took it.
 #[tauri::command]
 pub async fn playtime_push(app: AppHandle, games: Option<Vec<String>>) -> Res<bool> {
     let st = app.state::<App>();
     let Some(a) = load(&st.dir) else { return Ok(false) };
-    let entries = st.lib.lock().unwrap().play_entries(games.as_deref());
+    let since = crate::library::now().saturating_sub(crate::library::PLAY_RECENT_SECS);
+    let entries = st.lib.lock().unwrap().play_entries(games.as_deref(), since);
+    let pc = play_id(&st.dir);
     let url = format!("{}?a=play", api());
     for chunk in entries.chunks(500) {
-        let req = st.http.post(&url).json(&json!({ "games": chunk })).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+        let body = json!({ "pc": pc, "games": chunk });
+        let req = st.http.post(&url).json(&body).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
         if play_call(req, &url).await.is_none() {
             return Ok(false);
         }
@@ -330,7 +343,8 @@ pub async fn playtime_push(app: AppHandle, games: Option<Vec<String>>) -> Res<bo
     Ok(true)
 }
 
-/// The account's totals over all its PCs: {games: {id: {secs, last}}, titles: {title: {secs, last}}}.
+/// The account's totals over all its PCs: {games: {id: {secs, last, count, longest, recent}},
+/// titles: {title: {secs, last}}}.
 /// Null when signed out or the website can't say.
 #[tauri::command]
 pub async fn playtime_pull(app: AppHandle) -> Res<Value> {
@@ -476,13 +490,24 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
-        return saves::spots(&p.game.saves, &[], &g);
+        return named_spots(p.game.saves, vec![], &g);
     }
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    let dev = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
+    let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
     let from_cat: Vec<String> = entry.get("saves").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    saves::spots(&dev, &from_cat, g)
+    named_spots(profile_saves, from_cat, g)
+}
+
+/// The save folders a profile names are the developer's only when the profile came with the
+/// game's own release. One RecompLauncher keeps for the game (in the catalog, or built into the
+/// launcher) is ours, and the Saves tab says so: "Set by RecompLauncher".
+fn named_spots(profile_saves: Vec<String>, from_cat: Vec<String>, g: &Installed) -> Vec<Spot> {
+    let developers = crate::profile::release_profile(&g.path).is_some();
+    if developers || profile_saves.is_empty() {
+        return saves::spots(&profile_saves, &from_cat, g);
+    }
+    saves::spots(&[], &profile_saves, g)
 }
 
 /// Nobody (the player, the developer or the catalog) has said where the game saves. A fixed text,
@@ -576,7 +601,7 @@ fn phase(app: &AppHandle, id: &str, what: &str) {
 }
 
 /// Says "idle" when the work it covers ends, on every way out of it (errors included).
-struct Working {
+pub(crate) struct Working {
     app: AppHandle,
     id: String,
 }
@@ -847,6 +872,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
+    // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         let s = saves::state(&st.dir, id);
@@ -881,6 +907,62 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
         }
     }
     Ok(copy)
+}
+
+/// When this PC's save was made, for the "which save?" choice: the time of the first copy holding
+/// it (the same save is copied again before a restore or a cloud save replaces it). The files'
+/// own time is only the fallback: restoring a copy writes them anew, which made an older save look
+/// newer than the cloud's.
+fn local_save_time(copies: &[saves::Copy], hash: &str, files_time: u64) -> u64 {
+    copies.iter().filter(|c| c.hash == hash).map(|c| c.when).min().unwrap_or(files_time)
+}
+
+/// Marks a game's session as started (true) or its save as copied after it (false). A session
+/// still marked when the launcher starts is finished then (finish_open_sessions).
+pub(crate) fn set_after_play(dir: &Path, id: &str, open: bool) {
+    let mut s = saves::state(dir, id);
+    if s.after_play == open {
+        return;
+    }
+    s.after_play = open;
+    saves::set_state(dir, id, &s);
+}
+
+/// The step after a game closes, from its end to its save copied (and sent): the status above
+/// Play keeps saying "Syncs after you play" until then, instead of an "Up to date" that the
+/// session's save may already have made untrue. Ends (idle) on every way out.
+pub(crate) fn after_play_step(app: &AppHandle, id: &str) -> Working {
+    working(app, id, "after")
+}
+
+/// Sessions the launcher didn't see to the end (it closed or crashed while a game ran, or before
+/// the copy after it was made): their saves are copied and sent now. A game that's running again
+/// is left to its own session.
+pub(crate) async fn finish_open_sessions(app: &AppHandle) {
+    let st = app.state::<App>();
+    for id in open_sessions(&st.dir.join("saves")) {
+        if st.running.lock().unwrap().contains_key(&id) || game(&st, &id).is_err() {
+            continue;
+        }
+        let _step = after_play_step(app, &id);
+        match after_session(app, &id).await {
+            Ok(Some(_)) => {
+                let _ = app.emit("saves", json!({"id": id}));
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("Save copy for {id} after an unfinished session: {e}"),
+        }
+    }
+}
+
+/// The games whose sync notes still mark a session open, by their folders under `saves`.
+fn open_sessions(saves_dir: &Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(saves_dir) else { return vec![] };
+    let app_dir = saves_dir.parent().unwrap_or(saves_dir);
+    rd.flatten()
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .filter(|id| saves::state(app_dir, id).after_play)
+        .collect()
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
@@ -1067,7 +1149,8 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     s.conflict = Some(top.v.clone());
     saves::set_state(&st.dir, &id, &s);
     let newest = entries.iter().filter_map(|e| std::fs::metadata(&e.abs).ok()?.modified().ok()).max();
-    let when = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let files_time = newest.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let when = local_save_time(&saves::list(&st.dir, &id, &g), &local, files_time);
     Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
 }
 
@@ -1179,6 +1262,9 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         "spots": spots, "local": local, "cloud": cloud, "space": space, "offline": offline,
         "cloudOn": g.cloud, "signedIn": signed_in(&st.dir), "synced": state.synced_hash, "pending": state.pending.is_some(),
         "waiting": waiting, "status": STATUS_PAGE,
+        // The save in the game's folder now (the last copy made or put back), and this PC's name:
+        // the tab marks the copy that's current and the ones another PC made.
+        "current": state.last_hash, "here": saves::device_name(),
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
@@ -1447,8 +1533,29 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
 }
 
-/// The player's own answer to where the game saves (a folder they picked), or None to go back to
-/// the developer's or the catalog's folders (or none: then the launcher says it doesn't know).
+/// Deletes one of a game's cloud saves. Never its newest: that's the one the next PC brings in
+/// and the one this PC last synced with, so without it an older copy would look like the newest.
+#[tauri::command]
+pub async fn saves_cloud_delete(app: AppHandle, id: String, v: String) -> Res<()> {
+    let _busy = BUSY.lock().await;
+    let (list, _) = cloud_list(&app, &id).await?;
+    if !deletable(&list, &v) {
+        return Err(Error::Msg("The newest cloud save stays: the next PC you play on brings it in.".into()));
+    }
+    let r = post(&app, "save-delete", json!({"game": id, "v": v}), true).await?;
+    if let (Some(used), Some(quota)) = (r.get("used").and_then(Value::as_u64), r.get("quota").and_then(Value::as_u64)) {
+        room_now(used, quota);
+    }
+    Ok(())
+}
+
+/// A cloud save that can go: one of the list (newest first) that isn't its newest.
+fn deletable(list: &[CloudCopy], v: &str) -> bool {
+    list.iter().skip(1).any(|c| c.v == v)
+}
+
+/// The player's own answer to where the game saves (a folder they picked), or None to forget it.
+/// It only counts while neither the developer nor the catalog names a folder (saves::spots).
 #[tauri::command(async)]
 pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
     let mut l = st.lib.lock().unwrap();
@@ -1812,6 +1919,34 @@ mod child_retry_tests {
 }
 
 #[cfg(test)]
+mod play_id_tests {
+    use super::play_id;
+
+    fn data_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rl-play-id-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn play_id_stays_the_same() {
+        let dir = data_dir("same");
+        let first = play_id(&dir);
+        assert_eq!(first.len(), 32);
+        assert_eq!(play_id(&dir), first);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn play_id_is_not_the_usage_id() {
+        let dir = data_dir("apart");
+        assert_ne!(play_id(&dir), crate::usage::install_id(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
 mod sync_tests {
     use super::{first_time_paused, should_restore};
 
@@ -1936,6 +2071,76 @@ mod status_tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn cloud_copy(v: &str) -> CloudCopy {
+        CloudCopy { v: v.into(), ..Default::default() }
+    }
+
+    fn copy_made(when: u64, hash: &str) -> saves::Copy {
+        saves::Copy { name: format!("{when}.zip"), when, size: 1, files: 1, hash: hash.into(), device: String::new(), played: 0 }
+    }
+
+    #[test]
+    fn a_restored_save_is_dated_by_its_copy_not_by_when_it_was_written_back() {
+        let copies = [copy_made(300, "new"), copy_made(100, "old")];
+        assert_eq!(local_save_time(&copies, "old", 500), 100);
+    }
+
+    #[test]
+    fn a_save_copied_twice_is_dated_by_its_first_copy() {
+        let copies = [copy_made(400, "old"), copy_made(300, "new"), copy_made(100, "old")];
+        assert_eq!(local_save_time(&copies, "old", 500), 100);
+    }
+
+    #[test]
+    fn a_save_no_copy_holds_is_dated_by_its_files() {
+        assert_eq!(local_save_time(&[copy_made(300, "new")], "changed", 500), 500);
+    }
+
+    #[test]
+    fn a_session_started_is_open_until_its_save_is_copied() {
+        let d = tmp("after-play");
+        set_after_play(&d, "g", true);
+        assert_eq!(open_sessions(&d.join("saves")), vec!["g".to_string()]);
+        set_after_play(&d, "g", false);
+        assert!(open_sessions(&d.join("saves")).is_empty());
+    }
+
+    #[test]
+    fn a_game_with_no_open_session_is_not_finished_at_start() {
+        let d = tmp("after-play-none");
+        saves::set_state(&d, "g", &saves::State { last_hash: "a".into(), ..Default::default() });
+        assert!(open_sessions(&d.join("saves")).is_empty());
+    }
+
+    #[test]
+    fn the_newest_cloud_save_is_never_deleted() {
+        assert!(!deletable(&[cloud_copy("new"), cloud_copy("old")], "new"));
+    }
+
+    #[test]
+    fn an_older_cloud_save_can_be_deleted() {
+        assert!(deletable(&[cloud_copy("new"), cloud_copy("old")], "old"));
+    }
+
+    #[test]
+    fn a_cloud_save_that_is_not_there_is_not_deleted() {
+        assert!(!deletable(&[cloud_copy("new"), cloud_copy("old")], "gone"));
+    }
+
+    #[test]
+    fn save_folders_from_a_profile_the_release_has_are_the_developers() {
+        let d = tmp("release-profile");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1}"#).unwrap();
+        let g = Installed { path: d, ..Default::default() };
+        assert_eq!(named_spots(vec!["{install}/save".into()], vec![], &g)[0].from, "developer");
+    }
+
+    #[test]
+    fn save_folders_from_a_profile_we_keep_are_recomplaunchers() {
+        let g = Installed { path: tmp("our-profile"), ..Default::default() };
+        assert_eq!(named_spots(vec!["{install}/save".into()], vec![], &g)[0].from, "catalog");
     }
 
     #[test]
