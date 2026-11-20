@@ -1830,7 +1830,10 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         if let Some(r) = found.iter().find(|r| {
             // A build ID is the exception: it's read from the package or folder itself.
             let by_build = !need.check.nup_build_id.is_empty() && matches!(r.system.as_str(), "switch" | "switch2");
+            // So is a listed title ID for a PlayStation folder: its param.sfo says which game it is.
+            let by_title_id = !want.is_empty() && matches!(r.system.as_str(), "ps3" | "ps4" | "ps5");
             let matched_by_title = !by_build
+                && !by_title_id
                 && (matches!(r.system.as_str(), "ps3" | "ps4" | "ps5" | "switch2") || (r.system == "switch" && r.size == 0));
             !matched_by_title && id_fits(&r.path) && profile::check_copy(&need, &r.path).is_ok()
         }) {
@@ -10502,6 +10505,39 @@ mod tests {
         std::fs::write(&named, b"game package").unwrap();
         let package = roms::RomFile { path: named, system: "x360".into(), title: "The Fancy Pants Adventures".into(), region: String::new(), size: 12 };
         assert!(copies_for(&cat, &[package], &dirs).contains_key("pants"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ps4_folder_is_found_by_the_title_ids_its_game_check_lists() {
+        let d = std::env::temp_dir().join(format!("rl-ps4-ids-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let ours = d.join("Diablo 3/CUSA00242");
+        let other = d.join("The Order 1886/CUSA00035");
+        roms::tests::ps4_folder(&ours, "Diablo III: Reaper of Souls – Ultimate Evil Edition", "CUSA00242");
+        roms::tests::ps4_folder(&other, "The Order: 1886", "CUSA00035");
+        let found = roms::scan(&[d.clone()]);
+        assert_eq!(found.len(), 2);
+        let cat = json!({ "apps": [{ "id": "sanctuary", "game": "Diablo III", "origin": "ps4", "repo": "example/sanctuary",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "game": {
+                "kind": "folder", "check": { "file": "eboot.bin", "ids": ["CUSA00243", "CUSA00242"] }
+            } } }] });
+        let matched = copies_for(&cat, &found, &HashMap::new());
+        assert_eq!(matched.get("sanctuary").map(|r| &r.path), Some(&ours));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ps4_folder_is_not_found_by_eboot_bin_alone() {
+        let d = std::env::temp_dir().join(format!("rl-ps4-noids-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        roms::tests::ps4_folder(&d.join("CUSA00242"), "Diablo III: Reaper of Souls – Ultimate Evil Edition", "CUSA00242");
+        let found = roms::scan(&[d.clone()]);
+        let cat = json!({ "apps": [{ "id": "sanctuary", "game": "Diablo III", "origin": "ps4", "repo": "example/sanctuary",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "game": {
+                "kind": "folder", "check": { "file": "eboot.bin" }
+            } } }] });
+        assert!(copies_for(&cat, &found, &HashMap::new()).is_empty());
         let _ = std::fs::remove_dir_all(&d);
     }
 

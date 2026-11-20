@@ -194,6 +194,13 @@ What the player sees:
     file is recognised by its contents, not its extension. This is a content check only: it needs
     and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Use
     it with `kind: "iso_or_folder"`.
+  - `ids`: the IDs your game reads, as on the copy: a GameCube or Wii disc's (`"GZ2E01"`, or
+    `"GZ2"` for every region), an N64 cartridge's game code, a PlayStation or PS2 disc's serial,
+    or an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`). Another
+    game's copy is refused with the ID it has. For a PS4 game, list every region's title ID next
+    to `file: "eboot.bin"`: every PS4 game has an `eboot.bin`, and a game's own title often has an
+    edition or subtitle your catalog name doesn't, so the ID is how the launcher finds the
+    player's folder.
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found.
@@ -221,7 +228,7 @@ to `game`. The launcher asks for it after the copy and puts it in your folder:
 "game": {
   "kind": "folder",
   "label": "Your game folder (CUSA00341).",
-  "check": { "file": "eboot.bin" },
+  "check": { "file": "eboot.bin", "ids": ["CUSA00341"] },
   "update": { "into": "update", "label": "Your 1.02 update folder.", "accepts": "folder", "optional": true }
 }
 ```

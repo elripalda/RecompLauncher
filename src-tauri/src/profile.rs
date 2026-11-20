@@ -2402,6 +2402,18 @@ impl GameCopy {
 /// Files every game of a console has, so they can't tell one game from another.
 const COMMON_FILES: [&str; 9] = ["default.xex", "default.xbe", "eboot.bin", "param.sfo", "system.cnf", "main.npdm", "main", "main.dol", "boot.bin"];
 
+/// The copy's own ID when the game lists IDs and it isn't one of them. None when none are listed
+/// or the copy's ID can't be read.
+fn wrong_copy_id(g: &GameCopy, p: &Path) -> Option<String> {
+    let ids: Vec<String> = g.check.ids.iter().map(|i| crate::roms::id_key(i)).filter(|i| i.len() >= 3).collect();
+    if ids.is_empty() {
+        return None;
+    }
+    let id = crate::roms::copy_id(p)?;
+    let listed = ids.iter().any(|w| id.starts_with(w.as_str()));
+    (!listed).then_some(id)
+}
+
 pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     let folder = p.is_dir();
     // A game packed in an archive: unpacked first (set_game_copy does that for .7z and .zip).
@@ -2423,6 +2435,11 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         }
         if !g.check.nup_build_id.is_empty() {
             return check_nup_build(&g.check.nup_build_id, nup::build_id_of_folder(p));
+        }
+        // An extracted game whose ID can be read (a PlayStation game's param.sfo, an Xbox 360 game's
+        // default.xex) and isn't one of this game's. One whose ID can't be read isn't refused.
+        if let Some(id) = wrong_copy_id(g, p) {
+            return Err(format!("That folder is a different game (its ID is {id})."));
         }
         // With nothing more to check by: a folder with nothing in it, or only pictures and videos
         // (the launcher's own screenshots folder, say), is never anyone's game.
@@ -2467,13 +2484,8 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         return Err("That disc image isn't the release this recomp reads.".into());
     }
     // A disc ID that isn't one of this game's (a copy whose ID can't be read isn't refused).
-    let ids: Vec<String> = g.check.ids.iter().map(|i| crate::roms::id_key(i)).filter(|i| i.len() >= 3).collect();
-    if !ids.is_empty() {
-        if let Some(id) = crate::roms::copy_id(p) {
-            if !ids.iter().any(|w| id.starts_with(w.as_str())) {
-                return Err(format!("That's a different game's disc image (its ID is {id})."));
-            }
-        }
+    if let Some(id) = wrong_copy_id(g, p) {
+        return Err(format!("That's a different game's disc image (its ID is {id})."));
     }
     if !g.check.xdvdfs.is_empty() && !xdvdfs_has(p, &g.check.xdvdfs) {
         return Err(if xdvdfs_part(p).is_none() {
@@ -3320,6 +3332,28 @@ mod tests {
         assert!(q.follow_screen(&d, &["res".to_string()]).is_empty());
         assert_eq!(shape_name(1920, 1200), "16:10");
         assert_eq!(shape_name(2560, 1080), "21:9");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ps4_folder_with_another_title_id_is_refused() {
+        let d = tmp("ps4-wrong-id");
+        let game = d.join("CUSA00035");
+        crate::roms::tests::ps4_folder(&game, "The Order: 1886", "CUSA00035");
+        let check = Check { file: "eboot.bin".into(), ids: vec!["CUSA00242".into()], ..Default::default() };
+        let need = GameCopy { kind: "folder".into(), check, ..Default::default() };
+        assert!(check_copy(&need, &game).unwrap_err().contains("CUSA00035"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ps4_folder_with_a_listed_title_id_is_taken() {
+        let d = tmp("ps4-listed-id");
+        let game = d.join("CUSA00242");
+        crate::roms::tests::ps4_folder(&game, "Diablo III", "CUSA00242");
+        let check = Check { file: "eboot.bin".into(), ids: vec!["CUSA00243".into(), "CUSA00242".into()], ..Default::default() };
+        let need = GameCopy { kind: "folder".into(), check, ..Default::default() };
+        assert!(check_copy(&need, &game).is_ok());
         let _ = std::fs::remove_dir_all(&d);
     }
 
