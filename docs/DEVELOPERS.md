@@ -26,9 +26,13 @@ The rule: use `start` to pass inputs the game reads when it starts. Add `prepare
 game has separate work to do before Play, like importing assets or recompiling from the player's
 dump. Verification works with either.
 
-Game pages show who maintains a game's setup: its developer, RecompLauncher or the community.
-Where the file comes from doesn't decide it. If you ship and maintain your own
-`recomplauncher.json`, tell us and your game shows as maintained by its developer.
+Game pages have a Launcher Support box. Each feature in it is marked as coming from your own
+`recomplauncher.json`, from RecompLauncher, or not there yet. A file that is only in your repo
+doesn't reach players, except on a Forgejo or Gitea server (see
+[Where the file goes](#where-the-file-goes)). When everything you can control comes from
+your own file, the box says Full Support. A free
+[developer account](https://recomplauncher.com/developers?signup=1) puts the verified tick next to
+your name there.
 
 Launch takes about ten minutes. Before any of them, your releases need to install cleanly, which
 most already do: see [Releases that install cleanly](#releases-that-install-cleanly).

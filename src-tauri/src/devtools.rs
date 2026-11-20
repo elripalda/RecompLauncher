@@ -224,9 +224,6 @@ pub struct Report {
     /// What the setup can do besides: "settings", "verify" (known dumps), "inputs" (more than one
     /// file), "saves" (says where it saves).
     caps: Vec<&'static str>,
-    /// Who looks after this setup, as the catalog says: "project", "launcher", "community", or
-    /// "unconfirmed" when nobody has said.
-    owner: &'static str,
     items: Vec<Item>,
 }
 
@@ -249,16 +246,6 @@ fn summary(p: &profile::Profile) -> (&'static str, Vec<&'static str>) {
     (flow, caps)
 }
 
-/// Who maintains a game's setup, from the catalog's "maintained_by". Only the catalog says it, so
-/// where a profile came from never counts as a promise from the project.
-pub fn owner(entry: &Value) -> &'static str {
-    match entry.get("maintained_by").and_then(Value::as_str).unwrap_or("") {
-        "project" | "official" => "project",
-        "launcher" => "launcher",
-        "community" => "community",
-        _ => "unconfirmed",
-    }
-}
 
 fn ok(text: impl Into<String>) -> Item {
     Item { level: "ok", text: text.into(), detail: String::new() }
@@ -352,7 +339,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     }
     let location = embedded.map(|p| p.location).unwrap_or_else(|| file.display().to_string());
     let (flow, caps) = prof.as_ref().filter(|p| p.format == 1).or(used.as_ref()).map(summary).unwrap_or(("", vec![]));
-    Ok(Report { source, file: location, has_file, error, level, flow, caps, owner: owner(&entry), items })
+    Ok(Report { source, file: location, has_file, error, level, flow, caps, items })
 }
 
 /// What "game.check" lets the launcher do with the player's copy.
@@ -939,13 +926,5 @@ mod tests {
             assert!(!INTERNAL.contains(&name), "{name} is on the internal list but a developer can write it");
             assert!(props.contains_key(&shown), "Profile.{name} isn't in docs/recomplauncher.schema.json");
         }
-    }
-
-    #[test]
-    fn owner_comes_only_from_the_catalog() {
-        assert_eq!(owner(&serde_json::json!({"maintained_by": "project"})), "project");
-        assert_eq!(owner(&serde_json::json!({"maintained_by": "community"})), "community");
-        assert_eq!(owner(&serde_json::json!({"launcher": {}})), "unconfirmed");
-        assert_eq!(owner(&Value::Null), "unconfirmed");
     }
 }

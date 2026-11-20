@@ -1699,6 +1699,8 @@ body.light .toast.bad, body.light .su-err, body.light .mono{color:#b42318}
 body.light .tag.ended, body.light .gp-note.ended b{color:#b42318}
 body.light .tag.paused, body.light .gp-note.paused b{color:#8a5a00}
 body.light .tag.complete, body.light .gp-note.complete b{color:#127a45}
+body.light .sup-h .tag.sup-full{color:#8a5a00;box-shadow:none}
+body.light .sup-chip.sup-ours, body.light .sup-row.st-l .sup-ib{color:#2a6aa5}
 body.light .gp-note{background:rgba(255,255,255,.75)}
 
 /* Covers Only (Settings, Appearance): just the covers, no names under them. */
@@ -2229,11 +2231,25 @@ body.mac .tile .glow{display:none}
 .sup-k span{font-size:12px;line-height:1.35;color:var(--dim)}
 .sup-ok{width:20px;height:20px;color:#3ee08f;stroke-width:2.5}
 .sup-no{width:20px;height:20px;color:var(--dim);stroke-width:2.5}
-.sup-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--fill);border:1px solid var(--line2);color:var(--muted)}
-.sup-foot.sup-project,.sup-foot.sup-launcher,.sup-foot.sup-community{background:rgba(62,224,143,.06);border-color:rgba(62,224,143,.2);color:#3ee08f}
-.sup-fi{width:16px;height:16px;flex-shrink:0}
-.sup-foot b{font-size:13px}
-.sup-card .sup-src{margin:6px 0 0;font-size:12px;color:var(--dim)}
+/* A row's mark: the project's filled check, our logo, or a dash. Hover says which. */
+.sup-row.st-l .sup-ib{background:rgba(55,123,182,.16);color:#8fb4ff}
+.sup-st{position:relative;display:grid;place-items:center;width:24px;height:24px;cursor:help}
+.sup-m{width:22px;height:22px;display:block}
+.sup-m.sup-p{color:var(--cyan)}
+.sup-m.sup-p path{fill:none;stroke:var(--card);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.sup-m.sup-l{width:20px;height:20px}
+/* The hover note on a mark and on Full Support: shown at once, above and to the left. */
+.sup-card [data-tip]:hover::after{content:attr(data-tip);position:absolute;right:-6px;bottom:calc(100% + 8px);width:max-content;max-width:240px;padding:8px 10px;border-radius:9px;background:var(--card3);border:1px solid var(--line2);box-shadow:0 8px 24px rgba(0,0,0,.4);color:var(--ink);font-size:12px;font-weight:500;line-height:1.4;text-align:left;white-space:normal;z-index:5;pointer-events:none}
+/* Where the setup comes from, and who made the game. */
+.sup-card .sup-src{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 6px}
+.sup-chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;font-size:12.5px;font-weight:600;white-space:nowrap;color:var(--dim);background:var(--fill);box-shadow:inset 0 0 0 1px var(--line2)}
+.sup-chip.sup-own{color:var(--cyan);background:rgba(52,242,232,.08);box-shadow:inset 0 0 0 1px rgba(52,242,232,.28)}
+.sup-chip.sup-ours{color:#8fb4ff;background:rgba(55,123,182,.12);box-shadow:inset 0 0 0 1px rgba(143,180,255,.28)}
+.sup-ci{width:14px;height:14px;flex:none}
+.sup-src .bydev{font-size:12.5px;color:var(--muted)}
+/* Full Support: everything the project controls comes from its own file. */
+.sup-h .tag.sup-full{position:relative;gap:5px;color:#ffd66b;background:linear-gradient(135deg,rgba(255,214,107,.18),rgba(214,150,40,.1));border-color:rgba(255,214,107,.5);box-shadow:0 0 14px rgba(255,200,80,.18);cursor:help}
+.sup-star{width:13px;height:13px}
 .sup-ask{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:14px;border-radius:14px;background:var(--card2)}
 .sup-ask p{margin:0;font-size:13px;color:var(--muted)}
 /* The crash window: the game's own last error line */
