@@ -19,3 +19,20 @@ Reassess from upstream source, release assets and named game evidence when consi
 adapter. Different engines can coexist through [the same contract](ADDING-ENGINES.md), with
 separate system/target declarations, catalogs and per-game pins. Never convert a project's
 claimed target support into a claim that every catalog title is playable.
+
+## Other console pipelines
+
+The admission rule is a generic game preparation route or ready profiles maintained in the engine
+repository. Adding another game must not require a developer to write a title-specific port in
+RecompLauncher. Host build fixes are separate from game-specific recompilation work.
+
+| Candidate | Integration decision |
+| --- | --- |
+| [ModernGekko](https://github.com/ExpansionPak/ModernGekko), with DolRecomp/RecompCore | Generic GameCube/Wii disc extraction and module build; Apple silicon adapter implemented. Other host routes are not advertised until packaged and validated. |
+| [ps2-native-recomp](https://github.com/exoteric33/ps2-native-recomp) | Generic ISO pipeline and upstream game reports; Apple silicon adapter implemented. The runtime's live compiler/SDK stays frozen with each game. |
+| [ps3recomp](https://github.com/sp00nznet/ps3recomp/tree/de4f090328ea08bef6b2f15caec0b85e343a7ece) | Deferred. The inspected SDK's examples require title-specific harnesses and runtime SPU capture/relifting; there is no ready generic install pipeline or complete shared profile catalog. No installable placeholder is exposed. |
+| [PS4Recomp](https://github.com/wie-project/PS4Recomp) | Generic decrypted-folder-to-standalone-app pipeline; Apple silicon adapter implemented with pinned upstream compatibility reports. |
+| [AnyPS5](https://github.com/boykopovar/AnyPS5) | Generic decrypted ELF relinker/runtime; Windows/Linux x86-64 adapter implemented. Linux needs glibc 2.43. Bring-up reports do not certify the pinned release, and actual target testing remains required. |
+
+Each implemented adapter keeps its verified artifacts, importer, recipe, maintenance guide and
+tests in its own folder. No compatibility claim follows simply from inclusion in this table.

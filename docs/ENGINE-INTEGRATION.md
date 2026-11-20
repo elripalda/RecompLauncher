@@ -21,8 +21,9 @@ npm run build -- --debug --bundles app --config src-tauri/tauri.switch-test.conf
 
 Open `src-tauri/target/debug/bundle/macos/RecompLauncher Switch Test.app`. Its separate application
 identifier keeps the test library/settings under `~/Library/Application Support/com.recomplauncher.switchtest`.
-It does not migrate the regular launcher's library. Actual game saves use nxnative's normal
-per-title save folder, which may already be shared with other nxnative frontends.
+It does not migrate the regular launcher's library. nxnative saves use its normal per-title
+folder, which may already be shared with other nxnative frontends. The other adapters use
+installation-local save paths recorded with each prepared game.
 
 1. Find a game in Discover. Engine entries include their upstream profile version and notes.
 2. Choose Easy Install and use the existing setup screen to select the base game file and its
@@ -38,7 +39,7 @@ work shows an indeterminate bar. A new step resets its measurements; estimated c
 with `~`. The display does not treat one step's ETA as the whole installation's remaining time,
 and final validation/registration must still complete before the game is ready.
 
-Apple silicon, Xcode with a macOS SDK, and the engine's supported Metal compiler are prerequisites.
+For nxnative, Apple silicon, Xcode with a macOS SDK, and its supported Metal compiler are prerequisites.
 The app checks Xcode/Metal before setup and the engine checks its exact compiler lock. No global
 Homebrew, Python, pip or .NET setup is required. Components are installed privately on demand.
 
@@ -50,7 +51,7 @@ key management are not offered. Unsupported/mismatched revisions fail without re
 
 ## Package and catalog provenance
 
-The Mac adapter consumes the source archive directly from
+The nxnative adapter consumes the source archive directly from
 [seedds/nxnative](https://github.com/seedds/nxnative/tree/9ccbd6b1a152bc8449b092ab60999be13c2971aa).
 `src-tauri/src/engines/adapters/nxnative/nxnative-components.json` records its exact commit, archive SHA256, and
 every independently obtained build dependency: standalone Python from Astral, exact wheels from
@@ -74,26 +75,64 @@ Artwork uses the existing media cache; refreshing it does not rebuild games.
 Adapters are discovered automatically from their folders and filtered by their declared host
 targets. They declare supported game systems independently of host platforms. See the
 [contributor contract](ADDING-ENGINES.md); a new engine does not need a name branch in shared
-installation code. nxnative supports Mac; ScarletNX supplies an experimental Windows/Linux route.
+installation code. The implemented routes are listed below; support is never inferred from the
+console alone or from an upstream project's broader target claims.
+
+## Additional console engines
+
+All routes keep Discover → Easy Install → select files → Setup → Play. Engine selection remains
+optional through Versions. A game enters through a generic upstream pipeline or upstream-owned
+profiles; no game-specific preparation code is added to RecompLauncher.
+
+| Adapter | Game system | Implemented target | Input | Catalog evidence |
+| --- | --- | --- | --- | --- |
+| [ModernGekko](../src-tauri/src/engines/adapters/moderngekko/README.md), including DolRecomp/RecompCore | GameCube/Wii | Apple silicon Mac | Disc image or extracted disc folder | Four exact title matches from the pinned upstream Hall of Fame; ambiguous names omitted. |
+| [ps2-native-recomp](../src-tauri/src/engines/adapters/ps2native/README.md) | PS2 | Apple silicon Mac | ISO | 47 upstream report rows resolved to disc identities; eight ambiguous/translated rows omitted. |
+| [PS4Recomp](../src-tauri/src/engines/adapters/ps4recomp/README.md) | PS4 | Apple silicon Mac | Extracted folder with decrypted ELF `eboot.bin` and SFO metadata | Six pinned README reports, retaining their partial-compatibility notes. |
+| [AnyPS5](../src-tauri/src/engines/adapters/anyps5/README.md) | PS5 | Windows/Linux x86-64 | Decrypted extracted app0 folder | Three upstream bring-up reports, explicitly unverified for the pinned release. |
+
+These listings are experimental. Metadata and build tests do not establish commercial-game
+compatibility. Artwork is imported separately from title-matched publisher/public metadata.
+GameCube/Wii, PS2 and PS4 require Xcode; build dependencies are provisioned privately. PS2 also
+freezes a private compiler/SDK closure per game (roughly 1.1 GiB) because its upstream runtime can
+compile previously unseen code. That uses the
+game's original frozen engine; it does not adopt engine updates or rebuild on every Play.
+
+AnyPS5 uses its direct relinker and runtime, without the upstream GUI or automatic title patches.
+Its Linux release requires **glibc 2.43 or newer**, checked before provisioning, plus a compatible
+C++ runtime. No macOS runtime route is advertised. Windows/Linux native conversion, gameplay,
+controllers and saves need testing on those platforms; this work was performed on a Mac.
+
+The native Mac smoke checks build real pinned tools and copyright-free synthetic fixtures.
+ModernGekko extraction/module loading, PS2 cold/warm live compilation and relocation, and PS4
+standalone conversion/registration/relocation were checked. They are not real-game acceptance
+tests. Follow each adapter's README to reproduce the opt-in checks and refresh its engine/catalog.
+
+PS3 is deferred: the inspected `ps3recomp` SDK requires per-title harnesses and runtime SPU capture
+work. It does not provide the ready generic preparation route required by this integration.
 
 ## Persistence and recovery
 
 - Pending installations store their game profile and package checkpoint in `engine_build` and
   use existing named-input selection. Explicitly retrying an unfinished setup may adopt the
-  current nxnative checkpoint; prepared games and completed results waiting for registration
+  current adapter checkpoint; prepared games and completed results waiting for registration
   keep their original pins. They cannot fall through to an ordinary release installer
   or launch. Prepared installations retain their frozen native profile and save paths.
-- `.engine-work/<package-and-input-fingerprint>/job.json` records each attempt. The builder's
-  matching extraction/shader work is retained after interruption; retry needs a user action.
-  A Python parent watcher stops the build group if the launcher dies.
-- The output is staged separately. Title/version, main NSO build, native executable, bundle links
-  and signature are checked before activation. A completed-result record allows library
+- `.engine-work/<package-and-input-fingerprint>/` holds private work and logs. Matching reusable
+  work is retained after interruption; retry needs a user action. Source/tool caches are not
+  changed on Play. Each adapter documents which preparation stages it can reuse.
+- The output is staged separately. Adapters validate their own identity format, revision, native
+  executable and runtime dependencies. A completed-result record allows library
   registration to recover after interruption before or after the final file move without repeating
   compilation. Cancellation and installation ownership are checked again at registration. Move
   and uninstall cannot overlap preparation, and registration retains current player preferences.
   A completed result waiting for registration must finish Setup before Move becomes available;
   registration reuses the completed app without compiling it again. Registry downloads have
   cancellable waits and inactivity deadlines, including token responses and body transfers.
+- New generic preparations freeze their input declaration and use versioned recursive metadata
+  signatures. Required runtime bytes are fingerprinted and checked again during recovery, outside
+  global library locks. Save backups exclude owned content/tool roots; safe relative links remain
+  contained when moving a prepared package across volumes.
 - Catalog refreshes, ordinary updates, automatic-update settings and Play cannot reprepare an
   existing build. This checkpoint exposes no Apply Fix or automatic migration endpoint.
 - Launch uses the pinned executable directly. Save backup/restore uses the frozen profile or an
