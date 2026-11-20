@@ -148,6 +148,35 @@ function recompPlaytime(id) {
   return withAccount(localPlaytime(id), S.cloudPlay?.games?.[id]);
 }
 
+// One session as [start, secs], both whole seconds above zero; anything else from the website is
+// left out rather than drawn.
+const sessionOk = (x) => Array.isArray(x) && Number.isInteger(x[0]) && x[0] > 0 && Number.isInteger(x[1]) && x[1] > 0;
+// A whole number from the website, or 0.
+const wholeOr0 = (n) => (Number.isInteger(n) && n > 0 ? n : 0);
+// How far back the card looks (as PLAY_RECENT_SECS in library.rs): a month, plus a day.
+const PLAY_RECENT_DAYS = 31;
+
+// A game's play time card over every PC of the account: how many sessions and the longest, and
+// the recent sessions (oldest first) for this week, this month and the bars. The account's
+// already hold this PC's as the same [start, secs], so those two numbers join them, and the
+// larger count and longest win: this PC's newest session counts before the website has it.
+// Signed out, or a website that can't say, it's this PC's own.
+function playStats(id, own) {
+  const mine = (own || []).filter(sessionOk);
+  const cloud = S.cloudPlay?.games?.[id] || {};
+  const from = Date.now() / 1000 - PLAY_RECENT_DAYS * 86400;
+  const byKey = new Map();
+  for (const x of [...mine, ...(Array.isArray(cloud.recent) ? cloud.recent : [])]) {
+    if (!sessionOk(x) || x[0] < from) continue;
+    byKey.set(`${x[0]}|${x[1]}`, [x[0], x[1]]);
+  }
+  const recent = [...byKey.values()].sort((a, b) => a[0] - b[0]);
+  const lengths = [...mine, ...recent].map((x) => x[1]);
+  const count = Math.max(mine.length, recent.length, wholeOr0(cloud.count));
+  const longest = Math.max(0, ...lengths, wholeOr0(cloud.longest));
+  return { recent, count, longest };
+}
+
 // A recomp's time, or the original game's over all its recomps (marked `grouped`).
 function gamePlaytime(a) {
   if (!a) return;

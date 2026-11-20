@@ -54,8 +54,31 @@ or a lost request never counts anything twice.
 
 | Call | |
 | --- | --- |
-| `POST ?a=play` | `{"games": [{"game", "secs", "last"}]}`, up to 500 → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
-| `GET ?a=play` | `{"games": {ID: {"secs", "last"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+| `POST ?a=play` | `{"pc", "games": [{"game", "secs", "last", "count", "longest", "recent"}]}`, up to 500 and 1 MB → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
+| `GET ?a=play` | `{"games": {ID: {"secs", "last", "count", "longest", "recent"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+
+`count`, `longest` and `recent` draw a game's "Your play time" card (this week, this month,
+sessions, longest, the last two weeks) over all the PCs:
+
+- `count` is how many sessions that PC kept of the game (10 seconds or more each, its newest 500)
+  and `longest` the longest of them in seconds. Like `secs`, the website keeps the larger of what
+  it has and what's sent per PC; `GET` gives `count` summed over the PCs and `longest` the largest.
+- `recent` is that PC's sessions of the last 31 days, as `[start, secs]` (start in Unix seconds,
+  both whole numbers above zero), oldest first. The website adds them to what it had for that PC
+  (a session is the same one when both numbers match, so a resend adds nothing), drops sessions
+  older than 31 days, and skips a bad one (start more than a day ahead, longer than 20 years) on
+  its own. `GET` gives every PC's recent sessions together, oldest first.
+- A site without them leaves the card to the PC's own sessions. Titles don't carry them.
+
+`pc` is the PC's play ID: 32 lowercase hex characters, random, kept in `play.id` in the
+launcher's data folder (`cloud::play_id`). It's the same each time that PC signs in, which the
+sign-in token isn't, so the website keeps play rows by account and play ID rather than by sign-in:
+signing out and back in then adds to the same rows instead of counting that PC's whole time a
+second time. When a send has a good `pc`, the rows that sign-in sent before under itself move to
+that play ID, merged as above (the larger of each number, recent sessions joined). A send without
+one (an older launcher) is kept by its sign-in as before. It's used for nothing but play time, and
+isn't the usage ID (`install.id`), which only goes when the player shares usage and Settings can
+reset. Rows from a sign-in that's already gone stay as they are.
 
 - `game` is the recomp's id, or `recomp--game` for one game of a recomp that carries several.
   A developer's own builds (`local-…`, `own-…`) aren't sent.
@@ -72,7 +95,7 @@ or a lost request never counts anything twice.
 
 Account page (cookie): `GET ?a=playtime` (each game's total and each PC's share), `POST
 ?a=playtime-clear {game?}` (one game, or everything). Removing a PC keeps its rows; deleting the
-account deletes them.
+account deletes them. Each play ID's share is one PC, named after the sign-in that last sent it.
 
 ## Get it on my PC
 
