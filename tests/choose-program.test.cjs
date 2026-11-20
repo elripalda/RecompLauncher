@@ -93,8 +93,8 @@ test('with Easy Setup skipped for every game, the way back is Use Default', () =
   assert.match(row(MINE, true, undefined, { easy_skip_all: true }), /data-act="forget-program"[^>]*>Use Default</);
 });
 
-test('the Overview shows Self-Managed under the install date', () => {
-  assert.match(app, /\$\{inst && k === t\('Installed'\) \? selfManagedPill\(id\) : ''\}/);
+test('the Overview shows Self-Managed next to the room the game takes', () => {
+  assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), \(size \? esc\(fmtB\(size\)\) : '—'\) \+ selfManagedPill\(id\)\)/);
 });
 
 test('Where\'s Your Build? offers the build folder or the game\'s executable, each saying what it does', () => {

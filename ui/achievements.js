@@ -360,6 +360,28 @@ Your account's Terms and Privacy still apply.`;
     A.onPage = on;
   }
   window.achSide = achSide;
+  // (Beta 67) The game page's stats strip: this game's achievements for its Achievements box, or null
+  // when the account doesn't have them (or they haven't come yet: asked for once, in the background).
+  // -> { of, got, pct, points }
+  const stripAsk = new Set();
+  window.achStrip = (id) => {
+    if (!A.allowed) return null;
+    const d = A.games[id];
+    if (!d) {
+      if (!stripAsk.has(id)) {
+        stripAsk.add(id);
+        invoke('ach_game', { id, fresh: false }).then((r) => { if (!A.games[id]) A.games[id] = r; if (S.view === 'game' && S.arg === id) refreshGame(); }).catch(() => {});
+      }
+      return null;
+    }
+    if (d.allowed === false) return null;
+    const list = d.list && Array.isArray(d.list.achievements) ? d.list.achievements : [];
+    const main = list.filter((x) => !isBonus(x));
+    const ids = new Set((d.unlocked || []).map(Number));
+    const of = list.length ? main.length : Number(d.count) || 0;
+    const got = list.length ? main.filter((x) => ids.has(Number(x.id))).length : Math.min(ids.size, of);
+    return { of, got, pct: of ? Math.round((got / of) * 100) : 0, points: Number(d.total) || 0 };
+  };
 
   const user = () => (S.account && S.account.signedIn && S.account.user) || null;
   const cat = (id) => byId(id) || null;
