@@ -978,9 +978,9 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // kept, and never in the game's own folder as a whole, where other files live too.
     if kept {
         // Where extra saves can go: places the game's developer, the catalog or the player named
-        // (never the game's whole folder), and places outside the game's folder. Not a place that
-        // was only a guess inside the game's folder, or one that holds programs: those can be part
-        // of the game (a runtime it downloaded).
+        // (never the game's whole folder), and places outside the game's folder. Not a place inside
+        // the game's folder that only the copy names (older launchers guessed those), or one that
+        // holds programs: those can be part of the game (a runtime it downloaded).
         let named = |t: &str| spots_now.iter().any(|s| s.template == t && matches!(s.from, "developer" | "catalog" | "player"));
         let may_clear: Vec<bool> = same
             .iter()
