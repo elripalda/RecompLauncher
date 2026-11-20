@@ -56,6 +56,7 @@ pub mod setup_state;
 #[cfg(test)]
 mod setup_window_tests;
 pub mod sysenv;
+pub mod sysneeds;
 mod emus;
 pub mod roms;
 pub mod saves;
@@ -3207,6 +3208,13 @@ fn start_game_with_monitor_context(
         let through_proton = !cfg!(windows) && matches!(ext.as_str(), "exe" | "cmd" | "bat");
         cmd.env("RECOMPLAUNCHER_DATA", if through_proton { profile::wine_path(&shown) } else { shown });
     }
+    // The PC is older than the game says it needs: said, so a game that won't start isn't a mystery,
+    // but it still starts (the developer may be wrong, or the PC may manage).
+    let too_old = profile_of(&st, id, &g).and_then(|p| system_needs(&p, &g)).map(|(_, old)| old).unwrap_or_default();
+    if !too_old.is_empty() {
+        trail::note(format!("Play {id}: this PC is older than the game needs: {too_old:?}"));
+        let _ = app.emit("system-old", json!({ "name": g.name, "old": too_old }));
+    }
     // A Python set up elsewhere on the PC (PYTHONHOME, PYTHONPATH) breaks the Python some games
     // carry inside them ("No module named 'encodings'"). Games with their own Python never want them.
     if ext != "py" {
@@ -5147,6 +5155,10 @@ struct Setup {
     build_at: Option<PathBuf>,
     /// Set up, or why not: the answer Play gives too (setup_state).
     status: setup_state::Status,
+    /// What the installed build needs from the PC (`system`), for the game page's list.
+    system: Option<sysneeds::OsNeeds>,
+    /// What of that this PC is too old for: shown in red, and said when it plays.
+    system_old: Vec<sysneeds::TooOld>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -5215,6 +5227,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
     let built = p.build_done(&g.path) == Some(true) || (g.prebuilt && p.build_folder_here(&g.path).is_some());
     let set_up = if p.inputs.is_empty() { copy.is_some() || built } else { inputs_ready };
     let status = easy_status(&st, &id, &g, &p, inputs_ready);
+    let system = system_needs(&whole, &g);
     Some(Setup {
         inputs: inputs::rows(&p, &g, &st.dir).unwrap_or_default(),
         inputs_error: inputs::validate(&p).err(),
@@ -5272,7 +5285,18 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         spare: if pick.is_some() || setup_busy(&id) { None } else { spare_copy(&g, &p, &st.lib.lock().unwrap().installed.values().cloned().collect::<Vec<_>>()) },
         build_at: if pick.is_some() { None } else { build_folder_now(&st, &id, &g) },
         status,
+        system_old: system.as_ref().map(|(_, old)| old.clone()).unwrap_or_default(),
+        system: system.map(|(n, _)| n),
     })
+}
+
+/// What the installed build needs from the PC (`system` in its recomplauncher.json), and what of it
+/// this PC is too old for.
+fn system_needs(p: &profile::Profile, g: &Installed) -> Option<(sysneeds::OsNeeds, Vec<sysneeds::TooOld>)> {
+    let build_os = if is_windows_build(g) { "windows" } else { assets::os_now() };
+    let needs = p.system.as_ref()?.for_build(build_os)?.clone();
+    let old = sysneeds::too_old(&needs, build_os, assets::os_now(), sysneeds::os_version().as_deref(), sysneeds::glibc_version().as_deref());
+    Some((needs, old))
 }
 
 /// A game built into a folder of its own (its setup's, or the player's build in use): that folder,

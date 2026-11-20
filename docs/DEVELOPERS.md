@@ -421,6 +421,33 @@ the one on recomplauncher.com is used. Before anyone installs your release, the 
 that list to go on: ask for your games to be listed there (with their art), or the release shows
 as one game until it's installed. Launchers older than 0.90 Beta 36 skip it and show one tile.
 
+### `system`: what your game needs from the PC
+
+Say what each of your builds needs, so a player with an older PC is told why the game won't start
+instead of seeing it close:
+
+```json
+"system": {
+  "windows": { "version": "10", "graphics": { "d3d12": "12_0" } },
+  "linux": { "glibc": "2.35", "graphics": { "vulkan": "1.3" } },
+  "macos": { "version": "13", "graphics": { "metal": "3" } }
+}
+```
+
+- One part for each system you ship a build for. A part or a key you leave out is no known need.
+- `version`: the oldest Windows (`"10"`, `"11"`, or a build like `"10.0.19041"`) or macOS (`"13"`,
+  `"14.4"`).
+- `glibc`, for Linux: the oldest glibc your build runs with. That's the glibc of the system you
+  built it on, so build on an old one (see [Releases that install cleanly](#releases-that-install-cleanly)).
+- `graphics`: the API you draw with (`vulkan`, `opengl`, `d3d12`, `d3d11`, `d3d9` or `metal`) and
+  its oldest version.
+
+The game's page lists these with the rest of what it needs, and the launcher checks the system's
+version and glibc against the player's PC: when the PC is older, the page shows it in red and the
+player is told when they press Play. The game still starts, since the PC may manage anyway. The
+graphics version is only shown. A Windows build played through Proton on Linux is checked against
+nothing: its Windows version means nothing there.
+
 ## Settings: in the launcher
 
 ### `config`: your settings files

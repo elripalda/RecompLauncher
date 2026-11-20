@@ -60,6 +60,10 @@ pub struct Profile {
     /// Whether looks (ReShade filters) can be used with it, and how.
     #[serde(default)]
     pub looks: Option<crate::looks::ProfileLooks>,
+    /// What it needs from the PC, by system (sysneeds.rs). Left out of the profile when it isn't
+    /// given, so setups fingerprinted before it existed stay as they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<crate::sysneeds::SystemNeeds>,
     /// Where the game keeps its saves: folders, files, or `*` patterns, with the same {local},
     /// {documents}, {install}... as everywhere else. Backups and cloud saves copy these.
     #[serde(default)]
@@ -2665,6 +2669,19 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn system_reads_each_part_and_a_profile_without_it_writes_none() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"system":{"linux":{"glibc":"2.35","graphics":{"vulkan":"1.3"}},"windows":{"version":"11"}}}"#).unwrap();
+        let s = p.system.as_ref().unwrap();
+        assert_eq!(s.for_build("linux").unwrap().glibc, "2.35");
+        assert_eq!(s.for_build("linux").unwrap().graphics["vulkan"], "1.3");
+        assert_eq!(s.for_build("windows").unwrap().version, "11");
+        assert!(s.for_build("macos").is_none());
+        // Setups fingerprinted from the profile before `system` existed stay set up.
+        let plain: super::Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("system"));
+    }
 
     #[test]
     fn easy_setup_follows_the_websites_rule() {
