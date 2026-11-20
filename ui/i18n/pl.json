@@ -3390,7 +3390,8 @@
  "N/A": "nd.",
  "Newer save from {device}": "Nowszy zapis z {device}",
  "Newer save in the cloud": "Nowszy zapis w chmurze",
- "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Naciśnij Graj, a zostanie wczytany sam. To, co jest teraz, zostanie najpierw zachowane jako kopia.",
- "Get It Now": "Pobierz teraz",
- "Comes in when you play": "Wczyta się, gdy zagrasz"
+ "Syncs when you press Play": "Zsynchronizuje się po naciśnięciu Graj",
+ "syncs when you press Play": "zsynchronizuje się po naciśnięciu Graj",
+ "Saved {time}. What's there now is kept as a backup first.": "Zapisano {time}. To, co jest teraz, zostanie najpierw zachowane jako kopia.",
+ "A newer save is in the cloud": "W chmurze jest nowszy zapis"
 }

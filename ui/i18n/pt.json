@@ -3390,7 +3390,8 @@
  "N/A": "N/D",
  "Newer save from {device}": "Gravação mais recente de {device}",
  "Newer save in the cloud": "Gravação mais recente na nuvem",
- "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Carrega em Jogar e ela é aplicada sozinha. A que está lá agora é guardada primeiro como cópia.",
- "Get It Now": "Obter agora",
- "Comes in when you play": "Chega quando jogares"
+ "Syncs when you press Play": "Sincroniza quando carregas em Jogar",
+ "syncs when you press Play": "sincroniza quando carregas em Jogar",
+ "Saved {time}. What's there now is kept as a backup first.": "Gravada {time}. A que está lá agora é guardada primeiro como cópia.",
+ "A newer save is in the cloud": "Há uma gravação mais recente na nuvem"
 }

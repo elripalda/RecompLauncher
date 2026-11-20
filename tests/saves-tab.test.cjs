@@ -35,7 +35,7 @@ function tab(S) {
     ${line(account, 'const spotSet = ')}
     ${line(account, 'const CURRENT_ICON = ')}
     ${line(account, 'const NEXT_ICON = ')}
-    ${line(account, 'const COMES_IN = ')}
+    ${line(account, 'const SYNCS_ON_PLAY = ')}
     ${line(account, 'const BIN_ICON = ')}
     ${line(account, 'const HISTORY_SHOWN = ')}
     const MARK_ICONS = { pc: '', cloud: '', other: '' };
@@ -236,17 +236,38 @@ test('a save only on this PC has nothing to delete from the cloud', () => {
 });
 
 // ---------- a newer save from another PC ----------
-// Play puts it in place by itself, so the tab says so instead of offering Restore on it.
-const incomingSave = new Function(`
+// Play puts it in place by itself, so the status and its row say so instead of offering Restore.
+const incoming = new Function(`
+  const N_ = (x) => x, t = (x) => x, tf = (x, o) => x.replace(/\\{(\\w+)\\}/g, (m, k) => o[k]);
+  const sinceText = () => '25 min ago';
   ${block(account, 'function incomingSave(')}
-  return incomingSave;`)();
-const fromDeck = { local: [local(100, 'old')], cloud: [cloud(200, 'new', 'v2', 'Steam Deck'), cloud(100, 'old', 'v1')], current: 'old', incoming: 'v2', here: 'Desk PC', busy: false };
+  ${block(account, 'function incomingBadge(')}
+  return { incomingSave, incomingBadge };`)();
+const incomingSave = incoming.incomingSave;
+const deck = cloud(200, 'new', 'v2', 'Steam Deck');
+const fromDeck = { local: [local(100, 'old')], cloud: [deck, cloud(100, 'old', 'v1')], current: 'old', incoming: deck, here: 'Desk PC', busy: false };
 
-test('the save Play brings in says so instead of Restore', () => {
+test('the save Play brings in says it syncs when you press Play, not Restore', () => {
   const html = tab(fresh()).historyCard('g', fromDeck, {}, false);
   const newest = html.slice(0, html.indexOf('at 100'));
-  assert.match(newest, /Comes in when you play/);
+  assert.match(newest, /Syncs when you press Play/);
   assert.doesNotMatch(newest, /data-act="saves-restore"/);
+});
+
+test('the status above Play names the PC the newer save came from', () => {
+  const b = incoming.incomingBadge(deck);
+  assert.equal(b.label, 'Newer save from Steam Deck');
+  assert.equal(b.note, 'syncs when you press Play');
+});
+
+test('the badge above Play and the Saves tab read the same newer save', () => {
+  assert.match(block(account, 'function saveBadgeFor('), /incomingSave\(S\.saveNext\[sid\]/);
+  assert.match(block(account, 'function saveStatusCard('), /incomingSave\(S\.saveNext\[sid\]/);
+  assert.match(block(account, 'async function loadSaves('), /S\.saveNext\[saveIdOf\(id\)\] = S\.saves\[id\]\.incoming/);
+});
+
+test('opening a game page asks the cloud only when this PC thinks it is up to date', () => {
+  assert.match(block(account, 'async function loadSaveStatus('), /st\.state === 'up-to-date' \|\| st\.state === 'none'\)\) peekSave\(sid\)/);
 });
 
 test('older saves keep their Restore', () => {
@@ -261,27 +282,31 @@ test('the save in the game now is never the one coming in', () => {
 });
 
 test('the status says a newer save is coming when this PC thinks it is up to date', () => {
-  assert.equal(incomingSave(fromDeck, { state: 'up-to-date' }, undefined, false).device, 'Steam Deck');
+  assert.equal(incomingSave(deck, { state: 'up-to-date' }, undefined, false).device, 'Steam Deck');
 });
 
-test('a new PC with no saves yet is told the cloud save comes in', () => {
-  assert.equal(incomingSave(fromDeck, { state: 'none' }, undefined, false).v, 'v2');
+test('a new PC with no saves yet is told the cloud save syncs on Play', () => {
+  assert.equal(incomingSave(deck, { state: 'none' }, undefined, false).v, 'v2');
 });
 
 test('a conflict still asks to choose a save', () => {
-  assert.equal(incomingSave(fromDeck, { state: 'conflict' }, undefined, false), null);
+  assert.equal(incomingSave(deck, { state: 'conflict' }, undefined, false), null);
 });
 
 test('while the save comes down, the status says that instead', () => {
-  assert.equal(incomingSave(fromDeck, { state: 'up-to-date' }, 'down', false), null);
+  assert.equal(incomingSave(deck, { state: 'up-to-date' }, 'down', false), null);
 });
 
 test('while the game runs, the status says that instead', () => {
-  assert.equal(incomingSave(fromDeck, { state: 'up-to-date' }, undefined, true), null);
+  assert.equal(incomingSave(deck, { state: 'up-to-date' }, undefined, true), null);
 });
 
-test('the newer save can be got now from the status card, on the desktop and in Big Picture', () => {
-  assert.match(line(account, 'const INCOMING_STEP = '), /act: 'saves-sync'/);
+test('a game nobody said the save folder of still says so', () => {
+  assert.equal(incomingSave(deck, { state: 'up-to-date', known: false }, undefined, false), null);
+});
+
+test('the newer save can be synced now with Sync Now, on the desktop and in Big Picture', () => {
+  assert.match(line(account, 'const INCOMING_STEP = '), /act: 'saves-sync', label: N_\('Sync Now'\)/);
   assert.match(line(tv, 'const TV_STEP = '), /'saves-sync': 'gs-sync'/);
   assert.match(tv, /const step = next \? INCOMING_STEP : saveNextStep\(/);
 });

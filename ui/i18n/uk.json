@@ -3390,7 +3390,8 @@
  "N/A": "Н/Д",
  "Newer save from {device}": "Новіше збереження з {device}",
  "Newer save in the cloud": "Новіше збереження в хмарі",
- "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "Натисніть «Грати», і воно стане на місце саме. Поточне спершу збережеться як копія.",
- "Get It Now": "Отримати зараз",
- "Comes in when you play": "З'явиться під час запуску"
+ "Syncs when you press Play": "Синхронізується, коли ви натиснете «Грати»",
+ "syncs when you press Play": "синхронізується після натискання «Грати»",
+ "Saved {time}. What's there now is kept as a backup first.": "Збережено {time}. Поточне спершу збережеться як копія.",
+ "A newer save is in the cloud": "У хмарі є новіше збереження"
 }

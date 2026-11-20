@@ -184,6 +184,8 @@ function myReportsGroup(group, row) {
 async function loadSaves(id) {
   S.saves[id] = S.saves[id] && S.saves[id] !== 'loading' ? Object.assign(S.saves[id], { busy: true }) : 'loading';
   try { S.saves[id] = await invoke('saves_info', { id }); } catch (e) { S.saves[id] = { error: String(e && e.message ? e.message : e) }; }
+  // The tab asked the cloud just now: the badge above Play says the same.
+  if (S.saves[id] && !S.saves[id].error) S.saveNext[saveIdOf(id)] = S.saves[id].incoming || null;
   if (S.view === 'game' && S.arg === id && S.tab === 'saves') refreshGame();
   // Whatever just changed the tab (Sync Now, Back Up Now, the cloud switch) changed the badge too.
   loadSaveStatus(saveIdOf(id));
@@ -232,13 +234,12 @@ const FOLDER_SET_TOO_BIG = N_('Its save folder is too big to look through, so cl
 // Where its saves stand, in the same words and colours as the line above Play, and the one thing
 // to do about it.
 function saveStatusCard(id, s) {
-  const badge = saveBadgeFor(id);
-  if (!badge) return '';
+  const b = saveBadgeFor(id);
+  if (!b) return '';
   const sid = saveIdOf(id);
   const st = S.saveStat[sid] || {};
   const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
-  const next = incomingSave(s, st, phase, running);
-  const b = next ? incomingBadge(next) : badge;
+  const next = incomingSave(S.saveNext[sid], st, phase, running);
   const picked = s.spots.some((p) => p.from === 'player');
   const note = b.note ? ` <small>· ${esc(b.note)}</small>` : '';
   const rows = b.rows.map(([k, v]) => `${k}: ${v}`).join(' · ');
@@ -254,22 +255,23 @@ function saveStatusCard(id, s) {
     <span class="acts">${btn}</span></div>${help}${space}</div>`;
 }
 
-// The cloud save another PC made that Play puts in place by itself (saves_info says which), or
-// null. This PC's own notes still call that "Up to date", and a Restore button on the newest save
-// reads like a step to do on every PC: the tab says it comes in when you play instead.
-function incomingSave(s, st, phase, running) {
-  if (!s.incoming || phase || running) return null;
+// The cloud save another PC made that Play puts in place by itself (S.saveNext), when nothing else
+// is going on, or null. This PC's own notes still call that "Up to date", and a Restore button on
+// the newest save reads like a step to do on every PC: the status and its row say it syncs when
+// you press Play instead.
+function incomingSave(next, st, phase, running) {
+  if (!next || phase || running || st.known === false) return null;
   if (st.state !== 'up-to-date' && st.state !== 'none') return null;
-  const cloud = Array.isArray(s.cloud) ? s.cloud : [];
-  return cloud.find((c) => c.v === s.incoming) || null;
+  return next;
 }
-const INCOMING_TEXT = N_('Press Play and it\'s put in place by itself. What\'s there now is kept as a backup first.');
-const INCOMING_STEP = { act: 'saves-sync', label: N_('Get It Now') };
-const COMES_IN = N_('Comes in when you play');
+// Sync Now gets it before playing, the same button as when it's up to date.
+const INCOMING_STEP = { act: 'saves-sync', label: N_('Sync Now') };
+const SYNCS_ON_PLAY = N_('Syncs when you press Play');
 
 function incomingBadge(c) {
   const label = c.device ? tf('Newer save from {device}', { device: c.device }) : t('Newer save in the cloud');
-  return { tone: 'cy', mark: 'next', label, note: sinceText(c.made), text: t(INCOMING_TEXT), rows: [] };
+  const text = tf('Saved {time}. What\'s there now is kept as a backup first.', { time: sinceText(c.made) });
+  return { tone: 'cy', mark: 'next', label, note: t('syncs when you press Play'), head: t('A newer save is in the cloud'), text, rows: [] };
 }
 
 // The status's line on the tab: the badge's, except where the badge points somewhere else.
@@ -337,7 +339,8 @@ function saveHistory(s) {
   const now = s.current && rows.find((r) => r.hash === s.current);
   if (now) now.current = true;
   // The cloud save Play brings in by itself is marked so, not offered as a Restore.
-  for (const r of rows) r.incoming = !r.current && !!s.incoming && r.v === s.incoming;
+  const next = s.incoming ? s.incoming.v : null;
+  for (const r of rows) r.incoming = !r.current && !!next && r.v === next;
   // Any cloud save but the newest can be deleted (saves_cloud_delete says why not that one).
   const newestCloud = Array.isArray(s.cloud) && s.cloud.length ? s.cloud.reduce((p, q) => (q.made > p.made ? q : p)).v : '';
   for (const r of rows) r.deletable = !!r.v && r.v !== newestCloud;
@@ -377,7 +380,7 @@ function historyRow(id, r, s) {
   // The save in the game now has nothing to restore: its row is lit instead, and says so where
   // the others have their button.
   const cur = `<span class="svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>`;
-  const next = `<span class="svh-next">${NEXT_ICON}${esc(t(COMES_IN))}</span>`;
+  const next = `<span class="svh-next">${NEXT_ICON}${esc(t(SYNCS_ON_PLAY))}</span>`;
   const side = r.current ? cur : r.incoming ? next : put;
   // Deleting from the cloud is quieter than Restore: an icon, with its name on hover.
   const del = r.deletable ? `<button type="button" class="icon-btn svh-del" data-act="saves-cloud-delete" data-id="${esc(id)}" data-v="${esc(r.v)}" title="${esc(t('Delete from the cloud'))}" aria-label="${esc(t('Delete from the cloud'))}">${BIN_ICON}</button>` : '';
@@ -462,7 +465,11 @@ const savesChanged = (id) => { delete S.saves[id]; if (S.view === 'game' && S.ar
 // when something runs or ends, and the status is asked again then.
 S.saveStat = {};
 S.savePhase = {};
+// A newer save another PC made, that Play brings in by itself (saves_peek, or the Saves tab's
+// saves_info): the one thing the status needs the website for.
+S.saveNext = {};
 const statLoading = new Set();
+const peekLoading = new Set();
 
 // A game of several that keeps its own saves goes by its own id; any other by its recomp's.
 function saveIdOf(id) {
@@ -476,6 +483,23 @@ async function loadSaveStatus(sid) {
   statLoading.add(sid);
   try { S.saveStat[sid] = await invoke('saves_status', { id: sid }); } catch (e) { S.saveStat[sid] = null; }
   statLoading.delete(sid);
+  paintSaveBadges(sid);
+  refreshSavesTab(sid);
+  const st = S.saveStat[sid];
+  if (st && (st.state === 'up-to-date' || st.state === 'none')) peekSave(sid);
+}
+
+// Asks the website whether another PC saved after this one. The core asks at most every few
+// minutes per game, and says nothing new while offline.
+async function peekSave(sid) {
+  if (peekLoading.has(sid)) return;
+  peekLoading.add(sid);
+  let next = null;
+  try { next = await invoke('saves_peek', { id: sid }); } catch (e) { next = null; }
+  peekLoading.delete(sid);
+  const was = S.saveNext[sid] ? S.saveNext[sid].v : null;
+  S.saveNext[sid] = next;
+  if ((next ? next.v : null) === was) return;
   paintSaveBadges(sid);
   refreshSavesTab(sid);
 }
@@ -585,7 +609,9 @@ function saveBadgeFor(id) {
   const st = S.saveStat[sid];
   if (st === undefined) loadSaveStatus(sid);
   if (!st) return null;
-  const b = saveBadgeInfo(st, S.savePhase[sid], S.running.has(parentId(sid)));
+  const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+  const next = incomingSave(S.saveNext[sid], st, phase, running);
+  const b = next ? incomingBadge(next) : saveBadgeInfo(st, phase, running);
   return { ...b, tip: badgeTip(b) };
 }
 
@@ -623,6 +649,7 @@ function refreshSavesTab(sid) {
 function forgetSaveStatus() {
   S.saveStat = {};
   S.savePhase = {};
+  S.saveNext = {};
   paintSaveBadges();
 }
 

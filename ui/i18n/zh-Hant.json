@@ -3390,7 +3390,8 @@
  "N/A": "不適用",
  "Newer save from {device}": "來自 {device} 的較新存檔",
  "Newer save in the cloud": "雲端有較新的存檔",
- "Press Play and it's put in place by itself. What's there now is kept as a backup first.": "按「開始遊戲」即會自動使用。目前的存檔會先保留為備份。",
- "Get It Now": "立即取得",
- "Comes in when you play": "遊戲時自動使用"
+ "Syncs when you press Play": "按「開始遊戲」時同步",
+ "syncs when you press Play": "按「開始遊戲」時同步",
+ "Saved {time}. What's there now is kept as a backup first.": "儲存於{time}。目前的存檔會先保留為備份。",
+ "A newer save is in the cloud": "雲端有較新的存檔"
 }
