@@ -6,7 +6,8 @@ A big one. Game pages got a full cleanup, cloud saves and updates are easier to 
 
 ### Game pages
 - **Cleaner game pages, with rebuilt Updates, Saves, Shaders and Manage tabs.** Buttons and text stay put instead of jumping around when you click. — Improved by @Xarishark ([#323](https://github.com/elripalda/RecompLauncher/pull/323), [#325](https://github.com/elripalda/RecompLauncher/pull/325), [#326](https://github.com/elripalda/RecompLauncher/pull/326), [#327](https://github.com/elripalda/RecompLauncher/pull/327)).
-- **Launcher support now sits under Before You Play,** so you can always see what a game supports. — Improved by @Xarishark ([#327](https://github.com/elripalda/RecompLauncher/pull/327)).
+- **Launcher Support now sits under Before You Play as a clear checklist,** so you can always see what a game supports. — Improved by @Xarishark ([#327](https://github.com/elripalda/RecompLauncher/pull/327)).
+- **Text boxes like From the Developer and Credits fit their text, and More Like This shows each game once.**
 
 ### Saves and updates
 - **Cloud saves show their status above Play,** with an easier choice when both saves changed. — Added by @Xarishark ([#319](https://github.com/elripalda/RecompLauncher/pull/319)).
