@@ -1000,6 +1000,21 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     Ok(n)
 }
 
+/// The cloud save that Play puts in place by itself: another PC saved after this one, and nothing
+/// changed here since they last agreed. The Saves tab marks it, so a player doesn't take its
+/// Restore button for a step they have to do on every PC. Judged from the last copy made here
+/// (the one the tab calls "In the game now"), by the same rule Play uses on the live files.
+fn incoming<'a>(s: &saves::State, list: &'a [CloudCopy]) -> Option<&'a CloudCopy> {
+    // Anything but settled (both changed and Play asks, a copy waiting to go up, a session not
+    // copied yet, a save folder too big to read) and Play won't just bring it in.
+    let settled = matches!(s.sync_state(true, true), "up-to-date" | "none");
+    if !settled {
+        return None;
+    }
+    let top = list.first()?;
+    should_restore(&s.last_hash, &s.synced_hash, &top.hash, false).then_some(top)
+}
+
 /// Whether the cloud copy can be put in place without replacing locally changed saves.
 fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
     if cloud == local {
@@ -1247,9 +1262,11 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let mut cloud = Value::Null;
     let mut space = Value::Null;
     let mut offline = false;
+    let mut next = Value::Null;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
+                next = incoming(&state, &l).map(|c| json!(c.v)).unwrap_or(Value::Null);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
@@ -1265,6 +1282,8 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         // The save in the game's folder now (the last copy made or put back), and this PC's name:
         // the tab marks the copy that's current and the ones another PC made.
         "current": state.last_hash, "here": saves::device_name(),
+        // The cloud save (its version) that another PC made and Play brings in by itself, or null.
+        "incoming": next,
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
@@ -1948,7 +1967,69 @@ mod play_id_tests {
 
 #[cfg(test)]
 mod sync_tests {
-    use super::{first_time_paused, should_restore};
+    use super::{first_time_paused, incoming, should_restore, CloudCopy};
+    use crate::saves::State;
+
+    fn cloud(v: &str, hash: &str) -> CloudCopy {
+        CloudCopy { v: v.into(), hash: hash.into(), ..Default::default() }
+    }
+
+    fn agreed_on(hash: &str) -> State {
+        State { last_hash: hash.into(), synced_hash: hash.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_newer_save_from_another_pc_comes_in_on_play() {
+        let list = [cloud("2", "from-other-pc"), cloud("1", "old")];
+        assert_eq!(incoming(&agreed_on("old"), &list).map(|c| c.v.as_str()), Some("2"));
+    }
+
+    #[test]
+    fn a_new_pc_with_no_saves_yet_gets_the_cloud_save_on_play() {
+        let list = [cloud("1", "from-other-pc")];
+        assert_eq!(incoming(&State::default(), &list).map(|c| c.v.as_str()), Some("1"));
+    }
+
+    #[test]
+    fn the_save_in_the_game_now_is_not_incoming() {
+        assert!(incoming(&agreed_on("same"), &[cloud("1", "same")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_when_this_pc_changed_its_save_too() {
+        let s = State { last_hash: "played-here".into(), synced_hash: "old".into(), ..Default::default() };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_a_conflict_waits_for_a_pick() {
+        let s = State { conflict: Some("2".into()), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_before_the_last_session_is_copied() {
+        let s = State { after_play: true, ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_a_copy_waits_to_go_up() {
+        let s = State { pending: Some("copy.zip".into()), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_its_save_folder_is_too_big_to_read() {
+        let problem = crate::saves::Problem { kind: "too-big-folder".into(), text: String::new(), at: 0 };
+        let s = State { problem: Some(problem), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_from_an_empty_cloud() {
+        assert!(incoming(&agreed_on("old"), &[]).is_none());
+    }
 
     #[test]
     fn paused_sync_is_said_once_per_game() {
