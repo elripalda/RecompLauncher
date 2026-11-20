@@ -3354,5 +3354,11 @@
  "Checked by the RecompStore team": "Vérifié par l’équipe RecompStore",
  "Open the VirusTotal report": "Ouvrir le rapport VirusTotal",
  "Verified Update": "Mise à jour vérifiée",
+ "Update All Games Automatically": "Mettre à jour tous les jeux automatiquement",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Chaque jeu installé reçoit une nouvelle version dès que le lanceur la trouve. Vos sauvegardes sont d’abord copiées. Pour qu’un jeu vous attende, désactivez « Mettre à jour automatiquement » dans son onglet Gérer.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Paramètres → Mises à jour l’active pour tous les jeux. Désactivé ici : ce jeu vous attend.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Chaque jeu installé reçoit une nouvelle version dès que le lanceur la trouve",
+ "Turn off automatic updates": "Désactiver les mises à jour automatiques",
+ "Updates wait for you in Downloads": "Les mises à jour vous attendent dans Téléchargements",
  "N/A": "N/D"
 }

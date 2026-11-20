@@ -8,6 +8,8 @@ const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
 const autoInstallSrc = app.match(/^const autoInstall = .*$/m)[0];
+// The Updates page also draws Update All Games Automatically.
+const autoUpdateAllSrc = app.match(/^const autoUpdateAll = .*$/m)[0];
 // The part of the download-finished handler that decides what opens next.
 const doneHandler = app.slice(app.indexOf("T.event.listen('install'"), app.indexOf("T.event.listen('game'"));
 
@@ -28,7 +30,7 @@ function settingsContext(settings, setTab = 'updates') {
   });
   c.window = c;
   c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
-  vm.runInContext(autoInstallSrc, c);
+  vm.runInContext(autoInstallSrc + '\n' + autoUpdateAllSrc, c);
   return c;
 }
 
