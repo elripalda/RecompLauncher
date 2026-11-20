@@ -47,3 +47,30 @@ test('confirmed maintenance is separate from manifest and capability sources', a
   }
   assert.match(await support({ maintained_by: 'unexpected' }), /Nobody has confirmed who maintains it/);
 });
+
+// Cloud Saves: backups need someone to say where the game saves; nothing is guessed.
+const cloudRow = (html) => html.match(/<b>Cloud Saves<\/b>[^]*?<\/div>/)[0];
+
+test('cloud saves are not ticked when nobody says where the game saves', async () => {
+  const row = cloudRow(await support({}));
+  assert.match(row, /isn't known yet/);
+  assert.match(row, /sup-no/);
+  assert.doesNotMatch(row, /Always on/);
+});
+
+test('cloud saves come from the launcher when our profile names the save folder', async () => {
+  const row = cloudRow(await support({ launcher: { format: 1, saves: ['{local}/Game/saves'] } }));
+  assert.match(row, /RecompLauncher knows where it saves/);
+  assert.match(row, /By RecompLauncher/);
+});
+
+test('cloud saves come from the manifest when the installed file names the save folder', async () => {
+  const row = cloudRow(await support({}, { saves: true }));
+  assert.match(row, /exactly where it saves/);
+  assert.match(row, /From Manifest/);
+});
+
+test("our profile's save folder does not count once the installed release has its own file", async () => {
+  const row = cloudRow(await support({ launcher: { format: 1, saves: ['{local}/Game/saves'] } }, { settings: true }));
+  assert.match(row, /isn't known yet/);
+});

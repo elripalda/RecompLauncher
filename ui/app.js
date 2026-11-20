@@ -1283,7 +1283,13 @@ function supportCard(a) {
   const who = (k) => (local && local[k] ? 'dev' : sup ? (sup[k] === 'dev' || sup[k] === 'launcher' ? sup[k] : '') : guess[k] ? '?' : '');
   const sdk = local ? 'release' : sup && sup.sdk ? sup.sdk : 'unknown';
   const hh = a.handheld && a.handheld.ok;
-  const saves = who('saves') === 'dev' ? 'dev' : 'launcher';
+  // Backups need someone to say where the game saves: the recomp's own file, or RecompLauncher's
+  // list. Nothing is guessed, so with neither the player picks the folder on the Saves tab. Our
+  // profile's folders count only when the installed release has no file of its own.
+  const named = (v) => Array.isArray(v) && v.length > 0;
+  const ourSaves = named(a.saves) || (!local && !!a.launcher && named(a.launcher.saves));
+  const saves = who('saves') === 'dev' ? 'dev' : ourSaves ? 'launcher' : '';
+  const savesLine = saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : saves ? t('RecompLauncher knows where it saves.') : t('Where it saves isn\'t known yet. You can pick the folder on its Saves tab.');
   // One row per feature: its icon, a short line, and a check when it works here or a dash when not
   // yet; who made it work is the row's tooltip. "4 of 6" sits by the heading.
   const rows = [
@@ -1291,7 +1297,7 @@ function supportCard(a) {
     [t('Game Settings'), t('Change the game\'s own settings from its page.'), who('settings'), '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'],
     [t('Full Setup Step'), t('The recomp\'s own setup step, run for you.'), who('prepare'), '<path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-3-1-1-3z"/>'],
     [t('Verified Copies'), t('Shows when your copy matches a known good one.'), who('verified'), '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2 2 4-4"/>'],
-    [t('Cloud Saves'), saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : t('Always on from the launcher\'s side.'), saves, '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8.5a4 4 0 0 1 0 9.5z"/>'],
+    [t('Cloud Saves'), savesLine, saves, '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8.5a4 4 0 0 1 0 9.5z"/>'],
     [t('Handheld Rating'), hh ? tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') || t('several players') }) : t('From handheld players\' reports. None yet.'), hh ? 'players' : '', '<rect x="2.5" y="7" width="19" height="10" rx="3"/><path d="M7 10.5v3M5.5 12h3M16 11h.01M18 13h.01"/>'],
   ];
   const src = (w) => (w === 'dev' ? t('From Manifest') : w === 'launcher' ? t('By RecompLauncher') : w === 'players' ? t('By Players') : '');
