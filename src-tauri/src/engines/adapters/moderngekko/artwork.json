@@ -1,0 +1,32 @@
+{
+  "GMSE01": {
+    "cover": "https://art.gametdb.com/wii/cover/US/GMSE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GMSE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/GMSE01.png"
+  },
+  "GALE01": {
+    "cover": "https://art.gametdb.com/wii/cover/US/GALE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GALE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/GALE01.png"
+  },
+  "GLME01": {
+    "cover": "https://art.gametdb.com/wii/cover/US/GLME01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GLME01",
+    "hero": "https://art.gametdb.com/wii/cover/US/GLME01.png"
+  },
+  "GW7E69": {
+    "cover": "https://art.gametdb.com/wii/cover/US/GW7E69.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GW7E69",
+    "hero": "https://art.gametdb.com/wii/cover/US/GW7E69.png"
+  },
+  "RSBE01": {
+    "cover": "https://art.gametdb.com/wii/cover/US/RSBE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/RSBE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/RSBE01.png"
+  },
+  "SUKE01": {
+    "cover": "https://art.gametdb.com/wii/cover/US/SUKE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/SUKE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/SUKE01.png"
+  }
+}
