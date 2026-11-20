@@ -212,6 +212,12 @@ pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<
     Ok(f)
 }
 
+/// The copy on disk only, never the network (None when there isn't one): for work that shouldn't
+/// wait on a slow connection, like Folder Structure's plan.
+pub fn catalog_on_disk(dir: &Path) -> Option<Value> {
+    on_disk(&list_file(dir), list_ok).map(|f| with_mine(dir, f.data))
+}
+
 /// For the window as it opens: the copy on disk straight away (None when there isn't one), and
 /// whether it's old enough to be asked for again in the background.
 pub fn catalog_now(dir: &Path) -> Option<(Fetched, bool)> {

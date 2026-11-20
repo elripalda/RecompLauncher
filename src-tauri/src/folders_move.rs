@@ -205,7 +205,13 @@ pub struct PreviewRow {
     pub example: bool,
 }
 
+/// The catalog as the launcher already has it. Asking the website could keep Reorganize and the
+/// designer waiting for a minute on a slow connection, so the network is used only when there's
+/// no copy on disk yet.
 async fn catalog_data(st: &App) -> Value {
+    if let Some(cat) = catalog::catalog_on_disk(&st.dir) {
+        return cat;
+    }
     catalog::catalog(&st.http, &st.dir, false).await.map(|f| f.data).unwrap_or_else(|_| json!({}))
 }
 
@@ -346,10 +352,14 @@ fn plan_rows(mut games: Vec<Installed>, libs: &[PathBuf], default_lib: &Path, ru
 
 #[tauri::command]
 pub async fn folders_plan(st: State<'_, App>) -> Res<Vec<PlanRow>> {
+    let began = std::time::Instant::now();
     recover(&st);
     let cat = catalog_data(&st).await;
+    let read = began.elapsed().as_millis();
     let layout = folders::load(&st.dir);
-    Ok(plan(&st, &cat, &layout))
+    let rows = plan(&st, &cat, &layout);
+    trail::note(format!("Folder Structure: planned {} games in {} ms (catalog {} ms)", rows.len(), began.elapsed().as_millis(), read));
+    Ok(rows)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -400,8 +410,13 @@ async fn move_one(app: &AppHandle, st: &App, row: &PlanRow, journal: &mut Journa
     write_journal(&st.dir, journal);
     let (from, to, app2, id2) = (g.path.clone(), row.to.clone(), app.clone(), row.id.clone());
     let moved = tokio::task::spawn_blocking(move || {
+        // A few updates a second are plenty for the percentage (a copy reports every megabyte).
+        let last = std::cell::Cell::new(std::time::Instant::now());
         manage::move_dir(&from, &to, &|done, total| {
-            let _ = app2.emit("folders-move", json!({ "id": id2, "done": done, "total": total }));
+            if last.get().elapsed().as_millis() > 150 || done == total {
+                last.set(std::time::Instant::now());
+                let _ = app2.emit("folders-move", json!({ "id": id2, "done": done, "total": total }));
+            }
         })
     })
     .await

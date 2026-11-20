@@ -63,8 +63,14 @@ function folderStructureGroup(group, row, sw) {
 }
 window.folderStructureGroup = folderStructureGroup;
 
+// Any failure says so on screen: a press that silently does nothing looks broken.
 window.foldersAct = async (a) => {
+  try { await fsAct(a); } catch (e) { console.error('Folder Structure:', a, e); fail(e); }
+};
+
+async function fsAct(a) {
   if (!FS.data) await fsLoad();
+  if (!FS.data) throw new Error(t('Folder Structure couldn\'t load. Try again in a moment.'));
   if (a === 'fs-design') return fsDesigner();
   if (a === 'fs-reorg') return fsReorganize();
   if (a === 'fs-undo') return fsUndo();
@@ -73,7 +79,7 @@ window.foldersAct = async (a) => {
     try { FS.data.layout = await invoke('folders_save', { layout: next }); } catch (e) { return fail(e); }
     render(true);
   }
-};
+}
 
 // ---------- the designer ----------
 
@@ -398,7 +404,9 @@ async function fsReorganize() {
       <label><input type="checkbox" data-id="${esc(r.id)}"${pick.has(r.id) ? ' checked' : ''}${movable(r) ? '' : ' disabled'} aria-label="${esc(tf('Move {game}', { game: r.name }))}"><b>${esc(r.name)}</b><span class="fs-tag ${esc(r.state)}">${esc(t(FS_STATE[r.state] || r.state))}</span></label>
       <div class="fs-paths"><span><small>${esc(t('Now'))}</small><code>${esc(r.from)}</code></span><span><small>${esc(t('New'))}</small><code>${esc(r.state === 'blocked' ? '—' : r.to)}</code></span></div>
       ${r.note ? `<p class="fs-note">${esc(t(r.note))}</p>` : ''}</div>`).join('');
-    const none = rows.some(movable) ? '' : `<div class="callout fs-none"><b>${esc(fsNothing(rows))}</b></div>`;
+    const outsideOnly = rows.some(movable) && !rows.some((r) => movable(r) && r.on);
+    const msg = !rows.some(movable) ? fsNothing(rows) : outsideOnly ? t('Your games are in folders outside your libraries, so none is ticked. Tick the ones to move.') : '';
+    const none = msg ? `<div class="callout fs-none"><b>${esc(msg)}</b></div>` : '';
     return `<h2>${esc(t('Reorganize Existing Folders'))}</h2>${none}
       <p>${esc(t('Each game\'s folder moves whole, with the saves and settings inside it. Nothing is overwritten: a game whose new folder already has files keeps its place. Close a game before moving it.'))}</p>
       <div class="fs-plans">${list || `<p class="muted">${esc(t('No games are installed.'))}</p>`}</div>
