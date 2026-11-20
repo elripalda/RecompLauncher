@@ -5598,8 +5598,9 @@ fn setup_key_remove(st: State<'_, App>, id: String, input: String) -> Res<()> {
 }
 
 /// Multi-input setup deliberately does not read/hash whole discs. Projects validate content.
+/// `copy`: the game's copy picked on the Easy Setup screen, for a profile with `game` too.
 #[tauri::command(async)]
-fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
+fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String, copy: Option<String>) -> Res<()> {
     // One game of several: only its inputs are set up, and remembered for that game. `id` stays
     // what the window asked for (its progress comes back under it); `rid` is the install.
     let pick = game_of(&st, &id);
@@ -5613,7 +5614,15 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
     }
     if p.inputs.is_empty() { return Err(Error::Msg("This profile doesn't declare named inputs.".into())); }
     p.input_paths = inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
-    if p.game.is_some() && g.game_copy.as_ref().map_or(true, |c| !c.exists()) { return Err(Error::Msg("Choose your copy of the game first.".into())); }
+    // The copy builds from here on, but it's only kept once this setup has worked (as setup_copy
+    // does), so a setup that fails or is stopped leaves the game as it was.
+    let picked = match &p.game {
+        Some(need) => Some(inputs_copy(need, copy.as_deref(), &g).map_err(Error::Msg)?),
+        None => None,
+    };
+    if picked.is_some() {
+        g.game_copy = picked.clone();
+    }
     let signature = inputs::signature(&p, &g, &st.dir).map_err(Error::Msg)?;
     if let Some(pr) = &p.prepare {
         required_ticked(&st.dir, pr, &g.prepare_opts)?;
@@ -5648,13 +5657,20 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
                 run_prepare(&pr, &g.path, Some(&copy), &extra, &|pct, text| emit("extras", pct, text), &stopped)?;
             }
             if stopped() { return Err("Stopped.".into()); }
-            let current = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or("The game was removed during setup.")?;
+            let mut current = st.lib.lock().unwrap().installed.get(&rid).cloned().ok_or("The game was removed during setup.")?;
+            // Not kept yet: the copy this setup started with is still the one it counts.
+            if picked.is_some() {
+                current.game_copy = picked.clone();
+            }
             if inputs::signature(&p, &current, &dir)? != signature { return Err("The selected files changed. Run setup again.".into()); }
             p.prepare(&g.path, g.game_copy.as_deref()).map_err(|_| "Couldn't write the game's settings.")?;
             if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&rid) {
                 match &sub {
                     Some(sub) => x.games.entry(sub.clone()).or_default().inputs_ready = signature,
                     None => x.inputs_ready = signature,
+                }
+                if picked.is_some() {
+                    x.game_copy = picked.clone();
                 }
                 if p.game.is_none() && (sub.is_none() || x.game_copy.as_ref().map_or(true, |c| !c.exists())) { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
                 x.setup_before = None;
@@ -5748,6 +5764,25 @@ fn copy_in(need: &profile::GameCopy, dir: &Path) -> Option<PathBuf> {
         level = next;
     }
     best.map(|(_, p)| p)
+}
+
+/// The game's copy for a setup with named inputs too: the one just picked on the Easy Setup
+/// screen, turned away for the same reasons setup_copy turns it away, or the one set up before.
+fn inputs_copy(need: &profile::GameCopy, picked: Option<&str>, g: &Installed) -> Result<PathBuf, String> {
+    let before = g.game_copy.clone().filter(|c| c.exists());
+    let Some(path) = picked.filter(|p| !p.is_empty()) else {
+        return before.ok_or_else(|| "Choose your copy of the game first.".to_string());
+    };
+    let copy = PathBuf::from(path);
+    // The copy it was set up with, shown again in its box: it was checked back then.
+    if before.as_ref() == Some(&copy) {
+        return Ok(copy);
+    }
+    if !copy.exists() {
+        return Err("That file isn't there anymore.".into());
+    }
+    copy_ok(need, &copy, &g.path, true)?;
+    Ok(copy)
 }
 
 /// The player picked their copy of the game.
@@ -10662,6 +10697,69 @@ mod tests {
         std::fs::create_dir_all(mine.parent().unwrap()).unwrap();
         std::fs::write(&mine, b"3ds").unwrap();
         assert!(super::copy_ok(&need, &mine, &game, true).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // #374: a profile with `game` and named inputs starts setup_inputs_run with the copy from its
+    // box. These are the answers inputs_copy gives it.
+    fn inputs_copy_dir(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let d = std::env::temp_dir().join(format!("rl-inputs-copy-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let game = d.join("Recomp Library/aoe");
+        std::fs::create_dir_all(&game).unwrap();
+        (d, game)
+    }
+
+    #[test]
+    fn inputs_copy_without_a_pick_or_one_from_before_asks_for_it() {
+        let (d, game) = inputs_copy_dir("none");
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        let g = Installed { path: game, ..Default::default() };
+        assert_eq!(super::inputs_copy(&need, None, &g).unwrap_err(), "Choose your copy of the game first.");
+        assert_eq!(super::inputs_copy(&need, Some(""), &g).unwrap_err(), "Choose your copy of the game first.");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn inputs_copy_without_a_pick_uses_the_one_from_before() {
+        let (d, game) = inputs_copy_dir("before");
+        let before = d.join("My Games/aoe.nsp");
+        std::fs::create_dir_all(before.parent().unwrap()).unwrap();
+        std::fs::write(&before, b"nsp").unwrap();
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        let g = Installed { path: game, game_copy: Some(before.clone()), ..Default::default() };
+        assert_eq!(super::inputs_copy(&need, None, &g).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn inputs_copy_takes_the_copy_picked_on_the_screen() {
+        let (d, game) = inputs_copy_dir("picked");
+        let mine = d.join("My Games/aoe.nsp");
+        std::fs::create_dir_all(mine.parent().unwrap()).unwrap();
+        std::fs::write(&mine, b"nsp").unwrap();
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        let g = Installed { path: game, ..Default::default() };
+        assert_eq!(super::inputs_copy(&need, mine.to_str(), &g).unwrap(), mine);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn inputs_copy_turns_away_a_pick_that_is_gone() {
+        let (d, game) = inputs_copy_dir("gone");
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        let g = Installed { path: game, ..Default::default() };
+        let gone = d.join("My Games/gone.nsp");
+        assert_eq!(super::inputs_copy(&need, gone.to_str(), &g).unwrap_err(), "That file isn't there anymore.");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn inputs_copy_checks_a_new_pick_like_setup_copy_does() {
+        let (d, game) = inputs_copy_dir("own");
+        let need = crate::profile::GameCopy { kind: "iso_or_folder".into(), ..Default::default() };
+        let g = Installed { path: game.clone(), ..Default::default() };
+        assert!(super::inputs_copy(&need, game.to_str(), &g).unwrap_err().contains("own folder"));
         let _ = std::fs::remove_dir_all(&d);
     }
 
