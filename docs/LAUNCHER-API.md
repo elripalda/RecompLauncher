@@ -29,7 +29,7 @@ was signed out (from the account page, or the account is gone): the launcher for
 | `POST ?a=save-delete` | `{"game", "v"}` |
 | `POST ?a=signout` | This PC's token stops working |
 
-The website keeps the newest five copies per game and 150 MB per account, refuses game files,
+The website keeps the newest five copies per game and 300 MB per account, refuses game files,
 programs and archives inside a copy, and doesn't keep a copy whose `hash` matches the newest one.
 
 `hash` is the checksum of the whole set of save files (see `saves::set_hash`), so two PCs with the

@@ -9,4 +9,4 @@ http.createServer((req,res)=>{
   const file = path.resolve(root,'.'+decodeURIComponent(url.pathname));
   if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
   fs.readFile(file,(err,data)=>{res.writeHead(err?404:200,{'Content-Type':types[path.extname(file)]||'text/plain'});res.end(err?'Not found':data);});
-}).listen(4783,'127.0.0.1',()=>process.stdout.write('Preview: http://127.0.0.1:4783/tests/setup-inputs-preview.html\n'));
+}).listen(4783,'127.0.0.1',()=>process.stdout.write('Preview: http://127.0.0.1:4783/tests/setup-steps-preview.html\n'));

@@ -48,7 +48,7 @@ const easyRowHtml = (easyAll, easyOn, ui = {}) => {
 };
 
 test('the Easy Setup switch sits above Game Executable and shows whether Easy Setup is on', () => {
-  assert.match(app, /\$\{easyRow\(id\)\}\n\s+\$\{programRow\(id, inst\)\}/);
+  assert.match(app, /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   const on = easyRowHtml(true, true);
   assert.match(on, /<div class="set-row" id="easy-row"><div class="k"><b>Easy Setup<\/b><span>The launcher sets this game up with your copy\. Off: you set it up yourself\.<\/span>/);
   assert.match(on, /class="switch" role="switch" aria-checked="true"[^>]*data-act="easy-skip" data-id="g"/);
@@ -67,14 +67,22 @@ test('turning Easy Setup off says it in the switch\'s words once installed, and 
   assert.match(sw, /toast\(tf\('\{name\} skips Easy Setup: it installs as it comes/);
 });
 
-test('the game\'s menu: Skip Easy Setup ticked before install, Easy Setup… (to the switch) once installed', () => {
-  const item = fn(app, 'easySkipItem');
-  assert.match(item, /if \(S\.library\[id\]\) return \[\{ act: 'easy-row', id, label: t\('Easy Setup…'\), icon: 'disc' \}\];/);
-  assert.match(item, /return \[\{ act: 'easy-skip', id, label: t\('Skip Easy Setup'\), icon: 'disc', check: /);
-  assert.match(app, /case 'easy-row': return showEasyRow\(id\);/);
-  const show = fn(app, 'showEasyRow');
-  assert.match(show, /S\.nextTab = 'installed';\n\s+go\('game', id\);/);
-  assert.match(show, /row\.scrollIntoView\(\{ block: 'center'[^\n]*\n\s+row\.classList\.add\('lit'\);/);
+test('the setup window offers Skip Easy Setup on its first step, for a game Easy Setup does', () => {
+  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
+  assert.match(steps, /const skippable = m\.at === 0 && S\.easyAll && S\.easyAll\.has\(id\) && !\(S\.settings\.ui \|\| \{\}\)\.easy_skip_all;/);
+  assert.match(steps, /data-ss="skip-easy">\$\{esc\(t\('Skip Easy Setup'\)\)\}/);
+  assert.match(steps, /if \(act === 'skip-easy'\) return 'skip';/);
+});
+
+test('Skip Easy Setup closes the setup window and turns Easy Setup off, on the desktop and in Big Picture', () => {
+  const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+  assert.match(app, /if \(r === 'skip'\) \{ await closeSetup\(true\); return skipEasyHere\(id\); \}/);
+  assert.match(tv, /if \(r === 'skip'\) \{ closeSheet\(\); return skipEasyHere\(id\); \}/);
+  assert.match(fn(app, 'skipEasyHere'), /await setEasySkip\(id, true\);/);
+});
+
+test('Skip Easy Setup waits for the window\'s close, which would otherwise put the switch back', () => {
+  assert.match(fn(app, 'skipEasyHere'), /await setupClosing;\n\s+try \{ await setEasySkip\(id, true\); \}/);
 });
 
 test('a game Easy Setup can\'t do goes back with Use Default', () => {
@@ -85,9 +93,8 @@ test('with Easy Setup skipped for every game, the way back is Use Default', () =
   assert.match(row(MINE, true, undefined, { easy_skip_all: true }), /data-act="forget-program"[^>]*>Use Default</);
 });
 
-test('the Overview shows Self-Managed under the install date, and the menu marks it on', () => {
+test('the Overview shows Self-Managed under the install date', () => {
   assert.match(app, /\$\{inst && k === t\('Installed'\) \? selfManagedPill\(id\) : ''\}/);
-  assert.match(fn(app, 'gameMenu'), /act: 'setexe', id, label: selfManaged\(id\) \? t\('Set Game Executable \(On\)…'\) : t\('Set Game Executable…'\)/);
 });
 
 test('Where\'s Your Build? offers the build folder or the game\'s executable, each saying what it does', () => {
@@ -106,7 +113,7 @@ test('picking in Where\'s Your Build? only sets it; the player presses Play', ()
 
 test('Use Default lets the pick go in the core', () => {
   assert.match(app, /case 'forget-program':[^]*?invoke\('forget_program', \{ id \}\)/);
-  assert.match(rust, /set_exe, forget_program, own_program_games, open_folder,/);
+  assert.match(rust, /set_exe, forget_program, set_setup_mode, open_folder,/);
   assert.match(rust, /own_program: player_program\(&st, &id, &g\),/);
   // Only the player's pick is let go: a program the launcher picked stays.
   assert.match(fn(rust.replace(/^fn /gm, 'function '), 'forget_program'), /if g\.exe_rules == u8::MAX \{\n\s+g\.exe = None;\n\s+g\.exe_rules = 0;/);
@@ -124,7 +131,7 @@ test('Before you play doesn\'t ask a self-managed install for the player\'s copy
 const rustFn = (name) => fn(rust.replace(/^fn /gm, 'function '), name);
 
 test('Play starts the picked executable only while Easy Setup is off for the game', () => {
-  assert.match(rustFn('player_program'), /let easy_on = p\.easy_setup\(\) && !easy_skipped\(&st\.lib\.lock\(\)\.unwrap\(\)\.settings\.ui, id\);\n\s+\(!easy_on\)\.then_some\(exe\)/);
+  assert.match(rustFn('player_program'), /let easy_on = p\.easy_setup\(\) && !player_sets_up\(&st, id\);\r?\n\s+\(!easy_on\)\.then_some\(exe\)/);
 });
 
 test('Set Game Executable asks first on a game Easy Setup does, then turns it off', () => {
@@ -134,8 +141,11 @@ test('Set Game Executable asks first on a game Easy Setup does, then turns it of
   assert.match(fn(app, 'askEasyOff'), /ask\(t\('Turn Off Easy Setup\?'\)[^\n]*t\('Turn Off'\), v: 'yes', main: true \}, \{ label: t\('Not Now'\), v: null \}/);
 });
 
-test('turning Easy Setup back on lets go of the picked executable', () => {
-  assert.match(fn(app, 'setEasySkip'), /if \(!on && S\.library\[id\]\) S\.library\[id\] = await invoke\('forget_program', \{ id \}\);/);
+test('turning Easy Setup back on keeps the picked executable for switching back', () => {
+  // Installed: only the game's mode changes, in the core. Nothing is let go.
+  const sw = fn(app, 'setEasySkip');
+  assert.match(sw, /S\.library\[rid\] = await invoke\('set_setup_mode', \{ id, mode: on \? 'own' : 'easy' \}\);\r?\n\s+applyEasySkip\(\);/);
+  assert.doesNotMatch(sw, /forget_program/);
   // Every way back on goes through it: the Easy Setup switch (and the menu before install), and Where's Your Build?.
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(app, /if \(v === 'easy'\) \{\n\s+try \{ await setEasySkip\(id, false\); \}/);
@@ -144,11 +154,24 @@ test('turning Easy Setup back on lets go of the picked executable', () => {
   assert.doesNotMatch(app, /easy-again/);
 });
 
-test('executables picked before turn Easy Setup off at start, and keep it off when it comes back on for every game', () => {
-  assert.match(fn(app, 'loadEasy'), /applyEasySkip\(\);\n\s+await skipOwnPrograms\(\);/);
-  assert.match(fn(app, 'skipOwnPrograms'), /const add = own\.filter\(\(id\) => S\.easy\.has\(id\)\);/);
-  assert.match(app, /if \(el\.dataset\.k === 'easy_skip_all' && \(S\.settings\.ui \|\| \{\}\)\.easy_skip_all\) return easyForEveryGame\(\);/);
-  assert.match(fn(app, 'easyForEveryGame'), /invoke\('own_program_games'\)[^\n]*skip\.add\(id\);\n\s+return saveUi\(\{ easy_skip_all: false, easy_skip: \[\.\.\.skip\] \}\);/);
+test('who sets a game up is its own mode: nothing is worked out again at start', () => {
+  // Picks made before modes were turned into the game's mode once, by the library converter.
+  assert.doesNotMatch(app, /skipOwnPrograms|easyForEveryGame|own_program_games/);
+  assert.doesNotMatch(rust, /fn own_program_games/);
+  assert.match(fn(app, 'loadEasy'), /applyEasySkip\(\);\r?\n\s+if \(!quiet\) render\(true\);/);
+  // Skip Easy Setup for every game sits over each game's mode: turned off, every game is as it was.
+  assert.match(app, /case 'ui-toggle':\r?\n(\s+\/\/[^\n]*\n)+\s+return saveUi\(\{ \[el\.dataset\.k\]: !\(S\.settings\.ui \|\| \{\}\)\[el\.dataset\.k\] \}\);/);
+});
+
+test('an installed game\'s Easy Setup switch reads its mode', () => {
+  const run = new Function('S', `${fn(app, 'applyEasySkip')}; return applyEasySkip;`);
+  const S = { settings: { ui: { easy_skip: ['planned'] } }, easyAll: new Set(['hopper', 'skyracer', 'planned']), library: { hopper: { mode: 'own' }, skyracer: {} } };
+  run(S)();
+  assert.deepEqual([...S.easy], ['skyracer'], 'hopper is the player\'s own; planned was ticked before installing');
+  S.settings.ui.easy_skip_all = true;
+  run(S)();
+  assert.deepEqual([...S.easy], []);
+  assert.equal(S.library.skyracer.mode, undefined, 'the switch for every game leaves each game\'s mode as it is');
 });
 
 test('Choose Program is called Set Game Executable everywhere', () => {

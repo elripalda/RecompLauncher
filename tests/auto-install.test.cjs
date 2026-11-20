@@ -8,6 +8,8 @@ const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
 const autoInstallSrc = app.match(/^const autoInstall = .*$/m)[0];
+// The Updates page also draws Update All Games Automatically.
+const autoUpdateAllSrc = app.match(/^const autoUpdateAll = .*$/m)[0];
 // The part of the download-finished handler that decides what opens next.
 const doneHandler = app.slice(app.indexOf("T.event.listen('install'"), app.indexOf("T.event.listen('game'"));
 
@@ -23,12 +25,12 @@ function settingsContext(settings, setTab = 'updates') {
     SET_SECTIONS: [['updates', 'Updates']], SET_ICONS: {}, DL_LIMITS: [0],
     okMark: () => '', portableRow: () => '', geRow: () => '', networkGroup: () => '',
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s,
-    homePinned: () => false, bgMode: () => '', langName: () => 'English',
+    homePinned: () => false, ownedGames: () => [], bgMode: () => '', langName: () => 'English',
     svg: () => '', hints: () => '', HEART: '', setClock: () => {},
   });
   c.window = c;
   c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
-  vm.runInContext(autoInstallSrc, c);
+  vm.runInContext(autoInstallSrc + '\n' + autoUpdateAllSrc, c);
   return c;
 }
 
@@ -78,10 +80,28 @@ test('a finished installer download opens its installer only with Auto-Install o
 });
 
 test('a finished Easy Install download opens its setup only with Auto-Install on', () => {
-  assert.match(doneHandler, /su\.needs && !su\.copy && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
+  assert.match(doneHandler, /su\.needs && su\.status && !su\.status\.ready && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
 });
 
-test('Easy Install skips Pick Your Copy First with Auto-Install off', () => {
+test('Easy Install asks for the copy while it downloads only with Auto-Install on', () => {
   const start = fn(app, 'startInstall');
-  assert.match(start, /if \(autoInstall\(\) && !S\.library\[id\] && !tag && !anyway && !pack\.length && turnkey\(byId\(id\)\)/);
+  assert.match(start, /const pickNow = autoInstall\(\) && !S\.library\[id\] && !tag && !anyway && !pack\.length && turnkey\(byId\(id\)\)/);
+});
+
+test('Easy Install starts the download and opens the copy picker together, with no question first', () => {
+  const start = fn(app, 'startInstall');
+  assert.match(start, /dlArgs\(id, \{ id, dir: dir \|\| null, tag: tag \|\| null \}\);\n\s+if \(pickNow\) pickWhileDownloading\(id\);\n\s+try \{ await invoke\('install'/);
+  assert.doesNotMatch(app, /Pick Your Copy First\?/);
+});
+
+test('a copy picked while it downloads waits for the download to be done', () => {
+  const pick = fn(app, 'pickWhileDownloading');
+  assert.match(pick, /if \(S\.jobs\[id\]\) \{\n\s+if \(!path\) return;\n\s+\(S\.prePicked = S\.prePicked \|\| \{\}\)\[id\] = path;/);
+});
+
+test('a download that ends while the copy is being picked leaves the setup window to the picking', () => {
+  assert.match(doneHandler, /else if \(S\.easy\.has\(id\) && \(S\.pickingCopy \|\| \{\}\)\[id\]\) \{ \/\* pickWhileDownloading opens it \*\/ \}/);
+  const pick = fn(app, 'pickWhileDownloading');
+  assert.match(pick, /try \{ path = await pickCheckedCopy\(id\); \} finally \{ delete S\.pickingCopy\[id\]; \}/);
+  assert.match(pick, /await setupModal\(id\);\n\s+if \(path && SU\.el && SU\.id === id && SU\.stage === 'steps'\) suBegin\(path\);/);
 });

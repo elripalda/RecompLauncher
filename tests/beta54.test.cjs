@@ -41,7 +41,7 @@ test('Pause Updates keeps a game on its version: out of Update, Update All and a
   // It's applied as updates come in, so automatic updates and Update All never see it.
   const check = fn(app, 'checkUpdates');
   assert.ok(check.indexOf('holdUpdates();') < check.indexOf('const auto = '));
-  assert.match(fn(app, 'gameMenu'), /act: 'auto-up'[^\n]*\n\s+\.\.\.holdItem\(id\),/);
+  assert.match(fn(app, 'manageUpdateRows'), /aria-checked="\$\{held\}"[^\n]*data-act="hold-up"/);
   assert.match(app, /case 'hold-up': return toggleHold\(id\);/);
   assert.match(fn(app, 'badNote'), /gp-note held[^]*data-act="hold-up"/);
   assert.match(tv, /window\.toggleHold\(id\)/);
@@ -72,13 +72,14 @@ test('Free Up Space: on the Your Copy card when the game plays without the copy,
 });
 
 test('Move Build moves a build of its own folder and the game starts from there', () => {
-  assert.match(fn(app, 'gameMenu'), /S\.setup\[id\]\.build_at \? \[\{ act: 'move-build', id, label: t\('Move Build…'\)/);
+  assert.match(fn(app, 'manageStartRows'), /if \(su && su\.build_at\) rows\.push\([^\n]*data-act="move-build"/);
   assert.match(fn(app, 'moveBuild'), /invoke\('move_build', \{ id, to \}\)/);
   assert.match(rust, /x\.build_dir = \(dest != home\)\.then\(\|\| dest\.clone\(\)\);/);
 });
 
 test('a setup the game asks for runs, and a setup step that stops says what it said', () => {
-  assert.match(own, /if g\.setup_done && asked_for_setup\(st, id, &g\) \{/);
+  // (Only Play answers it: a shortcut or the page asking doesn't use up the game's request.)
+  assert.match(own, /if g\.setup_done && asked_for_setup\(st, id, &g, play\) \{/);
   assert.match(rust, /format!\("Its setup step stopped with code \{code\}: \{said\}"\)/);
   assert.match(read('src-tauri/src/nup.rs'), /fn wrong_folder\(dir: &Path\) -> String/);
   assert.match(rust, /fn say_why_it_stopped\(\)/);

@@ -90,7 +90,7 @@ const X64: [&str; 5] = ["x64", "x86_64", "amd64", "win64", "64bit"];
 /// What kind of file it is, by its ending, and whether this system can use it as a build.
 pub fn kind(name: &str) -> Option<&'static str> {
     let n = name.to_lowercase();
-    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".msi", "msi"), (".dmg", "dmg")] {
+    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".txz", "tar.xz"), (".tar.zst", "tar.zst"), (".tzst", "tar.zst"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".msi", "msi"), (".dmg", "dmg")] {
         if n.ends_with(end) {
             return Some(k);
         }
@@ -101,7 +101,7 @@ pub fn kind(name: &str) -> Option<&'static str> {
 fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
-        "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
+        "linux" => matches!(k, "appimage" | "tar.gz" | "tar.xz" | "tar.zst" | "zip" | "7z" | "rar"),
         "macos" => matches!(k, "zip" | "dmg" | "rar" | "7z"),
         _ => false,
     }
@@ -112,7 +112,7 @@ fn usable(os: &str, k: &str) -> bool {
 fn usable_file(os: &str, name: &str) -> bool {
     match kind(name) {
         Some(k) if usable(os, k) => true,
-        Some("tar.gz" | "tar.xz") if os == "windows" => words(name).iter().any(|w| matches!(w.as_str(), "windows" | "win" | "win64" | "win32")),
+        Some("tar.gz" | "tar.xz" | "tar.zst") if os == "windows" => words(name).iter().any(|w| matches!(w.as_str(), "windows" | "win" | "win64" | "win32")),
         _ => false,
     }
 }
@@ -203,7 +203,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("windows", "exe") => 6,
         ("windows", "msi") => 2,
         ("linux", "appimage") => 14,
-        ("linux", "tar.gz") => 12,
+        ("linux", "tar.gz" | "tar.xz" | "tar.zst") => 12,
         ("linux", "zip") => 8,
         ("macos", "zip") => 12,
         // Below a ZIP even when the disk image's name says more (arm64): a ZIP keeps the app as it is.
@@ -248,7 +248,7 @@ pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
 
 /// A release's name for a file, less its version: Game-1.2.0-x86_64.AppImage and
 /// Game-x86_64.AppImage both read game-x86-64.appimage.
-fn unversioned(name: &str) -> String {
+pub(crate) fn unversioned(name: &str) -> String {
     name.split(['-', '_', ' ']).filter(|w| !is_version(w)).collect::<Vec<_>>().join("-").to_lowercase()
 }
 

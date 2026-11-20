@@ -1,54 +1,52 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const fs = require('node:fs');
-const code = fs.readFileSync(require('node:path').join(__dirname, '../ui/setup-inputs.js'), 'utf8');
-function context() {
-  const ctx = vm.createContext({
-    t: (x) => x, tf: (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]),
-    esc: (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c])),
-    baseName: (x) => x.split(/[\\/]/).pop(), CHECK: '<svg></svg>', DISC_S: '<svg></svg>',
-  });
-  vm.runInContext(code, ctx); return ctx;
-}
+const { stepsContext } = require('./steps-context.cjs');
+
+// Named inputs (setup-inputs.js rows) as the steps draw them, desktop and Big Picture alike.
 const row = (id, optional = false, path = null) => ({ id, label: id, role: optional ? 'dlc' : 'disc', optional, path, active: true, file: true });
-test('four discs and three DLC remain visible and missing discs block preparation', () => {
-  const c = context(), su = {inputs: [...Array.from({length: 4}, (_, n) => row('Disc ' + (n+1), false, n < 3 ? '/disc.iso' : null)), ...Array.from({length: 3}, (_, n) => row('DLC ' + (n+1), true))]};
-  const html = c.namedInputsView('fixture', su);
-  assert.equal((html.match(/class="ni-row(?: |")/g) || []).length, 7);
-  assert.match(html, /3 of 4 required files selected/);
-  assert.match(html, /data-ni="run" disabled/);
-  su.inputs[3].path = '/disc4.iso';
-  const complete = c.namedInputsView('fixture', su);
-  assert.match(complete, /4 of 4 required files selected/);
-  assert.doesNotMatch(complete, /data-ni="run" disabled/);
+const named = (inputs) => ({ needs: 'x', kind: '', inputs, prepare_options: [] });
+
+test('four discs and three DLC stay visible, and missing discs block setup', () => {
+  const c = stepsContext();
+  const su = named([row('disc1', false, '/1.iso'), row('disc2', false, '/2.iso'), row('disc3'), row('disc4'), row('dlc1', true), row('dlc2', true), row('dlc3', true)]);
+  const discs = c.stepsView('fixture', su, {}, { name: 'G' });
+  assert.equal((discs.match(/class="ss-row(?:"| )/g) || []).length, 4, 'four disc rows on the first step');
+  assert.match(discs, /Choose 2 more files to go on\./);
+  assert.match(discs, /data-ss="next" disabled/);
+  const addons = c.stepsView('fixture', su, { at: 1 }, { name: 'G' });
+  assert.equal((addons.match(/class="ss-row(?:"| )/g) || []).length, 3, 'three DLC rows on Add-ons');
+  assert.match(addons, /data-ss="run" disabled/, 'Set Up still waits for the discs');
+  for (const r of su.inputs.slice(2, 4)) r.path = '/d.iso';
+  assert.doesNotMatch(c.stepsView('fixture', su, { at: 1 }, { name: 'G' }), /data-ss="run" disabled/, 'DLC never holds setup back');
 });
+
 test('inactive conditional keys are hidden; stored active keys are shown without a path leak', () => {
-  const c = context(), su = {inputs:[row('base', false, '/game.nsp'), {...row('keys'), role:'key', shared:'switch.prod-keys', active:false}]};
-  assert.doesNotMatch(c.namedInputsView('fixture', su), /Shared keys/);
+  const c = stepsContext();
+  const su = named([row('base', false, '/game.nsp'), { ...row('keys'), label: 'prod.keys', role: 'key', shared: 'switch.prod-keys', active: false }]);
+  assert.doesNotMatch(c.stepsView('fixture', su, {}, { name: 'G' }), /Keys/);
   su.inputs[1].active = true;
-  assert.match(c.namedInputsView('fixture', su), /data-ni="run" disabled/);
+  assert.match(c.stepsView('fixture', su, {}, { name: 'G' }), /data-ss="run" disabled/);
   su.inputs[1].path = '/private/shared-keys/switch.prod-keys/prod.keys';
-  const html = c.namedInputsView('fixture', su);
-  assert.match(html, /Already configured/);
+  const html = c.stepsView('fixture', su, {}, { name: 'G' });
+  assert.match(html, /Kept once on this PC for every game that needs it/);
   assert.doesNotMatch(html, /\/private\/shared-keys/);
-  assert.doesNotMatch(html, /data-ni="run" disabled/);
+  assert.doesNotMatch(html, /data-ss="run" disabled/);
 });
+
 test('profile labels and selected filenames are escaped', () => {
-  const c = context(), html = c.namedInputsView('fixture', {inputs:[{...row('base', false, '/<img>.iso'), label:'<script>bad</script>'}]});
+  const c = stepsContext();
+  const html = c.stepsView('fixture', named([{ ...row('base', false, '/<img>.iso'), label: '<script>bad</script>' }, row('b2')]), {}, { name: 'G' });
   assert.doesNotMatch(html, /<script>|<img>/);
   assert.match(html, /&lt;script&gt;/);
 });
-test('optional DLC starts collapsed and expanding preserves required-file gating', async () => {
-  const c = context(), state = {}, su = {inputs:[row('disc1'),row('dlc1',true,'/bonus.bin')]};
-  const collapsed = c.namedInputsView('fixture', su, state);
-  assert.match(collapsed, /aria-expanded="false"/);
-  assert.match(collapsed, /1 of 1 added/);
-  assert.match(collapsed, /id="ni-optional-fixture" hidden/);
-  await c.namedInputsAction('fixture','toggle-optional',undefined,state);
-  const expanded = c.namedInputsView('fixture',su,state);
-  assert.match(expanded, /aria-expanded="true"/);
-  assert.doesNotMatch(expanded, /id="ni-optional-fixture" hidden/);
-  assert.match(expanded, /data-ni="run" disabled/);
-  assert.equal(su.inputs[1].path, '/bonus.bin');
+
+test('optional DLC has its own step, and a chosen one can be removed', () => {
+  const c = stepsContext();
+  const su = named([row('disc1'), row('dlc1', true, '/bonus.bin')]);
+  const m = c.stepsModel('fixture', su, {});
+  assert.equal(m.steps.map((s) => s.id).join(), 'game,addons');
+  const addons = c.stepsView('fixture', su, { at: 1 }, { name: 'G' });
+  assert.match(addons, /<span>Add-ons<\/span><b>1 of 1 added<\/b>/);
+  assert.match(addons, /data-ss="clear" data-input="dlc1"[^>]*title="Remove">/);
+  assert.match(addons, /data-ss="run" disabled/, 'the disc still holds setup back');
 });

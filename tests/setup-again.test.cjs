@@ -22,6 +22,35 @@ test('a game not set up yet has no new options to ask about', () => {
   assert.deepEqual(newPrepOpts('loading'), []);
 });
 
+// Reaching Extras in Setup Options, with what it saves and the setup info it leaves.
+const seen = async () => {
+  const calls = [];
+  const su = { copy: 'C:/game.nup', prepare_options: [{ id: 'hd', new: true, on: false }] };
+  const load2 = new Function('S', 'invoke', 'render', 'window', 'document', `${src} return { seenNewOpts, newPrepOpts };`);
+  const { seenNewOpts, newPrepOpts } = load2({ setup: { g: su } }, async (cmd, args) => { calls.push([cmd, args]); }, () => {}, {}, {});
+  await seenNewOpts('g', su.prepare_options);
+  return { calls, su, newPrepOpts };
+};
+
+test('seeing the new options keeps each as it is', async () => {
+  const { calls } = await seen();
+  assert.deepEqual(calls, [['set_prepare_opts', { id: 'g', opts: { hd: false } }]]);
+});
+
+test('seen options no longer count as new, so the dots go', async () => {
+  const { su, newPrepOpts } = await seen();
+  assert.deepEqual(newPrepOpts(su), []);
+});
+
+test('the open setup window keeps its New tag after they are seen', async () => {
+  const { su } = await seen();
+  assert.equal(su.prepare_options[0].new, true);
+});
+
+test('the setup window marks them seen on reaching Extras, once', () => {
+  assert.match(read('setup-steps.js'), /if \(m\.cur\.id === 'extras' && m\.fresh\.length && !ns\.seenNew && typeof seenNewOpts === 'function'\) \{\n\s+ns\.seenNew = true;\n\s+seenNewOpts\(id, m\.fresh\);/);
+});
+
 test('a game set up from named inputs counts as set up', () => {
   const { newPrepOpts } = load({});
   assert.equal(newPrepOpts({ inputs_ready: true, prepare_options: opts }).length, 1);
@@ -40,7 +69,33 @@ test('Play asks about new options before the game starts, in both modes', () => 
   assert.match(app, /if \(await askNewOpts\(id\)\) return;\n\s*await playGame2\(id, program\);/);
   assert.match(app, /T\.event\.listen\('options-new'/);
   assert.match(app, /invoke\('take_options_asked'\)/);
-  // Big Picture: Set Up Again beside Play, and the options as items the controller can reach.
-  assert.match(tv, /btn\('g-again', 'setup', esc\(t\('Set Up Again'\)\)/);
-  assert.match(tv, /const prepOpts = \(su\.prepare_options \|\| \[\]\)\.map\(optItem\)/);
+  // Big Picture: the options as items the controller can reach.
+  assert.match(tv, /row\.dataset\.f = ''; row\.dataset\.key = 'po:' \+ o\.id; row\.dataset\.sheet = at;/);
+});
+
+test('Big Picture has Setup Options in the X sheet, not as a button beside Play', () => {
+  assert.doesNotMatch(tv, /g-again/);
+  assert.match(tv, /const setupItem = g && canSetUpAgain\(id\) \? \[\{ label: t\('Setup Options'\)/);
+});
+
+test('Big Picture\'s X sheet leaves out Play (the big button) and puts Setup Options first', () => {
+  assert.match(tv, /\.\.\.\(m && !m\.play \? \[m\] : \[\]\),\n\s+\.\.\.setupItem,/);
+  assert.match(tv, /t\('Play'\), icon: 'play', play: true, run: \(\) => playGame\(id\)/);
+});
+
+test('Big Picture marks a new option on Setup Options and on the Options button', () => {
+  // The sheet's own "new" mark after an item's name (x.tag, shared with the Saves sheet).
+  assert.match(tv, /tag: fresh \? t\('New option'\) : ''/);
+  assert.match(tv, /\$\{x\.tag \? `<span>\$\{esc\(x\.label\)\}<em class="tv-newer">\$\{esc\(x\.tag\)\}<\/em><\/span>` : esc\(x\.label\)\}/);
+  assert.match(tv, /btn\('g-more', 'more', esc\(t\('Options'\)\) \+ \(g && canSetUpAgain\(id\) && newPrepOpts\(su\)\.length \? `<b class="tv-new">/);
+});
+
+test('Big Picture says who made it under Based on, as the desktop page does, not in a chip', () => {
+  assert.match(tv, /const byLine = who \? `<p class="tv-based tv-by">\$\{pic\}<span>\$\{htmlIn\(t\('By \{who\}'\)/);
+  assert.match(tv, /<p class="tv-based">[^\n]*\n\s+\$\{byLine\}/);
+  assert.match(tv, /const chips = \[originName\(a\.origin\), GENRES\[a\.genre\] \? t\(GENRES\[a\.genre\]\) : ''\]\.filter\(Boolean\)\.map\(esc\);\n/);
+});
+
+test('Big Picture\'s facts leave out who made it (it is under the title)', () => {
+  assert.doesNotMatch(tv, /\[t\('By'\), \(devOf\(a\)/);
 });
