@@ -5,7 +5,7 @@
 // its sorting and the game pages stay as they are. The rules for names, fallbacks and moves live
 // in the backend (folders.rs, folders_move.rs), so the preview is exactly what installs get.
 
-const FS = { data: null, edit: null, level: 0, preview: [], timer: 0, drag: null, busy: false, loading: false };
+const FS = { data: null, edit: null, level: 0, preview: [], known: {}, timer: 0, drag: null, busy: false, loading: false, noClickUntil: 0 };
 
 // Each field: its name, and what the launcher actually has for it (checked against the catalog
 // and the Library), shown on its chip and in Fallbacks.
@@ -79,22 +79,22 @@ window.foldersAct = async (a) => {
 
 function fsChip(f, text, where) {
   const label = f === 'text' ? (text ? `"${text}"` : t('Custom Text')) : fsLabel(f);
-  return `<span class="fs-chip${f === 'text' ? ' txt' : ''}" draggable="true" data-drag="${esc(where)}" title="${esc(fsHint(f))}">${esc(label)}${where.startsWith('part:') ? `<button type="button" class="fs-x" data-x="part-del" data-at="${esc(where)}" aria-label="${esc(tf('Take {field} out', { field: label }))}">×</button>` : ''}</span>`;
+  return `<span class="fs-chip${f === 'text' ? ' txt' : ''}" data-drag="${esc(where)}" title="${esc(fsHint(f))}">${esc(label)}${where.startsWith('part:') ? `<button type="button" class="fs-x" data-x="part-del" data-at="${esc(where)}" aria-label="${esc(tf('Take {field} out', { field: label }))}">×</button>` : ''}</span>`;
 }
 
 function fsLevel(l, i, n) {
   const sel = FS.level === i;
   const seps = FS_SEPS.map(([v, name]) => `<option value="${esc(v)}"${l.sep === v ? ' selected' : ''}>${esc(t(name))}</option>`).join('');
   const custom = l.parts.map((p, pi) => (p.field === 'text' ? `<input class="field sm fs-txt" data-txt="${i}:${pi}" value="${esc(p.text || '')}" placeholder="${esc(t('Folder Words'))}" aria-label="${esc(t('Custom Text'))}">` : '')).join('');
-  return `<div class="fs-level${sel ? ' fs-on' : ''}" data-level="${i}" data-drop="level:${i}">
-    <div class="fs-lh"><button type="button" class="fs-pick" data-x="pick" data-i="${i}" aria-pressed="${sel}">${esc(i === n - 1 ? t('The game\'s folder') : tf('Folder {n}', { n: i + 1 }))}</button>
+  return `<div class="fs-level${sel ? ' fs-on' : ''}" data-level="${i}" data-drop="level:${i}" data-x="pick" data-i="${i}">
+    <div class="fs-lh"><button type="button" class="fs-pick" data-x="pick" data-i="${i}" aria-pressed="${sel}">${esc(i === n - 1 ? t('The game\'s folder') : tf('Folder {n}', { n: i + 1 }))}<span class="fs-picked">${esc(t('Selected'))}</span></button>
       <span class="fs-tools">
         ${l.parts.length > 1 ? `<label class="fs-sep">${esc(t('Join With'))} <select class="sel sm" data-sep="${i}">${seps}</select></label>` : ''}
         <button type="button" class="btn xs" data-x="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="${esc(t('Move this level up'))}">↑</button>
         <button type="button" class="btn xs" data-x="down" data-i="${i}" ${i === n - 1 ? 'disabled' : ''} aria-label="${esc(t('Move this level down'))}">↓</button>
         <button type="button" class="btn xs" data-x="del" data-i="${i}" ${n === 1 ? 'disabled' : ''} aria-label="${esc(t('Remove this level'))}">${esc(t('Remove'))}</button>
       </span></div>
-    <div class="fs-parts">${l.parts.map((p, pi) => fsChip(p.field, p.text, `part:${i}:${pi}`)).join('') || `<span class="fs-empty">${esc(t('Drag fields here, or pick this level and press a field.'))}</span>`}</div>
+    <div class="fs-parts">${l.parts.map((p, pi) => fsChip(p.field, p.text, `part:${i}:${pi}`)).join('') || `<span class="fs-empty">${esc(t('Drag fields here, or select this folder and press a field.'))}</span>`}</div>
     ${custom ? `<div class="fs-txts">${custom}</div>` : ''}
   </div>`;
 }
@@ -134,9 +134,15 @@ function fsAdvanced(L) {
   const cases = FS_CASES.map(([v, n]) => `<option value="${v}"${L.case === v ? ' selected' : ''}>${esc(t(n))}</option>`).join('');
   const cons = (FS.data.consoles || []).filter((c) => c.id !== 'other').map((c) => `<label class="fs-con"><span>${esc(c.full)}</span><input class="field sm" data-con="${esc(c.id)}" value="${esc((L.consoles || {})[c.id] || '')}" placeholder="${esc(L.short_consoles ? c.short : c.full)}"></label>`).join('');
   const games = Object.values(S.library || {}).filter((g) => !g.local).sort((x, y) => x.name.localeCompare(y.name));
-  const ownFields = FS_OWN.filter((f) => used.includes(f) || ['franchise', 'year'].includes(f));
+  const ownFields = FS_OWN.filter((f) => used.includes(f) || ['franchise', 'year', 'developer', 'publisher'].includes(f));
+  const cell = (g, f) => {
+    const own = ((L.games || {})[g.id] || {})[f], known = (FS.known[g.id] || {})[f] || '';
+    const label = tf('{field} for {game}', { field: fsLabel(f), game: g.name });
+    const from = !own && known ? ` fs-known" title="${esc(t('Already known. Type to use your own.'))}` : '';
+    return `<input class="field sm${from}" data-own="${esc(g.id)}:${f}" data-known="${esc(known)}" value="${esc(own || known)}" placeholder="${esc(t('Unknown'))}" aria-label="${esc(label)}">`;
+  };
   const own = games.length ? `<div class="fs-own"><div class="fs-own-h"><span>${esc(t('Game'))}</span>${ownFields.map((f) => `<span>${esc(fsLabel(f))}</span>`).join('')}</div>
-    ${games.map((g) => `<div class="fs-own-r"><span title="${esc(g.name)}">${esc(g.name)}</span>${ownFields.map((f) => `<input class="field sm" data-own="${esc(g.id)}:${f}" value="${esc(((L.games || {})[g.id] || {})[f] || '')}" aria-label="${esc(tf('{field} for {game}', { field: fsLabel(f), game: g.name }))}">`).join('')}</div>`).join('')}</div>`
+    ${games.map((g) => `<div class="fs-own-r"><span title="${esc(g.name)}">${esc(g.name)}</span>${ownFields.map((f) => cell(g, f)).join('')}</div>`).join('')}</div>`
     : `<p class="muted">${esc(t('Install a game to give it your own values.'))}</p>`;
   return `<details class="fs-adv"${FS.adv ? ' open' : ''}><summary data-x="adv">${esc(t('Advanced'))}</summary>
     <h4>${esc(t('When a Game Has Nothing for a Field'))}</h4>
@@ -147,7 +153,7 @@ function fsAdvanced(L) {
     <div class="fs-row"><span><b>${esc(t('Capitalization'))}</b></span><span class="acts"><select class="sel sm" data-case aria-label="${esc(t('Capitalization'))}">${cases}</select></span></div>
     <details class="fs-sub"><summary>${esc(t('Your Own Console Names'))}</summary><div class="fs-cons">${cons}</div></details>
     <h4>${esc(t('Your Values per Game'))}</h4>
-    <p class="fs-dim">${esc(t('Fill in what the catalog doesn\'t have. These are kept, so refreshing the catalog never resets them.'))}</p>
+    <p class="fs-dim">${esc(t('What the launcher already knows is filled in. Change anything, or fill in what\'s missing. Your values are kept, so refreshing the catalog never resets them.'))}</p>
     ${own}
   </details>`;
 }
@@ -155,14 +161,14 @@ function fsAdvanced(L) {
 function fsDraw() {
   const L = FS.edit, n = L.levels.length;
   const presets = FS.data.presets.map((p) => `<option value="${esc(p.id)}"${L.preset === p.id ? ' selected' : ''}>${esc(t(p.name))}</option>`).join('');
-  const palette = Object.keys(FS_FIELDS).map((f) => `<button type="button" class="fs-add" data-x="add" data-f="${f}" draggable="true" data-drag="field:${f}" title="${esc(fsHint(f))}">${esc(fsLabel(f))}</button>`).join('');
+  const palette = Object.keys(FS_FIELDS).map((f) => `<button type="button" class="fs-add" data-x="add" data-f="${f}" data-drag="field:${f}" title="${esc(fsHint(f))}">${esc(fsLabel(f))}</button>`).join('');
   return `<h2>${esc(t('Folder Structure'))}</h2>
     <p>${esc(t('Where installed games go on disk. Your Library, its sorting and game pages don\'t change.'))}</p>
     <div class="fs-step"><b>1</b><label>${esc(t('Start From'))} <select class="sel" data-preset aria-label="${esc(t('Start From'))}">${presets}${L.preset ? '' : `<option selected>${esc(t('Your own'))}</option>`}</select></label></div>
     <div class="fs-grid">
-      <div class="fs-pal" data-drop="palette"><div class="fs-h"><b>2</b> ${esc(t('Fields'))}</div><p class="fs-dim">${esc(t('Drag one onto a folder level, or press it to add it to the level you picked. Drag a field back here to take it out.'))}</p><div class="fs-adds">${palette}</div></div>
-      <div class="fs-levels"><div class="fs-h">${esc(t('Folders, Outermost First'))}</div>${L.levels.map((l, i) => fsLevel(l, i, n) + (i < n - 1 ? '<div class="fs-arrow" aria-hidden="true">↓</div>' : '')).join('')}
-        <button type="button" class="btn sm" data-x="level-add">${esc(t('Add a Level'))}</button></div>
+      <div class="fs-pal" data-drop="palette"><div class="fs-h"><b>2</b> ${esc(t('Fields'))}</div><p class="fs-dim">${esc(t('Drag one onto a folder, or between two folders to make a new one. Pressing a field adds it to the selected folder. Drag a field back here to take it out.'))}</p><div class="fs-adds">${palette}</div></div>
+      <div class="fs-levels"><div class="fs-h">${esc(t('Folders, Outermost First'))}</div>${L.levels.map((l, i) => fsLevel(l, i, n) + (i < n - 1 ? `<div class="fs-arrow" data-drop="gap:${i + 1}"><span aria-hidden="true">↓</span><em data-raw>${esc(t('Drop here for a new folder'))}</em></div>` : '')).join('')}
+        <button type="button" class="btn sm fs-newlevel" data-x="level-add" data-drop="gap:${Math.max(0, n - 1)}">${esc(t('Add a Level'))}<em data-raw>${esc(t('or drop a field here'))}</em></button></div>
       <div class="fs-prev"><div class="fs-h"><b>3</b> ${esc(t('Preview'))}</div><div class="fs-tree" aria-live="polite">${fsTree(FS.preview)}</div></div>
     </div>
     ${fsAdvanced(L)}
@@ -204,6 +210,7 @@ function fsDrop(box, drag, target, before) {
     if (drag.startsWith('part:')) { const [, li, pi] = drag.split(':').map(Number); FS.edit.levels[li].parts.splice(pi, 1); fsChanged(); fsRedraw(box); }
     return;
   }
+  if (target.startsWith('gap:')) return fsDropNewLevel(box, drag, Number(target.split(':')[1]));
   const li = Number(target.split(':')[1]);
   const at = before != null ? before : FS.edit.levels[li].parts.length;
   if (drag.startsWith('field:')) FS.edit.levels[li].parts.splice(at, 0, { field: drag.slice(6), text: '' });
@@ -213,20 +220,86 @@ function fsDrop(box, drag, target, before) {
   fsRedraw(box);
 }
 
-function fsWire(box) {
-  box.addEventListener('dragstart', (e) => { const d = e.target.closest('[data-drag]'); if (!d) return; FS.drag = d.dataset.drag; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', FS.drag); });
-  box.addEventListener('dragover', (e) => { const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); for (const x of box.querySelectorAll('.drop-on')) x.classList.remove('drop-on'); z.classList.add('drop-on'); });
-  box.addEventListener('dragend', () => { FS.drag = null; for (const x of box.querySelectorAll('.drop-on')) x.classList.remove('drop-on'); });
-  box.addEventListener('drop', (e) => {
-    const z = e.target.closest('[data-drop]');
-    if (!z) return;
-    e.preventDefault();
-    // Dropped on a chip in a level: it goes before that chip.
-    const chip = e.target.closest('.fs-chip[data-drag^="part:"]');
-    const before = chip && z.dataset.drop.startsWith('level:') ? Number(chip.dataset.drag.split(':')[2]) : null;
-    fsDrop(box, FS.drag || e.dataTransfer.getData('text/plain'), z.dataset.drop, before);
-    FS.drag = null;
+// A field (or a part taken out of another folder) dropped between two folders: a new folder there.
+function fsDropNewLevel(box, drag, at) {
+  let part = { field: drag.slice(6), text: '' };
+  if (drag.startsWith('part:')) {
+    const [, li, pi] = drag.split(':').map(Number);
+    part = FS.edit.levels[li].parts.splice(pi, 1)[0];
+  }
+  FS.edit.levels.splice(at, 0, { parts: [part], sep: ' - ' });
+  FS.level = at;
+  fsChanged();
+  fsRedraw(box);
+}
+
+// Dragging with pointer events, not the browser's own drag and drop: on Windows the launcher's
+// window takes native drags for dropping files (Easy Setup), so they never reach the page.
+function fsWireDrag(box) {
+  let d = null;
+  const zoneAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && box.contains(el) ? el.closest('[data-drop]') : null; };
+  const clear = () => { for (const x of box.querySelectorAll('.drop-on')) x.classList.remove('drop-on'); };
+  const stop = () => {
+    if (d && d.ghost) d.ghost.remove();
+    if (d) d.el.classList.remove('fs-lifted');
+    box.classList.remove('fs-dragging');
+    clear();
+    d = null;
+  };
+  box.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('.fs-x, input, select')) return;
+    const el = e.target.closest('[data-drag]');
+    if (!el) return;
+    d = { from: el.dataset.drag, el, x: e.clientX, y: e.clientY, ghost: null, id: e.pointerId };
   });
+  box.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.ghost) {
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+      d.ghost = d.el.cloneNode(true);
+      d.ghost.classList.add('fs-ghost');
+      document.body.append(d.ghost);
+      d.el.classList.add('fs-lifted');
+      box.classList.add('fs-dragging');
+      try { d.el.setPointerCapture(d.id); } catch (err) { /* the drag still follows the pointer inside the window */ }
+    }
+    e.preventDefault();
+    d.ghost.style.transform = `translate(${e.clientX + 10}px, ${e.clientY + 6}px)`;
+    clear();
+    const z = zoneAt(e.clientX, e.clientY);
+    if (z) z.classList.add('drop-on');
+  });
+  box.addEventListener('pointerup', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.ghost) { d = null; return; }
+    const z = zoneAt(e.clientX, e.clientY);
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const chip = under && under.closest('.fs-chip[data-drag^="part:"]');
+    const before = chip && z && z.dataset.drop.startsWith('level:') ? Number(chip.dataset.drag.split(':')[2]) : null;
+    const from = d.from;
+    stop();
+    // The click that ends a drag isn't a press: it mustn't add the field a second time.
+    FS.noClickUntil = Date.now() + 400;
+    if (z) fsDrop(box, from, z.dataset.drop, before);
+  });
+  box.addEventListener('pointercancel', stop);
+  box.addEventListener('click', (e) => { if (Date.now() < FS.noClickUntil) { e.stopPropagation(); e.preventDefault(); FS.noClickUntil = 0; } }, true);
+}
+
+// Selecting a folder doesn't redraw, so a separator list or text box in it keeps working.
+function fsPick(box, i) {
+  if (FS.level === i) return;
+  FS.level = i;
+  for (const el of box.querySelectorAll('.fs-level')) {
+    const on = Number(el.dataset.level) === i;
+    el.classList.toggle('fs-on', on);
+    const b = el.querySelector('.fs-pick');
+    if (b) b.setAttribute('aria-pressed', String(on));
+  }
+}
+
+function fsWire(box) {
+  fsWireDrag(box);
   box.addEventListener('change', (e) => {
     const el = e.target, L = FS.edit;
     if (el.matches('[data-preset]')) return invoke('folders_preset', { id: el.value }).then((p) => { FS.edit = Object.assign(p, { apply_new: L.apply_new, games: L.games, consoles: L.consoles, fallbacks: L.fallbacks, short_consoles: L.short_consoles, case: L.case }); FS.level = 0; fsRedraw(box); }).catch(fail);
@@ -247,7 +320,10 @@ function fsWire(box) {
       const [id, f] = [el.dataset.own.slice(0, el.dataset.own.lastIndexOf(':')), el.dataset.own.slice(el.dataset.own.lastIndexOf(':') + 1)];
       L.games = L.games || {};
       const g = L.games[id] = L.games[id] || {};
-      if (el.value.trim()) g[f] = el.value; else delete g[f];
+      // Typing back what was already known isn't a value of the player's own.
+      const mine = el.value.trim() && el.value.trim() !== (el.dataset.known || '');
+      if (mine) g[f] = el.value; else delete g[f];
+      el.classList.toggle('fs-known', !mine && !!el.dataset.known);
       if (!Object.keys(g).length) delete L.games[id];
     } else return;
     // Typing doesn't redraw (it would lose the caret): only the preview follows.
@@ -260,11 +336,12 @@ async function fsDesigner() {
   FS.edit = fsClone(FS.data.layout);
   FS.level = 0;
   FS.preview = [];
+  try { FS.known = await invoke('folders_known', { layout: FS.edit }); } catch (e) { FS.known = {}; }
   let box = null;
   const scrim = modal('<div class="fs-designer"></div>', async (x, close) => {
     const L = FS.edit, i = Number(x.dataset.i);
     switch (x.dataset.x) {
-      case 'pick': FS.level = i; break;
+      case 'pick': return fsPick(box, i);
       case 'add': L.levels[Math.min(FS.level, L.levels.length - 1)].parts.push({ field: x.dataset.f, text: '' }); fsChanged(); break;
       case 'part-del': { const [, li, pi] = x.dataset.at.split(':').map(Number); L.levels[li].parts.splice(pi, 1); fsChanged(); break; }
       case 'up': [L.levels[i - 1], L.levels[i]] = [L.levels[i], L.levels[i - 1]]; FS.level = i - 1; fsChanged(); break;
@@ -296,9 +373,23 @@ async function fsDesigner() {
 
 const FS_STATE = { move: N_('Moves'), same: N_('Already there'), outside: N_('Outside your libraries'), blocked: N_('Stays') };
 
+// Shown at once while the plan is worked out (it reads the catalog), so the button answers.
+function fsWaiting() {
+  return modal(`<h2>${esc(t('Reorganize Existing Folders'))}</h2><p>${esc(t('Looking at your games…'))}</p>`, null, t('Reorganize Existing Folders'));
+}
+
+// What the list says when nothing can move: everything already in place, or each one held back.
+function fsNothing(rows) {
+  if (!rows.length) return t('No games are installed yet, so there\'s nothing to reorganize.');
+  if (rows.every((r) => r.state === 'same')) return t('Every game is already in your folder structure. Nothing needs to move.');
+  return t('Nothing can move right now. Each game below says why.');
+}
+
 async function fsReorganize() {
+  const wait = fsWaiting();
   let rows;
-  try { rows = await invoke('folders_plan'); } catch (e) { return fail(e); }
+  try { rows = await invoke('folders_plan'); } catch (e) { wait.remove(); return fail(e); }
+  wait.remove();
   const pick = new Set(rows.filter((r) => r.on).map((r) => r.id));
   const movable = (r) => r.state === 'move' || r.state === 'outside';
   const draw = () => {
@@ -307,7 +398,8 @@ async function fsReorganize() {
       <label><input type="checkbox" data-id="${esc(r.id)}"${pick.has(r.id) ? ' checked' : ''}${movable(r) ? '' : ' disabled'} aria-label="${esc(tf('Move {game}', { game: r.name }))}"><b>${esc(r.name)}</b><span class="fs-tag ${esc(r.state)}">${esc(t(FS_STATE[r.state] || r.state))}</span></label>
       <div class="fs-paths"><span><small>${esc(t('Now'))}</small><code>${esc(r.from)}</code></span><span><small>${esc(t('New'))}</small><code>${esc(r.state === 'blocked' ? '—' : r.to)}</code></span></div>
       ${r.note ? `<p class="fs-note">${esc(t(r.note))}</p>` : ''}</div>`).join('');
-    return `<h2>${esc(t('Reorganize Existing Folders'))}</h2>
+    const none = rows.some(movable) ? '' : `<div class="callout fs-none"><b>${esc(fsNothing(rows))}</b></div>`;
+    return `<h2>${esc(t('Reorganize Existing Folders'))}</h2>${none}
       <p>${esc(t('Each game\'s folder moves whole, with the saves and settings inside it. Nothing is overwritten: a game whose new folder already has files keeps its place. Close a game before moving it.'))}</p>
       <div class="fs-plans">${list || `<p class="muted">${esc(t('No games are installed.'))}</p>`}</div>
       <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="go"${n ? '' : ' disabled'}>${esc(tn(n, 'Move 1 Game', 'Move {n} Games'))}</button></div>`;
@@ -322,18 +414,27 @@ async function fsReorganize() {
       return;
     }
     scrim.dataset.busy = '1';
-    box.innerHTML = `<h2>${esc(t('Moving…'))}</h2><p id="fs-moving">${esc(t('Starting…'))}</p>`;
+    FS.run = { total: ids.length, finished: 0, part: 0 };
+    box.innerHTML = `<h2 id="fs-pct">0%</h2><div class="fs-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width:0%"></i></div><p id="fs-moving" class="fs-dim">${esc(t('Starting…'))}</p>`;
     let res = [];
     try { res = await invoke('folders_apply', { ids }); } catch (e) { fail(e); }
+    FS.run = null;
     delete scrim.dataset.busy;
     await refreshState().catch(() => {});
     FS.data = null;
     await fsLoad();
     const ok = res.filter((r) => r.ok).length;
-    box.innerHTML = `<h2>${esc(tn(ok, '1 game moved', '{n} games moved'))}</h2>
+    const all = ok > 0 && ok === res.length;
+    const where = (res.find((r) => r.ok) || {}).library;
+    const head = all ? t('100% Re-Organized') : tf('{ok} of {n} moved', { ok, n: res.length });
+    const open = where ? `<button type="button" class="btn" data-x="open">${esc(t('Open Folder'))}</button>` : '';
+    box.innerHTML = `<h2>${esc(head)}</h2>${all ? '<div class="fs-bar done"><i style="width:100%"></i></div>' : ''}
       <div class="fs-plans">${res.map((r) => `<div class="fs-plan"><b>${esc(r.name)}</b> <span class="fs-tag ${r.ok ? 'move' : 'blocked'}">${esc(r.ok ? t('Moved') : t('Not moved'))}</span><div class="fs-paths"><code>${esc(r.to)}</code></div>${r.note ? `<p class="fs-note">${esc(t(r.note))}</p>` : ''}</div>`).join('')}</div>
-      <div class="acts">${ok ? `<button type="button" class="btn" data-x="undo">${esc(t('Undo'))}</button>` : ''}<button type="button" class="btn main" data-x="no">${esc(t('Done'))}</button></div>`;
-    box.addEventListener('click', (e) => { if (e.target.closest('[data-x="undo"]')) { close(); fsUndo(); } }, { once: true });
+      <div class="acts">${ok ? `<button type="button" class="btn" data-x="undo">${esc(t('Undo'))}</button>` : ''}${open}<button type="button" class="btn main" data-x="no">${esc(t('Done'))}</button></div>`;
+    box.addEventListener('click', (e) => {
+      if (e.target.closest('[data-x="undo"]')) { close(); fsUndo(); }
+      if (e.target.closest('[data-x="open"]')) invoke('open_folder', { path: where }).catch(fail);
+    });
   }, t('Reorganize Existing Folders'));
   scrim.addEventListener('change', (e) => {
     const c = e.target.closest('input[type="checkbox"][data-id]');
@@ -356,10 +457,16 @@ async function fsUndo() {
   toast(bad ? tf('{ok} games went back; {bad} couldn\'t (their old folder has files in it now).', { ok, bad }) : tn(ok, '1 game went back to its old folder.', '{n} games went back to their old folders.'), bad > 0);
 }
 
+// The whole reorganize as one percentage: finished games, plus how far the current copy is (a
+// move on the same drive is a rename and reports only when it's done).
 T.event.listen('folders-move', ({ payload: p }) => {
-  const el = document.getElementById('fs-moving');
-  if (!el || !p) return;
+  const run = FS.run, el = document.getElementById('fs-moving');
+  if (!run || !el || !p) return;
+  if (p.finished) { run.finished = Math.min(run.total, run.finished + 1); run.part = 0; } else if (p.total) run.part = p.done / p.total;
+  const pct = Math.min(100, Math.floor((100 * (run.finished + run.part)) / run.total));
   const a = (S.library || {})[p.id];
-  const name = a ? a.name : p.id;
-  el.textContent = p.finished ? tf('{name} moved.', { name }) : p.total ? tf('{name}: {pct}%', { name, pct: Math.floor((100 * p.done) / p.total) }) : name;
+  el.textContent = p.finished ? tf('{name}: done.', { name: a ? a.name : p.id }) : tf('Moving {name}…', { name: a ? a.name : p.id });
+  const head = document.getElementById('fs-pct'), bar = document.querySelector('.fs-bar');
+  if (head) head.textContent = `${pct}%`;
+  if (bar) { bar.setAttribute('aria-valuenow', String(pct)); bar.firstElementChild.style.width = `${pct}%`; }
 });

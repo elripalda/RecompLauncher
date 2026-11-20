@@ -56,3 +56,30 @@ test('the preview tree shows shared folders once', () => {
   assert.equal((tree.match(/>N64\//g) || []).length, 1);
   assert.equal((tree.match(/class="fs-node game"/g) || []).length, 2);
 });
+
+// Only what the edit became is checked here, so redrawing is left out.
+const box = () => ({});
+
+test('a field dropped between two folders makes a new folder there', () => {
+  const c = context({ levels: [] });
+  vm.runInContext('FS', c).edit = { preset: 'x', levels: [level('console'), level('recomp')] };
+  c.fsRedraw = () => {};
+  c.fsDropNewLevel(box(), 'field:franchise', 1);
+  const fs = vm.runInContext('FS', c);
+  assert.equal(JSON.stringify(fs.edit.levels.map((l) => l.parts.map((p) => p.field))), '[["console"],["franchise"],["recomp"]]');
+  assert.equal(fs.level, 1);
+  assert.equal(fs.edit.preset, '');
+});
+
+test('a part dragged between folders leaves its old folder', () => {
+  const c = context({ levels: [] });
+  vm.runInContext('FS', c).edit = { preset: '', levels: [{ parts: [{ field: 'console' }, { field: 'game' }], sep: ' - ' }, level('recomp')] };
+  c.fsRedraw = () => {};
+  c.fsDropNewLevel(box(), 'part:0:1', 1);
+  assert.equal(JSON.stringify(vm.runInContext('FS', c).edit.levels.map((l) => l.parts.map((p) => p.field))), '[["console"],["game"],["recomp"]]');
+});
+
+test('the fields are dragged with pointer events, not native drag and drop', () => {
+  assert.doesNotMatch(src, /draggable="true"|dragstart/);
+  assert.match(src, /addEventListener\('pointerdown'/);
+});

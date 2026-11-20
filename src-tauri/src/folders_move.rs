@@ -19,6 +19,7 @@ use crate::library::{self, Installed};
 use crate::{catalog, manage, trail, App, Error};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, State};
 
@@ -232,6 +233,17 @@ pub async fn folders_preview(st: State<'_, App>, layout: Layout) -> Res<Vec<Prev
     Ok(rows)
 }
 
+/// What the catalog and the Library already know about each installed game, before the player's
+/// own values: the designer fills the per-game boxes with it, so only the gaps need typing.
+#[tauri::command]
+pub async fn folders_known(st: State<'_, App>, layout: Layout) -> Res<BTreeMap<String, BTreeMap<String, String>>> {
+    let cat = catalog_data(&st).await;
+    let games: Vec<Installed> = st.lib.lock().unwrap().installed.values().filter(|g| !g.local).cloned().collect();
+    let mut bare = layout;
+    bare.games.clear();
+    Ok(games.iter().map(|g| (g.id.clone(), folders::resolve(&source_for(g, &cat), &bare).values)).collect())
+}
+
 /// An example game seen through the layout's own choices (its console names, its per-game values).
 fn with_layout(mut m: Meta, layout: &Layout) -> Meta {
     if let Some(console) = m.values.get("console").cloned() {
@@ -347,6 +359,8 @@ pub struct Outcome {
     pub ok: bool,
     pub to: PathBuf,
     pub note: String,
+    /// The library the game ended up in, so Open Folder can show the new structure.
+    pub library: PathBuf,
 }
 
 /// The game starts from its new folder: its program is there (when the launcher knows it), or
@@ -361,7 +375,11 @@ fn looks_whole(g: &Installed, at: &Path) -> bool {
 /// Move one game to `to` and update the Library. On any trouble the game stays (or is put back)
 /// where it was.
 async fn move_one(app: &AppHandle, st: &App, row: &PlanRow, journal: &mut Journal) -> Outcome {
-    let out = |ok: bool, to: &Path, note: String| Outcome { id: row.id.clone(), name: row.name.clone(), ok, to: to.to_path_buf(), note };
+    let libs = st.lib.lock().unwrap().settings.all_libraries();
+    let out = |ok: bool, to: &Path, note: String| {
+        let library = library_of(to, &libs).unwrap_or_else(|| to.parent().unwrap_or(to).to_path_buf());
+        Outcome { id: row.id.clone(), name: row.name.clone(), ok, to: to.to_path_buf(), note, library }
+    };
     let Some(g) = st.lib.lock().unwrap().installed.get(&row.id).cloned() else { return out(false, &row.from, "It isn't in the Library anymore.".into()) };
     if !library::same_path(&g.path, &row.from) {
         return out(false, &g.path, "It moved since the list was made. Look again.".into());
@@ -423,14 +441,12 @@ async fn move_one(app: &AppHandle, st: &App, row: &PlanRow, journal: &mut Journa
     st.lib.lock().unwrap().installed.insert(row.id.clone(), next);
     st.save();
     note_placed(&st.dir, &row.id, &row.to);
-    let libs = st.lib.lock().unwrap().settings.all_libraries();
     prune_empty(&g.path, &libs);
     prune_empty(&old_b, &libs);
     st.moving.lock().unwrap().remove(&row.id);
     state(journal, "done", "");
     write_journal(&st.dir, journal);
     trail::note(format!("Folder Structure: {} moved from {} to {}", row.id, g.path.display(), row.to.display()));
-    let _ = app.emit("folders-move", json!({ "id": row.id, "finished": true }));
     out(true, &row.to, String::new())
 }
 
@@ -448,7 +464,10 @@ pub async fn folders_apply(app: AppHandle, st: State<'_, App>, ids: Vec<String>)
         if row.state != "move" && row.state != "outside" {
             continue;
         }
+        let _ = app.emit("folders-move", json!({ "id": row.id, "done": 0, "total": 0 }));
         done.push(move_one(&app, &st, row, &mut journal).await);
+        // Every game counts toward the percentage, moved or not.
+        let _ = app.emit("folders-move", json!({ "id": row.id, "finished": true }));
     }
     Ok(done)
 }

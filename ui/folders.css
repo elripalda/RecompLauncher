@@ -73,3 +73,21 @@
 .fs-step{flex-wrap:wrap}
 .fs-step label{flex-wrap:wrap;min-width:0;max-width:100%}
 .fs-step .sel,.fs-step .pill-sel{max-width:100%}
+/* Dragging uses pointer events (folders.js: fsWireDrag), so the page keeps the pointer. */
+.fs-add,.fs-chip{touch-action:none}
+.fs-ghost{position:fixed;left:0;top:0;z-index:9999;pointer-events:none;opacity:.92;box-shadow:0 6px 18px rgba(0,0,0,.35);cursor:grabbing}
+.fs-lifted{opacity:.4}
+.fs-dragging,.fs-dragging *{cursor:grabbing!important}
+.fs-level{cursor:pointer}
+.fs-picked{display:none;margin-left:8px;font-size:10px;padding:1px 6px;border-radius:999px;background:var(--cyan);color:var(--bg,#000)}
+.fs-level.fs-on .fs-picked{display:inline-block}
+.fs-arrow{display:flex;flex-direction:column;align-items:center;border-radius:10px;border:1px dashed transparent;padding:2px 0}
+.fs-arrow em,.fs-newlevel em{display:none;font-style:normal;font-size:12px;color:var(--muted)}
+.fs-dragging .fs-arrow{border-color:var(--line2);padding:6px 0}
+.fs-dragging .fs-arrow em,.fs-dragging .fs-newlevel em{display:inline}
+.fs-newlevel em{margin-left:6px}
+.fs-arrow.drop-on,.fs-newlevel.drop-on{border-color:var(--cyan);background:var(--fill2)}
+.fs-own .fs-known{color:var(--muted)}
+.fs-bar{height:10px;border-radius:999px;background:var(--fill3);overflow:hidden;margin:6px 0 10px}
+.fs-bar i{display:block;height:100%;background:var(--cyan);transition:width .2s}
+.fs-none{margin:8px 0}
