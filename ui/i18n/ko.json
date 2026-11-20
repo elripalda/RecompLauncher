@@ -2435,7 +2435,6 @@
  "By RecompLauncher": "RecompLauncher 제공",
  "By Players": "플레이어 제공",
  "Launcher Support": "런처 지원",
- "What RecompLauncher can do for {name}, and who made it work.": "RecompLauncher가 {name}에서 할 수 있는 일과 이를 가능하게 한 사람입니다.",
  "This recomp supports RecompLauncher itself.": "이 리컴프는 자체적으로 RecompLauncher를 지원합니다.",
  "Is a feature missing? Ask the developer to add RecompLauncher support.": "빠진 기능이 있나요? 개발자에게 RecompLauncher 지원을 추가해 달라고 요청하세요.",
  "Ask the Developer": "개발자에게 요청",

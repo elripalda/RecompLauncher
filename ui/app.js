@@ -1281,8 +1281,8 @@ function supportCard(a) {
   const sdk = local ? 'release' : sup && sup.sdk ? sup.sdk : 'unknown';
   const hh = a.handheld && a.handheld.ok;
   const saves = who('saves') === 'dev' ? 'dev' : 'launcher';
-  // Six equal tiles: lit when it works here (with who made it work), dashed when not yet. The longer
-  // description is the tile's tooltip.
+  // One row per feature: its icon, a short line, and a check when it works here or a dash when not
+  // yet; who made it work is the row's tooltip. "4 of 6" sits by the heading.
   const rows = [
     [t('Easy Setup'), t('Pick your copy and the launcher sets it up.'), who('easy_setup'), '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>'],
     [t('Game Settings'), t('Change the game\'s own settings from its page.'), who('settings'), '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'],
@@ -1299,13 +1299,14 @@ function supportCard(a) {
   // manifest may have been supplied by the player, launcher, or another contributor.
   const owner = a.maintained_by === 'official' ? 'project' : ['project', 'launcher', 'community'].includes(a.maintained_by) ? a.maintained_by : 'unconfirmed';
   const ask = a.repo && (sdk === 'none' || missing);
+  const n = rows.filter((r) => r[2]).length;
   const svg = (d, cls) => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-  const tile = ([k, d, w, icon]) => `<div class="sup-tile${w ? ' on' : ''}" title="${esc(d)}"><span class="sup-top">${svg(icon, 'sup-i')}${w ? svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'sup-ok') : `<small>${esc(t('Not yet'))}</small>`}</span><b>${esc(k)}</b>${src(w) ? `<small class="sup-src">${esc(src(w))}</small>` : ''}<span class="sr">${esc(w ? t('Yes') : t('Not yet'))}</span></div>`;
-  return `<div class="card sup-card"><div class="card-h"><h3>${esc(t('Launcher Support'))}</h3></div>
-    <p class="muted sup-sub">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
-    <div class="sup-grid">${rows.map(tile).join('')}</div>
-    <div class="sup-foot"><b class="sup-own sup-${owner}">${esc(t(OWNER_LONG[owner]))}</b>${source ? `<span>${esc(source)}</span>` : ''}</div>
-    ${ask ? `<p class="sup-ask">${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p><div class="acts"><button type="button" class="btn" data-act="url" data-url="${esc(askSupportUrl(a))}">${esc(t('Ask the Developer'))}</button></div>` : ''}</div>`;
+  const row = ([k, d, w, icon]) => `<div class="sup-row${w ? ' on' : ''}"${src(w) ? ` title="${esc(src(w))}"` : ''}><span class="sup-ib">${svg(icon, 'sup-i')}</span><span class="sup-k"><b>${esc(k)}</b><span>${esc(d)}</span></span>${w ? svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'sup-ok') : svg('<path d="M7 12h10"/>', 'sup-no')}<span class="sr">${esc(w ? [t('Yes'), src(w)].filter(Boolean).join(', ') : t('Not yet'))}</span></div>`;
+  return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3><span class="tag ${n >= 3 ? 'complete' : 'paused'}">${esc(tf('{n} of {total}', { n, total: rows.length }))}</span></div>
+    <div class="sup-list">${rows.map(row).join('')}</div>
+    <div class="sup-foot sup-${owner}">${svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', 'sup-fi')}<b class="sup-own">${esc(t(OWNER_LONG[owner]))}</b></div>
+    ${source ? `<p class="sup-src">${esc(source)}</p>` : ''}
+    ${ask ? `<div class="sup-ask"><p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a))}">${esc(t('Ask the Developer'))}</button></div>` : ''}</div>`;
 }
 
 // The other versions of this game that are installed too.

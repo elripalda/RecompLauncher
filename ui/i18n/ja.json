@@ -2435,7 +2435,6 @@
  "By RecompLauncher": "RecompLauncher による",
  "By Players": "プレイヤーによる",
  "Launcher Support": "ランチャー対応",
- "What RecompLauncher can do for {name}, and who made it work.": "RecompLauncher が {name} でできることと、それを実現した人。",
  "This recomp supports RecompLauncher itself.": "このリコンパイル版自体が RecompLauncher に対応しています。",
  "Is a feature missing? Ask the developer to add RecompLauncher support.": "足りない機能がありますか？開発者に RecompLauncher への対応を依頼しましょう。",
  "Ask the Developer": "開発者に依頼",
