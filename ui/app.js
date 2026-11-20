@@ -4352,7 +4352,7 @@ function selfUpdatesGroup(group, row, sw, ui) {
   const ready = S.launcherUpd && S.launcherUpd.version;
   const check = ready
     ? row(tf('RecompLauncher {version} is ready', { version: verName(S.launcherUpd.version) }), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm main" data-act="self-upd-open">${esc(t('Update Now'))}</button>`)
-    : row(t('Check for Updates'), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm" data-act="about-update">${esc(t('Check now'))}</button>`);
+    : row(t('Check for Updates'), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm main" data-act="about-update">${esc(t('Check now'))}</button>`);
   const auto = S.flatpak ? '' : row(t('Update RecompLauncher Automatically'), t('A new version installs when the launcher opens, without asking first. Off: the launcher asks you with its update window.'), sw('self_auto_update', ui.self_auto_update, t('Update RecompLauncher Automatically'), 'ui-toggle'));
   const news = row(t('Show What\'s New After an Update'), t('A small card the first time a new version opens. Off: the notes stay in Settings → Changelog.'), sw('whats_new_off', !ui.whats_new_off, t('Show What\'s New After an Update'), 'ui-toggle'));
   return group(t('RecompLauncher Updates'), check + auto + news);
@@ -4490,7 +4490,7 @@ function pageSettings() {
       break;
     case 'updates':
       body = selfUpdatesGroup(group, row, sw, ui)
-        + group(t('Game Updates'), row(t('Check for Game Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
+        + group(t('Game Updates'), row(t('Check for Game Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
