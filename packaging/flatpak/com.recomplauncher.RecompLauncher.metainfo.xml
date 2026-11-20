@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.67" date="2026-11-20">
+      <description>
+        <p>A new update window with a changelog, cleaner game page stats, Launcher Support says where each feature comes from, starting with your PC, and fixes for a blank window and Mac games.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.66" date="2026-11-20">
       <description>
         <p>Rebuilt Updates, Saves, Shaders and Manage tabs, cloud save status above Play, updating every game automatically from Settings, Play finishes an update that needs a new build, games can say what they need from your PC, and Discover is now Catalog.</p>
