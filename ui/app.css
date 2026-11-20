@@ -556,6 +556,14 @@ body.light .ai-tag.latest{color:#127a45}
 .rel-in{overflow:hidden;min-height:0;padding:0 16px}
 .rel.open .rel-in{padding:12px 16px 18px}
 @media (prefers-reduced-motion:reduce){.rel-body{transition:none}}
+/* Settings → Changelog: the launcher's versions as the same drawers, in a card without the
+   settings card's side padding, and Latest version beside Installed. */
+.set-group>.card.rels{padding:6px}
+.rel-tags{display:flex;gap:6px;flex-wrap:wrap}
+.rel-tags .ai-tag{height:20px;font-size:11px}
+.cl-note{margin:-4px 0 2px}
+.cl-msg{margin:0;padding:16px}
+.cl-more{display:flex;justify-content:center;padding-top:4px}
 .bars{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:8px;height:120px;margin-top:18px;align-items:end}
 .bars .b{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
 .bars i{display:block;width:100%;max-width:26px;border-radius:6px 6px 2px 2px;background:var(--cyan);opacity:.9;transform-origin:bottom;animation:growUp .6s var(--ease) both}

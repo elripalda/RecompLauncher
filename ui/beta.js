@@ -76,14 +76,6 @@
     }
   }
 
-  async function notes() {
-    let v = null;
-    try { v = await invoke('launcher_notes'); } catch (e) { /* offline */ }
-    if (!v || !v.notes) return toast(t('The notes couldn\'t be loaded. Check your connection.'), true);
-    modal(`<div class="whatsnew"><h2>${esc(tf('What\'s new in RecompLauncher {version}', { version: verName(v.version || S.version) }))}</h2><div class="md">${md(v.notes, true)}</div>
-      <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Got it'))}</button></div></div>`, () => {}, t('What\'s new'));
-  }
-
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-b]');
     if (!b || !b.closest('.set-body, .beta-hero')) return;
@@ -96,7 +88,8 @@
       f.attach = !f.attach; b.setAttribute('aria-checked', String(f.attach));
     } else if (k === 'send') send();
     else if (k === 'again') { f.sent = false; redraw(); const ta = document.querySelector('.bt-text'); if (ta) ta.focus(); }
-    else if (k === 'notes') notes();
+    // What's New in This Beta: the notes are in Settings → Changelog, newest open.
+    else if (k === 'notes') setSection('changelog');
     else if (k === 'toreport') setSection('report');
   });
   document.addEventListener('input', (e) => {

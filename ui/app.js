@@ -4205,6 +4205,44 @@ function fillUpd(el) {
 }
 // The drawer arrow shared by Downloads > History and a game's Updates tab.
 const CHEV_D = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// Settings → Changelog: the launcher's own releases from its GitHub, as the same drawers as a
+// game's Updates tab. Ten at first, Show More adds ten older ones at a time (GitHub gives the
+// newest 30).
+const SELF_REPO = 'elripalda/RecompLauncher';
+const CHANGELOG_STEP = 10;
+function changelogPage() {
+  const r = S.rels[SELF_REPO];
+  if (!r) loadRels(SELF_REPO);
+  const list = r && !r.loading ? r.list.filter((x) => !x.draft) : [];
+  const shown = list.slice(0, S.clShown || CHANGELOG_STEP);
+  let inner = '';
+  if (!r || r.loading) inner = `<p class="muted cl-msg">${esc(t('Loading the notes…'))}</p>`;
+  else if (r.error) inner = `<p class="muted cl-msg">${esc(t(r.error))}</p>`;
+  else if (!list.length) inner = `<p class="muted cl-msg">${esc(t('No notes for this one.'))}</p>`;
+  else inner = shown.map((x, n) => selfRelDrawer(x, n)).join('');
+  const more = list.length > shown.length ? `<div class="cl-more"><button type="button" class="btn sm" data-act="cl-more">${esc(t('Show more'))}</button></div>` : '';
+  const check = `<button type="button" class="btn sm" data-act="about-update">${esc(t('Check for Updates'))}</button>`;
+  return `<section class="set-group"><div class="set-gh"><h3>${esc(t('Changelog'))}</h3>${check}</div>
+    <p class="set-note cl-note">${esc(t('Every version of RecompLauncher and what changed in it.'))}</p>
+    <div class="card rels">${inner}</div>${more}</section>`;
+}
+// One launcher version as a drawer. The newest says Latest version and starts open; the one this
+// PC runs says Installed. What the player opens or closes stays that way (S.relOpen, as in a game's
+// Updates tab, with toggleRel).
+function selfRelDrawer(x, n) {
+  S.relOpen = S.relOpen || {};
+  const key = `self@${x.tag_name}`;
+  const open = key in S.relOpen ? S.relOpen[key] : n === 0;
+  const latest = n === 0 ? `<span class="ai-tag latest">${esc(t('Latest version'))}</span>` : '';
+  const mine = relKey(x.tag_name) === relKey(S.version) ? `<span class="ai-tag inst">${esc(t('Installed'))}</span>` : '';
+  const tags = latest || mine ? `<span class="rel-tags">${latest}${mine}</span>` : '';
+  const title = x.name || `RecompLauncher ${verName(x.tag_name)}`;
+  const notes = x.body ? md(x.body, true, { foldTables: true }) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
+  const head = `<button type="button" class="rel-t" data-act="rel" aria-expanded="${open}"><span class="rel-name">${tags}<span class="rel-line"><h3 title="${esc(title)}">${esc(title)}</h3></span></span><span class="when">${esc(date(x.published_at))}</span></button>`;
+  const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
+  return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}${chev}</div>
+    <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;
+}
 function updatesTab(log) {
   S.updLog = log;
   S.updOpen = S.updOpen || new Set();
@@ -4292,6 +4330,7 @@ const SET_ICONS = {
   pc: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   dev: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>',
   about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  changelog: '<path d="M6 3h8.5L19 7.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8.5 12.5h7M8.5 16.5h7"/>',
   plugins: '<path d="M10 4.5a2 2 0 0 1 4 0V6h4a1 1 0 0 1 1 1v4h-1.5a2 2 0 0 0 0 4H19v4a1 1 0 0 1-1 1h-4v-1.5a2 2 0 0 0-4 0V20H6a1 1 0 0 1-1-1v-4h1.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h4z"/>',
   beta: '<path d="M9.5 3h5M10 3v6.2L4.8 18.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9.2V3"/><path d="M7.2 14h9.6"/>',
 };
@@ -4335,7 +4374,7 @@ async function saveProxy(mode) {
     if (S.view === 'settings') setSection('updates', false);
   } catch (e) { fail(e); }
 }
-const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['about', N_('About')]];
+const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['changelog', N_('Changelog')], ['about', N_('About')]];
 // Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
 // shows the progress, and Windows may ask for permission).
 let vcBusy = false;
@@ -4517,6 +4556,9 @@ function pageSettings() {
         ${pc.proton != null ? `<div class="set-row"><div class="k"><b>Proton${pc.proton ? ' · ' + esc(pc.proton) : ''}</b><span>${esc(t('Plays recomps that only have a Windows version. Steam\'s Proton, GE-Proton, umu-launcher or Wine.'))}</span></div>${ok(!!pc.proton)}</div>` : ''}
         ${pc.proton ? `<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn sm" data-act="wine-tools">${esc(t('Open'))}</button></div>` : ''}
         ${S.os === 'macos' ? '' : `<div class="set-row"><div class="k"><b>AVX2</b><span>${esc(t('Some Xbox 360 recomps need a processor from 2013 or later.'))}</span></div>${ok(pc.avx2)}</div>`}`) : group(t('Your PC'), `<p class="set-empty">${esc(t('Loading…'))}</p>`);
+      break;
+    case 'changelog':
+      body = changelogPage();
       break;
     case 'dev': {
       const locals = Object.values(S.library).filter((g) => g.local && g.tag !== 'own');
@@ -5214,6 +5256,7 @@ async function loadRels(repo, force) {
   }
   if (S.view === 'game') refreshGame();
   else if (S.view === 'downloads') for (const el of $$('.upd.open')) fillUpd(el);
+  else if (S.view === 'settings' && S.setTab === 'changelog' && repo === SELF_REPO) setSection('changelog', false);
   else if (statusChanged && ['home', 'discover', 'library'].includes(S.view)) render(true);
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
 }
@@ -8766,6 +8809,7 @@ async function act(el, e) {
     case 'self-update': return S.launcherUpd && !document.body.classList.contains('tv-on') ? updateStart(S.launcherUpd, { auto: true }) : selfUpdate();
     case 'self-upd-open': return S.launcherUpd ? updateStart(S.launcherUpd) : checkLauncher(el);
     case 'about-update': return checkLauncher(el);
+    case 'cl-more': S.clShown = (S.clShown || CHANGELOG_STEP) + CHANGELOG_STEP; return setSection('changelog', false);
     case 'pick-copy': return pickCopy(id, !!el.dataset.folder);
     case 'gset': return setGameSetting(id, el.dataset.k, el.dataset.i);
     case 'bindcap': return bindAsk(id, el.dataset.k, Number(el.dataset.a), Number(el.dataset.i));
