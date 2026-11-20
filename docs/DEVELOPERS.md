@@ -704,9 +704,12 @@ settings are written. It runs again whenever the player changes their copy.
   without the copy, and list what the build leaves in `done`. To build again later without the
   copy, see `keeps_copy` below.
 - `"version"` (optional): change it only when players who already set up must run the step again,
-  like when your output format changes. Nothing else in this file makes them set up again. Their
-  next Play opens Easy Setup with a note that the game is built again, whether it's set up from
-  named `inputs` or from a single `game` copy. A build the player pointed the launcher at
+  like when your output format changes. Nothing else in this file makes them set up again. The
+  game's page keeps its Play button, with "Needs a new build after the update" under it, and the
+  next Play opens a small Finish the Update window: Build Now builds it again (from what the step
+  kept, with `keeps_copy`, or from the player's copy), asks about any option the update added, and
+  starts the game when it's done. A game set up from named `inputs` opens Easy Setup for it, with a
+  note that the game is built again. A build the player pointed the launcher at
   themselves ("Use a Build You Already Have") isn't asked. An update of your game doesn't change
   `version` by itself: when the step builds the game itself (its recompiled program), so every
   release needs a new build, put your release version in `version` each time you package one
