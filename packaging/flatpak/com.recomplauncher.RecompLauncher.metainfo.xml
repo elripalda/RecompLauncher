@@ -63,7 +63,7 @@
   <releases>
     <release version="0.90.0-beta.66" date="2026-11-20">
       <description>
-        <p>Rebuilt Updates, Saves, Shaders and Manage tabs, cloud save status above Play, updating every game automatically from Settings, games can say what they need from your PC, and Discover is now Catalog.</p>
+        <p>Rebuilt Updates, Saves, Shaders and Manage tabs, cloud save status above Play, updating every game automatically from Settings, Play finishes an update that needs a new build, games can say what they need from your PC, and Discover is now Catalog.</p>
       </description>
     </release>
     <release version="0.90.0-beta.65" date="2026-11-19">
