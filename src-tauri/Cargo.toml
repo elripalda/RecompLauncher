@@ -81,6 +81,13 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Regi
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"
+# The Flatpak asks the Background portal to start it at sign-in (autostart.rs). Already in the
+# build for the single-instance and notification plugins.
+zbus = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Login Items for Settings → Start with your PC (autostart.rs).
+objc2-service-management = { version = "0.3.2", default-features = false, features = ["std", "objc2", "objc2-foundation", "SMAppService"] }
 
 [profile.release]
 codegen-units = 1

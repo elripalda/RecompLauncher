@@ -445,6 +445,10 @@ pub struct Settings {
     /// Settings → Run in background. Keep the existing field name so saved choices still apply.
     #[serde(default)]
     pub close_to_tray: bool,
+    /// Settings → Start with your PC. The system's own startup list is what counts: this follows
+    /// it (see autostart.rs), and changes only through set_start_at_login.
+    #[serde(default)]
+    pub start_at_login: bool,
     /// Settings → Controllers: the left stick moves around the launcher as the d-pad does. Off,
     /// only the d-pad does (for players whose stick drifts, or who move a mouse with it).
     #[serde(default = "yes")]
@@ -531,6 +535,7 @@ impl Default for Settings {
             start_in_tv: false,
             setup_done: false,
             close_to_tray: false,
+            start_at_login: false,
             pad_stick: true,
             proton: false,
             proton_auto: false,
@@ -972,6 +977,12 @@ mod tests {
         assert!(!super::Settings::default().close_to_tray);
         let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
         assert!(!settings.close_to_tray);
+    }
+
+    #[test]
+    fn start_with_your_pc_is_off_by_default() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(!settings.start_at_login);
     }
 
     #[test]
