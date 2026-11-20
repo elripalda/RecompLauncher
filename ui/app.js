@@ -4306,6 +4306,18 @@ function networkGroup(group, row, st) {
     <span class="acts proxy-fields"><input class="field sm" id="proxy-url" type="text" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:7890" value="${esc(st.proxy_url || '')}" aria-label="${esc(t('Proxy Address'))}"><input class="field sm" id="proxy-user" type="text" autocomplete="off" spellcheck="false" placeholder="${esc(t('User'))}" value="${esc(st.proxy_user || '')}" aria-label="${esc(t('User'))}"><input class="field sm" id="proxy-pass" type="password" autocomplete="off" placeholder="${esc(st.proxy_pass ? '••••••' : t('Password'))}" aria-label="${esc(t('Password'))}"><button type="button" class="btn sm main" data-act="proxy-save">${esc(t('Save'))}</button></span></div>` : '';
   return group(t('Network'), row(t('Proxy'), t('Where the launcher\'s requests go: the list, GitHub, downloads and the website. Use one if GitHub can\'t be reached from your network.'), pick) + fields);
 }
+// Settings → Updates and Downloads starts with the launcher's own updates, apart from the games':
+// the version you're on (or the one that's ready), and its two switches. A Flatpak is updated by
+// Flatpak, so it has no switch to update itself.
+function selfUpdatesGroup(group, row, sw, ui) {
+  const ready = S.launcherUpd && S.launcherUpd.version;
+  const check = ready
+    ? row(tf('RecompLauncher {version} is ready', { version: verName(S.launcherUpd.version) }), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm main" data-act="self-upd-open">${esc(t('Update Now'))}</button>`)
+    : row(t('Check for Updates'), tf('You\'re on {version}.', { version: verName(S.version) }), `<button type="button" class="btn sm" data-act="about-update">${esc(t('Check now'))}</button>`);
+  const auto = S.flatpak ? '' : row(t('Update RecompLauncher Automatically'), t('A new version installs when the launcher opens, without asking first. Off: the launcher asks you with its update window.'), sw('self_auto_update', ui.self_auto_update, t('Update RecompLauncher Automatically'), 'ui-toggle'));
+  const news = row(t('Show What\'s New After an Update'), t('A small card the first time a new version opens. Off: the notes stay in Settings → Changelog.'), sw('whats_new_off', !ui.whats_new_off, t('Show What\'s New After an Update'), 'ui-toggle'));
+  return group(t('RecompLauncher Updates'), check + auto + news);
+}
 // The shared NVIDIA DLSS file, when the launcher keeps one: removing it affects every game that uses it.
 function dlssGroup(group, row) {
   if (S.dlssState === undefined) { S.dlssState = null; invoke('dlss_state').then((v) => { S.dlssState = v; if (S.view === 'settings' && S.setTab === 'library') setSection('library', false); }).catch(() => {}); }
@@ -4438,7 +4450,8 @@ function pageSettings() {
       body = window.migratePage ? window.migratePage(group) : '';
       break;
     case 'updates':
-      body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
+      body = selfUpdatesGroup(group, row, sw, ui)
+        + group(t('Game Updates'), row(t('Check for Game Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
@@ -8751,6 +8764,8 @@ async function act(el, e) {
     case 'news-open': S.nextTab = 'updates'; return go('game', id);
     // The sidebar's and Downloads' Update: on the desktop the update window, already downloading.
     case 'self-update': return S.launcherUpd && !document.body.classList.contains('tv-on') ? updateStart(S.launcherUpd, { auto: true }) : selfUpdate();
+    case 'self-upd-open': return S.launcherUpd ? updateStart(S.launcherUpd) : checkLauncher(el);
+    case 'about-update': return checkLauncher(el);
     case 'pick-copy': return pickCopy(id, !!el.dataset.folder);
     case 'gset': return setGameSetting(id, el.dataset.k, el.dataset.i);
     case 'bindcap': return bindAsk(id, el.dataset.k, Number(el.dataset.a), Number(el.dataset.i));
