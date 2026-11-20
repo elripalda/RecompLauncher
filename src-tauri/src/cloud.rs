@@ -1266,7 +1266,9 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     if g.cloud == Some(true) && signed_in(&st.dir) {
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
-                next = incoming(&state, &l).map(|c| json!(c.v)).unwrap_or(Value::Null);
+                next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
+                // The badge above Play reads the same list, so it says the same thing.
+                keep_peek(&id, &state.synced_hash, &l);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
@@ -1282,7 +1284,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         // The save in the game's folder now (the last copy made or put back), and this PC's name:
         // the tab marks the copy that's current and the ones another PC made.
         "current": state.last_hash, "here": saves::device_name(),
-        // The cloud save (its version) that another PC made and Play brings in by itself, or null.
+        // The cloud save that another PC made and Play brings in by itself, or null.
         "incoming": next,
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
@@ -1325,6 +1327,52 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
         // Where the saves go. Only RecompStore today; named so another cloud can say so later.
         "provider": "recompstore",
     }))
+}
+
+/// A game's cloud list as last asked by its page, and the save this PC had synced then. Kept a few
+/// minutes, so opening a game's page again doesn't ask the website again; a sync since (another
+/// synced save) asks anew, since the list it kept may be the one it just changed.
+struct Peek {
+    at: std::time::Instant,
+    synced: String,
+    list: Vec<CloudCopy>,
+}
+static PEEKED: Mutex<Option<std::collections::HashMap<String, Peek>>> = Mutex::new(None);
+const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn peeked(id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+    let kept = PEEKED.lock().unwrap();
+    let p = kept.as_ref()?.get(id)?;
+    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
+    fresh.then(|| p.list.clone())
+}
+
+fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
+    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), list: list.to_vec() };
+    PEEKED.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), peek);
+}
+
+/// For the badge above Play: a newer save from another PC that Play brings in by itself, or null.
+/// saves_status never asks the website, so on its own it would call that save "Up to date". This
+/// asks about this one game when its page opens, at most every few minutes.
+#[tauri::command]
+pub async fn saves_peek(app: AppHandle, id: String) -> Res<Value> {
+    let st = app.state::<App>();
+    let g = game(&st, &id)?;
+    if g.cloud != Some(true) || !signed_in(&st.dir) || spots_of(&st, &id, &g).is_empty() {
+        return Ok(Value::Null);
+    }
+    let state = saves::state(&st.dir, &id);
+    let list = match peeked(&id, &state.synced_hash) {
+        Some(list) => list,
+        None => {
+            // Offline or any other trouble: the badge keeps what this PC knows.
+            let Ok((list, _)) = cloud_list(&app, &id).await else { return Ok(Value::Null) };
+            keep_peek(&id, &state.synced_hash, &list);
+            list
+        }
+    };
+    Ok(incoming(&state, &list).map(|c| json!(c)).unwrap_or(Value::Null))
 }
 
 fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<Option<saves::Copy>> {
@@ -2024,6 +2072,18 @@ mod sync_tests {
         let problem = crate::saves::Problem { kind: "too-big-folder".into(), text: String::new(), at: 0 };
         let s = State { problem: Some(problem), ..agreed_on("old") };
         assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn a_game_page_opened_again_uses_the_list_it_just_asked_for() {
+        super::keep_peek("peek-same", "synced", &[cloud("2", "from-other-pc")]);
+        assert_eq!(super::peeked("peek-same", "synced").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn a_sync_since_the_last_look_asks_the_cloud_again() {
+        super::keep_peek("peek-synced", "before", &[cloud("2", "from-other-pc")]);
+        assert!(super::peeked("peek-synced", "after").is_none());
     }
 
     #[test]
