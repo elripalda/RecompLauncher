@@ -125,7 +125,7 @@ pub struct Layout {
     /// Legend of Zelda", "year": "1998" } }. Kept here, so a catalog refresh never resets them.
     #[serde(default)]
     pub games: BTreeMap<String, BTreeMap<String, String>>,
-    /// Automatically use my folder structure for new installations. Off: new games get the
+    /// Automatically Use My Folder Structure for New Installations. Off: new games get the
     /// launcher's usual folder (the library, then the recomp's id).
     #[serde(default)]
     pub apply_new: bool,

@@ -63,7 +63,7 @@ catalog refresh or a rescan never resets them.
 
 ## New installs
 
-**Automatically use my folder structure for new installations** (off by default): a newly
+**Automatically Use My Folder Structure for New Installations** (off by default): a newly
 installed game goes in its folder of the structure. Updates always stay in the game's current
 folder. Off: the launcher's usual folder (`<library>/<id>`). Changing the structure never moves
 anything by itself.

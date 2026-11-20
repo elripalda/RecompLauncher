@@ -489,7 +489,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     if prev.as_ref().map(|p| p.local).unwrap_or(false) {
         return Err(Error::Msg("That's your local build. Take it out of the Library first to install the release.".into()));
     }
-    // Folder Structure: with "Automatically use my folder structure for new installations" on, a
+    // Folder Structure: with "Automatically Use My Folder Structure for New Installations" on, a
     // new game goes in a folder of the player's structure (folders_move.rs); updates stay put.
     let designed = if prev.is_none() { folders_move::new_target(st, &lib_dir, id, &entry, &cat) } else { None };
     let target = prev.as_ref().map(|p| p.path.clone()).or_else(|| designed.clone()).unwrap_or_else(|| lib_dir.join(folder_name(id)));

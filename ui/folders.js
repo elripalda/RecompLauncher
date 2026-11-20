@@ -54,8 +54,8 @@ function folderStructureGroup(group, row, sw) {
   const markup = (b, s, ctl) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${s}</span></div>${ctl}</div>`;
   const design = markup(t('Your Folder Structure'), `${esc(fsSummary(L))} <span class="fs-dim">· ${esc(fsPresetName(L.preset))}</span>`,
     `<button type="button" class="btn sm main" data-act="fs-design">${esc(t('Design…'))}</button>`);
-  const apply = row(t('Automatically use my folder structure for new installations'), t('On: new games go in its folders. Off: they go where they always have, a folder named after the game in the library. Updates always stay in the game\'s folder.'),
-    sw('fs_new', !!L.apply_new, t('Automatically use my folder structure for new installations'), 'fs-new'));
+  const apply = row(t('Automatically Use My Folder Structure for New Installations'), t('On: new games go in its folders. Off: they go where they always have, a folder named after the game in the library. Updates always stay in the game\'s folder.'),
+    sw('fs_new', !!L.apply_new, t('Automatically Use My Folder Structure for New Installations'), 'fs-new'));
   const undo = FS.data.undo ? `<button type="button" class="btn sm" data-act="fs-undo">${esc(t('Undo Last Reorganize'))}</button>` : '';
   const reorg = row(t('Reorganize Existing Folders'), t('Shows where each installed game is and where your structure would put it, then moves the ones you tick. Nothing moves until you confirm.'),
     `<span class="acts">${undo}<button type="button" class="btn sm" data-act="fs-reorg">${esc(t('Reorganize…'))}</button></span>`);
@@ -85,11 +85,11 @@ function fsChip(f, text, where) {
 function fsLevel(l, i, n) {
   const sel = FS.level === i;
   const seps = FS_SEPS.map(([v, name]) => `<option value="${esc(v)}"${l.sep === v ? ' selected' : ''}>${esc(t(name))}</option>`).join('');
-  const custom = l.parts.map((p, pi) => (p.field === 'text' ? `<input class="field sm fs-txt" data-txt="${i}:${pi}" value="${esc(p.text || '')}" placeholder="${esc(t('Folder words'))}" aria-label="${esc(t('Custom Text'))}">` : '')).join('');
+  const custom = l.parts.map((p, pi) => (p.field === 'text' ? `<input class="field sm fs-txt" data-txt="${i}:${pi}" value="${esc(p.text || '')}" placeholder="${esc(t('Folder Words'))}" aria-label="${esc(t('Custom Text'))}">` : '')).join('');
   return `<div class="fs-level${sel ? ' fs-on' : ''}" data-level="${i}" data-drop="level:${i}">
     <div class="fs-lh"><button type="button" class="fs-pick" data-x="pick" data-i="${i}" aria-pressed="${sel}">${esc(i === n - 1 ? t('The game\'s folder') : tf('Folder {n}', { n: i + 1 }))}</button>
       <span class="fs-tools">
-        ${l.parts.length > 1 ? `<label class="fs-sep">${esc(t('Join with'))} <select class="sel sm" data-sep="${i}">${seps}</select></label>` : ''}
+        ${l.parts.length > 1 ? `<label class="fs-sep">${esc(t('Join With'))} <select class="sel sm" data-sep="${i}">${seps}</select></label>` : ''}
         <button type="button" class="btn xs" data-x="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="${esc(t('Move this level up'))}">↑</button>
         <button type="button" class="btn xs" data-x="down" data-i="${i}" ${i === n - 1 ? 'disabled' : ''} aria-label="${esc(t('Move this level down'))}">↓</button>
         <button type="button" class="btn xs" data-x="del" data-i="${i}" ${n === 1 ? 'disabled' : ''} aria-label="${esc(t('Remove this level'))}">${esc(t('Remove'))}</button>
@@ -128,7 +128,7 @@ function fsAdvanced(L) {
     const fb = (L.fallbacks || {})[f] || FS.data.fallbacks[f] || { mode: 'skip' };
     const modes = [['text', t('Use words')], ['skip', t('Leave it out')], ['field', t('Use another field')]].map(([v, n]) => `<option value="${v}"${fb.mode === v ? ' selected' : ''}>${esc(n)}</option>`).join('');
     const other = Object.keys(FS_FIELDS).filter((x) => x !== f && x !== 'text').map((x) => `<option value="${x}"${fb.field === x ? ' selected' : ''}>${esc(fsLabel(x))}</option>`).join('');
-    const extra = fb.mode === 'text' ? `<input class="field sm" data-fbtext="${f}" value="${esc(fb.text || '')}" aria-label="${esc(tf('Words for a missing {field}', { field: fsLabel(f) }))}">` : fb.mode === 'field' ? `<select class="sel sm" data-fbfield="${f}" aria-label="${esc(t('Field to use'))}">${other}</select>` : '';
+    const extra = fb.mode === 'text' ? `<input class="field sm" data-fbtext="${f}" value="${esc(fb.text || '')}" aria-label="${esc(tf('Words for a missing {field}', { field: fsLabel(f) }))}">` : fb.mode === 'field' ? `<select class="sel sm" data-fbfield="${f}" aria-label="${esc(t('Field to Use'))}">${other}</select>` : '';
     return `<div class="fs-row"><span><b>${esc(fsLabel(f))}</b><small>${esc(fsHint(f))}</small></span><span class="acts"><select class="sel sm" data-fbmode="${f}" aria-label="${esc(tf('When a game has no {field}', { field: fsLabel(f) }))}">${modes}</select>${extra}</span></div>`;
   }).join('');
   const cases = FS_CASES.map(([v, n]) => `<option value="${v}"${L.case === v ? ' selected' : ''}>${esc(t(n))}</option>`).join('');
@@ -139,14 +139,14 @@ function fsAdvanced(L) {
     ${games.map((g) => `<div class="fs-own-r"><span title="${esc(g.name)}">${esc(g.name)}</span>${ownFields.map((f) => `<input class="field sm" data-own="${esc(g.id)}:${f}" value="${esc(((L.games || {})[g.id] || {})[f] || '')}" aria-label="${esc(tf('{field} for {game}', { field: fsLabel(f), game: g.name }))}">`).join('')}</div>`).join('')}</div>`
     : `<p class="muted">${esc(t('Install a game to give it your own values.'))}</p>`;
   return `<details class="fs-adv"${FS.adv ? ' open' : ''}><summary data-x="adv">${esc(t('Advanced'))}</summary>
-    <h4>${esc(t('When a game has nothing for a field'))}</h4>
+    <h4>${esc(t('When a Game Has Nothing for a Field'))}</h4>
     <p class="fs-dim">${esc(t('The catalog doesn\'t know everything (no publisher or original release year, for one). Pick what goes in the folder name instead.'))}</p>
     ${fbRows || `<p class="muted">${esc(t('Every field in your structure is always known.'))}</p>`}
     <h4>${esc(t('Names'))}</h4>
     <div class="fs-row"><span><b>${esc(t('Console Names'))}</b></span><span class="acts"><select class="sel sm" data-short aria-label="${esc(t('Console Names'))}"><option value="1"${L.short_consoles ? ' selected' : ''}>${esc(t('Short (N64, PS2)'))}</option><option value="0"${L.short_consoles ? '' : ' selected'}>${esc(t('Full (Nintendo 64, PlayStation 2)'))}</option></select></span></div>
     <div class="fs-row"><span><b>${esc(t('Capitalization'))}</b></span><span class="acts"><select class="sel sm" data-case aria-label="${esc(t('Capitalization'))}">${cases}</select></span></div>
-    <details class="fs-sub"><summary>${esc(t('Your own console names'))}</summary><div class="fs-cons">${cons}</div></details>
-    <h4>${esc(t('Your values per game'))}</h4>
+    <details class="fs-sub"><summary>${esc(t('Your Own Console Names'))}</summary><div class="fs-cons">${cons}</div></details>
+    <h4>${esc(t('Your Values per Game'))}</h4>
     <p class="fs-dim">${esc(t('Fill in what the catalog doesn\'t have. These are kept, so refreshing the catalog never resets them.'))}</p>
     ${own}
   </details>`;
@@ -158,10 +158,10 @@ function fsDraw() {
   const palette = Object.keys(FS_FIELDS).map((f) => `<button type="button" class="fs-add" data-x="add" data-f="${f}" draggable="true" data-drag="field:${f}" title="${esc(fsHint(f))}">${esc(fsLabel(f))}</button>`).join('');
   return `<h2>${esc(t('Folder Structure'))}</h2>
     <p>${esc(t('Where installed games go on disk. Your Library, its sorting and game pages don\'t change.'))}</p>
-    <div class="fs-step"><b>1</b><label>${esc(t('Start from'))} <select class="sel" data-preset aria-label="${esc(t('Start from'))}">${presets}${L.preset ? '' : `<option selected>${esc(t('Your own'))}</option>`}</select></label></div>
+    <div class="fs-step"><b>1</b><label>${esc(t('Start From'))} <select class="sel" data-preset aria-label="${esc(t('Start From'))}">${presets}${L.preset ? '' : `<option selected>${esc(t('Your own'))}</option>`}</select></label></div>
     <div class="fs-grid">
       <div class="fs-pal" data-drop="palette"><div class="fs-h"><b>2</b> ${esc(t('Fields'))}</div><p class="fs-dim">${esc(t('Drag one onto a folder level, or press it to add it to the level you picked. Drag a field back here to take it out.'))}</p><div class="fs-adds">${palette}</div></div>
-      <div class="fs-levels"><div class="fs-h">${esc(t('Folders, outermost first'))}</div>${L.levels.map((l, i) => fsLevel(l, i, n) + (i < n - 1 ? '<div class="fs-arrow" aria-hidden="true">↓</div>' : '')).join('')}
+      <div class="fs-levels"><div class="fs-h">${esc(t('Folders, Outermost First'))}</div>${L.levels.map((l, i) => fsLevel(l, i, n) + (i < n - 1 ? '<div class="fs-arrow" aria-hidden="true">↓</div>' : '')).join('')}
         <button type="button" class="btn sm" data-x="level-add">${esc(t('Add a Level'))}</button></div>
       <div class="fs-prev"><div class="fs-h"><b>3</b> ${esc(t('Preview'))}</div><div class="fs-tree" aria-live="polite">${fsTree(FS.preview)}</div></div>
     </div>
