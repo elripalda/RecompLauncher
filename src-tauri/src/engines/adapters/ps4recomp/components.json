@@ -1,0 +1,39 @@
+{
+  "upstream_revision": "354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d",
+  "engine": {
+    "name": "ps4-recomp-macos-arm64.tar.gz",
+    "size": 6275481,
+    "url": "https://github.com/wie-project/PS4Recomp/releases/download/nightly-20261115/ps4-recomp-macos-arm64.tar.gz",
+    "digest": "ccfaeafd024e8c36aae5c99889c1b75cb48ec607ec9f6ba31ccf0d7ab73bda44",
+    "root": ""
+  },
+  "cmake": {
+    "name": "cmake-3.31.10-macos-universal.tar.gz",
+    "url": "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-macos-universal.tar.gz",
+    "size": 79508153,
+    "digest": "be9f3faeeaf7921cc2d77cea711dd5e6f72c63af2810cacd9205b3ce8d1593c9",
+    "root": "cmake-3.31.10-macos-universal/CMake.app/Contents"
+  },
+  "freetype": {
+    "name": "freetype-526ec5c47b9ebccc4754c85ac0c0cdf7c85a5e9b.tar.gz",
+    "url": "https://codeload.github.com/freetype/freetype/tar.gz/526ec5c47b9ebccc4754c85ac0c0cdf7c85a5e9b",
+    "digest": "d24f53b60034dc5c48e90d122d432a8f04a05b9e0a98c8d8e49b4a759207ce2e",
+    "size": 2518318,
+    "root": "freetype-526ec5c47b9ebccc4754c85ac0c0cdf7c85a5e9b"
+  },
+  "ffmpeg": {
+    "name": "FFmpeg-140fd653aed8cad774f991ba083e2d01e86420c7.tar.gz",
+    "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/140fd653aed8cad774f991ba083e2d01e86420c7",
+    "digest": "5c4a9e51e706b8deba835f02ea70e1e1101187f601adae72b36ec2b17b6f15be",
+    "size": 16424114,
+    "root": "FFmpeg-140fd653aed8cad774f991ba083e2d01e86420c7"
+  },
+  "source": {
+    "name": "PS4Recomp-354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d.tar.gz",
+    "url": "https://codeload.github.com/wie-project/PS4Recomp/tar.gz/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d",
+    "digest": "79850396bd045e26bdae8dd47f32588be810a1f4b2b8bcb3ac7d3a4466bc824a",
+    "size": 8939848,
+    "root": "PS4Recomp-354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d"
+  },
+  "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json"
+}

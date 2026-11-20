@@ -1,0 +1,41 @@
+{
+  "upstream_revision": "62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+  "release": "v0.1.5",
+  "source": {
+    "url": "https://codeload.github.com/boykopovar/AnyPS5/tar.gz/62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+    "digest": "9746416e72c13b5b219121f63999c653cf74f71f21a954e02f2a7fdbd59138b7",
+    "size": 14962188
+  },
+  "windows": {
+    "relinker": {
+      "name": "relinker-v0.1.5.exe",
+      "url": "https://github.com/boykopovar/AnyPS5/releases/download/v0.1.5/relinker-v0.1.5.exe",
+      "digest": "541fa50fb7255be93111b72ebe5c320f3ccb936905f8f522914f233177ca17e7",
+      "size": 5896022,
+      "root": ""
+    },
+    "runtime": {
+      "name": "prx-windows-v0.1.5.zip",
+      "url": "https://github.com/boykopovar/AnyPS5/releases/download/v0.1.5/prx-windows-v0.1.5.zip",
+      "digest": "d026931807f977d9ce21d07bcecd8dd229e652ec849414ac69cefcab4cc96a57",
+      "size": 114702577,
+      "root": "libs"
+    }
+  },
+  "linux": {
+    "relinker": {
+      "name": "relinker-v0.1.5",
+      "url": "https://github.com/boykopovar/AnyPS5/releases/download/v0.1.5/relinker-v0.1.5",
+      "digest": "6501ce4f4f28b26ebeebd34b79b84dbcd10a0ffdf331d21a766006d49e2e2bd1",
+      "size": 5325632,
+      "root": ""
+    },
+    "runtime": {
+      "name": "prx-linux-v0.1.5.tar.gz",
+      "url": "https://github.com/boykopovar/AnyPS5/releases/download/v0.1.5/prx-linux-v0.1.5.tar.gz",
+      "digest": "b2769731214e0315d70ad682cd1ded1433d754f9e5286290dfdc768b43caff37",
+      "size": 121045221,
+      "root": "libs"
+    }
+  }
+}

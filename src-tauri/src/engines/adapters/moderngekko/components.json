@@ -1,0 +1,320 @@
+{
+  "upstream_revision": "edd460adad0e82b56909af1d793642c83b6d31c8",
+  "runtime_revision": "10f7ac4fe48f74485fbc161ebf4d67242e11e671",
+  "sources": [
+    {
+      "path": "ModernGekko",
+      "revision": "edd460adad0e82b56909af1d793642c83b6d31c8",
+      "artifact": {
+        "name": "ModernGekko-edd460adad0e82b56909af1d793642c83b6d31c8.tar.gz",
+        "url": "https://codeload.github.com/ExpansionPak/ModernGekko/tar.gz/edd460adad0e82b56909af1d793642c83b6d31c8",
+        "digest": "ccc53144db07672974f80af9e35576de13cdfd09136ff7c880c4c2742225e1bc",
+        "size": 1924071,
+        "root": "ModernGekko-edd460adad0e82b56909af1d793642c83b6d31c8"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin",
+      "revision": "10f7ac4fe48f74485fbc161ebf4d67242e11e671",
+      "artifact": {
+        "name": "RecompCore-10f7ac4fe48f74485fbc161ebf4d67242e11e671.tar.gz",
+        "url": "https://codeload.github.com/ExpansionPak/RecompCore/tar.gz/10f7ac4fe48f74485fbc161ebf4d67242e11e671",
+        "digest": "a4dabd17cb2fe364e4cb064ee3f66a7839baa96894122da4d54e919b3b89ba22",
+        "size": 19493570,
+        "root": "RecompCore-10f7ac4fe48f74485fbc161ebf4d67242e11e671"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/DolRecomp",
+      "revision": "1bec3554ecc4817cf78319ca3d8a0669477f29fa",
+      "artifact": {
+        "name": "DolRecomp-1bec3554ecc4817cf78319ca3d8a0669477f29fa.tar.gz",
+        "url": "https://codeload.github.com/ExpansionPak/DolRecomp/tar.gz/1bec3554ecc4817cf78319ca3d8a0669477f29fa",
+        "digest": "63a039e6fe8d199f6dae1d2443cba403950617c4f4d7f07ddc9be3bf784b65ec",
+        "size": 1149905,
+        "root": "DolRecomp-1bec3554ecc4817cf78319ca3d8a0669477f29fa"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/SDL/SDL",
+      "revision": "5848e584a1b606de26e3dbd1c7e4ecbc34f807a6",
+      "artifact": {
+        "name": "SDL-5848e584a1b606de26e3dbd1c7e4ecbc34f807a6.tar.gz",
+        "url": "https://codeload.github.com/libsdl-org/SDL/tar.gz/5848e584a1b606de26e3dbd1c7e4ecbc34f807a6",
+        "digest": "84d4666a4300e4dc4b35c69f33e2714588db21ab1522f6baed0159c6d015eb1b",
+        "size": 15806766,
+        "root": "SDL-5848e584a1b606de26e3dbd1c7e4ecbc34f807a6"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/SFML/SFML",
+      "revision": "0fa201c969e48ecc253581c5841ce73f44d42f49",
+      "artifact": {
+        "name": "SFML-0fa201c969e48ecc253581c5841ce73f44d42f49.tar.gz",
+        "url": "https://codeload.github.com/SFML/SFML/tar.gz/0fa201c969e48ecc253581c5841ce73f44d42f49",
+        "digest": "df03afdc2858d0e15e1c9ff06bddd113c18b2a6c089532f5b8d05dbb2e653f2a",
+        "size": 4388220,
+        "root": "SFML-0fa201c969e48ecc253581c5841ce73f44d42f49"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/bzip2/bzip2",
+      "revision": "6a8690fc8d26c815e798c588f796eabe9d684cf0",
+      "artifact": {
+        "name": "bzip2-6a8690fc8d26c815e798c588f796eabe9d684cf0.tar.gz",
+        "url": "https://gitlab.com/bzip2/bzip2/-/archive/6a8690fc8d26c815e798c588f796eabe9d684cf0/bzip2-6a8690fc8d26c815e798c588f796eabe9d684cf0.tar.gz",
+        "digest": "bc40651201886d3e126a8fff33163076e65918d422ce1f18749362984a8ce01d",
+        "size": 365517,
+        "root": "bzip2-6a8690fc8d26c815e798c588f796eabe9d684cf0"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/cpp-optparse/cpp-optparse",
+      "revision": "2265d647232249a53a03b411099863ceca35f0d3",
+      "artifact": {
+        "name": "cpp-optparse-2265d647232249a53a03b411099863ceca35f0d3.tar.gz",
+        "url": "https://codeload.github.com/weisslj/cpp-optparse/tar.gz/2265d647232249a53a03b411099863ceca35f0d3",
+        "digest": "6f38fff3c4d2788eead7a28626b3220cc4c101510fc984678ad55f77756b107e",
+        "size": 13010,
+        "root": "cpp-optparse-2265d647232249a53a03b411099863ceca35f0d3"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/cubeb/cubeb",
+      "revision": "54217bca3f3e0cd53c073690a23dd25d83557909",
+      "artifact": {
+        "name": "cubeb-54217bca3f3e0cd53c073690a23dd25d83557909.tar.gz",
+        "url": "https://codeload.github.com/mozilla/cubeb/tar.gz/54217bca3f3e0cd53c073690a23dd25d83557909",
+        "digest": "a795511bf56183ff7bad8fb2d2836ca5bb158e12ddd519caced62946ffa69c83",
+        "size": 228779,
+        "root": "cubeb-54217bca3f3e0cd53c073690a23dd25d83557909"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/curl/curl",
+      "revision": "cfbfb65047e85e6b08af65fe9cdbcf68e9ad496a",
+      "artifact": {
+        "name": "curl-cfbfb65047e85e6b08af65fe9cdbcf68e9ad496a.tar.gz",
+        "url": "https://codeload.github.com/curl/curl/tar.gz/cfbfb65047e85e6b08af65fe9cdbcf68e9ad496a",
+        "digest": "fce60dc771129b50010a91efc575657550a83ce6b81eb4a77c4ebd0af44582c3",
+        "size": 3485490,
+        "root": "curl-cfbfb65047e85e6b08af65fe9cdbcf68e9ad496a"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/enet/enet",
+      "revision": "2662c0de09e36f2a2030ccc2c528a3e4c9e8138a",
+      "artifact": {
+        "name": "enet-2662c0de09e36f2a2030ccc2c528a3e4c9e8138a.tar.gz",
+        "url": "https://codeload.github.com/lsalzman/enet/tar.gz/2662c0de09e36f2a2030ccc2c528a3e4c9e8138a",
+        "digest": "37381831c5ccbb41c3c71e867203fee847670f67717f297f930290d18985ad5f",
+        "size": 83041,
+        "root": "enet-2662c0de09e36f2a2030ccc2c528a3e4c9e8138a"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/fmt/fmt",
+      "revision": "e424e3f2e607da02742f73db84873b8084fc714c",
+      "artifact": {
+        "name": "fmt-e424e3f2e607da02742f73db84873b8084fc714c.tar.gz",
+        "url": "https://codeload.github.com/fmtlib/fmt/tar.gz/e424e3f2e607da02742f73db84873b8084fc714c",
+        "digest": "8e9b9d9e5b4d5e0a9094f349bec933f83e48a22e587bcf677534499fc5549202",
+        "size": 709487,
+        "root": "fmt-e424e3f2e607da02742f73db84873b8084fc714c"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/glslang/glslang",
+      "revision": "a57276bf558f5cf94d3a9854ebdf5a2236849a5a",
+      "artifact": {
+        "name": "glslang-a57276bf558f5cf94d3a9854ebdf5a2236849a5a.tar.gz",
+        "url": "https://codeload.github.com/KhronosGroup/glslang/tar.gz/a57276bf558f5cf94d3a9854ebdf5a2236849a5a",
+        "digest": "02f4321a3ed01b9a9a9874f76e2d8ad078825818fcc9aae12dbf2c01674fb8af",
+        "size": 4197772,
+        "root": "glslang-a57276bf558f5cf94d3a9854ebdf5a2236849a5a"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/hidapi/hidapi-src",
+      "revision": "d6b2a974608dec3b76fb1e36c189f22b9cf3650c",
+      "artifact": {
+        "name": "hidapi-d6b2a974608dec3b76fb1e36c189f22b9cf3650c.tar.gz",
+        "url": "https://codeload.github.com/libusb/hidapi/tar.gz/d6b2a974608dec3b76fb1e36c189f22b9cf3650c",
+        "digest": "a93a9bfb599831b82c6cef50f42359e0f5f31abfc8f6954862c328a464cbc4d0",
+        "size": 364135,
+        "root": "hidapi-d6b2a974608dec3b76fb1e36c189f22b9cf3650c"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/imgui/imgui",
+      "revision": "45acd5e0e82f4c954432533ae9985ff0e1aad6d5",
+      "artifact": {
+        "name": "imgui-45acd5e0e82f4c954432533ae9985ff0e1aad6d5.tar.gz",
+        "url": "https://codeload.github.com/ocornut/imgui/tar.gz/45acd5e0e82f4c954432533ae9985ff0e1aad6d5",
+        "digest": "97484925aec2f4d3e913d6644d46b234f8d6d8d98c6aa9c50109e0f0df772090",
+        "size": 1934859,
+        "root": "imgui-45acd5e0e82f4c954432533ae9985ff0e1aad6d5"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/implot/implot",
+      "revision": "3da8bd34299965d3b0ab124df743fe3e076fa222",
+      "artifact": {
+        "name": "implot-3da8bd34299965d3b0ab124df743fe3e076fa222.tar.gz",
+        "url": "https://codeload.github.com/epezent/implot/tar.gz/3da8bd34299965d3b0ab124df743fe3e076fa222",
+        "digest": "4700b44ef00ca2feba0b35a31922c240045bbeb900da5b3eb3830b56871ada45",
+        "size": 141430,
+        "root": "implot-3da8bd34299965d3b0ab124df743fe3e076fa222"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/libspng/libspng",
+      "revision": "fb768002d4288590083a476af628e51c3f1d47cd",
+      "artifact": {
+        "name": "libspng-fb768002d4288590083a476af628e51c3f1d47cd.tar.gz",
+        "url": "https://codeload.github.com/randy408/libspng/tar.gz/fb768002d4288590083a476af628e51c3f1d47cd",
+        "digest": "d656813290d70a750b69e768323ff3b3875adf8c2e8c2fdb4e57ca1467abf86a",
+        "size": 159282,
+        "root": "libspng-fb768002d4288590083a476af628e51c3f1d47cd"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/libusb/libusb",
+      "revision": "15a7ebb4d426c5ce196684347d2b7cafad862626",
+      "artifact": {
+        "name": "libusb-15a7ebb4d426c5ce196684347d2b7cafad862626.tar.gz",
+        "url": "https://codeload.github.com/libusb/libusb/tar.gz/15a7ebb4d426c5ce196684347d2b7cafad862626",
+        "digest": "4ae78a9c6c540a3ccd7153c77e24947fa2ba50d845714bbbfccf8783832ed704",
+        "size": 416219,
+        "root": "libusb-15a7ebb4d426c5ce196684347d2b7cafad862626"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/lz4/lz4",
+      "revision": "5fc0630a0ed55e9755b0fe3990cd021ae1c3edc1",
+      "artifact": {
+        "name": "lz4-5fc0630a0ed55e9755b0fe3990cd021ae1c3edc1.tar.gz",
+        "url": "https://codeload.github.com/lz4/lz4/tar.gz/5fc0630a0ed55e9755b0fe3990cd021ae1c3edc1",
+        "digest": "e969c292da59dd1163b3daabf31728f14f1dbe6a007e73e1cc6659fee6979bd2",
+        "size": 363446,
+        "root": "lz4-5fc0630a0ed55e9755b0fe3990cd021ae1c3edc1"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/minizip-ng/minizip-ng",
+      "revision": "55db144e03027b43263e5ebcb599bf0878ba58de",
+      "artifact": {
+        "name": "minizip-ng-55db144e03027b43263e5ebcb599bf0878ba58de.tar.gz",
+        "url": "https://codeload.github.com/zlib-ng/minizip-ng/tar.gz/55db144e03027b43263e5ebcb599bf0878ba58de",
+        "digest": "e0fa42896ad244261f100fd06fae7c64f6054ce02d143f4d0f55df5fced9f63d",
+        "size": 772757,
+        "root": "minizip-ng-55db144e03027b43263e5ebcb599bf0878ba58de"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/pugixml/pugixml",
+      "revision": "ee86beb30e4973f5feffe3ce63bfa4fbadf72f38",
+      "artifact": {
+        "name": "pugixml-ee86beb30e4973f5feffe3ce63bfa4fbadf72f38.tar.gz",
+        "url": "https://codeload.github.com/zeux/pugixml/tar.gz/ee86beb30e4973f5feffe3ce63bfa4fbadf72f38",
+        "digest": "51c102d4187fac99daa38af281b0772c5e6c586f65004cdc63f8f2e011a21492",
+        "size": 583144,
+        "root": "pugixml-ee86beb30e4973f5feffe3ce63bfa4fbadf72f38"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/spirv_cross/SPIRV-Cross",
+      "revision": "ebe2aa0cd80f5eb5cd8a605da604cacf72205f3b",
+      "artifact": {
+        "name": "SPIRV-Cross-ebe2aa0cd80f5eb5cd8a605da604cacf72205f3b.tar.gz",
+        "url": "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/ebe2aa0cd80f5eb5cd8a605da604cacf72205f3b",
+        "digest": "ff848426a2eabfa0dfb5ee961440210f6cdec190883ed438ee7252ba595c9128",
+        "size": 1825152,
+        "root": "SPIRV-Cross-ebe2aa0cd80f5eb5cd8a605da604cacf72205f3b"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/tinygltf/tinygltf",
+      "revision": "c5641f2c22d117da7971504591a8f6a41ece488b",
+      "artifact": {
+        "name": "tinygltf-c5641f2c22d117da7971504591a8f6a41ece488b.tar.gz",
+        "url": "https://codeload.github.com/syoyo/tinygltf/tar.gz/c5641f2c22d117da7971504591a8f6a41ece488b",
+        "digest": "6352803f1ed18d479ea93abf96ac75c0222a21403be22840bde1072ee5935dfa",
+        "size": 5903179,
+        "root": "tinygltf-c5641f2c22d117da7971504591a8f6a41ece488b"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/watcher/watcher",
+      "revision": "b03bdcfc11549df595b77239cefe2643943a3e2f",
+      "artifact": {
+        "name": "watcher-b03bdcfc11549df595b77239cefe2643943a3e2f.tar.gz",
+        "url": "https://codeload.github.com/e-dant/watcher/tar.gz/b03bdcfc11549df595b77239cefe2643943a3e2f",
+        "digest": "61e97c12c3d23f2b6588d99ce61c8ad462b4382f979d14c7a338a11af507edd1",
+        "size": 165510,
+        "root": "watcher-b03bdcfc11549df595b77239cefe2643943a3e2f"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/xxhash/xxHash",
+      "revision": "e626a72bc2321cd320e953a0ccf1584cad60f363",
+      "artifact": {
+        "name": "xxHash-e626a72bc2321cd320e953a0ccf1584cad60f363.tar.gz",
+        "url": "https://codeload.github.com/Cyan4973/xxHash/tar.gz/e626a72bc2321cd320e953a0ccf1584cad60f363",
+        "digest": "34e71c085636fbc1726482996d92719d0a16e6a6097970ecf2990a27b3821162",
+        "size": 1147772,
+        "root": "xxHash-e626a72bc2321cd320e953a0ccf1584cad60f363"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/zlib-ng/zlib-ng",
+      "revision": "ce01b1e41da298334f8214389cc9369540a7560f",
+      "artifact": {
+        "name": "zlib-ng-ce01b1e41da298334f8214389cc9369540a7560f.tar.gz",
+        "url": "https://codeload.github.com/zlib-ng/zlib-ng/tar.gz/ce01b1e41da298334f8214389cc9369540a7560f",
+        "digest": "64a6d355d2d5c9449fc047e5bb0ca32875fc385061dfaf1df3aa791577b7ff5e",
+        "size": 2223118,
+        "root": "zlib-ng-ce01b1e41da298334f8214389cc9369540a7560f"
+      }
+    },
+    {
+      "path": "ModernGekko/vendor/dolphin/Externals/zstd/zstd",
+      "revision": "711e17da98510a3567bf47f85a08a76f64811474",
+      "artifact": {
+        "name": "zstd-711e17da98510a3567bf47f85a08a76f64811474.tar.gz",
+        "url": "https://codeload.github.com/facebook/zstd/tar.gz/711e17da98510a3567bf47f85a08a76f64811474",
+        "digest": "68458484cdc8c1e5aa6a2bf3a0253eedb1db9387e42bfb80598e392553162cee",
+        "size": 2483043,
+        "root": "zstd-711e17da98510a3567bf47f85a08a76f64811474"
+      }
+    }
+  ],
+  "cmake": {
+    "name": "cmake-3.31.10-macos-universal.tar.gz",
+    "url": "https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-macos-universal.tar.gz",
+    "digest": "be9f3faeeaf7921cc2d77cea711dd5e6f72c63af2810cacd9205b3ce8d1593c9",
+    "size": 79508153,
+    "root": "cmake-3.31.10-macos-universal/CMake.app/Contents"
+  },
+  "ninja": {
+    "name": "ninja-mac.zip",
+    "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip",
+    "digest": "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b",
+    "size": 314051,
+    "root": ""
+  },
+  "python": {
+    "name": "cpython-3.14.10+20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.14.10%2B20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "digest": "f15ec3d15460dd66c2eb88639b152cd9040e7d1ece11e38bf89e8f53f0171e02",
+    "size": 26970375,
+    "root": "python"
+  },
+  "notices": [
+    {
+      "file": "Ninja-LICENSE",
+      "url": "https://raw.githubusercontent.com/ninja-build/ninja/3441b633c2fe2c494e958780ba0f4227b1327634/COPYING",
+      "digest": "eb7e9ab9690124c5c9f42bdc81383d886a3dede26345b6ed15bbad7caf81f7ea"
+    }
+  ]
+}

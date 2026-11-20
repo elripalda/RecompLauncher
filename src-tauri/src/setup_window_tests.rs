@@ -35,7 +35,7 @@ impl Fixture {
             pids: Mutex::default(),
             started: Mutex::default(),
             download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
-            moving: Mutex::default(),
+            moving: Arc::default(),
             overlay_open: AtomicBool::new(false),
             looked: Mutex::default(),
             headless: AtomicBool::new(false),
@@ -89,6 +89,22 @@ fn a_setup_that_worked_keeps_what_it_made() {
     f.0.lib.lock().unwrap().installed.get_mut("sw-worked").unwrap().setup_before = None;
     end_setup(&f.0, "sw-worked");
     assert_eq!(f.game("sw-worked").game_copy, Some(PathBuf::from("/games/other.nup")));
+}
+
+#[test]
+fn closing_setup_keeps_inputs_for_a_completed_engine_waiting_for_registration() {
+    let f = Fixture::new("sw-engine-completed");
+    let game = engines::nxnative::catalog::games().remove(0);
+    let g = engines::pending::create(&game, &f.0.dir.join("pending")).unwrap();
+    let id = g.id.clone();
+    f.0.lib.lock().unwrap().installed.insert(id.clone(), g.clone());
+    begin_setup(&f.0, &id);
+    let copy = f.0.dir.join("selected.nsp");
+    f.0.lib.lock().unwrap().installed.get_mut(&id).unwrap().setup_inputs.insert("base".into(), copy.clone());
+    std::fs::write(g.path.join(".engine-prepared.json"), b"completed output awaiting registration").unwrap();
+    end_setup(&f.0, &id);
+    assert_eq!(f.game(&id).setup_inputs.get("base"), Some(&copy));
+    assert!(f.game(&id).setup_before.is_none());
 }
 
 #[test]

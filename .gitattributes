@@ -1,3 +1,5 @@
+# Embedded recipes and source-based checks must have identical bytes on every host.
+* text=auto eol=lf
 # Flatpak/Flathub validators reject CRLF.
 packaging/** text eol=lf
 # Shell scripts the launcher embeds and runs on a Mac (include_str!): a CR would break them.
