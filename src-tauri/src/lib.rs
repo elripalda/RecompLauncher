@@ -73,6 +73,7 @@ mod update_rollback_tests;
 #[cfg(test)]
 mod update_check_tests;
 pub mod usage;
+pub mod webview_crash;
 pub mod win;
 #[cfg(windows)]
 mod game_window;
@@ -3509,7 +3510,10 @@ fn start_game_with_monitor_context(
             ingame::set_hotkeys(&app2, false, false);
             ingame::hide_overlay(&app2);
             discord::send(discord::Msg::Clear);
-            if from_bp && mine {
+            // Minimized for the game, by the player's setting or because its web engine died
+            // during play (see remake_main): open again now.
+            let remade = webview_crash::take_minimized_for_play();
+            if (from_bp && mine) || remade {
                 show_main(&app2);
             }
         }
@@ -8969,7 +8973,86 @@ pub(crate) fn build_overlay(app: &AppHandle) -> tauri::Result<tauri::WebviewWind
         .focused(false)
         .build()?;
     rest(&w, true);
+    webview_crash::watch(&w);
     Ok(w)
+}
+
+/// How the main window was showing, so a window made again after its engine died shows the same.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Shown {
+    /// Closed to the tray, or hidden while a game starts: it stays out of sight.
+    Hidden,
+    Minimized,
+    Open,
+}
+
+/// The main window made again, after its web engine died (see webview_crash). Only the page starts
+/// over: downloads, a game being played and the tray go on as they were.
+pub(crate) async fn remake_main(app: &AppHandle, shown: Shown) {
+    webview_crash::set_main_gone(true);
+    if let Some(old) = app.get_webview_window("main") {
+        let _ = old.destroy();
+    }
+    // The name "main" is free only once the old window is really gone.
+    for _ in 0..50 {
+        if app.get_webview_window("main").is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let Some(mut config) = app.config().app.windows.iter().find(|c| c.label == "main").cloned() else { return };
+    // Never in front of a game being played: it comes back minimized then, and opens when the game
+    // ends.
+    let playing = !app.state::<App>().running.lock().unwrap().is_empty();
+    let shown = if playing && shown == Shown::Open {
+        webview_crash::set_minimized_for_play();
+        Shown::Minimized
+    } else {
+        shown
+    };
+    config.focus = shown == Shown::Open;
+    UI_READY.store(false, Ordering::Relaxed);
+    // Windows are made on the main thread.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let made = tauri::WebviewWindowBuilder::from_config(&a, &config).and_then(|b| b.build());
+        let _ = tx.send(made);
+    });
+    let w = match rx.await {
+        Ok(Ok(w)) => w,
+        Ok(Err(e)) => {
+            trail::note(format!("Window: couldn't be made again ({e})"));
+            return;
+        }
+        Err(_) => return,
+    };
+    webview_crash::set_main_gone(false);
+    webview_crash::watch(&w);
+    restore_window_place(&w, &app.state::<App>().dir);
+    apply_saved_zoom(app, &w);
+    if shown == Shown::Hidden {
+        rest(&w, true);
+        return;
+    }
+    wait_for_ui().await;
+    let _ = w.show();
+    if shown == Shown::Minimized {
+        let _ = w.minimize();
+        return;
+    }
+    // It was in Big Picture: the new page goes back to it.
+    if display::in_big_picture() {
+        let _ = w.emit("bigpicture", true);
+    }
+}
+
+/// Text Size from last time.
+fn apply_saved_zoom(app: &AppHandle, w: &tauri::WebviewWindow) {
+    let z = app.state::<App>().lib.lock().unwrap().settings.ui.get("ui_scale").and_then(Value::as_f64).filter(|z| (0.5..=2.0).contains(z));
+    if let Some(z) = z {
+        let _ = w.set_zoom(z);
+    }
 }
 
 /// The main window is out of sight (minimized, or closed to the tray).
@@ -9365,6 +9448,13 @@ fn fit_on_screen(place: &WindowPlace, area: &tauri::PhysicalRect<i32, u32>) -> W
 
 fn show_main(app: &AppHandle) {
     app.state::<App>().headless.store(false, Ordering::Relaxed);
+    // Its web engine kept dying and it wasn't made again (see webview_crash): the player asks for
+    // it now, so one more try.
+    if app.get_webview_window("main").is_none() && webview_crash::main_gone() {
+        let a = app.clone();
+        tauri::async_runtime::spawn(async move { remake_main(&a, Shown::Open).await });
+        return;
+    }
     if let Some(w) = app.get_webview_window("main") {
         if w.is_minimized().unwrap_or(false) {
             let _ = w.unminimize();
@@ -9972,12 +10062,9 @@ pub fn run() {
             ach::init(&app.state::<App>().dir);
             #[cfg(windows)]
             watch_outside(app.handle().clone());
-            // Text Size from last time.
-            {
-                let z = app.state::<App>().lib.lock().unwrap().settings.ui.get("ui_scale").and_then(Value::as_f64).filter(|z| (0.5..=2.0).contains(z));
-                if let (Some(z), Some(w)) = (z, app.get_webview_window("main")) {
-                    let _ = w.set_zoom(z);
-                }
+            if let Some(w) = app.get_webview_window("main") {
+                apply_saved_zoom(app.handle(), &w);
+                webview_crash::watch(&w);
             }
             // Linux: scrolling eases like the rest of the desktop does, instead of jumping a notch
             // at a time.
@@ -10217,6 +10304,9 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 // Dock and Finder must restore the main window even if a helper window is visible.
                 tauri::RunEvent::Reopen { .. } => show_main(app),
+                // No window left because the main one's web engine died: the launcher goes on (the
+                // window is being made again, or the tray brings it back). A real way out has a code.
+                tauri::RunEvent::ExitRequested { code: None, api, .. } if webview_crash::main_gone() => api.prevent_exit(),
                 // Every way out (the window, the tray's Quit, --quit) asks here first. An update still
                 // on its way then leaves the launcher closed (see update_launcher).
                 tauri::RunEvent::ExitRequested { .. } => update_launch::note_quitting(),
