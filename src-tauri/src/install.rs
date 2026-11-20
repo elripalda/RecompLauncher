@@ -1212,7 +1212,7 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 21;
+pub const EXE_RULES: u8 = 23;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
@@ -1220,13 +1220,15 @@ pub const EXE_RULES: u8 = 21;
 const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
-const BUILD_TOOLS: [&str; 66] = [
+const BUILD_TOOLS: [&str; 67] = [
     "ninja", "cmake", "ctest", "cpack", "make", "mingw32-make", "nmake", "msbuild", "meson", "clang", "clang-cl", "clang++", "gcc", "g++", "cc", "c++",
     "tcc", "zig", "sccache", "ccache", "goalc",
     "ld", "lld", "lld-link", "ld.lld", "llvm-ar", "llvm-objcopy", "ar", "as", "nasm", "yasm", "rustc", "cargo", "python", "python3", "pythonw", "py",
     "node", "npm", "git", "7z", "7za", "7zr", "curl", "wget", "busybox", "unzip", "zstd", "xdelta3",
     // Disc and package converters a release brings along for the player's copy.
     "chd2gdi", "gdi2chd", "chdman", "maxcso", "extract-xiso", "xdvdfs", "hactool", "nsz",
+    // PCSX2's GS host consumes renderer dumps; it is not the game runner.
+    "pcsx2-gsrunner",
     // Recompilers a release brings to build the game from the player's copy.
     "nxlift", "xbe_recomp", "xenonrecomp", "xenonanalyse", "n64recomp", "ps2recomp", "ffmpeg", "ffprobe", "ffplay",
 ];
@@ -1942,6 +1944,23 @@ mod tests {
             assert!(looks_like_tool(Path::new(p), &["Harmony Recomp"]), "{p}");
         }
         assert!(!looks_like_tool(Path::new("harmony.sh"), &["Harmony Recomp"]));
+    }
+
+    #[test]
+    fn the_pcsx2_gs_host_is_not_a_game() {
+        let d = tmp("gs-host-only");
+        put(&d.join("gshost/pcsx2-gsrunner.exe"), 4000);
+        assert_eq!(find_game_exe(&d, "windows", &["Killing Bites", "bloody-roar4-recomp"]), None);
+    }
+
+    #[test]
+    fn the_game_runner_is_selected_before_its_gs_host() {
+        let d = tmp("gs-host-and-game");
+        put(&d.join("gshost/pcsx2-gsrunner.exe"), 4000);
+        put(&d.join("runtime/ps2EntryRunner.exe"), 2000);
+        assert_eq!(find_game_exe(&d, "windows", &["Killing Bites", "bloody-roar4-recomp"]), Some(PathBuf::from("runtime/ps2EntryRunner.exe")));
+        assert!(!looks_like_tool(Path::new("pcsx2.exe"), &["PCSX2"]));
+        assert!(!looks_like_tool(Path::new("Runner.exe"), &["Runner"]));
     }
 
     #[test]
