@@ -6214,7 +6214,8 @@ function gameMenu(id) {
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
       ...(canSetUpAgain(id) ? [{ act: 'setup', id, label: t('Setup Options…'), icon: 'disc', dot: newOpts }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
-        { act: 'desktop', id, label: t('Add to desktop'), icon: 'desk' },
+        // Not on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
+        ...(S.os !== 'macos' ? [{ act: 'desktop', id, label: t('Add to desktop'), icon: 'desk' }] : []),
         ...(S.os === 'windows' || S.os === 'linux' ? [{ act: 'app-menu', id, label: S.os === 'windows' ? t('Add to Start Menu') : t('Add to App Menu'), icon: 'apps' }] : []),
         ...(S.steam ? [{ act: 'steam', id, label: t('Add to Steam'), icon: 'steam' }] : []),
         { act: 'fav', id, label: favs().includes(id) ? t('Remove from Favorites') : t('Add to Favorites'), icon: 'star' },

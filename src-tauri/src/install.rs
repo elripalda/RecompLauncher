@@ -904,6 +904,37 @@ pub struct Staged {
     pub files: Vec<PathBuf>,
 }
 
+impl Staged {
+    /// For an update of a game whose folder is a Mac app itself (an app the player picked when
+    /// importing it): the release's one app goes in, its files in place of the old app's, never
+    /// nested inside it. Also every file of the old app's Contents the new one doesn't have, for the
+    /// update to take away: a signed app must hold exactly what it was signed with. What the game
+    /// keeps beside Contents ({data}) stays. Any other game: as it is, nothing more taken away.
+    pub fn for_game(self, game: &Path, os: &str) -> Result<(Staged, Vec<PathBuf>), Error> {
+        if os != "macos" || !crate::macos::is_bundle(game) || crate::macos::is_bundle(&self.root) {
+            return Ok((self, vec![]));
+        }
+        let mut apps = vec![];
+        for e in fs::read_dir(&self.root)? {
+            let p = e?.path();
+            if crate::macos::is_bundle(&p) {
+                apps.push(p);
+            }
+        }
+        let [app] = apps.as_slice() else {
+            return Err(Error::Msg("This release doesn't have exactly one Mac app, so it can't replace the app the game was imported as. Nothing was changed.".into()));
+        };
+        let top = app.strip_prefix(&self.root).unwrap_or(app).to_path_buf();
+        let files: Vec<PathBuf> = self.files.iter().filter_map(|f| f.strip_prefix(&top).ok()).map(Path::to_path_buf).collect();
+        let shipped: std::collections::HashSet<&PathBuf> = files.iter().collect();
+        let mut old = vec![];
+        // Links too, never followed: a Mac app's frameworks link inside it.
+        list(game, &game.join("Contents"), &mut old);
+        let leftovers = old.into_iter().filter(|f| !shipped.contains(f)).collect();
+        Ok((Staged { root: app.clone(), files }, leftovers))
+    }
+}
+
 /// Unpack (or place) the downloaded file into `staging`, the way a game's release is: a single
 /// folder at the top unwrapped. Nothing of the game's is touched (see `swap`).
 pub fn stage(file: &Path, staging: &Path) -> Result<Staged, Error> {
@@ -1457,6 +1488,12 @@ pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
+    // A Mac app that is the game's folder itself: the program its Info.plist names, never a helper
+    // inside it, and nothing when that program is missing or not for this Mac.
+    if os == "macos" && crate::macos::is_bundle(dir) {
+        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now())?;
+        return exe.strip_prefix(dir).ok().map(Path::to_path_buf);
+    }
     // An AppImage unpacked at install: its AppRun starts it, as the AppImage did. One of a release's
     // several AppImages unpacked into a folder named after it, when it's the only one.
     if os == "linux" && dir.join("AppRun").is_file() {
@@ -2523,6 +2560,93 @@ mod mac_archive_tests {
         assert!(fs::read_link(target.join("Game.app/Contents/Frameworks/Engine.framework/Versions/Current")).is_ok());
     }
 
+    /// A game imported as the app itself (its folder is Game.app), with a file the next release
+    /// no longer has and a save in {data}.
+    fn imported_app(d: &Path) -> PathBuf {
+        fs::write(d.join("old.zip"), app_zip(&[("Game.app/Contents/Resources/obsolete", b"old", 0o644)])).unwrap();
+        unpack(&d.join("old.zip"), &d.join("Applications"), &d.join("stage")).unwrap();
+        let app = d.join("Applications/Game.app");
+        fs::create_dir_all(app.join("recompdata")).unwrap();
+        fs::write(app.join("recompdata/save.sav"), b"player progress").unwrap();
+        app
+    }
+
+    /// What an update does with the release (see lib.rs): staged, then put in place.
+    fn update_app(app: &Path, release: Vec<u8>, d: &Path) -> Result<Vec<PathBuf>, Error> {
+        fs::write(d.join("new.zip"), release).unwrap();
+        let staged = stage(&d.join("new.zip"), &d.join("stage"))?;
+        let (staged, old_files) = staged.for_game(app, "macos")?;
+        crate::swap::put_in_place(app, &staged.root, &staged.files, "sha", &old_files, &[])?.finish();
+        Ok(staged.files)
+    }
+
+    #[test]
+    fn mac_imported_app_update_goes_in_without_nesting() {
+        let d = temp("imported-nest");
+        let app = imported_app(&d);
+        let files = update_app(&app, app_zip(&[]), &d).unwrap();
+        assert!(!app.join("Game.app").exists());
+        assert_eq!(fs::read(app.join("Contents/MacOS/Game")).unwrap(), b"program");
+        assert!(files.contains(&PathBuf::from("Contents/MacOS/Game")), "the record's files are the app's own");
+    }
+
+    #[test]
+    fn mac_imported_app_update_takes_away_what_the_new_app_lacks() {
+        let d = temp("imported-obsolete");
+        let app = imported_app(&d);
+        update_app(&app, app_zip(&[]), &d).unwrap();
+        assert!(!app.join("Contents/Resources/obsolete").exists());
+    }
+
+    #[test]
+    fn mac_imported_app_update_keeps_the_games_data() {
+        let d = temp("imported-data");
+        let app = imported_app(&d);
+        update_app(&app, app_zip(&[]), &d).unwrap();
+        assert_eq!(fs::read(app.join("recompdata/save.sav")).unwrap(), b"player progress");
+    }
+
+    #[test]
+    fn mac_imported_app_update_keeps_framework_links() {
+        let d = temp("imported-links");
+        let app = imported_app(&d);
+        update_app(&app, app_zip(&[]), &d).unwrap();
+        let link = app.join("Contents/Frameworks/Engine.framework/Versions/Current");
+        assert_eq!(fs::read_link(link).unwrap(), PathBuf::from("A"));
+    }
+
+    #[test]
+    fn mac_release_without_an_app_leaves_the_imported_app_as_it_was() {
+        let d = temp("imported-no-app");
+        let app = imported_app(&d);
+        let loose = archive(&[("OtherGame", b"program", 0o755)], &[]);
+        assert!(update_app(&app, loose, &d).is_err());
+        assert_eq!(fs::read(app.join("Contents/Resources/obsolete")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn a_game_folder_that_is_not_an_app_is_staged_as_before() {
+        let d = temp("not-imported-app");
+        fs::write(d.join("new.zip"), app_zip(&[])).unwrap();
+        let staged = stage(&d.join("new.zip"), &d.join("stage")).unwrap();
+        let root = staged.root.clone();
+        let (staged, old_files) = staged.for_game(&d.join("installed"), "macos").unwrap();
+        assert_eq!(staged.root, root);
+        assert!(old_files.is_empty());
+    }
+
+    #[test]
+    fn an_app_named_game_folder_off_a_mac_is_staged_as_before() {
+        let d = temp("app-folder-linux");
+        let app = imported_app(&d);
+        fs::write(d.join("new.zip"), app_zip(&[])).unwrap();
+        let staged = stage(&d.join("new.zip"), &d.join("stage")).unwrap();
+        let root = staged.root.clone();
+        let (staged, old_files) = staged.for_game(&app, "linux").unwrap();
+        assert_eq!(staged.root, root);
+        assert!(old_files.is_empty());
+    }
+
     #[test]
     fn mac_archive_rejects_links_outside_staging() {
         for (label, link) in [("absolute", "/tmp"), ("relative", "../../outside")] {
@@ -2648,6 +2772,69 @@ mod mac_discovery_tests {
             bundle(&d, declared);
             assert!(find_game_exe(&d, "macos", &["My Game"]).is_none());
         }
+    }
+
+    #[test]
+    fn mac_app_as_the_games_folder_starts_its_declared_program() {
+        let app = bundle(&temp("app-root"), "Engine");
+        assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn mac_app_as_the_games_folder_with_a_bad_program_is_not_guessed_into() {
+        let app = bundle(&temp("app-root-invalid"), "Missing");
+        assert!(find_game_exe(&app, "macos", &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn mac_app_picked_as_the_folder_is_known_by_its_name() {
+        let app = bundle(&temp("import-app"), "Engine");
+        let entry = serde_json::json!({"name": "My Game"});
+        let (root, exe, fits) = crate::adopt::check_folder(&app, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(root, app, "the app itself, never its Contents folder");
+        assert_eq!(exe, Some(PathBuf::from("Contents/MacOS/Engine")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_folder_holding_only_the_app_stays_the_games_folder() {
+        let d = temp("import-folder");
+        bundle(&d, "Engine");
+        let entry = serde_json::json!({"name": "My Game"});
+        let (root, exe, fits) = crate::adopt::check_folder(&d, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(root, d);
+        assert_eq!(exe, Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_app_of_another_game_does_not_fit() {
+        let app = bundle(&temp("import-other"), "Engine");
+        let entry = serde_json::json!({"name": "Unrelated Title"});
+        let (_, _, fits) = crate::adopt::check_folder(&app, &entry, &["Unrelated Title".to_string()], "macos");
+        assert!(!fits);
+    }
+
+    #[test]
+    fn mac_app_named_in_the_profile_fits() {
+        let d = temp("import-profile-app");
+        bundle(&d, "Engine");
+        fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["My Game.app"]}}"#).unwrap();
+        let entry = serde_json::json!({"name": "Other Name"});
+        let (_, exe, fits) = crate::adopt::check_folder(&d, &entry, &["Other Name".to_string()], "macos");
+        assert_eq!(exe, Some(PathBuf::from("My Game.app")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_build_fits_when_the_profile_names_only_other_systems_programs() {
+        let d = temp("import-profile-windows");
+        bundle(&d, "Engine");
+        fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["MyGame.exe"]}}"#).unwrap();
+        let entry = serde_json::json!({"name": "My Game"});
+        let (_, exe, fits) = crate::adopt::check_folder(&d, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(exe, Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+        assert!(fits);
     }
 
     #[test]

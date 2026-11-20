@@ -511,10 +511,13 @@ pub async fn adopt_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
         if crate::library::shared_folder(&p, &st.lib.lock().unwrap().settings.all_libraries()) {
             return Err(Error::Msg(SHARED.into()));
         }
-        let folder = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        // A Mac app picked as the folder is the game itself, named without its ".app".
+        let app = os == "macos" && crate::macos::is_bundle(&p);
+        let name_part = if app { p.file_stem() } else { p.file_name() };
+        let folder = name_part.map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         // A folder of games (like "Games"): no program of its own at the top and not a recomp
         // itself, so each folder inside that is a recomp the catalog knows is offered.
-        let top_program = std::fs::read_dir(&p).into_iter().flatten().flatten().any(|e| install::is_program(&e.path(), os));
+        let top_program = app || std::fs::read_dir(&p).into_iter().flatten().flatten().any(|e| install::is_program(&e.path(), os));
         if !top_program && guess(&cat, &read_repo(&p), &[&folder]).is_none() {
             let mut many = vec![];
             for e in std::fs::read_dir(&p).into_iter().flatten().flatten().take(300) {
@@ -566,7 +569,10 @@ pub fn check_folder(dir: &Path, entry: &Value, names: &[String], os: &str) -> (P
     let mut roots = vec![dir.to_path_buf()];
     // The game one level down (a zip unpacked into a folder of its own): the folder inside.
     let inside: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| !p.file_name().map(|n| n.to_string_lossy().starts_with('.')).unwrap_or(true)).collect();
-    if inside.len() == 1 && inside[0].is_dir() {
+    // A Mac app stays whole: not its Contents folder, and a folder that holds only the app is the
+    // game's folder, the app inside it.
+    let is_app = |p: &Path| os == "macos" && crate::macos::is_bundle(p);
+    if inside.len() == 1 && inside[0].is_dir() && !is_app(dir) && !is_app(&inside[0]) {
         roots.insert(0, inside[0].clone());
     }
     let repo = entry.get("repo").and_then(Value::as_str).unwrap_or("");
@@ -580,17 +586,26 @@ pub fn check_folder(dir: &Path, entry: &Value, names: &[String], os: &str) -> (P
             continue;
         }
         if let Some(start) = crate::profile::find(root, repo, entry).and_then(|p| p.start) {
-            if let Some(prog) = start.program.iter().map(|p| p.trim_start_matches("{install}/").to_string()).find(|p| root.join(p).is_file()) {
+            // On a Mac the program can be an app (start.program names "Game.app").
+            let present = |p: &String| root.join(p).is_file() || is_app(&root.join(p));
+            if let Some(prog) = start.program.iter().map(|p| p.trim_start_matches("{install}/").to_string()).find(present) {
                 return (root.clone(), Some(PathBuf::from(prog)), true);
             }
-            continue;
+            // A profile written for Windows and Linux names no Mac program: the Mac build is
+            // then known by its name, as below.
+            if os != "macos" {
+                continue;
+            }
         }
         // On Linux a Windows build counts too: it plays through Proton.
         let found = install::find_exe(root, os, &n).or_else(|| (os == "linux").then(|| install::find_exe(root, "windows", &n)).flatten());
         if let Some(exe) = found {
             // Words that are in many recomps' names ("Recompiled", "Port", "Edition") don't count.
             let want: Vec<String> = n.iter().flat_map(|x| install::tokens(x)).filter(|t| t.len() > 2 && t != "the" && !install::TAIL_WORDS.contains(&t.as_str())).collect();
-            let stem = exe.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            // A Mac app's name says which game it is; the program inside may be just "Engine".
+            let full = root.join(&exe);
+            let app = full.ancestors().take_while(|p| p.starts_with(root)).find(|p| is_app(p)).map(Path::to_path_buf);
+            let stem = app.as_deref().unwrap_or(&exe).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             let squashed: String = stem.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
             let named = install::tokens(&stem).iter().any(|t| want.contains(t)) || want.iter().any(|w| w.len() >= 4 && squashed.contains(w.as_str()));
             let rel = exe.strip_prefix(root).map(Path::to_path_buf).unwrap_or(exe);
