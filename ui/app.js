@@ -1243,19 +1243,129 @@ function actions(a, size = 'big') {
   }
 }
 
-// A new issue on the recomp's own page, asking for RecompLauncher support. Opened for the player to
-// send themselves; nothing is sent from here.
-function askSupportUrl(a) {
-  const title = 'RecompLauncher support';
-  const body = 'Hi! Could you add a recomplauncher.json to this recomp, so RecompLauncher can set it up and show its settings for players?\n\nThe guide: https://recomplauncher.com/sdk-files/guide.md';
+// The part of recomplauncher.json that adds each feature, for the issue a player sends.
+const SUP_KEYS = { easy_setup: '`game` and `start`', settings: '`config` and `settings`', prepare: '`prepare`', verified: '`game.dumps`', saves: '`saves`' };
+// The issue's text, in English for the developer: the one ask, then the links that do the work.
+function supportIssue(ask) {
+  const lines = ['Hi! I play this through RecompLauncher.', ''];
+  if (ask.kind === 'repo') lines.push('Your repo has a `recomplauncher.json`, but your releases don\'t include it yet, so players don\'t get it. Could you put it at the top of your next release zip, next to the executable?');
+  if (ask.kind === 'none') lines.push('Could you add a `recomplauncher.json` to your releases? Then RecompLauncher sets the game up from the player\'s copy, shows its settings and backs up its saves.');
+  if (ask.kind === 'gaps' || ask.kind === 'ours') {
+    lines.push('Your `recomplauncher.json` already does a lot. These would finish it:');
+    for (const r of ask.todo) lines.push(`- ${r.name}: ${SUP_KEYS[r.k]}${r.s === 'l' ? ' (RecompLauncher fills this in for now)' : ''}`);
+  }
+  if (ask.kind === 'verify') lines.push('Your game already gets its setup from your own `recomplauncher.json`. Thank you!');
+  lines.push('');
+  if (ask.kind !== 'verify') {
+    lines.push('The quickest way: ask your AI coding agent to read this and follow it. It writes the file and adds it to your release:', 'https://recomplauncher.com/sdk-files/recomplauncher-agent.md', '');
+    lines.push('The guide, if you\'d rather do it yourself: https://recomplauncher.com/sdk', '');
+  }
+  if (!ask.verified) lines.push('Also: a free developer account puts the verified tick next to your name on your game\'s page, and lets you manage your listing:', 'https://recomplauncher.com/developers?signup=1');
+  return lines.join('\n').trim();
+}
+// A new issue on the recomp's own page, asking for what Launcher Support says is missing. Opened for
+// the player to send themselves; nothing is sent from here.
+function askSupportUrl(a, ask) {
+  const title = ask.kind === 'verify' ? 'RecompLauncher: verify as the developer' : 'RecompLauncher support';
+  const body = supportIssue(ask);
   if (isSF(a.repo)) return repoIssues(a.repo);
   if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
   return `${repoIssues(a.repo)}/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
+// What a recomplauncher.json covers, the way support_local counts it, for a file the catalog
+// carries as the project's own (a Forgejo project's repo file).
+function fileCovers(p) {
+  const list = (v) => Array.isArray(v) && v.length > 0;
+  const game = p && p.game && typeof p.game === 'object' ? p.game : null;
+  return {
+    easy_setup: !!game,
+    settings: list(p && p.settings),
+    prepare: !!(p && p.prepare),
+    verified: !!game && (list(game.dumps) || list(game.check && game.check.ids)),
+    saves: list(p && p.saves),
+  };
+}
+// Where a game's setup comes from. 'own': the project's own file reaches players (in the installed
+// release, a release the store checked, or a Forgejo repo the launcher reads itself). 'repo': only
+// its repo has one, which the launcher never reads for GitHub or GitLab. '' otherwise.
+function supportSource(a, local, sup) {
+  if (local || a.launcher_from === 'repo') return 'own';
+  const sdk = sup ? sup.sdk : '';
+  if (sdk === 'release') return 'own';
+  if (sdk === 'repo') return 'repo';
+  return '';
+}
+// Each feature's state: 'p' the project's own file, 'l' RecompLauncher, '' nobody yet, 'na' a
+// setup step the project's own file leaves out (not needed, so not shown). The setup features
+// come from one file at runtime (the project's, else ours, never a mix), so with the project's
+// own file they're the project's or nothing. Copy checks and save folders can come from us too.
+function supportStates(a, local, sup, source) {
+  const own = source === 'own';
+  const file = local || (a.launcher_from === 'repo' ? fileCovers(a.launcher) : null);
+  const theirs = (k) => own && (file ? !!file[k] : !!sup && sup[k] === 'dev');
+  const boot = a.boot || builtinBoot()[a.id] || {};
+  const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
+  // Offline, without the catalog's labels: what our boot profile does.
+  const guess = {
+    easy_setup: !!(files && TURNKEY_HOW.includes(files.how)) || S.easy.has(a.id),
+    settings: !!(boot.settings && (boot.settings.settings || []).length),
+    prepare: !!(boot.setup || boot.prepare),
+    verified: !!(files && files.sha256),
+  };
+  const ours = (k) => (sup ? sup[k] === 'launcher' : !!guess[k]);
+  const setup = (k) => {
+    if (theirs(k)) return 'p';
+    if (own) return k === 'prepare' ? 'na' : '';
+    return ours(k) ? 'l' : '';
+  };
+  const named = (v) => Array.isArray(v) && v.length > 0;
+  const copyIds = Array.isArray(a.copy_ids) ? a.copy_ids.length > 0 : !!a.copy_ids;
+  // Our profile's save folders count only when no file of the project's comes first.
+  const ourSaves = named(a.saves) || (!own && !!a.launcher && named(a.launcher.saves));
+  const pick = (k, oursToo) => (theirs(k) ? 'p' : oursToo ? 'l' : '');
+  return {
+    easy_setup: setup('easy_setup'),
+    settings: setup('settings'),
+    prepare: setup('prepare'),
+    verified: pick('verified', copyIds || ours('verified')),
+    saves: pick('saves', ourSaves),
+  };
+}
 // Launcher Support, a box on Overview under Before You Play: what RecompLauncher can do for this
-// recomp, and who made each part work. From the catalog's "support", the recomp's own
-// recomplauncher.json in its folder (asked for once, for an installed game), or (offline) its
-// boot profile.
+// recomp, and whether the project's own recomplauncher.json or RecompLauncher makes each part work.
+// From the catalog's "support", the recomp's own file in its folder (asked for once, for an
+// installed game), or (offline) its boot profile.
+const SUP_TIP = {
+  p: N_('From the project: its own recomplauncher.json sets this up.'),
+  l: N_('From RecompLauncher: the launcher does this for the game.'),
+  '': N_('Not yet: neither the project nor RecompLauncher does this.'),
+  players: N_('From players: handheld players say it runs well.'),
+  unrated: N_('Not yet: no handheld player has rated it.'),
+};
+const SUP_FULL_TIP = N_('Full Support: everything RecompLauncher can do here is set up by the project\'s own file. The handheld rating comes from players, so it doesn\'t count.');
+const SUP_GIT = '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-10.5 5.6"/>';
+// The Ask box, most important first: no file that reaches players, a feature nobody does, features
+// we fill in for them, then only the verification. Null when there's nothing to ask.
+function supportAsk(a, source, rows) {
+  if (!a.repo) return null;
+  const d = devOf(a);
+  const verified = !!(d && d.verified);
+  const who = (d && d.name) || a.author || repoOwner(a);
+  // The handheld rating is up to players, and a step that isn't needed isn't asked for.
+  const asked = rows.filter((r) => r.k !== 'hh' && r.s !== 'na');
+  const gaps = asked.filter((r) => r.s === '');
+  const filled = asked.filter((r) => r.s === 'l');
+  const base = { verified, todo: [...gaps, ...filled] };
+  if (source === 'repo') return { ...base, kind: 'repo', text: verified ? tf('{who}\'s repo has a setup file, but their releases don\'t include it yet. Ask them to add it to their next release.', { who }) : tf('{who}\'s repo has a setup file, but their releases don\'t include it yet. Ask them to add it to their next release, and to sign up as a developer and verify.', { who }) };
+  if (source !== 'own') return { ...base, kind: 'none', text: verified ? t('Ask the developer to add RecompLauncher support.') : t('Ask the developer to add RecompLauncher support, and to sign up as a developer and verify.') };
+  if (gaps.length) return { ...base, kind: 'gaps', text: verified ? t('Is a feature missing? Ask the developer to add it.') : t('Is a feature missing? Ask the developer to add it, and to sign up as a developer and verify.') };
+  const features = listOf(filled.map((r) => t(r.name)));
+  if (filled.length) return { ...base, kind: 'ours', text: verified ? tf('RecompLauncher fills in {features} for this game. Ask the developer to add this to their own file for Full Support.', { features }) : tf('RecompLauncher fills in {features} for this game. Ask the developer to add this to their own file for Full Support, and to sign up as a developer and verify.', { features }) };
+  if (!verified) return { ...base, kind: 'verify', text: tf('{who} ships their own setup file. Ask them to sign up as a developer and verify, so their name gets the tick.', { who }) };
+  return null;
+}
+// "A, B and C" in the player's language.
+const listOf = (w) => { try { return new Intl.ListFormat(curLocale(), { type: 'conjunction' }).format(w); } catch (e) { return w.join(', '); } };
 S.supLocal = {};
 function supportCard(a) {
   if (!a || a.soon) return '';
@@ -1269,53 +1379,46 @@ function supportCard(a) {
   }
   const local = S.library[id] ? S.supLocal[id] : null;
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
-  const boot = a.boot || builtinBoot()[id] || {};
-  const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
-  const guess = {
-    easy_setup: !!(files && TURNKEY_HOW.includes(files.how)) || S.easy.has(id),
-    settings: !!(boot.settings && (boot.settings.settings || []).length),
-    prepare: !!(boot.setup || boot.prepare),
-    verified: !!((Array.isArray(a.copy_ids) ? a.copy_ids.length : a.copy_ids) || (files && files.sha256)),
-    saves: false,
-  };
-  // Capability sources: 'dev' means a manifest, not confirmed maintenance by the developer.
-  // 'launcher', '' (not there), or '?' (there, source unknown) keep their catalog meanings.
-  const who = (k) => (local && local[k] ? 'dev' : sup ? (sup[k] === 'dev' || sup[k] === 'launcher' ? sup[k] : '') : guess[k] ? '?' : '');
-  const sdk = local ? 'release' : sup && sup.sdk ? sup.sdk : 'unknown';
+  const source = supportSource(a, local, sup);
+  const st = supportStates(a, local, sup, source);
   const hh = a.handheld && a.handheld.ok;
-  // Backups need someone to say where the game saves: the recomp's own file, or RecompLauncher's
-  // list. Nothing is guessed, so with neither the player picks the folder on the Saves tab. Our
-  // profile's folders count only when the installed release has no file of its own.
-  const named = (v) => Array.isArray(v) && v.length > 0;
-  const ourSaves = named(a.saves) || (!local && !!a.launcher && named(a.launcher.saves));
-  const saves = who('saves') === 'dev' ? 'dev' : ourSaves ? 'launcher' : '';
-  const savesLine = saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : saves ? t('RecompLauncher knows where it saves.') : t('Where it saves isn\'t known yet. You can pick the folder on its Saves tab.');
-  // One row per feature: its icon, a short line, and a check when it works here or a dash when not
-  // yet; who made it work is the row's tooltip. "4 of 6" sits by the heading.
+  const devices = hh ? (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') : '';
+  // Backups need someone to say where the game saves. Nothing is guessed, so with neither the
+  // project's file nor ours naming a folder, the player picks it on the Saves tab.
+  const savesLine = st.saves === 'p' ? t('The recomp tells the launcher exactly where it saves.') : st.saves ? t('RecompLauncher knows where it saves.') : t('Where it saves isn\'t known yet. You can pick the folder on its Saves tab.');
   const rows = [
-    [t('Easy Setup'), t('Pick your copy and the launcher sets it up.'), who('easy_setup'), '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>'],
-    [t('Game Settings'), t('Change the game\'s own settings from its page.'), who('settings'), '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'],
-    [t('Full Setup Step'), t('The recomp\'s own setup step, run for you.'), who('prepare'), '<path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-3-1-1-3z"/>'],
-    [t('Verified Copies'), t('Shows when your copy matches a known good one.'), who('verified'), '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2 2 4-4"/>'],
-    [t('Cloud Saves'), savesLine, saves, '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8.5a4 4 0 0 1 0 9.5z"/>'],
-    [t('Handheld Rating'), hh ? tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') || t('several players') }) : t('From handheld players\' reports. None yet.'), hh ? 'players' : '', '<rect x="2.5" y="7" width="19" height="10" rx="3"/><path d="M7 10.5v3M5.5 12h3M16 11h.01M18 13h.01"/>'],
+    { k: 'easy_setup', name: N_('Easy Setup'), line: t('Pick your copy and the launcher sets it up.'), s: st.easy_setup, icon: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>' },
+    { k: 'settings', name: N_('Game Settings'), line: t('Change the game\'s own settings from its page.'), s: st.settings, icon: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>' },
+    { k: 'prepare', name: N_('Full Setup Step'), line: t('The recomp\'s own setup step, run for you.'), s: st.prepare, icon: '<path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-3-1-1-3z"/>' },
+    { k: 'verified', name: N_('Verified Copies'), line: t('Shows when your copy matches a known good one.'), s: st.verified, icon: '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2 2 4-4"/>' },
+    { k: 'saves', name: N_('Cloud Saves'), line: savesLine, s: st.saves, icon: '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8.5a4 4 0 0 1 0 9.5z"/>' },
+    { k: 'hh', name: N_('Handheld Rating'), line: hh ? tf('Handheld players say it runs well: {devices}', { devices: devices || t('several players') }) : t('From handheld players\' reports. None yet.'), s: hh ? 'players' : '', icon: '<rect x="2.5" y="7" width="19" height="10" rx="3"/><path d="M7 10.5v3M5.5 12h3M16 11h.01M18 13h.01"/>' },
   ];
-  const src = (w) => (w === 'dev' ? t('From Manifest') : w === 'launcher' ? t('By RecompLauncher') : w === 'players' ? t('By Players') : '');
-  // What the developer's own file could add (the handheld rating comes from players).
-  const missing = rows.slice(0, 4).some((r) => !r[2]);
-  const source = local ? t('Manifest found in the installed files.') : sdk === 'release' ? t('Manifest included with the release.') : sdk === 'repo' ? t('Manifest in the project repository.') : '';
-  // Only an explicit catalog declaration confirms who maintains the integration. A working
-  // manifest may have been supplied by the player, launcher, or another contributor.
-  const owner = a.maintained_by === 'official' ? 'project' : ['project', 'launcher', 'community'].includes(a.maintained_by) ? a.maintained_by : 'unconfirmed';
-  const ask = a.repo && (sdk === 'none' || missing);
-  const n = rows.filter((r) => r[2]).length;
+  // A setup step the project's own file leaves out isn't needed: not shown, and not counted.
+  const shown = rows.filter((r) => r.s !== 'na');
+  const n = shown.filter((r) => r.s).length;
+  // Full Support: every feature the project controls comes from its own file. The handheld rating
+  // is up to players, so it doesn't count.
+  const full = source === 'own' && shown.every((r) => r.k === 'hh' || r.s === 'p');
+  const ask = supportAsk(a, source, rows);
   const svg = (d, cls) => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-  const row = ([k, d, w, icon]) => `<div class="sup-row${w ? ' on' : ''}"${src(w) ? ` title="${esc(src(w))}"` : ''}><span class="sup-ib">${svg(icon, 'sup-i')}</span><span class="sup-k"><b>${esc(k)}</b><span>${esc(d)}</span></span>${w ? svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'sup-ok') : svg('<path d="M7 12h10"/>', 'sup-no')}<span class="sr">${esc(w ? [t('Yes'), src(w)].filter(Boolean).join(', ') : t('Not yet'))}</span></div>`;
-  return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3><span class="tag ${n >= 3 ? 'complete' : 'paused'}">${esc(tf('{n} of {total}', { n, total: rows.length }))}</span></div>
-    <div class="sup-list">${rows.map(row).join('')}</div>
-    <div class="sup-foot sup-${owner}">${svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', 'sup-fi')}<b class="sup-own">${esc(t(OWNER_LONG[owner]))}</b></div>
-    ${source ? `<p class="sup-src">${esc(source)}</p>` : ''}
-    ${ask ? `<div class="sup-ask"><p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a))}">${esc(t('Ask the Developer'))}</button></div>` : ''}</div>`;
+  const markOf = (r) => {
+    if (r.s === 'p') return '<svg class="sup-m sup-p" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="m7.5 12.3 3 3 6-6.3"/></svg>';
+    if (r.s === 'l') return '<img class="sup-m sup-l" src="img/mark.svg" alt="">';
+    if (r.s === 'players') return svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'sup-ok');
+    return svg('<path d="M7 12h10"/>', 'sup-no');
+  };
+  const tipOf = (r) => (r.k === 'hh' ? t(r.s ? SUP_TIP.players : SUP_TIP.unrated) : t(SUP_TIP[r.s]));
+  const row = (r) => `<div class="sup-row${r.s ? ' on st-' + r.s : ''}"><span class="sup-ib">${svg(r.icon, 'sup-i')}</span><span class="sup-k"><b>${esc(t(r.name))}</b><span>${esc(r.line)}</span></span><span class="sup-st" role="img" data-tip="${esc(tipOf(r))}" aria-label="${esc(tipOf(r))}">${markOf(r)}</span></div>`;
+  // Where the setup comes from, and who made the game (with the tick when they're verified).
+  const ourSetup = ['easy_setup', 'settings', 'prepare', 'verified'].some((k) => st[k] === 'l');
+  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
+  const badge = full ? `<span class="tag sup-full" data-tip="${esc(t(SUP_FULL_TIP))}">${svg('<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor" stroke="none"/>', 'sup-star')}${esc(t('Full Support'))}</span>` : `<span class="tag ${n >= 3 ? 'complete' : 'paused'}">${esc(tf('{n} of {total}', { n, total: shown.length }))}</span>`;
+  const askBox = ask ? `<div class="sup-ask"><p>${esc(ask.text)}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(ask.kind === 'verify' ? t('Ask to Verify') : t('Ask the Developer'))}</button></div>` : '';
+  return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3>${badge}</div>
+    <div class="sup-src"><span class="sup-chip sup-${chip[0]}">${chip[1]}${esc(chip[2])}</span>${byDev(a)}</div>
+    <div class="sup-list">${shown.map(row).join('')}</div>
+    ${askBox}</div>`;
 }
 
 // The other versions of this game that are installed too.
@@ -2510,7 +2613,7 @@ function playersText(a) {
 function gameRail(a) {
   const facts = [
     [t('Latest version'), verText(a.version)], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
-    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('License'), a.license], [t('Setup By'), OWNER_NAME[a.maintained_by] ? t(OWNER_NAME[a.maintained_by]) : ''],
+    [t('Releases'), a.releases ? fmtNum(a.releases) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Played on RecompLauncher'), playersText(a)], [starsLabel(a.repo), starsText(a)], [t('License'), a.license],
   ].filter(([, v]) => v);
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   // Who made it is under the title; adding it somewhere, its project page and reporting are in the
@@ -4253,12 +4356,9 @@ async function devCheck(id, loud) {
   if (loud) toast(t('Checked it again.'));
   if (S.view === 'game' && S.arg === id && S.tab === 'dev') showTab('dev');
 }
-// Who looks after a game's setup (the catalog's maintained_by), and what Developer Tools calls the
-// setup's flow and what it can do.
-const OWNER_NAME = { project: N_('Its Developer'), official: N_('Its Developer'), launcher: N_('RecompLauncher'), community: N_('The Community') };
+// What Developer Tools calls the setup's flow and what it can do.
 const FLOW_NAME = { launch: [N_('Launches With the Player\'s Copy'), N_('The game gets the player\'s disc or files when it starts. Nothing runs before Play.')], prepare: [N_('Needs a One-Time Step'), N_('A step runs once before Play (importing or recompiling from the player\'s copy).')], '': [N_('Plays as It Is'), N_('It doesn\'t ask the player for anything.')] };
 const CAP_NAME = { settings: N_('Launcher Settings'), verify: N_('Known-Dump Check'), inputs: N_('More Than One File'), saves: N_('Says Where It Saves') };
-const OWNER_LONG = { project: N_('Maintained by its developer'), launcher: N_('Maintained by RecompLauncher'), community: N_('Maintained by the community'), unconfirmed: N_('Nobody has confirmed who maintains it') };
 const DEV_MARK = { ok: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', warn: '<path d="M12 8v5M12 16.5v.01"/>', err: '<path d="m7 7 10 10M17 7 7 17"/>' };
 function devTab(a) {
   const id = a.id, g = S.library[id], r = S.dev[id];
@@ -4272,7 +4372,7 @@ function devTab(a) {
       <p class="muted">${esc(r.error ? t('The file has a problem. Players would get none of it.') : errs ? tn(errs, '1 problem to fix.', '{n} problems to fix.') : warns ? tn(warns, 'Works, with 1 thing worth a look.', 'Works, with {n} things worth a look.') : t('Everything checks out.'))}</p></div>
       <div class="acts"><button type="button" class="btn main" data-act="dev-check" data-id="${esc(id)}">${esc(t('Check again'))}</button>${r.has_file ? `<button type="button" class="btn" data-act="dev-file" data-id="${esc(id)}">${esc(t('Open the folder'))}</button>` : `<button type="button" class="btn" data-act="dev-starter" data-id="${esc(id)}">${esc(t('Make a starter file'))}</button>`}</div></div>
     <div class="dev-sum2"><div class="card"><span class="kick">${esc(t('Setup'))}</span><b>${esc(t(flow[0]))}</b><p class="muted">${esc(t(flow[1]))}</p></div>
-      <div class="card"><span class="kick">${esc(t('What It Can Do'))}</span>${(r.caps || []).length ? `<div class="dev-caps">${r.caps.map((c) => `<span class="dev-cap">${esc(t(CAP_NAME[c] || c))}</span>`).join('')}</div>` : `<p class="muted">${esc(t('Nothing more yet.'))}</p>`}<p class="muted">${esc(t(OWNER_LONG[r.owner] || OWNER_LONG.unconfirmed))}</p></div></div>
+      <div class="card"><span class="kick">${esc(t('What It Can Do'))}</span>${(r.caps || []).length ? `<div class="dev-caps">${r.caps.map((c) => `<span class="dev-cap">${esc(t(CAP_NAME[c] || c))}</span>`).join('')}</div>` : `<p class="muted">${esc(t('Nothing more yet.'))}</p>`}</div></div>
     ${r.error ? `<div class="card dev-err"><h3>${esc(t('It can\'t be read'))}</h3><p class="mono">${esc(r.error)}</p></div>` : ''}
     ${r.items.length ? `<div class="card dev-list">${r.items.map((x) => `<div class="dev-item ${x.level}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DEV_MARK[x.level]}</svg><div><b>${esc(x.text)}</b>${x.detail ? `<span>${esc(x.detail)}</span>` : ''}</div></div>`).join('')}</div>` : ''}
     <div class="card"><h3 style="margin-bottom:8px">${esc(t('Try it like a player'))}</h3>
