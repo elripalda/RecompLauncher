@@ -1,0 +1,14 @@
+{
+  "GameIndex.yaml": {
+    "url": "https://raw.githubusercontent.com/PCSX2/pcsx2/15afef683235e4941ff7de15c2c19699811a1448/bin/resources/GameIndex.yaml",
+    "sha256": "5892fbbd0a14e764b058db9f8159e62b958d7128f147e17a91776ca55a59dd3d"
+  },
+  "snap-tree.json": {
+    "url": "https://api.github.com/repos/libretro-thumbnails/Sony_-_PlayStation_2/git/trees/0a6e792b5c2db1de392b895ee2364b0f4a2d821f",
+    "sha256": "dc4c886c3fa3d07ca18abca595d41affb3f15b06e0aed43b5b0db48a5feeb47b"
+  },
+  "boxart-tree.json": {
+    "url": "https://api.github.com/repos/libretro-thumbnails/Sony_-_PlayStation_2/git/trees/b60cc72ca73accb157359acb89df9731de07f7e2",
+    "sha256": "fe4756ffd07a00c3e9ad881eab678350ca9573ca4d9ae34c3af154b5541a4628"
+  }
+}
