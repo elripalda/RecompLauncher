@@ -1,0 +1,80 @@
+[
+  {
+    "engine": "anyps5",
+    "title_id": "PPSA07053",
+    "name": "Coffee Talk Episode 2: Hibiscus & Butterfly",
+    "console": "ps5",
+    "package": "",
+    "version": "",
+    "build_id": "",
+    "notes": "Experimental generic conversion. Unverified with AnyPS5 v0.1.5; an upstream Windows report reached gameplay on an older source revision. This is title metadata, not a supported-build profile.",
+    "evidence": "https://github.com/boykopovar/AnyPS5/discussions/16001",
+    "source_revision": "62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+    "report": {
+      "created_at": "2026-11-05T08:03:13Z",
+      "updated_at": "2026-11-05T08:03:13Z",
+      "source_revision": "b11c7bf84f5d2f636ff60166cc3371bd071e24d5",
+      "reported_version": "01.120.000",
+      "body_sha256": "e0b8f71dcc99508d68140adceaf6a481ccc3467a411561dfd4b34656c06991ac",
+      "platform": "windows-x64",
+      "stage": "in-game",
+      "retrieved_at": "2026-11-19"
+    },
+    "screenshots": [
+      "https://github.com/user-attachments/assets/c863b046-7365-438d-8b01-8b1f8e0d586a",
+      "https://github.com/user-attachments/assets/b0aa069e-7e48-4493-83f6-9b6f01b788d5"
+    ]
+  },
+  {
+    "engine": "anyps5",
+    "title_id": "PPSA20591",
+    "name": "Poppy Playtime: Chapter 1",
+    "console": "ps5",
+    "package": "",
+    "version": "",
+    "build_id": "",
+    "notes": "Experimental generic conversion. Unverified with AnyPS5 v0.1.5; an upstream Windows report reached gameplay on an older source revision. This is title metadata, not a supported-build profile.",
+    "evidence": "https://github.com/boykopovar/AnyPS5/discussions/15987",
+    "source_revision": "62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+    "report": {
+      "created_at": "2026-11-05T06:19:55Z",
+      "updated_at": "2026-11-05T06:19:55Z",
+      "source_revision": "b11c7bf84f5d2f636ff60166cc3371bd071e24d5",
+      "reported_version": "01.000.002",
+      "body_sha256": "f4e567eb1a6e90340e619d71f8f3d0fec476d93a14eff46e07dc852c2a672f89",
+      "platform": "windows-x64",
+      "stage": "in-game",
+      "retrieved_at": "2026-11-19"
+    },
+    "screenshots": [
+      "https://github.com/user-attachments/assets/ee490e07-1b81-4806-91aa-fe7274468a06",
+      "https://github.com/user-attachments/assets/9a778045-f733-417d-9130-298071f69bac"
+    ]
+  },
+  {
+    "engine": "anyps5",
+    "title_id": "PPSA04181",
+    "name": "Hoa",
+    "console": "ps5",
+    "package": "",
+    "version": "",
+    "build_id": "",
+    "notes": "Experimental generic conversion. Unverified with AnyPS5 v0.1.5; an upstream Windows report reached gameplay on an older source revision. This is title metadata, not a supported-build profile.",
+    "evidence": "https://github.com/boykopovar/AnyPS5/discussions/15984",
+    "source_revision": "62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+    "report": {
+      "created_at": "2026-11-05T06:07:59Z",
+      "updated_at": "2026-11-05T06:07:59Z",
+      "source_revision": "b11c7bf84f5d2f636ff60166cc3371bd071e24d5",
+      "reported_version": "01.000.002",
+      "body_sha256": "7a4ae4f3d1bc81d99f74f6ab00a70431556b0c63efafd837519d674f356ab683",
+      "platform": "windows-x64",
+      "stage": "in-game",
+      "retrieved_at": "2026-11-19"
+    },
+    "screenshots": [
+      "https://github.com/user-attachments/assets/41369d56-7528-44f6-960c-1c0528d4ee09",
+      "https://github.com/user-attachments/assets/c13d6b85-f943-4255-8af5-5ac6978348f8"
+    ]
+  }
+]

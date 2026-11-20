@@ -72,6 +72,7 @@ jobs:
         run: test "$(uname -m)" = arm64
 
       - name: Run UI tests and JavaScript syntax checks
+        shell: bash
         run: |
           node --test tests/*.test.cjs
           node --check ui/app.js
