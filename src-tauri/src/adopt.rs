@@ -22,7 +22,7 @@ pub struct Found {
     pub exe: Option<PathBuf>,
     /// The release it's on, when that's known (another launcher may write it down); empty means "not known".
     pub tag: String,
-    /// steam, launcher (another launcher's library) or folder.
+    /// steam, launcher (another launcher's library), appimage (one kept outside any launcher) or folder.
     pub from: String,
     /// Already in the Library (the same folder, or the same recomp).
     pub have: bool,
@@ -153,6 +153,119 @@ fn steam_games() -> Vec<(String, PathBuf, PathBuf)> {
                 }
             }
         }
+    }
+    out
+}
+
+/// Where AppImages are kept when nothing installed them: Gear Lever's ~/AppImages,
+/// AppImageLauncher's ~/Applications, and ~/.local/bin for ones put on the PATH.
+#[cfg(any(target_os = "linux", test))]
+const IMAGE_FOLDERS: [&str; 3] = ["AppImages", "Applications", ".local/bin"];
+
+#[cfg(any(target_os = "linux", test))]
+fn is_image_name(p: &Path) -> bool {
+    p.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"))
+}
+
+/// The words of a desktop file's Exec line, with "quoted parts" kept whole (a path with spaces).
+#[cfg(any(target_os = "linux", test))]
+fn exec_words(exec: &str) -> Vec<String> {
+    let mut words = vec![];
+    let mut word = String::new();
+    let mut quoted = false;
+    for c in exec.chars() {
+        if c == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if c.is_whitespace() && !quoted {
+            if !word.is_empty() {
+                words.push(std::mem::take(&mut word));
+            }
+            continue;
+        }
+        word.push(c);
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    words
+}
+
+/// The AppImage a desktop file starts. Gear Lever and AppImageLauncher write one for each AppImage
+/// they look after, so this finds them wherever the player keeps them.
+#[cfg(any(target_os = "linux", test))]
+fn desktop_image(text: &str) -> Option<PathBuf> {
+    let exec = text.lines().map(str::trim).find_map(|l| l.strip_prefix("Exec="))?;
+    exec_words(exec).into_iter().map(PathBuf::from).find(|w| is_image_name(w))
+}
+
+/// AppImages on this PC that no launcher installed: in the usual folders, and the ones the app
+/// menu starts (`data_home` is ~/.local/share). Each real file once (a link in ~/.local/bin to one
+/// in ~/AppImages is the same AppImage), and none of `skip` (the launcher's own).
+#[cfg(any(target_os = "linux", test))]
+fn loose_images(home: &Path, data_home: &Path, skip: &[PathBuf]) -> Vec<PathBuf> {
+    let mut look: Vec<PathBuf> = vec![];
+    for d in IMAGE_FOLDERS {
+        look.extend(std::fs::read_dir(home.join(d)).into_iter().flatten().flatten().map(|e| e.path()));
+    }
+    for e in std::fs::read_dir(data_home.join("applications")).into_iter().flatten().flatten() {
+        let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
+        look.extend(desktop_image(&text));
+    }
+    let mut out = vec![];
+    for p in look {
+        if !is_image_name(&p) {
+            continue;
+        }
+        let Ok(real) = p.canonicalize() else { continue };
+        if !real.is_file() || skip.contains(&real) || out.contains(&real) {
+            continue;
+        }
+        out.push(real);
+    }
+    out
+}
+
+/// The project an AppImage's own recomplauncher.json names, read without running it.
+#[cfg(any(target_os = "linux", test))]
+fn image_repo(image: &Path) -> String {
+    let bytes = crate::appimage::manifest(image).unwrap_or_default();
+    let profile: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    profile.get("repo").and_then(Value::as_str).unwrap_or("").to_string()
+}
+
+/// Recomps kept as AppImages outside any launcher (like in Gear Lever's ~/AppImages), one per
+/// AppImage even when several share a folder. Like Steam's: the ones that match a recomp, or that
+/// say they're one; anything else there is some other app.
+#[cfg(target_os = "linux")]
+fn loose_games(cat: &Value) -> Vec<Found> {
+    let Some(home) = dirs::home_dir() else { return vec![] };
+    let data_home = dirs::data_dir().unwrap_or_else(|| home.join(".local/share"));
+    let me = [shortcuts::start_path(), shortcuts::launcher_exe()];
+    let skip: Vec<PathBuf> = me.iter().filter_map(|p| p.canonicalize().ok()).collect();
+    let mut out = vec![];
+    for image in loose_images(&home, &data_home, &skip) {
+        let (path, rel) = split(&image, None);
+        // A folder that holds other things (the home folder, Downloads) can't be a game's folder.
+        if crate::library::shared_folder(&path, &[]) {
+            continue;
+        }
+        let stem = image.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        // An older copy of the launcher itself has "recomp" in its name but isn't a recomp.
+        if norm(&stem).starts_with("recomplauncher") {
+            continue;
+        }
+        let name = crate::plain::image_title(&image);
+        let repo = image_repo(&image);
+        let id = guess(cat, &repo, &[&name, &stem]).unwrap_or_default();
+        let looks = [&name, &stem].iter().any(|s| s.to_lowercase().contains("recomp"));
+        if id.is_empty() && !looks {
+            continue;
+        }
+        let sure = repo_match(cat, &repo).is_some();
+        let near = if sure { vec![] } else { guesses(cat, &[&name, &stem], 3) };
+        out.push(Found { id, name, path, exe: rel, from: "appimage".into(), link: project_link(&repo), sure, guesses: near, ..Default::default() });
     }
     out
 }
@@ -385,8 +498,22 @@ fn split(exe: &Path, start: Option<&Path>) -> (PathBuf, Option<PathBuf>) {
 
 fn mark(found: &mut [Found], have: &[Installed]) {
     for f in found.iter_mut() {
-        f.have = have.iter().any(|g| g.path == f.path || (!f.id.is_empty() && g.id == f.id && !g.local));
+        f.have = have.iter().any(|g| g.path == f.path || (!f.id.is_empty() && g.id == f.id && !g.local) || from_this_image(g, f));
     }
+}
+
+/// One of the player's own games unpacked from this AppImage before: its folder is in the Recomp
+/// Library now, so only the AppImage's name says it's the same game.
+#[cfg(target_os = "linux")]
+fn from_this_image(g: &Installed, f: &Found) -> bool {
+    let Some(exe) = f.exe.as_deref().filter(|e| is_image_name(e)) else { return false };
+    let key = crate::plain::image_key(exe);
+    !key.is_empty() && g.from_appimage == key
+}
+
+#[cfg(not(target_os = "linux"))]
+fn from_this_image(_: &Installed, _: &Found) -> bool {
+    false
 }
 
 fn names(cat: &Value, id: &str) -> Vec<String> {
@@ -430,6 +557,14 @@ fn scan(cat: &Value, every: bool) -> Vec<Found> {
         let sure = repo_match(cat, &repo).is_some();
         let near = if sure { vec![] } else { guesses(cat, &[&name, &stem, &folder], 3) };
         out.push(Found { id, name, path, exe: rel, tag: String::new(), from: "steam".into(), have: false, link: project_link(&repo), sure, guesses: near, ..Default::default() });
+    }
+    #[cfg(target_os = "linux")]
+    for f in loose_games(cat) {
+        // Steam's shortcut to the same AppImage already brought it.
+        if out.iter().any(|o| o.path == f.path && o.exe == f.exe) {
+            continue;
+        }
+        out.push(f);
     }
     out
 }
@@ -937,6 +1072,90 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_desktop_file_names_the_appimage_it_starts() {
+        let gear_lever = "[Desktop Entry]\nName=Dusklight\nExec=/home/me/AppImages/dusklight.appimage %U\n";
+        assert_eq!(desktop_image(gear_lever), Some(PathBuf::from("/home/me/AppImages/dusklight.appimage")));
+    }
+
+    #[test]
+    fn a_desktop_files_quoted_appimage_path_keeps_its_spaces() {
+        let text = "[Desktop Entry]\nExec=env GAME=1 \"/home/me/My Games/Savage Wind.AppImage\" --fullscreen\n";
+        assert_eq!(desktop_image(text), Some(PathBuf::from("/home/me/My Games/Savage Wind.AppImage")));
+    }
+
+    #[test]
+    fn a_desktop_file_that_starts_no_appimage_names_none() {
+        assert_eq!(desktop_image("[Desktop Entry]\nExec=/usr/bin/firefox %u\n"), None);
+    }
+
+    /// A home folder with `folder/name` in it, an AppImage file the scan can see.
+    fn put_image(home: &Path, folder: &str, name: &str) -> PathBuf {
+        std::fs::create_dir_all(home.join(folder)).unwrap();
+        let path = home.join(folder).join(name);
+        std::fs::write(&path, b"not run").unwrap();
+        path.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn several_appimages_in_one_folder_are_each_found() {
+        let home = crate::appimage::tests::TempDir::new();
+        let dusk = put_image(&home.0, "AppImages", "dusklight.appimage");
+        let wind = put_image(&home.0, "AppImages", "savagewind.AppImage");
+        std::fs::write(home.0.join("AppImages/notes.txt"), b"").unwrap();
+        let mut found = loose_images(&home.0, &home.0.join(".local/share"), &[]);
+        found.sort();
+        let mut want = vec![dusk, wind];
+        want.sort();
+        assert_eq!(found, want);
+    }
+
+    #[test]
+    fn an_appimage_the_app_menu_starts_is_found_where_it_is() {
+        let home = crate::appimage::tests::TempDir::new();
+        let game = put_image(&home.0, "Games/Dusklight", "Dusklight-x86_64.AppImage");
+        let menu = home.0.join(".local/share/applications");
+        std::fs::create_dir_all(&menu).unwrap();
+        std::fs::write(menu.join("dusklight.desktop"), format!("[Desktop Entry]\nExec=\"{}\"\n", game.display())).unwrap();
+        assert_eq!(loose_images(&home.0, &home.0.join(".local/share"), &[]), vec![game]);
+    }
+
+    #[test]
+    fn an_appimage_in_a_folder_and_the_app_menu_is_found_once() {
+        let home = crate::appimage::tests::TempDir::new();
+        let game = put_image(&home.0, "AppImages", "dusklight.appimage");
+        let menu = home.0.join(".local/share/applications");
+        std::fs::create_dir_all(&menu).unwrap();
+        std::fs::write(menu.join("gearlever_dusklight.desktop"), format!("[Desktop Entry]\nExec=\"{}\"\n", game.display())).unwrap();
+        assert_eq!(loose_images(&home.0, &home.0.join(".local/share"), &[]), vec![game]);
+    }
+
+    #[test]
+    fn the_launchers_own_appimage_isnt_found() {
+        let home = crate::appimage::tests::TempDir::new();
+        let me = put_image(&home.0, "AppImages", "recomplauncher.appimage");
+        assert!(loose_images(&home.0, &home.0.join(".local/share"), &[me]).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_on_the_path_is_the_appimage_it_points_to() {
+        let home = crate::appimage::tests::TempDir::new();
+        let game = put_image(&home.0, "AppImages", "dusklight.appimage");
+        std::fs::create_dir_all(home.0.join(".local/bin")).unwrap();
+        std::os::unix::fs::symlink(&game, home.0.join(".local/bin/dusklight.appimage")).unwrap();
+        assert_eq!(loose_images(&home.0, &home.0.join(".local/share"), &[]), vec![game]);
+    }
+
+    #[test]
+    fn a_loose_appimages_project_comes_from_its_embedded_profile() {
+        use crate::appimage::tests::{image, TempDir};
+        let dir = TempDir::new();
+        let path = dir.0.join("dusklight.appimage");
+        std::fs::write(&path, image(Some(br#"{"format":1,"repo":"TwilitRealm/dusklight"}"#), backhand::compression::Compressor::Gzip)).unwrap();
+        assert_eq!(image_repo(&path), "TwilitRealm/dusklight");
+    }
 
     #[test]
     fn a_folder_the_player_already_has_is_checked() {
