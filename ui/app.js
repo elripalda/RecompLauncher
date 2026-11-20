@@ -1547,7 +1547,7 @@ function readyCard(a) {
 
 // Play time from the sessions the launcher counted, on every PC of the account when signed in:
 // this week, this month, and the last two weeks.
-function playCard(g) {
+function playCard(g, a) {
   if (!g) return '';
   const { recent: ses, count, longest } = playStats(g.id, g.sessions);
   if (!count) return '';
@@ -1560,9 +1560,15 @@ function playCard(g) {
   }
   const max = Math.max(60, ...days.map((x) => x.secs));
   const recent = days.some((x) => x.secs);
-  return `<div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Your play time'))}</h3><span>${esc(t('The last two weeks'))}</span></div>
-    <div class="stats">${[[t('This week'), fmtTime(sum(now - 7 * 86400))], [t('This month'), fmtTime(sum(now - 30 * 86400))], [t('Sessions'), fmtNum(count)], [t('Longest'), fmtTime(longest)]].map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
-    ${recent ? '' : `<p class="muted" style="margin:14px 0 0;font-size:14px">${esc(t('Not played in the last two weeks.'))}</p>`}<div class="bars${recent ? '' : ' none'}" role="img" aria-label="${esc(t('Play time over the last two weeks'))}">${days.map((x) => `<div class="b" title="${esc(tf('{day}: {time}', { day: x.d.toLocaleDateString(curLocale(), { weekday: 'short', month: 'short', day: 'numeric' }), time: x.secs ? fmtTime(x.secs) : t('not played') }))}"><i style="height:${x.secs ? Math.max(6, Math.round((x.secs / max) * 100)) : 0}%"></i><span>${esc(x.d.toLocaleDateString(curLocale(), { weekday: 'narrow' }))}</span></div>`).join('')}</div></div>`;
+  // (Beta 67) The bars on the left, the numbers as a short list on the right: all the time played
+  // first (it was the stats row's), then this week, this month, sessions and the longest one.
+  const rows = [...(a ? playtimeRows(a, gamePlaytime(a)).map(([k, v]) => [PT_IC.all, k, v]) : []),
+    [PT_IC.week, t('This week'), fmtTime(sum(now - 7 * 86400))], [PT_IC.month, t('This month'), fmtTime(sum(now - 30 * 86400))],
+    [PT_IC.ses, t('Sessions'), fmtNum(count)], [PT_IC.long, t('Longest'), fmtTime(longest)]];
+  const bars = recent ? `<div class="bars" role="img" aria-label="${esc(t('Play time over the last two weeks'))}">${days.map((x) => `<div class="b" title="${esc(tf('{day}: {time}', { day: x.d.toLocaleDateString(curLocale(), { weekday: 'short', month: 'short', day: 'numeric' }), time: x.secs ? fmtTime(x.secs) : t('not played') }))}"><i class="${x.secs ? '' : 'z'}" style="height:${x.secs ? Math.max(6, Math.round((x.secs / max) * 100)) : 0}%"></i><span>${esc(x.d.toLocaleDateString(curLocale(), { weekday: 'narrow' }))}</span></div>`).join('')}</div>`
+    : `<p class="muted pt-none">${esc(t('Not played in the last two weeks.'))}</p>`;
+  return `<div class="card pt-card"><div class="card-h"><h3>${esc(t('Your play time'))}</h3><span>${esc(t('The last two weeks'))}</span></div>
+    <div class="pt-body">${bars}<ul class="pt-list">${rows.map(([ic, k, v]) => `<li><span class="gs-k">${ic}${esc(k)}</span><b>${esc(v)}</b></li>`).join('')}</ul></div></div>`;
 }
 
 // About the original game, from Wikipedia.
@@ -2639,6 +2645,79 @@ function readmeCard(a) {
   const open = !!S.readmeOpen;
   return `<div class="card rdm${open ? ' open' : ''}"><button type="button" class="rdm-h" data-act="readme" aria-expanded="${open}"><h3>${esc(t('README'))}</h3><span>${esc(isLab(a.repo) ? t('From its GitLab') : isFJ(a.repo) ? tf('From {host}', { host: fjServer(a.repo) }) : t('From its GitHub'))}</span>${CHEV_R}</button><div class="rdm-b md">${md(r)}</div></div>`;
 }
+// (Beta 67) The stats strip at the top of a game's Overview: one card, thin lines between its boxes.
+// Version (with the release's scan pill right after it), players and achievements stay in the same
+// places installed or not; an installed game adds the room it takes on the drive. Achievements only
+// shows for accounts that have them.
+const GS_SVG = (d) => `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const GS_IC = {
+  ver: GS_SVG('<path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.5"/>'),
+  ply: GS_SVG('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.5 3.5 0 010 6.4M18 14.8c1.9.7 3.1 2.4 3.5 5.2"/>'),
+  ach: GS_SVG('<path d="M8.2 10.2 5.5 3h4l2.5 5 2.5-5h4l-2.7 7.2"/><circle cx="12" cy="15" r="5.5"/>'),
+  disk: GS_SVG('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>'),
+};
+const PT_IC = {
+  all: GS_SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  week: GS_SVG('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+  month: GS_SVG('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/>'),
+  ses: GS_SVG('<path d="M7 4l12 8-12 8z"/>'),
+  long: GS_SVG('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M10 2h4"/>'),
+};
+const GS_MEDAL = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path fill="currentColor" d="m12 7.6 1.4 2.8 3.1.4-2.2 2.2.5 3.1L12 14.6l-2.8 1.5.5-3.1-2.2-2.2 3.1-.4z"/></svg>';
+const GS_COLORS = ['#FFC861', '#34F2E8', '#B38CFF', '#5FE3A1'];
+const gsBox = (ic, k, v, cls = '') => `<div class="${cls}"><span class="gs-k">${ic}${esc(k)}</span><span class="gs-v">${v}</span></div>`;
+// A number inside a translated line, made bold: "212 PCs, last 90 days".
+const gsNum = (txt, n) => { const e = esc(txt), num = esc(fmtNum(n)); return e.includes(num) ? e.replace(num, `<b>${num}</b>`) : e; };
+// The room an installed game takes: asked for when its page opens, again after a minute.
+const diskAsk = new Map();
+function gameDisk(id) {
+  S.disk = S.disk || {};
+  const last = diskAsk.get(id) || 0;
+  if (Date.now() - last > 60e3) {
+    diskAsk.set(id, Date.now());
+    invoke('game_size', { id }).then((n) => {
+      const was = S.disk[id];
+      S.disk[id] = Number(n) || 0;
+      if (was !== S.disk[id] && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
+    }).catch(() => { S.disk[id] = 0; });
+  }
+  return S.disk[id];
+}
+function gameStrip(a, inst) {
+  const id = a.id, boxes = [];
+  // Version, and how the store checked that release (a player's own game has none). Before installing
+  // it's the latest release; with an update ready, the update's check, next to where it goes.
+  // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").
+  const up = inst && !inst.local ? S.updates[id] : '';
+  let ver;
+  if (inst) {
+    const have = inst.tag || (inst.installer_setup ? t('Not set up yet') : t('Not known'));
+    ver = up ? `${esc(have)}<span class="gs-to" aria-label="${esc(t('Update ready'))}">→</span><span class="gs-new">${esc(up)}</span>${scanPill({ id, tag: up, update: true })}`
+      : esc(have) + (inst.local || !inst.tag ? '' : scanPill({ id, tag: inst.tag })) + ((S.held || {})[id] ? `<small>${esc(t('updates paused'))}</small>` : '');
+  } else {
+    const tag = a.tag || a.version;
+    ver = esc(a.version || '—') + (tag ? scanPill({ id, tag }) : '');
+  }
+  boxes.push(gsBox(GS_IC.ver, t('Version'), ver, 'gs-ver'));
+  const n = Number(a.players) || 0;
+  boxes.push(gsBox(GS_IC.ply, t('Players'), n ? `<small>${gsNum(playersText(a), n)}</small>` : '—'));
+  const ach = window.achStrip ? window.achStrip(id) : null;
+  if (ach) {
+    let v;
+    if (!ach.of) v = `<small>${esc(t('Not added yet'))}</small>`;
+    else if (inst) {
+      const r = 7, L = 2 * Math.PI * r, k = Math.min(ach.got, 4);
+      const stack = k ? `<span class="gs-stack">${GS_COLORS.slice(0, k).map((c, i) => `<i style="--c:${c};z-index:${4 - i}">${GS_MEDAL}</i>`).join('')}</span>` : '';
+      v = `${stack}<small>${gsNum(tf('{n} of {total}', { n: ach.got, total: ach.of }), ach.got)}</small><svg class="gs-ring" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="${r}"/><circle cx="9" cy="9" r="${r}" stroke-dasharray="${(L * ach.pct / 100).toFixed(1)} ${L.toFixed(1)}" transform="rotate(-90 9 9)"/></svg><small>${ach.pct}%</small>`;
+    } else v = `<b>${esc(fmtNum(ach.of))}</b>${ach.points ? `<small>· ${esc(tf('{n} points', { n: fmtNum(ach.points) }))}</small>` : ''}`;
+    boxes.push(gsBox(GS_IC.ach, t('Achievements'), v));
+  }
+  if (inst) {
+    const size = gameDisk(id);
+    boxes.push(gsBox(GS_IC.disk, t('On Disk'), (size ? esc(fmtB(size)) : '—') + selfManagedPill(id)));
+  }
+  return `<div class="gstrip" style="--gs-n:${boxes.length}">${boxes.join('')}</div>`;
+}
 function gameBody(a) {
   const id = a.id, inst = S.library[id];
   gameTabs(a);
@@ -2647,18 +2726,8 @@ function gameBody(a) {
   if (S.tab === 'ach' && window.achBody) return window.achBody(a) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
-    const play = gamePlaytime(a);
-    const stats = inst
-      ? [...playtimeRows(a, play), [t('Last played'), play.last_played ? ago(play.last_played).replace(/^./, (c) => c.toLocaleUpperCase(curLocale())) : t('Not yet')], [t('Version'), (inst.tag || (inst.installer_setup ? t('Not set up yet') : t('Not known'))) + (S.updates[id] ? ' · ' + t('update ready') : (S.held || {})[id] ? ' · ' + t('updates paused') : '')], [t('Installed'), date(inst.installed_at * 1000)]]
-      : [[t('Released'), date(a.released) || '—'], [t('Downloads'), a.downloads ? fmtN(a.downloads) : '—'], [t('Version'), a.version || '—'], [starsLabel(a.repo), isSF(a.repo) ? t('N/A') : starsText(a) || '—']];
-    // Under the version: how the store checked that release (a player's own game has none). Before
-    // installing it's the latest release, so the player sees it was checked before downloading it.
-    // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").
-    const verTag = inst ? (inst.local ? '' : inst.tag) : a.tag || a.version;
-    const verScan = verTag ? scanPill({ id, tag: verTag }) : '';
-    if (!inst && play?.last_played) stats.unshift(...playtimeRows(a, play));
-    body = `<div class="stack"><div class="stats" style="--stat-cols:${stats.length}">${stats.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b>${k === t('Version') ? verScan : ''}${inst && k === t('Installed') ? selfManagedPill(id) : ''}</div>`).join('')}</div>
-      ${inst ? playCard(inst) : ''}
+    body = `<div class="stack">${gameStrip(a, inst)}
+      ${inst ? playCard(inst, a) : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
       ${ownAboutCard(id)}
