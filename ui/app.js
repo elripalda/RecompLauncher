@@ -1281,15 +1281,17 @@ function supportCard(a) {
   const sdk = local ? 'release' : sup && sup.sdk ? sup.sdk : 'unknown';
   const hh = a.handheld && a.handheld.ok;
   const saves = who('saves') === 'dev' ? 'dev' : 'launcher';
+  // Six equal tiles: lit when it works here (with who made it work), dashed when not yet. The longer
+  // description is the tile's tooltip.
   const rows = [
-    [t('Easy Setup'), t('Pick your copy and the launcher sets it up.'), who('easy_setup')],
-    [t('Game Settings in the Launcher'), t('Change the game\'s own settings from its page.'), who('settings')],
-    [t('Full Setup Step'), t('The recomp\'s own setup step, run for you.'), who('prepare')],
-    [t('Verified Copies Badge'), t('Shows when your copy matches a known good one.'), who('verified')],
-    [t('Save Backups and Cloud Saves'), saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : t('Always on from the launcher\'s side.'), saves],
-    [t('Handheld Rating'), hh ? tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') || t('several players') }) : t('From handheld players\' reports. None yet.'), hh ? 'players' : ''],
+    [t('Easy Setup'), t('Pick your copy and the launcher sets it up.'), who('easy_setup'), '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>'],
+    [t('Game Settings'), t('Change the game\'s own settings from its page.'), who('settings'), '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'],
+    [t('Full Setup Step'), t('The recomp\'s own setup step, run for you.'), who('prepare'), '<path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-3-1-1-3z"/>'],
+    [t('Verified Copies'), t('Shows when your copy matches a known good one.'), who('verified'), '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2 2 4-4"/>'],
+    [t('Cloud Saves'), saves === 'dev' ? t('The recomp tells the launcher exactly where it saves.') : t('Always on from the launcher\'s side.'), saves, '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8.5a4 4 0 0 1 0 9.5z"/>'],
+    [t('Handheld Rating'), hh ? tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') || t('several players') }) : t('From handheld players\' reports. None yet.'), hh ? 'players' : '', '<rect x="2.5" y="7" width="19" height="10" rx="3"/><path d="M7 10.5v3M5.5 12h3M16 11h.01M18 13h.01"/>'],
   ];
-  const tag = (w) => (w === 'dev' ? `<span class="tag ok">${esc(t('From Manifest'))}</span>` : w === 'launcher' ? `<span class="tag cy">${esc(t('By RecompLauncher'))}</span>` : w === 'players' ? `<span class="tag">${esc(t('By Players'))}</span>` : '');
+  const src = (w) => (w === 'dev' ? t('From Manifest') : w === 'launcher' ? t('By RecompLauncher') : w === 'players' ? t('By Players') : '');
   // What the developer's own file could add (the handheld rating comes from players).
   const missing = rows.slice(0, 4).some((r) => !r[2]);
   const source = local ? t('Manifest found in the installed files.') : sdk === 'release' ? t('Manifest included with the release.') : sdk === 'repo' ? t('Manifest in the project repository.') : '';
@@ -1297,13 +1299,13 @@ function supportCard(a) {
   // manifest may have been supplied by the player, launcher, or another contributor.
   const owner = a.maintained_by === 'official' ? 'project' : ['project', 'launcher', 'community'].includes(a.maintained_by) ? a.maintained_by : 'unconfirmed';
   const ask = a.repo && (sdk === 'none' || missing);
-  const row = ([k, d, w]) => `<div class="set-row"><div class="k"><b>${esc(k)}</b><span>${esc(d)}</span></div><div class="acts">${tag(w)}${okMark(w ? true : null)}</div></div>`;
+  const svg = (d, cls) => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const tile = ([k, d, w, icon]) => `<div class="sup-tile${w ? ' on' : ''}" title="${esc(d)}"><span class="sup-top">${svg(icon, 'sup-i')}${w ? svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'sup-ok') : `<small>${esc(t('Not yet'))}</small>`}</span><b>${esc(k)}</b>${src(w) ? `<small class="sup-src">${esc(src(w))}</small>` : ''}<span class="sr">${esc(w ? t('Yes') : t('Not yet'))}</span></div>`;
   return `<div class="card sup-card"><div class="card-h"><h3>${esc(t('Launcher Support'))}</h3></div>
-    <p class="muted">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
-    ${rows.map(row).join('')}
-    ${source ? `<p class="muted">${esc(source)}</p>` : ''}
-    <p class="sup-own">${esc(t(OWNER_LONG[owner]))}</p>
-    ${ask ? `<p>${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p><div class="acts"><button type="button" class="btn" data-act="url" data-url="${esc(askSupportUrl(a))}">${esc(t('Ask the Developer'))}</button></div>` : ''}</div>`;
+    <p class="muted sup-sub">${esc(tf('What RecompLauncher can do for {name}, and who made it work.', { name: a.name }))}</p>
+    <div class="sup-grid">${rows.map(tile).join('')}</div>
+    <div class="sup-foot"><b class="sup-own sup-${owner}">${esc(t(OWNER_LONG[owner]))}</b>${source ? `<span>${esc(source)}</span>` : ''}</div>
+    ${ask ? `<p class="sup-ask">${esc(t('Is a feature missing? Ask the developer to add RecompLauncher support.'))}</p><div class="acts"><button type="button" class="btn" data-act="url" data-url="${esc(askSupportUrl(a))}">${esc(t('Ask the Developer'))}</button></div>` : ''}</div>`;
 }
 
 // The other versions of this game that are installed too.
