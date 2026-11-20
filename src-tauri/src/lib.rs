@@ -3510,7 +3510,10 @@ fn start_game_with_monitor_context(
             ingame::set_hotkeys(&app2, false, false);
             ingame::hide_overlay(&app2);
             discord::send(discord::Msg::Clear);
-            if from_bp && mine {
+            // Minimized for the game, by the player's setting or because its web engine died
+            // during play (see remake_main): open again now.
+            let remade = webview_crash::take_minimized_for_play();
+            if (from_bp && mine) || remade {
                 show_main(&app2);
             }
         }
@@ -8998,9 +9001,15 @@ pub(crate) async fn remake_main(app: &AppHandle, shown: Shown) {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let Some(mut config) = app.config().app.windows.iter().find(|c| c.label == "main").cloned() else { return };
-    // Never in front of a game being played: it comes back minimized then.
+    // Never in front of a game being played: it comes back minimized then, and opens when the game
+    // ends.
     let playing = !app.state::<App>().running.lock().unwrap().is_empty();
-    let shown = if playing && shown == Shown::Open { Shown::Minimized } else { shown };
+    let shown = if playing && shown == Shown::Open {
+        webview_crash::set_minimized_for_play();
+        Shown::Minimized
+    } else {
+        shown
+    };
     config.focus = shown == Shown::Open;
     UI_READY.store(false, Ordering::Relaxed);
     // Windows are made on the main thread.

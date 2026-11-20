@@ -43,6 +43,9 @@ const MOST: usize = 3;
 static RECOVERED: Mutex<Vec<Instant>> = Mutex::new(Vec::new());
 /// The main window is being made again, or was given up on.
 static MAIN_GONE: AtomicBool = AtomicBool::new(false);
+/// The main window was open when its engine died during play, and came back minimized so as not
+/// to cover the game. It opens again when the game ends.
+static MINIMIZED_FOR_PLAY: AtomicBool = AtomicBool::new(false);
 
 fn next(past: &[Instant], now: Instant) -> Act {
     if past.len() >= MOST {
@@ -64,6 +67,15 @@ pub fn set_main_gone(gone: bool) {
 /// window back.
 pub fn main_gone() -> bool {
     MAIN_GONE.load(Ordering::Relaxed)
+}
+
+pub fn set_minimized_for_play() {
+    MINIMIZED_FOR_PLAY.store(true, Ordering::Relaxed);
+}
+
+/// The game ended: was the main window minimized only because it was made again during play?
+pub fn take_minimized_for_play() -> bool {
+    MINIMIZED_FOR_PLAY.swap(false, Ordering::Relaxed)
 }
 
 /// Starts watching a window's engine.
