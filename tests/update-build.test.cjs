@@ -25,6 +25,19 @@ test('a game brought in by hand (not in the catalog\'s Easy Setup list) gets the
   assert.equal(c.updateBuildDue('g'), true);
 });
 
+test('its copy rows say the copy isn\'t needed when it builds from what it kept, not to insert it', () => {
+  const src = app.slice(app.indexOf('// Easy Setup\'s answer for a game, worked out by the core'), app.indexOf('// Turnkey:'));
+  const S = { easy: new Set(['g']), library: { g: { name: 'G' } }, setup: { g: { needs: 'Your copy', copy: null, status: { ready: false, reason: 'rebuild', detail: 'kept', changed: true } } } };
+  const c = new Function('S', 't', 'tf', 'byId', `${src} return { copyNotNeeded, copyGoneText };`)(S, (s) => s, tf, () => null);
+  assert.equal(c.copyNotNeeded('g'), true);
+  assert.equal(c.copyGoneText('g'), 'Your copy isn\'t needed: it\'s built again from what it kept last time.');
+  // Built again from the copy: that copy is still asked for.
+  S.setup.g.status = { ready: false, reason: 'rebuild', detail: '', changed: true };
+  assert.equal(c.copyNotNeeded('g'), false);
+  // Before You Play uses it.
+  assert.match(fn(app, 'readyRows'), /\|\| copyNotNeeded\(id\)\)\);/);
+});
+
 test('the options the update added start as their developer set them', () => {
   assert.match(fn(upd, 'updateBuildModal'), /const updOpts = Object\.fromEntries\(newPrepOpts\(su\)\.map\(\(o\) => \[o\.id, !!o\.on\]\)\);/);
 });

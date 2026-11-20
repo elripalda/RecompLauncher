@@ -227,8 +227,9 @@ const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id)
 const updateBuildDue = (id) => { const st = setupStatus(id); return !!st && !st.ready && !!st.changed; };
 // Built from the player's copy, which isn't where it was anymore: the core says the game plays
 // without it, so its copy rows say so (desktop and Big Picture) instead of asking for it.
-const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && st.ready && st.reason === 'built'); };
-const copyGoneText = (id) => tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
+// After an update, one built again from what its setup step kept doesn't need the copy either.
+const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && ((st.ready && st.reason === 'built') || (updateBuildDue(id) && st.detail === 'kept'))); };
+const copyGoneText = (id) => updateBuildDue(id) ? t('Your copy isn\'t needed: it\'s built again from what it kept last time.') : tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
 // Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
@@ -1356,7 +1357,8 @@ function readyRows(a) {
   const cs = su && su.needs ? copyState(id, su) : null;
   // Set up without a copy to show: built from the copy (it plays without it), or their own build.
   const st = setupStatus(id);
-  const builtOnly = !!(cs && !cs.file && st && st.ready && (st.reason === 'built' || st.reason === 'own_build'));
+  // (or, after an update, built again from what its setup step kept)
+  const builtOnly = !!(cs && !cs.file && st && ((st.ready && (st.reason === 'built' || st.reason === 'own_build')) || copyNotNeeded(id)));
   if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: st.reason === 'own_build' ? t('Your own build') : copyGoneText(id), fix: '' });
   else if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
     d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
