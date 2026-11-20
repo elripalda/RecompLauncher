@@ -99,8 +99,9 @@ goes along; what it writes anywhere else is left behind. So:
 - **Don't depend on `$APPIMAGE`.** On Linux the launcher always unpacks your AppImage and runs it
   from a plain folder, so `APPIMAGE` is never set (see [AppImages](#appimages)).
 - **Never update yourself when `RECOMPLAUNCHER=1`.** Your game and your setup step both get it,
-  and the launcher installs every release you publish. If only a flag turns your updater off,
-  put it in `start.args`, like `"args": ["--no-update-check"]`.
+  and the launcher brings players every release you publish, by itself once they turn on
+  automatic updates. If only a flag turns your updater off, put it in `start.args`, like
+  `"args": ["--no-update-check"]`.
 
 ```json
 "start": { "program": ["MyRecomp.exe"], "args": ["--data", "{data}"] },
@@ -202,7 +203,7 @@ RecompLauncher 0.90 Beta 54 and older find an app in `start.program` and `prepar
 its program's own path, which works everywhere: `"MyGame.app/Contents/MacOS/MyGame"`.
 
 If your game updates itself (Sparkle, say), skip that when `RECOMPLAUNCHER` is set: the
-launcher installs each of your releases over the app, and two updaters on one app fight.
+launcher installs your releases over the app, and two updaters on one app fight.
 
 Two examples are worth reading:
 
