@@ -37,12 +37,54 @@ async function whatsNew() {
   if (!ui.seen_version && !S.settings.setup_done) return saveUi({ seen_version: S.version });
   // Downloads > Updates lists the launcher's own updates too.
   if (ui.seen_version && !(ui.self_updates || []).some((u) => u.to === S.version)) await saveUi({ self_updates: [{ from: ui.seen_version, to: S.version, when: Math.floor(Date.now() / 1000) }].concat(ui.self_updates || []).slice(0, 20) }, true);
+  const from = ui.seen_version;
+  // Show What's New After an Update off (Settings → Updates and Downloads): the notes stay in
+  // Settings → Changelog.
+  if (ui.whats_new_off) return saveUi({ seen_version: S.version });
   let v = null;
   try { v = await invoke('launcher_notes'); } catch (e) { /* offline: next time */ return; }
   await saveUi({ seen_version: S.version });
   if (!v || v.version !== S.version || !v.notes) return;
-  modal(`<div class="whatsnew"><h2>${esc(tf('What\'s new in RecompLauncher {version}', { version: verName(S.version) }))}</h2><div class="md">${md(v.notes, true)}</div>
-    <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Got it'))}</button></div></div>`, () => {}, t('What\'s new'));
+  if (tvOn()) {
+    modal(`<div class="whatsnew"><h2>${esc(tf('What\'s new in RecompLauncher {version}', { version: verName(S.version) }))}</h2><div class="md">${md(v.notes, true)}</div>
+      <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Got it'))}</button></div></div>`, () => {}, t('What\'s new'));
+    return;
+  }
+  whatsNewCard(v, from);
+}
+// After an update, on the desktop: a small card in the corner instead of a window, since the
+// update window already showed the notes before. Its points are the first three Added or Improved
+// lines of the notes (their bold part), the rest is a count. It goes after ten seconds, but not
+// while the pointer is on it, and leaves nothing behind.
+const WN_MS = 10000;
+function whatsNewCard(v, from) {
+  const items = noteItems(v.notes);
+  const picks = items.filter((x) => x.verb !== 'Fixed' && x.title).slice(0, 3);
+  const more = items.length - picks.length;
+  const points = picks.map((x) => `<li><span>${esc(x.title)}</span></li>`).join('') + (picks.length && more ? `<li class="more"><span>${esc(tn(more, 'and 1 more change', 'and {n} more changes'))}</span></li>` : '');
+  const card = document.createElement('div');
+  card.className = 'wn-card';
+  card.setAttribute('role', 'status');
+  card.innerHTML = `<div class="wn-top"><img class="wn-mark" src="img/mark.svg" alt=""><div class="wn-h"><h3>${esc(tf('Updated to {version}', { version: verName(S.version) }))}</h3>${from ? `<span>${esc(tf('From {version}', { version: verName(from) }))}</span>` : ''}</div>
+      <button type="button" class="wn-x" data-x="close" aria-label="${esc(t('Close'))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    ${points ? `<ul>${points}</ul>` : ''}
+    <div class="wn-bot"><label class="wn-chk"><input type="checkbox" data-x="off">${esc(t('Don\'t show this after updates'))}</label><button type="button" class="btn sm main" data-x="open">${esc(t('See What\'s New'))}</button></div>`;
+  document.body.append(card);
+  let timer = 0;
+  const close = () => { clearTimeout(timer); card.classList.add('out'); setTimeout(() => card.remove(), 300); };
+  const arm = () => { clearTimeout(timer); timer = setTimeout(close, WN_MS); };
+  card.addEventListener('mouseenter', () => clearTimeout(timer));
+  card.addEventListener('mouseleave', arm);
+  card.addEventListener('focusin', () => clearTimeout(timer));
+  card.addEventListener('focusout', (e) => { if (!card.contains(e.relatedTarget) && !card.matches(':hover')) arm(); });
+  card.addEventListener('change', (e) => { if (e.target.dataset.x === 'off') saveUi({ whats_new_off: e.target.checked }, true); });
+  card.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-x]');
+    if (!b) return;
+    close();
+    if (b.dataset.x === 'open') setSection('changelog');
+  });
+  arm();
 }
 
 // ---------- Get it on my PC ----------
