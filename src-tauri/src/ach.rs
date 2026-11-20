@@ -2041,6 +2041,7 @@ fn build_toast(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         .inner_size(TOAST_W, TOAST_H)
         .build()?;
     crate::rest(&w, true);
+    crate::webview_crash::watch(&w);
     Ok(w)
 }
 
