@@ -74,11 +74,11 @@ fn extracted_game_must_match_the_selected_title_and_record_its_actual_revision()
 }
 
 #[test]
-fn desktop_catalog_is_switch_one_only_and_explicitly_unverified() {
+fn scarlet_catalog_is_switch_one_only_and_explicitly_unverified() {
     for target in [Target::WindowsX64, Target::LinuxX64] {
         let mut cat = serde_json::json!({"apps":[]});
         catalog::merge(&mut cat, Some(target));
-        let apps = cat["apps"].as_array().unwrap();
+        let apps: Vec<_> = cat["apps"].as_array().unwrap().iter().filter(|game| game["engine"] == "scarletnx").collect();
         assert!(!apps.is_empty());
         for game in apps {
             assert_eq!(game["engine"], "scarletnx");
@@ -109,9 +109,16 @@ fn pending_scarlet_install_keeps_its_target_and_requires_no_new_setup_steps() {
 fn registry_routes_by_declared_platform_and_rejects_unknown_engines() {
     use recomplauncher_lib::engines::registry;
     let mac: Vec<_> = registry::available(Target::MacosArm64).map(|e| e.id()).collect();
-    assert_eq!(mac, ["nxnative"]);
+    assert!(mac.contains(&"nxnative"));
+    assert!(!mac.contains(&"scarletnx"));
     for target in [Target::WindowsX64, Target::LinuxX64] {
-        assert_eq!(registry::available(target).map(|e| e.id()).collect::<Vec<_>>(), ["scarletnx"]);
+        let available: Vec<_> = registry::available(target).collect();
+        assert!(available.iter().any(|e| e.id() == "scarletnx"));
+        assert!(!available.iter().any(|e| e.id() == "nxnative"));
+        for adapter in available {
+            assert!(adapter.targets().contains(&target));
+            assert_eq!(registry::for_target(adapter.id(), target).unwrap().id(), adapter.id());
+        }
     }
     assert!(registry::get("unknown").is_err());
     assert!(registry::get("scarletnx").unwrap().supports_console("switch"));

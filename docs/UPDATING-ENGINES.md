@@ -1,14 +1,44 @@
 # Updating engines and game profiles
 
 This is the maintenance procedure for both an engine update and a game-profile update.
-The adapters integrate nxnative directly on Apple silicon Mac and experimental ScarletNX on
-Windows/Linux x86-64. Follow [Adding an engine](ADDING-ENGINES.md) for the plugin contract and
+Each adapter owns its upstream source, game-system support and host build/runtime route.
+Follow [Adding an engine](ADDING-ENGINES.md) for the plugin contract and
 automatic discovery. Keep shared storage, jobs and pins independent of individual engines.
 
 Engine manifests and game catalogs are currently compiled into RecompLauncher. Updating these
 files requires rebuilding the launcher. The app downloads the exact pinned components when
 needed; it does not follow an upstream branch or dynamically replace installed games.
 See [the integration guide](ENGINE-INTEGRATION.md) for the player workflow and current limits.
+
+## Updating a generic pipeline or its catalog
+
+Read the adapter's own `src-tauri/src/engines/adapters/<adapter>/README.md` before changing its
+checkpoint. It documents the exact artifacts, transitive dependencies, import commands, native
+smoke tests and unverified targets. Keep every engine-specific rule in that adapter directory.
+
+1. Inspect the new upstream preparation and direct-launch contracts, identity formats, runtime
+   dependencies and writable paths. Verify actual archives, not just release metadata. Retain
+   source/dependency notices and update every affected recipe hash together.
+2. Regenerate profiles or compatibility reports using the adapter's importer. Adding a game
+   must not add title-specific build code here. Ready profiles belong upstream; engines requiring
+   per-title developer ports remain deferred. Review skipped/ambiguous rows explicitly.
+3. Keep upstream reports, disc/title metadata and artwork evidence distinct. Reports from another
+   revision are unverified for the pinned package until tested. Verify cover/hero URLs return
+   image bytes, without turning artwork availability into a compatibility claim.
+4. Run contract tests, the actual native preparation route, registration/recovery and relocation.
+   Include the launcher's registration phase: a native build can succeed while its required-file
+   paths or save declarations are invalid. Test cross-volume copy behavior for packages containing
+   links. Check real backup inclusion/exclusion, not only profile strings.
+5. Preserve frozen builds and completed results. A current recommendation changes fresh installs
+   and eligible explicit pending retries; it never replaces a game's recorded runtime on Play.
+
+The generic `prepared` pipeline uses versioned input signatures for new pending installations.
+Tree signatures include nested file metadata and link targets without claiming content hashes or
+verified disc sets. Older pending records retain their original policy and work-directory identity.
+New pending records freeze the input declaration too, so updating adapter labels or formats does
+not invalidate recovery. Changed-checkpoint retries can refresh that declaration explicitly.
+Runtime fingerprints cover the native program and required files, and are rechecked when a
+completed result is registered or recovered. This verification does not recompile the game.
 
 ## Where changes belong
 

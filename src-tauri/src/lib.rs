@@ -1549,11 +1549,12 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
+    let _mutation = InstallationMutation::acquire(&st,&id)?;
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     if g.local {
         return Err(Error::Msg("A local build stays in its own folder.".into()));
     }
-    if st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+    if st.jobs.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
     if library::shared_folder(&g.path, &st.lib.lock().unwrap().settings.all_libraries()) {
@@ -1563,7 +1564,6 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     if dest == g.path {
         return Ok(g);
     }
-    let _mutation = InstallationMutation::acquire(&st,&id)?;
     if setup_busy(&id) { return Err(Error::Msg(MOVING.into())); }
     engines::pending::check_move(&g).map_err(Error::Msg)?;
     // The player copied it there already: the launcher can use that copy, and the old folder stays
@@ -1584,10 +1584,11 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
         return Ok(out);
     }
     looks::tidy(&st.dir, &id);
+    let move_files = if g.engine_build.is_some() { manage::move_portable_dir } else { manage::move_dir };
     let (from, d2, app2, id2) = (g.path.clone(), dest.clone(), app.clone(), id.clone());
     let r = tokio::task::spawn_blocking(move || {
         let last = std::cell::Cell::new(Instant::now());
-        manage::move_dir(&from, &d2, &|done, total| {
+        move_files(&from, &d2, &|done, total| {
             if last.get().elapsed().as_millis() > 150 || done == total {
                 last.set(Instant::now());
                 let _ = app2.emit("move", json!({"id": id2, "done": done, "total": total}));
@@ -5705,27 +5706,228 @@ fn setup_key_remove(st: State<'_, App>, id: String, input: String) -> Res<()> {
     Ok(())
 }
 
-fn engine_setup(app: AppHandle, st: &App, id: String, g: Installed) -> Res<()> {
-    let mutation = InstallationMutation::acquire(st,&id)?;
-    let original = g;
-    let mut g = engines::pending::for_setup(&original).map_err(Error::Msg)?;
-    let p = engines::pending::profile(&g).map_err(Error::Msg)?.ok_or_else(|| Error::Msg("No pending game preparation.".into()))?;
-    inputs::resolve(&p, &g, &st.dir).map_err(Error::Msg)?;
-    let signature = engines::input_signature(&p, &g, &st.dir).map_err(Error::Msg)?;
-    {
-        let mut library = st.lib.lock().unwrap();
-        let current = library.installed.get(&id).ok_or_else(|| Error::Msg(MOVING.into()))?;
-        if !engines::pending::same_installation(&original,current) { return Err(Error::Msg(MOVING.into())); }
-        // Checkpoint migration changes build metadata only. Start from the latest record so
-        // preferences or input choices saved since the initial snapshot are never overwritten.
-        g = engines::pending::for_setup(current).map_err(Error::Msg)?;
-        if engines::input_signature(&p, &g, &st.dir).map_err(Error::Msg)? != signature { return Err(Error::Msg("Your selected files changed. Retry Setup with the current selection.".into())); }
-        if original.engine_build != g.engine_build {
-            let old = library.clone();
-            library.put(&id,g.clone());
-            if let Err(error) = library.save(&st.dir) { *library=old; return Err(error.into()); }
+#[cfg(test)]
+mod engine_setup_completion_tests {
+    use super::*;
+
+    fn assert_run_lock_available() {
+        let start = std::time::Instant::now();
+        // Other fixtures briefly publish under this shared lock; this calling thread must not own it.
+        while SETUP_RUN.try_lock().is_err() {
+            assert!(start.elapsed() < std::time::Duration::from_millis(250), "worker retained the global setup lock");
+            std::thread::yield_now();
         }
     }
+
+    struct Fixture { app: App, game: Installed, signature: String, run: u64 }
+    impl Fixture {
+        fn new(title: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("rl-engine-completion-{title}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let mut title_record = engines::catalog::game("scarletnx-0100633007d48000").unwrap();
+            title_record.title_id = format!("0100000000{title}");
+            let mut game = engines::pending::create_for(&title_record, engines::Target::WindowsX64, &root.join("game")).unwrap();
+            let mut pending = engines::pending::read(&game).unwrap().unwrap();
+            pending.input_signature_version = engines::InputSignatureVersion::TreeV1;
+            pending.input_profile = Some(serde_json::from_value(json!({"format":1,"inputs":[
+                {"id":"base","label":"Owned fixture folder","formats":[{"type":"folder"}]}
+            ]})).unwrap());
+            game.engine_build = Some(serde_json::to_value(pending).unwrap());
+            std::fs::create_dir_all(root.join("source")).unwrap();
+            std::fs::write(root.join("source/content.bin"), b"owned fixture").unwrap();
+            game.setup_inputs.insert("base".into(), root.join("source"));
+            let profile = engines::pending::profile(&game).unwrap().unwrap();
+            let signature = engines::input_signature(&profile, &game, &root).unwrap();
+            let mut library = Library::default();
+            library.put(&game.id, game.clone());
+            let app = tests::app_in(&root, library);
+            let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
+            SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(game.id.clone(), run);
+            Self { app, game, signature, run }
+        }
+        fn ready(&self) -> Installed {
+            let mut ready = self.game.clone();
+            ready.engine_build = Some(json!({"frozen_fixture":true}));
+            ready.exe = Some("Game/runtime".into());
+            ready.files = vec!["Game/Runtime".into()];
+            ready.inputs_ready = self.signature.clone();
+            ready.version = "prepared-version".into();
+            ready.pinned = true;
+            ready.auto_update = false;
+            ready.mode = library::SetupMode::Easy;
+            ready.setup_before = None;
+            ready
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            if let Some(runs) = SETUP_RUN.lock().unwrap().as_mut() { runs.remove(&self.game.id); }
+            let _ = std::fs::remove_dir_all(&self.app.dir);
+        }
+    }
+
+    #[test]
+    fn activation_releases_global_locks_and_preserves_concurrent_preferences() {
+        let f = Fixture::new("000001");
+        let ready = f.ready();
+        finish_engine_setup(&f.app, f.run, &f.game, &f.signature, &ready, &AtomicBool::new(false), &|_, result, _| {
+            assert_run_lock_available();
+            let mut library = f.app.lib.try_lock().expect("activation must not hold the library lock");
+            let latest = library.installed.get_mut(&f.game.id).unwrap();
+            latest.name = "My renamed game".into();
+            latest.args = "--my-launch-option".into();
+            latest.picks.insert("resolution".into(), 2);
+            latest.played_secs = 42;
+            Ok(result.clone())
+        }).unwrap();
+        let library = f.app.lib.lock().unwrap();
+        let actual = &library.installed[&f.game.id];
+        assert_eq!(actual.name, "My renamed game");
+        assert_eq!(actual.args, "--my-launch-option");
+        assert_eq!(actual.picks["resolution"], 2);
+        assert_eq!(actual.played_secs, 42);
+        assert_eq!(actual.engine_build, ready.engine_build);
+        assert_eq!(actual.exe, ready.exe);
+        assert_eq!(actual.inputs_ready, f.signature);
+    }
+
+    #[test]
+    fn changed_input_selection_after_activation_keeps_result_without_publishing() {
+        let f = Fixture::new("000002");
+        let marker = f.game.path.join("completed-result");
+        let result = finish_engine_setup(&f.app, f.run, &f.game, &f.signature, &f.ready(), &AtomicBool::new(false), &|_, ready, _| {
+            std::fs::write(&marker, b"completed work").unwrap();
+            let mut library = f.app.lib.lock().unwrap();
+            library.installed.get_mut(&f.game.id).unwrap().setup_inputs.insert("base".into(), f.app.dir.join("new-choice"));
+            Ok(ready.clone())
+        });
+        assert!(result.unwrap_err().contains("changed"));
+        assert!(marker.is_file());
+        assert_eq!(f.app.lib.lock().unwrap().installed[&f.game.id].engine_build, f.game.engine_build);
+    }
+
+    #[test]
+    fn replacement_generation_during_activation_prevents_publication() {
+        let f = Fixture::new("000004");
+        let result = finish_engine_setup(&f.app, f.run, &f.game, &f.signature, &f.ready(), &AtomicBool::new(false), &|_, ready, _| {
+            let mut library = f.app.lib.lock().unwrap();
+            library.installed.get_mut(&f.game.id).unwrap().engine_build.as_mut().unwrap()["generation"] = json!("replacement");
+            Ok(ready.clone())
+        });
+        assert!(result.unwrap_err().contains("changed"));
+        assert_eq!(f.app.lib.lock().unwrap().installed[&f.game.id].engine_build.as_ref().unwrap()["generation"], "replacement");
+    }
+
+    #[test]
+    fn cancellation_precedes_initial_input_filesystem_checks() {
+        let f = Fixture::new("000005");
+        std::fs::remove_dir_all(f.app.dir.join("source")).unwrap();
+        let result = refresh_engine_setup(&f.app, f.run, &f.game, &AtomicBool::new(true));
+        assert_eq!(result.err().unwrap(), "Stopped.");
+        assert!(f.app.lib.try_lock().is_ok());
+        assert_run_lock_available();
+    }
+
+    #[test]
+    fn stop_during_activation_prevents_publication() {
+        let f = Fixture::new("000003");
+        let result = finish_engine_setup(&f.app, f.run, &f.game, &f.signature, &f.ready(), &AtomicBool::new(false), &|_, ready, _| {
+            assert_run_lock_available();
+            setup_cancel(f.game.id.clone());
+            Ok(ready.clone())
+        });
+        assert_eq!(result.unwrap_err(), "Stopped.");
+        assert_eq!(f.app.lib.lock().unwrap().installed[&f.game.id].engine_build, f.game.engine_build);
+    }
+}
+
+fn engine_setup_matches(expected: &Installed, current: &Installed) -> bool {
+    engines::pending::same_installation(expected, current)
+        && expected.setup_inputs == current.setup_inputs && expected.runtime_off == current.runtime_off
+        && expected.game_copy == current.game_copy && expected.update_copy == current.update_copy
+        && expected.input_staged == current.input_staged && expected.prepare_opts == current.prepare_opts
+        && expected.build_dir == current.build_dir && expected.prebuilt == current.prebuilt
+}
+
+fn refresh_engine_setup(st: &App, run: u64, original: &Installed, cancel: &AtomicBool) -> Result<(Installed, String), String> {
+    let stopped = || cancel.load(Ordering::Relaxed) || setup_stopped(&original.id, run);
+    if stopped() { return Err("Stopped.".into()); }
+    let snapshot = {
+        let library = st.lib.lock().unwrap();
+        let current = library.installed.get(&original.id).ok_or(MOVING)?;
+        if !engine_setup_matches(original, current) { return Err("The installation or selected files changed. Retry Setup.".into()); }
+        current.clone()
+    };
+    // Checkpoint checks and recursive input fingerprints can touch large folders.
+    let refreshed = engines::pending::for_setup(&snapshot)?;
+    let profile = engines::pending::profile(&refreshed)?.ok_or("No pending game preparation.")?;
+    let signature = engines::input_signature_with_cancel(&profile, &refreshed, &st.dir, &stopped)?;
+    let runs = SETUP_RUN.lock().unwrap();
+    if runs.as_ref().and_then(|m| m.get(&original.id)) != Some(&run) || cancel.load(Ordering::Relaxed) { return Err("Stopped.".into()); }
+    let mut library = st.lib.lock().unwrap();
+    let current = library.installed.get(&original.id).ok_or(MOVING)?;
+    if !engine_setup_matches(&snapshot, current) { return Err("The installation or selected files changed. Retry Setup.".into()); }
+    let mut next = current.clone();
+    next.engine_build = refreshed.engine_build;
+    next.tag = refreshed.tag;
+    next.inputs_ready = refreshed.inputs_ready;
+    if snapshot.engine_build != next.engine_build {
+        let old = library.clone();
+        library.put(&original.id, next.clone());
+        if let Err(error) = library.save(&st.dir) { *library = old; return Err(error.to_string()); }
+    }
+    Ok((next, signature))
+}
+
+fn apply_engine_result(current: &mut Installed, result: &Installed) {
+    // Activation may finish after preferences change. Publish only the prepared build's fields.
+    current.engine_build = result.engine_build.clone();
+    current.exe = result.exe.clone();
+    current.version = result.version.clone();
+    current.tag = result.tag.clone();
+    current.asset = result.asset.clone();
+    current.sha256 = result.sha256.clone();
+    current.verified = result.verified;
+    current.inputs_ready = result.inputs_ready.clone();
+    current.files = result.files.clone();
+    current.auto_update = result.auto_update;
+    current.pinned = result.pinned;
+    current.setup_before = result.setup_before.clone();
+    current.mode = result.mode;
+}
+
+fn finish_engine_setup(
+    st: &App, run: u64, expected: &Installed, signature: &str, ready: &Installed, cancel: &AtomicBool,
+    activate: &dyn Fn(&Installed, &Installed, &dyn Fn() -> bool) -> Result<Installed, String>,
+) -> Result<(), String> {
+    let stopped = || cancel.load(Ordering::Relaxed) || setup_stopped(&expected.id, run);
+    if stopped() { return Err("Stopped.".into()); }
+    let snapshot = {
+        let library = st.lib.lock().unwrap();
+        let current = library.installed.get(&expected.id).ok_or("The game was removed during preparation.")?;
+        if !engine_setup_matches(expected, current) { return Err("The installation changed during preparation. The result has been kept.".into()); }
+        current.clone()
+    };
+    let profile = engines::pending::profile(expected)?.ok_or("No pending game preparation.")?;
+    if ready.inputs_ready != signature || engines::input_signature_with_cancel(&profile, &snapshot, &st.dir, &stopped)? != signature {
+        return Err("The selected files changed during preparation. The result has been kept.".into());
+    }
+    let active = activate(&snapshot, ready, &stopped)?;
+    let runs = SETUP_RUN.lock().unwrap();
+    if runs.as_ref().and_then(|m| m.get(&expected.id)) != Some(&run) || cancel.load(Ordering::Relaxed) { return Err("Stopped.".into()); }
+    let mut library = st.lib.lock().unwrap();
+    let current = library.installed.get(&expected.id).ok_or("The game was removed during preparation.")?;
+    if !engine_setup_matches(&snapshot, current) { return Err("The installation changed during preparation. The result has been kept.".into()); }
+    let mut merged = current.clone();
+    apply_engine_result(&mut merged, &active);
+    let old = library.clone();
+    library.put(&expected.id, merged);
+    if let Err(error) = library.save(&st.dir) { *library = old; return Err(error.to_string()); }
+    Ok(())
+}
+
+fn engine_setup(app: AppHandle, st: &App, id: String, g: Installed) -> Res<()> {
+    let mutation = InstallationMutation::acquire(st, &id)?;
     INPUT_WORKERS.lock().unwrap().push(id.clone());
     let run = SETUP_NEXT.fetch_add(1, Ordering::Relaxed);
     SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.clone(), run);
@@ -5748,30 +5950,22 @@ fn engine_setup(app: AppHandle, st: &App, id: String, g: Installed) -> Res<()> {
             let _ = app.emit("setup", ev);
         };
         emit(SetupEv { step: "read".into(), text: "Checking selected game files".into(), ..Default::default() });
-        let result = engines::coordinator::prepare(&http, &data, &g, cancel.clone(), &|progress| {
-            emit(SetupEv { step: "extras".into(), pct: progress.fraction.unwrap_or(0.0), text: progress.text.clone(), engine_progress: Some(progress), ..Default::default() });
-        });
         let st = app.state::<App>();
-        let result = result.and_then(|ready| {
-            let runs=SETUP_RUN.lock().unwrap();
-            if runs.as_ref().and_then(|m|m.get(&id)) != Some(&run) || cancel.load(Ordering::Relaxed) { return Err("Stopped.".into()); }
-            let mut l = st.lib.lock().unwrap();
-            let current = l.installed.get(&id).cloned().ok_or("The game was removed during preparation.")?;
-            if !engines::pending::same_installation(&g,&current) || engines::input_signature(&p, &current, &data)? != signature { return Err("The installation changed during preparation. The result has been kept.".into()); }
-            let ready=engines::coordinator::activate_output(&current,&ready,&||cancel.load(Ordering::Relaxed))?;
-            let old = l.clone();
-            l.put(&id,ready);
-            if let Err(e) = l.save(&data) { *l=old; return Err(e.to_string()); }
-            Ok(())
-        });
-        finished.store(true,Ordering::Relaxed);
-        if !setup_stopped(&id,run) {
+        let result = (|| {
+            let (g, signature) = refresh_engine_setup(&st, run, &g, &cancel)?;
+            let ready = engines::coordinator::prepare(&http, &data, &g, cancel.clone(), &|progress| {
+                emit(SetupEv { step: "extras".into(), pct: progress.fraction.unwrap_or(0.0), text: progress.text.clone(), engine_progress: Some(progress), ..Default::default() });
+            })?;
+            finish_engine_setup(&st, run, &g, &signature, &ready, &cancel, &engines::coordinator::activate_output)
+        })();
+        finished.store(true, Ordering::Relaxed);
+        if !setup_stopped(&id, run) {
             match result {
                 Ok(()) => emit(SetupEv { step: "done".into(), pct: 1.0, text: "Your game is ready to play.".into(), ..Default::default() }),
                 Err(e) => emit(SetupEv { step: "error".into(), text: e, ..Default::default() }),
             }
         }
-        if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() { if m.get(&id)==Some(&run) { m.remove(&id); } }
+        if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() { if m.get(&id) == Some(&run) { m.remove(&id); } }
         if let Some(m) = SETUP_STATUS.lock().unwrap().as_mut() { m.remove(&id); }
         INPUT_WORKERS.lock().unwrap().retain(|x| x != &id);
         setup_run_ended(&st, &id);

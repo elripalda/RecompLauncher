@@ -1,10 +1,17 @@
 use crate::engines::{catalog::EngineGame, jobs::CommandSpec};
 use std::path::Path;
 
+fn isolated_command(program: impl Into<std::path::PathBuf>, cwd: &Path) -> CommandSpec {
+    let mut command = CommandSpec::new(program, cwd);
+    // A user's nxnative or Python overrides must not change this pinned recipe.
+    command.remove_env = ["PYTHONPATH", "PYTHONHOME", "DM_GAMES_DIR", "DM_GAMES_FIRST", "DM_ALLOW_OTHER_METAL", "DM_EXPERIMENTAL_BUILDER", "NXB_BIN", "SPIRV_CROSS"].into_iter().map(str::to_owned).collect();
+    command
+}
+
 pub fn command(game: &EngineGame, resources: &Path, work: &Path, keys: Option<&Path>, dotnet: Option<&Path>) -> CommandSpec {
     let python = resources.join("python/bin/python3");
     let engine = work.join("engine");
-    let mut cmd = CommandSpec::new(python, &engine);
+    let mut cmd = isolated_command(python, &engine);
     cmd.args = vec!["-c".into(), include_str!("watch_parent.py").into(), engine.join("scripts/build_ipa_from_nsp.py").display().to_string(), work.join("inputs").display().to_string(),
         "--title-id".into(), game.title_id.clone(), "--package".into(), game.package.clone(), "--platform".into(), "mac-app".into(),
         "--progress".into(), "json".into(), "--work-dir".into(), work.join("build").display().to_string(),
@@ -91,7 +98,7 @@ pub async fn provision(http: &reqwest::Client, data: &Path, cancel: std::sync::A
     fs::write(&config, serde_json::to_vec(&serde_json::json!({"destination":stage,"python":python,"bottles":bottles,"wheels":wheels})).unwrap())?;
     let script = stage.join("bootstrap.py");
     fs::write(&script, include_str!("bootstrap_nxnative.py"))?;
-    let mut cmd = jobs::CommandSpec::new(python.join("bin/python3"), &stage);
+    let mut cmd = isolated_command(python.join("bin/python3"), &stage);
     cmd.args = vec!["-c".into(), include_str!("watch_parent.py").into(), script.display().to_string(), config.display().to_string()];
     cmd.env.extend([("PYTHONNOUSERSITE".into(),"1".into()),("PYTHONDONTWRITEBYTECODE".into(),"1".into())]);
     progress(0.0,"Preparing private build tools".into());

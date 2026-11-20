@@ -1,4 +1,4 @@
-use super::{catalog::EngineGame, PackagePin};
+use super::{catalog::EngineGame, InputSignatureVersion, PackagePin};
 use crate::{library::Installed, profile::Profile};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -11,6 +11,17 @@ pub struct Pending {
     pub state: String,
     pub game: EngineGame,
     pub package: PackagePin,
+    #[serde(default, skip_serializing_if = "InputSignatureVersion::is_legacy")]
+    pub input_signature_version: InputSignatureVersion,
+    /// Adapter label/format edits must not change a completed build's input contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_profile: Option<Profile>,
+}
+
+impl Pending {
+    pub fn profile(&self) -> Profile {
+        self.input_profile.clone().unwrap_or_else(|| self.game.setup_profile())
+    }
 }
 
 pub fn read(g: &Installed) -> Result<Option<Pending>, String> {
@@ -24,7 +35,7 @@ pub fn read(g: &Installed) -> Result<Option<Pending>, String> {
     Ok(Some(p))
 }
 
-pub fn profile(g: &Installed) -> Result<Option<Profile>, String> { Ok(read(g)?.map(|p| p.game.setup_profile())) }
+pub fn profile(g: &Installed) -> Result<Option<Profile>, String> { Ok(read(g)?.map(|p| p.profile())) }
 
 pub fn awaiting_registration(g: &Installed) -> bool {
     read(g).ok().flatten().is_some() && g.path.join(".engine-prepared.json").exists()
@@ -46,6 +57,7 @@ pub fn for_setup(g: &Installed) -> Result<Installed, String> {
     if super::registry::get(&p.game.engine)?.output_present(&g.path) { return Err("An existing game output has been kept. It must be recovered before preparing another version.".into()); }
     p.game = super::catalog::game(&g.id).ok_or("This game has no profile in the current engine checkpoint.")?;
     p.package = recommended;
+    if p.input_signature_version == InputSignatureVersion::TreeV1 { p.input_profile = Some(p.game.setup_profile()); }
     let label = super::package_label(&p.package);
     let mut next = g.clone();
     next.engine_build = Some(serde_json::to_value(p).map_err(|e| e.to_string())?);
@@ -66,7 +78,9 @@ pub fn create_for(game: &EngineGame, target: super::Target, path: &Path) -> Resu
     fs::create_dir_all(path.parent().ok_or("Missing installation parent.")?).map_err(|e| e.to_string())?;
     fs::create_dir(path).map_err(|e| e.to_string())?;
     let label = super::package_label(&package);
-    let p = Pending { generation:format!("{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), format:1, state:"pending".into(), game:game.clone(), package };
+    let input_signature_version = engine.input_signature_version();
+    let input_profile = (input_signature_version == InputSignatureVersion::TreeV1).then(|| engine.profile(game));
+    let p = Pending { generation:format!("{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), format:1, state:"pending".into(), game:game.clone(), package, input_signature_version, input_profile };
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
     Ok(Installed { id:game.id(), name:game.name.clone(), game:game.name.clone(), repo:engine.repo().into(),
         path:path.to_path_buf(), tag:label, installed_at:now, pinned:true,

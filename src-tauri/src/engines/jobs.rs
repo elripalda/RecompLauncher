@@ -6,10 +6,11 @@ pub struct CommandSpec {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
+    pub remove_env: Vec<String>,
     pub cwd: PathBuf,
 }
 impl CommandSpec {
-    pub fn new(program: impl Into<PathBuf>, cwd: &Path) -> Self { Self { program:program.into(), args:vec![], env:BTreeMap::new(), cwd:cwd.into() } }
+    pub fn new(program: impl Into<PathBuf>, cwd: &Path) -> Self { Self { program:program.into(), args:vec![], env:BTreeMap::new(), remove_env:vec![], cwd:cwd.into() } }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -44,9 +45,8 @@ fn stop_group(child: &mut std::process::Child) {
 pub fn run_process(spec: &CommandSpec, log: &Path, cancelled: &dyn Fn() -> bool, event: &dyn Fn(serde_json::Value)) -> Result<(), String> {
     if cancelled() { return Err("Stopped.".into()); }
     let mut cmd = Command::new(&spec.program);
+    for name in &spec.remove_env { cmd.env_remove(name); }
     cmd.args(&spec.args).envs(&spec.env).current_dir(&spec.cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    // The packaged interpreter/toolchain must not inherit a developer's overrides.
-    for name in ["PYTHONPATH", "PYTHONHOME", "DM_GAMES_DIR", "DM_GAMES_FIRST", "DM_ALLOW_OTHER_METAL", "DM_EXPERIMENTAL_BUILDER", "NXB_BIN", "SPIRV_CROSS"] { cmd.env_remove(name); }
     #[cfg(unix)] { use std::os::unix::process::CommandExt; cmd.process_group(0); }
     #[cfg(windows)] { use std::os::windows::process::CommandExt; use windows::Win32::System::Threading::{CREATE_SUSPENDED, CREATE_NO_WINDOW}; cmd.creation_flags(CREATE_SUSPENDED.0 | CREATE_NO_WINDOW.0); }
     let mut log = fs::File::create(log).map_err(|e| e.to_string())?;

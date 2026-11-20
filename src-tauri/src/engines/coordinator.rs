@@ -1,7 +1,32 @@
 use crate::library::{Installed, SetupMode};
 use std::{fs, path::Path, sync::{Arc, atomic::AtomicBool}};
-/// Copy package sources separately: nxnative builds tools and generated files in its engine tree.
+/// Build from a private copy so generated files cannot mutate a verified package cache.
 pub fn copy_tree(from: &Path, to: &Path, stopped: &dyn Fn() -> bool) -> Result<(), String> {
+    if stopped() { return Err("Stopped.".into()); }
+    fn destination(path: &Path) -> Result<std::path::PathBuf, String> {
+        use std::path::{Component, PathBuf};
+        let absolute = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir().map_err(|e| e.to_string())?.join(path) };
+        let mut resolved = PathBuf::new();
+        for part in absolute.components() {
+            match part {
+                Component::CurDir => continue,
+                Component::ParentDir => { resolved.pop(); }
+                Component::Prefix(_) | Component::RootDir => resolved.push(part.as_os_str()),
+                Component::Normal(name) => {
+                    resolved.push(name);
+                    match fs::symlink_metadata(&resolved) {
+                        Ok(_) => resolved = resolved.canonicalize().map_err(|e| e.to_string())?,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                        Err(e) => return Err(e.to_string()),
+                    }
+                }
+            }
+        }
+        Ok(resolved)
+    }
+    let base = from.canonicalize().map_err(|e| e.to_string())?;
+    // Resolve existing parent links even when the destination does not exist yet.
+    if destination(to)?.starts_with(&base) { return Err("A copy destination cannot be inside its source folder or replace the source itself.".into()); }
     fn copy(from: &Path, to: &Path, base: &Path, stopped: &dyn Fn() -> bool) -> Result<(), String> {
         if stopped() { return Err("Stopped.".into()); }
         let m = fs::symlink_metadata(from).map_err(|e| e.to_string())?;
@@ -18,7 +43,7 @@ pub fn copy_tree(from: &Path, to: &Path, stopped: &dyn Fn() -> bool) -> Result<(
         } else { return Err("A component contains an unsupported file type.".into()); }
         Ok(())
     }
-    copy(from, to, &from.canonicalize().map_err(|e| e.to_string())?, stopped)
+    copy(from, to, &base, stopped)
 }
 
 pub(super) fn validate_tree(root: &Path) -> Result<(), String> {

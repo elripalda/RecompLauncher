@@ -16,6 +16,7 @@ pub mod jobs;
 mod windows_job;
 pub mod coordinator;
 pub mod registry;
+pub mod prepared;
 include!(concat!(env!("OUT_DIR"), "/engine-adapters.rs"));
 
 pub fn package_for(engine: &str, target: Target) -> Result<PackagePin, String> {
@@ -29,10 +30,8 @@ pub fn preflight(engine: &str, target: Target) -> Result<(), String> {
 
 pub fn package_label(pin: &PackagePin) -> String { format!("{} {}", pin.engine, &pin.upstream_revision[..12]) }
 
-/// Work folders and prepared records written before setup fingerprints changed still use this hash.
-pub fn input_signature(profile: &crate::profile::Profile, game: &crate::library::Installed, data: &std::path::Path) -> Result<String, String> {
-    crate::inputs::signature_legacy(profile, game, data, false)
-}
+mod signatures;
+pub use signatures::{input_signature, input_signature_with_cancel, InputSignatureVersion};
 
 mod progress;
 pub use progress::Progress;

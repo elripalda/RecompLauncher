@@ -15,6 +15,8 @@ pub trait Adapter: Sync {
     fn profile(&self, game: &EngineGame) -> Profile;
     fn pin(&self, target: Target) -> Result<PackagePin, String>;
     fn preflight(&self) -> Result<(), String> { Ok(()) }
+    /// Only new pending records adopt this; retries and recovery use their saved version.
+    fn input_signature_version(&self) -> super::InputSignatureVersion { super::InputSignatureVersion::Legacy }
     /// An interrupted activation must be recovered before preparing another checkpoint.
     fn output_present(&self, install: &Path) -> bool;
     fn prepare(&self, http: &reqwest::Client, data: &Path, game: &Installed, cancel: Arc<AtomicBool>, progress: &(dyn Fn(Progress) + Send + Sync)) -> Result<Installed, String>;
