@@ -14,6 +14,7 @@ src-tauri/src/engines/
   catalog.rs                     # Merge adapter catalogs into Discover
   pending.rs, installed.rs       # Pending records and frozen prepared builds
   coordinator.rs, jobs.rs        # Dispatch, file helpers and owned processes
+  prepared.rs                    # Generic staging, frozen records and atomic activation
   packages.rs                    # Verified immutable package cache
   portable_move.rs               # Moving a prepared game between drives
   adapters/
@@ -62,10 +63,11 @@ engine ID in saved records. IDs must be unique across adapters.
 | --- | --- |
 | `id`, `repo`, `status` | Stable engine identity, upstream source and honest compatibility label. |
 | `targets` | Supported host OS/architecture combinations, not the console being recompiled. |
-| `systems` | Supported game-system IDs, such as `switch`, `switch2` or a future `gamecube` adapter. Declare only implemented routes. |
+| `systems` | Supported game-system IDs, such as `switch`, `switch2`, `gc`, `wii` or `ps2`. Declare only implemented routes. |
 | `games` | Normalized title metadata and engine-specific profile requirements, with source evidence. Unsupported systems must not appear. |
 | `artwork` | Exact-title cover/hero metadata. Artwork is independent of build compatibility. |
 | `profile` | Existing named Easy Setup inputs with explicit format/key dependencies. |
+| `input_signature_version` | New generic preparations opt into `TreeV1`; older adapters/records retain the default legacy behavior. |
 | `pin` | Exact immutable source/package/dependency/recipe identity for the selected target. |
 | `preflight` | Required host capabilities, with an actionable error before preparation. |
 | `output_present` | Detect completed or interrupted output so a new checkpoint cannot overwrite it. |
@@ -87,6 +89,64 @@ The first saved format omitted `engine` and is interpreted as nxnative for backw
 that compatibility default is not an engine selector.
 
 ## Preparation and saved-game invariants
+
+### Games are upstream data, not launcher code
+
+A new game must work through the engine's existing generic pipeline or through profiles shipped
+by that engine. Catalog importers may normalize upstream title IDs, revisions, evidence and
+artwork. They must not contain a table of title-specific compiler switches, patches, generated
+code, harnesses or launch exceptions. If a game needs that work, contribute it to the engine
+first. If an engine requires a separate developer port for each game, defer its integration
+until it supplies a generic route or a centrally maintained set of ready profiles.
+
+Keep source, profiles and compatibility evidence tied to their verified checkpoints. A list of
+disc metadata is not a supported-game catalog. When reports refer to a different source revision
+than the pinned release, label them explicitly as unverified for that release. Ambiguous title
+matches are omitted and reported by the importer; do not fix them with hand-written game rules.
+
+### Reuse the generic preparation transaction
+
+New adapters can delegate `prepare`, `output_present` and `activate` to `engines::prepared`.
+The adapter's build callback receives a `Context` with resolved paths, the saved pending record,
+an installation-local work/output directory, cancellation, verified package helpers and process
+execution. It returns an `Output` descriptor:
+
+```rust,ignore
+prepared::Output {
+    identity: actual_game_identity,
+    start: frozen_native_launch,
+    saves: vec!["state/saves".into()],
+    files: vec!["runtime".into(), "content".into()],
+    required_files: vec!["runtime/receipt.json".into(), "content/main.bin".into()],
+}
+```
+
+All descriptor paths, including `start.program`, are relative to `Context.output`. Launch
+arguments and environment values use `{install}/Game/...`; the helper prefixes the native
+program, required files and save paths when freezing the record. The helper verifies identity,
+native output and path containment, hashes the program and required files into the runtime
+identity, records a durable completed result, and publishes it atomically into `Game/`. It
+preserves the current player's preferences on recovery. Recovery precedes fresh build-tool
+checks, so a completed result does not require reinstalling today's compiler.
+
+New `TreeV1` pending records also snapshot the input profile. Use `Pending::profile()` or
+`pending::profile()` when resolving an existing installation, so changes to labels, accepted
+formats or current adapter code cannot strand its completed result. Only an eligible explicit
+retry with a changed checkpoint replaces that snapshot. Nested input metadata checks and runtime
+hash verification are cancellable work and must run outside global library/setup locks.
+
+The adapter remains responsible for validating its actual output format, runtime dependency
+closure, source identity, mutable data paths and upstream command behavior. Include a toolchain
+receipt in `required_files` when the runtime depends on locally selected tools. List required
+runtime files individually, but list owned parent roots in `files` when practical; the helper
+removes redundant descendants from backup exclusions. Saves must not overlap owned content.
+
+`jobs::CommandSpec` accepts argument arrays, explicit environment values and `remove_env`.
+Declare inherited variables to remove inside the adapter. The shared process runner must not
+know a particular engine's environment names. It removes those variables before applying the
+adapter's explicit values. Do not interpolate paths or metadata into shell command strings.
+
+### Invariants
 
 - Download only exact, checksum-verified packages from the engine/tools' own sources. Keep
   licenses. Never fetch another frontend as the engine or run catalog-supplied shell commands.

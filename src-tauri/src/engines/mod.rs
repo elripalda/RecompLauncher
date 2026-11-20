@@ -16,6 +16,7 @@ pub mod jobs;
 mod windows_job;
 pub mod coordinator;
 pub mod registry;
+pub mod prepared;
 pub mod portable_move;
 include!(concat!(env!("OUT_DIR"), "/engine-adapters.rs"));
 
