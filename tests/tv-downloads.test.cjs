@@ -51,9 +51,9 @@ function checkedRow(info) {
   return c.pageDownloads();
 }
 
-test('a checked download shows the Verified pill and opens the game', () => {
-  const html = checkedRow({ cls: 'ok', ic: '✓', text: 'Verified' });
-  assert.match(html, /<span class="scan-pill ok" title="Scanned before release and checked by the RecompStore team\."><i>✓<\/i>Verified<\/span><\/button>/);
+test('a checked download shows the Safe pill and opens the game', () => {
+  const html = checkedRow({ cls: 'ok', ic: '✓', text: 'Safe' });
+  assert.match(html, /<span class="scan-pill ok" title="Scanned before release and checked by the RecompStore team\."><i>✓<\/i>Safe<\/span><\/button>/);
   assert.match(html, /<small>Installed v0\.0\.11<\/small>/);
   assert.match(html, /data-go-game="prime"/);
   assert.doesNotMatch(html, /data-tvact="scan"/);
@@ -64,7 +64,7 @@ test('an update-ready row shows how the new version was checked', () => {
   c.S.library = { prime: { tag: 'v0.0.10' } };
   c.S.updates = { prime: 'v0.0.11' };
   const asked = [];
-  c.scanInfo = (h) => { asked.push(h.tag + (h.update ? ' update' : '')); return { cls: 'ok', ic: '✓', text: 'Verified Update' }; };
+  c.scanInfo = (h) => { asked.push(h.tag + (h.update ? ' update' : '')); return { cls: 'ok', ic: '✓', text: 'Safe Update' }; };
   const html = c.pageDownloads();
   assert.deepEqual(asked, ['v0.0.11 update']);
   assert.match(html, /Update ready: v0\.0\.10 → v0\.0\.11<\/small><\/span><span class="scan-pill ok" title="[^"]+">/);

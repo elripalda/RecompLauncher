@@ -169,6 +169,8 @@ body.tv-on #app{visibility:hidden}
 /* The desktop's scan pill (app.css), sized for the TV. */
 .tv-stage .scan-pill{height:36px;gap:10px;padding:0 16px 0 7px;font-size:17px!important}
 .tv-stage .scan-pill i{width:24px;height:24px;font-size:13px}
+.tv-stage .scan-pill.ok{padding-left:12px}
+.tv-stage .scan-pill i svg{width:20px;height:20px}
 
 /* the sheet: a short list from the side */
 .tv-sheet{position:absolute;inset:0;z-index:20;background:rgba(2,4,8,.55);display:flex;justify-content:flex-end;animation:tv-fade .2s ease both}

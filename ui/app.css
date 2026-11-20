@@ -1314,7 +1314,10 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .scan-pill{display:inline-flex!important;align-items:center;gap:6px;height:22px;padding:0 9px 0 4px;border-radius:999px;font-size:11.5px!important;font-weight:700;border:1px solid var(--line2);background:var(--fill2);color:var(--muted)!important;flex:none}
 .scan-pill i{width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font:800 9.5px/1 Figtree,sans-serif;font-style:normal;background:var(--fill2)}
 .scan-pill.ok{color:#5FE3A1!important;border-color:rgba(95,227,161,.32);background:rgba(95,227,161,.08)}
-.scan-pill.ok i{background:#5FE3A1;color:#04130b}
+/* Safe shows VirusTotal's mark in the pill's own green, not a filled dot. */
+.scan-pill.ok{padding-left:7px}
+.scan-pill.ok i{background:none;color:inherit;border-radius:0}
+.scan-pill i svg{width:13px;height:13px;display:block}
 .scan-pill.warn{color:#FFC861!important;border-color:rgba(255,200,97,.32);background:rgba(255,200,97,.08)}
 .scan-pill.warn i{background:#FFC861;color:#1d1300}
 .scan-pill.bad{color:var(--bad)!important;border-color:rgba(255,94,122,.35);background:rgba(255,94,122,.08)}

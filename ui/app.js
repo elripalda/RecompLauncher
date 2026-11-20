@@ -3962,9 +3962,11 @@ function dlPhase(id) {
   if (!S.jobs[id]) return t('Paused');
   return j.phase === 'download' && j.total ? tf('Downloading · {pct}%', { pct: pct(j) }) : progLabel(j)[0] || t('Getting ready');
 }
-// How the store checked a release's files, as one plain label: Verified (or Verified Update),
-// Checking, or Not verified. Which scanner and how many engines stay out of what players see.
+// How the store checked a release's files, as one plain label: Safe (or Safe Update), Checking,
+// or Not verified. Safe carries VirusTotal's mark, the scanner the store uses; how many engines
+// looked stays out of what players see.
 S.scans = S.scans || {};
+const VT_MARK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.87 12 0 22.68h24V1.32H0zm10.73 8.52H5.28l8.637-8.448L5.28 3.48H21.6z"/></svg>';
 const scanAsk = new Map();
 const SCAN_TIP = N_('Scanned before release and checked by the RecompStore team.');
 // The label for a release's scan: { cls, ic, text }, or null while it isn't known (asked once; a
@@ -3991,7 +3993,7 @@ function scanInfo(h) {
   }
   const v = scanVerdict(files);
   if (!v) return null;
-  return v === 'ok' ? { cls: 'ok', ic: '✓', text: h.update ? t('Verified Update') : t('Verified') }
+  return v === 'ok' ? { cls: 'ok', ic: VT_MARK, text: h.update ? t('Safe Update') : t('Safe') }
     : v === 'wait' ? { cls: 'wait', ic: '…', text: t('Checking') }
       : { cls: 'bad', ic: '✕', text: t('Not verified') };
 }
