@@ -775,6 +775,25 @@ pub fn dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u6
     gone
 }
 
+/// The program an update starts from (see updated_exe), or None to find it again once the update is
+/// in: one the update takes away is gone. `picked`: the player chose it, so it stays while it's there.
+pub fn kept_exe(exe: Option<PathBuf>, game: &Path, os: &str, dropped: &[PathBuf], picked: bool, names: &[&str]) -> Option<PathBuf> {
+    let exe = exe?;
+    if !game.join(&exe).is_file() || dropped.contains(&exe) {
+        return None;
+    }
+    if picked {
+        return Some(exe);
+    }
+    // A game imported as a Mac app starts what the new app's Info.plist names: a release can rename
+    // its program, and the old one may stay on as a helper.
+    if os == "macos" && crate::macos::is_bundle(game) {
+        return None;
+    }
+    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
+    (!looks_like_tool(&exe, names)).then_some(exe)
+}
+
 /// Keep the selected program through an update, following release renames and moves. Run before
 /// the update's files go in. Also returns the old release's AppImage a differently named new one
 /// replaces, for the update to take away.
@@ -2778,6 +2797,43 @@ mod mac_discovery_tests {
     fn mac_app_as_the_games_folder_starts_its_declared_program() {
         let app = bundle(&temp("app-root"), "Engine");
         assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn an_imported_apps_update_drops_the_saved_program_for_its_new_info_plist() {
+        let app = bundle(&temp("app-update-renamed"), "Engine");
+        let saved = Some(PathBuf::from("Contents/MacOS/Engine"));
+        assert!(kept_exe(saved, &app, "macos", &[], false, &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn an_imported_apps_update_keeps_the_program_the_player_picked() {
+        let app = bundle(&temp("app-update-picked"), "Engine");
+        let saved = Some(PathBuf::from("Contents/MacOS/MyGameHelper"));
+        assert_eq!(kept_exe(saved.clone(), &app, "macos", &[], true, &["My Game"]), saved);
+    }
+
+    #[test]
+    fn a_picked_program_the_update_takes_away_is_not_kept() {
+        let app = bundle(&temp("app-update-picked-gone"), "Engine");
+        let saved = PathBuf::from("Contents/MacOS/Engine");
+        assert!(kept_exe(Some(saved.clone()), &app, "macos", &[saved], true, &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn a_found_program_in_a_plain_folder_is_kept_through_an_update() {
+        let d = temp("plain-update");
+        bundle(&d, "Engine");
+        let saved = Some(PathBuf::from("My Game.app/Contents/MacOS/Engine"));
+        assert_eq!(kept_exe(saved.clone(), &d, "macos", &[], false, &["My Game"]), saved);
+    }
+
+    #[test]
+    fn an_imported_app_finds_its_renamed_program_after_the_update() {
+        let app = bundle(&temp("app-update-find"), "Engine2");
+        program(&app.join("Contents/MacOS/Engine2"), &mach(native_cpu(), 2));
+        let _ = fs::remove_file(app.join("Contents/MacOS/Engine"));
+        assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine2")));
     }
 
     #[test]
