@@ -1,0 +1,38 @@
+[
+  {
+    "title_id": "GALE01",
+    "name": "Super Smash Bros Melee",
+    "console": "gc",
+    "source": "https://github.com/ExpansionPak/RecompCore/blob/10f7ac4fe48f74485fbc161ebf4d67242e11e671/Data/Sys/GameSettings/GAL.ini",
+    "cover": "https://art.gametdb.com/wii/cover/US/GALE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GALE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/GALE01.png"
+  },
+  {
+    "title_id": "GLME01",
+    "name": "Luigi's Mansion",
+    "console": "gc",
+    "source": "https://github.com/ExpansionPak/RecompCore/blob/10f7ac4fe48f74485fbc161ebf4d67242e11e671/Data/Sys/GameSettings/GLM.ini",
+    "cover": "https://art.gametdb.com/wii/cover/US/GLME01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GLME01",
+    "hero": "https://art.gametdb.com/wii/cover/US/GLME01.png"
+  },
+  {
+    "title_id": "GMSE01",
+    "name": "Super Mario Sunshine",
+    "console": "gc",
+    "source": "https://github.com/ExpansionPak/RecompCore/blob/10f7ac4fe48f74485fbc161ebf4d67242e11e671/Data/Sys/GameSettings/GMS.ini",
+    "cover": "https://art.gametdb.com/wii/cover/US/GMSE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/GMSE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/GMSE01.png"
+  },
+  {
+    "title_id": "RSBE01",
+    "name": "Super Smash Bros. Brawl",
+    "console": "wii",
+    "source": "https://github.com/ExpansionPak/RecompCore/blob/10f7ac4fe48f74485fbc161ebf4d67242e11e671/Data/Sys/GameSettings/RSB.ini",
+    "cover": "https://art.gametdb.com/wii/cover/US/RSBE01.png",
+    "artwork_source": "https://www.gametdb.com/Wii/RSBE01",
+    "hero": "https://art.gametdb.com/wii/cover/US/RSBE01.png"
+  }
+]
