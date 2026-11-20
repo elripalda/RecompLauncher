@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "ทุกเกมที่ติดตั้งไว้จะได้รับรุ่นใหม่ทันทีที่ตัวเปิดเกมพบ",
  "Turn off automatic updates": "ปิดการอัปเดตอัตโนมัติ",
  "Updates wait for you in Downloads": "อัปเดตจะรอคุณอยู่ในดาวน์โหลด",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "การตั้งค่าต้องมีพื้นที่ว่างอย่างน้อย 1 GB ในไดรฟ์ของเกม เคลียร์พื้นที่บางส่วนหรือย้ายเกมไปไดรฟ์อื่น แล้วลองอีกครั้ง",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "โฟลเดอร์ของเกมมีโฟลเดอร์ .recomplauncher-tmp ที่ตัวเปิดเกมไม่ได้สร้าง การตั้งค่าจึงจะไม่ใช้มัน ย้ายมันออกจากโฟลเดอร์ของเกม แล้วลองอีกครั้ง",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "สร้างโฟลเดอร์ชั่วคราวสำหรับการตั้งค่าในโฟลเดอร์ของเกมไม่ได้ ตรวจสอบว่าไดรฟ์ไม่เต็มหรือไม่ได้เป็นแบบอ่านอย่างเดียว แล้วลองอีกครั้ง",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "พาธในโฟลเดอร์ของเกมยาวเกินไปสำหรับ Windows เพิ่มโฟลเดอร์คลังที่มีพาธสั้นกว่าใน การตั้งค่า → เกมและโฟลเดอร์ แล้วย้ายเกมไปที่นั่น หรือเปิดการตั้งค่าพาธยาวของ Windows (LongPathsEnabled) แล้วลองอีกครั้ง ตัวเปิดเกมจะไม่เปลี่ยนการตั้งค่านั้นให้คุณ",
+ "Keep a copy of its saves first, to put back if you install it again": "เก็บสำเนาเซฟไว้ก่อน เพื่อใส่กลับถ้าคุณติดตั้งใหม่",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "ถอนการติดตั้ง {name} แล้ว แต่โฟลเดอร์ยังอยู่: ทำสำเนาเซฟไว้ก่อนไม่ได้ โฟลเดอร์อยู่ที่ {path}",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "เก็บสำเนาเซฟไว้แล้ว ติดตั้งเกมใหม่แล้วใส่เซฟกลับจากแท็บเซฟ",
+ "{path}. A copy of its saves is kept first.": "{path} จะเก็บสำเนาเซฟไว้ก่อน",
+ "Delete its folder and its saves": "ลบโฟลเดอร์และเซฟ",
  "N/A": "ไม่มี"
 }

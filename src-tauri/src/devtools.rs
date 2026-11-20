@@ -530,9 +530,58 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         }
         items.extend(option_items(&pr.options));
         items.extend(version_item(&pr.version));
+        items.extend(done_item(p));
+        let bad: Vec<&str> = pr.env.keys().filter(|k| !profile::env_name_ok(k)).map(String::as_str).collect();
+        if !bad.is_empty() {
+            items.push(warn(format!("Left out of \"prepare.env\": {}", bad.join(", ")),
+                "Names are letters, digits and _. The launcher's own RECOMPLAUNCHER_ ones and system ones like PATH and TEMP can't be set: the step gets a temp folder of its own."));
+        }
         items.extend(keeps_copy_items(p, dir));
     }
+    items.extend(outside_item(p));
     level
+}
+
+/// A step that builds the game from the player's copy, without `prepare.done`: the launcher can't
+/// tell the build is there, so it can't keep the game set up after an update, or use a build the
+/// player already has. Only then: a step that only fetches extras needs no list. A keeps_copy
+/// step gets its own, more exact warning from keeps_copy_items.
+fn done_item(p: &profile::Profile) -> Option<Item> {
+    let pr = p.prepare.as_ref()?;
+    let from_copy = p.game.is_some() || !p.inputs.is_empty();
+    if !from_copy || !pr.done.is_empty() || pr.keeps_copy {
+        return None;
+    }
+    Some(warn(
+        "No \"prepare.done\"",
+        "List a file your step always leaves, like \"{data}/build/game.pak\": the launcher then knows the game is built, keeps it set up after an update, and can use a build the player already has.",
+    ))
+}
+
+/// The places outside the game's folder a profile has the game write to (saves, settings, builds,
+/// the folders it passes). Not wrong, but everything in `{install}` or `{data}` moves, backs up and
+/// uninstalls with the game, and nothing is left behind.
+fn outside_item(p: &profile::Profile) -> Option<Item> {
+    const OUTSIDE: [&str; 5] = ["{home}", "{local}", "{config}", "{documents}", "{appdata}"];
+    let mut written: Vec<&str> = p.saves.iter().map(String::as_str).collect();
+    written.extend(p.config.iter().flat_map(|c| c.file.iter().map(|f| f.path.as_str())));
+    written.extend(p.folders.values().flatten().map(|f| f.path.as_str()));
+    if let Some(s) = p.start.as_ref() {
+        written.extend(s.args.iter().chain(s.env.values()).map(String::as_str));
+    }
+    if let Some(pr) = p.prepare.as_ref() {
+        written.extend(pr.args.iter().chain(pr.env.values()).chain(pr.done.iter()).map(String::as_str));
+    }
+    let mut outside: Vec<&str> = written.into_iter().filter(|w| OUTSIDE.iter().any(|o| w.contains(o))).collect();
+    outside.sort();
+    outside.dedup();
+    if outside.is_empty() {
+        return None;
+    }
+    Some(warn(
+        format!("Writes outside {{install}} and {{data}}: {}", outside.join(", ")),
+        "Keep saves, settings, caches and builds in {data} (or {install}): they then move, back up and uninstall with the game. Players' saves already elsewhere are fine to keep reading.",
+    ))
 }
 
 /// prepare.keeps_copy: run again without the copy, leaving out the arguments with {game} in them.
@@ -685,6 +734,44 @@ mod tests {
             {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}"#).unwrap();
         let items = super::option_items(&p.options);
         assert!(items[0].text.contains("starts off") && items[0].text.contains("required"), "{}", items[0].text);
+    }
+
+    fn profile(json: &str) -> crate::profile::Profile {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn a_step_building_from_the_copy_without_done_is_warned() {
+        let p = profile(r#"{"format":1,"game":{"kind":"iso"},"prepare":{"program":["Builder.exe"],"args":["{game}"]}}"#);
+        let item = super::done_item(&p).unwrap();
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("prepare.done"), "{}", item.text);
+    }
+
+    #[test]
+    fn a_step_with_done_or_without_a_copy_is_left_alone() {
+        let with_done = profile(r#"{"format":1,"game":{"kind":"iso"},"prepare":{"program":["Builder.exe"],"done":["{data}/build/game.pak"]}}"#);
+        assert!(super::done_item(&with_done).is_none());
+        let extras_only = profile(r#"{"format":1,"prepare":{"program":["Fetcher.exe"]}}"#);
+        assert!(super::done_item(&extras_only).is_none());
+        let no_step = profile(r#"{"format":1,"game":{"kind":"iso"}}"#);
+        assert!(super::done_item(&no_step).is_none());
+    }
+
+    #[test]
+    fn writing_outside_the_game_folder_is_named() {
+        let p = profile(r#"{"format":1,"saves":["{local}/Game/saves","{data}/saves"],
+            "prepare":{"program":["Builder.exe"],"args":["--out","{home}/Games/Game"],"env":{"CACHE":"{data}/cache"}}}"#);
+        let item = super::outside_item(&p).unwrap();
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("{local}/Game/saves") && item.text.contains("{home}/Games/Game"), "{}", item.text);
+        assert!(!item.text.contains("{data}/"), "{}", item.text);
+    }
+
+    #[test]
+    fn writing_only_in_install_and_data_is_fine() {
+        let p = profile(r#"{"format":1,"saves":["{data}/saves","{install}/settings.toml"],"start":{"program":["g.exe"],"args":["--data","{data}"]}}"#);
+        assert!(super::outside_item(&p).is_none());
     }
 
     #[test]

@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "Mỗi game đã cài nhận bản phát hành mới ngay khi trình khởi chạy tìm thấy",
  "Turn off automatic updates": "Tắt tự động cập nhật",
  "Updates wait for you in Downloads": "Bản cập nhật chờ bạn trong Tải xuống",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "Thiết lập cần ít nhất 1 GB trống trên ổ của trò chơi. Hãy giải phóng bớt dung lượng hoặc chuyển trò chơi sang ổ khác, rồi thử lại.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "Thư mục trò chơi có một thư mục .recomplauncher-tmp không do trình khởi chạy tạo, nên thiết lập sẽ không dùng nó. Hãy chuyển nó ra khỏi thư mục trò chơi, rồi thử lại.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Không tạo được thư mục tạm cho thiết lập trong thư mục trò chơi. Hãy kiểm tra ổ đĩa không bị đầy hoặc chỉ đọc, rồi thử lại.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Một đường dẫn trong thư mục trò chơi quá dài đối với Windows. Hãy thêm một thư mục thư viện có đường dẫn ngắn hơn trong Cài đặt → Trò chơi và thư mục rồi chuyển trò chơi sang đó, hoặc bật cài đặt đường dẫn dài của Windows (LongPathsEnabled), rồi thử lại. Trình khởi chạy không tự thay đổi cài đặt đó cho bạn.",
+ "Keep a copy of its saves first, to put back if you install it again": "Giữ trước một bản sao dữ liệu lưu, để khôi phục nếu bạn cài lại",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "Đã gỡ {name}, nhưng thư mục của nó vẫn còn: không tạo được bản sao dữ liệu lưu trước. Nó nằm ở {path}.",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Đã giữ một bản sao dữ liệu lưu. Hãy cài lại trò chơi và khôi phục từ thẻ Dữ liệu lưu.",
+ "{path}. A copy of its saves is kept first.": "{path}. Một bản sao dữ liệu lưu sẽ được giữ trước.",
+ "Delete its folder and its saves": "Xóa thư mục và dữ liệu lưu",
  "N/A": "Không có"
 }

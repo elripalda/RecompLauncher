@@ -59,6 +59,7 @@ pub mod sysenv;
 mod emus;
 pub mod roms;
 pub mod saves;
+pub mod setup_temp;
 pub mod shortcuts;
 pub mod steam_sync;
 pub mod swap;
@@ -1133,7 +1134,10 @@ async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<Str
                 let drive = if win { matches!(code, Some(23) | Some(483) | Some(1117) | Some(1392) | Some(1393) | Some(55) | Some(21)) } else { matches!(code, Some(5) | Some(30)) };
                 let full = if win { matches!(code, Some(39) | Some(112)) } else { code == Some(28) };
                 let gone = win && matches!(code, Some(3) | Some(53) | Some(67));
-                if (win && code == Some(5)) || io.kind() == std::io::ErrorKind::PermissionDenied {
+                if setup_temp::io_too_long(&io) {
+                    trail::note(format!("Install {id}: {io}"));
+                    Error::Msg(setup_temp::TOO_LONG.into())
+                } else if (win && code == Some(5)) || io.kind() == std::io::ErrorKind::PermissionDenied {
                     trail::note(format!("Install {id}: {io}"));
                     Error::Msg(if win {
                         "Windows didn't let the launcher write the game's files (access denied). An antivirus may be checking them, or the library folder is one Windows protects. Try again in a minute, or pick another library folder in Settings → Games and Folders.".into()
@@ -1237,7 +1241,7 @@ fn download_limits(mb: f64, slow_playing: bool) {
 }
 
 #[tauri::command(async)]
-fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>) -> Res<Value> {
+fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
@@ -1268,6 +1272,8 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     let mut uninstaller = false;
     let mut kept_copy: Option<PathBuf> = None;
     let mut copy_stuck = false;
+    let mut saves_kept = false;
+    let mut saves_stuck = false;
     if delete_files {
         // A Flatpak the launcher installed from the game's bundle goes with it.
         if !cfg!(windows) && flatpak::available() {
@@ -1286,7 +1292,20 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         // folder are theirs: moved out to "Game Copies" beside it first, and if one can't be, the
         // folder stays. Only files: a folder there is the launcher's unpack of their disc.
         let mut keep_failed = false;
-        if ok {
+        // Its saves inside the folder ({data}/saves, say): a copy beside the library first, which
+        // uninstalling leaves and the Saves tab puts back after a reinstall. Asked for unless the
+        // player said not to; if it can't be made, the folder stays.
+        if ok && keep_saves != Some(false) {
+            match keep_saves_inside(&st, &g) {
+                Ok(n) => saves_kept = n > 0,
+                Err(e) => {
+                    trail::note(format!("Uninstall {id}: its saves couldn't be copied first ({e}), the folder stays"));
+                    keep_failed = true;
+                    saves_stuck = true;
+                }
+            }
+        }
+        if ok && !keep_failed {
             for c in [g.game_copy.as_ref(), g.update_copy.as_ref()].into_iter().flatten() {
                 if !(library::inside(c, &g.path) && c.is_file() && !c.is_symlink()) {
                     continue;
@@ -1303,7 +1322,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         if ok && !keep_failed {
             left = remove_game_folder(&g.path);
         } else if g.path.is_dir() {
-            copy_stuck = keep_failed;
+            copy_stuck = keep_failed && !saves_stuck;
             kept = true;
         }
         // A game its own installer put somewhere else (Program Files): its own uninstaller, the
@@ -1316,7 +1335,32 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
     }
     st.lib.lock().unwrap().forget(&id);
     st.save();
-    Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck}))
+    Ok(json!({"left": left.len(), "path": g.path, "kept": kept, "uninstaller": uninstaller, "kept_copy": kept_copy, "copy_stuck": copy_stuck, "saves_kept": saves_kept, "saves_stuck": saves_stuck}))
+}
+
+/// A copy of the saves a game keeps inside its own folder, for it and each of its games with saves
+/// of their own, made before the folder is deleted. Copies go beside the library (or to the
+/// player's chosen folder), never inside the game's folder. How many games had saves to keep.
+fn keep_saves_inside(st: &App, g: &Installed) -> Result<usize, Error> {
+    let mut ids = vec![g.id.clone()];
+    for game in games_of(st, &g.id, g).iter().filter(|x| !x.saves.is_empty()) {
+        ids.push(games::full(&g.id, &game.id));
+    }
+    let mut kept = 0;
+    for id in ids {
+        let spots = cloud::spots_of(st, &id, g);
+        if saves::files_inside(&spots, g).is_empty() {
+            continue;
+        }
+        let copies = saves::dir_of(&st.dir, &id, g);
+        if library::inside(&copies, &g.path) {
+            return Err(Error::Msg("its copies would be inside the folder being deleted".into()));
+        }
+        // None: nothing changed since the newest copy, which already holds them.
+        saves::backup(&st.dir, &id, &spots, g)?;
+        kept += 1;
+    }
+    Ok(kept)
 }
 
 /// Move the player's copy out of a game folder that's about to go, to "Game Copies/<id>" beside
@@ -1510,8 +1554,11 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     .await
     .map_err(|e| Error::Msg(e.to_string()))?;
     st.moving.lock().unwrap().remove(&id);
-    r?;
-    // Its backups go with it.
+    r.map_err(|e| match e {
+        Error::Io(io) if setup_temp::io_too_long(&io) => Error::Msg(setup_temp::TOO_LONG.into()),
+        e => e,
+    })?;
+    // Its backups go with it (its {data}, caches and all, is inside its folder and went too).
     let old_b = backups_dir(&g);
     let mut out = g.clone();
     out.path = dest;
@@ -3151,6 +3198,15 @@ fn start_game_with_monitor_context(
         .env("RECOMPLAUNCHER_VERSION", env!("CARGO_PKG_VERSION"))
         .env("RECOMPLAUNCHER_MODE", if BIG_PICTURE.load(Ordering::Relaxed) { "bigpicture" } else { "desktop" })
         .env("RECOMPLAUNCHER_PAD", profile::pad_now());
+    // The one folder a game writes everything to ({data}), for a game whose developer wrote it a
+    // recomplauncher.json. Set up by hand too: where its saves go mustn't change with how it was
+    // set up.
+    if let Some(data) = profile_of(&st, id, &g).filter(|p| !p.from_boot).map(|_| profile::data_dir(&g.path)) {
+        let _ = std::fs::create_dir_all(&data);
+        let shown = data.to_string_lossy().to_string();
+        let through_proton = !cfg!(windows) && matches!(ext.as_str(), "exe" | "cmd" | "bat");
+        cmd.env("RECOMPLAUNCHER_DATA", if through_proton { profile::wine_path(&shown) } else { shown });
+    }
     // A Python set up elsewhere on the PC (PYTHONHOME, PYTHONPATH) breaks the Python some games
     // carry inside them ("No module named 'encodings'"). Games with their own Python never want them.
     if ext != "py" {
@@ -4140,9 +4196,26 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     if cfg!(target_os = "linux") && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
         return Err(APPIMAGE_NOT_RUN.into());
     }
+    if !setup_temp::room_for_setup(manage::free_space(install)) {
+        return Err(setup_temp::NO_ROOM.into());
+    }
+    // A temp folder of its own on the game's drive, taken away however this returns.
+    let temp = setup_temp::SetupTemp::make(install)?;
+    let data = profile::data_dir(install);
+    let _ = std::fs::create_dir_all(&data);
     let args = prepare_args(pr, install, copy, extra);
     let mut c = std::process::Command::new(&exe);
     sysenv::clean_std(&mut c);
+    // As for Play: the step can tell it was started from here (so it never updates itself), and
+    // where to write.
+    c.env("RECOMPLAUNCHER", "1").env("RECOMPLAUNCHER_VERSION", env!("CARGO_PKG_VERSION")).env("RECOMPLAUNCHER_DATA", &data);
+    for (k, v) in pr.env_vars(install, copy) {
+        c.env(k, v);
+    }
+    // After the step's own: the temp folder is the launcher's to give.
+    for (k, v) in temp.env() {
+        c.env(k, v);
+    }
     // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
     if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
         if let Some(dir) = exe.parent() {
@@ -4182,7 +4255,10 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     drop(tx);
     // What it said last (not a progress line): when it stops on an error, that's usually why.
     let mut said = String::new();
-    let read = |said: &mut String| {
+    // Whether it said Windows' path limit stopped it, on any line: the reason is usually followed
+    // by a stack trace.
+    let mut too_long = false;
+    let read = |said: &mut String, too_long: &mut bool| {
         while let Ok(l) = rx.try_recv() {
             let mut w = l.splitn(3, ' ');
             if w.next() == Some("progress") {
@@ -4190,21 +4266,25 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
                 report(pct, w.next().unwrap_or("").trim().to_string());
             } else if !l.trim().is_empty() {
                 *said = l.trim().chars().take(300).collect();
+                *too_long |= setup_temp::says_too_long(&l);
             }
         }
     };
     let start = Instant::now();
     loop {
-        read(&mut said);
+        read(&mut said, &mut too_long);
         if let Ok(Some(s)) = child.try_wait() {
             if s.success() {
                 return Ok(());
             }
             // The last of what it printed, which can arrive just after it closed.
             std::thread::sleep(std::time::Duration::from_millis(150));
-            read(&mut said);
+            read(&mut said, &mut too_long);
             let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
             trail::note(format!("Setup step stopped with code {code}; it said last: {said}"));
+            if cfg!(windows) && too_long {
+                return Err(setup_temp::too_long_with(&said));
+            }
             return Err(if said.is_empty() { format!("Its setup step stopped with code {code}.") } else { format!("Its setup step stopped with code {code}: {said}") });
         }
         if stopped() || start.elapsed().as_secs() > pr.timeout {
@@ -5513,10 +5593,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
             placed?;
             emit("verify", 1.0, "Files selected.".into());
             if let Some(pr) = &p.prepare {
-                let mut pr = pr.clone();
-                // Omit an argument containing an absent optional/conditional token. Put flags in
-                // the same argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
-                pr.args = inputs::arguments(&pr.args, &p.input_paths, false);
+                let pr = pr.with_inputs(&p.input_paths);
                 let copy = g.game_copy.as_deref().unwrap_or(&g.path);
                 let copy = p.handed(Some(copy)).unwrap_or_else(|| copy.to_path_buf());
                 let extra = prepare_extra(&dir, &pr, &g.prepare_opts);
@@ -10985,6 +11062,7 @@ mod tests {
             options: vec![],
             version: String::new(),
             done: vec![],
+            env: BTreeMap::new(),
             keeps_copy: false,
         };
 
@@ -11006,11 +11084,76 @@ mod tests {
         );
 
         assert_eq!(res.unwrap_err(), "Stopped.");
+        assert!(!dir.join(setup_temp::FOLDER).exists(), "a stopped step's temp folder goes too");
         // The process was stopped immediately, but the external file it wrote remains:
         assert!(generated_file.exists(), "File generated by external tool before cancellation was preserved");
         let content = std::fs::read_to_string(&generated_file).unwrap();
         assert!(content.contains("generated"));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod prepare_env_tests {
+    use super::*;
+
+    /// A setup step that writes down what it was given: its temp folder (and whether it was
+    /// there), the launcher's names and one of its own from prepare.env.
+    fn tattler(dir: &Path) -> profile::Prepare {
+        #[cfg(windows)]
+        // The redirection first: `echo 1>rl.txt` would be read as sending handle 1 to the file.
+        let (name, script) = ("tattle.bat", "@echo off\r\n>temp.txt echo %TEMP%\r\n>tmp.txt echo %TMP%\r\nif exist \"%TEMP%\" >exists.txt echo yes\r\n>rl.txt echo %RECOMPLAUNCHER%\r\n>data.txt echo %RECOMPLAUNCHER_DATA%\r\n>cache.txt echo %BUILD_CACHE%\r\n");
+        #[cfg(not(windows))]
+        let (name, script) = ("tattle.sh", "#!/bin/sh\necho \"$TMPDIR\" > temp.txt\necho \"$TMP\" > tmp.txt\ntest -d \"$TMPDIR\" && echo yes > exists.txt\necho \"$RECOMPLAUNCHER\" > rl.txt\necho \"$RECOMPLAUNCHER_DATA\" > data.txt\necho \"$BUILD_CACHE\" > cache.txt\n");
+        std::fs::write(dir.join(name), script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        profile::Prepare {
+            program: vec![name.into()],
+            timeout: 60,
+            env: BTreeMap::from([("BUILD_CACHE".to_string(), "{data}/cache".to_string()), ("TEMP".to_string(), "not-this".to_string())]),
+            ..Default::default()
+        }
+    }
+
+    fn said(dir: &Path, file: &str) -> PathBuf {
+        PathBuf::from(std::fs::read_to_string(dir.join(file)).unwrap().trim())
+    }
+
+    #[test]
+    fn a_setup_step_gets_its_own_temp_folder_and_the_data_folder() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-env-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = tattler(&dir);
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false).unwrap();
+        let temp = dir.join(setup_temp::FOLDER);
+        assert_eq!(said(&dir, "temp.txt"), temp);
+        assert_eq!(said(&dir, "tmp.txt"), temp);
+        assert_eq!(said(&dir, "exists.txt"), PathBuf::from("yes"));
+        assert!(!temp.exists(), "the temp folder is gone after the run");
+        assert_eq!(said(&dir, "rl.txt"), PathBuf::from("1"));
+        assert_eq!(said(&dir, "data.txt"), dir.join("recompdata"));
+        assert!(dir.join("recompdata").is_dir());
+        assert_eq!(said(&dir, "cache.txt"), dir.join("recompdata").join("cache"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_temp_folder_the_launcher_didnt_make_stops_setup_untouched() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-theirs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(setup_temp::FOLDER)).unwrap();
+        std::fs::write(dir.join(setup_temp::FOLDER).join("release.txt"), b"theirs").unwrap();
+        let pr = tattler(&dir);
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false).unwrap_err();
+        assert_eq!(e, setup_temp::NOT_OURS);
+        assert!(!dir.join("temp.txt").exists(), "the step didn't run");
+        assert!(dir.join(setup_temp::FOLDER).join("release.txt").is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

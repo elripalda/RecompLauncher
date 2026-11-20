@@ -1470,5 +1470,14 @@
  "Checked by the RecompStore team": "Vérifié par l’équipe RecompStore",
  "Open the VirusTotal report": "Ouvrir le rapport VirusTotal",
  "Safe": "Sûr",
- "Safe Update": "Mise à jour sûre"
+ "Safe Update": "Mise à jour sûre",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "La configuration a besoin d'au moins 1 Go libre sur le lecteur du jeu. Libère de l'espace ou déplace le jeu sur un autre lecteur, puis réessaie.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "Le dossier du jeu contient un dossier .recomplauncher-tmp que le lanceur n'a pas créé, donc la configuration ne l'utilise pas. Sors-le du dossier du jeu, puis réessaie.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Impossible de créer un dossier temporaire pour la configuration dans le dossier du jeu. Vérifie que le lecteur n'est pas plein ni en lecture seule, puis réessaie.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Un chemin dans le dossier du jeu est trop long pour Windows. Ajoute un dossier de bibliothèque avec un chemin plus court dans Paramètres → Jeux et dossiers et déplaces-y le jeu, ou active le réglage des chemins longs de Windows (LongPathsEnabled), puis réessaie. Le lanceur ne modifie pas ce réglage à ta place.",
+ "Keep a copy of its saves first, to put back if you install it again": "Garder d'abord une copie de ses sauvegardes, à remettre si tu le réinstalles",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} est désinstallé, mais son dossier est resté : une copie de ses sauvegardes n'a pas pu être faite avant. Il est dans {path}.",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Une copie de ses sauvegardes est gardée. Réinstalle-le et remets-les depuis son onglet Sauvegardes.",
+ "{path}. A copy of its saves is kept first.": "{path}. Une copie de ses sauvegardes est gardée avant.",
+ "Delete its folder and its saves": "Supprimer son dossier et ses sauvegardes"
 }

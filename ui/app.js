@@ -6082,30 +6082,35 @@ function confirmUninstall(id) {
     <p>${esc(t('It comes out of your Library. You can install it again from the Catalog any time.'))}</p>
     ${many ? `<p>${esc(tf('Its {n} games are uninstalled with it: {games}.', { n: many.length, games: many.map((x) => x.name).join(', ') }))}</p>` : ''}
     ${g.exe && /^([a-z]:[\\/]|\\\\|\/)/i.test(g.exe) && !String(g.exe).toLowerCase().startsWith(String(g.path).toLowerCase()) ? `<p class="muted">${esc(t('Its own installer put the game somewhere else. With the box ticked, its own uninstaller opens too.'))}</p>` : ''}
-    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
+    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label><label><input type="checkbox" id="u-keep" checked> ${esc(t('Keep a copy of its saves first, to put back if you install it again'))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep it'))}</button><button type="button" class="btn danger" data-x="yes">${esc(t('Uninstall'))}</button></div></div>`;
   document.body.append(s);
   $('[data-x="no"]', s).focus();
+  // A copy of the saves is made only when the folder goes: with it kept, the tick means nothing.
+  const delBox = $('#u-del', s), keepBox = $('#u-keep', s);
+  if (delBox && keepBox) delBox.addEventListener('change', () => { keepBox.disabled = !delBox.checked; });
   s.addEventListener('click', async (e) => {
     const x = e.target.closest('[data-x]');
     if (e.target === s || (x && x.dataset.x === 'no')) return s.remove();
     if (!x) return;
-    const del = !!($('#u-del', s) || {}).checked, unins = !!($('#u-unins', s) || {}).checked;
+    const del = !!($('#u-del', s) || {}).checked, unins = !!($('#u-unins', s) || {}).checked, keep = !!($('#u-keep', s) || {}).checked;
     s.remove();
     if (unins) toast(tf('{name}\'s uninstaller is opening. Finish it there.', { name: g.name }));
     let r = {};
-    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
+    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins, keepSaves: keep })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
     if (window.usageUninstall) window.usageUninstall(id);
     await keepOut(id);
     delete S.updates[id]; await refreshState(); render(true);
     // Some files couldn't go (still in use by something): say where they are.
     if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
+    else if (del && r.kept && r.saves_stuck) toast(tf('{name} is uninstalled, but its folder stayed: a copy of its saves couldn\'t be made first. It\'s in {path}.', { name: g.name, path: r.path }), true);
     else if (del && r.kept && r.copy_stuck) toast(tf('{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn\'t be moved out. It\'s in {path}.', { name: g.name, path: r.path }), true);
     else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
     else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
     else toast(tf('{name} is uninstalled.', { name: g.name }));
     // The player's own files that were inside its folder: said apart, whatever else happened.
     if (r.kept_copy) toast(tf('Your copy of the game was inside its folder, so it\'s kept in {path}.', { path: r.kept_copy }));
+    if (r.saves_kept) toast(t('A copy of its saves is kept. Install it again and put them back from its Saves tab.'));
   });
   s.addEventListener('keydown', (e) => { if (e.key === 'Escape') s.remove(); });
 }

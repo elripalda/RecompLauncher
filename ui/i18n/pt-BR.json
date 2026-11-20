@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "Cada jogo instalado recebe uma versão nova assim que o launcher a encontra",
  "Turn off automatic updates": "Desativar as atualizações automáticas",
  "Updates wait for you in Downloads": "As atualizações esperam por você em Downloads",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "A configuração precisa de pelo menos 1 GB livre na unidade do jogo. Libere um pouco de espaço ou mova o jogo para outra unidade e tente de novo.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "A pasta do jogo tem uma pasta .recomplauncher-tmp que não foi criada pelo launcher, então a configuração não vai usá-la. Tire-a da pasta do jogo e tente de novo.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Não foi possível criar uma pasta temporária para a configuração na pasta do jogo. Verifique se a unidade não está cheia nem somente leitura e tente de novo.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Um caminho na pasta do jogo é longo demais para o Windows. Adicione uma pasta da biblioteca com um caminho mais curto em Configurações → Jogos e pastas e mova o jogo para lá, ou ative a configuração de caminhos longos do Windows (LongPathsEnabled) e tente de novo. O launcher não muda essa configuração por você.",
+ "Keep a copy of its saves first, to put back if you install it again": "Guardar antes uma cópia dos dados salvos, para restaurar se você instalar de novo",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} foi desinstalado, mas a pasta dele ficou: não foi possível fazer antes uma cópia dos dados salvos. Ela está em {path}.",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Uma cópia dos dados salvos fica guardada. Instale de novo e restaure pela aba Dados salvos.",
+ "{path}. A copy of its saves is kept first.": "{path}. Antes, uma cópia dos dados salvos fica guardada.",
+ "Delete its folder and its saves": "Apagar a pasta e os dados salvos",
  "N/A": "N/D"
 }

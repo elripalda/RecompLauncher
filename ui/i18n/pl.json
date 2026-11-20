@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "Każda zainstalowana gra dostaje nowe wydanie, gdy tylko launcher je znajdzie",
  "Turn off automatic updates": "Wyłącz automatyczne aktualizacje",
  "Updates wait for you in Downloads": "Aktualizacje czekają na ciebie w Pobieraniu",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "Konfiguracja wymaga co najmniej 1 GB wolnego miejsca na dysku gry. Zwolnij trochę miejsca albo przenieś grę na inny dysk i spróbuj ponownie.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "W folderze gry jest folder .recomplauncher-tmp, którego nie utworzył launcher, więc konfiguracja go nie użyje. Przenieś go poza folder gry i spróbuj ponownie.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Nie udało się utworzyć folderu tymczasowego dla konfiguracji w folderze gry. Sprawdź, czy dysk nie jest pełny ani tylko do odczytu, i spróbuj ponownie.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Ścieżka w folderze gry jest za długa dla Windows. Dodaj folder biblioteki z krótszą ścieżką w Ustawienia → Gry i foldery i przenieś tam grę albo włącz ustawienie długich ścieżek w Windows (LongPathsEnabled) i spróbuj ponownie. Launcher nie zmienia tego ustawienia za ciebie.",
+ "Keep a copy of its saves first, to put back if you install it again": "Najpierw zachowaj kopię zapisów, by przywrócić je po ponownej instalacji",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} odinstalowano, ale jej folder został: nie udało się najpierw zrobić kopii zapisów. Jest w {path}.",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Kopia zapisów została zachowana. Zainstaluj grę ponownie i przywróć je na karcie Zapisy.",
+ "{path}. A copy of its saves is kept first.": "{path}. Najpierw zostanie zachowana kopia zapisów.",
+ "Delete its folder and its saves": "Usuń folder i zapisy",
  "N/A": "nd."
 }

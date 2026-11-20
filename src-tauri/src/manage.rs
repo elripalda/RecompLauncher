@@ -269,6 +269,65 @@ mod tests {
         assert_eq!(fs::read(game.join("saves/slot1.sav")).unwrap(), b"save");
     }
 
+    /// A game with its {data} caches and saves, as a builder leaves it.
+    fn game_with_caches(d: &Path) -> PathBuf {
+        let game = d.join("Game");
+        fs::create_dir_all(game.join("recompdata/cache/shaders")).unwrap();
+        fs::create_dir_all(game.join("recompdata/saves")).unwrap();
+        fs::write(game.join("Game.exe"), b"exe").unwrap();
+        fs::write(game.join("recompdata/cache/shaders/pipeline.bin"), b"cache").unwrap();
+        fs::write(game.join("recompdata/saves/slot1.sav"), b"save").unwrap();
+        game
+    }
+
+    fn has_caches(game: &Path) -> bool {
+        fs::read(game.join("recompdata/cache/shaders/pipeline.bin")).ok().as_deref() == Some(b"cache".as_slice())
+            && fs::read(game.join("recompdata/saves/slot1.sav")).ok().as_deref() == Some(b"save".as_slice())
+    }
+
+    #[test]
+    fn moving_a_game_carries_its_caches() {
+        let d = tmp("move-caches");
+        let game = game_with_caches(&d);
+        let to = d.join("other-library").join("Game");
+        move_dir(&game, &to, &|_, _| {}).unwrap();
+        assert!(has_caches(&to));
+        assert!(!game.exists());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn copying_a_game_to_another_drive_carries_its_caches() {
+        // What a move to another drive does: every file, the caches in {data} too.
+        let d = tmp("copy-caches");
+        let game = game_with_caches(&d);
+        let to = d.join("other-drive").join("Game");
+        let total = dir_size(&game);
+        let mut done = 0;
+        copy_tree(&game, &to, &mut done, total, &|_, _| {}).unwrap();
+        assert!(has_caches(&to));
+        assert_eq!(done, total);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_game_moves_into_a_deep_library_folder() {
+        // Past Windows' old 260-character limit, the launcher's own copying still goes through.
+        let d = tmp("deep");
+        let game = game_with_caches(&d);
+        let mut lib = d.join("libraries");
+        while lib.as_os_str().len() < 300 {
+            lib = lib.join("a-library-folder-with-a-long-name");
+        }
+        let to = lib.join("Game");
+        let mut done = 0;
+        copy_tree(&game, &to, &mut done, dir_size(&game), &|_, _| {}).unwrap();
+        assert!(has_caches(&to));
+        move_dir(&game, &lib.join("Game2"), &|_, _| {}).unwrap();
+        assert!(has_caches(&lib.join("Game2")));
+        let _ = fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn nothing_to_back_up_makes_no_backup() {
         let d = tmp("bk-none");

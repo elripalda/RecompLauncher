@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "Cada juego instalado recibe una versión nueva en cuanto el lanzador la encuentra",
  "Turn off automatic updates": "Desactivar las actualizaciones automáticas",
  "Updates wait for you in Downloads": "Las actualizaciones te esperan en Descargas",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "La configuración necesita al menos 1 GB libre en la unidad del juego. Libera un poco o mueve el juego a otra unidad y vuelve a intentarlo.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "La carpeta del juego tiene una carpeta .recomplauncher-tmp que no creó el lanzador, así que la configuración no la va a usar. Sácala de la carpeta del juego y vuelve a intentarlo.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "No se pudo crear una carpeta temporal para la configuración en la carpeta del juego. Revisa que la unidad no esté llena ni sea de solo lectura y vuelve a intentarlo.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Una ruta de la carpeta del juego es demasiado larga para Windows. Agrega una carpeta de biblioteca con una ruta más corta en Configuración → Juegos y carpetas y mueve el juego ahí, o activa la configuración de rutas largas de Windows (LongPathsEnabled) y vuelve a intentarlo. El lanzador no cambia esa configuración por ti.",
+ "Keep a copy of its saves first, to put back if you install it again": "Guardar antes una copia de sus partidas, para recuperarlas si lo vuelves a instalar",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} se desinstaló, pero su carpeta se quedó: no se pudo hacer antes una copia de sus partidas. Está en {path}.",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Se guarda una copia de sus partidas. Vuelve a instalarlo y recupéralas desde su pestaña Partidas.",
+ "{path}. A copy of its saves is kept first.": "{path}. Antes se guarda una copia de sus partidas.",
+ "Delete its folder and its saves": "Borrar su carpeta y sus partidas",
  "N/A": "N/D"
 }

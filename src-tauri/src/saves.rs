@@ -33,10 +33,12 @@ const NOT_SAVES: [&str; 37] = [
     ".sfc", ".smc", ".gba", ".nds", ".3ds", ".elf", ".rpx", ".exe", ".dll", ".so", ".pdb", ".msi", ".zip", ".7z", ".rar", ".appimage",
     ".log", ".tmp", ".dmp", ".mp4", ".mkv",
 ];
-/// Folders that are never saves.
-const NOT_SAVE_DIRS: [&str; 16] = [
+/// Folders that are never saves: a game's caches (`{data}/cache`) and temp folders, and the
+/// launcher's own work folders in a game's folder (its setup temp folder, the old release an update
+/// sets aside), which a save place around them would otherwise take in.
+const NOT_SAVE_DIRS: [&str; 19] = [
     "mods", "shadercache", "shader_cache", "shaders", "cache", "caches", "logs", "log", "crashdumps", "dumps", "screenshots", ".backups",
-    "texture_packs", "textures", "packs", "temp",
+    "texture_packs", "textures", "packs", "temp", "tmp", crate::setup_temp::FOLDER, ".recomplauncher-game-update",
 ];
 
 /// A place a game keeps its saves.
@@ -155,7 +157,9 @@ pub fn templatize_for(p: &Path, g: &Installed) -> String {
 
 /// This PC's path as a template that works on any PC: `C:\Users\Ruben\AppData\Local\X` -> `{local}/X`.
 pub fn templatize(p: &Path, install: &Path) -> String {
+    // `{data}` before `{install}`: it's inside it, and the narrower name is the one the game uses.
     let bases: Vec<(&str, Option<PathBuf>)> = vec![
+        ("{data}", Some(crate::profile::data_dir(install))),
         ("{install}", Some(install.to_path_buf())),
         ("{local}", dirs::data_local_dir()),
         ("{config}", dirs::config_dir()),
@@ -984,7 +988,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             .map(|(i, s)| {
                 let t = &s.template;
                 let whole = t.trim_end_matches(['/', '\\']) == "{install}";
-                let in_game = t.starts_with("{install}");
+                let in_game = t.starts_with("{install}") || t.starts_with("{data}");
                 !whole && (!in_game || named(t)) && !roots.get(i).map(|r| holds_programs(r)).unwrap_or(true)
             })
             .collect();
@@ -996,7 +1000,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
         }
     }
     let today: HashSet<&str> = spots_now.iter().map(|s| s.template.as_str()).collect();
-    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| s.template.starts_with("{install}/") && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
+    let skip: HashSet<usize> = same.iter().enumerate().filter(|(i, s)| (s.template.starts_with("{install}/") || s.template.starts_with("{data}/")) && !today.contains(s.template.as_str()) && roots.get(*i).map(|r| holds_programs(r)).unwrap_or(false)).map(|(i, _)| i).collect();
     let mut n = 0;
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| Error::Msg(e.to_string()))?;
@@ -1362,6 +1366,68 @@ mod tests {
         set_state(&app, "g", &st);
         assert!(backup(&app, "g", &s, &g).unwrap().is_none());
         assert!(!state(&app, "g").after_play);
+    }
+
+    #[test]
+    fn a_folder_in_data_is_named_by_data() {
+        let d = tmp("data-name");
+        assert_eq!(templatize(&d.join("recompdata").join("saves"), &d), "{data}/saves");
+        assert_eq!(templatize(&d.join("recompdata"), &d), "{data}");
+        assert_eq!(templatize(&d.join("save"), &d), "{install}/save");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn data_as_a_save_place_leaves_out_caches_and_the_launchers_work_folders() {
+        let d = tmp("data-skip");
+        let data = d.join("recompdata");
+        for sub in ["saves", "cache/shaders", ".recomplauncher-tmp", ".recomplauncher-game-update/old", "tmp"] {
+            fs::create_dir_all(data.join(sub)).unwrap();
+        }
+        fs::write(data.join("saves/slot1.sav"), b"save").unwrap();
+        fs::write(data.join("settings.toml"), b"x = 1").unwrap();
+        fs::write(data.join("cache/shaders/a.bin"), b"cache").unwrap();
+        fs::write(data.join(".recomplauncher-tmp/part.bin"), b"temp").unwrap();
+        fs::write(data.join(".recomplauncher-game-update/old/old.sav"), b"old").unwrap();
+        fs::write(data.join("tmp/x.sav"), b"temp").unwrap();
+        let g = game(&d);
+        let s = vec![Spot { template: "{data}".into(), from: "developer" }];
+        let mut got: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
+        got.sort();
+        assert_eq!(got, vec!["saves/slot1.sav", "settings.toml"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_whole_game_folder_as_a_save_place_leaves_out_the_setup_temp_folder() {
+        let d = tmp("install-skip");
+        fs::create_dir_all(d.join(".recomplauncher-tmp")).unwrap();
+        fs::write(d.join(".recomplauncher-tmp/half.sav"), b"temp").unwrap();
+        fs::write(d.join("slot1.sav"), b"save").unwrap();
+        let g = game(&d);
+        let s = vec![Spot { template: "{install}".into(), from: "player" }];
+        let got: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
+        assert_eq!(got, vec!["slot1.sav"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn saves_in_data_are_kept_beside_the_library() {
+        // What uninstalling with "keep a copy of its saves" relies on: the copy is outside the game.
+        let d = tmp("data-keep");
+        let app = d.join("app");
+        let inst = d.join("lib").join("Game");
+        fs::create_dir_all(inst.join("recompdata/saves")).unwrap();
+        fs::write(inst.join("recompdata/saves/slot1.sav"), b"save").unwrap();
+        let g = game(&inst);
+        let s = vec![Spot { template: "{data}/saves".into(), from: "developer" }];
+        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("recompdata").join("saves").join("slot1.sav")]);
+        let copy = backup(&app, "g", &s, &g).unwrap().unwrap();
+        let kept = dir_of(&app, "g", &g).join(&copy.name);
+        assert!(kept.is_file() && !kept.starts_with(&inst), "{}", kept.display());
+        fs::remove_dir_all(&inst).unwrap();
+        assert!(kept.is_file(), "the copy outlives the game's folder");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

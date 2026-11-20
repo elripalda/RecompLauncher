@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "啟動器一找到新版本，所有已安裝的遊戲就會立即更新",
  "Turn off automatic updates": "關閉自動更新",
  "Updates wait for you in Downloads": "更新會在「下載」中等您",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "設定需要遊戲所在的磁碟機至少有 1 GB 可用空間。請騰出一些空間，或把遊戲移到其他磁碟機，然後再試一次。",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "遊戲資料夾裡有一個不是啟動器建立的 .recomplauncher-tmp 資料夾，所以設定不會使用它。請把它移出遊戲資料夾，然後再試一次。",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "無法在遊戲資料夾中為設定建立暫存資料夾。請檢查磁碟機是否已滿或為唯讀，然後再試一次。",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "遊戲資料夾中的某個路徑對 Windows 來說太長。請在「設定」→「遊戲和資料夾」中新增一個路徑較短的遊戲庫資料夾並把遊戲移過去，或開啟 Windows 的長路徑設定（LongPathsEnabled），然後再試一次。啟動器不會替你變更這個設定。",
+ "Keep a copy of its saves first, to put back if you install it again": "先保留一份存檔副本，重新安裝後可以放回",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} 已解除安裝，但它的資料夾還在：無法先做一份存檔副本。它位於 {path}。",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "已保留一份存檔副本。重新安裝後，可在「存檔」分頁中放回。",
+ "{path}. A copy of its saves is kept first.": "{path}。會先保留一份存檔副本。",
+ "Delete its folder and its saves": "刪除其資料夾和存檔",
  "N/A": "不適用"
 }

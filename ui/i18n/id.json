@@ -3361,5 +3361,14 @@
  "Every installed game takes a new release as soon as the launcher finds one": "Setiap game yang terpasang mendapat rilis baru begitu launcher menemukannya",
  "Turn off automatic updates": "Matikan pembaruan otomatis",
  "Updates wait for you in Downloads": "Pembaruan menunggumu di Unduhan",
+ "Setup needs at least 1 GB free on the game's drive. Free some up, or move the game to another drive, then try again.": "Penyiapan butuh ruang kosong minimal 1 GB di drive game. Kosongkan sedikit ruang, atau pindahkan game ke drive lain, lalu coba lagi.",
+ "The game's folder has a .recomplauncher-tmp folder the launcher didn't make, so setup won't use it. Move it out of the game's folder, then try again.": "Folder game punya folder .recomplauncher-tmp yang tidak dibuat oleh launcher, jadi penyiapan tidak memakainya. Pindahkan folder itu keluar dari folder game, lalu coba lagi.",
+ "Couldn't make a temp folder for setup in the game's folder. Check the drive isn't full or read-only, then try again.": "Tidak bisa membuat folder sementara untuk penyiapan di folder game. Pastikan drive tidak penuh atau hanya-baca, lalu coba lagi.",
+ "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.": "Ada path di folder game yang terlalu panjang untuk Windows. Tambahkan folder pustaka dengan path lebih pendek di Pengaturan → Game dan folder lalu pindahkan game ke sana, atau nyalakan pengaturan path panjang Windows (LongPathsEnabled), lalu coba lagi. Launcher tidak mengubah pengaturan itu untukmu.",
+ "Keep a copy of its saves first, to put back if you install it again": "Simpan salinan save-nya dulu, untuk dikembalikan kalau kamu memasangnya lagi",
+ "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} sudah di-uninstall, tapi foldernya tetap ada: salinan save-nya tidak bisa dibuat dulu. Foldernya di {path}.",
+ "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Salinan save-nya disimpan. Pasang lagi game-nya dan kembalikan save dari tab Save.",
+ "{path}. A copy of its saves is kept first.": "{path}. Salinan save-nya disimpan dulu.",
+ "Delete its folder and its saves": "Hapus folder dan save-nya",
  "N/A": "Tidak ada"
 }
