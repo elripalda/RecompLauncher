@@ -137,7 +137,8 @@ function aboutFacts(ab) {
     .filter(([, v]) => v && String(v).trim());
 }
 // Other recomps a player of this one might like: shared tags count twice, then the same genre,
-// series and console. Other versions of the same game and ones still to come are left out.
+// series and console. Other versions of the same game and ones still to come are left out, and
+// each game shows once (its best match), however many versions of it there are.
 function moreLike(a, max = 12) {
   const tags = new Set(tagsOf(a)), series = a.about && a.about.series;
   const same = (x) => (a.game && x.game === a.game) || (a.title && x.title === a.title) || x.id === a.id;
@@ -147,7 +148,9 @@ function moreLike(a, max = 12) {
     if (a.origin && x.origin === a.origin) sc += 1.5;
     if (series && x.about && x.about.series === series) sc += 4;
     return [x, sc];
-  }).filter(([, sc]) => sc >= 3).sort((p, q) => q[1] - p[1] || (q[0].downloads || 0) - (p[0].downloads || 0)).slice(0, max).map(([x]) => x);
+  }).filter(([, sc]) => sc >= 3).sort((p, q) => q[1] - p[1] || (q[0].downloads || 0) - (p[0].downloads || 0))
+    .filter(([x], i, all) => { const k = x.title || x.game || x.id; return all.findIndex(([y]) => (y.title || y.game || y.id) === k) === i; })
+    .slice(0, max).map(([x]) => x);
 }
 const bootNote = (a) => String(((a && a.boot) || builtinBoot()[a && a.id] || {}).player_note || '');
 invoke('boot_builtin').then((b) => { S.bootBuiltin = b || {}; }).catch(() => {});
