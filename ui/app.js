@@ -3381,10 +3381,13 @@ async function suBegin(path, anyway) {
     if (!SU.id) return;
     if (w) { Object.assign(SU, { stage: 'wrong', path, wrong: w }); return suDraw(); }
   }
+  // setup_copy turns away a game with named inputs too: those set up with the copy instead.
+  const named = ((S.setup[SU.id] || {}).inputs || []).length > 0;
   // No path: built again from what it kept, so there's no copy to read or check.
-  Object.assign(SU, { stage: 'run', path, kept: !path, step: 'read', steps: {}, ev: {}, q: [], at: Date.now(), result: null, err: '' });
+  Object.assign(SU, { stage: 'run', path, kept: !path && !named, step: 'read', steps: {}, ev: {}, q: [], at: Date.now(), result: null, err: '' });
   suDraw();
-  try { await invoke('setup_copy', { id: SU.id, path }); } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
+  const run = named ? invoke('setup_inputs_run', { id: SU.id, copy: path || null }) : invoke('setup_copy', { id: SU.id, path });
+  try { await run; } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
 }
 const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
 async function onSetupFinished(id, watching) {
