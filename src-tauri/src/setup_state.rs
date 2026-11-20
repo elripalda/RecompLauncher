@@ -405,6 +405,15 @@ mod tests {
     }
 
     #[test]
+    fn changed_is_sent_to_the_page_only_when_an_update_did_it() {
+        let unfinished = serde_json::to_value(needs("rebuild", "kept")).unwrap();
+        assert!(unfinished.get("changed").is_none());
+        let update = serde_json::to_value(needs_after_update("rebuild", "kept")).unwrap();
+        assert_eq!(update["changed"], true);
+        assert_eq!(update["reason"], "rebuild");
+    }
+
+    #[test]
     fn a_players_own_build_is_never_built_again_from_what_the_step_kept() {
         let d = dir("kept-own");
         let mut g = built_copy_gone(&d);
