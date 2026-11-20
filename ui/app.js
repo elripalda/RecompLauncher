@@ -222,7 +222,9 @@ const setupStatus = (id) => { const su = S.setup[id]; return su && su !== 'loadi
 const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready && !st.changed; };
 // Its update changed how it's built (prepare.version): it's set up, and needs a new build to finish
 // the update. Play stays Play, with a line under it, and opens the update window (update-build.js).
-const updateBuildDue = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready && !!st.changed; };
+// Not only the catalog's Easy Setup games (S.easy): one brought in by hand builds the same way, and
+// a game the player sets up their own way is never `changed`.
+const updateBuildDue = (id) => { const st = setupStatus(id); return !!st && !st.ready && !!st.changed; };
 // Built from the player's copy, which isn't where it was anymore: the core says the game plays
 // without it, so its copy rows say so (desktop and Big Picture) instead of asking for it.
 const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && st.ready && st.reason === 'built'); };

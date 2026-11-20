@@ -20,6 +20,11 @@ test('an update that changed the setup step keeps Play and needs the update wind
   assert.equal(c.easyNotReady('g'), false);
 });
 
+test('a game brought in by hand (not in the catalog\'s Easy Setup list) gets the update window too', () => {
+  const c = new Function('S', `${line(app, 'setupStatus')} ${line(app, 'updateBuildDue')} return { updateBuildDue };`)({ easy: new Set(), setup: { g: { status: { ready: false, reason: 'rebuild', detail: 'kept', changed: true } } } });
+  assert.equal(c.updateBuildDue('g'), true);
+});
+
 test('the options the update added start as their developer set them', () => {
   assert.match(fn(upd, 'updateBuildModal'), /const updOpts = Object\.fromEntries\(newPrepOpts\(su\)\.map\(\(o\) => \[o\.id, !!o\.on\]\)\);/);
 });
