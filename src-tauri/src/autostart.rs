@@ -162,6 +162,11 @@ mod imp {
         let args = std::iter::once(program.to_string_lossy().to_string()).chain(pre).chain([super::ARG.to_string()]);
         let exec = args.map(|a| super::exec_arg(&a)).collect::<Vec<_>>().join(" ");
         let text = super::entry_text(&exec, &icon(data));
+        // Written only when it changed: Plasma's systemd turns the file into a service, and
+        // rewriting it at every start leaves that service marked as changed on disk.
+        if std::fs::read_to_string(&file).ok().as_deref() == Some(text.as_str()) {
+            return Ok(true);
+        }
         let dir = file.parent().ok_or("Couldn't find your settings folder.")?;
         std::fs::create_dir_all(dir).map_err(|e| format!("Couldn't make the autostart folder: {e}"))?;
         std::fs::write(&file, text).map_err(|e| format!("Couldn't write the startup entry: {e}"))?;
