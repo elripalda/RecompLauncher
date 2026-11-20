@@ -201,8 +201,9 @@ fn desktop_image(text: &str) -> Option<PathBuf> {
 }
 
 /// AppImages on this PC that no launcher installed: in the usual folders, and the ones the app
-/// menu starts (`data_home` is ~/.local/share). Each real file once (a link in ~/.local/bin to one
-/// in ~/AppImages is the same AppImage), and none of `skip` (the launcher's own).
+/// menu starts (`data_home` is ~/.local/share). Each real file once, and none of `skip` (the
+/// launcher's own). Gear Lever puts a link named just "dusklight" in ~/.local/bin, so a link counts
+/// by the file it points to, not its own name.
 #[cfg(any(target_os = "linux", test))]
 fn loose_images(home: &Path, data_home: &Path, skip: &[PathBuf]) -> Vec<PathBuf> {
     let mut look: Vec<PathBuf> = vec![];
@@ -215,11 +216,8 @@ fn loose_images(home: &Path, data_home: &Path, skip: &[PathBuf]) -> Vec<PathBuf>
     }
     let mut out = vec![];
     for p in look {
-        if !is_image_name(&p) {
-            continue;
-        }
         let Ok(real) = p.canonicalize() else { continue };
-        if !real.is_file() || skip.contains(&real) || out.contains(&real) {
+        if !is_image_name(&real) || !real.is_file() || skip.contains(&real) || out.contains(&real) {
             continue;
         }
         out.push(real);
@@ -1145,6 +1143,16 @@ mod tests {
         let game = put_image(&home.0, "AppImages", "dusklight.appimage");
         std::fs::create_dir_all(home.0.join(".local/bin")).unwrap();
         std::os::unix::fs::symlink(&game, home.0.join(".local/bin/dusklight.appimage")).unwrap();
+        assert_eq!(loose_images(&home.0, &home.0.join(".local/share"), &[]), vec![game]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_on_the_path_named_without_appimage_is_found() {
+        let home = crate::appimage::tests::TempDir::new();
+        let game = put_image(&home.0, "Games", "dusklight.appimage");
+        std::fs::create_dir_all(home.0.join(".local/bin")).unwrap();
+        std::os::unix::fs::symlink(&game, home.0.join(".local/bin/dusklight")).unwrap();
         assert_eq!(loose_images(&home.0, &home.0.join(".local/share"), &[]), vec![game]);
     }
 
