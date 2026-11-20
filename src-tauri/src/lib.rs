@@ -11408,7 +11408,10 @@ mod own_build_pick_tests {
         assert_eq!(g.build_dir, None);
         assert!(g.prebuilt);
         let p = profile_of(&app, "hopper", g).unwrap();
-        assert_eq!(p.args_for(&g.path, None, &BTreeMap::new()), vec!["--play".to_string(), home.to_string_lossy().into_owned()]);
+        let args = p.args_for(&g.path, None, &BTreeMap::new());
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "--play");
+        assert_eq!(PathBuf::from(&args[1]), home);
         assert_eq!(std::fs::read(external.join("complete.bin")).unwrap(), b"synthetic build");
         std::fs::remove_dir_all(root).unwrap();
     }
