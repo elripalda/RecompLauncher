@@ -623,7 +623,7 @@ const isHidden = (id) => hiddenSet().has(id);
 async function hideGame(id) {
   const g = verGroup(byId(id)), ids = g ? g.list.map((v) => v.id) : [id];
   await saveUi({ hidden: [...new Set([...hiddenSet(), ...ids])] }, true);
-  toast(t('Hidden from Discover and Home. Settings → Discover shows it again.'));
+  toast(t('Hidden from the Catalog and Home. Settings → Catalog shows it again.'));
   render(true);
 }
 async function unhideGame(id) {
@@ -637,7 +637,7 @@ function hiddenModal() {
   const draw = () => {
     const seen = new Set(), list = [];
     for (const id of hiddenSet()) { const a = byId(id); if (!a) continue; const g = verGroup(a), k = g ? 't:' + g.id : a.id; if (seen.has(k)) continue; seen.add(k); list.push(g ? leadOf(g) : a); }
-    return `<h2>${esc(t('Hidden Games'))}</h2><p>${esc(t('These don\'t show in Discover or on Home. Ones in your Library stay there.'))}</p>
+    return `<h2>${esc(t('Hidden Games'))}</h2><p>${esc(t('These don\'t show in the Catalog or on Home. Ones in your Library stay there.'))}</p>
       ${list.length ? `<div class="choices">${list.map((a) => `<div class="choice"><span><b>${esc(a.game || a.name)}</b><small>${esc(originName(a.origin))}</small></span><button type="button" class="btn sm" data-x="show" data-id="${esc(a.id)}">${esc(t('Show Again'))}</button></div>`).join('')}</div>` : `<p class="muted">${esc(t('Nothing is hidden.'))}</p>`}
       <div class="acts">${list.length > 1 ? `<button type="button" class="btn" data-x="all">${esc(t('Show All Again'))}</button>` : ''}<button type="button" class="btn main" data-x="no">${esc(t('Done'))}</button></div>`;
   };
@@ -1507,7 +1507,7 @@ function offlineNote() {
 
 function pageHome() {
   const apps = visible();
-  if (!apps.length) return S.cat ? `<div class="page">${offlineNote()}<div class="empty"><h2>${esc(t('Nothing to discover right now'))}</h2></div></div>` : `<div class="loading">${esc(t('Loading…'))}</div>`;
+  if (!apps.length) return S.cat ? `<div class="page">${offlineNote()}<div class="empty"><h2>${esc(t('Nothing in the Catalog right now'))}</h2></div></div>` : `<div class="loading">${esc(t('Loading…'))}</div>`;
   const mine = apps.filter(forOS);
   const pool = (mine.length ? mine : apps).filter((a) => !a.soon);
   const feats = turnkeyFirst(bannerApps() || oneEach(uniq([...pool.filter((a) => a.featured && (a.hero || a.cover)), ...pool.filter((a) => a.hero && notPC(a)).sort(byDl), ...pool.filter(notPC).sort(byDl)].map((a) => a.id)).map(byId)).slice(0, 5));
@@ -1605,7 +1605,7 @@ function foundSection(found) {
   // would otherwise read as everything the player owns.
   const notYet = t('None of them are in your Library yet.');
   const intro = found.length === 1 ? one : many + ' ' + notYet;
-  return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('Found in your folders'))}</h2><p>${esc(intro)}${more ? ' ' + esc(tn(more, '1 more in Discover.', '{n} more in Discover.')) : ''}</p></div><div class="pager">${seeAllBtn('found')}</div></div>
+  return `<section class="shelf"><div class="shelf-h"><div><h2>${esc(t('Found in your folders'))}</h2><p>${esc(intro)}${more ? ' ' + esc(tn(more, '1 more in the Catalog.', '{n} more in the Catalog.')) : ''}</p></div><div class="pager">${seeAllBtn('found')}</div></div>
     <div class="news-grid${list.length === 1 ? ' one' : ''}">${list.map((a) => `<div class="news found-card"><button type="button" class="fc-open" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(a.name)}">${a.cover ? pic(thumbOf(a.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}
       <span class="in"><span class="kick">${esc(t('You have it'))}</span><b>${esc(a.name)}</b><small class="based">${DISC_S}${esc(baseName(S.owned[a.id].path))}</small><span class="p">${esc([a.game, originName(a.origin)].filter(Boolean).join(' · '))}</span></span></button>
       <div class="acts">${S.jobs[a.id] ? progress(a.id) : `<button type="button" class="btn main" data-act="install" data-id="${esc(a.id)}">${DOWN}${esc(t('Install'))}</button>`}</div></div>`).join('')}</div></section>`;
@@ -1798,7 +1798,7 @@ function pageDiscover() {
   const genres = Object.keys(GENRES).filter((k) => apps.some((a) => a.genre === k));
   const q = S.q.trim();
   return `<div class="page">${offlineNote()}
-    <div class="dhead"><h1>${esc(q ? t('Search') : f.tag ? tf('All recomps with {tag}', { tag: f.tag }) : f.genre ? t(GENRES[f.genre]) : t('Discover'))}</h1><p>${esc(t('Every recomp comes straight from its developer\'s GitHub. You bring your own copy of the game.'))}</p>
+    <div class="dhead"><h1>${esc(q ? t('Search') : f.tag ? tf('All recomps with {tag}', { tag: f.tag }) : f.genre ? t(GENRES[f.genre]) : t('Catalog'))}</h1><p>${esc(t('Every recomp comes straight from its developer\'s GitHub. You bring your own copy of the game.'))}</p>
       <label class="bigsearch"><span class="sr">${esc(t('Search recomps'))}</span>${SEARCH}<input id="dq" type="search" placeholder="${esc(byGame() ? t('Search games') : t('Search games, recomps or developers'))}" value="${esc(S.q)}" autocomplete="off" spellcheck="false"><button type="button" class="clear" data-act="clear-q" aria-label="${esc(t('Clear the search'))}"${q ? '' : ' hidden'}>${XMARK}</button></label></div>
     ${notesBars()}
     <div class="dctl rows"><div class="grp">
@@ -2022,7 +2022,7 @@ function pageLibrary() {
   if (!total) {
     return `<div class="page"><div class="head"><div><h1>${esc(t('Library'))}</h1><p>${esc(t('Your recomps, kept up to date from each developer\'s own GitHub.'))}</p></div></div>
       <div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>
-      <h2>${esc(t('Nothing installed yet'))}</h2><p>${esc(t('Pick a recomp in Discover and install it. It shows up here, ready to play.'))}</p><div class="acts"><button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button><button type="button" class="btn main" data-go="discover">${esc(t('Discover recomps'))}</button>${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}</div></div></div>`;
+      <h2>${esc(t('Nothing installed yet'))}</h2><p>${esc(t('Pick a recomp in the Catalog and install it. It shows up here, ready to play.'))}</p><div class="acts"><button type="button" class="btn" data-act="adopt">${esc(t('Bring Your Recomps'))}</button><button type="button" class="btn main" data-go="discover">${esc(t('Browse the Catalog'))}</button>${devOn() ? `<button type="button" class="btn" data-act="dev-add">${esc(t('Add a local build'))}</button>` : ''}</div></div></div>`;
   }
   const n = Object.keys(S.updates).filter((id) => S.library[id]).length;
   const setup = libRecs().filter(needsCopySetup).length;
@@ -2089,7 +2089,7 @@ function pageGame(id) {
   wantCounts();
   let a = byId(id);
   if (!a && S.library[id]) a = libApp(S.library[id]);
-  if (!a) return S.cat ? `<div class="page"><div class="empty"><h2>${esc(t('This recomp isn\'t listed anymore'))}</h2><button type="button" class="btn" data-go="discover">${esc(t('Back to Discover'))}</button></div></div>` : `<div class="loading">${esc(t('Loading…'))}</div>`;
+  if (!a) return S.cat ? `<div class="page"><div class="empty"><h2>${esc(t('This recomp isn\'t listed anymore'))}</h2><button type="button" class="btn" data-go="discover">${esc(t('Back to Catalog'))}</button></div></div>` : `<div class="loading">${esc(t('Loading…'))}</div>`;
   const inst = S.library[id];
   if (S.mods[id] === undefined) loadMods(id);
   if (inst && S.setup[id] === undefined) loadSetup(id);
@@ -4330,12 +4330,12 @@ function pageSettings() {
       if (!S.ids && !S.idsAsked) { S.idsAsked = true; invoke('data_ids').then((ids) => { S.ids = ids; if (S.view === 'settings') render(true); }).catch(() => {}); }
       body = group(t('Language'), row(t('Language'), t('The launcher and its quick menu over your games.'), `<select class="sel" data-act="lang" aria-label="${esc(t('Language'))}">${[['auto', tf('Same as your computer ({lang})', { lang: (LANGS.find((x) => x[0] === systemLang()) || ['', 'English (US)'])[1] })]].concat(LANGS).map(([c, n]) => `<option value="${c}"${(ui.lang || 'auto') === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`)
           + row(t('Clock'), t('How times show in the launcher, Big Picture mode and the quick menu.'), clockSelect(ui.clock)))
-        + group(t('Discover'), row(t('Refresh Discover'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
-          + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in Discover.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
+        + group(t('Catalog'), row(t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
+          + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in the Catalog.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
           + (igOn() ? row(t('Show where to buy the original game'), t('A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.'), sw('hide_buy', !ui.hide_buy, t('Show where to buy the original game'), 'ui-toggle')) : '')
           + row(t('Show the AI-assisted tag'), t('The tag on game pages. What the developer used AI for is always in the game\'s Overview.'), sw('show_ai_tag', ui.show_ai_tag, t('Show the AI-assisted tag'), 'ui-toggle'))
-          + row(t('Hidden games'), (ui.hidden || []).length ? t('Games you hid from Discover and Home. Right-click a game to hide it.') : t('Right-click a game in Discover and pick Hide from Discover to keep it out of the way.'), `<button type="button" class="btn" data-act="hidden-list"${(ui.hidden || []).length ? '' : ' disabled'}>${esc(t('Show Hidden Games'))}</button>`))
-        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.') + ' ' + t('With this off, those recomps are left out of Discover, search and game pages.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
+          + row(t('Hidden games'), (ui.hidden || []).length ? t('Games you hid from the Catalog and Home. Right-click a game to hide it.') : t('Right-click a game in the Catalog and pick Hide from Catalog to keep it out of the way.'), `<button type="button" class="btn" data-act="hidden-list"${(ui.hidden || []).length ? '' : ' disabled'}>${esc(t('Show Hidden Games'))}</button>`))
+        + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.') + ' ' + t('With this off, those recomps are left out of the Catalog, search and game pages.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
         + group(t('Notifications and sharing'), row(t('Notifications'), S.os === 'windows' ? t('A Windows notification when a new recomp comes out for a game you own.') : t('A notification when a new recomp comes out for a game you own.'), sw('notify', st.notify, t('Notifications')))
           + row(t('Discord status'), t('Shows the game you\'re playing on your Discord profile, with its cover and play time.'), sw('discord', st.discord !== false, t('Discord status')))
           + row(t('Share usage and diagnostics'), t('Your PC\'s parts, which games you play and for how long, and what went wrong when one crashes or won\'t install. It helps fix problems faster. No names, no files.'), `<span class="set-ctl2"><a href="#" data-act="url" data-url="https://recompstore.com/privacy#launcher">${esc(t('What\'s sent'))}</a>${sw('share_usage', st.data_asked && st.share_usage, t('Share usage and diagnostics'))}</span>`)
@@ -4395,12 +4395,12 @@ function pageSettings() {
     case 'look':
       body = group(t('Appearance'), `<div class="set-row"><div class="k"><b>${esc(t('Theme'))}</b><span>${esc(t('Dark, black for OLED screens, or light.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Theme'))}">${[['dark', t('Dark')], ['oled', t('OLED')], ['light', tc('Light|theme')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.theme === 'light' ? 'light' : ui.oled ? 'oled' : 'dark') === k}" data-act="theme" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + `<div class="set-row"><div class="k"><b>${esc(t('Text Size'))}</b><span>${esc(t('Bigger or smaller text, buttons and covers. Ctrl with + or - works too.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Text Size'))}">${UI_SCALES.map((k) => `<button type="button" role="radio" aria-checked="${uiScale() === k}" data-act="ui-scale" data-k="${k}">${Math.round(k * 100)}%</button>`).join('')}</div></div>`
-        + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['discover', t('Discover')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
+        + `<div class="set-row"><div class="k"><b>${esc(t('Opens On'))}</b><span>${esc(t('The page you see when the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Opens On'))}">${[['', t('Home')], ['discover', t('Catalog')], ['library', t('Library')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(ui.start_page || '') === k}" data-act="start-page" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>`
         + row(t('Featured Banner on Home'), t('The slideshow of recomps at the top of Home. Turn it off and Home starts with Jump back in.'), sw('hide_hero', !ui.hide_hero, t('Featured Banner on Home'), 'ui-toggle'))
         + row(t('Compact sidebar'), t('Only the icons and your pinned games\' covers. The button at the bottom of the sidebar does the same.'), sw('mini', ui.mini, t('Compact sidebar'), 'ui-toggle'))
         + row(t('Cover Size Slider'), t('The slider at the bottom right of the Library, for the size of its covers and to switch to wide tiles.'), sw('hide_tile_ctl', !ui.hide_tile_ctl, t('Cover Size Slider'), 'ui-toggle'))
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
-        + row(t('Show Versions Under Names'), t('The newest version of each recomp in Discover, and the version you have installed in the Library.'), sw('show_versions', ui.show_versions, t('Show Versions Under Names'), 'ui-toggle'))
+        + row(t('Show Versions Under Names'), t('The newest version of each recomp in the Catalog, and the version you have installed in the Library.'), sw('show_versions', ui.show_versions, t('Show Versions Under Names'), 'ui-toggle'))
         + row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cover_labels', ui.cover_labels, t('Console Labels on Covers'), 'ui-toggle'))
         + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'ui-toggle'))
         + row(t('Show Game Media'), t('Every version of a game shows the same cover, background, logo and icon: the recommended version\'s. The versions list keeps each one\'s own icon, and pictures you picked yourself stay.'), sw('game_media', ui.game_media, t('Show Game Media'), 'ui-toggle'))
@@ -4917,7 +4917,7 @@ function updateDiscover() {
   const ai = $('.dctl [data-k="hide_ai"]');
   if (ai) ai.setAttribute('aria-checked', String(!!S.settings.hide_ai));
   const h = $('.dhead h1');
-  if (h) h.textContent = S.q.trim() ? t('Search') : f.genre ? t(GENRES[f.genre]) : t('Discover');
+  if (h) h.textContent = S.q.trim() ? t('Search') : f.genre ? t(GENRES[f.genre]) : t('Catalog');
   const vals = { origin: f.origin || '', 'genre-sel': f.genre || '', 'show-sel': f.show || '' };
   for (const sl of $$('#main .dctl select[data-act]')) if (sl.dataset.act in vals && sl.value !== vals[sl.dataset.act]) sl.value = vals[sl.dataset.act];
   if (window.syncDrops) window.syncDrops();
@@ -5108,7 +5108,7 @@ T.event.listen('mine-merged', async (e) => {
   const list = (e && e.payload) || [];
   try { await refreshState(); } catch (err) { /* it shows on the next look */ }
   for (const m of list) {
-    toast(tf('{name} is on Discover now. Your copy moved over to it.', { name: m.name || m.to }));
+    toast(tf('{name} is in the Catalog now. Your copy moved over to it.', { name: m.name || m.to }));
     if (S.arg === m.from) S.arg = m.to;
     if (window.tvRemap) window.tvRemap(m.from, m.to);
   }
@@ -6011,7 +6011,7 @@ function gameMenu(id) {
     ...(S.view !== 'game' || S.arg !== id ? [{ act: 'open', id, label: t('Game page'), icon: 'page' }] : []),
     { act: 'pin', id, label: pinned ? t('Unpin from the sidebar') : t('Pin to the sidebar'), icon: 'pin' },
     ...(!g && isSaved(id) ? [{ act: 'unsave', id, label: t('Remove from Library'), icon: 'bin' }] : []),
-    ...(x && !x.custom ? [isHidden(id) ? { act: 'unhide', id, label: t('Show in Discover'), icon: 'hide' } : { act: 'hide', id, label: t('Hide from Discover'), icon: 'hide' }] : []),
+    ...(x && !x.custom ? [isHidden(id) ? { act: 'unhide', id, label: t('Show in Catalog'), icon: 'hide' } : { act: 'hide', id, label: t('Hide from Catalog'), icon: 'hide' }] : []),
     // Its own pictures and words before it's installed too (they stay when it is).
     ...(!g && x ? [{ act: 'customize', id, label: t('Edit Name and Artwork…'), icon: 'shot' }] : []),
     ...(g ? ['-',
@@ -6078,7 +6078,7 @@ function confirmUninstall(id) {
   const s = document.createElement('div');
   s.className = 'scrim';
   s.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="u-h"><h2 id="u-h">${esc(tf('Uninstall {name}?', { name: g.name }))}</h2>
-    <p>${esc(t('It comes out of your Library. You can install it again from Discover any time.'))}</p>
+    <p>${esc(t('It comes out of your Library. You can install it again from the Catalog any time.'))}</p>
     ${many ? `<p>${esc(tf('Its {n} games are uninstalled with it: {games}.', { n: many.length, games: many.map((x) => x.name).join(', ') }))}</p>` : ''}
     ${g.exe && /^([a-z]:[\\/]|\\\\|\/)/i.test(g.exe) && !String(g.exe).toLowerCase().startsWith(String(g.path).toLowerCase()) ? `<p class="muted">${esc(t('Its own installer put the game somewhere else. With the box ticked, its own uninstaller opens too.'))}</p>` : ''}
     ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
@@ -7779,7 +7779,7 @@ function githubModal() {
     try {
       const r = await invoke('github_lookup', { link, sgdbKey: (S.settings.ui || {}).sgdb_key || null });
       close();
-      if (r.known) { toast(tf('{name} is already in Discover. Here it is.', { name: r.known.name })); return go('game', r.known.id); }
+      if (r.known) { toast(tf('{name} is already in the Catalog. Here it is.', { name: r.known.name })); return go('game', r.known.id); }
       gameInfoModal({ link, info: r });
     } catch (e) {
       err.textContent = t(String(e && e.message ? e.message : e)); err.hidden = false;
@@ -7886,7 +7886,7 @@ function gameInfoModal({ link, info, id }) {
   };
   take(info.art);
   if (link && !cur.hero) cur.hero = info.hero_default || '';
-  const sim = info.similar ? `<div class="gi-sim"><span>${esc(tf('This looks like {name}, which is already in Discover.', { name: info.similar.name }))}</span><button type="button" class="btn sm" data-x="similar">${esc(t('See It'))}</button></div>` : '';
+  const sim = info.similar ? `<div class="gi-sim"><span>${esc(tf('This looks like {name}, which is already in the Catalog.', { name: info.similar.name }))}</span><button type="button" class="btn sm" data-x="similar">${esc(t('See It'))}</button></div>` : '';
   const hint = key ? t('Type a bit of the game\'s name and pick it from the list. Click the cover or background to see all the art, or use your own pictures.')
     : t('Type a bit of the game\'s name and pick it from the list. Click the cover or background to use your own pictures. With your own SteamGridDB key (Settings → Games and folders), art comes by itself.');
   const m = modal(`<h2>${esc(link ? t('Check the Details') : t('Edit Game Info'))}</h2>${sim}
@@ -8504,7 +8504,7 @@ async function act(el, e) {
     case 'clear-tag': S.find = Object.assign({}, S.find, { tag: '' }); return render(true);
     case 'unsave': return removeFromLibrary(id);
     case 'hide': return hideGame(id);
-    case 'unhide': toast(t('It shows in Discover again.')); return unhideGame(id);
+    case 'unhide': toast(t('It shows in the Catalog again.')); return unhideGame(id);
     case 'hidden-list': return hiddenModal();
     case 'ig-go': return igGo(el.dataset.id);
     case 'skip-ver': {
@@ -8628,10 +8628,10 @@ async function act(el, e) {
     case 'dev-remove': try { await invoke('uninstall', { id, deleteFiles: false }); delete S.library[id]; delete S.dev[id]; toast(t('Taken out of your Library. Your folder is still there.')); return go('library'); } catch (err) { return fail(err); }
     case 'refresh': {
       // Once a minute at most: the list is the same a moment later.
-      if (Date.now() - (S.refreshedAt || 0) < 60e3) { toast(t('Discover is up to date.')); return; }
+      if (Date.now() - (S.refreshedAt || 0) < 60e3) { toast(t('The Catalog is up to date.')); return; }
       S.refreshedAt = Date.now();
       toast(t('Getting the newest list…')); await loadCatalog(true); await loadOwned(); loadEasy(); S.rels = {};
-      toast(offNow() ? t('Can\'t reach recomplauncher.com right now, so this is the list saved on your PC.') : t('Discover is up to date.'));
+      toast(offNow() ? t('Can\'t reach recomplauncher.com right now, so this is the list saved on your PC.') : t('The Catalog is up to date.'));
       return render(true);
     }
     case 'tvsize': return saveSettings({ tv_size: el.dataset.k });
@@ -8823,7 +8823,7 @@ function refreshList(which) {
   const box = which === 'dq' ? $('#dlist') : $('#llist');
   if (!box) return render(true);
   morphList(box, which === 'dq' ? discoverGrid() : libraryGrid());
-  if (which === 'dq') { const h = $('.dhead h1'); if (h) h.textContent = S.q.trim() ? t('Search') : S.find.genre ? t(GENRES[S.find.genre]) : t('Discover'); const c = $('.bigsearch .clear'); if (c) c.hidden = !S.q.trim(); const c2 = $('#dstick .clear'); if (c2) c2.hidden = !S.q.trim(); }
+  if (which === 'dq') { const h = $('.dhead h1'); if (h) h.textContent = S.q.trim() ? t('Search') : S.find.genre ? t(GENRES[S.find.genre]) : t('Catalog'); const c = $('.bigsearch .clear'); if (c) c.hidden = !S.q.trim(); const c2 = $('#dstick .clear'); if (c2) c2.hidden = !S.q.trim(); }
 }
 let qTimer, tileTimer;
 document.addEventListener('input', (e) => {
@@ -9477,7 +9477,7 @@ T.event.listen('bigpicture', () => { if (window.startTV && !document.body.classL
 // Something new from a developer the player follows: Home shows it.
 T.event.listen('followed', () => { if (S.view === 'home') render(true); });
 // The icon by the clock: its menu in the launcher's language, and where its items go.
-const TRAY_WORDS = [N_('Open RecompLauncher'), N_('Playing'), N_('Library'), N_('Discover'), N_('Screenshots'), N_('Settings'), N_('Big Picture mode'), N_('Quit RecompLauncher'), N_('RecompLauncher is still running'), N_('It\'s by the clock. Right-click its icon to quit.')];
+const TRAY_WORDS = [N_('Open RecompLauncher'), N_('Playing'), N_('Library'), N_('Catalog'), N_('Screenshots'), N_('Settings'), N_('Big Picture mode'), N_('Quit RecompLauncher'), N_('RecompLauncher is still running'), N_('It\'s by the clock. Right-click its icon to quit.')];
 const trayWords = () => invoke('tray_words', { words: Object.fromEntries(TRAY_WORDS.map((k) => [k, t(k)])) }).catch(() => {});
 T.event.listen('tray', ({ payload: p }) => {
   const tv = document.body.classList.contains('tv-on');

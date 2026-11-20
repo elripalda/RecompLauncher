@@ -13,7 +13,7 @@
   const TV = { on: false, view: 'home', arg: null, back: [], hero: null, row: {}, focusKey: null, genre: '', shot: null, sheet: null, sort: null, dl: {}, saves: {}, sizes: null, savesAll: null };
   // Pages that belong to one game (they have a Back pill instead of the sections).
   const GAMEVIEWS = ['game', 'shots', 'mods', 'gsettings', 'gsaves'];
-  const TABS = [['home', N_('Home')], ['discover', N_('Discover')], ['soon', N_('Coming Soon')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
+  const TABS = [['home', N_('Home')], ['discover', N_('Catalog')], ['soon', N_('Coming Soon')], ['library', N_('Library')], ['downloads', N_('Downloads')], ['achievements', N_('Achievements')], ['settings', N_('Settings')]];
   // The tabs in the order the player gave the sidebar, without the ones they hid; Settings last.
   const tvTabs = () => {
     const ui = (S.settings && S.settings.ui) || {}, order = ui.side_order || [], hide = new Set(ui.side_hide || []);
@@ -950,7 +950,7 @@
     const list = installed().map((x) => x.a).concat(Object.keys(saved()).filter((id) => !S.library[id] && byId(id)).map((id) => byId(id)));
     const flow = (S.settings.ui || {}).tv_view === 'flow';
     return `${backdrop(null, flow ? 'flowbg' : '')}${bar()}
-      ${region(list.length ? libView(list) : `<p class="tv-empty">${esc(t('Install a recomp from Discover and it shows up here'))}</p>`, flow ? 'flowreg' : 'libreg')}
+      ${region(list.length ? libView(list) : `<p class="tv-empty">${esc(t('Install a recomp from the Catalog and it shows up here'))}</p>`, flow ? 'flowreg' : 'libreg')}
       ${hints([['A', t('Open')], ['X', t('Options')], ['B', t('Back')], ['LB+RB', t('Sections')]])}`;
   }
 
@@ -1161,7 +1161,7 @@
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
     const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], apps.some(window.greatHandheld) ? [['hh', N_('Great on Handhelds')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'hh' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="3.5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16.5" cy="11" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>' : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
-      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'hh' ? t('Great on Handhelds') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Discover'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
+      ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'hh' ? t('Great on Handhelds') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Catalog'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
         <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>${endedBox}`)}
       ${hints([['A', t('Open')], ['X', t('Options')], ['Y', t('Game page')], ['LB+RB', t('Sections')]])}`;
   }
@@ -1263,7 +1263,7 @@
           ${sw('auto_update_all', t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one'))}
           ${sw('backup_before_update', t('Back up saves before updates'), t('The newest five copies of each game\'s saves'))}
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
-          ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in Discover'))}
+          ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in the Catalog'))}
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
@@ -1812,7 +1812,7 @@
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),
       ...(TV.view === 'game' && onPage && verGroup(a) ? [{ label: tn(verGroup(a).list.length, '1 version', '{n} versions'), sub: t('Pick which one this page is for'), icon: 'layers', run: () => pickVersion(id) }] : []),
       ...(g && !S.running.has(id) ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
-      ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Discover'), sub: t('It shows in Discover and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Discover'), sub: t('It won\'t show in Discover or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
+      ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Catalog'), sub: t('It shows in the Catalog and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Catalog'), sub: t('It won\'t show in the Catalog or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
         { gap: true, label: t('Saves'), sub: t('Back them up, or restore an older one'), icon: 'save', run: () => go('gsaves', id) },
         ...((S.setup[id] && S.setup[id] !== 'loading') || looksHere() ? [{ label: t('Game settings'), sub: t('Its own settings, and shaders'), icon: 'gear', run: () => go('gsettings', id) }] : []),
