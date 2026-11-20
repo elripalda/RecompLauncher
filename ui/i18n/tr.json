@@ -3354,5 +3354,11 @@
  "Checked by the RecompStore team": "RecompStore ekibi tarafından kontrol edildi",
  "Open the VirusTotal report": "VirusTotal raporunu aç",
  "Verified Update": "Doğrulanmış güncelleme",
+ "Update All Games Automatically": "Tüm Oyunları Otomatik Güncelle",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Yüklü her oyun, başlatıcı yeni bir sürüm bulur bulmaz onu alır. Önce kayıtlarınız yedeklenir. Bir oyunun sizi beklemesi için Yönet sekmesinde “Otomatik güncelle”yi kapatın.",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Ayarlar → Güncellemeler bunu tüm oyunlar için açar. Burada kapalı: bu oyun sizi bekler.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Yüklü her oyun, başlatıcı yeni bir sürüm bulur bulmaz onu alır",
+ "Turn off automatic updates": "Otomatik güncellemeleri kapat",
+ "Updates wait for you in Downloads": "Güncellemeler İndirmeler’de sizi bekler",
  "N/A": "Yok"
 }

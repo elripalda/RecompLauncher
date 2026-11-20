@@ -11,11 +11,12 @@ const fileRows = (inst, signedIn) => {
   const run = new Function('S', 't', 'esc', `${fn(app, 'manageFileRows')}; return manageFileRows;`);
   return run({ account: { signedIn } }, same, same)('g', inst).join('');
 };
-// The rows of the Updates card, with the game's updates paused or not.
+// The rows of the Updates card, with the game's updates paused or not (and Settings → Update All
+// Games Automatically off).
 const updateRows = (inst, held) => {
-  const run = new Function('S', 't', 'esc', 'isLab', 'isSF', 'fmtB', 'heldIds', `${fn(app, 'manageUpdateRows')}; return manageUpdateRows;`);
+  const run = new Function('S', 't', 'esc', 'isLab', 'isSF', 'fmtB', 'heldIds', 'autoUpdateAll', 'autoUpdates', `${fn(app, 'manageUpdateRows')}; return manageUpdateRows;`);
   const no = () => false;
-  return run({}, same, same, no, no, String, () => new Set(held ? ['g'] : []))('g', inst).join('');
+  return run({}, same, same, no, no, String, () => new Set(held ? ['g'] : []), no, () => !!inst.auto_update)('g', inst).join('');
 };
 const GAME = { path: 'F:\\Library\\hydro', repo: 'dev/hydro', tag: 'v1.3.0' };
 

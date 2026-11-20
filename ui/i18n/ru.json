@@ -3354,5 +3354,11 @@
  "Checked by the RecompStore team": "Проверено командой RecompStore",
  "Open the VirusTotal report": "Открыть отчёт VirusTotal",
  "Verified Update": "Проверенное обновление",
+ "Update All Games Automatically": "Обновлять все игры автоматически",
+ "Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.": "Каждая установленная игра получает новый релиз, как только лаунчер его находит. Сначала создаётся копия ваших сохранений. Чтобы игра ждала вас, выключите «Обновлять автоматически» на её вкладке «Управление».",
+ "Settings → Updates turns this on for every game. Off here: this game waits for you.": "Настройки → Обновления включают это для всех игр. Выключено здесь: эта игра ждёт вас.",
+ "Every installed game takes a new release as soon as the launcher finds one": "Каждая установленная игра получает новый релиз, как только лаунчер его находит",
+ "Turn off automatic updates": "Выключить автообновления",
+ "Updates wait for you in Downloads": "Обновления ждут вас в «Загрузках»",
  "N/A": "Н/Д"
 }

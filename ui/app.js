@@ -199,6 +199,18 @@ const isInstallerApp = (a) => !!(a && a.installer) && S.os === 'windows';
 // Settings → Auto-Install: a finished download goes straight on to its setup or installer. On
 // unless the player turned it off (settings saved before the switch existed have no value).
 const autoInstall = () => S.settings.auto_install !== false;
+// Settings → Update All Games Automatically, or the game's own Update automatically. A game turned
+// off in its own Manage tab while Settings has it on is remembered apart (ui.auto_update_skip), so
+// that one game waits for the player; Pause Updates is different: it hides the update altogether.
+// A local build has no releases to update from, so it never updates.
+const autoUpdateAll = () => !!S.settings.auto_update_all;
+const autoUpSkipped = () => new Set(((S.settings.ui || {}).auto_update_skip || []).filter((x) => typeof x === 'string'));
+function autoUpdates(id) {
+  const g = S.library[id];
+  if (!g || g.local) return false;
+  if (g.auto_update) return true;
+  return autoUpdateAll() && !autoUpSkipped().has(id);
+}
 const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
 // The yellow Set Up: the developer's steps not done yet, or an installer waiting to run.
 const setupDue = (a) => !!a && ((needsSetup(a) && !setupDone(a.id)) || installerDue(a.id));
@@ -2555,9 +2567,10 @@ function manageUpdateRows(id, inst) {
   const checked = inst.verified ? (other ? t('matched its release\'s checksum') : t('matched GitHub\'s checksum')) : (other ? t('Its release had no checksum for it') : t('GitHub had no checksum for it'));
   const what = inst.asset ? `${esc(inst.tag)} · ${esc(inst.asset)}${inst.size ? ' · ' + fmtB(inst.size) : ''} · ${esc(checked)}` : esc(inst.tag || t('Not known. Updating puts the newest one in its folder.'));
   const held = heldIds().has(id);
+  const autoSub = autoUpdateAll() ? t('Settings → Updates turns this on for every game. Off here: this game waits for you.') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.');
   return [
     `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${what}</span></div><button type="button" class="btn" data-act="build" data-id="${esc(id)}">${esc(t('Change Build…'))}</button></div>`,
-    `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.auto_update}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`,
+    `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(autoSub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${autoUpdates(id)}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`,
     `<div class="set-row"><div class="k"><b>${esc(t('Pause Updates'))}</b><span>${esc(t('It stays on the version it has until you turn this off.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${held}" aria-label="${esc(t('Pause Updates'))}" data-act="hold-up" data-id="${esc(id)}"></button></div>`,
     project,
   ];
@@ -4361,6 +4374,7 @@ function pageSettings() {
     case 'updates':
       body = group(t('Updates'), row(t('Check for Updates'), t('Asks each installed game\'s GitHub for a newer release now.'), `<button type="button" class="btn sm main" data-act="check-upd">${esc(t('Check now'))}</button>`)
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
+          + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
@@ -5211,6 +5225,26 @@ async function toggleHold(id) {
 }
 window.holdItem = holdItem;
 window.toggleHold = toggleHold;
+window.autoUpdates = autoUpdates;
+window.toggleAutoUpdate = toggleAutoUpdate;
+// A game's own Update automatically (its Manage tab). While Settings updates every game,
+// off puts just this game on the skip list and on takes it off again; its own setting only changes
+// when Settings doesn't already cover it.
+async function toggleAutoUpdate(id) {
+  const g = S.library[id];
+  if (!g) return;
+  const on = !autoUpdates(id);
+  const all = autoUpdateAll();
+  const setOwn = on ? !all : !!g.auto_update;
+  const skip = autoUpSkipped();
+  if (on) skip.delete(id); else skip.add(id);
+  try {
+    if (setOwn) S.library[id] = await invoke('set_game_options', { id, args: null, autoUpdate: on });
+    if (all) await saveUi({ auto_update_skip: [...skip] }, true);
+  } catch (err) { return fail(err); }
+  toast(on ? tf('{name} updates by itself now.', { name: g.name }) : t('Updates wait for you again.'));
+  render(true);
+}
 // Update toasts count games, like the rest of the launcher. Several recomps of one game are named
 // by the game; a single recomp keeps its own name.
 function updateName(ids) {
@@ -5246,7 +5280,7 @@ async function checkUpdates(loud) {
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
   if (S.view === 'downloads') render(true);
   // Never on its own to a version the site found crashing for a lot of players.
-  const auto = Object.keys(S.updates).filter((id) => S.library[id] && S.library[id].auto_update && !S.running.has(id) && !S.jobs[id] && !(S.paused || {})[id] && !badVersion(byId(id), S.updates[id]));
+  const auto = Object.keys(S.updates).filter((id) => autoUpdates(id) && !S.running.has(id) && !S.jobs[id] && !(S.paused || {})[id] && !badVersion(byId(id), S.updates[id]));
   for (const id of auto) startInstall(id);
   if (auto.length) toast(updatingLine(auto));
   const waiting = Object.keys(S.updates).filter((k) => !auto.includes(k));
@@ -8410,7 +8444,7 @@ async function act(el, e) {
     case 'hold-up': return toggleHold(id);
     case 'free-space': return freeUpSpace(id);
     case 'move-build': return moveBuild(id);
-    case 'auto-up': try { S.library[id] = await invoke('set_game_options', { id, args: null, autoUpdate: !S.library[id].auto_update }); toast(S.library[id].auto_update ? tf('{name} updates by itself now.', { name: S.library[id].name }) : t('Updates wait for you again.')); render(true); } catch (err) { fail(err); } return;
+    case 'auto-up': return toggleAutoUpdate(id);
     case 'launch-opts': return launchOptions(id);
     case 'rename': return renameModal(id);
     case 'troubleshoot': return troubleshootModal(id);
@@ -8702,6 +8736,8 @@ async function act(el, e) {
       // Sharing: what shows is what's sent (nothing before the player was asked).
       if (k === 'share_usage' || k === 'share_stats') return saveSettings({ [k]: !(S.settings.data_asked && S.settings[k]), data_asked: true });
       if (k === 'auto_install') return saveSettings({ auto_install: !autoInstall() });
+      // Turned on: the updates already waiting start now, not at the next check.
+      if (k === 'auto_update_all') { await saveSettings({ auto_update_all: !autoUpdateAll() }); if (autoUpdateAll()) checkUpdates(); return; }
       if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
       return saveSettings({ [k]: !S.settings[k] });
     }
