@@ -716,6 +716,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
         other => other?,
     };
+    let (staged, old_app_files) = staged.for_game(&target, assets::os_now())?;
     let files = staged.files.clone();
 
     // What of the old release goes with it: the files the new one no longer has, and a single-file
@@ -740,6 +741,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && !dropped.contains(e) && (picked || !install::looks_like_tool(e, &names)));
     let (exe, replaced) = install::updated_exe(id, &target, exe, &files, picked);
     dropped.extend(replaced);
+    dropped.extend(old_app_files);
 
     // All of the new release in, or none of it (see swap). An update the launcher was closed in the
     // middle of is settled first.
