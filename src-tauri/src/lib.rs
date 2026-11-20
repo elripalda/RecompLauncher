@@ -733,17 +733,17 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             dropped.push(other_build);
         }
     }
+    // Counted before the program to keep is worked out: the old app's program may be one of them.
+    dropped.extend(old_app_files);
 
     // Keep the program the player picked, unless the update replaced it with a differently named one
     // (an AppImage carries its version in its name). Worked out before the files move, while the old
     // one is still there to follow.
     let names = [str_of(&entry, "name"), repo.rsplit(['/', ':']).next().unwrap_or(""), str_of(&entry, "game")];
-    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
     let picked = prev.as_ref().map(|p| p.exe_rules == u8::MAX).unwrap_or(false);
-    let exe = prev.as_ref().and_then(|p| p.exe.clone()).filter(|e| target.join(e).is_file() && !dropped.contains(e) && (picked || !install::looks_like_tool(e, &names)));
+    let exe = install::kept_exe(prev.as_ref().and_then(|p| p.exe.clone()), &target, os, &dropped, picked, &names);
     let (exe, replaced) = install::updated_exe(id, &target, exe, &files, picked);
     dropped.extend(replaced);
-    dropped.extend(old_app_files);
 
     // All of the new release in, or none of it (see swap). An update the launcher was closed in the
     // middle of is settled first.

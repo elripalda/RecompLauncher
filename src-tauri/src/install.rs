@@ -775,6 +775,25 @@ pub fn dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u6
     gone
 }
 
+/// The program an update starts from (see updated_exe), or None to find it again once the update is
+/// in: one the update takes away is gone. `picked`: the player chose it, so it stays while it's there.
+pub fn kept_exe(exe: Option<PathBuf>, game: &Path, os: &str, dropped: &[PathBuf], picked: bool, names: &[&str]) -> Option<PathBuf> {
+    let exe = exe?;
+    if !game.join(&exe).is_file() || dropped.contains(&exe) {
+        return None;
+    }
+    if picked {
+        return Some(exe);
+    }
+    // A game imported as a Mac app starts what the new app's Info.plist names: a release can rename
+    // its program, and the old one may stay on as a helper.
+    if os == "macos" && crate::macos::is_bundle(game) {
+        return None;
+    }
+    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
+    (!looks_like_tool(&exe, names)).then_some(exe)
+}
+
 /// Keep the selected program through an update, following release renames and moves. Run before
 /// the update's files go in. Also returns the old release's AppImage a differently named new one
 /// replaces, for the update to take away.
@@ -927,12 +946,34 @@ impl Staged {
         let top = app.strip_prefix(&self.root).unwrap_or(app).to_path_buf();
         let files: Vec<PathBuf> = self.files.iter().filter_map(|f| f.strip_prefix(&top).ok()).map(Path::to_path_buf).collect();
         let shipped: std::collections::HashSet<&PathBuf> = files.iter().collect();
+        let fold = |p: &Path| p.to_string_lossy().to_lowercase();
+        let by_fold: std::collections::HashMap<String, &PathBuf> = files.iter().map(|f| (fold(f), f)).collect();
+        // A file only renamed in case is, on a Mac's usual drive, the one the update replaces: taken
+        // away as well, the update would fail moving it twice. On a drive that tells case apart, it's
+        // another file and goes.
+        let renamed = |f: &PathBuf| by_fold.get(&fold(f)).is_some_and(|s| same_entry(&game.join(f), &game.join(s)));
         let mut old = vec![];
         // Links too, never followed: a Mac app's frameworks link inside it.
         list(game, &game.join("Contents"), &mut old);
-        let leftovers = old.into_iter().filter(|f| !shipped.contains(f)).collect();
+        let leftovers = old.into_iter().filter(|f| !shipped.contains(f) && !renamed(f)).collect();
         Ok((Staged { root: app.clone(), files }, leftovers))
     }
+}
+
+/// Whether two paths name the same file (or link) on disk, as the drive sees them.
+#[cfg(unix)]
+fn same_entry(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// Only Macs replace an imported app (see for_game).
+#[cfg(not(unix))]
+fn same_entry(_: &Path, _: &Path) -> bool {
+    false
 }
 
 /// Unpack (or place) the downloaded file into `staging`, the way a game's release is: a single
@@ -2615,6 +2656,32 @@ mod mac_archive_tests {
         assert_eq!(fs::read_link(link).unwrap(), PathBuf::from("A"));
     }
 
+    /// The imported app with Artwork.txt, updated to one that ships it as artwork.txt.
+    fn case_renamed_update(d: &Path) -> (PathBuf, Result<Vec<PathBuf>, Error>) {
+        let app = imported_app(d);
+        fs::write(app.join("Contents/Resources/Artwork.txt"), b"old art").unwrap();
+        let release = app_zip(&[("Game.app/Contents/Resources/artwork.txt", b"new art", 0o644)]);
+        let updated = update_app(&app, release, d);
+        (app, updated)
+    }
+
+    #[test]
+    fn mac_imported_app_update_renamed_only_in_case_goes_in() {
+        let d = temp("imported-case");
+        let (app, updated) = case_renamed_update(&d);
+        assert!(updated.is_ok(), "{:?}", updated.err());
+        assert_eq!(fs::read(app.join("Contents/Resources/artwork.txt")).unwrap(), b"new art");
+    }
+
+    #[test]
+    fn mac_imported_app_update_renamed_only_in_case_leaves_no_old_copy() {
+        let d = temp("imported-case-old");
+        let (app, _) = case_renamed_update(&d);
+        let (old, new) = (app.join("Contents/Resources/Artwork.txt"), app.join("Contents/Resources/artwork.txt"));
+        // On a drive that ignores case both names are the one new file.
+        assert!(!old.exists() || same_entry(&old, &new));
+    }
+
     #[test]
     fn mac_release_without_an_app_leaves_the_imported_app_as_it_was() {
         let d = temp("imported-no-app");
@@ -2778,6 +2845,43 @@ mod mac_discovery_tests {
     fn mac_app_as_the_games_folder_starts_its_declared_program() {
         let app = bundle(&temp("app-root"), "Engine");
         assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn an_imported_apps_update_drops_the_saved_program_for_its_new_info_plist() {
+        let app = bundle(&temp("app-update-renamed"), "Engine");
+        let saved = Some(PathBuf::from("Contents/MacOS/Engine"));
+        assert!(kept_exe(saved, &app, "macos", &[], false, &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn an_imported_apps_update_keeps_the_program_the_player_picked() {
+        let app = bundle(&temp("app-update-picked"), "Engine");
+        let saved = Some(PathBuf::from("Contents/MacOS/MyGameHelper"));
+        assert_eq!(kept_exe(saved.clone(), &app, "macos", &[], true, &["My Game"]), saved);
+    }
+
+    #[test]
+    fn a_picked_program_the_update_takes_away_is_not_kept() {
+        let app = bundle(&temp("app-update-picked-gone"), "Engine");
+        let saved = PathBuf::from("Contents/MacOS/Engine");
+        assert!(kept_exe(Some(saved.clone()), &app, "macos", &[saved], true, &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn a_found_program_in_a_plain_folder_is_kept_through_an_update() {
+        let d = temp("plain-update");
+        bundle(&d, "Engine");
+        let saved = Some(PathBuf::from("My Game.app/Contents/MacOS/Engine"));
+        assert_eq!(kept_exe(saved.clone(), &d, "macos", &[], false, &["My Game"]), saved);
+    }
+
+    #[test]
+    fn an_imported_app_finds_its_renamed_program_after_the_update() {
+        let app = bundle(&temp("app-update-find"), "Engine2");
+        program(&app.join("Contents/MacOS/Engine2"), &mach(native_cpu(), 2));
+        let _ = fs::remove_file(app.join("Contents/MacOS/Engine"));
+        assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine2")));
     }
 
     #[test]
