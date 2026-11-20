@@ -707,9 +707,12 @@ settings are written. It runs again whenever the player changes their copy.
   like when your output format changes. Nothing else in this file makes them set up again. Their
   next Play opens Easy Setup with a note that the game is built again, whether it's set up from
   named `inputs` or from a single `game` copy. A build the player pointed the launcher at
-  themselves ("Use a Build You Already Have") isn't asked.
+  themselves ("Use a Build You Already Have") isn't asked. An update of your game doesn't change
+  `version` by itself: when the step builds the game itself (its recompiled program), so every
+  release needs a new build, put your release version in `version` each time you package one
+  (`"version": "0.4.2"`). Without it, players keep playing the build of the release they set up.
 - To build into the player's install folder instead of their home folder, pass it to your builder
-  (`"args": ["--cli", "--prepare", "--game", "{game}", "--out", "{install}/YourGame"]`) and start
+  (`"args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"]`) and start
   from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
   When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like

@@ -390,7 +390,7 @@
         },
         "version": {
           "type": "string",
-          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to."
+          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to, not even a new release: when the step builds the game itself, put your release version here each time you package one."
         },
         "options": {
           "type": "array",
