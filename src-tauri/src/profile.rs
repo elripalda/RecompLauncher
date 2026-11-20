@@ -107,6 +107,10 @@ pub struct Prepare {
     /// game is set up, even when another launcher built it.
     #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
     pub done: Vec<String>,
+    /// Environment variables for the step, as `start.env`. Left out of the profile when there are
+    /// none, so setups fingerprinted before it existed stay as they were.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
     /// The step keeps what it needs from the copy in the game's build folder (folders.game), and
     /// runs again from there without the copy: then the arguments with {game} are left out.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -203,6 +207,35 @@ impl Prepare {
 }
 
 impl Prepare {
+    /// `prepare.env`, filled in; names that aren't allowed are left out, and so is a value with a
+    /// named input still in it (`with_inputs` fills those in first: an optional DLC the player
+    /// didn't give is left out, as in `prepare.args`).
+    pub fn env_vars(&self, install: &Path, copy: Option<&Path>) -> Vec<(String, String)> {
+        let mut out = vec![];
+        for (k, v) in self.env.iter().filter(|(k, _)| env_name_ok(k)) {
+            // Run again without the copy (keeps_copy): a value naming it is left out, as in args.
+            if copy.is_none() && v.contains("{game}") {
+                continue;
+            }
+            let value = fill(v, install, copy);
+            if value.contains("{input:") {
+                continue;
+            }
+            out.push((k.clone(), value));
+        }
+        out
+    }
+
+    /// The step with the player's named inputs in its arguments and environment.
+    pub fn with_inputs(&self, inputs: &BTreeMap<String, PathBuf>) -> Prepare {
+        let mut pr = self.clone();
+        // Omit an argument containing an absent optional/conditional token. Put flags in the same
+        // argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
+        pr.args = crate::inputs::arguments(&self.args, inputs, false);
+        pr.env = self.env.iter().map(|(k, v)| (k.clone(), crate::inputs::expand(v, inputs, false))).collect();
+        pr
+    }
+
     /// Its program in the game's folder: a name it gives, or on Linux and Mac the native build by
     /// the same name (a release's Game-nightly-4-x86_64.AppImage for "Game.AppImage"), as Play
     /// finds the game's own program.
@@ -783,16 +816,25 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     Some(p)
 }
 
-/// An AppImage the Flatpak unpacked at install is gone, its AppRun in its place: programs named
-/// `….AppImage` that aren't in the folder start the AppRun instead.
+/// An AppImage unpacked at install (on Linux every game plays from a plain folder) is gone, its
+/// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
+/// instead. The one in a folder named after the AppImage first (a release with several), else the
+/// one at the top.
 fn to_apprun(p: &mut Profile, dir: &Path) {
-    if dir.as_os_str().is_empty() || !dir.join("AppRun").is_file() {
+    if dir.as_os_str().is_empty() {
         return;
     }
     let swap = |programs: &mut Vec<String>| {
         for prog in programs.iter_mut() {
-            let image = Path::new(prog.as_str()).extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
-            if image && !dir.join(prog.as_str()).is_file() {
+            let named = Path::new(prog.as_str());
+            let image = named.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
+            if !image || dir.join(named).is_file() {
+                continue;
+            }
+            let own = named.with_extension("").join("AppRun");
+            if dir.join(&own).is_file() {
+                *prog = own.to_string_lossy().replace('\\', "/");
+            } else if dir.join("AppRun").is_file() {
                 *prog = "AppRun".into();
             }
         }
@@ -947,7 +989,7 @@ fn boot_settings(b: &Value) -> (Vec<Config>, Vec<Setting>) {
 /// out of them.
 fn safe_place(p: &str) -> bool {
     let p = p.trim().replace('\\', "/");
-    ["{install}/", "{documents}/", "{local}/", "{config}/", "{home}/"].iter().any(|r| p.starts_with(r)) && !p.split('/').any(|c| c == "..")
+    ["{install}/", "{data}/", "{documents}/", "{local}/", "{config}/", "{home}/"].iter().any(|r| p.starts_with(r)) && !p.split('/').any(|c| c == "..")
 }
 
 /// The player's copy, when the boot profile says it goes on the command line or into a folder:
@@ -1176,12 +1218,24 @@ pub fn app_data() -> Option<PathBuf> {
     }
 }
 
+/// The one folder a game keeps everything it writes in (saves, settings, caches), inside its own
+/// folder: `{data}` in its recomplauncher.json, and RECOMPLAUNCHER_DATA when it starts. A name no
+/// game uses: releases ship a `data` folder of their own (TotK's does), and 11 catalog games
+/// already write or ship a top-level `userdata` (the same folder as `UserData` on Windows).
+pub const DATA_DIR: &str = "recompdata";
+
+/// `{data}` for a game in `install`.
+pub fn data_dir(install: &Path) -> PathBuf {
+    install.join(DATA_DIR)
+}
+
 pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     if !t.contains('{') {
         return t.to_string();
     }
     let s = |p: Option<PathBuf>| p.map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     t.replace("{pad}", &PAD.read().unwrap())
+        .replace("{data}", &data_dir(install).to_string_lossy())
         .replace("{install}", &install.to_string_lossy())
         .replace("{documents}", &s(dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents")))))
         .replace("{appdata}", &s(app_data()))
@@ -1450,7 +1504,7 @@ impl Profile {
             // A path put into a TOML or JSON string: forward slashes, so the backslashes aren't escapes.
             let fill = |v: &str, install: &Path, game: Option<&Path>| {
                 let f = fill(v, install, game);
-                if c.format != "ini" && ["{install}", "{game}", "{documents}", "{local}", "{config}", "{home}"].iter().any(|k| v.contains(k)) { f.replace('\\', "/") } else { f }
+                if c.format != "ini" && ["{install}", "{data}", "{game}", "{documents}", "{local}", "{config}", "{home}"].iter().any(|k| v.contains(k)) { f.replace('\\', "/") } else { f }
             };
             let Some(path) = place(&c.file, install) else { continue };
             let mut f = File::open(path, &c.format);
@@ -3141,6 +3195,17 @@ mod tests {
     }
 
     #[test]
+    fn one_of_several_unpacked_appimages_starts_from_its_own_folder() {
+        let d = tmp("apprun-own");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["Game-x86_64.AppImage"]}}"#).unwrap();
+        std::fs::create_dir_all(d.join("Game-x86_64")).unwrap();
+        std::fs::write(d.join("Game-x86_64/AppRun"), b"#!/bin/sh\n").unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["Game-x86_64/AppRun"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn groups_advanced_settings_and_sliders_parse() {
         let p: Profile = serde_json::from_str(r#"{"format":1,
             "config":[{"id":"main","format":"toml","file":[{"path":"{install}/config.toml"}]}],
@@ -3979,6 +4044,48 @@ mod tests {
         assert!(e.iter().any(|(k, v)| k == "GAME_DATA" && v.ends_with("data") && v.contains("games")));
         assert_eq!(e.len(), 2, "PATH, the launcher's own and bad names stay out: {e:?}");
         assert!(env_name_ok("_X1") && !env_name_ok("A-B") && !env_name_ok("path"));
+    }
+
+    #[test]
+    fn data_fills_in_as_the_recompdata_folder_in_the_game() {
+        let install = Path::new("/games/x");
+        assert_eq!(PathBuf::from(fill("{data}", install, None)), install.join("recompdata"));
+        assert_eq!(PathBuf::from(fill("{data}/cache", install, None)), install.join("recompdata").join("cache"));
+    }
+
+    #[test]
+    fn prepare_env_fills_in_and_keeps_out_what_it_must() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"env":{"BUILD_CACHE":"{data}/cache","DISC":"{game}","TEMP":"x","RECOMPLAUNCHER_DATA":"y"}}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let e = pr.env_vars(Path::new("/games/x"), Some(Path::new("/isos/x.iso")));
+        let get = |k: &str| e.iter().find(|(n, _)| n == k).map(|(_, v)| PathBuf::from(v));
+        assert_eq!(get("BUILD_CACHE"), Some(Path::new("/games/x").join("recompdata").join("cache")));
+        assert_eq!(get("DISC"), Some(PathBuf::from("/isos/x.iso")));
+        assert_eq!(e.len(), 2, "TEMP and the launcher's own names stay out: {e:?}");
+    }
+
+    #[test]
+    fn prepare_env_run_again_without_the_copy_leaves_out_what_names_it() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"keeps_copy":true,"env":{"BUILD_CACHE":"{data}/cache","DISC":"{game}"}}}"#).unwrap();
+        let e = p.prepare.unwrap().env_vars(Path::new("/games/x"), None);
+        let names: Vec<&str> = e.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["BUILD_CACHE"]);
+    }
+
+    #[test]
+    fn prepare_env_takes_named_inputs_and_drops_a_missing_one() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"env":{"PATCH":"{input:patch}","DLC":"{input:dlc}"}}}"#).unwrap();
+        let given = BTreeMap::from([("patch".to_string(), PathBuf::from("/files/patch.zip"))]);
+        let pr = p.prepare.unwrap().with_inputs(&given);
+        let e = pr.env_vars(Path::new("/games/x"), None);
+        assert_eq!(e, vec![("PATCH".to_string(), "/files/patch.zip".to_string())]);
+    }
+
+    #[test]
+    fn a_prepare_without_env_writes_none() {
+        // Setups fingerprinted from the profile before prepare.env existed stay set up.
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"]}}"#).unwrap();
+        assert!(!serde_json::to_string(&p.prepare.unwrap()).unwrap().contains("env"));
     }
 }
 

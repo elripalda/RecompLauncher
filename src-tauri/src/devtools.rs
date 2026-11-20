@@ -83,12 +83,74 @@ pub fn dev_add(st: State<'_, App>, path: String) -> Res<Installed> {
 #[tauri::command(async)]
 pub fn add_any(st: State<'_, App>, path: String) -> Res<Installed> {
     let p = PathBuf::from(&path);
+    #[cfg(target_os = "linux")]
+    if p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
+        return add_appimage(&st, &p);
+    }
     if p.is_file() {
         let dir = p.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
         let rel = p.file_name().map(PathBuf::from);
         return add_folder(&st, dir.to_string_lossy().to_string(), rel, "own");
     }
     add_folder(&st, path, None, "own")
+}
+
+/// The player's own AppImage, on Linux: unpacked into the Recomp Library (see plain::bring_in) as
+/// a game of its own, or as the newer version of one brought in the same way before (the launcher
+/// doesn't update games it doesn't know, so this is how they update). Not added when it won't unpack.
+#[cfg(target_os = "linux")]
+fn add_appimage(st: &App, image: &Path) -> Res<Installed> {
+    let key = crate::plain::image_key(image);
+    let earlier = st.lib.lock().unwrap().installed.values().find(|g| g.local && !key.is_empty() && g.from_appimage == key).map(|g| g.id.clone());
+    let id = match &earlier {
+        Some(id) => id.clone(),
+        None => add_image_record(st, image)?,
+    };
+    match crate::plain::bring_in(st, &id, image) {
+        Ok(b) => crate::plain::tell(&b),
+        Err(e) => {
+            if earlier.is_none() {
+                st.lib.lock().unwrap().forget(&id);
+                st.save();
+            }
+            return Err(e);
+        }
+    }
+    st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))
+}
+
+/// A new game of the player's own for their AppImage, before it's unpacked: named by its embedded
+/// recomplauncher.json, else by the AppImage's own name. Never another game the player added from
+/// the same folder (Downloads holds many).
+#[cfg(target_os = "linux")]
+fn add_image_record(st: &App, image: &Path) -> Res<String> {
+    let dir = image.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
+    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    let said = |k: &str| raw.as_ref().and_then(|v| v.get(k)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    let name = said("name").unwrap_or_else(|| crate::plain::image_title(image));
+    let mut l = st.lib.lock().unwrap();
+    let base = format!("own-{}", slug(&name));
+    let mut id = base.clone();
+    let mut n = 2;
+    while l.installed.contains_key(&id) {
+        id = format!("{base}-{n}");
+        n += 1;
+    }
+    let g = Installed {
+        id: id.clone(),
+        name,
+        game: said("game").unwrap_or_default(),
+        repo: said("repo").unwrap_or_default(),
+        tag: "own".into(),
+        path: dir,
+        exe: image.file_name().map(PathBuf::from),
+        installed_at: now(),
+        updated_at: now(),
+        local: true,
+        ..Default::default()
+    };
+    l.put(&id, g);
+    Ok(id)
 }
 
 /// `tag`: "local" for a developer's build, "own" for a game the player added themselves.
@@ -468,9 +530,16 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         }
         items.extend(option_items(&pr.options));
         items.extend(version_item(&pr.version));
+        items.extend(done_item(p));
+        let bad: Vec<&str> = pr.env.keys().filter(|k| !profile::env_name_ok(k)).map(String::as_str).collect();
+        if !bad.is_empty() {
+            items.push(warn(format!("Left out of \"prepare.env\": {}", bad.join(", ")),
+                "Names are letters, digits and _. The launcher's own RECOMPLAUNCHER_ ones and system ones like PATH and TEMP can't be set: the step gets a temp folder of its own."));
+        }
         items.extend(keeps_copy_items(p, dir));
     }
     items.extend(system_item(p));
+    items.extend(outside_item(p));
     level
 }
 
@@ -484,6 +553,48 @@ fn system_item(p: &profile::Profile) -> Option<Item> {
     Some(warn(
         format!("Not read in \"system\": {}", bad.join(", ")),
         format!("Versions are numbers with dots (\"10\", \"2.35\", \"1.3\"), and graphics APIs are {}. Linux builds give glibc, not a version.", crate::sysneeds::GRAPHICS.join(", ")),
+    ))
+}
+
+/// A step that builds the game from the player's copy, without `prepare.done`: the launcher can't
+/// tell the build is there, so it can't keep the game set up after an update, or use a build the
+/// player already has. Only then: a step that only fetches extras needs no list. A keeps_copy
+/// step gets its own, more exact warning from keeps_copy_items.
+fn done_item(p: &profile::Profile) -> Option<Item> {
+    let pr = p.prepare.as_ref()?;
+    let from_copy = p.game.is_some() || !p.inputs.is_empty();
+    if !from_copy || !pr.done.is_empty() || pr.keeps_copy {
+        return None;
+    }
+    Some(warn(
+        "No \"prepare.done\"",
+        "List a file your step always leaves, like \"{data}/build/game.pak\": the launcher then knows the game is built, keeps it set up after an update, and can use a build the player already has.",
+    ))
+}
+
+/// The places outside the game's folder a profile has the game write to (saves, settings, builds,
+/// the folders it passes). Not wrong, but everything in `{install}` or `{data}` moves, backs up and
+/// uninstalls with the game, and nothing is left behind.
+fn outside_item(p: &profile::Profile) -> Option<Item> {
+    const OUTSIDE: [&str; 5] = ["{home}", "{local}", "{config}", "{documents}", "{appdata}"];
+    let mut written: Vec<&str> = p.saves.iter().map(String::as_str).collect();
+    written.extend(p.config.iter().flat_map(|c| c.file.iter().map(|f| f.path.as_str())));
+    written.extend(p.folders.values().flatten().map(|f| f.path.as_str()));
+    if let Some(s) = p.start.as_ref() {
+        written.extend(s.args.iter().chain(s.env.values()).map(String::as_str));
+    }
+    if let Some(pr) = p.prepare.as_ref() {
+        written.extend(pr.args.iter().chain(pr.env.values()).chain(pr.done.iter()).map(String::as_str));
+    }
+    let mut outside: Vec<&str> = written.into_iter().filter(|w| OUTSIDE.iter().any(|o| w.contains(o))).collect();
+    outside.sort();
+    outside.dedup();
+    if outside.is_empty() {
+        return None;
+    }
+    Some(warn(
+        format!("Writes outside {{install}} and {{data}}: {}", outside.join(", ")),
+        "Keep saves, settings, caches and builds in {data} (or {install}): they then move, back up and uninstall with the game. Players' saves already elsewhere are fine to keep reading.",
     ))
 }
 
@@ -637,6 +748,44 @@ mod tests {
             {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}"#).unwrap();
         let items = super::option_items(&p.options);
         assert!(items[0].text.contains("starts off") && items[0].text.contains("required"), "{}", items[0].text);
+    }
+
+    fn profile(json: &str) -> crate::profile::Profile {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn a_step_building_from_the_copy_without_done_is_warned() {
+        let p = profile(r#"{"format":1,"game":{"kind":"iso"},"prepare":{"program":["Builder.exe"],"args":["{game}"]}}"#);
+        let item = super::done_item(&p).unwrap();
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("prepare.done"), "{}", item.text);
+    }
+
+    #[test]
+    fn a_step_with_done_or_without_a_copy_is_left_alone() {
+        let with_done = profile(r#"{"format":1,"game":{"kind":"iso"},"prepare":{"program":["Builder.exe"],"done":["{data}/build/game.pak"]}}"#);
+        assert!(super::done_item(&with_done).is_none());
+        let extras_only = profile(r#"{"format":1,"prepare":{"program":["Fetcher.exe"]}}"#);
+        assert!(super::done_item(&extras_only).is_none());
+        let no_step = profile(r#"{"format":1,"game":{"kind":"iso"}}"#);
+        assert!(super::done_item(&no_step).is_none());
+    }
+
+    #[test]
+    fn writing_outside_the_game_folder_is_named() {
+        let p = profile(r#"{"format":1,"saves":["{local}/Game/saves","{data}/saves"],
+            "prepare":{"program":["Builder.exe"],"args":["--out","{home}/Games/Game"],"env":{"CACHE":"{data}/cache"}}}"#);
+        let item = super::outside_item(&p).unwrap();
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("{local}/Game/saves") && item.text.contains("{home}/Games/Game"), "{}", item.text);
+        assert!(!item.text.contains("{data}/"), "{}", item.text);
+    }
+
+    #[test]
+    fn writing_only_in_install_and_data_is_fine() {
+        let p = profile(r#"{"format":1,"saves":["{data}/saves","{install}/settings.toml"],"start":{"program":["g.exe"],"args":["--data","{data}"]}}"#);
+        assert!(super::outside_item(&p).is_none());
     }
 
     #[test]

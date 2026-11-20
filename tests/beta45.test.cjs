@@ -60,7 +60,7 @@ test('a game nobody says where it saves asks the player to pick its folder', () 
   assert.equal(savesUnknown(null), false);
   // The same pick on the desktop and in Big Picture.
   const tv = read('tv.js');
-  assert.match(account, /unknown \? pickRow/);
+  assert.match(account, /if \(savesUnknown\(s\)\) return `<div class="stack">\$\{unknownCard\(id\)\}/);
   assert.match(tv, /data-tvact="gs-place"/);
   assert.match(tv, /case 'gs-place':[\s\S]{0,400}invoke\('saves_set_place'/);
 });
